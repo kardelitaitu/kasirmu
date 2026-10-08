@@ -2,7 +2,7 @@
 //
 // The full-page menu editor reached from the restaurant POS sidebar. Two panes:
 // a category rail on the left and the selected category's items on the right,
-// each with create / edit / delete.
+// each with full SaaS create / edit / delete capabilities.
 //
 // Why this exists: the POS surfaces the menu for SELLING (RestaurantMenu), and
 // the only place an item could previously be authored was the retail Products
@@ -20,13 +20,16 @@
 //   a raw identifier to the operator.
 // - All money is integer minor units end to end (ADR: Money, never float). The
 //   price field converts to/from major units at the boundary only.
+// - All created and edited dishes are tagged with productType: 'restaurant' so they
+//   immediately appear on the restaurant POS selling grid.
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { formatMoney } from '@/types/domain';
 import {
   listProductsScoped,
   createProductScoped,
@@ -34,6 +37,7 @@ import {
   deleteProductScoped,
   listCategoriesScoped,
   createCategoryScoped,
+  updateCategoryScoped,
   deleteCategoryScoped,
   type ProductDto,
   type CategoryDto,
@@ -45,21 +49,21 @@ import {
   categoryIconLabelId,
   nextRadioValue,
   randomCategoryIcon,
+  randomCategoryColour,
 } from '@/features/categories/categoryIcons';
 import { CategoryIconSvg } from '@/features/categories/CategoryIconSvg';
-import { parsePriceToMinor, formatMinorForInput, generateMenuSku } from './menuEditorLogic';
+import {
+  parsePriceToMinor,
+  formatMinorForInput,
+  generateMenuSku,
+  filterMenuItems,
+  type MenuItemStatusFilter,
+} from './menuEditorLogic';
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
 
 /**
  * A menu item being authored. Price is held in minor units, as the API wants.
- *
- * `categoryName` rather than an id, because that is the shape the wire uses:
- * `ProductDto.category` is the category's NAME (a plain string), while
- * `list_products_scoped` and its write twins take an id. The editor therefore
- * works in names — the same currency as the product rows it displays — and
- * resolves the id only at the call site, exactly as RetailPosScreen does
- * (`categories.find((c) => c.name === ...)`).
  */
 interface MenuDraft {
   sku: string | null;
@@ -67,10 +71,58 @@ interface MenuDraft {
   categoryName: string;
   priceMinor: number;
   isActive: boolean;
+  notes: string;
 }
 
-/** Decorative pencil glyph; the button carries the accessible name. */
+/** Form state for category creation or editing modal. */
+interface CategoryModalState {
+  id?: string;
+  name: string;
+  icon: string;
+  colour: string;
+}
+
+/** Decorative pencil glyph. */
 function EditGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="15"
+      height="15"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+/** Decorative trash glyph. */
+function TrashGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="15"
+      height="15"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+/** Decorative search glyph. */
+function SearchGlyph() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -83,20 +135,54 @@ function EditGlyph() {
       height="16"
       aria-hidden="true"
     >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
 
-/**
- * The colour a category created here is given.
- *
- * This screen deliberately offers no colour picker — the request was for icons —
- * but the API requires a colour, so the category takes the palette's first entry.
- * It is restylable in Category Management, which owns the colour UI.
- */
-const DEFAULT_CATEGORY_COLOUR = CATEGORY_COLOURS[0]!;
+/** Decorative layers glyph for "All Items" category. */
+function LayersGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="18"
+      height="18"
+      aria-hidden="true"
+    >
+      <path d="m12 2 10 5-10 5L2 7l10-5Z" />
+      <path d="m2 17 10 5 10-5" />
+      <path d="m2 12 10 5 10-5" />
+    </svg>
+  );
+}
+
+/** Decorative note glyph for dish description / prep notes. */
+function NoteGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="13"
+      height="13"
+      aria-hidden="true"
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  );
+}
 
 const EMPTY_DRAFT: MenuDraft = {
   sku: null,
@@ -104,6 +190,7 @@ const EMPTY_DRAFT: MenuDraft = {
   categoryName: '',
   priceMinor: 0,
   isActive: true,
+  notes: '',
 };
 
 export interface RestaurantMenuEditorScreenProps {
@@ -117,27 +204,24 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
 
   const [items, setItems] = useState<ProductDto[]>([]);
   const [categories, setCategories] = useState<CategoryDto[]>([]);
-  // The selected category's NAME. ProductDto.category carries a name (not an id),
-  // so a filter can only match on a name.
+  // The selected category's NAME. Empty string means "All Items".
   const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<MenuItemStatusFilter>('all');
   const [draft, setDraft] = useState<MenuDraft | null>(null);
+  const [categoryModal, setCategoryModal] = useState<CategoryModalState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [categorySaving, setCategorySaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  // The icon a NEW category will carry. The API also requires a colour, and this
-  // screen offers no picker for it (the ask here was icons): the category takes
-  // DEFAULT_CATEGORY_COLOUR, which the Category Management screen can restyle.
-  const [newCategoryIcon, setNewCategoryIcon] = useState<string>(() => randomCategoryIcon());
-  const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // Guards the load effect against a resolve arriving after unmount, and against
-  // React 18's double-invoke in development remounting the fetch.
+  const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const loadedRef = useRef(false);
 
   const currency = 'IDR';
 
+  // Load menu products and categories
   useEffect(() => {
     if (loadedRef.current || !sessionToken) return;
     loadedRef.current = true;
@@ -151,7 +235,8 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         if (cancelled) return;
         setItems(prods);
         setCategories(cats);
-        setSelectedCategoryName(cats[0]?.name ?? '');
+        // Default to all items view or first category if available
+        setSelectedCategoryName('');
       } catch (err) {
         if (!cancelled) {
           addToast({
@@ -168,30 +253,40 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     };
   }, [sessionToken, addToast, l10n]);
 
-  const visibleItems = useMemo(
-    () => items.filter((p) => (p.category ?? '') === selectedCategoryName),
-    [items, selectedCategoryName],
+  // Keep menu editor focused on restaurant products (or items created here)
+  const restaurantItems = useMemo(
+    () => items.filter((p) => p.product_type === 'restaurant' || !p.product_type || p.product_type === 'standard'),
+    [items],
   );
 
-  /**
-   * Resolve a category NAME to its id, for the write calls.
-   *
-   * `ProductDto.category` is a name; `create_product_scoped` and
-   * `update_product_scoped` take an id. Names are what the product rows carry
-   * and what the draft holds, so the translation happens here, once, at the
-   * boundary — the same move RetailPosScreen makes inline. An unknown name
-   * yields null, which the API reads as "no category" rather than as a
-   * dangling reference.
-   */
+  // Filter items matching active category, status, and query
+  const filteredItems = useMemo(
+    () =>
+      filterMenuItems({
+        items: restaurantItems,
+        selectedCategoryName,
+        searchQuery,
+        statusFilter,
+      }),
+    [restaurantItems, selectedCategoryName, searchQuery, statusFilter],
+  );
+
+  /** Resolve category name to id for backend calls. */
   const categoryIdFor = useCallback(
     (name: string): string | null => categories.find((c) => c.name === name)?.id ?? null,
     [categories],
   );
 
+  // ── Item Actions ──────────────────────────────────────────────────
+
   const beginCreate = useCallback(() => {
-    setDraft({ ...EMPTY_DRAFT, categoryName: selectedCategoryName });
+    setDraft({
+      ...EMPTY_DRAFT,
+      categoryName: selectedCategoryName || categories[0]?.name || '',
+      notes: '',
+    });
     setDirty(true);
-  }, [selectedCategoryName]);
+  }, [selectedCategoryName, categories]);
 
   const beginEdit = useCallback((p: ProductDto) => {
     setDraft({
@@ -200,6 +295,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       categoryName: p.category ?? '',
       priceMinor: p.price.minor_units,
       isActive: p.is_active !== false,
+      notes: p.notes ?? '',
     });
     setDirty(true);
   }, []);
@@ -209,79 +305,95 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     setDirty(false);
   }, []);
 
-  // Back is guarded, matching RestaurantReceiptsScreen: an unsaved draft is never
-  // dropped silently.
-  const handleRequestBack = useCallback(() => {
-    if (dirty) {
-      setShowUnsavedDialog(true);
-    } else {
-      onBack?.();
-    }
-  }, [dirty, onBack]);
-
-  useEffect(() => {
-    if (!onBack) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      handleRequestBack();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onBack, handleRequestBack]);
+  const handleToggleItemAvailability = useCallback(
+    async (p: ProductDto) => {
+      if (!sessionToken) return;
+      const nextActive = p.is_active === false;
+      // Optimistic update
+      setItems((prev) =>
+        prev.map((item) => (item.sku === p.sku ? { ...item, is_active: nextActive } : item)),
+      );
+      try {
+        await updateProductScoped(sessionToken, {
+          sku: p.sku,
+          name: p.name,
+          priceMinor: p.price.minor_units,
+          currency,
+          categoryId: categoryIdFor(p.category ?? ''),
+          productType: 'restaurant',
+          taxRateIds: p.tax_rate_ids ?? [],
+          isActive: nextActive,
+          notes: p.notes ?? null,
+        });
+        addToast({
+          message: l10n.getString('restaurant-menu-editor-save-success'),
+          type: 'success',
+        });
+      } catch (err) {
+        // Rollback
+        setItems((prev) =>
+          prev.map((item) => (item.sku === p.sku ? { ...item, is_active: !nextActive } : item)),
+        );
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, categoryIdFor, addToast, l10n],
+  );
 
   const handleSaveDraft = useCallback(async () => {
-    if (!draft || !sessionToken) return;
+    if (!draft || !sessionToken || !draft.name.trim()) return;
     setSaving(true);
+    const trimmedNotes = draft.notes.trim() || null;
     try {
       if (draft.sku) {
         await updateProductScoped(sessionToken, {
           sku: draft.sku,
-          name: draft.name,
+          name: draft.name.trim(),
           priceMinor: draft.priceMinor,
           currency,
           categoryId: categoryIdFor(draft.categoryName),
+          productType: 'restaurant',
           taxRateIds: [],
           isActive: draft.isActive,
+          notes: trimmedNotes,
         });
         setItems((prev) =>
           prev.map((p) =>
             p.sku === draft.sku
               ? {
                   ...p,
-                  name: draft.name,
+                  name: draft.name.trim(),
                   category: draft.categoryName || null,
                   price: { minor_units: draft.priceMinor, currency },
+                  product_type: 'restaurant',
                   is_active: draft.isActive,
+                  notes: trimmedNotes,
                 }
               : p,
           ),
         );
       } else {
-        // The backend does not mint a SKU, and foundation::validate_sku rejects a
-        // blank one — so the editor supplies it. See generateMenuSku for why the
-        // format is alphanumeric-only (hyphens are rejected too).
         const sku = generateMenuSku();
         await createProductScoped(sessionToken, {
           sku,
-          name: draft.name,
+          name: draft.name.trim(),
           priceMinor: draft.priceMinor,
           currency,
           categoryId: categoryIdFor(draft.categoryName),
+          productType: 'restaurant',
           initialStock: 0,
           taxRateIds: [],
           isActive: draft.isActive,
+          notes: trimmedNotes,
         });
-        // Append the created row rather than refetching the catalog: the row is
-        // fully known here, and a refetch would discard a draft the operator had
-        // open on another category.
         setItems((prev) => [
           ...prev,
           {
             sku,
-            name: draft.name,
+            name: draft.name.trim(),
             category: draft.categoryName || null,
             price: { minor_units: draft.priceMinor, currency },
             barcode: null,
@@ -290,8 +402,9 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
             tax_rate_ids: [],
             created_at: new Date().toISOString(),
             price_updated_at: new Date().toISOString(),
-            product_type: 'standard',
+            product_type: 'restaurant',
             is_active: draft.isActive,
+            notes: trimmedNotes,
           },
         ]);
       }
@@ -314,6 +427,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
       try {
         await deleteProductScoped(sessionToken, sku);
         setItems((prev) => prev.filter((p) => p.sku !== sku));
+        if (draft?.sku === sku) cancelDraft();
         addToast({ message: l10n.getString('restaurant-menu-editor-delete-success'), type: 'success' });
       } catch (err) {
         addToast({
@@ -322,37 +436,93 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         });
       }
     },
-    [sessionToken, addToast, l10n],
+    [sessionToken, draft, cancelDraft, addToast, l10n],
   );
 
-  const handleAddCategory = useCallback(async () => {
-    const name = newCategoryName.trim();
-    if (!name || !sessionToken) return;
+  // ── Category Actions ──────────────────────────────────────────────
+
+  const beginCreateCategory = useCallback(() => {
+    setCategoryModal({
+      name: '',
+      icon: randomCategoryIcon(),
+      colour: randomCategoryColour(),
+    });
+  }, []);
+
+  const beginEditCategory = useCallback((c: CategoryDto) => {
+    setCategoryModal({
+      id: c.id,
+      name: c.name,
+      icon: c.icon || randomCategoryIcon(),
+      colour: c.colour || CATEGORY_COLOURS[0]!,
+    });
+  }, []);
+
+  const handleSaveCategory = useCallback(async () => {
+    if (!categoryModal || !sessionToken) return;
+    const trimmedName = categoryModal.name.trim();
+    if (!trimmedName) return;
+
+    setCategorySaving(true);
     try {
-      // The API requires a caller-supplied id (CategoryDto.id is a stable key the
-      // products reference); the backend does not mint one for categories.
-      const res = await createCategoryScoped(sessionToken, {
-        id: `cat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-        name,
-        colour: DEFAULT_CATEGORY_COLOUR,
-        icon: newCategoryIcon,
-      });
-      const cats = await listCategoriesScoped(sessionToken);
-      setCategories(cats);
-      setNewCategoryName('');
-      // Re-roll the icon for the next one, so a second add does not silently
-      // inherit the first category's glyph.
-      setNewCategoryIcon(randomCategoryIcon());
-      // Select the category just created, by the name we sent: the rail filters
-      // on names, and re-reading the list would not tell us which row is new.
-      if (res?.id) setSelectedCategoryName(name);
+      if (categoryModal.id) {
+        // Edit category
+        const oldCat = categories.find((c) => c.id === categoryModal.id);
+        const oldName = oldCat?.name ?? '';
+        await updateCategoryScoped(sessionToken, {
+          id: categoryModal.id,
+          name: trimmedName,
+          colour: categoryModal.colour,
+          icon: categoryModal.icon,
+        });
+
+        setCategories((prev) =>
+          prev.map((c) =>
+            c.id === categoryModal.id
+              ? { ...c, name: trimmedName, colour: categoryModal.colour, icon: categoryModal.icon }
+              : c,
+          ),
+        );
+
+        // Rehome products if the category name changed
+        if (oldName && oldName !== trimmedName) {
+          setItems((prev) =>
+            prev.map((p) => (p.category === oldName ? { ...p, category: trimmedName } : p)),
+          );
+          if (selectedCategoryName === oldName) setSelectedCategoryName(trimmedName);
+        }
+
+        addToast({
+          message: l10n.getString('restaurant-menu-editor-category-saved'),
+          type: 'success',
+        });
+      } else {
+        // Create category
+        const id = `cat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        await createCategoryScoped(sessionToken, {
+          id,
+          name: trimmedName,
+          colour: categoryModal.colour,
+          icon: categoryModal.icon,
+        });
+        const cats = await listCategoriesScoped(sessionToken);
+        setCategories(cats);
+        setSelectedCategoryName(trimmedName);
+        addToast({
+          message: l10n.getString('restaurant-menu-editor-save-success'),
+          type: 'success',
+        });
+      }
+      setCategoryModal(null);
     } catch (err) {
       addToast({
         message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
         type: 'error',
       });
+    } finally {
+      setCategorySaving(false);
     }
-  }, [newCategoryName, newCategoryIcon, sessionToken, addToast, l10n]);
+  }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n]);
 
   const handleDeleteCategory = useCallback(
     async (category: CategoryDto) => {
@@ -363,12 +533,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         const prods = await listProductsScoped(sessionToken);
         setCategories(cats);
         setItems(prods);
-        // Deleting the category being viewed must move the selection, or the
-        // right-hand pane would filter on a name that no longer exists and show
-        // an empty list with no explanation.
-        if (selectedCategoryName === category.name) setSelectedCategoryName(cats[0]?.name ?? '');
-        // The backend reports how many products were rehomed rather than deleted;
-        // surfacing it is the difference between "it worked" and "it moved my items".
+        if (selectedCategoryName === category.name) setSelectedCategoryName('');
         if (res?.affected_products) {
           addToast({
             message: l10n.getString('restaurant-menu-editor-category-deleted-moved', {
@@ -389,8 +554,63 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
     [sessionToken, selectedCategoryName, addToast, l10n],
   );
 
+  // ── Back Guard ────────────────────────────────────────────────────
+
+  const handleRequestBack = useCallback(() => {
+    if (dirty) {
+      setShowUnsavedDialog(true);
+    } else {
+      onBack?.();
+    }
+  }, [dirty, onBack]);
+
+  useEffect(() => {
+    if (!onBack) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (categoryModal) {
+        setCategoryModal(null);
+        return;
+      }
+      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleRequestBack();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onBack, categoryModal, handleRequestBack]);
+
+  // Total counts for status pills
+  const totalInCategory = useMemo(
+    () =>
+      restaurantItems.filter(
+        (p) => !selectedCategoryName || (p.category ?? '') === selectedCategoryName,
+      ).length,
+    [restaurantItems, selectedCategoryName],
+  );
+  const availableInCategory = useMemo(
+    () =>
+      restaurantItems.filter(
+        (p) =>
+          (!selectedCategoryName || (p.category ?? '') === selectedCategoryName) &&
+          p.is_active !== false,
+      ).length,
+    [restaurantItems, selectedCategoryName],
+  );
+  const hiddenInCategory = useMemo(
+    () =>
+      restaurantItems.filter(
+        (p) =>
+          (!selectedCategoryName || (p.category ?? '') === selectedCategoryName) &&
+          p.is_active === false,
+      ).length,
+    [restaurantItems, selectedCategoryName],
+  );
+
   return (
     <div className="restaurant-settings-screen">
+      {/* ── Page Header ────────────────────────────────────────── */}
       <div className="restaurant-settings-header" data-testid="restaurant-menu-editor-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
@@ -471,15 +691,49 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         </div>
       </div>
 
+      {/* ── Main Layout: Category Rail + Items View ─────────────── */}
       <div className="restaurant-settings-main">
         <div className="restaurant-menu-editor-layout">
+          {/* ── Rail: Categories ── */}
           <aside className="restaurant-menu-editor-rail" aria-label={l10n.getString('restaurant-menu-editor-categories')}>
             <div className="restaurant-menu-editor-rail-head">
               <Localized id="restaurant-menu-editor-categories">
                 <span>Categories</span>
               </Localized>
+              <button
+                type="button"
+                className="restaurant-menu-editor-btn-add-cat"
+                onClick={beginCreateCategory}
+                aria-label={l10n.getString('restaurant-menu-editor-create-category')}
+                title={l10n.getString('restaurant-menu-editor-create-category')}
+                data-testid="restaurant-menu-editor-btn-add-cat"
+              >
+                +
+              </button>
             </div>
+
             <ul className="restaurant-menu-editor-category-list">
+              {/* All Items Option */}
+              <li>
+                <button
+                  type="button"
+                  className={`restaurant-menu-editor-category${selectedCategoryName === '' ? ' restaurant-menu-editor-category--active' : ''}`}
+                  onClick={() => setSelectedCategoryName('')}
+                  aria-current={selectedCategoryName === '' ? 'true' : undefined}
+                >
+                  <span className="restaurant-menu-editor-category-icon-box">
+                    <LayersGlyph />
+                  </span>
+                  <span className="restaurant-menu-editor-category-name">
+                    <Localized id="restaurant-menu-editor-all-categories">All Items</Localized>
+                  </span>
+                  <span className="restaurant-menu-editor-category-count">
+                    {restaurantItems.length}
+                  </span>
+                </button>
+              </li>
+
+              {/* Categorised options */}
               {categories.map((c) => (
                 <li key={c.id}>
                   <button
@@ -488,86 +742,127 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                     onClick={() => setSelectedCategoryName(c.name)}
                     aria-current={c.name === selectedCategoryName ? 'true' : undefined}
                   >
+                    <span
+                      className="restaurant-menu-editor-category-icon-box"
+                      style={c.colour ? ({ '--cat-accent': c.colour } as CSSProperties) : undefined}
+                    >
+                      <CategoryIconSvg icon={c.icon} size={18} />
+                    </span>
                     <span className="restaurant-menu-editor-category-name">{c.name}</span>
                     <span className="restaurant-menu-editor-category-count">
-                      {items.filter((p) => (p.category ?? '') === c.name).length}
+                      {restaurantItems.filter((p) => (p.category ?? '') === c.name).length}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    className="restaurant-menu-editor-category-delete"
-                    onClick={() => handleDeleteCategory(c)}
-                    aria-label={l10n.getString('restaurant-menu-editor-delete-category-aria', { name: c.name })}
-                  >
-                    {'\u00d7'}
-                  </button>
+
+                  <div className="restaurant-menu-editor-category-row-actions">
+                    <button
+                      type="button"
+                      className="restaurant-menu-editor-category-action-btn"
+                      onClick={() => beginEditCategory(c)}
+                      aria-label={l10n.getString('restaurant-menu-editor-edit-category-aria', { name: c.name })}
+                      title={l10n.getString('restaurant-menu-editor-edit-category')}
+                      data-testid={`restaurant-menu-editor-cat-edit-${c.id}`}
+                    >
+                      <EditGlyph />
+                    </button>
+                    <button
+                      type="button"
+                      className="restaurant-menu-editor-category-action-btn restaurant-menu-editor-category-action-btn--delete"
+                      onClick={() => handleDeleteCategory(c)}
+                      aria-label={l10n.getString('restaurant-menu-editor-delete-category-aria', { name: c.name })}
+                      data-testid={`restaurant-menu-editor-cat-del-${c.id}`}
+                    >
+                      <TrashGlyph />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
-            {/* Icon picker for the category about to be created. Same
-                radiogroup contract as CategoryManagementScreen: arrows move
-                focus AND selection, Tab leaves the group, and each button is
-                named by its own Fluent label because it renders an icon only. */}
-            <div
-              className="restaurant-menu-editor-icon-picker"
-              role="radiogroup"
-              aria-label={l10n.getString('categories-icon-picker-aria')}
-            >
-              {CATEGORY_ICON_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  role="radio"
-                  ref={(el) => { iconRadioRefs.current[opt.id] = el; }}
-                  tabIndex={newCategoryIcon === opt.id ? 0 : -1}
-                  aria-checked={newCategoryIcon === opt.id}
-                  aria-label={l10n.getString(categoryIconLabelId(opt.id))}
-                  className={
-                    newCategoryIcon === opt.id
-                      ? 'restaurant-menu-editor-icon-btn restaurant-menu-editor-icon-btn--selected'
-                      : 'restaurant-menu-editor-icon-btn'
-                  }
-                  style={newCategoryIcon === opt.id ? { borderColor: DEFAULT_CATEGORY_COLOUR } : undefined}
-                  onClick={() => setNewCategoryIcon(opt.id)}
-                  onKeyDown={(e) => {
-                    const next = nextRadioValue(CATEGORY_ICON_IDS, newCategoryIcon, e.key);
-                    if (next === null) return;
-                    e.preventDefault();
-                    setNewCategoryIcon(next);
-                    iconRadioRefs.current[next]?.focus();
-                  }}
-                  data-testid={`restaurant-menu-editor-icon-${opt.id}`}
-                >
-                  <CategoryIconSvg icon={opt.id} size={20} />
-                </button>
-              ))}
-            </div>
-            <div className="restaurant-menu-editor-add-category">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddCategory();
-                }}
-                placeholder={l10n.getString('restaurant-menu-editor-new-category')}
-                aria-label={l10n.getString('restaurant-menu-editor-new-category')}
-                data-testid="restaurant-menu-editor-new-category"
-              />
-              <button
-                type="button"
-                className="btn btn--secondary btn--sm"
-                disabled={!newCategoryName.trim()}
-                onClick={handleAddCategory}
-              >
-                <Localized id="restaurant-menu-editor-add-category">
-                  <span>Add</span>
-                </Localized>
-              </button>
-            </div>
           </aside>
 
+          {/* ── Pane: Items View ── */}
           <section className="restaurant-menu-editor-items">
+            {/* Toolbar */}
+            <div className="restaurant-menu-editor-toolbar">
+              <div className="restaurant-menu-editor-toolbar-top">
+                <div className="restaurant-menu-editor-toolbar-heading">
+                  <h2 className="restaurant-menu-editor-view-title">
+                    {selectedCategoryName || l10n.getString('restaurant-menu-editor-all-categories')}
+                  </h2>
+                  <span className="restaurant-menu-editor-view-badge">
+                    {filteredItems.length}
+                  </span>
+                </div>
+
+                {!draft && (
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm restaurant-menu-editor-btn-add-item"
+                    onClick={beginCreate}
+                    data-testid="restaurant-menu-editor-new-item"
+                  >
+                    + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
+                  </button>
+                )}
+              </div>
+
+              {/* Search & Status Filters */}
+              <div className="restaurant-menu-editor-filter-row">
+                <div className="restaurant-menu-editor-search-box">
+                  <SearchGlyph />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={l10n.getString('restaurant-menu-editor-search-placeholder')}
+                    aria-label={l10n.getString('restaurant-menu-editor-search-placeholder')}
+                    className="restaurant-menu-editor-search-input"
+                    data-testid="restaurant-menu-editor-search-input"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      className="restaurant-menu-editor-search-clear"
+                      onClick={() => setSearchQuery('')}
+                      aria-label={l10n.getString('restaurant-menu-editor-clear-search')}
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
+
+                <div className="restaurant-menu-editor-status-tabs" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={statusFilter === 'all'}
+                    className={`restaurant-menu-editor-status-tab${statusFilter === 'all' ? ' restaurant-menu-editor-status-tab--active' : ''}`}
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    <Localized id="restaurant-menu-editor-filter-all">All</Localized> ({totalInCategory})
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={statusFilter === 'available'}
+                    className={`restaurant-menu-editor-status-tab${statusFilter === 'available' ? ' restaurant-menu-editor-status-tab--active' : ''}`}
+                    onClick={() => setStatusFilter('available')}
+                  >
+                    <Localized id="restaurant-menu-editor-filter-available">Available</Localized> ({availableInCategory})
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={statusFilter === 'hidden'}
+                    className={`restaurant-menu-editor-status-tab${statusFilter === 'hidden' ? ' restaurant-menu-editor-status-tab--active' : ''}`}
+                    onClick={() => setStatusFilter('hidden')}
+                  >
+                    <Localized id="restaurant-menu-editor-filter-hidden">Hidden (86)</Localized> ({hiddenInCategory})
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {loading ? (
               <p className="restaurant-menu-editor-empty">
                 <Localized id="restaurant-menu-editor-loading">
@@ -576,20 +871,7 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
               </p>
             ) : (
               <>
-                {!draft && (
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm restaurant-menu-editor-new-item"
-                    onClick={beginCreate}
-                    disabled={!selectedCategoryName}
-                    data-testid="restaurant-menu-editor-new-item"
-                  >
-                    <Localized id="restaurant-menu-editor-new-item">
-                      <span>Add item</span>
-                    </Localized>
-                  </button>
-                )}
-
+                {/* ── Item Draft Form ── */}
                 {draft && (
                   <form
                     className="restaurant-menu-editor-form"
@@ -597,33 +879,51 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                       e.preventDefault();
                       handleSaveDraft();
                     }}
+                    data-testid="restaurant-menu-editor-form"
                   >
-                    <label htmlFor="restaurant-menu-editor-name">
-                      <Localized id="restaurant-menu-editor-field-name">Name</Localized>
-                      <input
-                        id="restaurant-menu-editor-name"
-                        type="text"
-                        value={draft.name}
-                        required
-                        onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                        data-testid="restaurant-menu-editor-name"
-                      />
-                    </label>
-                    <label htmlFor="restaurant-menu-editor-price">
-                      <Localized id="restaurant-menu-editor-field-price">Price</Localized>
-                      <input
-                        id="restaurant-menu-editor-price"
-                        type="text"
-                        inputMode="decimal"
-                        value={formatMinorForInput(draft.priceMinor)}
-                        onChange={(e) => {
-                          const minor = parsePriceToMinor(e.target.value, currency);
-                          setDraft({ ...draft, priceMinor: minor ?? 0 });
-                        }}
-                        data-testid="restaurant-menu-editor-price"
-                      />
-                    </label>
-                    <label htmlFor="restaurant-menu-editor-draft-category">
+                    <div className="restaurant-menu-editor-form-header">
+                      <h3 className="restaurant-menu-editor-form-title">
+                        {draft.sku
+                          ? l10n.getString('restaurant-menu-editor-edit-item-aria', { name: draft.name })
+                          : l10n.getString('restaurant-menu-editor-new-item')}
+                      </h3>
+                      {draft.sku && (
+                        <span className="restaurant-menu-editor-sku-tag">
+                          SKU: {draft.sku}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="restaurant-menu-editor-form-grid">
+                      <label htmlFor="restaurant-menu-editor-name" className="restaurant-menu-editor-field">
+                        <Localized id="restaurant-menu-editor-field-name">Name</Localized>
+                        <input
+                          id="restaurant-menu-editor-name"
+                          type="text"
+                          value={draft.name}
+                          required
+                          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                          data-testid="restaurant-menu-editor-name"
+                        />
+                      </label>
+
+                      <label htmlFor="restaurant-menu-editor-price" className="restaurant-menu-editor-field">
+                        <Localized id="restaurant-menu-editor-field-price">Price</Localized>
+                        <input
+                          id="restaurant-menu-editor-price"
+                          type="text"
+                          inputMode="decimal"
+                          value={formatMinorForInput(draft.priceMinor)}
+                          onChange={(e) => {
+                            const minor = parsePriceToMinor(e.target.value, currency);
+                            setDraft({ ...draft, priceMinor: minor ?? 0 });
+                          }}
+                          data-testid="restaurant-menu-editor-price"
+                        />
+                      </label>
+                    </div>
+
+                    <label htmlFor="restaurant-menu-editor-draft-category" className="restaurant-menu-editor-field">
                       <Localized id="restaurant-menu-editor-field-category">Category</Localized>
                       <select
                         id="restaurant-menu-editor-draft-category"
@@ -639,6 +939,19 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                         ))}
                       </select>
                     </label>
+
+                    <label htmlFor="restaurant-menu-editor-notes" className="restaurant-menu-editor-field">
+                      <Localized id="restaurant-menu-editor-field-notes">Description / Notes</Localized>
+                      <textarea
+                        id="restaurant-menu-editor-notes"
+                        rows={2}
+                        value={draft.notes}
+                        placeholder={l10n.getString('restaurant-menu-editor-notes-placeholder')}
+                        onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+                        data-testid="restaurant-menu-editor-notes"
+                      />
+                    </label>
+
                     <label className="restaurant-menu-editor-checkbox">
                       <input
                         type="checkbox"
@@ -648,8 +961,14 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                       />
                       <Localized id="restaurant-menu-editor-field-active">Available to sell</Localized>
                     </label>
+
                     <div className="restaurant-menu-editor-form-actions">
-                      <button type="submit" className="btn btn--primary btn--sm" disabled={saving}>
+                      <button
+                        type="submit"
+                        className="btn btn--primary btn--sm"
+                        disabled={saving || !draft.name.trim()}
+                        aria-busy={saving || undefined}
+                      >
                         <Localized id="save">
                           <span>Save</span>
                         </Localized>
@@ -663,56 +982,116 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                   </form>
                 )}
 
-                {visibleItems.length === 0 && !draft ? (
-                  <p className="restaurant-menu-editor-empty">
-                    <Localized id="restaurant-menu-editor-empty">
-                      <span>No items in this category yet.</span>
-                    </Localized>
-                  </p>
+                {/* ── Item Cards List ── */}
+                {filteredItems.length === 0 && !draft ? (
+                  <div className="restaurant-menu-editor-empty-state">
+                    {searchQuery ? (
+                      <>
+                        <p className="restaurant-menu-editor-empty">
+                          <Localized id="restaurant-menu-editor-no-match">
+                            <span>No items match your search.</span>
+                          </Localized>
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => setSearchQuery('')}
+                        >
+                          <Localized id="restaurant-menu-editor-clear-search">
+                            <span>Clear search</span>
+                          </Localized>
+                        </button>
+                      </>
+                    ) : (
+                      <p className="restaurant-menu-editor-empty">
+                        <Localized id="restaurant-menu-editor-empty">
+                          <span>No items in this category yet.</span>
+                        </Localized>
+                      </p>
+                    )}
+                  </div>
                 ) : (
-                  <ul className="restaurant-menu-editor-item-list">
-                    {visibleItems.map((p) => (
-                      <li key={p.sku} className="restaurant-menu-editor-item">
-                        <button
-                          type="button"
-                          className="restaurant-menu-editor-item-main"
-                          onClick={() => beginEdit(p)}
-                        >
-                          <span className="restaurant-menu-editor-item-name">{p.name}</span>
-                          <span className="restaurant-menu-editor-item-price">
-                            {formatMinorForInput(p.price.minor_units)}
-                          </span>
-                          {p.is_active === false && (
-                            <span className="restaurant-menu-editor-item-hidden">
-                              <Localized id="restaurant-menu-editor-hidden">
-                                <span>Hidden</span>
-                              </Localized>
-                            </span>
-                          )}
-                        </button>
-                        {/* An explicit Edit control beside the row: clicking the
-                            name also opens the editor, but a manager should not
-                            have to discover that. */}
-                        <button
-                          type="button"
-                          className="restaurant-menu-editor-item-edit"
-                          onClick={() => beginEdit(p)}
-                          aria-label={l10n.getString('restaurant-menu-editor-edit-item-aria', { name: p.name })}
-                          data-testid={`restaurant-menu-editor-edit-${p.sku}`}
-                        >
-                          <EditGlyph />
-                        </button>
-                        <button
-                          type="button"
-                          className="restaurant-menu-editor-item-delete"
-                          onClick={() => handleDeleteItem(p.sku)}
-                          aria-label={l10n.getString('restaurant-menu-editor-delete-item-aria', { name: p.name })}
-                        >
-                          {'\u00d7'}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="restaurant-menu-editor-item-grid">
+                    {filteredItems.map((p) => {
+                      const isActive = p.is_active !== false;
+                      return (
+                        <div key={p.sku} className="restaurant-menu-editor-card" data-testid={`menu-item-card-${p.sku}`}>
+                          {/* Card Main Body */}
+                          <button
+                            type="button"
+                            className="restaurant-menu-editor-card-body"
+                            onClick={() => beginEdit(p)}
+                            aria-label={l10n.getString('restaurant-menu-editor-edit-item-aria', { name: p.name })}
+                          >
+                            <div className="restaurant-menu-editor-card-header">
+                              <span className="restaurant-menu-editor-card-name">{p.name}</span>
+                              <span className="restaurant-menu-editor-card-price">
+                                {formatMoney({ minor_units: p.price.minor_units, currency: p.price.currency })}
+                              </span>
+                            </div>
+
+                            <div className="restaurant-menu-editor-card-meta">
+                              {p.category && (
+                                <span className="restaurant-menu-editor-badge-cat">
+                                  {p.category}
+                                </span>
+                              )}
+                              <span className="restaurant-menu-editor-badge-sku">{p.sku}</span>
+                            </div>
+
+                            {p.notes && (
+                              <div className="restaurant-menu-editor-card-notes">
+                                <NoteGlyph />
+                                <span>{p.notes}</span>
+                              </div>
+                            )}
+                          </button>
+
+                          {/* Card Action Footer */}
+                          <div className="restaurant-menu-editor-card-footer">
+                            {/* Quick Availability Toggle */}
+                            <button
+                              type="button"
+                              className={`restaurant-menu-editor-toggle-btn${isActive ? ' restaurant-menu-editor-toggle-btn--active' : ' restaurant-menu-editor-toggle-btn--hidden'}`}
+                              onClick={() => handleToggleItemAvailability(p)}
+                              aria-label={l10n.getString('restaurant-menu-editor-toggle-availability-aria', { name: p.name })}
+                              title={l10n.getString('restaurant-menu-editor-toggle-availability-aria', { name: p.name })}
+                            >
+                              <span
+                                className={`restaurant-menu-editor-status-dot${isActive ? ' restaurant-menu-editor-status-dot--active' : ' restaurant-menu-editor-status-dot--hidden'}`}
+                              />
+                              {isActive ? (
+                                <Localized id="restaurant-menu-editor-status-available">Available</Localized>
+                              ) : (
+                                <Localized id="restaurant-menu-editor-status-hidden">Hidden (86)</Localized>
+                              )}
+                            </button>
+
+                            <div className="restaurant-menu-editor-card-actions">
+                              <button
+                                type="button"
+                                className="restaurant-menu-editor-card-btn"
+                                onClick={() => beginEdit(p)}
+                                aria-label={l10n.getString('restaurant-menu-editor-edit-item-aria', { name: p.name })}
+                                data-testid={`restaurant-menu-editor-edit-${p.sku}`}
+                              >
+                                <EditGlyph />
+                              </button>
+                              <button
+                                type="button"
+                                className="restaurant-menu-editor-card-btn restaurant-menu-editor-card-btn--delete"
+                                onClick={() => handleDeleteItem(p.sku)}
+                                aria-label={l10n.getString('restaurant-menu-editor-delete-item-aria', { name: p.name })}
+                                data-testid={`restaurant-menu-editor-del-${p.sku}`}
+                              >
+                                <TrashGlyph />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </>
             )}
@@ -720,6 +1099,129 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
         </div>
       </div>
 
+      {/* ── Category Modal (Create / Edit) ────────────────────── */}
+      {categoryModal && (
+        <div
+          className="restaurant-menu-editor-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="restaurant-menu-editor-cat-modal-title"
+        >
+          <div className="restaurant-menu-editor-modal-card">
+            <h3 id="restaurant-menu-editor-cat-modal-title" className="restaurant-menu-editor-modal-title">
+              {categoryModal.id ? (
+                <Localized id="restaurant-menu-editor-edit-category">Edit Category</Localized>
+              ) : (
+                <Localized id="restaurant-menu-editor-create-category">New Category</Localized>
+              )}
+            </h3>
+
+            <div className="restaurant-menu-editor-modal-body">
+              <label htmlFor="restaurant-menu-editor-cat-name" className="restaurant-menu-editor-field">
+                <Localized id="restaurant-menu-editor-field-name">Name</Localized>
+                <input
+                  id="restaurant-menu-editor-cat-name"
+                  type="text"
+                  value={categoryModal.name}
+                  required
+                  placeholder={l10n.getString('restaurant-menu-editor-new-category')}
+                  onChange={(e) => setCategoryModal({ ...categoryModal, name: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveCategory();
+                  }}
+                  data-testid="restaurant-menu-editor-cat-input-name"
+                />
+              </label>
+
+              {/* Icon Picker */}
+              <div className="restaurant-menu-editor-picker-section">
+                <span className="restaurant-menu-editor-picker-label">
+                  <Localized id="categories-icon-picker-aria">Pick an icon</Localized>
+                </span>
+                <div
+                  className="restaurant-menu-editor-icon-picker"
+                  role="radiogroup"
+                  aria-label={l10n.getString('categories-icon-picker-aria')}
+                >
+                  {CATEGORY_ICON_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="radio"
+                      ref={(el) => {
+                        iconRadioRefs.current[opt.id] = el;
+                      }}
+                      tabIndex={categoryModal.icon === opt.id ? 0 : -1}
+                      aria-checked={categoryModal.icon === opt.id}
+                      aria-label={l10n.getString(categoryIconLabelId(opt.id))}
+                      className={
+                        categoryModal.icon === opt.id
+                          ? 'restaurant-menu-editor-icon-btn restaurant-menu-editor-icon-btn--selected'
+                          : 'restaurant-menu-editor-icon-btn'
+                      }
+                      style={
+                        categoryModal.icon === opt.id ? { borderColor: categoryModal.colour } : undefined
+                      }
+                      onClick={() => setCategoryModal({ ...categoryModal, icon: opt.id })}
+                      onKeyDown={(e) => {
+                        const next = nextRadioValue(CATEGORY_ICON_IDS, categoryModal.icon, e.key);
+                        if (next === null) return;
+                        e.preventDefault();
+                        setCategoryModal({ ...categoryModal, icon: next });
+                        iconRadioRefs.current[next]?.focus();
+                      }}
+                      data-testid={`restaurant-menu-editor-icon-${opt.id}`}
+                    >
+                      <CategoryIconSvg icon={opt.id} size={20} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Colour Palette Swatches */}
+              <div className="restaurant-menu-editor-picker-section">
+                <span className="restaurant-menu-editor-picker-label">
+                  <Localized id="categories-colour-picker-aria">Pick a colour</Localized>
+                </span>
+                <div className="restaurant-menu-editor-color-picker">
+                  {CATEGORY_COLOURS.map((col) => (
+                    <button
+                      key={col}
+                      type="button"
+                      className={`restaurant-menu-editor-color-swatch${categoryModal.colour === col ? ' restaurant-menu-editor-color-swatch--selected' : ''}`}
+                      style={{ backgroundColor: col }}
+                      aria-label={col}
+                      onClick={() => setCategoryModal({ ...categoryModal, colour: col })}
+                      data-testid={`restaurant-menu-editor-color-${col}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="restaurant-menu-editor-modal-actions">
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                disabled={categorySaving || !categoryModal.name.trim()}
+                onClick={handleSaveCategory}
+                data-testid="restaurant-menu-editor-cat-save"
+              >
+                <Localized id="save">Save</Localized>
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => setCategoryModal(null)}
+              >
+                <Localized id="cancel">Cancel</Localized>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unsaved Changes Confirmation Dialog ─────────────── */}
       <UnsavedChangesDialog
         open={showUnsavedDialog}
         onCancel={() => setShowUnsavedDialog(false)}

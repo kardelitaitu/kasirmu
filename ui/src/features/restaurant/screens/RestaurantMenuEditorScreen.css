@@ -1,21 +1,22 @@
 /* ============================================================
  * Restaurant Menu Editor
  *
- * Layout only. The page header is RestaurantSettingsScreens.css's
- * .restaurant-settings-* block, reused verbatim so the Menu Editor and the
- * Receipt/Payment settings screens read as one family; nothing here restyles it.
+ * High-end SaaS layout and tactile cards. The page header is
+ * RestaurantSettingsScreens.css's .restaurant-settings-* block,
+ * reused verbatim so the Menu Editor and other settings screens
+ * read as one family.
  *
- * Tokens only -- no literal colours, sizes or radii. The three walkers that
- * police this (themeTokenCompliance, the bundle-parity scanner and the CSS
- * contract suites) read a raw hex or px as debt.
+ * Tokens only -- no literal colours, sizes or radii. The walkers that
+ * police this (themeTokenCompliance, bundle-parity scanner, CSS contract)
+ * read raw hex or px as debt.
  * ============================================================ */
 
 .restaurant-menu-editor-layout {
   display: grid;
-  grid-template-columns: minmax(200px, 260px) 1fr;
+  grid-template-columns: minmax(220px, 280px) 1fr;
   gap: var(--space-6);
   width: 100%;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: var(--space-6) 0;
   box-sizing: border-box;
@@ -43,11 +44,42 @@
 }
 
 .restaurant-menu-editor-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-fg-muted);
+}
+
+.restaurant-menu-editor-btn-add-cat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.restaurant-menu-editor-btn-add-cat:hover {
+  background: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.restaurant-menu-editor-btn-add-cat:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
 }
 
 .restaurant-menu-editor-category-list {
@@ -63,6 +95,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  position: relative;
 }
 
 .restaurant-menu-editor-category {
@@ -70,10 +103,9 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   min-height: var(--touch-target-min);
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -81,6 +113,7 @@
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .restaurant-menu-editor-category:hover {
@@ -98,7 +131,24 @@
   font-weight: var(--font-weight-semibold);
 }
 
+.restaurant-menu-editor-category-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-muted);
+  flex-shrink: 0;
+}
+
+.restaurant-menu-editor-category--active .restaurant-menu-editor-category-icon-box {
+  color: var(--color-fg);
+}
+
 .restaurant-menu-editor-category-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -108,12 +158,335 @@
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
   font-variant-numeric: tabular-nums;
+  padding: 0 var(--space-1);
 }
 
-.restaurant-menu-editor-category-delete,
-.restaurant-menu-editor-item-edit,
-.restaurant-menu-editor-item-delete {
-  flex-shrink: 0;
+.restaurant-menu-editor-category-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.restaurant-menu-editor-category-list li:hover .restaurant-menu-editor-category-row-actions,
+.restaurant-menu-editor-category-list li:focus-within .restaurant-menu-editor-category-row-actions {
+  opacity: 1;
+}
+
+.restaurant-menu-editor-category-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.restaurant-menu-editor-category-action-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-category-action-btn--delete:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.restaurant-menu-editor-category-action-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+/* ── Items Pane: Toolbar ────────────────────────────────────────── */
+
+.restaurant-menu-editor-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.restaurant-menu-editor-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.restaurant-menu-editor-toolbar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.restaurant-menu-editor-toolbar-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-view-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-view-badge {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-muted);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-2);
+  min-height: var(--space-5);
+  display: inline-flex;
+  align-items: center;
+}
+
+.restaurant-menu-editor-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.restaurant-menu-editor-search-box {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  min-height: var(--touch-target-min);
+  box-sizing: border-box;
+  color: var(--color-fg-muted);
+}
+
+.restaurant-menu-editor-search-box:focus-within {
+  border-color: var(--color-border-focus);
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -1px;
+}
+
+.restaurant-menu-editor-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.restaurant-menu-editor-search-clear {
+  background: transparent;
+  border: none;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  font-size: var(--text-base);
+  line-height: 1;
+  padding: var(--space-1);
+}
+
+.restaurant-menu-editor-search-clear:hover {
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-status-tabs {
+  display: flex;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  gap: var(--space-1);
+}
+
+.restaurant-menu-editor-status-tab {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.restaurant-menu-editor-status-tab:hover {
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-status-tab--active {
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Item Grid & Cards ─────────────────────────────────────────── */
+
+.restaurant-menu-editor-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.restaurant-menu-editor-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.restaurant-menu-editor-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.restaurant-menu-editor-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-card-body:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.restaurant-menu-editor-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-card-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-tight);
+}
+
+.restaurant-menu-editor-card-price {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.restaurant-menu-editor-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.restaurant-menu-editor-badge-cat {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-bg-hover);
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+}
+
+.restaurant-menu-editor-badge-sku {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-subtle);
+  letter-spacing: 0.02em;
+}
+
+.restaurant-menu-editor-card-notes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.restaurant-menu-editor-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.restaurant-menu-editor-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.restaurant-menu-editor-toggle-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.restaurant-menu-editor-status-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.restaurant-menu-editor-status-dot--active {
+  background: var(--color-success);
+}
+
+.restaurant-menu-editor-status-dot--hidden {
+  background: var(--color-warning);
+}
+
+.restaurant-menu-editor-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.restaurant-menu-editor-card-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -123,30 +496,176 @@
   border: none;
   border-radius: var(--radius-md);
   color: var(--color-fg-muted);
-  font-size: var(--text-lg);
-  line-height: 1;
   cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.restaurant-menu-editor-category-delete:hover,
-.restaurant-menu-editor-item-delete:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-danger);
-}
-
-.restaurant-menu-editor-item-edit:hover {
+.restaurant-menu-editor-card-btn:hover {
   background: var(--color-bg-hover);
   color: var(--color-fg);
 }
 
-.restaurant-menu-editor-category-delete:focus-visible,
-.restaurant-menu-editor-item-edit:focus-visible,
-.restaurant-menu-editor-item-delete:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
+.restaurant-menu-editor-card-btn--delete:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
-/* ── Category icon picker ──────────────────────────────────────── */
+.restaurant-menu-editor-card-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+/* ── Item Form ─────────────────────────────────────────────────── */
+
+.restaurant-menu-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.restaurant-menu-editor-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.restaurant-menu-editor-form-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-sku-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.restaurant-menu-editor-form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 600px) {
+  .restaurant-menu-editor-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.restaurant-menu-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+.restaurant-menu-editor-field input,
+.restaurant-menu-editor-field select,
+.restaurant-menu-editor-field textarea {
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  box-sizing: border-box;
+}
+
+.restaurant-menu-editor-field textarea {
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+}
+
+.restaurant-menu-editor-field input:focus-visible,
+.restaurant-menu-editor-field select:focus-visible,
+.restaurant-menu-editor-field textarea:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+  border-color: var(--color-border-focus);
+}
+
+.restaurant-menu-editor-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+
+.restaurant-menu-editor-form-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ── Category Modal (Create / Edit) ────────────────────────────── */
+
+.restaurant-menu-editor-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  padding: var(--space-4);
+  box-sizing: border-box;
+}
+
+.restaurant-menu-editor-modal-card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-sizing: border-box;
+}
+
+.restaurant-menu-editor-modal-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.restaurant-menu-editor-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.restaurant-menu-editor-picker-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.restaurant-menu-editor-picker-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+}
 
 .restaurant-menu-editor-icon-picker {
   display: grid;
@@ -164,16 +683,12 @@
   border-radius: var(--radius-md);
   color: var(--color-fg-muted);
   cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .restaurant-menu-editor-icon-btn:hover {
   background: var(--color-bg-hover);
   color: var(--color-fg);
-}
-
-.restaurant-menu-editor-icon-btn:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
 }
 
 .restaurant-menu-editor-icon-btn--selected {
@@ -182,166 +697,58 @@
   border-width: 2px;
 }
 
-.restaurant-menu-editor-add-category {
-  display: flex;
-  gap: var(--space-2);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-3);
-}
-
-.restaurant-menu-editor-add-category input {
-  flex: 1;
-  min-width: 0;
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-3);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-fg);
-  font-size: var(--text-sm);
-  box-sizing: border-box;
-}
-
-.restaurant-menu-editor-add-category input:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 1px;
-  border-color: var(--color-border-focus);
-}
-
-/* ── Items pane ────────────────────────────────────────────────── */
-
-.restaurant-menu-editor-items {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.restaurant-menu-editor-new-item {
-  align-self: flex-start;
-}
-
-.restaurant-menu-editor-item-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.restaurant-menu-editor-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-1) var(--space-2);
-}
-
-.restaurant-menu-editor-item-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-3);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--color-fg);
-  text-align: left;
-  cursor: pointer;
-}
-
-.restaurant-menu-editor-item-main:hover {
-  background: var(--color-bg-hover);
-}
-
-.restaurant-menu-editor-item-main:focus-visible {
+.restaurant-menu-editor-icon-btn:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
-.restaurant-menu-editor-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
+.restaurant-menu-editor-color-picker {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--space-2);
 }
 
-.restaurant-menu-editor-item-price {
-  font-size: var(--text-sm);
-  color: var(--color-fg-muted);
-  font-variant-numeric: tabular-nums;
+.restaurant-menu-editor-color-swatch {
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform var(--transition-fast);
 }
 
-.restaurant-menu-editor-item-hidden {
-  font-size: var(--text-xs);
-  color: var(--color-warning);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
+.restaurant-menu-editor-color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.restaurant-menu-editor-color-swatch--selected {
+  border-color: var(--color-fg);
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.restaurant-menu-editor-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ── Empty states ──────────────────────────────────────────────── */
+
+.restaurant-menu-editor-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  gap: var(--space-3);
+  text-align: center;
 }
 
 .restaurant-menu-editor-empty {
   margin: 0;
-  padding: var(--space-6);
-  text-align: center;
   color: var(--color-fg-muted);
   font-size: var(--text-sm);
-}
-
-/* ── Draft form ────────────────────────────────────────────────── */
-
-.restaurant-menu-editor-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-}
-
-.restaurant-menu-editor-form label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--color-fg-muted);
-}
-
-.restaurant-menu-editor-form input[type='text'],
-.restaurant-menu-editor-form select {
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-3);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-fg);
-  font-size: var(--text-sm);
-  box-sizing: border-box;
-}
-
-.restaurant-menu-editor-form input[type='text']:focus-visible,
-.restaurant-menu-editor-form select:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 1px;
-  border-color: var(--color-border-focus);
-}
-
-.restaurant-menu-editor-checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.restaurant-menu-editor-form-actions {
-  display: flex;
-  gap: var(--space-2);
 }

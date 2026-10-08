@@ -1,0 +1,200 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { screen, waitFor, within } from '@testing-library/react';
+import { renderWithProviders } from '@/__tests__/test-utils/render';
+import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
+import * as productsApi from '@/api/products';
+import productsFtl from '../../../shared-ui/locales/products.ftl?raw';
+
+vi.mock('@/api/products', () => ({
+  listProductsScoped: vi.fn(),
+  createProductScoped: vi.fn(),
+  updateProductScoped: vi.fn(),
+  deleteProductScoped: vi.fn(),
+  listCategoriesScoped: vi.fn(),
+  createCategoryScoped: vi.fn(),
+  updateCategoryScoped: vi.fn(),
+  deleteCategoryScoped: vi.fn(),
+}));
+
+const mockProducts: productsApi.ProductDto[] = [
+  {
+    sku: 'MN001',
+    name: 'Nasi Goreng Kampung',
+    category: 'Mains',
+    price: { minor_units: 35000, currency: 'IDR' },
+    barcode: null,
+    in_stock: true,
+    stock_qty: 10,
+    tax_rate_ids: [],
+    created_at: '2026-10-08T00:00:00Z',
+    price_updated_at: '2026-10-08T00:00:00Z',
+    product_type: 'restaurant',
+    is_active: true,
+    notes: 'Served with crackers and pickles',
+  },
+  {
+    sku: 'MN002',
+    name: 'Es Teh Manis',
+    category: 'Drinks',
+    price: { minor_units: 8000, currency: 'IDR' },
+    barcode: null,
+    in_stock: true,
+    stock_qty: 50,
+    tax_rate_ids: [],
+    created_at: '2026-10-08T00:00:00Z',
+    price_updated_at: '2026-10-08T00:00:00Z',
+    product_type: 'restaurant',
+    is_active: false,
+    notes: 'Jasmine tea',
+  },
+];
+
+const mockCategories: productsApi.CategoryDto[] = [
+  { id: 'cat-mains', name: 'Mains', colour: '#f97316', icon: 'food' },
+  { id: 'cat-drinks', name: 'Drinks', colour: '#06b6d4', icon: 'cold-drink' },
+];
+
+describe('RestaurantMenuEditorScreen', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(productsApi.listProductsScoped).mockResolvedValue([...mockProducts]);
+    vi.mocked(productsApi.listCategoriesScoped).mockResolvedValue([...mockCategories]);
+    vi.mocked(productsApi.createProductScoped).mockResolvedValue({ sku: 'MN_NEW' });
+    vi.mocked(productsApi.updateProductScoped).mockResolvedValue({ sku: 'MN001' });
+    vi.mocked(productsApi.deleteProductScoped).mockResolvedValue();
+    vi.mocked(productsApi.createCategoryScoped).mockResolvedValue({ id: 'cat-new' });
+    vi.mocked(productsApi.updateCategoryScoped).mockResolvedValue({ id: 'cat-mains' });
+    vi.mocked(productsApi.deleteCategoryScoped).mockResolvedValue({ affected_products: 1 });
+  });
+
+  it('renders categories and items successfully', async () => {
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+      expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+    });
+
+    // Check categories rendered in the rail
+    const rail = screen.getByLabelText('Categories');
+    expect(within(rail).getByText('All Items')).toBeInTheDocument();
+    expect(within(rail).getByText('Mains')).toBeInTheDocument();
+    expect(within(rail).getByText('Drinks')).toBeInTheDocument();
+  });
+
+  it('filters items when a category is selected', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    });
+
+    // Click Mains category in the rail
+    const rail = screen.getByLabelText('Categories');
+    await user.click(within(rail).getByText('Mains'));
+
+    expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
+  });
+
+  it('filters items by real-time search query', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByTestId('restaurant-menu-editor-search-input');
+    await user.type(searchInput, 'crackers'); // search by note
+
+    expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
+
+    // Clear search
+    await user.clear(searchInput);
+    expect(screen.getByText('Es Teh Manis')).toBeInTheDocument();
+  });
+
+  it('toggles item availability quickly without opening edit form', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    });
+
+    const availableBtn = screen.getByLabelText('Toggle availability for Nasi Goreng Kampung');
+    await user.click(availableBtn);
+
+    expect(productsApi.updateProductScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        sku: 'MN001',
+        isActive: false,
+        productType: 'restaurant',
+      }),
+    );
+  });
+
+  it('allows adding a new menu item with notes and productType restaurant', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    expect(form).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('restaurant-menu-editor-name'), 'Sate Ayam');
+    await user.type(screen.getByTestId('restaurant-menu-editor-price'), '25000');
+    await user.type(screen.getByTestId('restaurant-menu-editor-notes'), 'Bumbu kacang pedas');
+
+    await user.click(within(form).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(productsApi.createProductScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          name: 'Sate Ayam',
+          priceMinor: 2500000,
+          notes: 'Bumbu kacang pedas',
+          productType: 'restaurant',
+          isActive: true,
+        }),
+      );
+    });
+  });
+
+  it('opens category modal to create a new category', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('New Category')).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('restaurant-menu-editor-cat-input-name'), 'Desserts');
+    await user.click(screen.getByTestId('restaurant-menu-editor-cat-save'));
+
+    await waitFor(() => {
+      expect(productsApi.createCategoryScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          name: 'Desserts',
+        }),
+      );
+    });
+  });
+});

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parsePriceToMinor, formatMinorForInput, generateMenuSku } from '../features/restaurant/screens/menuEditorLogic';
+import {
+  parsePriceToMinor,
+  formatMinorForInput,
+  generateMenuSku,
+  filterMenuItems,
+} from '../features/restaurant/screens/menuEditorLogic';
 
 // The price field is the one place a menu edit can silently corrupt an invoice,
 // so the rounding boundary is pinned rather than assumed.
@@ -103,5 +108,108 @@ describe('round trip', () => {
       if (text === '') continue;
       expect(parsePriceToMinor(text, 'IDR')).toBe(minor);
     }
+  });
+});
+
+describe('filterMenuItems', () => {
+  const sampleItems = [
+    { sku: 'MN1', name: 'Nasi Goreng Spesial', category: 'Main', notes: 'Extra pedas', is_active: true },
+    { sku: 'MN2', name: 'Mie Goreng Seafood', category: 'Main', notes: 'No udang', is_active: false },
+    { sku: 'MN3', name: 'Es Teh Manis', category: 'Drinks', notes: null, is_active: true },
+    { sku: 'MN4', name: 'Kopi Tubruk', category: 'Drinks', notes: 'Gula aren', is_active: false },
+  ];
+
+  it('returns all items when category is empty or "all" with no query and "all" status', () => {
+    const res = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: '',
+      statusFilter: 'all',
+    });
+    expect(res).toHaveLength(4);
+
+    const resAll = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: 'all',
+      searchQuery: '',
+      statusFilter: 'all',
+    });
+    expect(resAll).toHaveLength(4);
+  });
+
+  it('filters by category name', () => {
+    const res = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: 'Drinks',
+      searchQuery: '',
+      statusFilter: 'all',
+    });
+    expect(res).toHaveLength(2);
+    expect(res.map((r) => r.sku)).toEqual(['MN3', 'MN4']);
+  });
+
+  it('filters by status: available vs hidden', () => {
+    const available = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: '',
+      statusFilter: 'available',
+    });
+    expect(available.map((r) => r.sku)).toEqual(['MN1', 'MN3']);
+
+    const hidden = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: '',
+      statusFilter: 'hidden',
+    });
+    expect(hidden.map((r) => r.sku)).toEqual(['MN2', 'MN4']);
+  });
+
+  it('searches by name, SKU, or notes', () => {
+    // By name
+    const byName = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: 'seafood',
+      statusFilter: 'all',
+    });
+    expect(byName.map((r) => r.sku)).toEqual(['MN2']);
+
+    // By SKU
+    const bySku = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: 'MN3',
+      statusFilter: 'all',
+    });
+    expect(bySku.map((r) => r.sku)).toEqual(['MN3']);
+
+    // By notes
+    const byNotes = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: '',
+      searchQuery: 'aren',
+      statusFilter: 'all',
+    });
+    expect(byNotes.map((r) => r.sku)).toEqual(['MN4']);
+  });
+
+  it('combines category, status, and search query filters', () => {
+    const combined = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: 'Main',
+      searchQuery: 'pedas',
+      statusFilter: 'available',
+    });
+    expect(combined.map((r) => r.sku)).toEqual(['MN1']);
+
+    const noMatch = filterMenuItems({
+      items: sampleItems,
+      selectedCategoryName: 'Drinks',
+      searchQuery: 'pedas',
+      statusFilter: 'available',
+    });
+    expect(noMatch).toHaveLength(0);
   });
 });

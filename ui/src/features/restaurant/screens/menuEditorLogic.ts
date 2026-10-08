@@ -91,3 +91,51 @@ export function formatMinorForInput(minor: number): string {
   const frac = Math.abs(minor % 100);
   return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(2, '0')}`;
 }
+
+export type MenuItemStatusFilter = 'all' | 'available' | 'hidden';
+
+export interface FilterMenuItemsParams<T> {
+  items: T[];
+  selectedCategoryName: string;
+  searchQuery: string;
+  statusFilter: MenuItemStatusFilter;
+}
+
+/**
+ * Filter menu items by active category, status, and search query.
+ *
+ * Matching against name, SKU and kitchen notes allows cashiers and managers
+ * to search by dish name ("Nasi Goreng"), code ("MN123") or ingredient/note ("sambal").
+ */
+export function filterMenuItems<
+  T extends {
+    name: string;
+    sku: string;
+    category?: string | null;
+    notes?: string | null;
+    is_active?: boolean;
+  },
+>({ items, selectedCategoryName, searchQuery, statusFilter }: FilterMenuItemsParams<T>): T[] {
+  const query = searchQuery.trim().toLowerCase();
+  return items.filter((p) => {
+    // Category match: empty or 'all' means all categories
+    if (selectedCategoryName && selectedCategoryName !== 'all') {
+      if ((p.category ?? '') !== selectedCategoryName) return false;
+    }
+
+    // Status filter
+    const isActive = p.is_active !== false;
+    if (statusFilter === 'available' && !isActive) return false;
+    if (statusFilter === 'hidden' && isActive) return false;
+
+    // Search query match (name, sku, or notes)
+    if (query) {
+      const matchName = p.name.toLowerCase().includes(query);
+      const matchSku = p.sku.toLowerCase().includes(query);
+      const matchNotes = (p.notes ?? '').toLowerCase().includes(query);
+      if (!matchName && !matchSku && !matchNotes) return false;
+    }
+
+    return true;
+  });
+}
