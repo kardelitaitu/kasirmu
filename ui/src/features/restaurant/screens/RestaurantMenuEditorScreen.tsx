@@ -1,0 +1,593 @@
+// ── RestaurantMenuEditorScreen ─────────────────────────────────────────────
+//
+// The full-page menu editor reached from the restaurant POS sidebar. Two panes:
+// a category rail on the left and the selected category's items on the right,
+// each with create / edit / delete.
+//
+// Why this exists: the POS surfaces the menu for SELLING (RestaurantMenu), and
+// the only place an item could previously be authored was the retail Products
+// workspace -- which is a different mental model (SKUs, stock levels, cost
+// price) from what a restaurant manager is doing when they say "our menu".
+//
+// Header: mirrors RestaurantReceiptsScreen's header exactly (same
+// .restaurant-settings-* classes, same back button, title icon, dirty badge and
+// Save Changes action) so the two sidebar destinations read as one family.
+//
+// Invariants:
+// - The dirty badge reflects a real draft diff; Save is disabled when clean.
+// - Back is guarded: unsaved edits open the confirmation dialog, never a silent drop.
+// - Items are addressed by SKU and categories by id; neither is ever rendered as
+//   a raw identifier to the operator.
+// - All money is integer minor units end to end (ADR: Money, never float). The
+//   price field converts to/from major units at the boundary only.
+
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Localized, useLocalization } from '@fluent/react';
+import { l10nErrorMessage } from '@/utils/app-error';
+import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+import { useToast } from '@/components/Toast';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
+import {
+  listProductsScoped,
+  createProductScoped,
+  updateProductScoped,
+  deleteProductScoped,
+  listCategoriesScoped,
+  createCategoryScoped,
+  deleteCategoryScoped,
+  type ProductDto,
+  type CategoryDto,
+} from '@/api/products';
+import { parsePriceToMinor, formatMinorForInput } from './menuEditorLogic';
+import './RestaurantSettingsScreens.css';
+import './RestaurantMenuEditorScreen.css';
+
+/** A menu item being authored. Price is held in minor units, as the API wants. */
+interface MenuDraft {
+  sku: string | null;
+  name: string;
+  categoryId: string;
+  priceMinor: number;
+  isActive: boolean;
+}
+
+const EMPTY_DRAFT: MenuDraft = {
+  sku: null,
+  name: '',
+  categoryId: '',
+  priceMinor: 0,
+  isActive: true,
+};
+
+export interface RestaurantMenuEditorScreenProps {
+  onBack?: () => void;
+}
+
+export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEditorScreenProps) {
+  const { sessionToken } = useWorkspace();
+  const { l10n } = useLocalization();
+  const { addToast } = useToast();
+
+  const [items, setItems] = useState<ProductDto[]>([]);
+  const [categories, setCategories] = useState<CategoryDto[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [draft, setDraft] = useState<MenuDraft | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Guards the load effect against a resolve arriving after unmount, and against
+  // React 18's double-invoke in development remounting the fetch.
+  const loadedRef = useRef(false);
+
+  const currency = 'IDR';
+
+  useEffect(() => {
+    if (loadedRef.current || !sessionToken) return;
+    loadedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [prods, cats] = await Promise.all([
+          listProductsScoped(sessionToken),
+          listCategoriesScoped(sessionToken),
+        ]);
+        if (cancelled) return;
+        setItems(prods);
+        setCategories(cats);
+        setSelectedCategoryId(cats[0]?.id ?? '');
+      } catch (err) {
+        if (!cancelled) {
+          addToast({
+            message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-load'),
+            type: 'error',
+          });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, addToast, l10n]);
+
+  const visibleItems = useMemo(
+    () => items.filter((p) => (p.category ?? '') === selectedCategoryId),
+    [items, selectedCategoryId],
+  );
+
+  const beginCreate = useCallback(() => {
+    setDraft({ ...EMPTY_DRAFT, categoryId: selectedCategoryId });
+    setDirty(true);
+  }, [selectedCategoryId]);
+
+  const beginEdit = useCallback((p: ProductDto) => {
+    setDraft({
+      sku: p.sku,
+      name: p.name,
+      categoryId: p.category ?? '',
+      priceMinor: p.price.minor_units,
+      isActive: p.is_active !== false,
+    });
+    setDirty(true);
+  }, []);
+
+  const cancelDraft = useCallback(() => {
+    setDraft(null);
+    setDirty(false);
+  }, []);
+
+  // Back is guarded, matching RestaurantReceiptsScreen: an unsaved draft is never
+  // dropped silently.
+  const handleRequestBack = useCallback(() => {
+    if (dirty) {
+      setShowUnsavedDialog(true);
+    } else {
+      onBack?.();
+    }
+  }, [dirty, onBack]);
+
+  useEffect(() => {
+    if (!onBack) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleRequestBack();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onBack, handleRequestBack]);
+
+  const handleSaveDraft = useCallback(async () => {
+    if (!draft || !sessionToken) return;
+    setSaving(true);
+    try {
+      if (draft.sku) {
+        await updateProductScoped(sessionToken, {
+          sku: draft.sku,
+          name: draft.name,
+          priceMinor: draft.priceMinor,
+          currency,
+          categoryId: draft.categoryId || null,
+          taxRateIds: [],
+          isActive: draft.isActive,
+        });
+        setItems((prev) =>
+          prev.map((p) =>
+            p.sku === draft.sku
+              ? {
+                  ...p,
+                  name: draft.name,
+                  category: draft.categoryId || null,
+                  price: { minor_units: draft.priceMinor, currency },
+                  is_active: draft.isActive,
+                }
+              : p,
+          ),
+        );
+      } else {
+        const res = await createProductScoped(sessionToken, {
+          sku: '',
+          name: draft.name,
+          priceMinor: draft.priceMinor,
+          currency,
+          categoryId: draft.categoryId || null,
+          initialStock: 0,
+          taxRateIds: [],
+          isActive: draft.isActive,
+        });
+        const created = await listProductsScoped(sessionToken);
+        setItems(created);
+        if (res?.sku) setSelectedCategoryId(draft.categoryId);
+      }
+      setDraft(null);
+      setDirty(false);
+      addToast({ message: l10n.getString('restaurant-menu-editor-save-success'), type: 'success' });
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
+        type: 'error',
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, sessionToken, addToast, l10n]);
+
+  const handleDeleteItem = useCallback(
+    async (sku: string) => {
+      if (!sessionToken) return;
+      try {
+        await deleteProductScoped(sessionToken, sku);
+        setItems((prev) => prev.filter((p) => p.sku !== sku));
+        addToast({ message: l10n.getString('restaurant-menu-editor-delete-success'), type: 'success' });
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-delete'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, addToast, l10n],
+  );
+
+  const handleAddCategory = useCallback(async () => {
+    const name = newCategoryName.trim();
+    if (!name || !sessionToken) return;
+    try {
+      // The API requires a caller-supplied id (CategoryDto.id is a stable key the
+      // products reference); the backend does not mint one for categories.
+      const res = await createCategoryScoped(sessionToken, {
+        id: `cat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        colour: '#6b7280',
+        icon: 'dots-2',
+      });
+      const cats = await listCategoriesScoped(sessionToken);
+      setCategories(cats);
+      setNewCategoryName('');
+      if (res?.id) setSelectedCategoryId(res.id);
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
+        type: 'error',
+      });
+    }
+  }, [newCategoryName, sessionToken, addToast, l10n]);
+
+  const handleDeleteCategory = useCallback(
+    async (id: string) => {
+      if (!sessionToken) return;
+      try {
+        const res = await deleteCategoryScoped(sessionToken, id);
+        const cats = await listCategoriesScoped(sessionToken);
+        const prods = await listProductsScoped(sessionToken);
+        setCategories(cats);
+        setItems(prods);
+        if (selectedCategoryId === id) setSelectedCategoryId(cats[0]?.id ?? '');
+        // The backend reports how many products were rehomed rather than deleted;
+        // surfacing it is the difference between "it worked" and "it moved my items".
+        if (res?.affected_products) {
+          addToast({
+            message: l10n.getString('restaurant-menu-editor-category-deleted-moved', {
+              count: res.affected_products,
+            }),
+            type: 'success',
+          });
+        } else {
+          addToast({ message: l10n.getString('restaurant-menu-editor-delete-success'), type: 'success' });
+        }
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-delete'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, selectedCategoryId, addToast, l10n],
+  );
+
+  return (
+    <div className="restaurant-settings-screen">
+      <div className="restaurant-settings-header" data-testid="restaurant-menu-editor-header">
+        <div className="restaurant-settings-header-lead">
+          {onBack && (
+            <button
+              type="button"
+              className="restaurant-settings-back-btn"
+              onClick={handleRequestBack}
+              aria-label={l10n.getString('back') || 'Back'}
+              data-testid="restaurant-menu-editor-back-btn"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="18"
+                height="18"
+                aria-hidden="true"
+              >
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+          )}
+          <div className="restaurant-settings-header-title-group">
+            <span
+              className="restaurant-settings-header-icon"
+              data-testid="restaurant-menu-editor-icon"
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="20"
+                height="20"
+                aria-hidden="true"
+              >
+                <path d="M4 3h11l5 5v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                <path d="M14 3v6h6" />
+                <path d="M8 13h8M8 17h5" />
+              </svg>
+            </span>
+            <Localized id="restaurant-menu-editor-title">
+              <h1 className="restaurant-settings-title" data-testid="restaurant-menu-editor-title">
+                Menu Editor
+              </h1>
+            </Localized>
+          </div>
+        </div>
+
+        <div className="restaurant-settings-header-actions">
+          <span
+            className="restaurant-settings-header-dirty"
+            style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
+          >
+            {dirty ? (
+              <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
+            ) : (
+              <Localized id="restaurant-all-saved">All changes saved</Localized>
+            )}
+          </span>
+          <button
+            type="button"
+            className="btn btn--primary btn--md"
+            disabled={!draft || saving}
+            aria-busy={saving || undefined}
+            onClick={handleSaveDraft}
+            data-testid="restaurant-menu-editor-save-btn"
+          >
+            <Localized id="save">Save Changes</Localized>
+          </button>
+        </div>
+      </div>
+
+      <div className="restaurant-settings-main">
+        <div className="restaurant-menu-editor-layout">
+          <aside className="restaurant-menu-editor-rail" aria-label={l10n.getString('restaurant-menu-editor-categories')}>
+            <div className="restaurant-menu-editor-rail-head">
+              <Localized id="restaurant-menu-editor-categories">
+                <span>Categories</span>
+              </Localized>
+            </div>
+            <ul className="restaurant-menu-editor-category-list">
+              {categories.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className={`restaurant-menu-editor-category${c.id === selectedCategoryId ? ' restaurant-menu-editor-category--active' : ''}`}
+                    onClick={() => setSelectedCategoryId(c.id)}
+                    aria-current={c.id === selectedCategoryId ? 'true' : undefined}
+                  >
+                    <span className="restaurant-menu-editor-category-name">{c.name}</span>
+                    <span className="restaurant-menu-editor-category-count">
+                      {items.filter((p) => (p.category ?? '') === c.id).length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="restaurant-menu-editor-category-delete"
+                    onClick={() => handleDeleteCategory(c.id)}
+                    aria-label={l10n.getString('restaurant-menu-editor-delete-category-aria', { name: c.name })}
+                  >
+                    {'\u00d7'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="restaurant-menu-editor-add-category">
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddCategory();
+                }}
+                placeholder={l10n.getString('restaurant-menu-editor-new-category')}
+                aria-label={l10n.getString('restaurant-menu-editor-new-category')}
+                data-testid="restaurant-menu-editor-new-category"
+              />
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                disabled={!newCategoryName.trim()}
+                onClick={handleAddCategory}
+              >
+                <Localized id="restaurant-menu-editor-add-category">
+                  <span>Add</span>
+                </Localized>
+              </button>
+            </div>
+          </aside>
+
+          <section className="restaurant-menu-editor-items">
+            {loading ? (
+              <p className="restaurant-menu-editor-empty">
+                <Localized id="restaurant-menu-editor-loading">
+                  <span>Loading menu…</span>
+                </Localized>
+              </p>
+            ) : (
+              <>
+                {!draft && (
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm restaurant-menu-editor-new-item"
+                    onClick={beginCreate}
+                    disabled={!selectedCategoryId}
+                    data-testid="restaurant-menu-editor-new-item"
+                  >
+                    <Localized id="restaurant-menu-editor-new-item">
+                      <span>Add item</span>
+                    </Localized>
+                  </button>
+                )}
+
+                {draft && (
+                  <form
+                    className="restaurant-menu-editor-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSaveDraft();
+                    }}
+                  >
+                    <label htmlFor="restaurant-menu-editor-name">
+                      <Localized id="restaurant-menu-editor-field-name">Name</Localized>
+                      <input
+                        id="restaurant-menu-editor-name"
+                        type="text"
+                        value={draft.name}
+                        required
+                        onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                        data-testid="restaurant-menu-editor-name"
+                      />
+                    </label>
+                    <label htmlFor="restaurant-menu-editor-price">
+                      <Localized id="restaurant-menu-editor-field-price">Price</Localized>
+                      <input
+                        id="restaurant-menu-editor-price"
+                        type="text"
+                        inputMode="decimal"
+                        value={formatMinorForInput(draft.priceMinor)}
+                        onChange={(e) => {
+                          const minor = parsePriceToMinor(e.target.value, currency);
+                          setDraft({ ...draft, priceMinor: minor ?? 0 });
+                        }}
+                        data-testid="restaurant-menu-editor-price"
+                      />
+                    </label>
+                    <label htmlFor="restaurant-menu-editor-draft-category">
+                      <Localized id="restaurant-menu-editor-field-category">Category</Localized>
+                      <select
+                        id="restaurant-menu-editor-draft-category"
+                        value={draft.categoryId}
+                        onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}
+                        data-testid="restaurant-menu-editor-draft-category"
+                      >
+                        <option value="">{l10n.getString('restaurant-menu-editor-uncategorised')}</option>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="restaurant-menu-editor-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={draft.isActive}
+                        onChange={(e) => setDraft({ ...draft, isActive: e.target.checked })}
+                        data-testid="restaurant-menu-editor-active"
+                      />
+                      <Localized id="restaurant-menu-editor-field-active">Available to sell</Localized>
+                    </label>
+                    <div className="restaurant-menu-editor-form-actions">
+                      <button type="submit" className="btn btn--primary btn--sm" disabled={saving}>
+                        <Localized id="save">
+                          <span>Save</span>
+                        </Localized>
+                      </button>
+                      <button type="button" className="btn btn--secondary btn--sm" onClick={cancelDraft}>
+                        <Localized id="cancel">
+                          <span>Cancel</span>
+                        </Localized>
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {visibleItems.length === 0 && !draft ? (
+                  <p className="restaurant-menu-editor-empty">
+                    <Localized id="restaurant-menu-editor-empty">
+                      <span>No items in this category yet.</span>
+                    </Localized>
+                  </p>
+                ) : (
+                  <ul className="restaurant-menu-editor-item-list">
+                    {visibleItems.map((p) => (
+                      <li key={p.sku} className="restaurant-menu-editor-item">
+                        <button
+                          type="button"
+                          className="restaurant-menu-editor-item-main"
+                          onClick={() => beginEdit(p)}
+                        >
+                          <span className="restaurant-menu-editor-item-name">{p.name}</span>
+                          <span className="restaurant-menu-editor-item-price">
+                            {formatMinorForInput(p.price.minor_units)}
+                          </span>
+                          {p.is_active === false && (
+                            <span className="restaurant-menu-editor-item-hidden">
+                              <Localized id="restaurant-menu-editor-hidden">
+                                <span>Hidden</span>
+                              </Localized>
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="restaurant-menu-editor-item-delete"
+                          onClick={() => handleDeleteItem(p.sku)}
+                          aria-label={l10n.getString('restaurant-menu-editor-delete-item-aria', { name: p.name })}
+                        >
+                          {'\u00d7'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <UnsavedChangesDialog
+        open={showUnsavedDialog}
+        onCancel={() => setShowUnsavedDialog(false)}
+        onDiscard={() => {
+          setShowUnsavedDialog(false);
+          setDraft(null);
+          setDirty(false);
+          onBack?.();
+        }}
+        onSave={async () => {
+          await handleSaveDraft();
+          setShowUnsavedDialog(false);
+          onBack?.();
+        }}
+        saving={saving}
+      />
+    </div>
+  );
+}
