@@ -1,7 +1,8 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P5 DONE, P1 partially done (6 of 7 keys).**
-> **Remaining: P1's last key pair, P6 (i18n), P7 (parity), P8 (hygiene), F11.**
+> **Created 2026-10-09 · status: OPEN — P0–P5, P7, P8 DONE; P6 2 of 3 screens.**
+> **Remaining: P6's payments screen (blocked on another lane's dirty file), P1's
+> last two keys (owner decision: they have no consumer at all), and F11.**
 >
 > **D1/D2 history:** the provisioning seed was WITHDRAWN after F14 (provisioning
 > writes the global DB, the POS reads the store DB, so a restaurant default for
@@ -651,6 +652,12 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | P4/F8 | `cd ui && npx vitest run Restaurant PosScreen CartPanel` | exit 0 | **28 files, 537 passed / 1 skipped** |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 3) | exit 0 | **673 files, 11354 passed / 24 skipped / 3 todo** |
 | 2026-10-09 | all | `python scripts/verify-ipc-parity.py` (round 3) | exit 0 | IPC parity: OK |
+| 2026-10-09 | P6 | `python scripts/verify-bundle-parity.py` | exit 0 | **0 missing keys**; en 5255 / id 5311 after +17 and +2 |
+| 2026-10-09 | P6 | `cd ui && npx vitest run RestaurantSettingsScreen` | exit 0 | **11 passed**, incl. the bundle-value assertion |
+| 2026-10-09 | P6 | `cd ui && npx vitest run RestaurantReceiptsScreen` | exit 0 | **35 passed** |
+| 2026-10-09 | P6 | `cd ui && npx eslint <changed files>` | exit 0 | 0 errors |
+| 2026-10-09 | P7 | `python scripts/verify-ipc-parity.py` + `git diff --stat scripts/ipc-parity-allowlist.json` | exit 0 | parity OK; allowlist **unchanged** (empty diff) |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 4) | exit 0 | **673 files, 11355 passed / 24 skipped / 3 todo** |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
