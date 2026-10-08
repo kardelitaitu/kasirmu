@@ -42,6 +42,8 @@ export function WorkspaceInventorySettings({
   // `originalsRef` from the defaults, so a failed read looked clean and Save
   // stayed enabled over values the card never confirmed.
   const [loadFailed, setLoadFailed] = useState(false);
+  // Retry trigger. Without it `loadFailed` is a ONE-WAY LATCH and Save never returns.
+  const [reloadNonce, setReloadNonce] = useState(0);
   // The session the originals below were fetched for. Replaces `loaded` as the fetch guard so a
   // store switch re-reads; `loaded` stays for the dirty-tracking memo.
   const loadedForRef = useRef<string | undefined>(undefined);
@@ -65,7 +67,8 @@ export function WorkspaceInventorySettings({
     // deps below would NOT have re-fetched -- the guard at :54 short-circuits every later run.
     // Latching on the token instead: the body already refuses to overwrite fields the operator
     // has touched (:61, :64), which is the signature of a function written to be re-entered.
-    if (loadedForRef.current === sessionToken) return;
+    // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
+    if (reloadNonce === 0 && loadedForRef.current === sessionToken) return;
     loadedForRef.current = sessionToken;
 
     Promise.all([
@@ -94,7 +97,7 @@ export function WorkspaceInventorySettings({
     // sessionToken is a prop (:21) read at :57 and :58. Without it here, a card mounted before a
     // store switch kept showing the previous store's thresholds. `loaded` still drives the
     // dirty-tracking memo at :49, so it is kept rather than replaced.
-  }, [loaded, sessionToken]);
+  }, [loaded, sessionToken, reloadNonce]);
 
   // ── Save ─────────────────────────────────────────────────────
 
@@ -219,6 +222,25 @@ export function WorkspaceInventorySettings({
             )}
           </div>
         </Card>
+      )}
+
+      {/* F4: the read failed, so the values shown are defaults. Without Retry the
+          flag is a one-way latch and Save could never return this session. */}
+      {loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="inv-settings-load-error">
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          <Button
+            variant="secondary"
+            data-testid="inv-settings-load-retry-btn"
+            onClick={() => setReloadNonce((n) => n + 1)}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
       )}
 
       {/* Save button */}

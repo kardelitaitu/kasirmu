@@ -203,6 +203,10 @@ describe('WorkspaceInventorySettings', () => {
     fireEvent.change(document.getElementById('inv-low-stock') as HTMLInputElement, { target: { value: '42' } });
 
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    // Retry must exist: without it `loadFailed` is a one-way latch and the card
+    // could never save again this session.
+    expect(screen.getByTestId('inv-settings-load-retry-btn')).toBeInTheDocument();
   });
 
   it('hides Save button in inspector-drawer variant', () => {

@@ -266,6 +266,10 @@ describe('WorkspaceKdsSettings', () => {
     fireEvent.click(document.getElementById('kds-auto-ack') as HTMLInputElement);
 
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    // Retry must exist: without it `loadFailed` is a one-way latch and the card
+    // could never save again this session.
+    expect(screen.getByTestId('kds-settings-load-retry-btn')).toBeInTheDocument();
   });
 
   it('hides Save button in inspector-drawer variant', () => {

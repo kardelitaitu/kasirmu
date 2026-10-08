@@ -61,6 +61,8 @@ export function WorkspaceKdsSettings({
   // `originalsRef` from `DEFAULT_KDS`, so a failed read looked clean and Save
   // stayed enabled over values the card never confirmed.
   const [loadFailed, setLoadFailed] = useState(false);
+  // Retry trigger. Without it `loadFailed` is a ONE-WAY LATCH and Save never returns.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<KdsDraftState>({ ...draft });
@@ -81,7 +83,8 @@ export function WorkspaceKdsSettings({
   useEffect(() => {
     // Only seed initial values once per session; subsequent re-runs must not
     // overwrite user edits. "Once" is scoped to the token, not to the mount.
-    if (originalsLoadedForRef.current === sessionToken) return;
+    // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
+    if (reloadNonce === 0 && originalsLoadedForRef.current === sessionToken) return;
     originalsLoadedForRef.current = sessionToken;
 
     // Load all 5 KDS settings from the backend, then set originals
@@ -137,7 +140,7 @@ export function WorkspaceKdsSettings({
     // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
     // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [originalsLoaded, sessionToken]);
+  }, [originalsLoaded, sessionToken, reloadNonce]);
 
   // ── Update helpers ───────────────────────────────────────────
 
@@ -319,6 +322,25 @@ export function WorkspaceKdsSettings({
           </div>
         </div>
       </Card>
+
+      {/* F4: the read failed, so the values shown are defaults. Without Retry the
+          flag is a one-way latch and Save could never return this session. */}
+      {loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="kds-settings-load-error">
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          <Button
+            variant="secondary"
+            data-testid="kds-settings-load-retry-btn"
+            onClick={() => setReloadNonce((n) => n + 1)}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
+      )}
 
       {/* Save button */}
       {variant !== 'inspector-drawer' && (

@@ -622,6 +622,23 @@ control must ship with its RE-ENABLE path in the same change. I added four
 Save-gates and zero recovery affordances, and no test noticed because every test
 asserted the disabled state. The new assertion checks the Retry control EXISTS.
 
+**The latch was not only in round 8's files.** The same audit found it in the two
+round-6 cards: `WorkspaceKdsSettings` and `WorkspaceInventorySettings` both gained
+`loadFailed` with no way to clear it. Both now have `reloadNonce` (bypassing their
+once-per-session latch) and a Retry control.
+
+**Audit result — all six `loadFailed` sites now have a recovery path:**
+
+| File | Recovery |
+|---|---|
+| `RestaurantSettingsScreen` | Retry + `reloadNonce` (round 2) |
+| `RestaurantReceiptsScreen` | Retry + `reloadNonce` (round 6) |
+| `WorkspaceRestaurantPosSettings` | Retry + `reloadNonce` (round 9) |
+| `WorkspaceStorePosSettings` | Retry → `refetch()` + `hw.reload()` (round 9) |
+| `WorkspaceKdsSettings` | Retry + `reloadNonce` (round 9) |
+| `WorkspaceInventorySettings` | Retry + `reloadNonce` (round 9) |
+| `TerminalPreferencesCard` | Retry → `hw.reload()` (round 9) |
+
 **A SEVENTH INSTANCE, and a different shape (round 7):** `WorkspaceStorePosSettings`
 seeds its baseline from `settings.receipt` — the CONTEXT, not a per-key read — and
 consumed `useSettings()` without ever reading `hasPartialError`. A partially-failed
@@ -837,6 +854,11 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | F4 guard 2 | `cd ui && npx vitest run baselineLoadSignal` (kill-test) | **FAIL (killed)** | names `TerminalPreferencesCard.tsx`; restored |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 8 final) | exit 0 | **676 files, 11378 passed / 24 skipped / 3 todo** |
 | 2026-10-09 | all | `python scripts/verify-bundle-parity.py` (round 8) | exit 0 | 0 missing keys |
+| 2026-10-09 | F4 latch | `cd ui && npx vitest run TerminalPreferencesCard WorkspaceStorePosSettings WorkspaceRestaurantPosSettings` | exit 0 | **4 files, 69 passed** |
+| 2026-10-09 | F4 latch | `cd ui && npx vitest run WorkspaceKdsSettings WorkspaceInventorySettings` | exit 0 | **2 files, 29 passed** |
+| 2026-10-09 | F4 latch | `cd ui && npx vitest run WorkspaceKdsSettings -t 'FAILED settings read'` (kill-test) | **FAIL (killed)** | removing the Retry control fails with `Unable to find ... retry-btn`; restored |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 9) | exit 0 | **676 files, 11378 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | all | `python scripts/verify-ipc-parity.py` + `verify-bundle-parity.py` (round 9) | exit 0 | IPC parity OK; 0 missing keys |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
