@@ -97,6 +97,16 @@ fn barcode_code39_data_integrity() {
     assert!(cmd.windows(10).any(|w| w == data));
 }
 
+#[test]
+fn barcode_clamps_data_over_255_bytes_preventing_truncation() {
+    let large_data = vec![b'A'; 300];
+    let cmd = barcode(BarcodeType::Code128, &large_data);
+    // Preamble is 10 bytes: GS h A0 (3), GS H 02 (3), GS k 73 255 (4)
+    assert!(cmd.windows(4).any(|w| w == [0x1D, 0x6B, 73, 255]));
+    assert_eq!(cmd.len(), 10 + 255);
+    assert_eq!(&cmd[10..], &vec![b'A'; 255][..]);
+}
+
 // ── QR code commands ─────────────────────────────────────────────
 
 #[test]

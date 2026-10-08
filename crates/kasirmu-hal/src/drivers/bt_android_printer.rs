@@ -119,7 +119,13 @@ impl AndroidBtReceiptPrinter {
                 .as_mut()
                 .ok_or_else(|| HalError::Bluetooth("not connected".into()))?;
             use std::io::Write;
-            if let Err(e) = stream.write_all(&data_owned).and_then(|()| stream.flush()) {
+            for chunk in data_owned.chunks(escpos::DEFAULT_PRINT_CHUNK_SIZE) {
+                if let Err(e) = stream.write_all(chunk) {
+                    *guard = None;
+                    return Err(HalError::Io(std::io::Error::other(e.to_string())));
+                }
+            }
+            if let Err(e) = stream.flush() {
                 *guard = None;
                 return Err(HalError::Io(std::io::Error::other(e.to_string())));
             }

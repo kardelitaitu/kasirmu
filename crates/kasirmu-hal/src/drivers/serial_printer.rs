@@ -129,7 +129,13 @@ impl SerialReceiptPrinter {
                 .ok_or(HalError::NotFound("not connected".into()))?;
 
             use std::io::Write;
-            if let Err(e) = port.write_all(&data_owned).and_then(|()| port.flush()) {
+            for chunk in data_owned.chunks(escpos::DEFAULT_PRINT_CHUNK_SIZE) {
+                if let Err(e) = port.write_all(chunk) {
+                    *guard = None;
+                    return Err(HalError::Io(e));
+                }
+            }
+            if let Err(e) = port.flush() {
                 *guard = None;
                 return Err(HalError::Io(e));
             }
