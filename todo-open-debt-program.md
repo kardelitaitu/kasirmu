@@ -93,6 +93,29 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the R177 census was WRONG for the topology module; `validate_load_shape` was the one real gap. Fixed in `fb448ca54`.
+
+**First, a correction to my own census.** R177 counted test mentions by assuming the test file is the sibling `*_tests.rs`. **The topology module does not work that way** — its tests are mounted from `model.rs:333,337` as module-level files (`topology_tests.rs`, `topology_command_tests.rs`, and five others). Re-run against every test file in the module, the backlog I named collapses:
+
+| function | R177 said | actually |
+|---|---|---|
+| `validate_semantic_json` | 0 | 1 test (`topology_tests.rs`) |
+| `validate_topology_envelope` | 0 | 4 tests (`topology_command_tests.rs`) |
+| `validate_semantic_ownership` | 0 | 4 tests |
+| `validate_semantic_ownership_in` | 0 | 2 tests |
+| `validate_warehouse_capacity` | 0 | 4 tests |
+| **`validate_load_shape`** | 0 | **0 — the one real gap** |
+
+**Six of the seven "zero-coverage" names I recorded were an artefact of my own search, not a fact about the tree.** That is R166's lesson again — a search that cannot find a test is not evidence the test is absent — and it is worth stating plainly because I published those names as a backlog last round.
+
+**The real gap, and it is a load-path gate.** `validate_load_shape` (`semantics.rs:265`) is the ONLY shape check on the editor's load path: `commands.rs:223` runs it after `validate_topology_envelope` and deliberately skips both the structural and semantic-ownership gates there. **MEASURED: gutting its helper `require_load_id` left all 318 tests in the module GREEN.** A stored node or wire that lost its `id` would load, and the editor keys every node and wire by id.
+
+**Two tests, and the second is the one that protects the design.** The first pins five unusable ids (absent, null, non-string, empty, whitespace-only) **in BOTH the node and wire positions**, so it cannot pass if only one loop is checked — plus a positive case. The second pins what the gate must **NOT** require: the function's own doc argues at length that demanding `name`/`x`/`y`, endpoints or ports would "brick a whole topology over one legacy row", so an endpoint-less wire, a bare-id node and unknown/extra fields must all still load. **A refusal-only test would pass just as happily if someone later added those requirements** — that is the failure mode this half exists to catch. **KILL-TESTED: 1 passed / 1 FAILED**, the refusal test catching it and the tolerance test correctly staying green.
+
+**Clippy caught a real defect in my own test, and the fix is recorded because the mistake is easy to repeat.** My first version called `node.clone()` to pass the same value into both assertions; `-D warnings` rejected it as "unnecessary use of clone to create a slice from a reference". Rewritten to `std::slice::from_ref(&value)`, which says what was meant — the SAME value refused in both positions. Re-verified after the fix that the kill-test still holds. 2/2 green, clippy Finished.
+
+**Running tally: 23 guards examined, 10 sound, 13 with defects found and fixed.**
+
 ## 2026-10-08: `validate_location` + `validate_terminal` had zero coverage over four call sites. Fixed in `98dab1b26`.
 
 **Turned the hunt into a CENSUS instead of a probe.** Rather than reading one function at a time, I enumerated every `validate_`/`sanitize_`/`ensure_`/`check_` function in the bridge crate and counted its mentions in the sibling test file. That produced a ranked list where **eight functions had ZERO test mentions** -- which is how this round's target surfaced, and the same list is the backlog for the rounds after it.
