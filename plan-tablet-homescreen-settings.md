@@ -548,3 +548,24 @@ ROSE because failures are now visible; nothing regressed. The general
 section's toast did NOT fire this run (the debounce removed the storm), but
 the currency slices still reject per-section, so the underlying
 "user not found" cause is untouched by §6.4's fix.
+
+### 6.6 Replication verified on the tablet (`e62b91e`, `918f0cfa`)
+
+Installed and walked: **11 ok / 4 warn / 0 fail**, and the
+`PermissionDenied("user not found")` class is GONE — `general`,
+`exchange-rates` and `business-defaults` no longer reject a currency or
+exchange-rate read, and the partial-load toast does not fire at all.
+
+What remains, and why it is not a defect:
+
+- `version_scoped` "Command not found" — expected; `api/system.ts` falls back
+  to unscoped `version` per ADR #7.
+- `offline_queue_status_summary_scoped` "Command not found" — the known
+  reachable-and-wrong name from §2.2; the section degrades gracefully.
+- `business-defaults` / `license-subscription` report 0 controls — the
+  no-location-profile and guarded-action data conditions, not failures.
+
+The review pass also removed a destructive `DELETE` the helper had grown to
+paper over cross-run test contamination, wrapped its writes in a transaction,
+and stopped holding the global db lock across `open_store` (which can run
+migrations).
