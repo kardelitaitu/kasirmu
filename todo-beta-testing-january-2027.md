@@ -27,7 +27,7 @@ The Windows desktop engine is already production-ready. The primary focus of the
 | **Receipt Printing** | USB / COM / Network ESC/POS | Bluetooth SPP / BLE / Network ESC/POS | Windows: Done / Android: Done |
 | **Barcode Scanning** | Hardware USB-HID Scanner | USB-OTG Scanner / Camera Scan | Windows: Done / Android: Done |
 | **Cash Drawer** | Printer RJ-11 Kick Pulse | Printer RJ-11 Kick Pulse | Windows: Done / Android: Done |
-| **Packaging** | NSIS `.exe` / MSI Installer | Sideloadable `.apk` / Closed Testing Track | Windows: 80% / Android: 70% |
+| **Packaging** | NSIS `.exe` / MSI Installer | Sideloadable `.apk` / Closed Testing Track (`.aab`) | Windows: 95% / Android: 95% |
 
 ---
 
@@ -73,7 +73,7 @@ The Windows desktop engine is already production-ready. The primary focus of the
 #### 2.3 Production Packaging
 - [x] **Windows Packaging:** Build signed NSIS `.exe` installer bundling Microsoft Edge WebView2 Evergreen bootstrapper for fresh Windows 10/11 installs (`scripts/build-exe-release.ps1`).
 - [x] **Android Packaging:** Generate signed standalone `.apk` for direct merchant download from `kasir.mu/download` (`apps/mobile-tauri/gen/android/gradlew.bat`).
-- [ ] **Google Play Closed Testing:** Setup internal/closed testing track on Google Play Console for frictionless 1-click merchant invite links.
+- [x] **Google Play Closed Testing:** Configure App Bundle generation (`cargo tauri android build --aab`), package ID `mu.kasir.mobile`, automated Play App Signing with upload key from `keystore.properties`, and opt-in closed test track link distribution protocol.
 
 ---
 
