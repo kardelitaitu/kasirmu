@@ -53,9 +53,22 @@ function runsOnThisShell(toolId: string): boolean {
 const PINS_KEY = 'workspace-pins';
 const LAST_USED_KEY = 'workspace-last-used';
 
-function loadPins(): Set<string> {
+/**
+ * Favorites and last-used ordering are PER-USER: on a shared terminal, one
+ * operator's pins must not reorder another operator's picker. Keys are
+ * suffixed with the signed-in user's id; the un-suffixed legacy keys are read
+ * as a fallback so pins saved before the split survive the upgrade, and are
+ * never written again.
+ */
+function scopedKey(base: string, userId: string): string {
+  return userId ? `${base}:${userId}` : base;
+}
+
+function loadPins(userId: string): Set<string> {
   try {
-    const raw = localStorage.getItem(PINS_KEY);
+    const raw =
+      localStorage.getItem(scopedKey(PINS_KEY, userId)) ??
+      (userId ? localStorage.getItem(PINS_KEY) : null);
     if (!raw) return new Set();
     return new Set(JSON.parse(raw));
   } catch {
@@ -63,17 +76,19 @@ function loadPins(): Set<string> {
   }
 }
 
-function savePins(pins: Set<string>) {
+function savePins(pins: Set<string>, userId: string) {
   try {
-    localStorage.setItem(PINS_KEY, JSON.stringify(Array.from(pins)));
+    localStorage.setItem(scopedKey(PINS_KEY, userId), JSON.stringify(Array.from(pins)));
   } catch {
     // Quota / private-mode / disabled storage — fail silently (mirrors loadPins).
   }
 }
 
-function loadLastUsed(): Record<string, number> {
+function loadLastUsed(userId: string): Record<string, number> {
   try {
-    const raw = localStorage.getItem(LAST_USED_KEY);
+    const raw =
+      localStorage.getItem(scopedKey(LAST_USED_KEY, userId)) ??
+      (userId ? localStorage.getItem(LAST_USED_KEY) : null);
     if (!raw) return {};
     return JSON.parse(raw);
   } catch {
@@ -81,9 +96,9 @@ function loadLastUsed(): Record<string, number> {
   }
 }
 
-function saveLastUsed(lastUsed: Record<string, number>) {
+function saveLastUsed(lastUsed: Record<string, number>, userId: string) {
   try {
-    localStorage.setItem(LAST_USED_KEY, JSON.stringify(lastUsed));
+    localStorage.setItem(scopedKey(LAST_USED_KEY, userId), JSON.stringify(lastUsed));
   } catch {
     // Quota / private-mode / disabled storage — fail silently (mirrors loadLastUsed).
   }
@@ -326,11 +341,12 @@ export default function WorkspaceHome() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const roleName = (session?.role_name ?? '').toLowerCase();
+  const userId = session?.user_id ?? '';
 
   // ── Favorites & last-used state ────────────────────────────────
 
-  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(loadPins);
-  const [lastUsedMap, setLastUsedMap] = useState<Record<string, number>>(loadLastUsed);
+  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(() => loadPins(userId));
+  const [lastUsedMap, setLastUsedMap] = useState<Record<string, number>>(() => loadLastUsed(userId));
 
   const pinnedKeysRef = useRef(pinnedKeys);
   const lastUsedMapRef = useRef(lastUsedMap);
@@ -344,15 +360,15 @@ export default function WorkspaceHome() {
     else next.add(key);
     pinnedKeysRef.current = next;
     setPinnedKeys(next);
-    savePins(next);
-  }, []);
+    savePins(next, userId);
+  }, [userId]);
 
   const recordLastUsed = useCallback((key: string) => {
     const next = { ...lastUsedMapRef.current, [key]: Date.now() };
     lastUsedMapRef.current = next;
     setLastUsedMap(next);
-    saveLastUsed(next);
-  }, []);
+    saveLastUsed(next, userId);
+  }, [userId]);
 
   // Sort workspaces: pinned first (by pin order), then by last-used, then by static order
   const sortedWorkspaces = useMemo(() => {
