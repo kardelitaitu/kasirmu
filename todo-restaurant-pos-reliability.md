@@ -280,6 +280,27 @@ lines F4's tests assert against.
 
 ### P1 — One source of truth for restaurant settings (fixes F1, F2, F3)
 
+**Status: 2 of 7 dead keys resolved.** `restaurant.table_number` (removed, option C)
+and `restaurant.order_type_prompt` (wired + default freed) are done. The remaining
+six are below, each re-verified 2026-10-09 against the whole repo (UI **and** Rust)
+after the P1 code change.
+
+| Key | Verdict | Evidence | Recommended action |
+|---|---|---|---|
+| `restaurant.customer_name` | **WIRE** | The cart field it would gate already exists — `CartPanel.tsx:683-699`, `data-testid="pos-cart-customer-input"`, prop `setCustomerName` already threaded from `PosScreen`. | Gate that block on the setting. Smallest, highest-value wire in the set. |
+| `restaurant.guest_count` | **WIRE** | Same shape — `CartPanel.tsx:700-720`, `data-testid="pos-cart-guest-input"`, `setGuestCount` already a prop. Default is `false`, so this one *removes* a control by default, which is what an operator would expect from an off toggle. | Gate on the setting. |
+| `restaurant.hold_order` | **WIRE** | The mechanism is real: `holdCartScoped` is called at `usePosHeldCarts.ts:175` and `PaymentModal.tsx:1022`. The key is simply never consulted before that call. | Read it where the hold action fires; off = refuse to hold. |
+| `restaurant.save_tab` | **WIRE** | Same: `bill_type: 'open_bill'` is a live concept (`PaymentModal.tsx:1028`, `usePosHeldCarts.ts:181`) and the tender is already restaurant-gated (`PaymentModal.tsx:324`). | Gate the open-bill tender on it. |
+| `restaurant.auto_print_kitchen` | **DELETE or BUILD** | **No consumer exists.** Zero call sites outside the settings screen; the only auto-print in the tree is KDS-side (`kasirmu-bridge/src/kds.rs:262`, `try_auto_print_kds_chit_jobs`), which is a different feature and already automatic. | Owner call: delete the toggle, or build a KOT-send path that honours it. Do not leave it writing a dead key. |
+| `restaurant.sound_chime` | **DELETE or BUILD** | **No consumer exists.** The only chime is `useNewTicketSound` (KDS new-ticket), which has its own debounce and no restaurant-settings input. | Owner call: delete, or wire to an order-sent chime. |
+
+**Why these are split into WIRE vs DELETE/BUILD:** the four WIRE keys have a real,
+already-existing consumer to gate, so the change is small and the behaviour is
+obvious. The two DELETE/BUILD keys have **nothing** to gate — wiring them means
+inventing a feature, which is not a reliability repair and should not ride in on
+one. That is the question for the owner in §4.
+
+
 1. Decide the canonical key per toggle and write the mapping into a header comment
    in `RestaurantSettingsScreen.tsx`. Proposed: the `restaurant.*` namespace wins
    for restaurant-only behaviour; `receipt.showTableNumber` stays the receipt-print
