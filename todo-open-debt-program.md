@@ -93,6 +93,22 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the staff username/display-name limits counted BYTES while naming CHARACTERS. Fixed in `3555c2d66`.
+
+**R184's method -- mutate what looks cosmetic -- applied to the login path, and it found a user-visible defect with a self-contradicting error message.**
+
+**The target.** `create_user_in_tx` (`crates/kasirmu-core/src/db/staff.rs:526`) normalises a username with `trim().to_lowercase()` and then bounds it. The bound read `if username.len() > 100` and its refusal said, in as many words, **"username must not exceed 100 characters, got {}"** — with `username.len()` again. `str::len()` counts UTF-8 **bytes**, so the check and the number it reported were both byte counts dressed as character counts. `display_name` had the identical shape at 255.
+
+**MEASURED, twice, before touching anything.** First: swapping the check to `chars().count()` left all **96 tests** in `staff_tests.rs` GREEN, so the unit was never pinned. Then I computed the visible consequence rather than asserting one: a **100-character accented username is 200 bytes**, so it was REFUSED with the nonsensical "must not exceed 100 characters, got 200" — the message contradicting itself in the same sentence.
+
+**The fix measures once and reuses the number**, so the check and the report cannot drift apart again: `let username_chars = username.chars().count();` then both the comparison and the `format!` read it. Same for `display_name`.
+
+**Two tests, both sides of the boundary.** `create_user_measures_the_username_in_characters_not_bytes` asserts the multi-byte fixture is genuinely multi-byte (`len() == 200`, `chars() == 100`) before using it, accepts 100 characters AT the limit, and requires the 101-character refusal to report **101** rather than the byte count 202 — a message assertion, not just a variant check, because the reported number was half the defect. `create_user_measures_the_display_name_in_characters_not_bytes` does the same at 255. **KILL-TESTED: reverting both to the original byte-based code FAILS both.** 98/98 green; clippy Finished.
+
+**Why this one was worth the round:** unlike R181's `mask_name`, this function is on a live path — staff creation — and the defect rejected valid input while telling the operator a number that could not be true. The class is the same byte/char mistake, but the blast radius is real users rather than a dormant helper.
+
+**Running tally: 31 guards examined, 15 sound, 17 with defects found and fixed.** This is the second defect of the byte/char family in four rounds, and both were found by mutation rather than reading — including this one, where the misleading part was the message text, which reading alone had already passed over twice.
+
 ## 2026-10-08: `decode_stored_key`'s `trim()` was load-bearing and unguarded. Fixed in `279139276`.
 
 **Four probes on `install_key.rs`, one real gap — and the gap was the last one, found by mutating the part that looked cosmetic.**
