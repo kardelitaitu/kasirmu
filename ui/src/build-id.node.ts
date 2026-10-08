@@ -19,7 +19,8 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { UNKNOWN_BUILD_ID } from './build-id';
+
+const UNKNOWN_BUILD_ID = 'unknown';
 
 // `import.meta.url` is this file at `ui/src/build-id.node.ts`, so the repo root
 // is TWO levels up: src, then ui, then the repo. This was wrong twice before it
