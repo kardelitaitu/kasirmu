@@ -509,16 +509,16 @@ currently DIRTY with another lane's uncommitted change, so editing it would swee
 their work into this lane's commit (AGENTS.md §7.3). It must wait until the file is
 clean — this is a coordination constraint, not a technical one.
 
-### P7 — Parity verification (closes F12)
+### P7 — Parity verification (closes F12) — ✅ DONE 2026-10-09
 
-- Re-run `python scripts/verify-ipc-parity.py` after P1-P6. Confirm no new
-  allowlist entry was needed to keep it green; an entry added to silence a hit is a
-  failure of this phase, not a pass.
-- Confirm `edc_terminal_status` is genuinely dead on the tablet before proposing
-  its removal.
+**Acceptance met.** `python scripts/verify-ipc-parity.py` exits 0 (`IPC parity:
+OK`) after P1–P6, and `scripts/ipc-parity-allowlist.json` is **unmodified** —
+`git diff --stat` on it is empty. No entry was added to silence a hit, which is
+the whole point of the phase.
 
-- **Acceptance:** `python scripts/verify-ipc-parity.py` exits 0 with **no new**
-  entries in `scripts/ipc-parity-allowlist.json`.
+The seven settings commands this lane touched (`get_setting_scoped`,
+`set_settings_scoped`, `get_receipt_settings_scoped`, …) were already registered on
+both shells, so no wiring change was needed and none was made.
 
 ### P8 — Duplicate-module hygiene (F13) — ✅ CLOSED 2026-10-09 as a NO-OP
 
