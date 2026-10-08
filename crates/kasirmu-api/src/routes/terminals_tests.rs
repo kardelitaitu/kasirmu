@@ -343,3 +343,64 @@ fn verify_terminal_credentials_matches_only_correct_secret() {
             .is_none()
     );
 }
+
+/// The label limit counts CHARACTERS; the id limits stay bytes by design.
+///
+/// WHY THIS EXISTS. `register_terminal_rejects_overlong_label` (above) covers the
+/// overlong INPUT but not the UNIT: it uses `"l".repeat(129)`, where 129 ASCII
+/// characters and 129 bytes agree, so a byte-based guard and a character-based one both
+/// reject it. MEASURED: swapping the label guard to `chars().count()` left all 15 tests in
+/// this file GREEN.
+///
+/// The discriminating input is 128 NON-ASCII characters -- 256 bytes. The byte-based
+/// version refused it with "terminal label too long (max 128)", a message naming a limit
+/// the input did not exceed.
+///
+/// The second half matters as much: `terminal_id` and `tenant` are forced to
+/// `[A-Za-z0-9_-]`, so for them a byte count IS a character count and `.len()` is
+/// correct. Pinning that keeps a future edit from "fixing" them into an inconsistency.
+#[tokio::test]
+async fn register_terminal_label_limit_counts_characters_not_bytes() {
+    // 128 multi-byte characters: 256 bytes, exactly at the character limit. Must pass.
+    let label_at_limit = "\u{00E9}".repeat(128);
+    assert_eq!(label_at_limit.chars().count(), 128);
+    assert_eq!(
+        label_at_limit.len(),
+        256,
+        "the fixture must be multi-byte or it proves nothing"
+    );
+    let body = RegisterTerminalRequest {
+        terminal_id: "term-cafe".into(),
+        label: Some(label_at_limit),
+        tenant_id: None,
+    };
+    let response = register_terminal_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Json(body),
+    )
+    .await
+    .into_response();
+    assert_ne!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "128 characters is within the label limit whatever its byte width"
+    );
+
+    // 129 characters is over it. And the id fields stay byte-bounded, which for their
+    // ASCII-only charset is the same number -- so a 64-character id passes and a
+    // 65-character one does not.
+    let over = RegisterTerminalRequest {
+        terminal_id: "term-cafe".into(),
+        label: Some("\u{00E9}".repeat(129)),
+        tenant_id: None,
+    };
+    let response = register_terminal_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Json(over),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
