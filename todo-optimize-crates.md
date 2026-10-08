@@ -594,11 +594,10 @@ serialisations", which overstates it. What the loop does is clone the backlog fo
 its batch (`:175`). *Fix:* estimate from `payload.len()`; batch references; reuse bytes.
 
 **O-M35 · platform/sync — every daemon tick loads the entire pending queue** —
-`platform/sync/src/daemon.rs:140` ◦. Unbounded `list_pending_offline()` per tick. *Fix:*
-bounded page per tick.
+`platform/sync/src/daemon.rs:140` ✔. Fixed: bounded `DEFAULT_MAX_OUTBOX_BATCH_ITEMS = 100` page per tick in `daemon.rs` and `pg_daemon.rs` with priority ordering (`order_for_push`) preserved.
 
 **O-M36 · platform/sync — `last_synced_at` loads every offline-queue row ever written** —
-`platform/sync/src/queue.rs:881` ◦. To compute one MAX. *Fix:* `SELECT MAX(synced_at) …`.
+`platform/sync/src/queue.rs:881` ✔. Fixed: indexed `SELECT MAX(synced_at) …` in `Store::get_last_synced_at` instead of loading all historical rows.
 
 **O-M37 · platform/sync — full CRL downloaded and signature-verified on every tick of every
 terminal** — `platform/sync/src/daemon_tick.rs:585-589` ◦. Fleet traffic scales with
