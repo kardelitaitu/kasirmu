@@ -42,6 +42,45 @@ REPO = Path(__file__).resolve().parent.parent
 CHECKER = "scripts/verify-ci-docs-drift.py"
 
 
+def _assignment_statements(src: str):
+    """Yield each top-level `NAME = ...` statement's text, paren-aware.
+
+    A statement ends at the first newline whose paren/bracket depth is back to
+    zero, so a parenthesised multi-line expression is returned whole rather than
+    truncated at its first line.
+    """
+    lines = src.splitlines()
+    i = 0
+    head = re.compile(r"^([A-Z_]+)\s*=\s*(.*)$")
+    while i < len(lines):
+        m = head.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        stmt = [m.group(2)]
+        depth = m.group(2).count("(") + m.group(2).count("[") - m.group(2).count(")") - m.group(2).count("]")
+        while depth > 0 and i + 1 < len(lines):
+            i += 1
+            stmt.append(lines[i])
+            depth = "".join(stmt).count("(") + "".join(stmt).count("[") - "".join(stmt).count(")") - "".join(stmt).count("]")
+        yield "\n".join(stmt)
+        i += 1
+
+
+def _root_paths_in(stmt: str):
+    """Every `ROOT / "a" / "b" / ...` path inside a statement, as component lists.
+
+    Multiple occurrences are returned in order, so a ternary contributes both of
+    its branches. A statement with no ROOT path yields nothing.
+    """
+    out = []
+    for m in re.finditer(r"ROOT((?:\s*/\s*\"[^\"]+\")+)", stmt):
+        parts = re.findall(r'"([^"]+)"', m.group(1))
+        if parts:
+            out.append(parts)
+    return out
+
+
 def checker_inputs() -> list[str]:
     """Every ROOT-relative file the checker declares, read from its own source.
 
@@ -52,9 +91,22 @@ def checker_inputs() -> list[str]:
     """
     src = io.open(REPO / CHECKER, encoding="utf-8").read()
     out = []
-    for m in re.finditer(r"^([A-Z_]+)\s*=\s*ROOT\s*/\s*(.+)$", src, re.M):
-        parts = re.findall(r'"([^"]+)"', m.group(2))
-        if parts:
+    # THE ASSIGNMENT SHAPE IS NOT ALWAYS ONE LINE. `RELEASE_CHECKLIST` is a
+    # parenthesised TERNARY -- `= (\n    ROOT / "docs" / "records" / ...\n    if ...\n    else
+    # ROOT / "docs" / "releases" / ...\n)` -- so a single-line
+    # `^X = ROOT / "..."` pattern cannot match it and the checklist was silently
+    # absent from this set. The control then reported 1 drift item the repo does
+    # not have ("release checklist not found"), which is the SAME failure the
+    # hand-maintained list this function replaced produced, arriving through a
+    # different door: the derivation is only as good as the shapes it recognises.
+    #
+    # So the scan is brace-aware instead: from each `^X = ` it walks to the end of
+    # the statement (tracking parentheses) and takes EVERY `ROOT / "..."` path in
+    # it, which covers both the one-line constant and the multi-line ternary, and
+    # copies both of a ternary's branches -- the checker opens whichever exists.
+    for stmt in _assignment_statements(src):
+        paths = _root_paths_in(stmt)
+        for parts in paths:
             out.append("/".join(parts))
     # SIBLING MODULE IMPORTS, added 2026-09-29. The constant scan above only sees
     # files named in an X = ROOT / "..." assignment, so when verify-ci-docs-drift.py

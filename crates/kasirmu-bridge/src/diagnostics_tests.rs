@@ -258,9 +258,12 @@ async fn export_diagnostics_refuses_a_staff_session_that_still_holds_operations(
 // WHY THIS IS WORTH TESTING, given it is a one-line delegation to
 // `write_crash_report_entry` (tested above): the delegation is not the risk,
 // the UNGATEDNESS is. Unlike `export_diagnostics`, this command takes NO
-// session token -- deliberately, because `installCrashReporter()` runs at
-// `ui/src/main.tsx:17`, before any session exists, and it is registered in BOTH
-// shells (`apps/desktop-tauri/src/lib.rs:1518`, `apps/mobile-tauri/src/lib.rs:1128`).
+// session token -- deliberately, because the front end installs its crash
+// reporter at APPLICATION STARTUP, before any session exists, and it is registered
+// in BOTH shells (`apps/desktop-tauri/src/lib.rs:1518`,
+// `apps/mobile-tauri/src/lib.rs:1128`). The install site is cited by ROLE rather
+// than by path on purpose: ADR #53 keeps a Rust layer's reasoning from binding to
+// one renderer, so the renderer file is deliberately not named here.
 // A panic therefore has no session to resolve, and requiring one would drop
 // crash telemetry exactly when it is most needed. So the property to pin is not
 // a permission but REACHABILITY WITHOUT LEAKING: the report must always reach a

@@ -289,8 +289,10 @@ pub struct SyncDaemon {
 }
 
 /// Read sync configuration and pending offline items from a database
-/// connection. Extracted from [`SyncDaemon::run_tick`] so the read phase
-/// is independently testable.
+/// connection. Extracted from the daemon's tick so the read phase is
+/// independently testable. (Named in prose rather than linked: `run_tick` is
+/// `pub(super)` in the private `daemon_tick` module, so an intra-doc link cannot
+/// resolve it and the deny-warnings doc build fails.)
 ///
 /// Returns `Ok((config, pending))` where `config` is `None` if sync is not
 /// configured or disabled, and `Err(msg)` when the offline queue could not be

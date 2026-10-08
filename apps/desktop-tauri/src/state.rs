@@ -224,10 +224,11 @@ pub struct AppState {
     ///
     /// Refreshed by the command shims in `commands/kds.rs` after every
     /// kitchen transition (create / status change / line-item bump), and
-    /// read **synchronously** by the [`KdsQueueProvider`] closure attached
-    /// to the LAN forwarder in `lib.rs` — that provider runs inside the
-    /// per-peer accept task and must never touch the async DB mutex, so
-    /// the queue is materialised here instead of queried on demand.
+    /// read **synchronously** by the
+    /// [`KdsQueueProvider`](crate::lan_server::KdsQueueProvider) closure attached to
+    /// the LAN forwarder in `lib.rs` — that provider runs inside the per-peer accept
+    /// task and must never touch the async DB mutex, so the queue is materialised
+    /// here instead of queried on demand.
     ///
     /// `std::sync::RwLock` (M-1 exception, sync reader): the provider is
     /// a plain `Fn()`; write guards are taken only for the duration of a
