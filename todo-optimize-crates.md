@@ -937,8 +937,8 @@ at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
 **O-L13 · qris-core — a money percentage validated with `parse::<f64>()`** —
 `crates/qris-core/src/validate.rs:58-62` ✔ (3A-09). Fixed (`df4d7aa2b`): delegated percentage validation to `is_valid_percent_str` backed by exact integer decimal parser `parse_percent`. Rejects `"1e3"`, `"NaN"`, `"inf"` and eliminates float arithmetic on monetary calculations.
 
-**O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ◦
-(3A-10). Runs twice per QRIS round trip. *Fix:* table-driven.
+**O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ✔
+(3A-10). Fixed (`798211bf3`): replaced bit-by-bit calculation with 256-entry lookup table (`CRC16_TABLE`), cutting inner iteration count from 8 to 1 per byte during QRIS generation and validation.
 
 **O-L15 · kasirmu-crypto — `master_key_from_env()` runs per encrypt/decrypt call** —
 `crates/kasirmu-crypto/src/lib.rs:139-152` ✔ (3A-12). Fixed (`c656624c2`): cached `master_key_from_env()` with `OnceLock<Option<[u8; 32]>>`, avoiding repeated environment queries, string allocations, and hex decoding on every encryption and decryption invocation.
@@ -947,7 +947,7 @@ at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
 `crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ✔ (3A-13). Fixed: clamped input slice to 255 bytes (`slice.len() as u8`) and added test in `escpos_tests.rs` so payload length and GS k header length byte never diverge.
 
 **O-L17 · kasirmu-plugin — `fire_event` clones the hook list and linear-scans each owner** —
-`crates/kasirmu-plugin/src/manager.rs:499-515` ◦ (3B-08). *Fix:* id→index map, borrow the list.
+`crates/kasirmu-plugin/src/manager.rs:499-515` ✔ (3B-08). Fixed (`06894624d`): replaced hook list clone with borrowed iteration, and replaced linear scan over sandboxes with O(1) `plugin_index` map lookup.
 
 **O-L18 · kasirmu-cli — `copy_reference_data` inserts row by row with no transaction** —
 `crates/kasirmu-cli/src/seed_demo.rs:218-227` ◦ (3B-10). One implicit transaction and WAL commit
@@ -1934,4 +1934,21 @@ Three findings closed across crypto, payments, and authorization subsystems:
    - `platform/core/src/rbac.rs` & `platform/core/src/staff.rs`: Optimized `has_permission` to avoid heap allocations (`format!("{domain}:*")`) via `strip_suffix(":*") == Some(domain)`.
    - Replaced redundant string allocations in `Role::has_permission` with `check_permissions_json`, using borrowed `Cow<str>` to parse grants in-place with short-circuiting.
    - Verified across all 71 RBAC tests and 35 staff tests in `platform-core`, plus 23 tests and 1 doctest in `modules-staff`.
+
+---
+
+## §11N — O-L14 and O-L17 resolved: QRIS table CRC and plugin event O(1) dispatch (2026-10-08)
+
+Two low-severity performance findings resolved:
+
+1. **O-L14 · `qris-core` table-driven CRC-16/CCITT (`798211bf3`)**:
+   - `crates/qris-core/src/crc.rs`: Replaced 8-iteration bitwise loop with 256-entry lookup table `CRC16_TABLE`.
+   - Eliminates 8x inner loop branching per byte across QRIS payload creation and signature validation.
+   - Verified across all 35 unit tests, 9 integration tests, and 13 doctests in `qris-core`.
+
+2. **O-L17 · `kasirmu-plugin` zero-clone O(1) hook dispatch (`06894624d`)**:
+   - `crates/kasirmu-plugin/src/manager.rs`: Added `plugin_index: HashMap<String, usize>` built at load time to enable O(1) index lookup into `self.plugins`.
+   - Replaced `.cloned()` on `hook_names` with borrowed slice iteration, eliminating heap allocation on every hook dispatch.
+   - Verified across all 224 tests in `kasirmu-plugin`.
+
 
