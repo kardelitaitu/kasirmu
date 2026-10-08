@@ -119,14 +119,26 @@ export default function UpdateBanner() {
   }, [versionState, currentVersion]);
 
   // ── Version compatibility check ───────────────────────────────
+  //
+  // ⚠️ This used to set the flag and NEVER clear it. `versionBlocked` is a
+  // one-way latch in the same family as the F4 recovery bug found in round 9, and
+  // here it is worse because the flag's own render branch (:242) sits BEFORE the
+  // `updateAvailable` check (:276) and returns early. So once a single probe
+  // reported an update whose `min_version` was above the running build, the
+  // "Update not available" banner replaced the update banner for the REST OF THE
+  // SESSION — even after the probe reported a different (compatible) release, and
+  // even after the user installed one. There was no way back and no test.
+  //
+  // The flag is now DERIVED on every pass of the effect: set when the current
+  // update is genuinely blocked, cleared when it is not. That makes it a function
+  // of the inputs rather than a latch that only ever moves one way.
   useEffect(() => {
-    if (updateAvailable && minVersion && currentVersion) {
-      const cmp = compareVersions(currentVersion, minVersion);
-      if (cmp < 0) {
-        // Current version is BELOW the minimum required for this update.
-        setVersionBlocked(true);
-      }
-    }
+    const blocked =
+      updateAvailable &&
+      !!minVersion &&
+      !!currentVersion &&
+      compareVersions(currentVersion, minVersion) < 0;
+    setVersionBlocked(blocked);
   }, [updateAvailable, minVersion, currentVersion]);
 
   // ── Install handler ───────────────────────────────────────────
