@@ -1,6 +1,9 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — analysis complete, decisions D1–D4 settled, P0 baseline captured; repair starts at P1.**
+> **Created 2026-10-09 · status: OPEN — analysis complete, P0 baseline captured, D3/D4 settled.**
+> **D1 and D2 were partially WITHDRAWN after F14:** the provisioning seed does not work,
+> because provisioning writes the global DB while the POS reads the store DB. D1 now
+> carries an open choice (recommended: option C). Repair starts at P1.
 > Owner surface: `ui/src/features/restaurant/**`, the restaurant settings screens
 > reached from `RestaurantSidebar`, and the shared `WorkspaceRestaurantPosSettings`
 > card both shells mount. Shells in scope: `apps/desktop-tauri` and `apps/mobile-tauri`.
@@ -221,6 +224,43 @@ into this lane's verification rather than treating as new work:
 `features/settings/AppearanceSettings.tsx` exist. Confirm which is mounted before
 deleting anything (AGENTS.md §6.3 "dead-screen checks need three greps").
 
+### F14 — Provisioning and the POS read DIFFERENT databases (HIGH — blocks D1's seed)
+
+Found while implementing option A, and it invalidates that approach.
+
+`provision_device` writes the **global identity** database: the bridge locks it at
+`crates/kasirmu-bridge/src/setup.rs:378` (`ctx.lock_global()`) and passes that one
+`&Connection` into `kasirmu_core::db::provisioning::provision_device`.
+
+`get_receipt_settings_scoped` — the command the POS reads on mount
+(`PosScreen.tsx:742`) — reads the **store** database instead:
+`crates/kasirmu-bridge/src/settings.rs:186-193` opens
+`ctx.db_manager.open_store(&session.store_id)`, and the store file is
+`store-<id>.sqlite` (`platform/core/src/database/manager.rs:192`).
+
+Nothing bridges the two for settings: `copy_reference_data`
+(`crates/kasirmu-cli/src/seed_demo.rs:171-240`) copies only categories, products,
+inventory, customers, tax_rates, category_taxes and suppliers — never `settings`.
+The workspace read-repair (`crates/kasirmu-bridge/src/workspaces.rs:176-187`) copies
+`workspace_instances` only. **No code copies settings rows between the databases.**
+
+**Measured, not inferred.** A temporary test provisioned a restaurant into one
+in-memory connection and read the flag back from a second one:
+
+```
+global db after provision_device : show_table_number = TRUE   (the seed landed)
+store  db (what the POS reads): show_table_number = FALSE  (no seed)
+```
+
+**Consequence.** Seeding the flag from `provision_device` is inert in production —
+the POS would still read `false` from the store db. The change was reverted before
+commit; the tree is clean and `kasirmu-core` is back to 37 provisioning tests.
+
+**Why this is recorded rather than just fixed:** it is the same global/store split the
+codebase already documents as a trap (`provisioning_tests.rs:493-539`, "the split-brain"),
+and it is why D1's default cannot be a provisioning fact. Any future "default this
+setting for a new install" idea has to answer where the store db is at that moment.
+
 ---
 
 ## 3. Repair plan
@@ -251,8 +291,10 @@ lines F4's tests assert against.
    guest-count gate the cart fields, table_number is retired in favour of
    `receipt.showTableNumber`), or (b) delete the row and its state.
 3. Remove the `|| activeWorkspace === 'restaurant-pos'` overrides at
-   `CartPanel.tsx:612` and `:655` **only after** the corresponding default is
-   `true` for a restaurant workspace, so no merchant loses a control on upgrade.
+   `CartPanel.tsx:612` and `:655`. For `:612` (`order_type_prompt`) raise the default
+   first, per D2. For `:655` (`showTableNumber`) the override comes out **together with
+   the sidebar toggle** — option C of D1 — because F14 proves the flag cannot be
+   defaulted on from provisioning.
 4. Make the F10 card and the sidebar screen agree on table management; one of them
    stops writing the other's key.
 
@@ -347,49 +389,50 @@ lines F4's tests assert against.
 All four open questions are decided. Each answer records the evidence that decided
 it, not just the choice, so a later reader can re-derive it.
 
-### D1 — `restaurant.table_number` is RETIRED in favour of `receipt.showTableNumber`
+### D1 — Collapse to `receipt.showTableNumber`; the restaurant DEFAULT is still open
 
-**Decision.** Collapse to one key: keep `receipt.showTableNumber`, delete
+**The collapse itself is settled.** Keep `receipt.showTableNumber`, delete
 `restaurant.table_number` and the mirror at `RestaurantSettingsScreen.tsx:326-339`.
-Fix the labels so each screen says what it actually controls.
+`receipt.show_table_number` is a real legacy receipt key with live readers on both
+sides — `receipt_formats.rs:72` (`LEGACY_RECEIPT_KEYS`), `receipt_format.rs:90`, and
+`settings.rs:521` — while `restaurant.table_number` has zero readers anywhere. The
+collapse removes code and needs no schema change.
 
-**Why it is safe.** `receipt.show_table_number` is not a UI-only flag — it is a real
-legacy receipt key with live readers on both sides:
+**The default-on half of the earlier D2 was WRONG and is withdrawn.** It was specified
+as "seed `receipt.show_table_number = true` at provisioning for a restaurant" and
+implemented that way in `provision_device`. **It does not work**, and the attempt is
+reverted (uncommitted, never landed). See F14 for the measurement.
 
-- `crates/kasirmu-core/src/db/receipt_formats.rs:72` lists `receipt.show_table_number`
-  in `LEGACY_RECEIPT_KEYS`.
-- `crates/kasirmu-bridge/src/receipt_format.rs:90` and `hardware.rs:406` feed it into
-  the receipt layout.
-- `crates/kasirmu-bridge/src/settings.rs:521` persists it via the scoped receipt write
-  (`Settings::set_receipt_show_table_number`).
+**So the restaurant default is now an open decision.** The options, re-derived after
+F14:
 
-`restaurant.table_number` has **zero** readers anywhere. The collapse therefore
-*removes* code and needs no Rust or schema change.
+| Option | Mechanism | Cost |
+|---|---|---|
+| **C (recommended)** | Drop the table-number toggle from the sidebar Settings screen. Table capture is core to restaurant POS, so the cart input stays unconditional and the *print* toggle stays in Receipts (`RestaurantReceiptsScreen.tsx:1889`). | Frontend only. Removes a control rather than wiring it. |
+| **A'''** | Seed the STORE db after `provision_device` returns, in the bridge layer where `ctx.db_manager` exists (`setup.rs:374-389`). | Cross-layer: provisioning is core and owns only the global `&Connection`; the store db is created lazily by `open_store`. Needs a store-id decision too. |
+| **B** | Flip the global default in `platform/core/src/settings/typed.rs`. | Changes **retail** receipts and inverts `platform/core/src/settings/tests.rs:360` plus `settings_tests.rs:45`. Rejected. |
 
-**Cost accepted.** The two keys are semantically different: `restaurant.table_number`
-meant "prompt/capture the table on the POS", `receipt.showTableNumber` means "print it
-on the receipt". Collapsing loses capture-without-print. Accepted because you cannot
-print a table number you never captured, and the mirror at `:326-339` already couples
-them today — so today's behaviour is preserved exactly.
+**Why C is the recommendation:** F14 shows the key the POS actually reads lives in a
+different database from the one provisioning writes, so a "restaurant default" is not
+expressible as a provisioning fact at all. C stops pretending the toggle is a real
+choice instead of adding cross-layer plumbing to keep it looking like one.
 
-**Rejected alternative (keep in reserve).** If the owner later wants
-capture-without-print: keep both keys, make `restaurant.table_number` the capture gate,
-drop the mirror, and gate the receipt on `capture && print`. Do not do both at once.
+### D2 — Default ON only `restaurant.order_type_prompt`; the table-number half is withdrawn
 
-### D2 — Newly-wired toggles default ON, and ONLY the two already forced on
+**Decision.** `restaurant.order_type_prompt` defaults **true** when unset. Every other
+key keeps its current `DEFAULT_RESTAURANT_SETTINGS` value (`holdOrder` true, `saveTab`
+true, `soundChime` true, `customerName` true, `guestCount` false, `autoPrintKitchen`
+false, `courseFiring` false).
 
-**Decision.** `receipt.showTableNumber` and `restaurant.order_type_prompt` default
-**true** for a restaurant workspace. Every other key keeps its current
-`DEFAULT_RESTAURANT_SETTINGS` value (`holdOrder` true, `saveTab` true, `soundChime`
-true, `customerName` true, `guestCount` false, `autoPrintKitchen` false,
-`courseFiring` false).
+**Why.** `order_type_prompt` is a restaurant-only key the frontend can default on its
+own, and it is one of the two controls the `|| activeWorkspace === 'restaurant-pos'`
+override at `CartPanel.tsx:612` forces on today — so removing the override without
+raising the default would silently drop the order-type selector on upgrade. No other
+key is currently forced, so flipping any other default would be an unrequested change.
 
-**Why.** Those two are precisely the controls the
-`|| activeWorkspace === 'restaurant-pos'` override at `CartPanel.tsx:612`/`:655`
-forces on today. Removing the override without raising the default would make every
-existing merchant lose the table input and the order-type selector on upgrade — a
-regression dressed up as a fix. No other key is currently forced, so flipping any
-other default would be an unrequested behaviour change.
+**The `receipt.showTableNumber` half is WITHDRAWN** — it is a shared receipt key whose
+default the frontend cannot set (F14). It moves to D1's open decision, where option C
+is the recommendation.
 
 ### D3 — The DB is authoritative; localStorage is a write-through cache
 
@@ -476,3 +519,4 @@ startup with `Failed to load custom Reporter from basic`. Use the default report
 | F11 | `RestaurantReceiptsScreen.tsx:265-303`, `:383-430` |
 | F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
 | F13 | `ui/src/features/settings/DataManagementScreen.tsx` vs `.../screens/DataManagementScreen.tsx` |
+| F14 | `crates/kasirmu-bridge/src/setup.rs:378` (global) vs `crates/kasirmu-bridge/src/settings.rs:186-193` (store); `manager.rs:192`; no settings copy in `seed_demo.rs:171-240` or `workspaces.rs:176-187` |
