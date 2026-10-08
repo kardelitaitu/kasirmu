@@ -569,3 +569,37 @@ The review pass also removed a destructive `DELETE` the helper had grown to
 paper over cross-run test contamination, wrapped its writes in a transaction,
 and stopped holding the global db lock across `open_store` (which can run
 migrations).
+
+### 6.7 Acceptance closed — 2026-10-08
+
+Every item of §1's acceptance list, run in this pass:
+
+1. **H1 / boundary** — the walk (item 3 below) shows no boundary anywhere, and
+   `#/topology` renders its withdrawal notice.
+2. **Route pin** — added in `TabletAppShellWorkspaceRoute.test.tsx`
+   (`47e501f3a`): `#/settings/topology` reaches the registered page and no
+   `.error-boundary` appears.
+3. **Live re-measure (the acceptance command)** — ran on the tablet:
+   **11 ok / 4 warn / 0 fail**, boundary absent, `topology-tablet-unavailable`
+   rendered, and no `PermissionDenied("user not found")` anywhere.
+4. **Parity gate** — `python scripts/verify-ipc-parity.py` exits **0**; the
+   tablet registered count is **421**, up from 419 by exactly the two commands
+   this pass registered.
+5. **UI gates** — `npm run typecheck` exits 0. `npm run lint` reports 2 errors
+   in `RestaurantMenu.tsx` / `RestaurantMenuEditorScreen.tsx`
+   (`jsx-a11y/no-autofocus`), files this plan never touched and another lane's
+   red; every file changed here is clean.
+
+Two further closures, both from measuring rather than assuming:
+
+- **The desktop carried the same gap.** `locations::create_location_profile`
+  creates a store DB file-only with zero rows (`locations.rs:290`), and the
+  bridge's `create_session` did not replicate — a session bound to such a store
+  answered the same `PermissionDenied("user not found")`. Fixed in the bridge
+  twin (`dedf821b9`), test-first, with the identical helper.
+- **The deep-link sweep is closed by measurement, not by work:**
+  `runsOnThisShell` (`WorkspaceHome.tsx:47`) hides exactly ONE tool —
+  `topology` — so there is no second withdrawn-tool route to sweep.
+
+Renamed `plan-` → `done-plan-` under §7.4: the file's own acceptance command
+(item 3) ran and passed.
