@@ -93,6 +93,24 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `mask_name` measured names in BYTES and produced MORE characters than it masked. A real fix, in `72bc2d670`.
+
+**Found by applying R180's lens to the sibling function.** R180 showed that a test can exercise an input and still guard a NEIGHBOURING property. `mask_name` has a test named `mask_name_byte_vs_char_caveat` — and reading it is what found the defect, because **the test pinned the bug as the expected behaviour**: it asserted `mask_name('😊') == '😊**😊'`.
+
+**The defect: a name is text, but `mask_name` measured it in bytes.**
+- The short-part guard used `part.len() <= 2` (BYTES), so a 4-byte single-character emoji **skipped** it and entered the masking branch.
+- `masked_len` was also byte-derived, so it produced characters *in addition* to the two kept ones.
+
+Consequences, all verified: `mask_name('😊')` returned **`'😊**😊'`** — the one-character input, longer than itself, with its only character at both ends. `mask_name('ééé')` (3 chars, 6 bytes) returned **`'é****é'`** — six characters from three. **The masked string could be longer than the secret it was hiding**, which is the opposite of masking.
+
+**Fixing it took TWO edits, and my own new test caught the second one.** Changing `masked_len` to `chars().count()` was the obvious half; the guard at `:133` was the half I missed, and the test I had just written failed immediately with `"😊" (1 chars) became "😊😊" (2 chars)`. **That is the value of asserting an INVARIANT rather than a case** — a per-case expectation would have been satisfied by fixing either half alone. Then a **partial revert** (guard restored to `len()`, `masked_len` left fixed) was KILLED by the same test, so both halves are independently pinned. 42/42 green; clippy Finished.
+
+**Context for severity, stated honestly: `mask_name` is INERT.** The module's own wiring note says only `mask_token` has callers, and grep confirms zero production call sites for `mask_name`. So this fixed no live leak — but the function is documented as "kept ready for a card-present or keyed-entry surface", which is exactly the situation where an unexercised byte/char bug ships.
+
+**What I replaced the caveat test with, and why the old one was worse than absent.** The old assertion would have FAILED against the fix, so it had to be rewritten rather than deleted — but its real fault was encoding a bug as a contract. The replacement asserts the invariant (`masked.chars().count() <= name.chars().count()`) over five multibyte names, plus the concrete `'ééé' -> 'é*é'` case and the ASCII control.
+
+**Running tally: 27 guards examined, 12 sound, 15 with defects found and fixed.**
+
 ## 2026-10-08: `mask_pan`'s `.max(4)` floor was unguarded — and an EXISTING test checked a neighbouring property. Fixed in `c4f016c68`.
 
 **First round on a crate I had never probed.** With the bridge validators exhausted and two sound rounds behind me, I moved to `kasirmu-security`, whose `mask.rs` implements the PCI-DSS 3.3 display rules. The target: the `digits.len() <= 10` branch, which computes `masked_len = len - 4` and then floors it with `.max(4)`.
