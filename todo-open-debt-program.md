@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `gate_error_mapping_tests.rs` is a THIRD sound guard — and its design is the one to copy.
+
+**`crates/kasirmu-bridge/src/gate_error_mapping_tests.rs` (2 tests, 102 lines)** pins that eleven copies of `map_gate_error` still translate a gate denial identically: `ctx.rs` canonical, nine bridge modules, and the desktop shell's `authz.rs`. The copies are load-bearing — `impl From<CoreError> for BridgeError` maps `PermissionDenied` to a generic `BridgeError::Core`, while the UI branches on `BridgeError::PermissionDenied` itself — so a drifted copy hands the front end the wrong wire shape for a denial.
+
+**Probed by drifting `tax.rs`, and it fired correctly.** I rewrote that copy's arm to route the denial through `BridgeError::from(...)` — the exact bug the file exists to catch. Result: `every_map_gate_error_copy_carries_the_canonical_arms` **FAILED** with *"tax.rs's map_gate_error has DRIFTED from the canonical rule in ctx.rs"*. Before trusting that, I **grepped the log for `error[E`**: a compile failure also exits 101 and would have been a false positive, so the absence of a compile error is what makes the verdict real.
+
+**What makes this guard the one to copy is that `CANONICAL_ARMS` is a hardcoded literal, deliberately.** The header says deriving it from `ctx.rs` "would make the test pass whenever all copies agree with each OTHER, including when every one of them drifted together." That is the failure mode the obvious implementation has, and this one avoids it — ten live copies compared against a fixed string, plus a separate assertion that fails if `ctx.rs` no longer matches. **An oracle that cannot drift with its subjects.** Most guards probed this campaign compare tree-against-tree; this is the first anchored to a constant.
+
+**A measurement-hygiene correction I owe this round.** My first attempt to drift `ctx.rs` renamed the match binding `message` → `msg` while the arm body still used `message`, so the crate failed to COMPILE (`E0425`) and the run exited 101. **That is indistinguishable from "the guard fired" if only the exit code is read.** I separated the two by grepping the EARLIER probe's log for `error[`, which is how I confirmed the `tax.rs` result was a genuine assertion rather than the same artefact. Both files restored; guard green at 2/2.
+
+**Running tally, corrected again: 9 guards probed, 3 sound (`capability_parity`, `window_visibility`, `gate_error_mapping`), 6 with defects found and fixed.** The last two rounds found only sound guards, which is a better reason to stop treating "there is a defect here" as the prior.
+
 ## 2026-10-08: the last two guards probed are SOUND — and that is the reportable result.
 
 The previous note claimed "every guard examined this campaign has had a defect on the FIRST probe". **That is now falsified by two guards, which is the useful outcome**: the claim was drawn from five consecutive hits and would have become a superstition if I had not kept going.
