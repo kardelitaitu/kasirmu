@@ -315,7 +315,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
-  const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(false);
+  // Defaults ON for restaurant POS and OFF elsewhere. The key is restaurant-only,
+  // so a retail workspace must not gain an order-type prompt from an unset value.
+  // This default is what lets `CartPanel` drop its `|| restaurant-pos` override
+  // (P1/D2): the control stays visible on restaurant while an explicit stored
+  // "false" can finally turn it off.
+  const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(activeWorkspace === 'restaurant-pos');
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -787,14 +792,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     getSettingScoped(sessionToken || null, 'restaurant.order_type_prompt')
       .then((raw) => {
         if (stale()) return;
-        setOrderTypePromptEnabled(raw === 'true');
+        // `null` means never written, which is not the same as "false".
+        setOrderTypePromptEnabled(raw === null ? activeWorkspace === 'restaurant-pos' : raw === 'true');
       })
       .catch(() => {
         if (stale()) return;
-        setOrderTypePromptEnabled(false);
+        // A failed read must not hide a restaurant's order-type selector; the
+        // workspace default is the safe fallback, matching the pre-load value.
+        setOrderTypePromptEnabled(activeWorkspace === 'restaurant-pos');
       });
     return () => { orderTypePromptSeq.current += 1; };
-  }, [sessionToken]);
+    // `activeWorkspace` IS a dependency, unlike the course-firing effect above:
+    // that one's fallback is the workspace-independent `null`, while this one's
+    // fallback is computed FROM the workspace. Omitting it would leave the
+    // pre-switch workspace's answer in state after a store switch.
+  }, [sessionToken, activeWorkspace]);
 
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {

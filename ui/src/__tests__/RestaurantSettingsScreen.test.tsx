@@ -2,12 +2,17 @@
  * @file RestaurantSettingsScreen.test.tsx
  * @description Component-level test suite for RestaurantSettingsScreen.
  * Covers:
- * - Mount and load settings from API (getSettingScoped, getReceiptSettingsScoped)
- * - Rendering of all 9 behavior toggles (table number, customer name, guest count,
- *   order type, hold order, save tab, course firing, auto-print kitchen, sound chime)
+ * - Mount and load settings from API (getSettingScoped)
+ * - Rendering of the behavior toggles (customer name, guest count, order type,
+ *   hold order, save tab, course firing, auto-print kitchen, sound chime)
  * - Toggling values and dirty tracking
- * - Saving settings via setSettingsScoped and sync to setReceiptSettingsScoped
+ * - Saving settings via setSettingsScoped
  * - Unsaved changes confirmation dialog on back navigation
+ *
+ * Table number is deliberately NOT covered: it is no longer a control on this
+ * screen. Table capture is unconditional on restaurant POS and the only
+ * table-number toggle is the PRINT one in RestaurantReceiptsScreen. Asserted
+ * below so a future re-add is a deliberate act rather than a regression.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -58,12 +63,6 @@ describe('RestaurantSettingsScreen', () => {
 
     mocks.getSetting.mockResolvedValue('true');
     mocks.setSettings.mockResolvedValue(undefined);
-    mocks.getReceiptSettings.mockResolvedValue({
-      showTableNumber: true,
-      headerText: '',
-      footerText: '',
-    });
-    mocks.setReceiptSettings.mockResolvedValue(undefined);
   });
 
   it('renders all restaurant behavior toggles after loading', async () => {
@@ -73,7 +72,7 @@ describe('RestaurantSettingsScreen', () => {
       expect(screen.queryByText(/Loading/i)).toBeNull();
     });
 
-    expect(screen.getByTestId('setting-toggle-table-number')).toBeInTheDocument();
+    expect(screen.queryByTestId('setting-toggle-table-number')).toBeNull();
     expect(screen.getByTestId('setting-toggle-customer-name')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-guest-count')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-order-type')).toBeInTheDocument();
@@ -125,13 +124,10 @@ describe('RestaurantSettingsScreen', () => {
     await renderScreen({ onSaved });
 
     await waitFor(() => {
-      expect(screen.getByTestId('setting-toggle-table-number')).toBeInTheDocument();
+      expect(screen.getByTestId('setting-toggle-customer-name')).toBeInTheDocument();
     });
 
-    // Toggle table number and vibration off
-    const tableNumberSwitch = screen.getByTestId('setting-toggle-table-number');
-    fireEvent.click(tableNumberSwitch);
-
+    // Toggle vibration off
     const vibrationSwitch = screen.getByTestId('setting-toggle-interaction-vibration');
     fireEvent.click(vibrationSwitch);
 
@@ -142,22 +138,17 @@ describe('RestaurantSettingsScreen', () => {
       expect(mocks.setSettings).toHaveBeenCalledWith(
         mocks.sessionToken,
         expect.objectContaining({
-          'restaurant.table_number': 'false',
           'restaurant.interaction_vibration': 'false',
           'restaurant.interaction_sound': 'true',
         }),
       );
     });
 
-    // Also syncs to receipt settings
-    await waitFor(() => {
-      expect(mocks.setReceiptSettings).toHaveBeenCalledWith(
-        mocks.sessionToken,
-        expect.objectContaining({
-          showTableNumber: false,
-        }),
-      );
-    });
+    // The table-number key is NOT written by this screen any more: it had no
+    // reader, and the value the POS reads lives in the store db.
+    const written = mocks.setSettings.mock.calls.at(-1)?.[1] as Record<string, string>;
+    expect(written).not.toHaveProperty('restaurant.table_number');
+    expect(mocks.setReceiptSettings).not.toHaveBeenCalled();
 
     expect(onSaved).toHaveBeenCalled();
   });

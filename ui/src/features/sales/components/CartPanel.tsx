@@ -609,7 +609,12 @@ export function CartPanel({
         {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
         {/* Styling lives in CartPanel.css (.pos-cart-order-type-row); it used to
             be an inline style block with hardcoded 6px values and no sheet behind it. */}
-        {(orderTypePromptEnabled || activeWorkspace === 'restaurant-pos') && setOrderType && (
+        {/* The workspace arm that used to sit here was removed (P1/D2 of
+            todo-restaurant-pos-reliability.md): it made the setting inert on the
+            one workspace it exists for. `orderTypePromptEnabled` now defaults to
+            TRUE on restaurant-pos in PosScreen, so removing the override keeps
+            the control visible there while letting an explicit "off" take effect. */}
+        {orderTypePromptEnabled && setOrderType && (
           <div className="pos-cart-order-type-row">
             {(
               [
@@ -651,7 +656,14 @@ export function CartPanel({
           </div>
         )}
 
-        {/* ── Table number input & optional customer name ── */}
+        {/* ── Table number input & optional customer name ──
+            The `|| restaurant-pos` arm is INTENTIONAL, not a leftover: table
+            capture is part of what a restaurant POS is, so it does not depend on
+            a setting. `showTableNumberSetting` still governs the other
+            workspaces (retail), where it comes from the receipt toggle. The
+            restaurant-side settings toggle that used to write a competing
+            `restaurant.table_number` key was removed — see
+            RestaurantSettingsScreen.tsx's header. */}
         {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && (
           <div className="pos-cart-table-row">
             <div className="pos-cart-table-field">

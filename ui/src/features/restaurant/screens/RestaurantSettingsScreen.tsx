@@ -1,15 +1,38 @@
+// ── Restaurant POS settings — the sidebar's full-screen Settings screen ──
+//
+// OWNERSHIP OF EACH TOGGLE'S KEY (P1 of todo-restaurant-pos-reliability.md).
+// This screen is one of THREE surfaces that write restaurant settings — the
+// F10 WorkspaceRestaurantPosSettings card and RestaurantReceiptsScreen are the
+// others — so which key each control owns is stated here rather than inferred:
+//
+//   restaurant.customer_name        owned here; gates the cart's customer field
+//   restaurant.guest_count          owned here; gates the cart's pax field
+//   restaurant.order_type_prompt    owned here; read by PosScreen (order-type effect)
+//   restaurant.hold_order           owned here
+//   restaurant.save_tab             owned here
+//   restaurant.course_firing        SHARED with the F10 card (both write it)
+//   restaurant.auto_print_kitchen   owned here
+//   restaurant.sound_chime          owned here
+//   restaurant.interaction_sound    owned here; mirrored to localStorage
+//   restaurant.interaction_vibration owned here; mirrored to localStorage
+//
+// TABLE CAPTURE IS NOT A TOGGLE HERE, deliberately. The cart's table input is
+// part of what a restaurant POS IS, so it renders unconditionally
+// (`CartPanel.tsx:655`) and the only table-number control is the PRINT toggle in
+// RestaurantReceiptsScreen (`receipt.showTableNumber`, `:1889`). This screen used
+// to render a second toggle writing `restaurant.table_number`, a key with NO
+// reader anywhere: it persisted and reloaded faithfully while changing nothing.
+// It was removed rather than wired because the value the POS reads
+// (`receipt.show_table_number`) lives in the STORE database while provisioning
+// writes the GLOBAL one, so a restaurant default for it is not expressible as a
+// provisioning fact — see finding F14 in the plan doc.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
-import {
-  getSettingScoped,
-  setSettingsScoped,
-  getReceiptSettingsScoped,
-  setReceiptSettingsScoped,
-} from '@/api/settings';
+import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 import {
   isInteractionSoundEnabled,
   isInteractionVibrationEnabled,
@@ -92,7 +115,6 @@ function SettingRow({ id, label, description, checked, onChange, testId, badge }
 // ── Screen State Interface ──────────────────────────────────────────
 
 interface RestaurantSettingsValues {
-  tableNumber: boolean;
   customerName: boolean;
   guestCount: boolean;
   orderTypePrompt: boolean;
@@ -106,7 +128,6 @@ interface RestaurantSettingsValues {
 }
 
 const DEFAULT_RESTAURANT_SETTINGS: RestaurantSettingsValues = {
-  tableNumber: true,
   customerName: true,
   guestCount: false,
   orderTypePrompt: true,
@@ -139,7 +160,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
   // Settings states
-  const [tableNumber, setTableNumber] = useState(DEFAULT_RESTAURANT_SETTINGS.tableNumber);
   const [customerName, setCustomerName] = useState(DEFAULT_RESTAURANT_SETTINGS.customerName);
   const [guestCount, setGuestCount] = useState(DEFAULT_RESTAURANT_SETTINGS.guestCount);
   const [orderTypePrompt, setOrderTypePrompt] = useState(DEFAULT_RESTAURANT_SETTINGS.orderTypePrompt);
@@ -164,7 +184,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       setLoading(true);
       try {
         const [
-          tableNumRaw,
           custNameRaw,
           guestCountRaw,
           orderTypeRaw,
@@ -175,9 +194,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
           soundChimeRaw,
           interactionSoundRaw,
           interactionVibrationRaw,
-          receiptSettings,
         ] = await Promise.all([
-          getSettingScoped(sessionToken, 'restaurant.table_number').catch(() => null),
           getSettingScoped(sessionToken, 'restaurant.customer_name').catch(() => null),
           getSettingScoped(sessionToken, 'restaurant.guest_count').catch(() => null),
           getSettingScoped(sessionToken, 'restaurant.order_type_prompt').catch(() => null),
@@ -188,15 +205,10 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
           getSettingScoped(sessionToken, 'restaurant.sound_chime').catch(() => null),
           getSettingScoped(sessionToken, 'restaurant.interaction_sound').catch(() => null),
           getSettingScoped(sessionToken, 'restaurant.interaction_vibration').catch(() => null),
-          getReceiptSettingsScoped(sessionToken).catch(() => null),
         ]);
 
         if (cancelled) return;
 
-        const resolvedTableNum =
-          tableNumRaw !== null
-            ? tableNumRaw === 'true'
-            : receiptSettings?.showTableNumber ?? DEFAULT_RESTAURANT_SETTINGS.tableNumber;
         const resolvedCustName =
           custNameRaw !== null ? custNameRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.customerName;
         const resolvedGuestCount =
@@ -222,7 +234,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
             ? interactionVibrationRaw === 'true'
             : isInteractionVibrationEnabled();
 
-        setTableNumber(resolvedTableNum);
         setCustomerName(resolvedCustName);
         setGuestCount(resolvedGuestCount);
         setOrderTypePrompt(resolvedOrderType);
@@ -235,7 +246,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         setInteractionVibration(resolvedInteractionVibration);
 
         originalsRef.current = {
-          tableNumber: resolvedTableNum,
           customerName: resolvedCustName,
           guestCount: resolvedGuestCount,
           orderTypePrompt: resolvedOrderType,
@@ -268,7 +278,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     void dirtyVersion;
     const orig = originalsRef.current;
     return (
-      tableNumber !== orig.tableNumber ||
       customerName !== orig.customerName ||
       guestCount !== orig.guestCount ||
       orderTypePrompt !== orig.orderTypePrompt ||
@@ -281,7 +290,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       interactionVibration !== orig.interactionVibration
     );
   }, [
-    tableNumber,
     customerName,
     guestCount,
     orderTypePrompt,
@@ -305,7 +313,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       // 1. Write restaurant settings keys atomically
       tasks.push(
         setSettingsScoped(sessionToken, {
-          'restaurant.table_number': String(tableNumber),
           'restaurant.customer_name': String(customerName),
           'restaurant.guest_count': String(guestCount),
           'restaurant.order_type_prompt': String(orderTypePrompt),
@@ -323,25 +330,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       setInteractionSoundEnabled(interactionSound);
       setInteractionVibrationEnabled(interactionVibration);
 
-      // 3. Keep receiptSettings.showTableNumber in sync
-      try {
-        const currentReceipt = await getReceiptSettingsScoped(sessionToken);
-        if (currentReceipt && currentReceipt.showTableNumber !== tableNumber) {
-          tasks.push(
-            setReceiptSettingsScoped(sessionToken, {
-              ...currentReceipt,
-              showTableNumber: tableNumber,
-            }),
-          );
-        }
-      } catch {
-        // Fallback: receipt read error should not block general settings save
-      }
-
       await Promise.all(tasks);
 
       originalsRef.current = {
-        tableNumber,
         customerName,
         guestCount,
         orderTypePrompt,
@@ -356,7 +347,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       setDirtyVersion((v) => v + 1);
 
       settingsContext?.markSettingsUpdated?.([
-        'restaurant.table_number',
         'restaurant.customer_name',
         'restaurant.guest_count',
         'restaurant.order_type_prompt',
@@ -367,7 +357,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         'restaurant.sound_chime',
         'restaurant.interaction_sound',
         'restaurant.interaction_vibration',
-        'receipt.showTableNumber',
       ]);
 
       addToast({
@@ -386,7 +375,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     }
   }, [
     sessionToken,
-    tableNumber,
     customerName,
     guestCount,
     orderTypePrompt,
@@ -513,14 +501,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
             {/* ── 1. Order Entry & Identification ─────────────────── */}
             <div className="resto-settings-group-card" data-testid="settings-card-order-entry">
               <div className="resto-compact-form">
-                <SettingRow
-                  id="resto-setting-table-number"
-                  label="Table Number"
-                  description="Prompt for table assignment when starting a new dine-in order"
-                  checked={tableNumber}
-                  onChange={setTableNumber}
-                  testId="setting-toggle-table-number"
-                />
                 <SettingRow
                   id="resto-setting-customer-name"
                   label="Customer Name"
