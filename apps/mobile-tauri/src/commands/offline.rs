@@ -295,7 +295,7 @@ pub async fn offline_queue_status_summary_scoped(
     let db = &*db_guard;
     let store = Store::new(&db);
     let summary = store.offline_queue_status_summary()?;
-    drop(db);
+    drop(db_guard);
     Ok(OfflineQueueSummaryDto {
         pending_count: summary.pending_count,
         synced_count: summary.synced_count,

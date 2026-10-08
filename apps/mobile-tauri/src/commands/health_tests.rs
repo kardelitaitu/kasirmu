@@ -196,7 +196,7 @@ fn scoped_state_with_session(token: &str) -> tauri::App<tauri::test::MockRuntime
     use kasirmu_core::session::SessionContext;
     let conn = kasirmu_core::migrations::fresh_db();
     kasirmu_core::migrations::seed_provisioned_baseline(&conn);
-    let mut state = crate::state::AppState::for_test_with_conn(conn);
+    let state = crate::state::AppState::for_test_with_conn(conn);
     state.session_store.write().unwrap().insert(
         token.to_string(),
         SessionContext::new(
