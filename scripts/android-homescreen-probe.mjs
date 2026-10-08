@@ -114,6 +114,23 @@ const TAP_PIN = `(digit) => {
   return 'tapped';
 }`;
 
+const ROUTE_PROBE = `() => {
+  const root = document.querySelector('.settings-section-content')
+    || document.querySelector('[class*="section-content"]')
+    || document.body;
+  const scope = root;
+  const controls = [...scope.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select, [role="button"]:not([aria-disabled="true"])',
+  )].filter((el) => el.offsetParent !== null || el.getClientRects().length).length;
+  return {
+    hash: location.hash,
+    container: root.className || '(body)',
+    controls,
+    text: (scope.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 220),
+    boundary: [...document.querySelectorAll('.error-boundary__message')].map((e) => e.textContent.trim().slice(0, 120)),
+  };
+}`;
+
 const CLICK_FIRST_PIN = `() => {
   const btn = document.querySelector('.workspace-card-pin-btn');
   if (!btn) return 'no pin button';
@@ -268,9 +285,27 @@ async function main() {
     `\n${checks.length - failed - skipped} passed, ${failed} failed, ${skipped} skipped.`,
   );
 
+  // ── Optional single-route visit ──────────────────────────────────────────
+  // The settings walk covers 15 settings routes and nothing else, so a route
+  // OUTSIDE them (e.g. the Locations editor) is otherwise never measured.
+  const route = flag('route', null);
+  let routeReport = null;
+  if (route) {
+    await evaluate(`() => { location.hash = ${JSON.stringify(route)}; return location.hash; }`);
+    await sleep(2500);
+    routeReport = await evaluate(ROUTE_PROBE);
+    console.log(`\nroute ${route}:`);
+    console.log(`  container: ${routeReport.container}`);
+    console.log(`  controls : ${routeReport.controls}`);
+    console.log(`  text     : ${routeReport.text}`);
+    if (routeReport.boundary.length) {
+      console.log(`  BOUNDARY : ${JSON.stringify(routeReport.boundary)}`);
+    }
+  }
+
   if (JSON_OUT) {
     const { writeFileSync } = await import('node:fs');
-    writeFileSync(JSON_OUT, JSON.stringify({ samples, last, afterPin, checks }, null, 2));
+    writeFileSync(JSON_OUT, JSON.stringify({ samples, last, afterPin, routeReport, checks }, null, 2));
     console.log(`Wrote ${JSON_OUT}`);
   }
   process.exit(failed ? 1 : 0);
