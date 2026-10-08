@@ -8,9 +8,27 @@
 
 use super::*;
 
-/// The number of protected tenant tables the generated schema creates a
-/// 'tenant_isolation' policy for.
-/// ('crates/kasirmu-core/migrations/20260813_init.pg.sql', RLS_TABLES.)
+/// A REPRESENTATIVE protected-table count for the pure-decision fixtures below.
+///
+/// This is NOT a claim about the schema, and the earlier version of this comment
+/// was wrong for saying so: it read "the number of protected tenant tables the
+/// generated schema creates a 'tenant_isolation' policy for
+/// (init.pg.sql, RLS_TABLES)", but **measured, that list holds 29** — the
+/// generated FOREACH array in `20260813_init.pg.sql` enables RLS and creates
+/// `tenant_isolation` for exactly 29 tables, and `scripts/generate-pg-migration.py`'s
+/// `RLS_TABLES` is the same 29. Nor is 34 the count of tables carrying a
+/// `tenant_id` column (33 of 104 `CREATE TABLE` statements).
+///
+/// Nothing in this file compares it to a live count, so the value only has to be
+/// a plausible total — every assertion here drives `RlsPosture::from_facts` with
+/// it as a FIXTURE. The live comparison lives in `db_tests.rs`, whose query
+/// (`db.rs` `RLS_FACTS_SQL`) derives the real number from `pg_policies`
+/// deliberately, "rather than from a Rust constant, so it follows the generated
+/// schema instead of drifting away from it".
+///
+/// Kept at 34 rather than changed to 29: DO NOT introduce a false link between
+/// this fixture and the schema by making them agree, which is what the stale
+/// comment invited. Say what it is instead.
 const EXPECTED_TOTAL: u32 = 34;
 
 fn facts(role: &str, is_superuser: bool, forced: u32, total: u32) -> RlsFacts {
@@ -24,6 +42,53 @@ fn facts(role: &str, is_superuser: bool, forced: u32, total: u32) -> RlsFacts {
 
 /// A superuser bypasses row-level security even where FORCE is set, so a
 /// fully-FORCEd schema still reads as bypassed.
+/// The generator's curated RLS list is the one this file's provenance note cites.
+///
+/// WHY THIS EXISTS. `EXPECTED_TOTAL`'s doc claimed the constant came from the generated
+/// schema's `RLS_TABLES`, while that list measures **29** and the constant is 34 — a
+/// provenance claim nothing checked, in the file a reader consults to learn how many
+/// tables are protected. The number itself is a fixture and stayed 34; what was wrong
+/// was the CLAIM about where it comes from, the same class of drift the sibling
+/// `rls-cutover.sql` fix addressed (a count written down with nothing comparing it to
+/// the list it names).
+///
+/// Runs WITHOUT PostgreSQL: it reads the GENERATOR, not a database, so it holds on any
+/// machine — which is the point, since the pg-gated tests cannot run without a cluster.
+#[test]
+fn rls_table_reference_count_is_pinned_against_the_generator_list() {
+    const GENERATOR: &str = include_str!("../../../scripts/generate-pg-migration.py");
+
+    let start = GENERATOR
+        .find("RLS_TABLES = [")
+        .expect("the generator must keep its curated RLS_TABLES list");
+    let rest = &GENERATOR[start..];
+    let end = rest.find(']').expect("RLS_TABLES must be closed");
+    let body = &rest[..end];
+
+    // One quoted name per line; the list is curated and hand-formatted, so this counts
+    // what a reader sees rather than trying to parse Python.
+    let listed = body
+        .lines()
+        .filter(|line| line.trim().starts_with('"'))
+        .count();
+
+    assert!(
+        listed >= 20,
+        "expected the curated RLS_TABLES to hold the tenant tables; parsed {listed} — if the \
+         generator reformatted the list, fix THIS parse rather than the list"
+    );
+
+    // PINNED. Adding or removing a table from the protected set is a security decision,
+    // so it must be deliberate: this fails on either direction and names the new count,
+    // so the reviewer sees which table moved rather than a silently different number.
+    assert_eq!(
+        listed, 29,
+        "the protected tenant-table set changed size. That is a security decision, not a \
+         refactor: confirm the new table has policies AND a tenant_id, update the cutover \
+         scripts to match, then update this literal deliberately."
+    );
+}
+
 #[test]
 fn superuser_is_reported_as_bypassed_even_when_every_table_is_forced() {
     let posture = RlsPosture::from_facts(&facts("postgres", true, EXPECTED_TOTAL, EXPECTED_TOTAL));
