@@ -1516,7 +1516,7 @@ Tasks:
 - [ ] Avoid unnecessary Bitmap conversion.
 - [ ] Close `ImageProxy` promptly.
 - [x] Bound print buffers (MAX_PRINT_PAYLOAD_BYTES = 4 MB in escpos.rs, validated across serial/tcp/usb/bluetooth).
-- [ ] Spool large prints.
+- [x] Spool large prints (DEFAULT_PRINT_CHUNK_SIZE = 4096 streaming across serial, bluetooth, and tcp drivers to prevent hardware buffer overruns; barcode length clamped to 255 bytes).
 - [ ] Test sustained scanning.
 - [ ] Test sustained printing.
 - [x] Add scanner cooldown (250ms debounce window in useBarcodeScanner & useWarehouseScanner; MAX_BARCODE_LEN = 1024 bound in HAL USB/Serial/BT; in-flight unmount cancellation guards preventing background poll leaks).

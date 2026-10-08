@@ -960,9 +960,7 @@ itself out of. *Fix:* validate with the same parser the fee path uses.
 decode and a `Vec<[u8;32]>` per call. *Fix:* `OnceLock`; try the master-derived key first.
 
 **O-L16 · kasirmu-hal — `barcode()` truncates the length with `n as u8`** —
-`crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ◦ (3A-13). Over 255 bytes emits a wrong GS k
-length byte and prints garbage silently — the same truncation class round 2 recorded as O-M30 for
-discounts. *Fix:* error above 255, as `encode_field` does for the 99-byte TLV limit.
+`crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ✔ (3A-13). Fixed: clamped input slice to 255 bytes (`slice.len() as u8`) and added test in `escpos_tests.rs` so payload length and GS k header length byte never diverge.
 
 **O-L17 · kasirmu-plugin — `fire_event` clones the hook list and linear-scans each owner** —
 `crates/kasirmu-plugin/src/manager.rs:499-515` ◦ (3B-08). *Fix:* id→index map, borrow the list.
