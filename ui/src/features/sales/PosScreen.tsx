@@ -16,6 +16,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
@@ -988,10 +989,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantMenuEditorScreen
-            onBack={() => setShowMenuEditor(false)}
-            sessionToken={sessionToken}
-          />
+          {/* Crash isolation (F9): a throw in a settings sub-screen must not take
+              the POS screen with it. `onReset` returns to the sale. */}
+          <LocalizedErrorBoundary onReset={() => setShowMenuEditor(false)}>
+            <RestaurantMenuEditorScreen
+              onBack={() => setShowMenuEditor(false)}
+              sessionToken={sessionToken}
+            />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -1002,10 +1007,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantReceiptsScreen
-            onBack={() => setShowReceiptsSettings(false)}
-            tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
-          />
+          <LocalizedErrorBoundary onReset={() => setShowReceiptsSettings(false)}>
+            <RestaurantReceiptsScreen
+              onBack={() => setShowReceiptsSettings(false)}
+              tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
+            />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -1016,7 +1023,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
+          <LocalizedErrorBoundary onReset={() => setShowPaymentsSettings(false)}>
+            <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -1027,7 +1036,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+          <LocalizedErrorBoundary onReset={() => setShowRestaurantSettings(false)}>
+            <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );

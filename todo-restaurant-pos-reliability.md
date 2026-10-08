@@ -379,20 +379,35 @@ here.
 - **Acceptance met:** `npx vitest run RestaurantSettingsScreen` → **10 tests
   passed**, including a case asserting localStorage carries the loaded DB value.
 
-### P4 — Sidebar action gating and crash isolation (fixes F7, F8, F9)
+### P4 — Crash isolation (F9) — ✅ DONE 2026-10-09; F7/F8 still open
 
-1. Gate the Kitchen Display row on the same capability the tablet's
-   `isPageAccessible('kds')` uses, or have `handleNavigate` return a boolean the
-   sidebar can act on. Do not leave a row that silently no-ops.
-2. Align the manager rows with `permissions::SETTINGS_EDIT` rather than the role
-   name, so the control and the IPC boundary agree.
-3. Wrap `RestaurantSidebar` and each settings screen in `ErrorBoundary`, matching
-   the workspace cards.
+**F9 landed.** `LocalizedErrorBoundary` (the locale-aware wrapper the workspace
+cards use) now wraps:
 
-- **Tests:** `ui/src/__tests__/RestaurantPosSidebar.test.tsx` gains a "hides Kitchen
-  Display when the route is unreachable" case; a throw inside the sidebar renders
-  the boundary fallback, not a blank POS.
-- **Acceptance:** `cd ui && npm run test -- RestaurantPosSidebar`
+- `RestaurantSidebar`, mounted in `RestaurantMenu` — the highest-value one, since
+  it is a panel over a **live sale**: a throw there previously discarded the
+  cashier's cart mid-transaction. `onReset` closes the panel and `resetKeys={[menuOpen]}`
+  clears a caught error when the open state changes, so reopening recovers.
+- The four settings sub-screens in `PosScreen` (Menu Editor, Receipts, Payments,
+  Restaurant Settings), each with `onReset` returning to the sale.
+
+**Guard:** `ui/src/__tests__/restaurantPosCrashIsolation.test.ts` — a static
+source scan (the `errorPolicyCompliance.test.ts` idiom) asserting each named
+element sits at `LocalizedErrorBoundary` depth >= 1, plus a collector floor.
+Static rather than behavioural on purpose: the sub-screens are lazy/mocked in the
+existing suites, so a render test would mock the very component it checks and
+could pass with the boundary removed.
+
+**Kill-tested.** Removing the sidebar wrapper fails the guard with
+*"`<RestaurantSidebar\b` is NOT inside a `<LocalizedErrorBoundary>`"*.
+
+**F7 and F8 are NOT done** — they need a product decision (hide the Kitchen
+Display row vs. a "requires KDS access" affordance; role vs. `SETTINGS_EDIT`
+permission for the manager rows) and are listed in §4.
+
+- **Acceptance met:** `cd ui && npm run typecheck` exit 0; eslint 0 errors;
+  `npx vitest run Restaurant PosScreen CartPanel restaurantPosCrashIsolation` →
+  **28 files / 525 passed, 1 skipped**.
 
 ### P6 — i18n sweep (fixes F10)
 

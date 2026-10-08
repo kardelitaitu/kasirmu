@@ -12,6 +12,7 @@ import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
 import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
 import { RestaurantSidebar, type RestaurantSidebarActions, type RestaurantSidebarProfile } from './components/RestaurantSidebar';
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
@@ -605,18 +606,24 @@ export default function RestaurantMenu({
         />
       </div>
 
-      <RestaurantSidebar
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        sidebarRef={sidebarRef}
-        triggerRef={sidebarButtonRef}
-        container={menuRoot}
-        cartActions={cartActions}
-        profile={profile}
-        onChangePhoto={onChangePhoto}
-        onRequestExit={onRequestExit}
-        isManager={isManager}
-      />
+      {/* Crash isolation (F9). The sidebar is a panel over a LIVE sale: a throw
+          inside it must not take the POS screen with it, or the cashier loses the
+          cart mid-transaction. `onReset` remounts just the panel, and `resetKeys`
+          clears a caught error when the open state changes so reopening recovers. */}
+      <LocalizedErrorBoundary onReset={() => setMenuOpen(false)} resetKeys={[menuOpen]}>
+        <RestaurantSidebar
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          sidebarRef={sidebarRef}
+          triggerRef={sidebarButtonRef}
+          container={menuRoot}
+          cartActions={cartActions}
+          profile={profile}
+          onChangePhoto={onChangePhoto}
+          onRequestExit={onRequestExit}
+          isManager={isManager}
+        />
+      </LocalizedErrorBoundary>
 
       {/* ── Category pills ─────────────────────────── */}
       <MenuCategoryTabBar
