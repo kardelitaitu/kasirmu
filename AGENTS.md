@@ -2,7 +2,7 @@
 
 <!-- Amendment 2026-10-09 (BK): §2 gains an EIGHTH step — **Rust format
      (staged)**, a check-only `rustfmt --check` over the .rs files a commit
-     stages. The stamp below names a "seven-step gate count", which was right
+     stages. The stamp below formerly named a "seven-step gate count", which was right
      when written and is right no longer: the step was added because the
      workspace-wide `cargo fmt --all -- --check` was red at HEAD almost daily
      from other lanes' hunks, so enforcing it at pre-push failed every
@@ -12,7 +12,7 @@
 <!-- Audit stamp: 2026-09-27 · BK · status: ACCURATE · version lock: 0.0.41
      change: roundtrip-economy rewrite — quick card (§0), economy protocol (§1),
      task playbook folded into §1; chunk-read rule replaced by whole-file reads (E4);
-     seven-step gate count named explicitly (§2); discovery directive gains fallback order. -->
+     eight-step gate count named explicitly (§2); discovery directive gains fallback order. -->
 
 <!-- Correction 2026-09-29 (docs-auditor, round 6): the stamp above claimed ACCURATE
      while §4 named four variables the code does not read — KASIRMU_ADMIN_KEY,
@@ -49,7 +49,7 @@ value smells stale, refresh via §7.5 folded into a call you already need.
 | Version | Locked at `0.0.41`. NEVER modify version numbers in any manifest. |
 | Commit | ONE permitted form: `git commit -m "<type>(<area>): <subject>" -- path/one path/two`. New files: one chained line `git add -- <paths> && git commit -m "..." -- <paths>`. Full policy + shared-index warnings: §7. |
 | Push | Only on the user's explicit order. Never otherwise. |
-| Gates | Opt-in per clone: `git config core.hooksPath .githooks` — seven steps, §2. |
+| Gates | Opt-in per clone: `git config core.hooksPath .githooks` — eight steps, §2. |
 | UI work | All npm scripts from inside `ui/`. Never bare `tsc`/`eslint` (§5). |
 | Rust work | `cargo check -p <crate>` for iteration. Clippy/workspace tests: pre-push only (§5). |
 | Secrets | user-scope env vars (§4) — mixed `KASIRMU_*` / `OZ_*` prefixes, copy the name verbatim. Never hardcode; never commit `.env`. |
