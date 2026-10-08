@@ -26,6 +26,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { asArray } from '@/utils/ipc-payload';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
@@ -258,48 +259,55 @@ export default function RestaurantMenuEditorScreen({
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<CategoryDto | null>(null);
 
   const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const loadedRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   const currencyCtx = useOptionalCurrency();
   const currency = currencyCtx?.currency || 'IDR';
 
+  const loadSeqRef = useRef(0);
+
   // Load menu products and categories
-  useEffect(() => {
-    if (loadedRef.current) return;
+  const reloadData = useCallback(async () => {
     if (!sessionToken) {
-      // In demo mode or when sessionToken is still establishing, do not lock screen on 'Loading menu...'
       setLoading(false);
       return;
     }
-    loadedRef.current = true;
-    let cancelled = false;
-    (async () => {
-      try {
-        const [prods, cats] = await Promise.all([
-          listProductsScoped(sessionToken),
-          listCategoriesScoped(sessionToken),
-        ]);
-        if (cancelled) return;
-        setItems(prods);
-        setCategories(cats);
-        // Default to all items view or first category if available
-        setSelectedCategoryName('');
-      } catch (err) {
-        if (!cancelled) {
-          addToast({
-            message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-load'),
-            type: 'error',
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+    const seq = ++loadSeqRef.current;
+    try {
+      const [prodsRes, catsRes] = await Promise.allSettled([
+        listProductsScoped(sessionToken),
+        listCategoriesScoped(sessionToken),
+      ]);
+      if (seq !== loadSeqRef.current) return;
+
+      if (prodsRes.status === 'fulfilled') {
+        setItems(asArray<ProductDto>(prodsRes.value));
+      } else {
+        addToast({
+          message: l10nErrorMessage(prodsRes.reason, l10n, 'restaurant-menu-editor-error-load'),
+          type: 'error',
+        });
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+
+      if (catsRes.status === 'fulfilled') {
+        const fetchedCats = asArray<CategoryDto>(catsRes.value);
+        setCategories(fetchedCats);
+      } else {
+        addToast({
+          message: l10nErrorMessage(catsRes.reason, l10n, 'restaurant-menu-editor-error-load'),
+          type: 'error',
+        });
+      }
+    } finally {
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
+    }
   }, [sessionToken, addToast, l10n]);
+
+  useEffect(() => {
+    void reloadData();
+  }, [reloadData]);
 
   // Keep menu editor focused on restaurant products (or items created here)
   const restaurantItems = useMemo(
@@ -754,7 +762,7 @@ export default function RestaurantMenuEditorScreen({
           icon: categoryModal.icon,
         });
         const cats = await listCategoriesScoped(sessionToken);
-        setCategories(cats);
+        setCategories(asArray<CategoryDto>(cats));
         setSelectedCategoryName(trimmedName);
         addToast({
           message: l10n.getString('restaurant-menu-editor-save-success'),
@@ -779,8 +787,8 @@ export default function RestaurantMenuEditorScreen({
         const res = await deleteCategoryScoped(sessionToken, category.id);
         const cats = await listCategoriesScoped(sessionToken);
         const prods = await listProductsScoped(sessionToken);
-        setCategories(cats);
-        setItems(prods);
+        setCategories(asArray<CategoryDto>(cats));
+        setItems(asArray<ProductDto>(prods));
         if (selectedCategoryName === category.name) setSelectedCategoryName('');
         if (res?.affected_products) {
           addToast({

@@ -597,4 +597,28 @@ describe('RestaurantMenuEditorScreen', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('renders saved categories immediately on initial load without adding new category', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    // Verify categories loaded from backend are rendered in the category rail immediately
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-mains')).toBeInTheDocument();
+      expect(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-drinks')).toBeInTheDocument();
+    });
+
+    const rail = screen.getByLabelText('Categories');
+    expect(within(rail).getByText('Mains')).toBeInTheDocument();
+    expect(within(rail).getByText('Drinks')).toBeInTheDocument();
+
+    // Open add item draft to verify saved categories are populated in the select dropdown
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    const categorySelect = screen.getByTestId('restaurant-menu-editor-draft-category') as HTMLSelectElement;
+    expect(categorySelect).toBeInTheDocument();
+    const options = Array.from(categorySelect.options).map((o) => o.value);
+    expect(options).toContain('Mains');
+    expect(options).toContain('Drinks');
+  });
 });
