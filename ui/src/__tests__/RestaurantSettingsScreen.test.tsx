@@ -153,6 +153,47 @@ describe('RestaurantSettingsScreen', () => {
     expect(onSaved).toHaveBeenCalled();
   });
 
+  it('refuses to look saved when a settings read FAILS (F4 data-loss guard)', async () => {
+    // A rejected read must NOT be presented as a clean screen of defaults: that
+    // is what let a failed load overwrite the merchant's real configuration.
+    mocks.getSetting.mockImplementation((_tok: string, key: string) => {
+      if (key === 'restaurant.hold_order') return Promise.reject(new Error('ipc down'));
+      return Promise.resolve('true');
+    });
+
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-settings-load-error')).toBeInTheDocument();
+    });
+
+    // The three properties that make the loss impossible.
+    expect(screen.getByTestId('restaurant-settings-save-btn')).toBeDisabled();
+    expect(screen.queryByText(/All changes saved/i)).toBeNull();
+    expect(screen.getByTestId('restaurant-settings-retry-btn')).toBeInTheDocument();
+  });
+
+  it('re-reads the settings when Retry is pressed after a failure', async () => {
+    let failing = true;
+    mocks.getSetting.mockImplementation(() => {
+      if (failing) return Promise.reject(new Error('ipc down'));
+      return Promise.resolve('true');
+    });
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-settings-load-error')).toBeInTheDocument();
+    });
+
+    failing = false;
+    fireEvent.click(screen.getByTestId('restaurant-settings-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-settings-load-error')).toBeNull();
+    });
+    expect(screen.getByTestId('setting-toggle-hold-order')).toBeInTheDocument();
+  });
+
   it('calls onBack immediately when there are no unsaved changes', async () => {
     const onBack = vi.fn();
     await renderScreen({ onBack });

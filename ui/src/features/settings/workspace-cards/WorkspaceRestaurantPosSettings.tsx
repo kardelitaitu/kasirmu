@@ -45,6 +45,13 @@ export function WorkspaceRestaurantPosSettings({
   const [saving, setSaving] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
+  // True when the course-firing read FAILED (as opposed to returning null, which
+  // means the key was never written). Same F4 guard as
+  // RestaurantSettingsScreen: without it the catch below seeded
+  // `courseFiring: false` into `originalsRef`, so a failed read looked clean and
+  // the next Save wrote that false over the merchant's real setting.
+  const [loadFailed, setLoadFailed] = useState(false);
+
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<Record<string, unknown>>({ tableManagement, courseFiring });
   // Keys the user has edited while the courseFiring load is in flight —
@@ -78,12 +85,18 @@ export function WorkspaceRestaurantPosSettings({
     let cancelled = false;
     getSettingScoped(sessionToken ?? null, 'restaurant.course_firing').then((raw) => {
       if (cancelled) return;
+      // `null` = never written, so the default applies. That is a real answer.
       const loaded = raw === 'true';
       if (!touchedRef.current.has('courseFiring')) setCourseFiring(loaded);
       originalsRef.current = { tableManagement: settings.receipt.showTableNumber, courseFiring: loaded };
+      setLoadFailed(false);
       setOriginalsLoaded(true);
     }).catch(() => {
-      originalsRef.current = { tableManagement: settings.receipt.showTableNumber, courseFiring: false };
+      // A FAILED read is not an answer: seed nothing, so `dirty` cannot read a
+      // false "clean" and Save stays disabled. Seeding `courseFiring: false` here
+      // was the F4 loss.
+      if (cancelled) return;
+      setLoadFailed(true);
       setOriginalsLoaded(true);
     });
     return () => { cancelled = true; };
@@ -270,16 +283,25 @@ export function WorkspaceRestaurantPosSettings({
         </Card>
       )}
 
+      {loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="resto-card-load-error">
+          <Localized id="restaurant-settings-error-load">
+            <span>Failed to load restaurant settings</span>
+          </Localized>
+        </div>
+      )}
+
       {hw.error && (
         <div className="settings-error-banner" role="alert">
           {hw.error}
         </div>
       )}
 
-      {/* Save button */}
+      {/* Save button. `loadFailed` disables it: the card is showing a value it
+          could not read, so saving would overwrite the real one. */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

@@ -304,20 +304,39 @@ lines F4's tests assert against.
   restaurant-pos".
 - **Acceptance:** `cd ui && npm run lint && npm run typecheck && npm run test -- Restaurant CartPanel`
 
-### P2 — Distinguish "unset" from "read failed" (fixes F4)
+### P2 — Distinguish "unset" from "read failed" (fixes F4) — ✅ DONE 2026-10-09
 
-1. Introduce a load result that keeps failure and absence distinct — e.g. a
-   `loadRestaurantSettings(token): Promise<{ ok: true; values } | { ok: false; failedKeys: string[] }>`
-   in a `settingsModel.ts` beside the screen, so it is unit-testable without a DOM.
-2. On failure: do **not** seed `originalsRef` from defaults; surface the existing
-   `restaurant-settings-error-load` toast and render a retry affordance. A partial
-   failure must mark the screen dirty or blocked, never clean.
-3. Apply the same fix to `WorkspaceRestaurantPosSettings.tsx:85-88`.
+**Landed.** New pure model `ui/src/features/restaurant/screens/settingsModel.ts`
+(`loadRestaurantSettings` → `{ ok: true; values } | { ok: false; failedKeys }`),
+with `DEFAULT_RESTAURANT_SETTINGS` and the key list moved into it so there is one
+copy of each default. The reader is injected, so the model is unit-testable with no
+module mocking and no DOM.
 
-- **Tests:** a mocked `getSettingScoped` that rejects must leave `dirty` false
-  **and** the Save button disabled **and** the error surfaced; a key that returns
-  `null` must still use the default.
-- **Acceptance:** `cd ui && npm run test -- RestaurantSettingsScreen WorkspaceRestaurantPosSettings`
+Both consumers now refuse to present a load they cannot vouch for:
+
+- `RestaurantSettingsScreen` — a failed read seeds **nothing**, so `originalsRef`
+  keeps its previous contents and `dirty` cannot read a false "clean". Save is
+disabled, the header stops claiming "All changes saved", and a banner with a
+**Retry** button re-runs the load (`reloadNonce`).
+- `WorkspaceRestaurantPosSettings` — the catch no longer seeds
+  `courseFiring: false`; it sets `loadFailed`, which disables Save and shows the
+  banner.
+
+**One correction found by the tests.** The first attempt gated only the Save button.
+A test asserting `queryByText(/All changes saved/i)` was null failed, because with
+`loadFailed` set `dirty` is false and the header still rendered "All changes
+saved" — the exact misleading state the fix exists to remove. The header now
+renders nothing when `loadFailed`.
+
+**Tests:** `ui/src/__tests__/settingsModel.test.ts` (7 cases: unset→default,
+reject→`ok:false` naming EVERY failed key, stored `"false"` survives, local fallback
+for the interaction pair, DB beats local, spec/field completeness) plus screen-level
+cases for the banner, the disabled Save, the header copy and Retry.
+
+- **Acceptance met:** `cd ui && npm run typecheck` exit 0;
+  `npx vitest run settingsModel RestaurantSettingsScreen WorkspaceRestaurantPosSettings`
+  → **4 files / 34 tests passed**; wider `npx vitest run Restaurant Settings Workspace`
+  → **65 files / 1065 passed, 22 skipped**; eslint on all six changed files exit 0.
 
 ### P3 — Atomic-or-reported saves (fixes F5)
 

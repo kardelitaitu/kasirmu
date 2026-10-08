@@ -12,7 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/components/Toast';
 import { WorkspaceRestaurantPosSettings } from '@/features/settings/workspace-cards/WorkspaceRestaurantPosSettings';
-import { setReceiptSettingsScoped, setSettingsScoped } from '@/api/settings';
+import { getSettingScoped, setReceiptSettingsScoped, setSettingsScoped } from '@/api/settings';
 
 // ── Fluent test l10n ───────────────────────────────────────────────
 
@@ -243,6 +243,38 @@ describe('WorkspaceRestaurantPosSettings', () => {
     const [receiptToken, receiptDto] = vi.mocked(setReceiptSettingsScoped).mock.calls[0]!;
     expect(receiptToken).toBe('test-session-token');
     expect(receiptDto.showTableNumber).toBe(true);
+  });
+
+  // ── The failed-load guard (F4) ────────────────────────────────
+  //
+  // The sibling of RestaurantSettingsScreen's guard, and the same defect: the
+  // catch used to seed `courseFiring: false` into originalsRef, so a failed read
+  // looked clean and the next Save wrote that false over the merchant's setting.
+
+  it('disables Save and reports the failure when the course-firing read rejects', async () => {
+    vi.mocked(getSettingScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resto-card-load-error')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
+
+  it('keeps Save disabled after a failed read even once the user toggles a control', async () => {
+    // The important half: the user CAN still move a toggle, but the card must not
+    // let them commit a screen whose other value it never read.
+    vi.mocked(getSettingScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId('resto-card-load-error')).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.getElementById('resto-table-mgmt') as HTMLInputElement);
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
   });
 
   it('hides Save button in inspector-drawer variant', () => {

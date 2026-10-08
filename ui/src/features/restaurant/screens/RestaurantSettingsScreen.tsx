@@ -39,6 +39,11 @@ import {
   setInteractionSoundEnabled,
   setInteractionVibrationEnabled,
 } from '@/utils/interaction';
+import {
+  DEFAULT_RESTAURANT_SETTINGS,
+  loadRestaurantSettings,
+  type RestaurantSettingsValues,
+} from './restaurantSettingsModel';
 import './RestaurantSettingsScreens.css';
 
 // ── Settings Icon ───────────────────────────────────────────────────
@@ -113,32 +118,10 @@ function SettingRow({ id, label, description, checked, onChange, testId, badge }
 }
 
 // ── Screen State Interface ──────────────────────────────────────────
-
-interface RestaurantSettingsValues {
-  customerName: boolean;
-  guestCount: boolean;
-  orderTypePrompt: boolean;
-  holdOrder: boolean;
-  saveTab: boolean;
-  courseFiring: boolean;
-  autoPrintKitchen: boolean;
-  soundChime: boolean;
-  interactionSound: boolean;
-  interactionVibration: boolean;
-}
-
-const DEFAULT_RESTAURANT_SETTINGS: RestaurantSettingsValues = {
-  customerName: true,
-  guestCount: false,
-  orderTypePrompt: true,
-  holdOrder: true,
-  saveTab: true,
-  courseFiring: false,
-  autoPrintKitchen: false,
-  soundChime: true,
-  interactionSound: true,
-  interactionVibration: true,
-};
+//
+// `RestaurantSettingsValues` and `DEFAULT_RESTAURANT_SETTINGS` now live in
+// ./settingsModel so the load logic that applies them is unit-testable without a
+// DOM, and so there is exactly ONE copy of each default.
 
 export interface RestaurantSettingsScreenProps {
   onSaved?: () => void;
@@ -175,6 +158,21 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   const originalsRef = useRef<RestaurantSettingsValues>({ ...DEFAULT_RESTAURANT_SETTINGS });
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
+  // True when a key's read FAILED (as opposed to returning null = never written).
+  //
+  // This is the F4 fix, and it is a data-loss guard rather than polish. Every key
+  // below used to be loaded with `.catch(() => null)`, which made a transport
+  // failure indistinguishable from "never written": the resolver fell back to
+  // DEFAULT_RESTAURANT_SETTINGS and then seeded `originalsRef` from those
+  // defaults, so `dirty` read false and the screen looked clean and saved. The
+  // merchant's next Save then wrote the DEFAULTS over their real configuration.
+  //
+  // With this flag the screen refuses to present a loaded state it cannot vouch
+  // for: no Save, an explicit error, and a retry that re-reads.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Bumped by Retry to re-run the load effect.
+  const [reloadNonce, setReloadNonce] = useState(0);
+
   // Load settings on mount
   useEffect(() => {
     let cancelled = false;
@@ -183,80 +181,44 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       if (!sessionToken) return;
       setLoading(true);
       try {
-        const [
-          custNameRaw,
-          guestCountRaw,
-          orderTypeRaw,
-          holdOrderRaw,
-          saveTabRaw,
-          courseFiringRaw,
-          autoPrintRaw,
-          soundChimeRaw,
-          interactionSoundRaw,
-          interactionVibrationRaw,
-        ] = await Promise.all([
-          getSettingScoped(sessionToken, 'restaurant.customer_name').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.guest_count').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.order_type_prompt').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.hold_order').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.save_tab').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.course_firing').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.auto_print_kitchen').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.sound_chime').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.interaction_sound').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.interaction_vibration').catch(() => null),
-        ]);
+        // Every read goes through the model, which keeps "never written" (null,
+        // serve the default) apart from "could not read" (reject, refuse to
+        // pretend). See settingsModel.ts for why that distinction is a data-loss
+        // guard and not a nicety.
+        const result = await loadRestaurantSettings(
+          sessionToken,
+          getSettingScoped,
+          {
+            interactionSound: isInteractionSoundEnabled(),
+            interactionVibration: isInteractionVibrationEnabled(),
+          },
+        );
 
         if (cancelled) return;
 
-        const resolvedCustName =
-          custNameRaw !== null ? custNameRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.customerName;
-        const resolvedGuestCount =
-          guestCountRaw !== null ? guestCountRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.guestCount;
-        const resolvedOrderType =
-          orderTypeRaw !== null ? orderTypeRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.orderTypePrompt;
-        const resolvedHoldOrder =
-          holdOrderRaw !== null ? holdOrderRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.holdOrder;
-        const resolvedSaveTab =
-          saveTabRaw !== null ? saveTabRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.saveTab;
-        const resolvedCourseFiring =
-          courseFiringRaw !== null ? courseFiringRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.courseFiring;
-        const resolvedAutoPrint =
-          autoPrintRaw !== null ? autoPrintRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen;
-        const resolvedSoundChime =
-          soundChimeRaw !== null ? soundChimeRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.soundChime;
-        const resolvedInteractionSound =
-          interactionSoundRaw !== null
-            ? interactionSoundRaw === 'true'
-            : isInteractionSoundEnabled();
-        const resolvedInteractionVibration =
-          interactionVibrationRaw !== null
-            ? interactionVibrationRaw === 'true'
-            : isInteractionVibrationEnabled();
+        // Refuse to present a loaded state we cannot vouch for: no values are
+        // seeded, so `originalsRef` keeps its previous contents, `dirty` cannot
+        // read a false "clean", and the Save button stays disabled (see the
+        // header render). Seeding defaults here is precisely the F4 bug.
+        if (!result.ok) {
+          setLoadFailed(true);
+          return;
+        }
+        setLoadFailed(false);
+        const values = result.values;
 
-        setCustomerName(resolvedCustName);
-        setGuestCount(resolvedGuestCount);
-        setOrderTypePrompt(resolvedOrderType);
-        setHoldOrder(resolvedHoldOrder);
-        setSaveTab(resolvedSaveTab);
-        setCourseFiring(resolvedCourseFiring);
-        setAutoPrintKitchen(resolvedAutoPrint);
-        setSoundChime(resolvedSoundChime);
-        setInteractionSound(resolvedInteractionSound);
-        setInteractionVibration(resolvedInteractionVibration);
+        setCustomerName(values.customerName);
+        setGuestCount(values.guestCount);
+        setOrderTypePrompt(values.orderTypePrompt);
+        setHoldOrder(values.holdOrder);
+        setSaveTab(values.saveTab);
+        setCourseFiring(values.courseFiring);
+        setAutoPrintKitchen(values.autoPrintKitchen);
+        setSoundChime(values.soundChime);
+        setInteractionSound(values.interactionSound);
+        setInteractionVibration(values.interactionVibration);
 
-        originalsRef.current = {
-          customerName: resolvedCustName,
-          guestCount: resolvedGuestCount,
-          orderTypePrompt: resolvedOrderType,
-          holdOrder: resolvedHoldOrder,
-          saveTab: resolvedSaveTab,
-          courseFiring: resolvedCourseFiring,
-          autoPrintKitchen: resolvedAutoPrint,
-          soundChime: resolvedSoundChime,
-          interactionSound: resolvedInteractionSound,
-          interactionVibration: resolvedInteractionVibration,
-        };
+        originalsRef.current = { ...values };
         setDirtyVersion((v) => v + 1);
       } catch {
         addToastRef.current({
@@ -272,7 +234,8 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     return () => {
       cancelled = true;
     };
-  }, [sessionToken]);
+    // `reloadNonce` is the Retry control's re-run trigger.
+  }, [sessionToken, reloadNonce]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
@@ -464,16 +427,22 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               className="restaurant-settings-header-dirty"
               style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
             >
-              {dirty ? (
+              {/* A failed load must not claim "All changes saved". The values on
+                  screen are the model's defaults, not the merchant's, so the
+                  honest answer is the error banner below and nothing here. */}
+              {loadFailed ? null : dirty ? (
                 <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
               ) : (
                 <Localized id="restaurant-all-saved">All changes saved</Localized>
               )}
             </span>
+            {/* `loadFailed` disables Save outright. The screen is showing values it
+                could not read, so letting it write would overwrite the real ones
+                with defaults — the F4 loss. Retry is the only way forward. */}
             <button
               type="button"
               className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-              disabled={!dirty || saving}
+              disabled={!dirty || saving || loadFailed}
               aria-busy={saving || undefined}
               onClick={handleSave}
               data-testid="restaurant-settings-save-btn"
@@ -497,6 +466,30 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
           </p>
         ) : (
           <div className="resto-settings-cards-list">
+
+            {/* ── Load failure (F4) ─────────────────────────────────
+                Shown INSTEAD of trusting the controls. The values below are the
+                model's defaults, not the merchant's, so the banner says the read
+                failed and Retry re-runs it. Save is disabled above. */}
+            {loadFailed && (
+              <div className="settings-error-banner" role="alert" data-testid="restaurant-settings-load-error">
+                <span>
+                  <Localized id="restaurant-settings-error-load">
+                    <span>Failed to load restaurant settings</span>
+                  </Localized>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  data-testid="restaurant-settings-retry-btn"
+                  onClick={() => setReloadNonce((n) => n + 1)}
+                >
+                  <Localized id="retry">
+                    <span>Retry</span>
+                  </Localized>
+                </button>
+              </div>
+            )}
 
             {/* ── 1. Order Entry & Identification ─────────────────── */}
             <div className="resto-settings-group-card" data-testid="settings-card-order-entry">
