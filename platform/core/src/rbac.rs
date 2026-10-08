@@ -257,9 +257,7 @@ impl fmt::Display for Permission {
 /// Check if a single granted permission pattern satisfies the required permission.
 #[inline]
 fn grant_matches(grant: &str, required: &str, domain: &str, well_formed: bool) -> bool {
-    grant == "*"
-        || grant == required
-        || (well_formed && grant.strip_suffix(":*") == Some(domain))
+    grant == "*" || grant == required || (well_formed && grant.strip_suffix(":*") == Some(domain))
 }
 
 /// Check whether a serialized JSON array of permission strings grants a required permission.

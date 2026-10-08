@@ -64,7 +64,6 @@
     "local_api_set_port_scoped",
     "local_api_set_store_scoped",
     "local_api_status_scoped",
-    "offline_queue_status_summary_scoped",
     "open_product_images_scoped",
     "pause_subscription",
     "pause_subscription_scoped",
@@ -93,8 +92,7 @@
     "test_auth_connection",
     "update_kds_device_status_scoped",
     "update_pg_sync_settings_scoped",
-    "update_workspace_instance_scoped",
-    "version_scoped"
+    "update_workspace_instance_scoped"
   ],
   "scoped_orphans": [
     "check_license_status_scoped",

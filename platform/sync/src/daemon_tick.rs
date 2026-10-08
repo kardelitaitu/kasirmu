@@ -625,7 +625,15 @@ async fn run_license_ride_along(db: &DbConnection) {
         .unwrap_or(None)
     };
 
-    let Some((api_key_enc, machine_id, hardware_fingerprint, hardware_token, crl_checked_at, cached_crl_json)) = creds else {
+    let Some((
+        api_key_enc,
+        machine_id,
+        hardware_fingerprint,
+        hardware_token,
+        crl_checked_at,
+        cached_crl_json,
+    )) = creds
+    else {
         // No licence activated on this terminal — nothing to ask about.
         // This is the common path for a free/local install, so it is debug.
         tracing::debug!("licence ride-along skipped: no stored api key");
@@ -694,7 +702,11 @@ async fn run_license_ride_along(db: &DbConnection) {
     // Poll the signed CRL to enforce instantaneous revocation (ADR #58 §2.1/§2.2, O-M37).
     // Gated by TTL cache so full CRL download, RSA signature verification,
     // and database writes do not fire on every short sync tick.
-    if should_poll_crl(crl_checked_at.as_deref(), chrono::Utc::now(), DEFAULT_CRL_POLL_INTERVAL_SECS) {
+    if should_poll_crl(
+        crl_checked_at.as_deref(),
+        chrono::Utc::now(),
+        DEFAULT_CRL_POLL_INTERVAL_SECS,
+    ) {
         if let Ok(crl_resp) = kasirmu_core::license_verification::fetch_license_crl(None).await {
             let is_unchanged = cached_crl_json
                 .as_deref()

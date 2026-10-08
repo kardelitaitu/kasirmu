@@ -434,7 +434,10 @@ fn an_unparseable_value_falls_back_and_names_the_value() {
 
 #[test]
 fn try_init_json_with_file_fails_fast_on_unusable_dir() {
-    let path = std::env::temp_dir().join(format!("kasirmu-logging-json-unusable-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "kasirmu-logging-json-unusable-{}",
+        std::process::id()
+    ));
     std::fs::write(&path, b"file where a directory belongs").unwrap();
 
     let result = crate::try_init_json_with_file(path.to_str().unwrap(), "json-test", 0);

@@ -61,7 +61,10 @@ impl<'a> CurrencyRepository<'a> {
     ///
     /// Prevents unbounded memory growth when long-lived stores accumulate
     /// thousands of daily rate changes. Ordered newest first.
-    pub fn list_exchange_rates_bounded(&self, limit: u32) -> Result<Vec<ExchangeRateRow>, CurrencyError> {
+    pub fn list_exchange_rates_bounded(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<ExchangeRateRow>, CurrencyError> {
         let limit = limit.clamp(1, 1000);
         let mut stmt = self.conn.prepare(
             "SELECT id, from_currency, to_currency, rate_millionths, source, effective_date, created_at

@@ -2691,4 +2691,3 @@ fn crl_poll_ttl_caching_and_staleness_detection() {
         "must poll CRL when timestamp is corrupted/unparseable"
     );
 }
-
