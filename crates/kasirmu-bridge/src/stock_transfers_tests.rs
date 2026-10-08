@@ -280,3 +280,156 @@ async fn scoped_get_stock_transfer_not_found() {
         .unwrap();
     assert!(result.is_none());
 }
+
+// ── create_stock_transfer_scoped: store-local location + terminal ────
+
+/// Seed one ACTIVE location and one ACTIVE terminal in the store DB the token
+/// resolves to, so a test can name a real one and a fake one without guessing.
+fn seed_active_location_and_terminal(bridge: &TestBridge, loc: &str, term: &str) {
+    let (_, conn) = bridge.ctx().resolve_scope("transfer-token").unwrap();
+    let db = conn.lock().unwrap();
+    db.execute(
+        "INSERT INTO inventory_locations (id, name, type, is_active) VALUES (?1, 'Main', 'store', 1)",
+        [loc],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO terminals (id, name, device_id, is_active) VALUES (?1, 'Till 1', ?2, 1)",
+        rusqlite::params![term, format!("dev-{term}")],
+    )
+    .unwrap();
+}
+
+/// WHY THESE EXIST. `validate_location` and `validate_terminal`
+/// (`stock_transfers.rs:87` and `:112`) each guard TWO call sites, checking that a
+/// client-supplied location/terminal is ACTIVE IN THIS STORE. Neither had a test:
+/// MEASURED, replacing both bodies with `Ok(())` left all 12 tests in this file GREEN.
+/// A transfer could then name a location or terminal belonging to another store, or an
+/// inactive one, and the record would carry a reference the store's own inventory
+/// ledger cannot resolve.
+#[tokio::test]
+async fn scoped_create_rejects_a_foreign_or_inactive_source_location() {
+    let bridge = scoped_test_bridge();
+    seed_active_location_and_terminal(&bridge, "loc-main", "term-1");
+
+    // 1. A location id that was never seeded in THIS store.
+    let err = create_stock_transfer_scoped(
+        &bridge.ctx(),
+        "transfer-token",
+        Some("loc-other-store"),
+        Some("loc-main"),
+        None,
+        None,
+        "cross-store",
+        &[],
+    )
+    .await
+    .expect_err("a foreign source location must be refused");
+    assert!(
+        matches!(&err, BridgeError::Invalid(msg)
+            if msg.contains("source") && msg.contains("loc-other-store")),
+        "the refusal must name the FIELD and the id, so an operator can see which side of the transfer was wrong; got: {err:?}"
+    );
+
+    // 2. The SAME id, made inactive: the check is `is_active = 1`, not mere presence.
+    {
+        let (_, conn) = bridge.ctx().resolve_scope("transfer-token").unwrap();
+        let db = conn.lock().unwrap();
+        db.execute(
+            "UPDATE inventory_locations SET is_active = 0 WHERE id = 'loc-main'",
+            [],
+        )
+        .unwrap();
+    }
+    let err = create_stock_transfer_scoped(
+        &bridge.ctx(),
+        "transfer-token",
+        Some("loc-main"),
+        None,
+        None,
+        None,
+        "inactive",
+        &[],
+    )
+    .await
+    .expect_err("an INACTIVE source location must be refused");
+    assert!(
+        matches!(&err, BridgeError::Invalid(msg) if msg.contains("source")),
+        "an inactive location is not an absent one, but both must refuse; got: {err:?}"
+    );
+}
+
+/// A well-formed request still succeeds once a real location and terminal exist.
+///
+/// The positive case is what proves the check is a LOOKUP rather than a blanket
+/// refusal: every assertion above would pass under a validator that refused
+/// everything.
+#[tokio::test]
+async fn scoped_create_accepts_an_active_location_and_terminal() {
+    let bridge = scoped_test_bridge();
+    seed_active_location_and_terminal(&bridge, "loc-main", "term-1");
+
+    let transfer = create_stock_transfer_scoped(
+        &bridge.ctx(),
+        "transfer-token",
+        Some("loc-main"),
+        Some("loc-main"),
+        Some("term-1"),
+        None,
+        "valid",
+        &[],
+    )
+    .await
+    .expect("an active location and terminal must be accepted");
+
+    assert_eq!(transfer.source_location.as_deref(), Some("loc-main"));
+    assert_eq!(transfer.source_terminal_id.as_deref(), Some("term-1"));
+}
+
+/// A foreign or inactive TERMINAL is refused, on both sides.
+#[tokio::test]
+async fn scoped_create_rejects_a_foreign_or_inactive_terminal() {
+    let bridge = scoped_test_bridge();
+    seed_active_location_and_terminal(&bridge, "loc-main", "term-1");
+
+    let err = create_stock_transfer_scoped(
+        &bridge.ctx(),
+        "transfer-token",
+        None,
+        None,
+        None,
+        Some("term-other-store"),
+        "foreign terminal",
+        &[],
+    )
+    .await
+    .expect_err("a foreign destination terminal must be refused");
+    assert!(
+        matches!(&err, BridgeError::Invalid(msg)
+            if msg.contains("destination") && msg.contains("term-other-store")),
+        "the refusal must name the destination side and the id; got: {err:?}"
+    );
+
+    {
+        let (_, conn) = bridge.ctx().resolve_scope("transfer-token").unwrap();
+        let db = conn.lock().unwrap();
+        db.execute("UPDATE terminals SET is_active = 0 WHERE id = 'term-1'", [])
+            .unwrap();
+    }
+    let err = create_stock_transfer_scoped(
+        &bridge.ctx(),
+        "transfer-token",
+        None,
+        None,
+        Some("term-1"),
+        None,
+        "inactive terminal",
+        &[],
+    )
+    .await
+    .expect_err("an INACTIVE source terminal must be refused");
+    assert!(
+        matches!(&err, BridgeError::Invalid(msg) if msg.contains("source")),
+        "got: {err:?}"
+    );
+}
