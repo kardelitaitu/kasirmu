@@ -226,10 +226,15 @@ const EMPTY_DRAFT: MenuDraft = {
 
 export interface RestaurantMenuEditorScreenProps {
   onBack?: () => void;
+  sessionToken?: string | null;
 }
 
-export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEditorScreenProps) {
-  const { sessionToken } = useWorkspace();
+export default function RestaurantMenuEditorScreen({
+  onBack,
+  sessionToken: propSessionToken,
+}: RestaurantMenuEditorScreenProps) {
+  const { sessionToken: contextSessionToken } = useWorkspace();
+  const sessionToken = propSessionToken || contextSessionToken || '';
   const { l10n } = useLocalization();
   const { addToast } = useToast();
 
@@ -261,7 +266,12 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
 
   // Load menu products and categories
   useEffect(() => {
-    if (loadedRef.current || !sessionToken) return;
+    if (loadedRef.current) return;
+    if (!sessionToken) {
+      // In demo mode or when sessionToken is still establishing, do not lock screen on 'Loading menu...'
+      setLoading(false);
+      return;
+    }
     loadedRef.current = true;
     let cancelled = false;
     (async () => {
@@ -1429,11 +1439,21 @@ export default function RestaurantMenuEditorScreen({ onBack }: RestaurantMenuEdi
                         </button>
                       </>
                     ) : (
-                      <p className="restaurant-menu-editor-empty">
-                        <Localized id="restaurant-menu-editor-empty">
-                          <span>No items in this category yet.</span>
-                        </Localized>
-                      </p>
+                      <>
+                        <p className="restaurant-menu-editor-empty">
+                          <Localized id="restaurant-menu-editor-empty">
+                            <span>No items in this category yet.</span>
+                          </Localized>
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--sm"
+                          onClick={beginCreate}
+                          data-testid="restaurant-menu-editor-empty-new-item"
+                        >
+                          + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
+                        </button>
+                      </>
                     )}
                   </div>
                 ) : (

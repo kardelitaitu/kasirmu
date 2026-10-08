@@ -976,7 +976,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantMenuEditorScreen onBack={() => setShowMenuEditor(false)} />
+          <RestaurantMenuEditorScreen
+            onBack={() => setShowMenuEditor(false)}
+            sessionToken={sessionToken}
+          />
         </div>
       </div>
     );
