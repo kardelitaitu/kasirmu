@@ -458,10 +458,10 @@ pub(super) async fn run_tick(
                             };
 
                             // SYNC-01: propagate anchor-persistence failures into sync_error
-                            if let Some(msg) = anchor_err {
-                                if sync_error.is_none() {
-                                    sync_error = Some(msg);
-                                }
+                            if let Some(msg) = anchor_err
+                                && sync_error.is_none()
+                            {
+                                sync_error = Some(msg);
                             }
 
                             // O-M38: Fire settings_sink AFTER releasing the blocking DB connection lock
