@@ -93,6 +93,23 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the terminal label — and the test that covered the INPUT but not the UNIT. Fixed in `11fe8c8a1`.
+
+**Completed R186's sweep by looking for the limits that had NOT been converted, and found one with an instructive near-miss in its own test.**
+
+**The target.** `routes/terminals.rs` bounds three fields on registration. **Two of them are correct and one is not, in the same function:**
+- `terminal_id.len() > 64` — **right**, because the charset check beside it forces `[A-Za-z0-9_-]`, so bytes equal characters
+- `tenant.len() > 64` — **right**, same ASCII-only rule
+- `label.len() > 128` — **wrong**: `label` is free text with no charset restriction, stored in an unbounded `TEXT` column and rendered back in the terminal list
+
+So a 128-character accented label (256 bytes) was refused with **"terminal label too long (max 128)"** — a message naming a limit the input did not exceed. **MEASURED: swapping the label guard to `chars().count()` left all 15 tests in the file GREEN.**
+
+**The part worth recording: an existing test covered this INPUT and still missed it.** `register_terminal_rejects_overlong_label` exists and uses `"l".repeat(129)` — where **129 ASCII characters and 129 bytes agree**, so a byte guard and a character guard both reject it and the test passes either way. That is R180's "neighbouring property" shape for the third time this campaign, and it is why the new test asserts the fixture is genuinely multi-byte (`chars() == 128`, `len() == 256`) before using it.
+
+**The new test pins both halves of the distinction**, deliberately: the 128-character label must be ACCEPTED, and the id fields stay byte-bounded — pinning that keeps a future edit from "fixing" them into an inconsistency, since for an ASCII-only charset the two counts are the same number by construction. **KILL-TESTED: reverting the label to `.len()` FAILS it** with the assertion message naming the reason. 16/16 green; clippy Finished.
+
+**Running tally: 33 guards examined, 15 sound, 19 with defects found and fixed.**
+
 ## 2026-10-08: the byte/char length-limit defect is a FAMILY — 15 guards across 6 files. Fixed in `d22c23ec6`.
 
 **R185 fixed one instance; this round censused the class and found fifteen more.** Grepping for validation messages that name CHARACTERS and pairing each with the guard above it produced eleven more sites, all byte-based:
