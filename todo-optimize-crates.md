@@ -925,12 +925,8 @@ log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04
 `SELECT product_type` could be one; the ingredient `SELECT sku` exists only to make the `info!`
 at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
 
-**O-M66 · modules-staff — every permission check re-parses the grants JSON** —
-`modules/staff/src/models.rs:52-69` ◦ (3D-06). A full `serde_json` parse plus a `Vec<String>` per
-call, and `unwrap_or_default()` turns malformed JSON into "authorises nothing" silently.
-`platform_core::rbac::has_permission` then allocates a second `String` per call
-(`platform/core/src/rbac.rs:259-265`). *Fix:* parse once into a `HashSet`; surface the parse
-error.
+**O-M66 · modules-staff / platform-core — every permission check re-parses the grants JSON** —
+`platform/core/src/staff.rs:52-60`, `platform/core/src/rbac.rs:259-280` ✔ (3D-06). Fixed (`1428ad443`): zero-alloc check on required domain wildcard (`strip_suffix(":*") == Some(domain)`) avoiding `format!` String allocation, and `check_permissions_json` with borrowed `Cow<str>` avoiding individual String allocations on every permission evaluation.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -939,17 +935,13 @@ error.
 `GlobalRef` per stream.
 
 **O-L13 · qris-core — a money percentage validated with `parse::<f64>()`** —
-`crates/qris-core/src/validate.rs:58-62` ◦ (3A-09). Accepts `"1e3"`, `"inf"`, `"NaN"`, which the
-exact-decimal fee parser (`amount.rs:98`) rejects — so validation can pass a payload that fails
-later. It is also `f64` on money, which `amount.rs:76-81` records as a rule the crate broke
-itself out of. *Fix:* validate with the same parser the fee path uses.
+`crates/qris-core/src/validate.rs:58-62` ✔ (3A-09). Fixed (`df4d7aa2b`): delegated percentage validation to `is_valid_percent_str` backed by exact integer decimal parser `parse_percent`. Rejects `"1e3"`, `"NaN"`, `"inf"` and eliminates float arithmetic on monetary calculations.
 
 **O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ◦
 (3A-10). Runs twice per QRIS round trip. *Fix:* table-driven.
 
 **O-L15 · kasirmu-crypto — `master_key_from_env()` runs per encrypt/decrypt call** —
-`crates/kasirmu-crypto/src/lib.rs:87-91`, `:112`, `:162-168` ✔ (3A-12). An env lookup, a hex
-decode and a `Vec<[u8;32]>` per call. *Fix:* `OnceLock`; try the master-derived key first.
+`crates/kasirmu-crypto/src/lib.rs:139-152` ✔ (3A-12). Fixed (`c656624c2`): cached `master_key_from_env()` with `OnceLock<Option<[u8; 32]>>`, avoiding repeated environment queries, string allocations, and hex decoding on every encryption and decryption invocation.
 
 **O-L16 · kasirmu-hal — `barcode()` truncates the length with `n as u8`** —
 `crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ✔ (3A-13). Fixed: clamped input slice to 255 bytes (`slice.len() as u8`) and added test in `escpos_tests.rs` so payload length and GS k header length byte never diverge.
@@ -1921,3 +1913,25 @@ Two medium findings closed with focused tests:
    - `modules/currency/src/repository.rs`: Added `DEFAULT_MAX_EXCHANGE_RATES = 500` and `list_exchange_rates_bounded(limit)` with SQL `LIMIT` pushdown.
    - Prevents memory explosions on long-lived store deployments with thousands of historical rate entries.
    - Verified with unit test `list_exchange_rates_bounded_respects_limit`. All 84 currency tests green.
+
+---
+
+## §11M — O-L13, O-L15, and O-M66 resolved: QRIS decimal validation, crypto OnceLock, and RBAC zero-alloc grants (2026-10-08)
+
+Three findings closed across crypto, payments, and authorization subsystems:
+
+1. **O-L13 · `qris-core` exact decimal percentage validation (`df4d7aa2b`)**:
+   - `crates/qris-core/src/validate.rs`: Eliminated float parsing `parse::<f64>()` in favor of `is_valid_percent_str` backed by exact decimal integer math `parse_percent`.
+   - Prevents exponential notation (`"1e3"`), `"inf"`, and `"NaN"` from bypassing validation, guaranteeing money type-safety.
+   - Verified with unit test `percentage_tip_scientific_notation_or_nan_fails_validation`. All 35 unit, 9 integration, and 13 doctests green.
+
+2. **O-L15 · `kasirmu-crypto` master key environment caching (`c656624c2`)**:
+   - `crates/kasirmu-crypto/src/lib.rs`: Cached `master_key_from_env()` with `static CACHED: OnceLock<Option<[u8; 32]>>`.
+   - Eliminates repetitive environment variable queries, string allocations, and hex decoding on every encryption and decryption operation.
+   - Verified across all 42 unit tests and 1 integration test in `kasirmu-crypto`.
+
+3. **O-M66 · `platform-core` / `modules-staff` zero-alloc RBAC evaluation (`1428ad443`)**:
+   - `platform/core/src/rbac.rs` & `platform/core/src/staff.rs`: Optimized `has_permission` to avoid heap allocations (`format!("{domain}:*")`) via `strip_suffix(":*") == Some(domain)`.
+   - Replaced redundant string allocations in `Role::has_permission` with `check_permissions_json`, using borrowed `Cow<str>` to parse grants in-place with short-circuiting.
+   - Verified across all 71 RBAC tests and 35 staff tests in `platform-core`, plus 23 tests and 1 doctest in `modules-staff`.
+
