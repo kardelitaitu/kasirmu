@@ -382,3 +382,69 @@ fn mask_token_is_deterministic_so_logs_can_correlate() {
         "two different sessions must not collapse onto one label"
     );
 }
+
+// ── mask_pan: the short-PAN branch and its floor ─────────────────────
+
+/// A 7-DIGIT input must still come back with its leading digits replaced.
+///
+/// WHY THIS EXISTS. `mask_pan`'s `digits.len() <= 10` branch computes
+/// `masked_len = len - 4`, so for lengths 7, 8 and 9 the raw subtraction gives 3, 4 and
+/// 5. The `.max(4)` floor is what keeps the prefix at four stars. MEASURED: deleting the
+/// floor left all 38 tests in this file GREEN, and for a 7-digit value the function then
+/// returns THE INPUT UNCHANGED -- the mask disappears exactly where it is needed.
+/// `mask_pan` does not validate before masking (its docs promise a masked string "even
+/// for short inputs"), so it must not be assumed to always see a 13-19 digit PAN.
+#[test]
+fn mask_pan_seven_digits_does_not_return_the_input() {
+    let input = "1234567";
+    let masked = mask_pan(input);
+    assert_ne!(
+        masked, input,
+        "a 7-digit value must never come back unchanged: that is a total masking failure"
+    );
+    assert_eq!(masked, "****4567");
+}
+
+/// The 8- and 9-digit boundaries, pinned as literals so an edit to the arithmetic
+/// cannot move the expectation with it.
+#[test]
+fn mask_pan_eight_and_nine_digit_boundaries() {
+    assert_eq!(mask_pan("12345678"), "****5678");
+    assert_eq!(mask_pan("123456789"), "*****6789");
+}
+
+/// The 11-digit boundary, where the general first-6/last-4 branch sees its
+/// thinnest-ever masking (a single star). The 10-digit case sits beside it because the
+/// two branches meet between them.
+#[test]
+fn mask_pan_eleven_digit_boundary_shows_only_six_plus_four() {
+    assert_eq!(mask_pan("12345678901"), "123456*8901");
+    assert_eq!(mask_pan("1234567890"), "******7890");
+}
+
+/// A property over the whole short branch: for every length 7..=10 the result must keep
+/// at least four masked characters, still end with the last four digits, and never be
+/// SHORTER than the input (a shorter result would mean a digit was dropped rather than
+/// replaced).
+#[test]
+fn mask_pan_short_branch_never_leaks_the_masked_prefix() {
+    for len in 7..=10usize {
+        let digits: String = (0..len)
+            .map(|d| char::from(b'0' + (d % 10) as u8))
+            .collect();
+        let masked = mask_pan(&digits);
+        let stars = masked.chars().take_while(|c| *c == '*').count();
+        assert!(
+            stars >= 4,
+            "length {len} produced only {stars} masked characters: {masked}"
+        );
+        assert!(
+            masked.ends_with(&digits[digits.len() - 4..]),
+            "length {len} must still end with the last four digits: {masked}"
+        );
+        assert!(
+            masked.len() >= digits.len(),
+            "length {len}: masked form {masked} is SHORTER than the input"
+        );
+    }
+}
