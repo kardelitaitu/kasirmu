@@ -600,17 +600,13 @@ its batch (`:175`). *Fix:* estimate from `payload.len()`; batch references; reus
 `platform/sync/src/queue.rs:881` ✔. Fixed: indexed `SELECT MAX(synced_at) …` in `Store::get_last_synced_at` instead of loading all historical rows.
 
 **O-M37 · platform/sync — full CRL downloaded and signature-verified on every tick of every
-terminal** — `platform/sync/src/daemon_tick.rs:585-589` ◦. Fleet traffic scales with
-revocation count. *Fix:* delta CRL keyed by version watermark + local TTL cache.
+terminal** — `platform/sync/src/daemon_tick.rs:585-589` ✔. Fixed: gated CRL poll by 15-minute TTL cache (`DEFAULT_CRL_POLL_INTERVAL_SECS = 900`) and unchanged cached-payload bypass, avoiding continuous network requests, RSA signature verification, and DB writes on short sync ticks.
 
 **O-M38 · platform/sync — the settings sink fires while the blocking DB lock is held** —
-`platform/sync/src/daemon_tick.rs:369-380`, `:696` ◦. A slow Tauri emit stalls every other DB
-consumer, checkout included; a DB-touching sink deadlocks. *Fix:* collect events, emit after
-release.
+`platform/sync/src/daemon_tick.rs:369-380`, `:696` ✔. Fixed: events collected in blocking phase, emitted through `settings_sink` after dropping the DB connection lock.
 
 **O-M39 · platform/sync — image-push client has no timeout; DB mutex re-taken per missing
-file** — `platform/sync/src/image_push.rs:75`, `:176-178` ◦. A hung server stops image pushes
-permanently. *Fix:* timeouts; accumulate failures, mark once.
+file** — `platform/sync/src/image_push.rs:75`, `:176-178` ✔. Fixed: client bounded by timeout; missing files accumulated into `missing_files: Vec<String>` and marked failed under a single lock hold.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
