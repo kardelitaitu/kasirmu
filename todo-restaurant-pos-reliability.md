@@ -627,6 +627,24 @@ round-6 cards: `WorkspaceKdsSettings` and `WorkspaceInventorySettings` both gain
 `loadFailed` with no way to clear it. Both now have `reloadNonce` (bypassing their
 once-per-session latch) and a Retry control.
 
+**THE LATCH CLASS EXTENDS BEYOND SETTINGS (round 10).** Applying the same scan to
+the whole UI found it in `app/UpdateBanner.tsx`: `versionBlocked` was set when the
+running build was below the update's `min_version` and **never cleared**, while its
+render branch (`:242`) returns BEFORE the `updateAvailable` check (`:276`). So one
+probe reporting an incompatible release replaced the update banner for the REST OF
+THE SESSION, even after a later probe reported a compatible one. There was **no test
+for the shipped banner at all** — `UpdateBanner.test.tsx` imports the DEAD
+`components/UpdateBanner` twin (only its own test imports it; the shipped one is
+imported by `AppLayout.tsx:5`). Fixed by deriving the flag from its inputs, and
+`ui/src/__tests__/appUpdateBanner.test.tsx` now covers the shipped component.
+
+**A guard for the whole class** (round 10): `ui/src/__tests__/disabledFlagLatch.test.ts`
+asserts no production flag that gates a `disabled` prop is only ever set to `true`.
+Its detector reads the ARGUMENT, not the call count — counting calls flagged
+`versionBlocked` immediately after it was fixed, because a DERIVED call
+(`setVersionBlocked(blocked)`) can clear. That false positive is pinned by a
+self-test.
+
 **Audit result — all six `loadFailed` sites now have a recovery path:**
 
 | File | Recovery |
@@ -859,6 +877,11 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | F4 latch | `cd ui && npx vitest run WorkspaceKdsSettings -t 'FAILED settings read'` (kill-test) | **FAIL (killed)** | removing the Retry control fails with `Unable to find ... retry-btn`; restored |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 9) | exit 0 | **676 files, 11378 passed / 24 skipped / 3 todo** |
 | 2026-10-09 | all | `python scripts/verify-ipc-parity.py` + `verify-bundle-parity.py` (round 9) | exit 0 | IPC parity OK; 0 missing keys |
+| 2026-10-09 | latch | `cd ui && npx vitest run appUpdateBanner` | exit 0 | **5 tests passed** (shipped banner had none) |
+| 2026-10-09 | latch | `cd ui && npx vitest run appUpdateBanner -t 'CLEARS the block'` (kill-test) | **FAIL (killed)** | restored the latch -> test fails; restored fix |
+| 2026-10-09 | latch guard | `cd ui && npx vitest run disabledFlagLatch` | exit 0 | **6 tests passed**; 4 detector self-cases |
+| 2026-10-09 | latch guard | `cd ui && npx vitest run disabledFlagLatch` (kill-test) | **FAIL (killed)** | names `app/UpdateBanner.tsx :: versionBlocked`; restored |
+| 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 10) | exit 0 | **678 files, 11389 passed / 24 skipped / 3 todo** |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
