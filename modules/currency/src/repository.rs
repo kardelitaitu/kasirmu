@@ -43,17 +43,33 @@ impl<'a> CurrencyRepository<'a> {
         Ok(out)
     }
 
+    /// Default safety cap for `list_exchange_rates` to prevent unbounded memory growth (O-M62).
+    pub const DEFAULT_MAX_EXCHANGE_RATES: u32 = 500;
+
     /// List all exchange rates ordered by `(from_currency, to_currency)`,
     /// newest effective date first WITHIN each pair (CUR-04: consumers
     /// that take the first match per pair must get the current rate, not
     /// the oldest inserted).
+    ///
+    /// Bounded by [`Self::DEFAULT_MAX_EXCHANGE_RATES`] (O-M62). For custom bounds,
+    /// see [`Self::list_exchange_rates_bounded`].
     pub fn list_exchange_rates(&self) -> Result<Vec<ExchangeRateRow>, CurrencyError> {
+        self.list_exchange_rates_bounded(Self::DEFAULT_MAX_EXCHANGE_RATES)
+    }
+
+    /// List exchange rates with an explicit upper bound (O-M62).
+    ///
+    /// Prevents unbounded memory growth when long-lived stores accumulate
+    /// thousands of daily rate changes. Ordered newest first.
+    pub fn list_exchange_rates_bounded(&self, limit: u32) -> Result<Vec<ExchangeRateRow>, CurrencyError> {
+        let limit = limit.clamp(1, 1000);
         let mut stmt = self.conn.prepare(
             "SELECT id, from_currency, to_currency, rate_millionths, source, effective_date, created_at
              FROM exchange_rates
-             ORDER BY from_currency, to_currency, effective_date DESC, created_at DESC",
+             ORDER BY from_currency, to_currency, effective_date DESC, created_at DESC
+             LIMIT ?1",
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map([limit], |row| {
             Ok(ExchangeRateRow {
                 id: row.get(0)?,
                 from_currency: row.get(1)?,
