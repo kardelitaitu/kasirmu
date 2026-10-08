@@ -12,7 +12,8 @@ import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
 import AppLayout, { type AppRoute, isSidebarOverlayPresented } from './AppLayout';
 import { getFirstRunState } from '@/api/settings';
-import { getDeviceId } from '@/api/system';
+import { getDeviceId, notifyMemoryPressure } from '@/api/system';
+import { isTabletShell } from '@/utils/shellKind';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
@@ -160,6 +161,22 @@ export default function AppShell() {
     window.addEventListener('app:lock', handler);
     return () => window.removeEventListener('app:lock', handler);
   }, [session]);
+
+  // ── Global Android OS memory pressure listener (Phase 2 audit) ──
+  useEffect(() => {
+    const handleMemoryTrim = (e: Event) => {
+      const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
+      if (isTabletShell()) {
+        void notifyMemoryPressure(level).catch(() => {});
+      }
+    };
+    window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
+    window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    return () => {
+      window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
+      window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
+    };
+  }, []);
 
   const handleUnlock = useCallback(() => {
     setIsLocked(false);

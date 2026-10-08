@@ -100,7 +100,55 @@ const RAW_MOCK_PRODUCTS = [
 // ADR #36/#37: enrich the raw mock catalog with the retail attribute fields
 // (brand/rack/notes/unit/cost) and a deterministic popularity score so the
 // default popularity sort has visible ordering in dev/demo.
-const MOCK_PRODUCTS = RAW_MOCK_PRODUCTS.map((p, i) => ({
+/**
+ * The live catalogue the preview mutates.
+ *
+ * Deliberately a mutable array rather than the frozen fixture: the mutators
+ * below used to be stubs that returned a plausible id and changed nothing, which
+ * made the browser preview disagree with production in the most misleading way
+ * possible — an "Add item" that reports success and leaves the list unchanged.
+ * A screen exercising optimistic UI, a filter, or a count then looks correct in
+ * the preview and is untestable against it.
+ *
+ * Module-scope (not per-call) because the dev-mock router is a singleton for the
+ * life of the page: the list must survive between invocations, which is exactly
+ * what the old stubs prevented. Reloading the page resets it, which is the
+ * intended "fresh database" behaviour for a preview.
+ */
+/**
+ * The row type, DERIVED from the fixture rather than restated.
+ *
+ * Restating it (or widening it to `Record<string, unknown>`) would either drift
+ * from the literals or break the three consumers that read this array by property
+ * — sales.ts's line builder and tauri-api.ts's lookup both index `sku`,
+ * `category` and `price` directly, and an index signature turns those into
+ * implicit-any errors at every site.
+ */
+type MockProductRow = Omit<(typeof RAW_MOCK_PRODUCTS)[number], 'category' | 'barcode'> & {
+  /**
+   * The category NAME, or null when the item is uncategorised.
+   *
+   * Widened from the fixture's inferred `string` because null is a real state,
+   * not an absence: deleting a category REHOMES its products to no category
+   * rather than deleting them, and `ProductDto.category` is nullable for the
+   * same reason.
+   */
+  category: string | null;
+  /** Nullable for the same reason as category: an item may carry no barcode. */
+  barcode: string | null;
+  /** Present on the enriched rows; the raw fixture does not carry it. */
+  id?: string;
+  cost_minor?: number;
+  brand?: string | null;
+  rack_location?: string | null;
+  notes?: string | null;
+  unit?: string | null;
+  is_active?: boolean;
+  default_supplier_id?: string | null;
+  popularity_score?: number;
+};
+
+const MOCK_PRODUCTS: MockProductRow[] = RAW_MOCK_PRODUCTS.map((p, i) => ({
   ...p,
   cost_minor: 0,
   brand: p.name.includes('AMD') || p.name.includes('Ryzen') ? 'AMD' : null,
@@ -111,6 +159,164 @@ const MOCK_PRODUCTS = RAW_MOCK_PRODUCTS.map((p, i) => ({
   default_supplier_id: null,
   popularity_score: RAW_MOCK_PRODUCTS.length - i, // descending demo ranking
 }));
+
+// ═══════════════════════════════════════════════════════════════════
+// CATALOG MUTATIONS
+//
+// The preview's catalogue is REAL mutable state (see MOCK_PRODUCTS). These
+// helpers are its only writers, so each one can be read as the contract the
+// screens are exercised against.
+//
+// "category" is the category's NAME on the wire, not an id: ProductDto.category
+// is a string, and every consumer joins on it (RestaurantMenu maps its metadata
+// by name; RetailPosScreen does categories.find(c => c.name === ...)). A caller
+// that passes an id where a name belongs gets an item filed under that id, which
+// is precisely the mismatch a preview must not hide.
+// ═══════════════════════════════════════════════════════════════════
+
+/** Monotonic suffix so two rows created in the same millisecond stay distinct. */
+let mockCatalogSeq = 0;
+
+interface MockProductArgs extends Record<string, unknown> {
+  sku?: string;
+  name?: string;
+  priceMinor?: number;
+  currency?: string;
+  categoryId?: string | null;
+  barcode?: string | null;
+  initialStock?: number;
+  productType?: string;
+  isActive?: boolean;
+  costMinor?: number;
+}
+
+/**
+ * Resolve what a caller sent to the NAME a product row stores.
+ *
+ * Accepts an id or a name, because the two are easy to confuse and the mock's job
+ * is to behave like the backend rather than to fail on the ambiguity — the real
+ * create receives an id and stores the resolved name. A value matching neither is
+ * stored as-is, which surfaces the mismatch in the UI rather than silently filing
+ * the row under no category at all.
+ */
+function mockCategoryNameFor(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const byId = MOCK_CATEGORIES.find((c) => c.id === value);
+  if (byId) return byId.name;
+  const byName = MOCK_CATEGORIES.find((c) => c.name === value);
+  return byName ? byName.name : value;
+}
+
+function createMockProduct(unwrapArgs: UnwrapArgs, args: unknown): { sku: string } {
+  const a = unwrapArgs<MockProductArgs>(args);
+  mockCatalogSeq += 1;
+  const now = new Date().toISOString();
+  // The editor mints the SKU (the backend does not); the fallback exists only so
+  // a caller that omits it still exercises the insert path.
+  const sku = a.sku && a.sku.trim() !== '' ? a.sku : 'SKU-MOCK-' + mockCatalogSeq;
+  MOCK_PRODUCTS.push({
+    id: 'prod-' + mockCatalogSeq,
+    sku,
+    name: a.name ?? 'Untitled',
+    category: mockCategoryNameFor(a.categoryId),
+    price: { minor_units: a.priceMinor ?? 0, currency: a.currency ?? 'IDR' },
+    barcode: a.barcode ?? null,
+    in_stock: (a.initialStock ?? 0) > 0,
+    stock_qty: a.initialStock ?? 0,
+    tax_rate_ids: [],
+    created_at: now,
+    price_updated_at: now,
+    product_type: a.productType ?? 'restaurant',
+    cost_minor: a.costMinor ?? 0,
+    brand: null,
+    rack_location: null,
+    notes: null,
+    unit: 'pcs',
+    is_active: a.isActive ?? true,
+    default_supplier_id: null,
+    popularity_score: MOCK_PRODUCTS.length,
+  });
+  return { sku };
+}
+
+function updateMockProduct(unwrapArgs: UnwrapArgs, args: unknown): { sku: string } {
+  const a = unwrapArgs<MockProductArgs>(args);
+  const target = MOCK_PRODUCTS.find((p) => p.sku === a.sku);
+  if (!target) return { sku: a.sku ?? '' };
+  if (a.name !== undefined) target.name = a.name;
+  if (a.priceMinor !== undefined) {
+    target.price = { minor_units: a.priceMinor, currency: a.currency ?? 'IDR' };
+    target.price_updated_at = new Date().toISOString();
+  }
+  // PATCH semantics, matching UpdateProductScopedArgs: an absent key KEEPS its
+  // value, so only assign when the caller actually sent one.
+  if (a.categoryId !== undefined) target.category = mockCategoryNameFor(a.categoryId);
+  if (a.isActive !== undefined) target.is_active = a.isActive;
+  return { sku: String(target.sku) };
+}
+
+function deleteMockProduct(unwrapArgs: UnwrapArgs, args: unknown): null {
+  const a = unwrapArgs<{ sku?: string }>(args);
+  const idx = MOCK_PRODUCTS.findIndex((p) => p.sku === a.sku);
+  if (idx >= 0) MOCK_PRODUCTS.splice(idx, 1);
+  return null;
+}
+
+interface MockCategoryArgs extends Record<string, unknown> {
+  id?: string;
+  name?: string;
+  colour?: string;
+  icon?: string;
+}
+
+function createMockCategory(unwrapArgs: UnwrapArgs, args: unknown): { id: string } {
+  const a = unwrapArgs<MockCategoryArgs>(args);
+  if (!a.id || a.id.trim() === '') mockCatalogSeq += 1;
+  const id = a.id && a.id.trim() !== '' ? a.id : 'cat-mock-' + mockCatalogSeq;
+  MOCK_CATEGORIES.push({
+    id,
+    name: a.name ?? 'Untitled',
+    colour: a.colour ?? '#6b7280',
+    icon: a.icon ?? '',
+  });
+  return { id };
+}
+
+function updateMockCategory(unwrapArgs: UnwrapArgs, args: unknown): { id: string } {
+  const a = unwrapArgs<MockCategoryArgs>(args);
+  const target = MOCK_CATEGORIES.find((c) => c.id === a.id);
+  if (!target) return { id: a.id ?? '' };
+  // A rename must carry through to the products filed under the OLD name, or the
+  // category and its items part company. The real backend rewrites those rows, so
+  // a preview that skipped it would make the divergence invisible.
+  const previousName = target.name;
+  if (a.name !== undefined) target.name = a.name;
+  if (a.colour !== undefined) target.colour = a.colour;
+  if (a.icon !== undefined) target.icon = a.icon;
+  if (a.name !== undefined && a.name !== previousName) {
+    for (const p of MOCK_PRODUCTS) {
+      if (p.category === previousName) p.category = a.name;
+    }
+  }
+  return { id: target.id };
+}
+
+function deleteMockCategory(unwrapArgs: UnwrapArgs, args: unknown): { affected_products: number } {
+  const a = unwrapArgs<{ id?: string }>(args);
+  const idx = MOCK_CATEGORIES.findIndex((c) => c.id === a.id);
+  if (idx < 0) return { affected_products: 0 };
+  const removed = MOCK_CATEGORIES.splice(idx, 1)[0];
+  // Mirrors the real contract: the category goes, its products are REHOMED to no
+  // category rather than deleted, and the caller is told how many moved.
+  let affected = 0;
+  for (const p of MOCK_PRODUCTS) {
+    if (p.category === removed?.name) {
+      p.category = null;
+      affected += 1;
+    }
+  }
+  return { affected_products: affected };
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // TAX RATE STORE
@@ -279,12 +485,11 @@ const catalogHandlers: Record<string, MockHandler> = {
 
   'list_products': () => MOCK_PRODUCTS,
   'list_products_scoped': () => MOCK_PRODUCTS,
-  'create_product': () => ({ sku: 'SKU-NEW' }),
-  'create_product_scoped': () => ({ sku: 'SKU-NEW' }),
-  'update_product': () => ({ sku: 'SKU-UPD' }),
-  'update_product_scoped': () => ({ sku: 'SKU-UPD' }),
-  'delete_product': () => null,
-  'delete_product_scoped': () => null,
+  // Real mutations, not stubs: the preview must reflect an add/edit/delete or it
+  // teaches the wrong thing about the screen driving it.
+  // The product and category mutators live in the factory below, not here: each
+  // calls the injected `unwrapArgs`, which module-level code has no access to —
+  // the same constraint the tax mutators already document.
 
   // ADR #37 D3: fire-and-forget popularity search signal.
   'record_product_search_scoped': () => null,
@@ -334,9 +539,6 @@ const catalogHandlers: Record<string, MockHandler> = {
 
   'list_categories': () => MOCK_CATEGORIES,
   'list_categories_scoped': () => MOCK_CATEGORIES,
-  'create_category': () => ({ id: 'cat-new' }),
-  'update_category': () => ({ id: 'cat-upd' }),
-  'delete_category': () => null,
 
   // ═══════════════════════════════════════════════════════════════
   // CURRENCY
@@ -396,6 +598,19 @@ const catalogHandlers: Record<string, MockHandler> = {
 export function createCatalogHandlers(deps: CatalogDeps): Record<string, MockHandler> {
   return {
     ...catalogHandlers,
+    // Real mutations, not the stubs these used to be: the preview must reflect an
+    // add/edit/delete or it teaches the wrong thing about the screen driving it.
+    // The in-memory arrays above are the single source, so a change persists for
+    // the life of the page and resets on reload.
+    'create_product': (args) => createMockProduct(deps.unwrapArgs, args),
+    'create_product_scoped': (args) => createMockProduct(deps.unwrapArgs, args),
+    'update_product': (args) => updateMockProduct(deps.unwrapArgs, args),
+    'update_product_scoped': (args) => updateMockProduct(deps.unwrapArgs, args),
+    'delete_product': (args) => deleteMockProduct(deps.unwrapArgs, args),
+    'delete_product_scoped': (args) => deleteMockProduct(deps.unwrapArgs, args),
+    'create_category': (args) => createMockCategory(deps.unwrapArgs, args),
+    'update_category': (args) => updateMockCategory(deps.unwrapArgs, args),
+    'delete_category': (args) => deleteMockCategory(deps.unwrapArgs, args),
     'create_tax_rate_scoped': (args) => createMockTaxRate(deps.unwrapArgs, args),
     'update_tax_rate_scoped': (args) => updateMockTaxRate(deps.unwrapArgs, args),
     'delete_tax_rate_scoped': (args) => deleteMockTaxRate(deps.unwrapArgs, args),
