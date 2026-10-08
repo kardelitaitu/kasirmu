@@ -432,38 +432,42 @@ pub(super) async fn run_tick(
                             let next_cursor = pull_resp.next_cursor;
                             let prev_since = pull_since.clone();
                             let prev_cursor = pull_cursor.clone();
-                            // SYNC-10: own the sink (an owned `Arc`) so the
-                            // `'static` spawn_blocking closure can call it
-                            // after each applied settings item.
-                            let settings_sink = settings_sink.clone();
+                            // O-M38: collect settings events in the blocking phase, then
+                            // dispatch through settings_sink AFTER the DB connection lock drops.
                             let outcome = tokio::task::spawn_blocking(move || {
-                                let conn = db_clone.blocking_lock();
-                                let store = Store::new(&conn);
-                                apply_pulled_page(
-                                    &store,
-                                    &items,
-                                    prev_since.as_deref(),
-                                    prev_cursor.as_deref(),
-                                    next_cursor.as_deref(),
-                                    &settings_sink,
-                                )
+                                let mut settings_events = Vec::new();
+                                let anchor_err = {
+                                    let conn = db_clone.blocking_lock();
+                                    let store = Store::new(&conn);
+                                    apply_pulled_page(
+                                        &store,
+                                        &items,
+                                        prev_since.as_deref(),
+                                        prev_cursor.as_deref(),
+                                        next_cursor.as_deref(),
+                                        &mut settings_events,
+                                    )
+                                };
+                                (anchor_err, settings_events)
                             })
                             .await;
-                            // SYNC-01: propagate both spawn_blocking panics AND
-                            // anchor-persistence failures into sync_error so the
-                            // daemon status/backoff reflect them.
-                            match outcome {
-                                Ok(Some(msg)) => {
-                                    if sync_error.is_none() {
-                                        sync_error = Some(msg);
-                                    }
+
+                            let (anchor_err, settings_events) = match outcome {
+                                Ok((err, events)) => (err, events),
+                                Err(e) => (Some(format!("apply pull phase: {e}")), Vec::new()),
+                            };
+
+                            // SYNC-01: propagate anchor-persistence failures into sync_error
+                            if let Some(msg) = anchor_err {
+                                if sync_error.is_none() {
+                                    sync_error = Some(msg);
                                 }
-                                Ok(None) => {}
-                                Err(e) => {
-                                    if sync_error.is_none() {
-                                        sync_error = Some(format!("apply pull phase: {e}"));
-                                    }
-                                }
+                            }
+
+                            // O-M38: Fire settings_sink AFTER releasing the blocking DB connection lock
+                            // so Tauri IPC emits or UI listeners never stall SQLite operations.
+                            for event in &settings_events {
+                                settings_sink(event);
                             }
                         }
                     }
@@ -754,7 +758,7 @@ fn apply_pulled_page(
     prev_since: Option<&str>,
     prev_cursor: Option<&str>,
     next_cursor: Option<&str>,
-    settings_sink: &SettingsChangedSink,
+    settings_events: &mut Vec<SettingsUpdated>,
 ) -> Option<String> {
     let queue = SyncQueue::new();
     let mut has_stock_movements = false;
@@ -776,14 +780,14 @@ fn apply_pulled_page(
         match queue.apply_remote_atomic_full(store, item) {
             Ok(outcome) => {
                 // SYNC-10: a settings change applied from a remote terminal is
-                // re-emitted as `SettingsUpdated` so the UI refetches. The tx
-                // committed inside apply_remote_atomic_full before this runs.
+                // collected into settings_events so it can be re-emitted as
+                // `SettingsUpdated` after the blocking DB lock is released (O-M38).
                 if let Some((key, terminal_id)) = outcome.settings_change {
                     let event = SettingsUpdated {
                         changed_keys: vec![key],
                         terminal_id,
                     };
-                    settings_sink(&event);
+                    settings_events.push(event);
                 }
                 if !outcome.applied
                     && store

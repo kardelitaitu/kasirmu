@@ -37,6 +37,8 @@ use kasirmu_core::settings::IngestPolicy;
 // remote-ingest gate directly; the library build gets it via `queue::appliers`,
 // so an unconditional import here would be unused.
 #[cfg(test)]
+use kasirmu_core::offline::OfflineQueueStatus;
+#[cfg(test)]
 use kasirmu_core::settings::IngestPolicyKind;
 use kasirmu_core::settings::Settings;
 use serde_json::Value;
