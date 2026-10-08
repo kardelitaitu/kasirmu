@@ -227,6 +227,25 @@ pub const DEBT_CEILING: usize = 78;
 /// measurement FELL to 18, so `53 + 18 = 71` is the live row count and the two ceilings are
 /// now independently slack rather than jointly tight. Forcing them back to a 78 sum would
 /// mean raising a ceiling for a class that shrank — the opposite of what this ratchet is for.
+///
+/// **`health::export_diagnostics` is a FALSE POSITIVE in this class, verified 2026-10-08.**
+/// The bridge function it delegates to IS genuinely gated: `crates/kasirmu-bridge/src/diagnostics.rs:160`
+/// resolves the session and then calls `require_session_permission(&session, permissions::SETTINGS_READ)`.
+/// The sweep still files it as class 2, and the reason is structural rather than an oversight.
+/// `run_sweep`'s bridge rule asks whether the SHIM'S MODULE stem is a gated stem, and the stem
+/// set is built by asking which files under `kasirmu-bridge/src` name a permission. The
+/// permission for this command lives in `diagnostics.rs`, while the shim's module is `health`
+/// -- and `kasirmu-bridge/src/health.rs` names no permission, so `health` never enters the stem
+/// set. The shim's own body matches `resolves_session` (its `session_token: String` parameter)
+/// and matches no guard marker, which lands it in class 2.
+///
+/// DIRECTION, which is why this is a note and not a defect: the misclassification INFLATES
+/// debt, so the class-2 ceiling is TIGHTER than reality rather than looser. A false positive
+/// here spends ceiling that a real hole would need -- the fail-safe way round. It is recorded
+/// because this count is read as a security measure and one of the 18 is known not to be one.
+/// Correcting it means teaching the sweep to follow a shim into the bridge module it actually
+/// calls, which is a classifier change rather than an edit to this number. Until then the
+/// honest statement is: class 2 holds 17 real debt rows plus this one already-gated shim.
 pub const NO_SESSION_RESOLUTION: usize = 53;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
