@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: a duplicated-constant census, and `MAX_TOKEN_HOURS` is duplicated ON PURPOSE. Documented in `9fb24c142`.
+
+**Censused the pattern R190 found, rather than hunting another instance.** Parsing every `pub const NAME: T = V;` in production and grouping by name gave **354 constants, 18 names defined in more than one file**. Most are legitimately per-domain (`MODULE_ID` x4, `DEBT_CEILING` x2 across the two shells' ledgers, `DEFAULT_BAUD` x5 all agreeing at 9600). One stood out as a genuine cross-crate duplicate of a SECURITY bound.
+
+**`MAX_TOKEN_HOURS` is defined twice — `kasirmu-api::auth` (`8_760`) and `kasirmu-local-api` (`8760`)** — the same number spelled differently, in two crates where one already depends on the other. **I nearly reported it as an unguarded duplicate, and two measurements stopped me.**
+
+**Measurement 1 disproved my grep.** I searched for a test referencing `kasirmu_api::auth::MAX_TOKEN_HOURS` from the local-api side, found none, and concluded "no cross-check". **Then mutating the api copy to 24 FAILED `mint_token_roundtrip_and_clamp`** — so the coupling is real and my search had simply looked for the wrong spelling: the test drives `kasirmu_api::auth::validate_token_with_secret` and asserts the minted lifetime equals the local-api constant. R166's lesson, for the fourth time this campaign.
+
+**Measurement 2 showed the duplication is deliberate.** Reading the two clamps side by side: `create_token_full` is documented as *"the single funnel both mint doors pass through"* and applies `.min(MAX_TOKEN_HOURS)` — a CEILING ONLY, and it says why a floor there "would break the legitimate use of this primitive to mint an ALREADY-EXPIRED token". `mint_token` applies `.clamp(1, MAX_TOKEN_HOURS)` — a floor AND a ceiling, because the operator door must refuse a zero-length token. **Neither copy can become the other**, and `mint_token` delegates to the api funnel so the effective bound is the `min` of the two. Both directions move the test.
+
+**So the honest gap was a MISSING NOTE, not a defect**, and that is what I wrote: why the number appears twice, which copy is authoritative, which job each clamp does, and that the coupling is by delegation rather than by a constant reference. **I did not refactor the bound** — collapsing a security constant across two crates is a decision for the lanes that own them, and the behaviour is already correct and fenced.
+
+**Running tally: 37 guards examined, 21 sound, 20 with defects found and fixed.**
+
 ## 2026-10-08: three copies of `MAX_BARCODE_LEN`, and one said "chars" where all three measure bytes. Fixed in `9b4a0d7d0`.
 
 **Went to the HAL drivers for a surface with physical consequences, and found a documentation defect rather than a behavioural one — recorded as such.**
