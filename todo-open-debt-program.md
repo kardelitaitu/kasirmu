@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: `validate_location` + `validate_terminal` had zero coverage over four call sites. Fixed in `98dab1b26`.
+
+**Turned the hunt into a CENSUS instead of a probe.** Rather than reading one function at a time, I enumerated every `validate_`/`sanitize_`/`ensure_`/`check_` function in the bridge crate and counted its mentions in the sibling test file. That produced a ranked list where **eight functions had ZERO test mentions** -- which is how this round's target surfaced, and the same list is the backlog for the rounds after it.
+
+**The target: `validate_location` (`stock_transfers.rs:87`) and `validate_terminal` (`:112`), four call sites between them (`:158-161`).** Both answer one question -- is this client-supplied id ACTIVE IN THIS STORE -- by an `EXISTS` query against `inventory_locations`/`terminals`. **MEASURED: replacing BOTH bodies with `Ok(())` left all 12 tests in `stock_transfers_tests.rs` GREEN.** The existing tests covered permission denial, token rejection, listing and the args structs' serde, but never a bad location or terminal. A transfer could name a location or terminal belonging to another store, or an inactive one, and the record would carry a reference the store's own inventory ledger cannot resolve.
+
+**Three tests, and the middle one is the point.** (1) A foreign source location and the SAME id made INACTIVE -- because the SQL is `is_active = 1`, presence alone is not the contract, and an inactive location is a different failure from an absent one. (2) **A POSITIVE case** asserting an active location and terminal are accepted and land on the record. That one is deliberate: every refusal above would pass under a validator that rejected everything, so the positive case is what proves the check is a lookup. (3) The terminal side, foreign and inactive, on both fields. **KILL-TESTED: 13 passed / 2 FAILED** -- exactly the two refusal tests, with the positive case correctly still green. Production restored byte-for-byte; 15/15 green; clippy Finished.
+
+**Running tally: 22 guards examined, 10 sound, 12 with defects found and fixed.** Three consecutive rounds where mutation found gaps that reading did not, and this round the census made the target selection mechanical rather than a matter of guessing which function to read.
+
+**Backlog this census created, named for the next rounds:** `validate_semantic_ownership`, `validate_semantic_ownership_in`, `validate_warehouse_capacity` (`topology/persistence.rs`); `validate_semantic_json`, `validate_topology_envelope`, `validate_load_shape` (`topology/semantics.rs`). Each shows zero test mentions by the same count.
+
 ## 2026-10-08: `validate_customer_fields` had zero coverage over FOUR call sites. Fixed in `e1daf96ac`.
 
 **Applied R175's method to the rest of R166's unprobed list, and the results split cleanly: one target was excellent, the other had R175's exact defect.**
