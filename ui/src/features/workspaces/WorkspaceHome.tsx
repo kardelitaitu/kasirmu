@@ -770,7 +770,15 @@ export default function WorkspaceHome() {
           <LayerFloatingButtons {...floatingProps} />
         </div>
         <div className="ws-main">
-          <header className="workspace-home-header" />
+          <header className="workspace-home-header">
+            {/* The pre-session org picker (SaaS-3 L194) must stay reachable
+                after the list resolves: the operator is still pre-session until
+                a workspace is opened, and the choice rides into the next
+                create_session. The skeleton mounts it too — but a list that
+                resolves in milliseconds would otherwise never show it, which
+                is how the selector became effectively invisible. */}
+            <OrgSelector />
+          </header>
 
           {/* ── Non-blocking licence notice ─────────────────────────────
               The boot gate admits a provisioned install even when its licence
