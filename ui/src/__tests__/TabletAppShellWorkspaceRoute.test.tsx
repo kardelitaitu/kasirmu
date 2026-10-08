@@ -176,3 +176,38 @@ describe('TabletAppShell — warehouse routing', () => {
     expect(screen.queryByTestId('pos-page')).not.toBeInTheDocument();
   });
 });
+
+// ── The withdrawn topology route (plan §1 acceptance, item 2) ───────────────
+//
+// MEASURED 2026-10-07: `#/settings/topology` reached TopologyScreen, which
+// threw on the tablet (the settings shell it needs is not mounted there) and
+// left the FULL-PAGE error boundary up — every later section rendered the
+// boundary until a reload. The screen now returns a hook-free notice before
+// its content mounts (pinned in TopologyScreen.test.tsx); this is the
+// shell-level half: the alias must still reach the registered page, and no
+// boundary may appear on the way.
+
+describe('TabletAppShell — the withdrawn topology route', () => {
+  beforeEach(() => {
+    clearPages();
+    clearNavItems();
+    sessionManager();
+    workspace('inventory');
+    window.location.hash = '';
+  });
+
+  it('routes #/settings/topology to the topology page without an error boundary', async () => {
+    registerPage({
+      route: 'topology',
+      component: () => <div data-testid="topology-page" />,
+      label: 'Topology',
+    });
+    window.location.hash = '#/settings/topology';
+    await renderWithProviders(<TabletAppShell />, staffFtl);
+    await act(async () => {});
+    await waitFor(() => {
+      expect(screen.getByTestId('topology-page')).toBeInTheDocument();
+    });
+    expect(document.querySelector('.error-boundary')).toBeNull();
+  });
+});
