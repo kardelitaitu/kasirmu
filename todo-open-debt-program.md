@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: three copies of `MAX_BARCODE_LEN`, and one said "chars" where all three measure bytes. Fixed in `9b4a0d7d0`.
+
+**Went to the HAL drivers for a surface with physical consequences, and found a documentation defect rather than a behavioural one — recorded as such.**
+
+**The finding.** `MAX_BARCODE_LEN = 1024` is defined **independently in three driver modules** (`usb_scanner`, `bt_scanner`, `serial_scanner`) with no shared source. Their VALUES agree, but their prose did not: `usb_scanner` said *"1024 **chars**"* while the other two said *"1024 **bytes**"*. **All three bounds are byte lengths** — `bt_scanner` and `serial_scanner` cap a `Vec<u8>` directly, and `usb_scanner` caps a `String` whose `.len()` is documented as a byte length in Rust.
+
+**I measured whether it could bite before judging severity, and it cannot today.** `usb_scanner` builds its string only from `hid_report_to_char`, and I checked every entry of `HID_KEY_TABLE`: **95 quoted characters, 0 non-ASCII**. So chars == bytes on that path, and the wrong word changed no behaviour. **But the doc is what a reader trusts, and a single non-ASCII key added to that table would make the two counts diverge under a comment denying it** — which is the same latent shape as R181's `mask_name`, just caught before it mattered rather than after.
+
+**The guard pins the three docs against EACH OTHER, not against a computed value** (the R163 pattern): a SOURCE assertion that each copy's doc says "bytes" and not "chars", plus that each still defines the constant as 1024 — so a change to one copy's number or unit cannot pass unnoticed. It is a source assertion because the behaviour cannot observe a wrong unit while the inputs happen to be ASCII. **KILL-TESTED: restoring "chars" FAILS it** with a message naming the file and the reason. 366/366 green; clippy Finished.
+
+**Also probed and cleared on the same driver:** the scanner's barcode assembly terminates on \`\\n\`, on a between-keys timeout with buffered data, and at the cap — three separate completion conditions, each returning the buffered code, so a scanner without a terminator is handled rather than hanging; and `decrypt`-style fail-open patterns do not exist here because the driver returns `HalError` rather than a defaulted value.
+
+**Running tally: 36 guards examined, 19 sound, 20 with defects found and fixed.**
+
 ## 2026-10-08: the profile-seal read/write split is SOUND in BOTH directions. Three probes, no defect.
 
 **Probed the at-rest PII path in `kasirmu-core/src/db/profile.rs`, which I had not examined, by looking for the two ways it could fail: leaking ciphertext on the read, and erasing it on the write.**
