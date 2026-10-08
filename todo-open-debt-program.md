@@ -93,6 +93,16 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the last two guards probed are SOUND — and that is the reportable result.
+
+The previous note claimed "every guard examined this campaign has had a defect on the FIRST probe". **That is now falsified by two guards, which is the useful outcome**: the claim was drawn from five consecutive hits and would have become a superstition if I had not kept going.
+
+**`capability_parity.rs` (3 tests) — sound, and defended at TWO layers.** Probed by adding `"probe:not-in-gen-schema"` to `apps/desktop-tauri/capabilities/default.json`, the file the parity comparison reads. The probe never reached the test: `build.rs:19` rejected it at COMPILE time — `failed to run tauri-build: Permission probe:not-in-gen-schema not found, expected one of clipboard-manage…` — so the tauri-build step is itself a guard, and the parity test is the second one behind it. Restored and green: 3/3. The two parser helpers (`extract_permissions`, `extract_permissions_from_file`) differ only in which JSON level they read (capability-map vs `permissions` array), and both input files exist with real content (34 and 34 quotes on the desktop pair), so neither comparison can pass vacuously on an empty set.
+
+**`window_visibility.rs` (2 tests) — sound, and its ordering assertion is the interesting part.** Test 2 asserts `.show()` appears AFTER `app.manage(state)` in `lib.rs` by comparing `str::find` offsets, which is the kind of positional check that breaks silently when a marker occurs more than once — the FIRST occurrence would be compared and the guard would reason about the wrong pair. **Measured: `app.manage(state)`, `get_webview_window("main")` and `.show()` each occur exactly ONCE in `lib.rs`**, so both `find`s are unambiguous. Then probed by renaming the call to `get_webview_window("MAIN")`: the test FAILED as intended (`lib_rs_shows_main_window_after_setup`, 1 passed / 1 failed), confirming it fails loudly rather than drifting. Restored and green: 2/2.
+
+**So the audit surface is now fully probed: 8 guards, 2 clean, 6 with defects found and fixed** (`gate_audit` parser, classifier, walker and key map; `wiring_audit` duplicate detection; `kernel_lifecycle` stale window doc). The honest summary is that guards in this tree are worth probing and are NOT uniformly broken — the first five hits were a run, not a law.
+
 ## 2026-10-08: `kernel_lifecycle.rs` documented the wrong shutdown window — 500ms where production is 2000ms. Fixed in `9d55b1836`.
 
 **A smaller finding than R160's, and worth recording for what it says about the guards as a class.** The file's module doc stated *"The Drop implementation uses a **500ms** bounded retry loop"* and *"should either acquire within **500ms** or log a warning"*. Production at `apps/desktop-tauri/src/state.rs:924` is `DROP_LOCK_RETRIES: usize = 200` with a 10ms sleep — **2000ms**. The test's own replica runs `simulate_drop_retry(&kernel, 50, 10)`, i.e. the 500ms figure, so the number was consistent with the replica and wrong about the code the replica stands in for.
