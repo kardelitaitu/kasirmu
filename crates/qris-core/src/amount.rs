@@ -63,6 +63,11 @@ pub fn is_valid_amount_str(s: &str) -> bool {
     parse_amount(s).is_ok()
 }
 
+/// A valid fee/tip percentage is a non-negative decimal string with at most 4 fractional digits (O-L13).
+pub fn is_valid_percent_str(s: &str) -> bool {
+    parse_percent(s).is_ok()
+}
+
 /// Calculate a percentage fee on a whole-rupiah base amount with 0.01% accuracy,
 /// rounding any fractional rupiah up to the next integer (ceiling).
 ///
