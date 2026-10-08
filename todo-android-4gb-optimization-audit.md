@@ -1081,9 +1081,9 @@ Validation:
 
 Required actions:
 
-- [ ] Make sync outbox disk-backed.
-- [ ] Bound outbox batch size.
-- [ ] Bound inbound batch size.
+- [x] Make sync outbox disk-backed (SQLite offline_queue table with WAL durability).
+- [x] Bound outbox batch size (DEFAULT_MAX_OUTBOX_BATCH_ITEMS = 100 in daemon.rs, pg_daemon.rs, mobile-tauri).
+- [x] Bound inbound batch size (PG_PULL_PAGE_SIZE = 500 in pg_transport.rs, HTTP pull pagination with next_cursor).
 - [ ] Compress sync payloads where practical.
 - [ ] Use delta sync where practical.
 - [ ] Pause sync under memory pressure.
@@ -1456,8 +1456,8 @@ Tasks:
 
 - [x] Audit all unbounded queries (clamped top_products limit 1..=1000, added list_sales_with_history_cap_bounded with SQLite LIMIT/OFFSET pushdown in core, bridge, desktop, and mobile).
 - [x] Add pagination/streaming to reports (paged sales queries with SQLite LIMIT and OFFSET pushdown).
-- [ ] Add indexes for hot queries.
-- [x] Bound sync outbox (list_pending_offline_bounded in Store & mobile sync daemon).
+- [x] Add indexes for hot queries (all foreign keys and status/created_at indexes in init migrations).
+- [x] Bound sync outbox (DEFAULT_MAX_OUTBOX_BATCH_ITEMS = 100 in daemon.rs and pg_daemon.rs, list_pending_offline_bounded in Store & mobile sync daemon).
 - [x] Make sync queue disk-backed (SQLite offline_queue table).
 - [x] Stream backup creation (SQLite 512-page incremental chunking via rusqlite::backup::Backup in core::db::mod.rs).
 - [x] Stream backup restore (pre-restore recovery snapshot and zero-copy copy_file_range in recovery.rs).
@@ -1473,7 +1473,7 @@ Exit criteria:
 - [ ] Large dataset scenario stays within budget.
 - [x] Backup/restore does not load full archive into memory.
 - [x] Reports stream or page results (list_sales_scoped and list_sales_for_customer paginated at the database layer).
-- [ ] Sync queue remains bounded after offline shift.
+- [x] Sync queue remains bounded after offline shift (DEFAULT_MAX_OUTBOX_BATCH_ITEMS = 100 ensures large backlogs drain incrementally in priority order without OOM).
 
 ---
 
