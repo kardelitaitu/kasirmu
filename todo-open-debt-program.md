@@ -93,6 +93,115 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: three more CI lanes were red — `static-gates`, `ci-docs-drift` and `rust-doc`. Fixed in `7c41458d1`.
+
+**Found the same way as the lint gate: by running the lanes, not the tests.** Each of the three failed for a different reason and each was red before I touched it.
+
+**`static-gates` → `verify-architecture-boundaries.py --strict` exit 1.** `crates/kasirmu-bridge/src/diagnostics_tests.rs:262` cited `ui/src/main.tsx` in a Rust doc comment. ADR #53's `ui-framework-vocabulary` rule (pattern `\bReact\b|\.tsx|\.css|component to render`, applied across `crates/modules/platform/foundation`) exists so a Rust layer's reasoning never binds to one renderer. **This one was mine** — added in R145 — and the fix is to cite the caller by ROLE: "the front end installs its crash reporter at APPLICATION STARTUP", with the ADR's reason recorded inline so the next editor does not re-add the path.
+
+**`ci-docs-drift` → `test-runner-labels.py` exit 1, control case "unmodified fixture matches the repo".** The fixture builds a temp copy of the checker's declared inputs and requires the same drift count as the real repo; it measured **1 vs 0**, the extra being `release checklist not found`. Cause, traced exactly: `checker_inputs()` derived its copy set with `^([A-Z_]+)\s*=\s*ROOT\s*/\s*(.+)> **This file was SPLIT on 2026-09-25 under R18.** The five phase sections moved to
+> `done-todo-open-debt-agents-1.md`, `done-todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`,
+> `done-todo-open-debt-agents-4.md`, and `done-todo-open-debt-agents-5.md`, each carrying its own dated history. What stays here is the
+> program-level record: the rules, dispatch order, rotted claims, the dead-class campaign,
+> out-of-scope, and the rename audits.
+>
+> R18 ruled the split because there is no program-level acceptance command (this file says
+> so itself), so one filename could not honestly claim five phases. The per-phase
+> acceptances, and which of them are met, are now readable in one file each.
+>
+> **Status 2026-09-29:** All five phases have earned their `done-` prefix:
+> - Phase 1 (`done-todo-open-debt-agents-1.md`) — release-profile failure classified and resolved.
+> - Phase 2 (`done-todo-open-debt-agents-2.md`) — wire parity audited, DTOs shared from bridge, 690 mobile tests green.
+> - Phase 3 (`done-todo-open-debt-agents-3.md`) — rank table folded, home gates unified on `roleAtLeast`, R5 owner ruling declining org axis.
+> - Phase 4 (`done-todo-open-debt-agents-4.md`) — triage done, R5 design doc written, R9(b) decorator wired, R4/R6/R7 owner question filed.
+> - Phase 5 (`done-todo-open-debt-agents-5.md`) — PG test honesty enforced across 3 crates with 88 skip arms and live container validation.
+>
+> ✅ **RE-VERIFIED 2026-10-07 — the name-refresh discipline this file applies is the model the rest of the
+> tree lacks, and its central claim still holds.** The claim that the live scaffolding carries
+> **0** stale `oz-` names* (its own words at the end of the name-refresh section) — was checked by
+> locating every `oz-` occurrence in the file and classifying it:
+> **10 lines** carry an `oz-` token and **none of them is a live acceptance command.** Two are dated records
+> preserved on purpose — `:61`'s comparison row and `:95`'s open item, both quoting the pre-2026-09-18
+> measurement, which this file's own rule at `:206` explicitly protects. Two are dated-detail lines inside
+> later sections (`:119`, `:136`). The remaining six (`:186`, `:190`, `:206`, `:209`, and this note) are prose
+> *about* the rename, including the headline finding at `:190` that the old names no longer run. The commands that do run
+> resolve: `cargo test -p kasirmu-bridge --release` is the current spelling, and the stale form demonstrably
+> fails — `cargo test -p oz-bridge --release --no-run` → *"package ID specification `oz-bridge` did not match
+> any packages"*, exit 101. The note at `:210` that the cloud crate is `kasirmu-cloud` while its *directory* stays
+> `apps/cloud-server` is also right and is the kind of dir-vs-package trap worth keeping written down.
+> **Why this is recorded at all:** rounds of this audit found the same defect in a dozen sibling files — a
+> rename applied to a command but not to the prose around it, or vice versa. This file drew that line
+> explicitly, on one line, in September (*"live scaffolding renamed, dated records untouched"*), and it is
+> the reason a reader can still trust the measurements above without re-running them.
+
+## Dispatch order and dependencies
+
+```
+Phase 1 (release red)  ──→ DONE (done-todo-open-debt-agents-1.md)
+Phase 2 (tablet wire)  ──→ DONE (done-todo-open-debt-agents-2.md)
+Phase 3 (authz)        ──→ DONE (done-todo-open-debt-agents-3.md)
+Phase 4 (payment)      ──→ DONE (done-todo-open-debt-agents-4.md)
+Phase 5 (PG honesty)   ──→ DONE (done-todo-open-debt-agents-5.md)
+```
+
+- **All five phases (Phases 1 through 5) are COMPLETE and verified.**
+- **Nothing here authorises a push.** `dev-ci.yml:695` gates the deploy on `push` to `main` **or** to a `0.0.*` branch, and the `0.0.*` arm is currently inert only because `on.push.branches` lists `main` alone. Widening that list would make every release-branch push deploy to production.
+
+---
+
+## Claims that have rotted — do not quote these
+
+Recorded because each one is still live in some document a worker might read, and each was re-measured this pass.
+
+| Rotted claim | Where | Measured now |
+|---|---|---|
+| `PaymentModal.tsx = 2,436` lines | `todo-payment.md` audit stamp | **1,999** (`wc -l ui/src/features/sales/PaymentModal.tsx`; 89,855 bytes, trailing newline present). Was 2,436 at `ec2edf258` (`git show ec2edf258:… \| wc -l` → 2436) — the refactor campaign shrank it via `79d96f7c9` (cash tender panel extracted), `1583ff08b`, `e455e9d13` |
+| box census `39 unchecked / 8 checked` | same stamp | **36 / 11** any-depth. The stamp's own claim that its counting method "equals `wc -l` here" was about line counts, not boxes |
+| the master doc's open boxes are the work | same stamp + `## Phased TODO` | they are absorbed or superseded; `todo-payment-agents-4.md:53-61` declares R1–R7 canonical |
+| `payment:qris-manual` / `:midtrans` / `:edc` feature keys | `todo-payment.md` Phase 0/2/3 | **never existed in code.** One occurrence repo-wide, and it is a comment saying so: `ui/src/features/sales/useLocalPaymentRails.ts:4` |
+| `drivers/edc/*.rs` | `todo-payment-agents-4.md:137-139` | the files are real but live under `crates/kasirmu-hal/src/`, not `crates/kasirmu-payment/src/` |
+| `.circleci/workflows/06-cargo-nextest.yml:37` | several plans | retired by `e3aff7b56` (2026-09-14); `git ls-files \| grep -c circleci` → 0. Use `git show e3aff7b56^:<path>` |
+| "a push to `main` deploys" as a one-liner | older notes | still true, but incomplete — see `dev-ci.yml:695` |
+| `cargo test -p oz-bridge --release` = **76 failed** | `:105` (and the audit stamp, `:106`, `:112`) | **1 failed** — 1315 passed / 1 failed in 195.65s, re-run this pass. The survivor is *deliberately* red; see the Phase 1 re-measurement block. **Superseded 2026-09-19: 0 failed.** |
+| `BOOTSTRAP_FREE` verifies only under `#[cfg(debug_assertions)]` | `:98`, `:123`, `:557`; `dev-ci.yml`; `docs/operations/ci-pipeline.md`; `docs/releases/checklist.md` | **True only for a PAID tier.** Since the 19-09-26 ruling `TenantSubscription::verify_signature` honours the sentinel whenever `tier_key()` is `free`, in BOTH profiles; a sentinel-signed paid row still dies in the base64 decoder. See the Phase 1 closure block below. |
+| "Until that ruling lands, `--release` cannot reach 0 failed" | `:558` | **0 failed** — 1346/0 in both profiles at `31aa530fe`. The ruling landed 2026-09-19, so Phase 1's acceptance is met and the gate at `:112` would no longer land red. |
+| `todo-font-system.md (5 open)` | `:334`, out-of-scope list | **0 open / 13 ticked** — closed earlier today. Its 5 became 0 without this file noticing, the same census-rot `:504` names for `:404`. |
+
+---
+
+## Out of scope for this program
+
+- **SUPERSEDED 2026-09-28 — all four lines below were true when written and none is true now.** Every one has since been renamed to `done-todo-*`, so `todo-font-system.md` (5 open) · `todo-refactor-kds-agents-merged.md` (18 open) · `todo-refactor-pos-screen-agents-3.md` (21 open) · `todo-refactor-settings-agents-3.md` (11 open) names four paths that no longer exist and four counts that no longer reproduce. Re-measured with this file's own canonical pair (`:78-83`); the old figures are kept above as the dated record they are.
+
+  | Was | Now lives at | open / ticked |
+  |---|---|---|
+  | `todo-font-system.md` (5 open) | `.agents/archived/done-todo/done-todo-font-system.md` | **0 / 13** |
+  | `todo-refactor-kds-agents-merged.md` (18 open) | `.agents/reviews/done-todo-refactor-kds-agents-merged.md` | **0 / 23** |
+  | `todo-refactor-pos-screen-agents-3.md` (21 open) | `.agents/reviews/done-todo-refactor-pos-screen-agents-3.md` | **11 / 12** |
+  | `todo-refactor-settings-agents-3.md` (11 open) | `.agents/reviews/done-todo-refactor-settings-agents-3.md` | **0 / 11** |
+
+  None of the four is covered by this program either way, which is the point the
+  bullet was making. **One is worth flagging rather than fixing from here:**
+  `done-todo-refactor-pos-screen-agents-3.md` carries the `done-` prefix while
+  still holding **11 open boxes**, and `AGENTS.md` §4 makes the prefix earned by
+  that file's own acceptance command having run and passed — not by a rename. Its
+  acceptance may well have been met by a command rather than by the boxes; that
+  was not verified here, and the file is another lane's fence, so it is reported
+  rather than renamed back.
+- `todo-kds.md` is **superseded** by `todo-refactor-kds-agents-merged.md` and carries 0 boxes — do not treat its absence of boxes as completion.
+- `todo-tools.md` and `done-todo-tools-agents-3.md` each hold one open box that their own retirement notes assign elsewhere: the org/terminal scope is Phase 3b here; `check:all` is Phase 4's acceptance surface.
+- Anything requiring a push, a branch, or a version bump.
+
+---
+
+ (re.M), but `RELEASE_CHECKLIST` is a **parenthesised ternary** — `= (\n ROOT / "docs" / "records" / ... if ... else ROOT / "docs" / "releases" / ...\n)` — which that pattern cannot match at all, so the checklist was silently missing from the set. **The irony is the file's own docstring**: it explains that a HAND-MAINTAINED list once omitted this same file, and the derivation added to replace it dropped it again through a different door. Fixed with a paren-aware statement walker that collects every `ROOT / "..."` path in the statement, so both ternary branches are copied. **Two mutants killed**: restoring the single-line regex (reproduces the failure) and taking only the first ROOT branch.
+
+**`rust-doc` → `cargo doc --workspace --no-deps` (with `RUSTDOCFLAGS=-D warnings`) exit 101, two unresolved links.** (a) `apps/desktop-tauri/src/state.rs:227` linked `[\`KdsQueueProvider\`]` with no path, but the type lives at `crate::lan_server::KdsQueueProvider` — now a qualified link. (b) `platform/sync/src/daemon.rs:292` linked `[\`SyncDaemon::run_tick\`]`, and **no such method exists**: `run_tick` is `pub(super)` in the private `daemon_tick` module (`daemon_tick.rs:259`), so the link could never resolve; rewritten as prose naming the daemon's tick.
+
+**Also green this round, unchanged:** `ipc-parity` (OK, plus its 27-case self-test), `verify-no-hardcoded-money-format`, `verify-windows-config` (0 violations), `skill-drift-guard` (0 findings), `backup-db.sh --self-test`, `restore-db.sh --self-test`, `test-ci-routing.sh` (25/25), `verify-ci-docs-drift` (0 drift items).
+
+**Goal scoping note.** The objective now reads "never run full check, only test what you developed and related to it", so verification this round was `cargo doc -p <crate>`, `cargo test -p <crate>`, and the individual gate scripts — never `cargo test --workspace`. That is the right default anyway: the three red lanes above were each reachable with a single targeted command, and a workspace run would have cost 20+ minutes to learn the same thing.
+
 ## 2026-10-08: the CI LINT gate was red — `cargo clippy -D warnings` failed on 40+ accumulated lints. Cleared in `714422107`.
 
 **Found by running the gate rather than the tests, and it was red before I touched anything.** `cargo fmt --all --check` reported **17 violations** across 5 files and `cargo clippy --workspace --all-targets -- -D warnings` (the exact `dev-ci.yml:353` command) exited **101**. Neither `cargo check` nor `cargo test` sees any of this — `cargo check --workspace` returned `Finished` the whole time — which is why two rounds of "the workspace is green" could be true and this still be broken. `dev-ci.yml:326` gates on `if: needs.changes.outputs.rust == 'true'`, so it fires on any Rust PR.
