@@ -93,6 +93,20 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08 (same day, later): the remaining lanes swept — all GREEN. One caveat worth stating plainly.
+
+**Lanes exercised this round, each in isolation and none requiring a workspace run:**
+
+| lane | command | result |
+|---|---|---|
+| `go-gate` | `gofmt -l`, `go vet ./...`, `go test -short ./...` | clean / exit 0 / **ok 234.9s** |
+| `fuzz-typecheck` | `cargo check --bins --all-features` in `tools/fuzz` | Finished |
+| `coverage-floors` | `verify-coverage-floors.py --self-test` | all cases passed |
+
+**The caveat, because "green" would be too strong for the third row.** `verify-coverage-floors.py` with no argument exits **1** on this host, and that is CORRECT rather than a finding: it reads `coverage-probe.json`, which only exists after `cargo llvm-cov --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile --json` runs, and its message says exactly that plus the command to regenerate it. CI produces that file inside the job; nothing local can. **What IS verifiable without the instrumentation is the gate's LOGIC, and the self-test covers it in both directions** — it fires on a shortfall, stays quiet when met, catches a floor with no `CRATE_PREFIXES` entry (naming the unmapped crate rather than skipping it), and refuses to let many small covered lines mask one large uncovered file. So the honest claim is "the floor ratchet's logic is sound", not "the floors are currently met" — only a coverage run can assert the latter, and that is the one thing this lane needs CI for.
+
+**With this, every lane in `dev-ci.yml` other than the deploy/release ones has been exercised at least once locally.** Red lanes found and fixed across R155 and R158: `cargo-clippy`, `rust-fmt`, `static-gates`, `ci-docs-drift`, `rust-doc`. Green on first measurement: `cargo-check`, `cargo-nextest` (via per-crate test runs), `ui-test`, `ipc-parity`, `go-gate`, `fuzz-typecheck`, plus the `coverage-floors` self-test. Not exercised and not locally reproducible: `coverage-floors`' measurement half, `release-readiness`, `northflank-deploy`, `website`.
+
 ## 2026-10-08: three more CI lanes were red — `static-gates`, `ci-docs-drift` and `rust-doc`. Fixed in `7c41458d1`.
 
 **Found the same way as the lint gate: by running the lanes, not the tests.** Each of the three failed for a different reason and each was red before I touched it.
