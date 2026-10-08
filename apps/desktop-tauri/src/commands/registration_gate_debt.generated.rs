@@ -230,7 +230,20 @@ pub const DEBT_CEILING: usize = 78;
 pub const NO_SESSION_RESOLUTION: usize = 53;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;
+///
+/// 27 -> 18, corrected 2026-10-08. The paragraph above already recorded that this class
+/// FELL to 18 and that "53 + 18 = 71 is the live row count" — but the constant was left
+/// at 27, the value from BEFORE the fall. MEASURED: the ledger holds exactly 53
+/// `no_session_resolution` rows and 18 of this class, and setting this ceiling to 18
+/// keeps all 14 registration-gate legs green, so 18 is the true count and 27 was stale.
+///
+/// WHY IT MATTERED, and it is the permissive direction: the assertion in
+/// `registration_gate_tests.rs` is `assume <= RESOLVES_SESSION_NAMES_NO_PERMISSION`, so a
+/// ceiling nine above the live count silently absorbs nine class-2 regressions —
+/// authenticate-then-assume doors, the class this ratchet exists to shrink. A stale-LOW
+/// floor fails loudly; a stale-HIGH ceiling passes quietly, which is why this one needed
+/// measuring rather than reading.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 18;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;
