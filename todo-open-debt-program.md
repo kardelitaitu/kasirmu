@@ -93,6 +93,29 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the byte/char length-limit defect is a FAMILY — 15 guards across 6 files. Fixed in `d22c23ec6`.
+
+**R185 fixed one instance; this round censused the class and found fifteen more.** Grepping for validation messages that name CHARACTERS and pairing each with the guard above it produced eleven more sites, all byte-based:
+
+| file | guards | fields |
+|---|---|---|
+| `kasirmu-core/db/products_crud.rs` | 3 | sku (50), name (255) x2 |
+| `kasirmu-core/db/suppliers.rs` | 4 | name (255) x2, code (50) x2 |
+| `kasirmu-core/db/customers.rs` | 2 | name (255) x2 |
+| `kasirmu-core/db/products_stock_query.rs` | 2 | sku (50), name (255) |
+| `kasirmu-api/pg/products.rs` | 2 | sku (50), name (255) |
+| `kasirmu-api/pg/users.rs` | 2 | username (100), display_name (255) |
+
+**Converted BOTH halves at every site** — the guard and the number it reports — because the reported count was half the defect: a message claiming "50 characters, got 102" is self-contradicting. 15 guards and 15 message arguments, verified afterwards that a grep for a byte-based `.len()` beside a "must not exceed" message returns nothing.
+
+**The decisive evidence that these are STRAGGLERS, not a deliberate choice:** the same repo already counts characters correctly in `edc_terminals.rs` (name 120, address 255), `payment_gateways.rs` (name 64) and `receipt_formats.rs` (footer/note 500). Two conventions coexisted, and the tables above were the minority.
+
+**MEASURED before touching anything.** Swapping both product guards and both message arguments to `chars().count()` left all **174 tests** in the products module GREEN — the unit was never pinned there either, so the same mutation test that found R185's defect found this one. **Kill-tested after the fix: reverting `products_crud.rs` to bytes FAILS the new test** (`product_sku_and_name_limits_count_characters_not_bytes`, which asserts the multi-byte fixture is genuinely multi-byte, accepts 50 characters AT the limit, and requires the 51-character refusal to report 51 rather than 102). Suites green: products 175, customers 34, suppliers 23, staff 98; clippy Finished on both crates.
+
+**Why the family matters more than the instance.** Each site rejects valid input for any non-ASCII name — Indonesian, accented, or CJK product and customer names are the normal case for this product's market, and each did so while reporting a number that could not be reconciled with its own stated limit. R185's fix was correct but local; leaving fifteen identical sites would have made it a coincidence rather than a rule.
+
+**Running tally: 32 guards examined, 15 sound, 18 with defects found and fixed.**
+
 ## 2026-10-08: the staff username/display-name limits counted BYTES while naming CHARACTERS. Fixed in `3555c2d66`.
 
 **R184's method -- mutate what looks cosmetic -- applied to the login path, and it found a user-visible defect with a self-contradicting error message.**
