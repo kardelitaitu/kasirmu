@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the corrected census finds NO uncovered validator, and two hard probes agree. Nothing changed by design.
+
+**Rebuilt the census module-aware, which is what R178's correction required.** Searching every `*_tests.rs` in the crate rather than assuming a sibling filename: **24 validators, ZERO with no test mention.** The R177 backlog is closed as an artefact — but "mentioned" is not "covered", so I probed the two thinnest by mutation rather than trusting the count.
+
+**Probe 1 — `map_topology_error` field identities (`semantics.rs:44`).** Its only "test mention" turned out to be a COMMENT, so I tested the thing that actually matters in a field-for-field shim: **swapping `node_id` and `wire_id` in the mapping**. A test that only asserted the error VARIANT would sail past that. **Result: FAILED, 6 tests caught it.** The wire-shape rebuild is covered down to the field level, which is what the module doc claims it does.
+
+**Probe 2 — the ten `map_gate_error` copies.** A census of `fn map_*` found `map_gate_error` duplicated across **ten** modules (categories, ctx, customers, inventory, inventory_counts, loyalty, regional, staff, stock_transfers, tax) — an ADR-49 cluster, and the same shape as R174's timing-mask twin. I verified all ten are **byte-identical after whitespace normalisation**, then degraded the security-relevant arm in every copy at once: `CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message)` removed, so a permission refusal falls through to the generic conversion. **Result: FAILED, 78 tests caught it.** The refusal stays visible to callers that branch on it, and the tree demonstrates that in 78 places.
+
+**Both probes restored byte-for-byte; `git status` clean; all ten `PermissionDenied` arms confirmed back by grep.** This round changed no code, and that is the finding: after three rounds of real defects found by mutation, the two hardest targets I could construct both held.
+
+**Running tally: 25 guards examined, 12 sound, 13 with defects found and fixed.** Two sound targets in a row, found by choosing probes for what WOULD break the subject rather than by reading it.
+
 ## 2026-10-08: the R177 census was WRONG for the topology module; `validate_load_shape` was the one real gap. Fixed in `fb448ca54`.
 
 **First, a correction to my own census.** R177 counted test mentions by assuming the test file is the sibling `*_tests.rs`. **The topology module does not work that way** — its tests are mounted from `model.rs:333,337` as module-level files (`topology_tests.rs`, `topology_command_tests.rs`, and five others). Re-run against every test file in the module, the backlog I named collapses:
