@@ -515,7 +515,8 @@ describe('popup surfaces have visible backgrounds', () => {
       ["components/StockAlertBell.css",4],
       ["components/StoreSwitcher.css",18],
       ["components/TierLockedFeature.css",5],
-      ["components/UpdateBanner.css",16],
+      // 'components/UpdateBanner.css' left this baseline with the dead twin
+      // (2026-10-09) -- see the note in focusVisibleCompliance.test.ts.
       ["components/charts/charts.css",9],
       ["contexts/HardwareAccel.css",9],
       ["features/analytics/AnalyticsScreen.css",219],
