@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the class-2 ledger carries a FALSE POSITIVE, and the sweep's blind spot is structural. Documented in `c8853409e`.
+
+**Found by reading the CLASSIFIER rather than the data.** `run_sweep` (`registration_gate_tests.rs:568-572`) marks a registered command `Gated` when `resolves_session(text) && (names_permission(text) || (text.contains("kasirmu_bridge::") && stems.contains(&module)))`. Among the 18 class-2 rows, `health::export_diagnostics` was the one R144 had already established is really gated — so I traced why the sweep still files it as debt.
+
+**Verified all three links before concluding anything.** (1) The SHELL shim (`apps/desktop-tauri/src/commands/health.rs:146`) takes `session_token: String`, which matches `resolves_session`'s marker list, and contains no guard marker — so it is "resolves, names nothing". (2) The BRIDGE function it delegates to (`crates/kasirmu-bridge/src/diagnostics.rs:160`) is genuinely gated: `ctx.resolve_session(session_token)?` then `ctx.require_session_permission(&session, permissions::SETTINGS_READ).await?`. (3) The STEM RULE is what fails — `gated_bridge_stems()` builds its set from files under `kasirmu-bridge/src` that name a permission, and the permission for this command sits in `diagnostics.rs` while the shim's module is `health`; `kasirmu-bridge/src/health.rs` names no permission, so `health` is never a gated stem. **The sweep asks about the module, but the permission lives in a sibling bridge file.** That is a structural limit, not an oversight.
+
+**DIRECTION, and this is why it is a note rather than a fix.** The misclassification INFLATES debt, so the class-2 ceiling is TIGHTER than reality instead of looser — a false positive spends ceiling a real hole would need, which is the fail-safe way round. That is the opposite of R172's defect, where the stale ceiling passed silently and *widened* the gap. Recorded because this count is read as a security measure and one of the 18 is known not to be one: **the honest statement is 17 real debt rows plus one already-gated shim.** Correcting it means teaching the sweep to follow a shim into the bridge module it actually calls, which is a classifier change rather than an edit to the number, so it is named and left for whoever owns that.
+
+**Two things I checked and deliberately did NOT change.** The ledger's own passage at `:220-225` already records the classification and the measurement honestly; what it never said is that one entry is not real debt, which is the gap this closes. And I did not touch the 18: moving it to 17 would restate the sweep's arithmetic to match my reading of one row, when the sweep is the authority on its own classification.
+
+**Running tally: 19 guards examined, 9 sound, 10 with defects found and fixed.** Three consecutive rounds without a fixable defect, and this one produced a documented counter-example rather than a repair — the useful outcome when the mechanism is sound but one of its counts is known-imprecise.
+
 ## 2026-10-08: no further stale pins — all four class ceilings across BOTH shells now measure EXACT. Verified, nothing changed.
 
 **I went looking for more of R172's defect and found none. Recorded because "I checked and it was clean" is a result, and because the check itself is what makes the previous round's fix trustworthy.**
