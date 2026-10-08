@@ -93,6 +93,18 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: the validator and diagnostics surface is SOUND — two more probes, no defect. Reported as such.
+
+**Applied R166's correction (probe by mutation, not by grep) to the two candidate surfaces left in that round's survey.** Both are clean, and the honest entry is that nothing was found.
+
+**`reports.rs` — all three bound validators are correctly pinned at the INCLUSIVE top end.** `validate_top_product_limit`, `validate_category_top` and `validate_trend_args` each use `(1..=MAX).contains()`. Mutated all three to `1..MAX` (the classic exclusive-boundary off-by-one) and the suite **FAILED** on three named tests, each asserting `validate_*(MAX_*).is_ok()` — so the top of every range is covered, not just the rejection side. Restored; 54 tests green. `validate_top_product_order` is a two-literal whitelist and was already covered.
+
+**`diagnostics.rs` — the sanitization chain is intact, including the one path I had not traced.** `install_panic_hook` captures the panic payload **verbatim** into `CrashReport.message` and the backtrace into `.stack`, then hands both to `write_crash_report_entry`, which applies `sanitize_log_text` to `message`, `stack` AND `component_stack` (`diagnostics.rs:405-413`). So a panic whose payload embeds a bearer token is redacted before reaching disk, and the existing test already pins bearer/pin/password/session_token. **I also checked the re-install path** because it looked suspicious: a second `install_panic_hook` call updates `PANIC_LOG_DIR` but SKIPS `set_hook` (the `PANIC_HOOK_INSTALLED` swap). That is correct, not a bug — the closure reads `PANIC_LOG_DIR` at PANIC TIME (`:494`), not at install time, so the later directory wins. Had it captured the path at install, this would have been a real defect; reading the closure body is what settled it.
+
+**`install_panic_hook` itself has no test, and I did NOT add one.** It installs a process-global panic hook, so calling it from a test would hijack the harness's own panic reporting for the rest of the binary — the test would either suppress real failures or turn its own assertion into a captured report. That is a genuine untestability, not a gap I can close, and adding a `#[ignore]`d test that cannot run would be worse than the honest note. Everything the hook DELEGATES to is covered, which is the part that decides whether a secret reaches disk.
+
+**Running tally: 12 guards examined, 6 sound, 6 with defects found and fixed.** The last four rounds have found one real defect (R165's zero-coverage containment check) and one defect in my own measurement method (R166's grep), against three sound surfaces. That rate is the useful output: the audit tree is in better shape than the early rounds suggested, and the remaining risk is concentrated in the places where a test exercises a COPY rather than the code.
+
 ## 2026-10-08: `validate_contained_path` is SOUND — and my grep said it had no tests. Corrected by mutation.
 
 **I went hunting for the R165 pattern and made the same class of mistake I have been documenting.** `crates/kasirmu-bridge/src/data/helpers.rs:38` defines `validate_contained_path` (reject `..` components), called at FIVE production sites — `data.rs:290` (export output), `:455` and `:484` (import file), `:772`, and `data/restore.rs:195`. Searching for a test by the words "traversal" or "ParentDir" returned only my own R165 additions and the production doc, so I concluded "5 call sites, zero tests".
