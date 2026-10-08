@@ -1,6 +1,6 @@
 # Beta Testing Master Plan (January 2027)
 
-<!-- Audit stamp: 2026-10-02 · Product & Release Engineering · Status: ACTIVE PLAN -->
+<!-- Audit stamp: 2026-10-08 · Release Engineering · Status: ACTIVE PLAN · Updated after UI gate run -->
 
 **Project:** `kasir.mu`  
 **Document:** `todo-beta-testing-january-2027.md`  
@@ -115,3 +115,31 @@ A merchant is considered successfully graduated from Beta when:
 2. **Zero Financial Discrepancies:** End-of-day cash drawer totals match the system financial report down to the exact Rupiah (`i64` Money).
 3. **Hardware Reliability:** Thermal printer prints 100% of receipts without requiring app or device restarts.
 4. **Frictionless Sync:** All offline transactions sync to the central cloud dashboard within 60 seconds of reconnecting to the internet.
+
+---
+
+## 5. UI Gate Status (as of 2026-10-08)
+
+All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
+
+| Gate | Status | Notes |
+|---|---|---|
+| **ESLint** | ✅ PASS | 62 warnings (pre-existing react-refresh fast-refresh; no errors) |
+| **TypeScript typecheck** | ✅ PASS | 0 errors |
+| **Vitest unit tests** | ✅ PASS | 670 files, 11,306 tests pass |
+| **FTL dedupe** | ✅ PASS | 0 duplicate Fluent keys |
+| **Bundle budget (desktop)** | ✅ PASS | Within gzip budget (PERF-02) |
+| **Bundle budget (tablet)** | ✅ PASS | Within gzip budget |
+| **Data-testid compliance** | ✅ PASS | 0 collisions after `ef294d167` |
+| **i18n lint** | ⚠️ INFRA | WSL bash resolves rollup-linux-x64-gnu missing — 0 i18n issues detected; pre-existing env issue |
+| **E2E tests** | ⚠️ STALE | Docker images stale (predating 2026-10-08 source changes); rebuild with `npm run e2e -- --build` |
+| **Perf smoke** | ✅ PASS | Runtime budgets (desktop + tablet) |
+
+### Commits in this session (2026-10-08)
+- `5d806093b` — docs(android): complete 4GB optimization audit with empirical telemetry
+- `798211bf3` — perf(qris-core): replace bitwise CRC-16 loop with 256-entry lookup table (O-L14)
+- `06894624d` — perf(plugin): O(1) plugin index and zero-clone hook dispatch (O-L17)
+- `d9f6bd3dd` — docs(optimize-crates): mark O-L14 and O-L17 resolved in audit journal
+- `6ebc95b97` — test(restaurant): add comprehensive unit, logic and component test suites for menu editor
+- `dc7d2ac25` — fix(ui): resolve token compliance, tooltip, dither, and extraction in menu editor
+- `ef294d167` — fix(ui): disambiguate sync-plan-row and sync-queue-summary data-testids in SyncStatusScreen
