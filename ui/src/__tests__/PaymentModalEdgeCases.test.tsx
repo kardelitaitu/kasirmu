@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within, fireEvent } from '@testing-library/react';
 import { act } from 'react';
 import { renderInAct, actAsync } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
@@ -398,6 +398,86 @@ describe('PaymentModal — edge cases', () => {
 
     // complete_sale was called twice (first fail, second success)
     expect(callCount).toBe(2);
+  });
+
+  it('a second retry click while the retry is in flight does NOT start a second sale', async () => {
+    // The Retry control is a plain <button>, not the shared <Button>, so it
+    // inherits none of that component's loading-disable behaviour. What actually
+    // prevents a double settle is the handler's own `setPaymentError(null)`:
+    // React 18 batches it with setProcessing(true) and flushes at the end of the
+    // handler, so the {paymentError && ...} block unmounts and the second click
+    // has no node to land on.
+    //
+    // That is the invariant this test pins, and it is not decorative: deleting
+    // `setPaymentError(null)` from the handler makes this test fail with three
+    // complete_sale calls instead of two (measured, not assumed). Each extra call
+    // is another startSaleScoped + complete_sale -- a second charge for one
+    // basket -- so the line is load-bearing and must not be "simplified" away.
+    //
+    // The retry is gated behind a promise this test controls, so the window is
+    // deterministic rather than a race against the machine.
+    let completeCalls = 0;
+    let releaseFirst!: () => void;
+    const firstInFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock.mockImplementation((cmd: string): any => {
+      if (cmd === 'complete_sale' || cmd === 'complete_sale_scoped') {
+        completeCalls++;
+        if (completeCalls === 1) return Promise.reject(new Error('Payment gateway timeout'));
+        // The retry hangs until released, which is when the second click lands.
+        return firstInFlight.then(() => ({ saleId: 'sale-1', total: null, lineCount: 1 }));
+      }
+      if (cmd === 'start_sale') return Promise.resolve({ cartId: 'test-cart' });
+      if (cmd === 'add_line') return Promise.resolve({ lineId: 'test-line', lineTotal: null });
+      if (cmd === 'print_sales_receipt') return Promise.resolve({ printed: true });
+      if (cmd === 'get_enabled_features') return Promise.resolve({ features: [] });
+      if (cmd === 'list_currencies' || cmd === 'list_currencies_scoped') {
+        return Promise.resolve([{ code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' }]);
+      }
+      if (cmd === 'list_exchange_rates' || cmd === 'list_exchange_rates_scoped' ||
+          cmd === 'list_latest_exchange_rates_scoped') return Promise.resolve([]);
+      if (cmd === 'get_default_currency' || cmd === 'get_default_currency_scoped') return Promise.resolve('USD');
+      if (cmd === 'get_latest_exchange_rate_scoped') return Promise.resolve(null);
+      return Promise.resolve({});
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const tenderInput = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(tenderInput, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await waitFor(() => {
+      expect(document.querySelector('.payment-error-banner')).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    const retryBtn = document.querySelector('.payment-error-retry-btn') as HTMLButtonElement;
+    // Two clicks in the same tick: the second lands before the first has had a
+    // chance to re-render the button out of the DOM.
+    fireEvent.click(retryBtn);
+    fireEvent.click(retryBtn);
+
+    releaseFirst();
+
+    await waitFor(() => {
+      expect(completeCalls).toBeGreaterThanOrEqual(2);
+    }, { timeout: 3000 });
+
+    // The first attempt failed and the retry succeeded: exactly 2. A third call
+    // is the duplicate the guard must prevent.
+    expect(completeCalls).toBe(2);
   });
 
   it('classifies by TYPED kind when the message text disagrees (R3)', async () => {
