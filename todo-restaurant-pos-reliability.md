@@ -585,6 +585,19 @@ reintroduced bug, which fails it with
 self-tests alone were not sufficient — two earlier guards in this repo passed theirs
 while being wrong.
 
+**A SEVENTH INSTANCE, and a different shape (round 7):** `WorkspaceStorePosSettings`
+seeds its baseline from `settings.receipt` — the CONTEXT, not a per-key read — and
+consumed `useSettings()` without ever reading `hasPartialError`. A partially-failed
+context load leaves `settings.receipt` at DEFAULTS, so the card seeded a default
+baseline, looked clean, and would have written those defaults over the real values.
+Now gated on `hasPartialError` (which the context already exposed at
+`SettingsContext.tsx:126`) plus a banner.
+
+**⚠️ This shape is why the new guard does not catch everything.** It is neither a
+`.catch` assignment nor an indirect default — it is an unconsumed error FLAG on a
+context. Three distinct spellings of one bug now exist across seven sites, which is
+the honest argument for treating F4 as a class to review rather than a list to close.
+
 **TWO MORE F4 INSTANCES FOUND AND FIXED (round 6)**, by scanning all 8 files that
 use `originalsRef` against the 3 that had `loadFailed`:
 

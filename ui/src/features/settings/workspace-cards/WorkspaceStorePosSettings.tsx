@@ -32,7 +32,7 @@ export function WorkspaceStorePosSettings({
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
-  const { settings, markSettingsUpdated } = useSettings();
+  const { settings, markSettingsUpdated, hasPartialError } = useSettings();
   const { sessionToken } = useWorkspace();
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -80,6 +80,11 @@ export function WorkspaceStorePosSettings({
       };
       setOriginalsLoaded(true);
     }
+    // F4: `settings.receipt` carries DEFAULTS when the context load only partly
+    // succeeded, and this card seeds its dirty baseline from them — so a partial
+    // failure would look clean and Save would write the defaults over the real
+    // values. `hasPartialError` is the context's own signal for that; the card
+    // consumed `settings` and ignored it.
   }, [settings.receipt, originalsLoaded]);
 
   // ── Save ─────────────────────────────────────────────────────
@@ -457,7 +462,7 @@ export function WorkspaceStorePosSettings({
 
   const saveButton = variant !== 'inspector-drawer' ? (
     <div className="settings-actions">
-      <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+      <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || hasPartialError}>
         <Localized id="save">Save</Localized>
       </Button>
     </div>
@@ -468,6 +473,14 @@ export function WorkspaceStorePosSettings({
       {receiptSection}
       {printerSection}
       {scannerSection}
+      {hasPartialError && (
+        <div className="settings-error-banner" role="alert" data-testid="resto-storepos-partial-error">
+          <Localized id="settings-load-failed">
+            <span>Failed to load settings</span>
+          </Localized>
+        </div>
+      )}
+
       {hw.error && (
         <div className="settings-error-banner" role="alert">
           {hw.error}
