@@ -5,7 +5,12 @@
 //! tax-preview sample totals) inline inside the component. Extracting that logic
 //! here makes it exhaustively unit-testable without a DOM and keeps the screen
 //! focused on state + rendering. Every function is deterministic: no globals,
-//! no currency tables beyond the IDR-vs-other prefix rule.
+//! no currency tables beyond the IDR-vs-other prefix rule and the canonical
+//! minor-unit exponent (`minorUnitExponent`) that `formatPrice` needs to cap the
+//! fractional digits it may show — the same exponent the printer's
+//! `foundation::format_minor` applies.
+
+import { minorUnitExponent } from '@/types/domain';
 
 export type ReceiptFontSize = 'very_small' | 'small' | 'medium' | 'large';
 export type ReceiptLogoPosition = 'top' | 'left' | 'right';
@@ -85,8 +90,22 @@ export const formatPrice = (
   const major = showThousandsSeparator
     ? rawMajor.replace(/\B(?=(\d{3})+(?!\d))/g, thousandChar)
     : rawMajor;
-  const showFrac = decimalSeparator !== 'none' && fractionDigits > 0;
-  const fraction = showFrac ? `${sep}${'0'.repeat(fractionDigits)}` : '';
+  // ⚠️ The fraction is capped by the CURRENCY'S canonical exponent, because that is the
+  // only thing the printer can render. `format_money`
+  // (kasirmu-hal/src/drivers/receipt.rs:251) delegates the decimal math to
+  // `foundation::format_minor`, which uses the currency's exponent — IDR is exp-0, so it
+  // yields a bare major part and `fraac` is None. The renderer then falls to its
+  // `(_, _)` arm and prints the major ALONE, whatever `decimal_separator` says.
+  //
+  // Without this cap, a caller passing `showDecimals ? 2 : 0` (as
+  // `RestaurantReceiptsScreen.tsx:1210` does) made the IDR preview render
+  // `Rp 1.500,00` while the paper printed `Rp 1500` — the exact divergence this
+  // function's header promises cannot happen. The setting cannot reach the printer at
+  // all: `ReceiptConfig` (receipt.rs:98-117) has no decimals field.
+  const exponent = minorUnitExponent(currency);
+  const effectiveDigits = Math.min(fractionDigits, exponent);
+  const showFrac = decimalSeparator !== 'none' && effectiveDigits > 0;
+  const fraction = showFrac ? `${sep}${'0'.repeat(effectiveDigits)}` : '';
   const prefix = showCurrency ? (isIdr ? 'Rp ' : `${currency || 'IDR'} `) : '';
   return `${negative ? '-' : ''}${prefix}${major}${fraction}`;
 };

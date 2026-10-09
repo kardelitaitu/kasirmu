@@ -178,17 +178,26 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     expect(screen.getByText('93.000')).toBeInTheDocument();
   });
 
-  it('toggles show-decimals and appends fractional units', async () => {
+  it('does NOT append fractional units for IDR, whatever Show Decimals says', async () => {
+    // IDR is an exp-0 currency: the printer's `format_money`
+    // (kasirmu-hal/src/drivers/receipt.rs:251) uses the currency's canonical exponent, so
+    // the paper never prints a fraction for Rupiah. The preview used to append `,00`
+    // here, claiming a precision the printer cannot produce — and `ReceiptConfig`
+    // (:98-117) has no `showDecimals` field, so the toggle could not reach it either way.
+    //
+    // This case previously asserted `93000,00`. It now asserts the printer-agreeing
+    // truth: for IDR the decimals toggle is inert, and only grouping changes.
     const user = userEvent.setup();
     await renderScreen();
 
     expect(screen.getByText('93000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Decimals/i));
-    expect(screen.getByText('93000,00')).toBeInTheDocument();
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.queryByText('93000,00')).toBeNull();
 
-    // Enabling both thousands separator and decimals
+    // Grouping still applies (a separate, recorded preview/print divergence).
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
-    expect(screen.getByText('93.000,00')).toBeInTheDocument();
+    expect(screen.getByText('93.000')).toBeInTheDocument();
   });
 
   it('adjusts the tax rate input (clamped) and reflects it in the preview', async () => {
