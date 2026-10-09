@@ -862,6 +862,53 @@ so it now parses the token immediately after the em dash and matches `^CLOSED`.
 Verified: eight settings/review guards **23 passed**; full suite **690 files / 11,517 passed**;
 typecheck 0; eslint 0; bundle parity 0 missing. Kill-tested with the corrected extraction.
 
+### F31 — the review's LAST open item was also closed (round 72) — `608ac68a2`
+
+Round 71 fixed F1. This round checked the remaining four against the tree, and **the review is
+now stale on three of five findings**:
+
+| Finding | Review says | Tree says |
+|---|---|---|
+| F1 | STILL OPEN | closed (round 71) |
+| F2 | CLOSED | closed — **accurate** |
+| F3 | CLOSED | closed — accurate |
+| F4 | CLOSED (moot) | closed — `workspaceType` gone from `PosScreen` (grep exit 1) |
+| F5 | "still open as a product question" | **half of it closed** |
+
+**F5's specific claim was that `unavailable` (86) "stays terminal-local".** It does not, and the
+code says so while naming the finding:
+
+> `RestaurantMenu.tsx:302-304` — *"Re-poll unavailable items from the backend when the tab regains
+> visibility. This ensures that 86'd items from another terminal appear within seconds of
+> refocusing, without a full page reload. **(Cross-terminal awareness gap — §F5.)**"*
+
+- It rehydrates through `getSettingScoped` (`:281`) under a **location-scoped** key
+  (`:228`, `restaurant.unavailable.<locationId>`).
+- `unavailableKey` (`:128-129`) keys by **location, not terminal** — an 86 is a property of the
+  kitchen, not of the screen that reported it. That is the promotion to Tier 1 the finding asked
+  for, with the correct key.
+- **Independently corroborated on the device in round 64**: `restaurant.unavailable` appears in
+  the store DB with app-written `setting_updated` rows carrying the app's terminal id.
+
+**What genuinely remains open is narrower than the line claimed** — `pinned`, `colors` and `pop`
+are localStorage-only by design, and no ADR says whether that is intended. The code asks for that
+decision honestly at `:75-79`.
+
+**The kill-test caught the guard's SECOND unfalsifiable version.** I first asserted
+`toContain('refetchUnavailable')` and it passed against a planted rename — because the name
+survives at its call sites. A string check is not a structure check. It now anchors on the
+`useCallback` **declaration** and on the **visibility listener** that makes the sync
+cross-terminal, and the kill-test removes that listener rather than renaming anything.
+
+**That is four unfalsifiable guards this session** (rounds 66, 67, 71, and this one). The
+variants differ — a needle matching no real spelling, a status word read from prose, a comment
+mention read as code — but the cause is identical: **asserting on text where the claim is about
+structure.**
+
+**Full suite GREEN for the first time this session: 692 files / 11,520 passed, 0 failed.** The
+long-standing `holdCartScoped` pair was fixed by another lane during this round. typecheck 0;
+eslint 0; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
