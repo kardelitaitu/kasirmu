@@ -177,7 +177,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -212,7 +212,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -275,7 +275,7 @@ describe('PaymentModal — sale flow', () => {
     await userEvent.type(amountInputs()[0]!, '3');
     await userEvent.type(amountInputs()[1]!, '4');
 
-    const complete = screen.getByRole('button', { name: /^complete$/i });
+    const complete = screen.getByTestId('settle-button');
     await waitFor(() => expect(complete).toBeEnabled());
     await userEvent.click(complete);
 
@@ -312,7 +312,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
@@ -344,7 +344,7 @@ describe('PaymentModal — sale flow', () => {
       expect(screen.getByLabelText(/amount tendered/i)).toBeInTheDocument(),
     );
     await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('create_kds_order_from_sale_scoped',
         expect.objectContaining({ saleId: 'sale-1' })),
@@ -469,7 +469,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -507,7 +507,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -576,7 +576,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = await screen.findByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     expect(await screen.findByText(/loyalty points were NOT deducted/i)).toBeInTheDocument();
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
@@ -596,7 +596,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     expect(await screen.findByRole('region', { name: /Receipt Preview/i })).toBeInTheDocument();
     expect(await screen.findByText(/CHANGE:/i)).toBeInTheDocument();
@@ -617,8 +617,8 @@ describe('PaymentModal — sale flow', () => {
     );
 
     await userEvent.click(screen.getByLabelText(/Card/));
-    expect(screen.getByRole('button', { name: /^complete$/i })).not.toBeDisabled();
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    expect(screen.getByTestId('settle-button')).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -713,7 +713,7 @@ describe('PaymentModal — shortfall resolution', () => {
     );
 
     await userEvent.click(screen.getByLabelText(/Card/));
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
@@ -764,7 +764,7 @@ describe('PaymentModal — shortfall resolution', () => {
     );
 
     await userEvent.click(screen.getByLabelText(/Card/));
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
@@ -855,7 +855,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await userEvent.click(await screen.findByText('Confirm & Continue'));
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
@@ -944,7 +944,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Select charge currency'), 'IDR');
     await userEvent.click(screen.getByLabelText(/Card/));
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
@@ -988,7 +988,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       // The modal adds lines via add_line (or add_line_scoped when a
@@ -1047,7 +1047,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     const completeOnce = async () => {
       await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
-      await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+      await userEvent.click(screen.getByTestId('settle-button'));
       await waitFor(() => expect(attemptIds().length).toBeGreaterThan(0));
     };
 
@@ -1187,7 +1187,7 @@ describe('PaymentModal — taxEstimated claim', () => {
 
   const completeOnce = async () => {
     await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
     await waitFor(() => expect(completeArgs().length).toBeGreaterThan(0));
   };
 
@@ -1925,7 +1925,7 @@ describe('PaymentModal — local payment rails gating', () => {
       expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
     );
     await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
     // Gates the assertion on the sale having actually completed, so a case cannot
     // pass merely by never reaching the kick site.
     await waitFor(() =>
