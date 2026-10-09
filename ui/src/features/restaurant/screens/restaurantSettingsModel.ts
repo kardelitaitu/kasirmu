@@ -43,7 +43,15 @@ export interface RestaurantSettingsValues {
  */
 export const DEFAULT_RESTAURANT_SETTINGS: RestaurantSettingsValues = {
   customerName: true,
-  guestCount: false,
+  // TRUE, matching the runtime, and it used to be false. `PosScreen.tsx:1141` maps an
+  // unset key with `guestCountEnabled ?? true`, and `CartPanel.tsx:759` shows the pax
+  // field unless the gate is exactly `false` — so an unset `restaurant.guest_count`
+  // SHOWS the field. The screen rendered this toggle OFF for that same state, i.e. it
+  // described something the POS was not doing. The runtime's direction is the safe one
+  // (`PosScreen.tsx:792-796`: a settings outage must not remove a POS capability), so
+  // the default moved to meet it rather than the reverse. Pinned by
+  // `__tests__/restaurantSettingDefaultsAgree.test.ts`.
+  guestCount: true,
   orderTypePrompt: true,
   holdOrder: true,
   saveTab: true,
