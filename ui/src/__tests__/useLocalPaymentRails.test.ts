@@ -65,6 +65,27 @@ describe('useLocalPaymentRails helpers', () => {
       // qris is not in enabled_payment_rails, so it should be excluded
       expect(methods).toEqual(['cash', 'card', 'credit']);
     });
+    // ── The open_bill / credit inconsistency, pinned so it cannot drift ──
+    //
+    // `visibleMethods` derives the QRIS/CARD/CASH tenders, but `open_bill` and
+    // `credit` are NOT part of TENDER_RAILS: PaymentModal renders `open_bill` on
+    // `isRestaurantPos` alone and `credit` unconditionally (PaymentModal.tsx:1910,
+    // :1934). So NEITHER consults a rail's `is_enabled`.
+    //
+    // That matters because RestaurantPaymentsScreen now offers an enable toggle for
+    // both (they left its `internalHiddenCodes` list and became ordinary cards). A
+    // rail the operator can switch off here that the charge modal keeps offering is
+    // the same class as the `midtrans isActive` disagreement being fixed in that
+    // file. These cases pin TODAY'S behaviour — if the two surfaces are brought into
+    // agreement, this is the test that must be edited deliberately.
+    it('does not gate open_bill or credit on any rail flag (documented divergence)', () => {
+      const rails = [makeRail('open_bill', false), makeRail('credit', false)];
+      const methods = visibleMethods(rails, null);
+      // Both are DISABLED rails, yet neither can be removed from the tender list
+      // by a rail flag — the list is rail-derived for qris only.
+      expect(methods).toContain('credit');
+      expect(methods).toEqual(['cash', 'card', 'credit']);
+    });
   });
 
   describe('resolveTenderDisplayName', () => {

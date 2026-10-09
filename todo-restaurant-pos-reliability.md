@@ -551,6 +551,34 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+### Round 15 — a NEW divergence in the payment popup, pinned rather than guessed
+
+**Finding: `open_bill` and `credit` are modelled as rails on one surface and as fixed
+markup on the other.**
+
+- The POPUP (`PaymentModal.tsx:1910`, `:1934`) renders `open_bill` on `isRestaurantPos`
+  alone and `credit` unconditionally. **Neither consults `railOffered`** — they are not
+  in `TENDER_RAILS`, so no rail `is_enabled` flag can remove them.
+- The SETTINGS screen's in-flight change removes both from its `internalHiddenCodes`
+  list, so they become ordinary cards **with an enable toggle each**.
+
+So an operator can switch off a rail that the charge modal keeps offering. That is the
+same class as the `midtrans isActive` disagreement being fixed in that same file —
+except here the two sides are the popup and the settings screen, and the popup is MINE
+to change.
+
+**I did NOT change the gating, deliberately.** Making the popup honour the flag would
+HIDE a tender for any site whose `open_bill`/`credit` rail row is absent or disabled —
+a behaviour change on the cashier's last step, and `visibleMethods` is fail-open by
+contract for exactly that reason. Which direction is correct is a product question
+(with the file that defines the intent still uncommitted), so this round pins today's
+behaviour instead of guessing.
+
+**The pin is a real test, not a comment:** `useLocalPaymentRails.test.ts` asserts that a
+DISABLED `open_bill`/`credit` rail still yields `['cash','card','credit']`. Kill-tested
+— making `credit` rail-gated fails it with `expected [ 'cash', 'card' ] to include
+'credit'`. When the two surfaces are reconciled, that test must be edited on purpose.
+
 ### Round 14 — the goal widened to the PAYMENT POPUP, and two money-path findings
 
 **I also fixed a HEAD-level regression that was not mine.** A full-suite run failed
