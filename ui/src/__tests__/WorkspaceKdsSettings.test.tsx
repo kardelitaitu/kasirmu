@@ -12,6 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/components/Toast';
 import { WorkspaceKdsSettings } from '@/features/settings/workspace-cards/WorkspaceKdsSettings';
+import { DEFAULT_SETTINGS as KDS_DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 
 const testL10n = {
@@ -97,6 +98,27 @@ function renderCard(overrides: Record<string, unknown> = {}) {
 beforeEach(() => { mocks.fontSmoothing = 'antialiased'; });
 
 describe('WorkspaceKdsSettings', () => {
+  it('takes its unset-key fallbacks from the model the KDS board reads', async () => {
+    // These five defaults were a SECOND hand-written copy of
+    // `kdsSettingsModel.DEFAULT_SETTINGS`. The card falls back to them when a key has
+    // never been written (`:105`, `:109`, `:114`), and the board falls back to its own
+    // copy for the SAME case — so changing one without the other would make Settings
+    // display a density the board does not use. Pinned against the model, not against
+    // the literals, so a model change flows through instead of failing here.
+    renderCard();
+
+    await waitFor(() => expect(screen.getByTestId('kds-density')).toBeInTheDocument());
+    expect((screen.getByTestId('kds-density') as HTMLSelectElement).value).toBe(
+      String(KDS_DEFAULT_SETTINGS.density),
+    );
+    expect((document.getElementById('kds-auto-ack') as HTMLInputElement).checked).toBe(
+      KDS_DEFAULT_SETTINGS.autoAcknowledge,
+    );
+    expect((document.getElementById('kds-sound') as HTMLInputElement).checked).toBe(
+      KDS_DEFAULT_SETTINGS.soundEnabled,
+    );
+  });
+
   it('renders SLA Escalation heading', () => {
     renderCard();
     expect(screen.getByText('SLA Escalation')).toBeInTheDocument();

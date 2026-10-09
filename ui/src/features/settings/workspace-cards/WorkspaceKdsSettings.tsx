@@ -8,13 +8,14 @@ import { requiredLocalized } from '@/components';
 import { useSettings } from '@/contexts/SettingsContext';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 import { clampRedThreshold, clampYellowThreshold } from '@/features/kds/kdsThresholdMinutes';
+import { DEFAULT_SETTINGS as KDS_DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import SettingsSelect from '../SettingsSelect';
 import type { WorkspaceCardProps } from './types';
 import { hasChanges } from './helpers';
 
 // ── Local types ──────────────────────────────────────────────────────
 
-type DisplayDensity = number;
+import type { DisplayDensity } from '@/features/kds/kdsSettingsModel';
 
 interface KdsDraftState {
   soundEnabled: boolean;
@@ -24,13 +25,17 @@ interface KdsDraftState {
   density: DisplayDensity;
 }
 
-const DEFAULT_KDS: KdsDraftState = {
-  soundEnabled: true,
-  yellowThresholdMin: 5,
-  redThresholdMin: 10,
-  autoAcknowledge: false,
-  density: 3,
-};
+/**
+ * The card's fallback for an UNSET key, taken from the model the runtime uses.
+ *
+ * This was a second hand-written copy of the same five default values. It is not
+ * decorative: `:105`, `:109` and `:114` fall back to it when a key has never been
+ * written, so the number shown here is the number the operator will get — and the
+ * KDS board reads its own copy (`kdsSettingsModel.DEFAULT_SETTINGS`) for the same
+ * case. Changing one default without the other would make Settings display a value
+ * the board does not use. Derived now, so the two cannot disagree.
+ */
+const DEFAULT_KDS: KdsDraftState = KDS_DEFAULT_SETTINGS;
 
 // ── Component ────────────────────────────────────────────────────────
 
