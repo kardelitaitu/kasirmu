@@ -85,33 +85,7 @@ pub async fn list_sales(state: State<'_, AppState>) -> Result<SaleListResponse, 
     })
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Saledetail.
-pub struct SaleDetail {
-    /// Unique identifier.
-    pub id: String,
-    /// Total amount in minor currency units.
-    pub total: Money,
-    /// Line Count.
-    pub line_count: i64,
-    /// Current status.
-    pub status: String,
-    /// Payment Method.
-    pub payment_method: Option<String>,
-    /// Tendered Minor.
-    pub tendered_minor: Option<i64>,
-    /// ID of the associated user.
-    pub user_id: Option<String>,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// Lines.
-    pub lines: Vec<kasirmu_core::SaleLine>,
-    /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
-    /// claimed an estimate; `None` = unstamped (absence is never a claim).
-    /// Wire-verified: struct-wide `rename_all` is the drift fix (desktop twin).
-    pub tax_estimate_note: Option<String>,
-}
+pub use kasirmu_bridge::history::SaleDetail;
 
 #[command]
 /// Get sale.
@@ -127,10 +101,24 @@ pub async fn get_sale(
         Some(s) => store.sale_tax_estimate_note(&s.id)?,
         None => None,
     };
+    let display_code = match &sale {
+        Some(s) => store.sale_display_code(&s.id)?,
+        None => None,
+    };
+    let faktur_pajak = match &sale {
+        Some(s) => store.get_faktur_pajak(&s.id)?,
+        None => None,
+    };
+    let statutory_number = match &sale {
+        Some(s) => store.sale_statutory_number(&s.id)?,
+        None => None,
+    };
     drop(db);
     Ok(sale.map(|s| SaleDetail {
         id: s.id,
         total: s.total,
+        subtotal: s.subtotal,
+        tax_total: s.tax_total,
         line_count: s.line_count,
         status: format!("{:?}", s.status),
         payment_method: s.payment_method,
@@ -138,7 +126,10 @@ pub async fn get_sale(
         user_id: s.user_id,
         created_at: s.created_at,
         lines: s.lines,
+        display_code,
         tax_estimate_note,
+        faktur_pajak,
+        statutory_number,
     }))
 }
 
@@ -351,40 +342,16 @@ pub async fn list_sales_scoped(
 }
 
 /// Session-scoped variant of `get_sale`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_sale_scoped(
     session_token: String,
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<SaleDetail>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let sale = store.get_sale(&id)?;
-    // F2-7: single-row getter on the detail door only (no list N+1).
-    let tax_estimate_note = match &sale {
-        Some(s) => store.sale_tax_estimate_note(&s.id)?,
-        None => None,
-    };
-    drop(db);
-    Ok(sale.map(|s| SaleDetail {
-        id: s.id,
-        total: s.total,
-        line_count: s.line_count,
-        status: format!("{:?}", s.status),
-        payment_method: s.payment_method,
-        tendered_minor: s.tendered_minor,
-        user_id: s.user_id,
-        created_at: s.created_at,
-        lines: s.lines,
-        tax_estimate_note,
-    }))
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::history::get_sale_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of `export_daily_summary`.

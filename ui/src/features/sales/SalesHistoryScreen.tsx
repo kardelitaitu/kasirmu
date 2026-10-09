@@ -559,20 +559,21 @@ export default function SalesHistoryScreen() {
         // `display_code` is NULL for legacy sales, so fall back to the id.
         receiptNumber: detail.displayCode ?? detail.id,
         items: detail.lines.map((l): LineItemDto => {
+          const currency = l.unit_price?.currency ?? detail.total?.currency ?? 'IDR';
           const item: LineItemDto = {
-            name: l.name,
+            name: l.name || l.sku,
             quantity: l.qty,
-            unitPrice: { minorUnits: l.unit_price.minor_units, currency: l.unit_price.currency },
-            totalPrice: { minorUnits: l.total_minor, currency: l.unit_price.currency },
+            unitPrice: { minorUnits: l.unit_price?.minor_units ?? 0, currency },
+            totalPrice: { minorUnits: l.total_minor ?? (l as { line_total?: { minor_units: number } }).line_total?.minor_units ?? 0, currency },
           };
           if (l.tax_amount) {
-            item.taxAmount = { minorUnits: l.tax_amount.minor_units, currency: l.tax_amount.currency };
+            item.taxAmount = { minorUnits: l.tax_amount.minor_units, currency: l.tax_amount.currency ?? currency };
           }
           return item;
         }),
-        subtotal: { minorUnits: detail.subtotal.minor_units, currency: detail.total.currency },
-        ...(detail.taxTotal.minor_units > 0
-          ? { tax: { minorUnits: detail.taxTotal.minor_units, currency: detail.total.currency } }
+        subtotal: { minorUnits: detail.subtotal?.minor_units ?? detail.total.minor_units, currency: detail.total.currency },
+        ...((detail.taxTotal?.minor_units ?? 0) > 0
+          ? { tax: { minorUnits: detail.taxTotal!.minor_units, currency: detail.total.currency } }
           : {}),
         total: { minorUnits: detail.total.minor_units, currency: detail.total.currency },
         payments: [
@@ -1573,14 +1574,14 @@ export default function SalesHistoryScreen() {
                     <Localized id="sales-history-detail-subtotal">
                       <strong><span>Subtotal:</span></strong>
                     </Localized>
-                    {' '}{formatMoney(detail.subtotal)}
+                    {' '}{formatMoney(detail.subtotal ?? detail.total)}
                   </div>
-                  {detail.taxTotal.minor_units > 0 && (
+                  {(detail.taxTotal?.minor_units ?? 0) > 0 && (
                     <div>
                       <Localized id="sales-history-detail-tax">
                         <strong><span>Tax:</span></strong>
                       </Localized>
-                      {' '}{formatMoney(detail.taxTotal)}
+                      {' '}{detail.taxTotal ? formatMoney(detail.taxTotal) : '\u2014'}
                       {isTaxEstimated(detail.taxEstimateNote) && (
                         <Badge variant="warning" style={{ marginLeft: 8 }}>
                           <Localized id="sales-history-tax-estimated-badge">
@@ -1734,18 +1735,19 @@ export default function SalesHistoryScreen() {
                   <tbody>{detail.lines.map((line) => (
                       <tr key={line.id}>
                         <td>{line.sku}</td>
-                        <td>{line.name}</td>
+                        <td>{line.name || line.sku}</td>
                         <td>{line.qty}</td>
-                        <td>{formatMoney(line.unit_price)}</td>
-                        <td>{formatMoney({ minor_units: line.total_minor, currency: line.unit_price.currency })}</td>
+                        <td>{line.unit_price ? formatMoney(line.unit_price) : '\u2014'}</td>
+                        <td>{formatMoney({ minor_units: line.total_minor ?? (line as { line_total?: { minor_units: number } }).line_total?.minor_units ?? ((line.unit_price?.minor_units ?? 0) * (line.qty || 1)), currency: line.unit_price?.currency ?? detail.total?.currency ?? 'IDR' })}</td>
                         {lineMargins.length > 0 && (
                           (() => {
                             const m = lineMargins.find((lm) => lm.sale_line_id === line.id);
                             if (!m) return <td>{'\u2014'}</td>;
+                            const lineCurrency = line.unit_price?.currency ?? detail.total?.currency ?? 'IDR';
                             return (
                               <>
-                                <td className="sales-history-cell-mono">{formatMoney({ minor_units: m.unit_cost_minor, currency: line.unit_price.currency })}</td>
-                                <td className={`sales-history-cell-mono${m.margin_minor < 0 ? ' sales-history-cell-negative' : ''}`}>{formatMoney({ minor_units: m.margin_minor, currency: line.unit_price.currency })}</td>
+                                <td className="sales-history-cell-mono">{formatMoney({ minor_units: m.unit_cost_minor, currency: lineCurrency })}</td>
+                                <td className={`sales-history-cell-mono${m.margin_minor < 0 ? ' sales-history-cell-negative' : ''}`}>{formatMoney({ minor_units: m.margin_minor, currency: lineCurrency })}</td>
                                 <td className={`sales-history-cell-mono${m.margin_percent < 0 ? ' sales-history-cell-negative' : ''}`}>{m.margin_percent.toFixed(1)}%</td>
                               </>
                             );
