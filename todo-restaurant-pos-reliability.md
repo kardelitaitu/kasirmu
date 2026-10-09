@@ -5159,3 +5159,57 @@ in reverse: **a grep hit is not a reader until you read what it says.**
 | F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
 | F13 | `ui/src/features/settings/DataManagementScreen.tsx` vs `.../screens/DataManagementScreen.tsx` |
 | F14 | `crates/kasirmu-bridge/src/setup.rs:378` (global) vs `crates/kasirmu-bridge/src/settings.rs:186-193` (store); `manager.rs:192`; no settings copy in `seed_demo.rs:171-240` or `workspaces.rs:176-187` |
+
+### F44 — a duplicated list whose second copy went stale (round 104) — `3f0afbfd0`
+
+**F43's drift in its purest form: the same claim written twice, one copy refreshed.**
+
+The plan carried the F19 inert-control list **twice**, nine lines apart. The first copy was correct.
+The second ended:
+
+> `sound_chime` is the remaining D5 key and needs a POS sound path (`useSound` is KDS-only).
+
+**That was false, and had been for ~30 rounds.** D5 closed in round 73; `PosScreen.tsx:897` reads
+`restaurant.sound_chime` and `:713` plays the chime through `playSuccess` unless the merchant
+switched it off, wired by `ea8f8a007`. The register three thousand lines below at `:4700` says `WIRED`
+for the same key. **Two places, opposite claims — and no guard read either against the source.**
+
+I re-measured both call sites rather than trusting the register. Both hold.
+
+#### What the duplication itself tells you
+
+A list repeated verbatim is a list that will diverge, and the only question is which copy gets
+edited. Here the maintainer updated the first and left the second — which is why the duplicate was
+worth deleting rather than reconciling: **one copy cannot drift from itself.** The correction note
+quotes the stale sentence so the history is visible without leaving a second live claim.
+
+#### The guard, and the two mistakes it caught in me
+
+The new case asserts the sentence is absent **and** that `PosScreen` still names the key — so if D5
+ever reopens, the guard fails in the direction that says *"this claim has become TRUE"* rather than
+silently passing.
+
+**My first version failed against my own correction.** It stripped fenced code blocks (F43's lesson)
+but the note quotes the sentence in a `>` **blockquote**, not a fence — so the quote read as a live
+claim. The strip now removes both. **A guard that reads a document you keep correcting will be
+tested by your corrections**, twice in three rounds now.
+
+**Kill-tested:** restoring the sentence as a live paragraph fails the case; the blockquote copy does
+not.
+
+#### The count, updated
+
+| # | Where the stale summary lived | Found |
+|---|---|---|
+| 1-2 | the plan's status header | rounds 74, 75 |
+| 3-4 | the same header, twice | the `F32` guard's comment |
+| 5 | a section heading | round 100 (F43) |
+| 6 | **the second copy of a duplicated list** | **this round** |
+
+**Six instances, four shapes, one behaviour.** Each guard extension was prompted by a drift the
+previous one did not cover — and this one was prompted *by a drift the previous one's fix created a
+blind spot for*: stripping fences taught the matcher to ignore quotes, and a blockquote is a quote
+in different clothes.
+
+Verified: `planStatusAccuracy` + `evidenceAnchorResolves` **10 passed**; full suite **697 files /
+11,579 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
