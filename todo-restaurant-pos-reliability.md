@@ -1,8 +1,14 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P5, P7, P8 DONE; P6 2 of 3 screens.**
-> **Remaining: P6's payments screen (blocked on another lane's dirty file), P1's
-> last two keys (owner decision: they have no consumer at all), and F11.**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE (P6's third screen landed round 74;
+> P1 re-audited complete round 75). Remaining: F11, D6, and the F19/F23/F24 owner calls.**
+> **Header corrected 2026-10-09 (round 75):** it read *"P6 2 of 3 screens"* and *"P1's last
+> two keys (owner decision: they have no consumer at all)"*. **Both went stale in the same
+> way — the work landed and the summary was not re-read.** P6's third screen was unblocked
+> and swept in round 74; P1's two "no consumer" keys were resolved by BUILDING the
+> consumers in rounds 57-58, and `deadSettingsKey.test.ts` now holds an empty
+> `DECLARED_DEAD` list. A header that summarises progress is the easiest thing in a plan to
+> leave behind, which is why each correction here names the round that made it stale.
 >
 > **D1/D2 history:** the provisioning seed was WITHDRAWN after F14 (provisioning
 > writes the global DB, the POS reads the store DB, so a restaurant default for
@@ -1480,10 +1486,31 @@ lines F4's tests assert against.
 
 ### P1 — One source of truth for restaurant settings (fixes F1, F2, F3)
 
-**Status: 2 of 7 dead keys resolved.** `restaurant.table_number` (removed, option C)
-and `restaurant.order_type_prompt` (wired + default freed) are done. The remaining
-six are below, each re-verified 2026-10-09 against the whole repo (UI **and** Rust)
-after the P1 code change.
+**Status: 7 of 7 — P1 is COMPLETE.** Re-audited 2026-10-09 (round 75). The table below
+records the state as of the P1 window; **two of its rows are now stale**, and the
+corrections are inline. Everything this phase set out to do is done:
+
+| Key | P1 window said | Now |
+|---|---|---|
+| `restaurant.table_number` | removed (option C) | unchanged |
+| `restaurant.order_type_prompt` | wired | unchanged |
+| `restaurant.customer_name` | WIRED | unchanged |
+| `restaurant.guest_count` | WIRED | unchanged |
+| `restaurant.save_tab` | WIRED | unchanged |
+| `restaurant.hold_order` | DELETE | **removed** — toggle and key both gone (round 42) |
+| `restaurant.auto_print_kitchen` | DELETE or BUILD | **BUILT** (round 57) |
+| `restaurant.sound_chime` | DELETE or BUILD | **BUILT** (round 58) |
+
+**Both "DELETE or BUILD" rows were resolved by BUILDING**, and the evidence is live code,
+not a note: `PaymentModal.tsx:732` gates the KOT send on `autoPrintKitchen`, and
+`PosScreen.tsx:705` gates `playSuccess()` on `soundChime !== false`. The guard that
+tracks this class, `deadSettingsKey.test.ts`, now holds an **EMPTY** `DECLARED_DEAD` —
+three rounds of this campaign emptied it, and its third case fails if any entry gains a
+reader.
+
+**⚠️ The three rows below are kept verbatim as the P1 window's reasoning**, because the
+reason the two were resolved by building rather than deleting is the reasoning itself.
+The "DELETE or BUILD" rows are superseded by the table above.
 
 | Key | Verdict | Evidence | Recommended action |
 |---|---|---|---|
