@@ -565,6 +565,41 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 29 — the SAME tender, two spellings, in one attempt
+
+Round 28 fixed the receipt's label. This round I swept the class instead of waiting to trip
+over it again, and the sweep found the third site of the same field.
+
+**`paymentMethod` was sent from three places, and only one was lowercased.** `bbc530642`
+fixed the first submission; the **shortfall retry** kept `method.toUpperCase()`. So a sale
+that hit a stock shortfall and was retried sent `'CARD'` where its first send was `'card'` —
+the same attempt, the same column, two spellings.
+
+Proved, not reasoned: the new assertion failed with
+
+```
+- "paymentMethod": "cash",
++ "paymentMethod": "CARD",
+```
+
+**Why it matters more than a cosmetic mismatch.** The backend normalises only
+`payment_splits` (`sales_checkout.rs:622-634`) — the scalar `sales.payment_method` is
+written verbatim at `:549`. So the uppercase spelling reached the column unchecked. The
+first path's fix is what made this a *divergence* rather than a consistent bug.
+
+Fixed by lifting both derivations to **component scope as `useMemo`s** (`:480`, `:490`),
+so the first submission, the receipt, and the retry read one definition. The retry is now
+`paymentMethod={storedMethod}` — it cannot drift again, because there is nothing left to
+diverge from. `b785ed3f5`.
+
+**Two things I got wrong on the way, both caught by running things:**
+
+- I inserted a second, duplicate `storedMethod`/`methodLabel` pair and only found it when
+esbuild refused to transform (`The symbol "storedMethod" has already been declared`) —
+`tsc --noEmit` had passed, because the duplicate sat in a different scope.
+- My first version of the assertion said `'cash'` for a test that pays by **card**. The
+fix was already correct; the expectation was not.
+
 ### Round 28 — the receipt started printing the database's spelling
 
 Another lane's `bbc530642` lowercased the stored tender so it would satisfy the
