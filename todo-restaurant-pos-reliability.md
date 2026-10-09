@@ -565,6 +565,33 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 18 — the F9 gap was THREE sub-screens, not two
+
+Checking the sidebar's entry points end-to-end turned up the real shape of F9's
+remaining gap. `PosScreen` has **seven** early-return sub-screens; the crash-isolation
+guard I wrote for P4 listed **four**, all of them settings screens. Three had no
+boundary at all:
+
+| Sub-screen | Reached from |
+|---|---|
+| `TableManagementScreen` | sidebar, mid-service |
+| `SalesHistoryScreen` | sidebar, mid-service |
+| `ProductLookupScreen` (stock inquiry) | sidebar, mid-service |
+
+A throw in any of them took the **whole POS screen** down mid-service, with the
+cashier's cart in memory and no recovery. All three now carry a
+`LocalizedErrorBoundary` whose `onReset` returns to the sale (`99d757146`, `e4e99c7b2`).
+
+**The interesting failure is the guard, not the bug.** It reported clean for a year of
+rounds because its LIST was short of the thing it guards — a guard that enumerates its
+own targets cannot notice a target missing from the enumeration. It now covers all
+seven, with the count asserted (`>= 7`) and a comment saying why that number is seven.
+Each new case is kill-tested: deleting the wrapper fails with
+`PosScreen.tsx: /<TableManagementScreen\b/ is NOT inside a <LocalizedErrorBoundary>`.
+
+`PosScreen.tsx` now holds 7 boundaries, one per sub-screen, each resetting to its own
+flag.
+
 ### Round 17 — three untyped literals on the money path, now typed
 
 **`bill_type` was `string` in both directions, and neither end checks it.** The UI
