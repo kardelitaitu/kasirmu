@@ -1236,7 +1236,9 @@ describe('PosScreen — Open bills (hold/resume)', () => {
   // trigger for the list overlay (setShowOpenBills has one caller: that
   // onClick). So these cases seed a held bill; with none there is no button
   // to click and the list cannot be opened at all.
-  const HELD_BILL = {
+  // Annotated with the API type so `bill_type: 'open_bill'` is checked against
+  // the `BillType` union rather than widening to `string`.
+  const HELD_BILL: salesApi.HeldCartRow = {
     id: 'held-1',
     label: 'Meja 4',
     item_count: 1,

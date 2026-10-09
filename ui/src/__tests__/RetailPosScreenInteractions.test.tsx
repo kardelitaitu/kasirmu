@@ -17,6 +17,7 @@ import productsFtl from '@/locales/products.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import RetailPosScreen from '@/features/retail/RetailPosScreen';
 import type { CourseId, LineId, Sku } from '@/types/domain';
+import type { HeldCartRow } from '@/api/sales';
 
 // ── Mock modules ──────────────────────────────────────────────────
 
@@ -651,7 +652,8 @@ describe('RetailPosScreen — interactions', () => {
 
   it('requires confirmation before deleting a held cart', async () => {
     const salesApi = await import('@/api/sales');
-    const heldCarts = [
+    // Annotated so `bill_type: 'hold'` is checked against the `BillType` union.
+    const heldCarts: HeldCartRow[] = [
       { id: 'held-1', label: 'Hold #100', item_count: 2, total_minor: 8500, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null },
       { id: 'held-2', label: 'Hold #200', item_count: 1, total_minor: 3500, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null },
     ];

@@ -624,6 +624,24 @@ export const voidSaleScoped = (sessionToken: string, saleId: string, reason: str
 
 // ── Hold Order ────────────────────────────────────────────────────
 
+/**
+ * The bill type a parked cart carries.
+ *
+ * `hold` is the serde default (`crates/kasirmu-bridge/src/pos/hold_orders.rs:75`),
+ * and `open_bill` is `BILL_TYPE_OPEN_BILL` (`:25`) — the value the bridge compares
+ * with `==` to decide whether the workspace may park an open bill
+ * (`apps/mobile-tauri/src/commands/pos.rs:897`).
+ *
+ * Typed as a union rather than `string` because NEITHER end checks it: the
+ * `held_carts.bill_type` column is `TEXT NOT NULL DEFAULT 'hold'` with no CHECK
+ * constraint (`migrations/20260813_init.sql:166`), and the comparison above is a
+ * plain string `==`. A typo therefore compiled clean, stored clean, and quietly
+ * stopped matching — the `open_bill` path would fall through to a plain hold with
+ * no error anywhere. Two UI sites write it: `PaymentModal.tsx:1028` and
+ * `hooks/usePosHeldCarts.ts:188`.
+ */
+export type BillType = 'hold' | 'open_bill' | 'credit' | 'pay_later' | 'other';
+
 /** Arguments for holding (parking) a cart for later retrieval. */
 export interface HoldCartArgs {
   label: string;
@@ -631,7 +649,7 @@ export interface HoldCartArgs {
   item_count: number;
   total_minor: number;
   currency: string;
-  bill_type?: string;
+  bill_type?: BillType;
   customer_name?: string;
   /** ADR-19 §6.3: deduction location UUID locked at cart-start time. */
   deduction_location_id?: string;
@@ -645,7 +663,7 @@ export interface HeldCartRow {
   total_minor: number;
   currency: string;
   created_at: string;
-  bill_type: string;
+  bill_type: BillType;
   customer_name: string | null;
 }
 
@@ -658,7 +676,7 @@ export interface HeldCartFull {
   total_minor: number;
   currency: string;
   created_at: string;
-  bill_type: string;
+  bill_type: BillType;
   customer_name: string | null;
   /** ADR-19 §6.3: deduction location UUID locked at cart-start time. */
   deduction_location_id: string | null;
