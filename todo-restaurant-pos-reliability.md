@@ -538,6 +538,36 @@ environmental, and the next step belongs on the DEVICE:
    `window` global, and re-run the tablet flow. That is the only observation point that can
    see the app's IPC.
 
+#### Round 64 — CONFIRMED ON DEVICE, independently of the retraction above
+
+The retraction at the top of F15 was written from the same tree by another lane. I reproduced it
+from scratch this round by a **different route**, so the two agree without sharing a method:
+
+- Pulled **both** store DBs off the tablet (`adb exec-out run-as … cat`), the step the original
+  measurement got wrong by re-reading one stale file.
+- Read `settings` **and** `setting_updated` — the write-path audit table F15 used as its control.
+
+What the device holds (`store-loc-…18dcd63b5a28b02d0000.sqlite`):
+
+- **11 `restaurant.*` rows in `settings`**, all nine saveable keys plus `table_management` and
+  `unavailable`.
+- **36 rows in `setting_updated`**, in two complete batches: `11:07:26Z` (nine keys) and
+  `11:09:14Z` (nine keys, with `guest_count` changing `true → false`).
+
+**That second batch is F15's own reproduction step** — *"Repeated with Guest Count (Pax)
+`true → false`"* — recorded in the write-path audit table with the value it was changed to. The
+save the report claimed never arrived is there, twice, with timestamps.
+
+The sibling store (`…18dcd55aac7fed210000`) has **0** settings rows and **0** `setting_updated`
+rows. That is the stale, superseded database the original pull read, and it is exactly why "the
+row is absent" was true of a file the POS had stopped using.
+
+**No code changed.** This round adds independent confirmation to an existing retraction, which is
+worth having: a retraction rests on one lane's measurement, and a second measurement from a
+different direction is what makes it safe to act on. The lesson both rounds share is the one in
+the retraction's own words — *check which database the app is actually using before concluding
+the app does not write to one*.
+
 **Do not "fix" this with a code change on the current evidence.** The layers are correct and
 the tablet test passes; a speculative edit would be a change with no failing test behind it.
 
