@@ -673,6 +673,47 @@ needle matched no real spelling — **a guard you have not watched fail is not y
 
 Verified: five settings guards / **13 passed**; typecheck 0; eslint 0.
 
+### F28 — the EDC default is set, saved, and LOST (round 68) — `0a36da920`
+
+F27 flagged `EDC_DEFAULT_TERMINAL` as a stale declaration. Following it down found something
+worse: **the feature it names does not persist at all.**
+
+`TerminalPreferencesCard:114-117` renders a **Default EDC** select with a *Test Connection*
+button. Choosing one calls `updateLocalPrefs({ defaultEdcTerminalId })`, which sets the field in
+memory — and then it is dropped at **every** layer on the way to storage:
+
+| Layer | State |
+|---|---|
+| `toHardwareSettingsDto` (`useTerminalHardware.ts:110-128`) | **omits it** |
+| `fromHardwareSettingsDto` (`:131-173`) | **does not restore it** |
+| UI `HardwareSettingsDto` (`api/settings.ts:103-119`) | **no field** |
+| Bridge `HardwareSettingsDto` (`dto.rs:147`) | **no field** |
+| `TerminalProfile` (`terminal_profile.rs:55`) | **no field** |
+
+So the operator picks a default terminal, **the connection test succeeds**, and the choice is
+gone after a reload. A success toast over a value that was never stored.
+
+**The documentation is wrong in the same direction.**
+`docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md:51` states the value is *"stored in
+register `LocalPrefs` (`terminal_profile.json`)"*. No layer implements that — `grep -i edc`
+returns **zero** matches across both DTOs and the profile struct. The settings key that looks
+like its storage, `edc.default_terminal`, is the stale declaration F27 recorded.
+
+**Three layers disagreeing, and a doc asserting the one that does not exist** — the same shape
+as rounds 46-49, where a comment described a mechanism the code had moved away from.
+
+**PINNED, NOT FIXED, and the scope is why.** Carrying the value end to end is a five-layer change
+(UI type, both DTOs, the profile struct, plus a migration for existing profiles), and it touches
+the desktop shell whose hardware commands are already a flagged F-008/F-050 parity gap
+(`api/settings.ts:128-132`). That is a planned change, not a drive-by repair. The pin makes the
+loss visible and stops the doc being read as true; **each case flips to a round-trip assertion
+when the fix lands**.
+
+Kill-tested both ways — adding the UI DTO field, and adding the write-mapper line, each fails its
+case. Verified: six settings guards / **17 passed**; full suite **688 files / 11,511 passed**
+typecheck 0; eslint 0; bundle parity 0 missing. The 2 failures are the long-standing
+`holdCartScoped` pair from another lane.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
