@@ -4038,7 +4038,14 @@ This is the one phase whose correct output is a correction rather than a diff.
 
 ---
 
-## 4. Decisions — D1-D4 SETTLED 2026-10-09; **D5-D6 OPEN**
+## 4. Decisions — D1-D5 RESOLVED; **D6 narrowed to ONE row** (round 73)
+
+D5 is closed as of round 73 (both remaining toggles were wired by later rounds; re-verified
+against the code, not the prose). D6 has been re-measured and now stands at a single open
+row — the printer cannot group thousands — with the other five toggles closed by copy fixes
+or by construction. See the D6 heading for the three-way split.
+
+_(The previous header read "D1-D4 SETTLED 2026-10-09; D5-D6 OPEN".)_
 
 D1-D4 are decided, and each answer records the evidence that decided it, not just the
 choice, so a later reader can re-derive it.
@@ -4048,7 +4055,36 @@ TRUE.** Rounds 27-35 produced two more, both about the same thing — controls t
 affect what they claim to — and they are recorded below as D5/D6 rather than left to be
 re-discovered from the round log.
 
-### D5 — PARTLY RESOLVED: Hold Order DELETED (round 42); two remain open
+### D5 — RESOLVED (round 73, 2026-10-10): all three toggles accounted for
+
+**The "two remain open" heading below was STALE and is superseded here.** Both toggles it
+listed as needing work were wired by later rounds, and this round re-verified that against
+the code rather than the prose:
+
+| Toggle | Key | Verified state |
+|---|---|---|
+| Auto-Print KOT | `restaurant.auto_print_kitchen` | **WIRED** `542e8db92`. `PosScreen.tsx:893` reads it via `getSettingScoped` and passes it down; `PaymentModal.printKitchenChits` gates `printKdsChitScoped` on it — a command that had **no caller anywhere** before. |
+| Order Sound Notifications | `restaurant.sound_chime` | **WIRED** `ea8f8a007`. `PosScreen` reads it; `handlePaymentComplete` chimes through the shared `useSound` hook unless the merchant switched it off. |
+| Hold Order | `restaurant.hold_order` | **DELETED** `df86bf0b3`, as recommended. |
+
+Both removals from `deadSettingsKey.test.ts`'s `DECLARED_DEAD` are self-documenting (`:36-44`):
+the keys left that list *because they now have readers*, which is the test's own third case.
+Behaviour is pinned end-to-end rather than by the absence of a declaration —
+`PaymentModalSaleFlow.test.tsx:373` *"prints a kitchen chit per KDS order when
+auto_print_kitchen is on"* and `:401` *"creates the KDS order but prints NO chit when
+auto_print_kitchen is off"*; `PosScreenCoreFlow.test.tsx:690` *"plays the order chime on a
+completed sale when sound_chime is unset"* and `:698` *"does NOT play the chime when the
+merchant switched sound_chime off"*.
+
+The CSP defect that blocked the chime on Android was fixed by a peer in the same period
+(`045a959e7`) — the `media-src` fallback to `default-src 'self'` recorded earlier in this log.
+
+**Nothing to do.** The section below is kept verbatim for the record; its "Still open in D5"
+table is no longer true.
+
+---
+
+#### (superseded) D5 as first written — Hold Order DELETED (round 42); two remain open
 
 **`restaurant.hold_order` and its toggle are GONE** (`df86bf0b3`). Removed rather than
 wired, on the same reasoning as `table_number` (option C): the key had zero readers while
@@ -4148,6 +4184,65 @@ naming the key and the reason.
 parity 0 missing. **D6 stays OPEN** — the six toggles still cannot reach the printer; only their
 description stopped lying about it.
 
+#### Round 73 (2026-10-10) — D6 re-measured, and one sub-case is an UNAMBIGUOUS BUG
+
+Re-verified every D6 claim against HEAD before proposing anything. All hold, and one is
+sharper than the round 59-60 note recorded:
+
+```
+ReceiptConfig fields (receipt.rs:100-112): paper_width, show_currency, decimal_separator,
+  show_tax, footer, show_table_number, barcode_enabled  -- 8 fields, no staff/date/code/
+  notes/grouping slot
+grep 'staff|cashier' over the renderer  -> 0 matches (no staff line exists)
+grep 'thousands_separator' over production code -> 0 matches
+```
+
+**But `currency.thousands_separator` is NOT a UI-only fiction.** It has real storage and
+accessors in core:
+
+```
+crates/kasirmu-core/src/settings.rs:659  get_currency_thousands_separator
+crates/kasirmu-core/src/settings.rs:664  set_currency_thousands_separator
+```
+
+and **nothing in `ui/src` ever reads or writes it** (the only hits are two test comments). So
+it is a stored setting with working plumbing that no surface exposes and no formatter
+honours. That is a different animal from the other five, which are preview-only cosmetics.
+
+**What the printer actually emits for IDR**, traced through `format_money`
+(`receipt.rs:251-275`): `foundation::format_minor` yields a bare major part for an exp-0
+currency, the wrapper adds the prefix and the decimal separator, and there is **no grouping
+step at all** — so Rp 15.000 prints as `Rp15000`. In Indonesia, the primary market, that is
+the receipt every customer receives.
+
+**D6 therefore splits three ways, and only one of them needs an owner decision:**
+
+| Sub-case | Toggles | Status | Remedy |
+|---|---|---|---|
+| Preview-only, copy already honest | `showReceiptCode`, `showDateTime`, `showItemNotes` | **CLOSED** in `4a15a51bb` | none — the description now names the divergence |
+| No printer field at all | `showStaffName` | **CLOSED** in `4a15a51bb` | copy says *"the printer has no staff line"* |
+| Exp-0 by construction | `showDecimals` | **CLOSED** round 33 | none |
+| **Printer simply cannot group** | `showThousandsSeparator` | **OPEN — and this is a defect, not a preference** | the printer needs grouping; the setting needs a reader |
+
+**Why the last row is not a product decision.** The other five are cosmetic preferences where
+the printer's behaviour is defensible (it prints what a receipt must carry). Grouping is not
+cosmetic and the printer's behaviour is not defensible: `Rp15000` is hard to read at a
+glance, which is the entire reason separators exist, and the store already has a stored
+setting expressing the operator's intent that nothing consults. A receipt that ignores a
+setting the merchant configured is a bug regardless of which side "owns" the field.
+
+**Recommended repair, if wanted:** add a grouping step to `format_money` gated on the
+existing `currency.thousands_separator` value (default `.` for IDR), and have the preview
+read the same setting so the two agree. That closes the last D6 row without inventing a
+feature — it connects two things that already exist and were never joined.
+
+**Not done, deliberately:** no code changed this round. D6's residual rows say which side
+moves, and the note above argues one of them is not a choice — but the earlier rounds
+deferred it as a product decision and I am not going to reverse that on my own reading of
+one market's readability. Recorded with the recommendation so the next round can act on it
+in one step.
+
+---
 ### D1 — Collapse to `receipt.showTableNumber`; RESOLVED by option C
 
 **The collapse itself is settled.** Keep `receipt.showTableNumber`, delete
