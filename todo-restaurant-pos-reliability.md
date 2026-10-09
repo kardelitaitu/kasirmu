@@ -1609,6 +1609,53 @@ the running app rather than a description of it.
 Verified: full suite **695 files / 11,552 passed, 0 failed**; `lint-i18n.sh` **no issues**;
 typecheck 0; eslint 0 errors; bundle parity 0 missing.
 
+### Round 86 — the payment popup driven END TO END on the tablet
+
+Round 85 used the device to find a defect. This round used it to **execute the goal's named happy
+path** and confirm the money behaviour that three earlier rounds only read.
+
+The run, on `adb-e45e28d9-lFE6yH` at `0.0.41`:
+
+| Step | What happened |
+|---|---|
+| Sidebar popover | opened; shows owner identity, Table Management / History / Kitchen Display, and `Open Shift` |
+| Shift open | header changed `No active shift` → **`1m`** elapsed |
+| Add item | `1 × Americano (Hot/Iced) @ Rp 2.500.000` with Override / Remove |
+| Charge | `payment-modal` opened, **Total Due `Rp 2.500.000`** |
+| Tender grid | **Cash · Card · QRIS · Credit · Open Bill** all render, `cash` checked by default |
+| Complete | **disabled** at `0.00` tendered |
+| `Exact` | filled the amount, **Complete enabled**, `Change Rp 0` |
+
+**The three money behaviours verified here are the ones this plan spent rounds pinning in tests:**
+
+1. **The `sufficient` gate** (`useTenderMath.ts:157-165`, F37's neighbourhood) really does disable
+   Complete on an un-tendered cash sale — observed, not inferred from a passing case.
+2. **`Exact` fills the payable total** and the change resolves to **zero**, so the
+   `effectiveTotalInCartCurrency` path that F36 pinned at the source is correct at runtime too.
+3. **All five core rails render.** This is the live confirmation of **F23's** measurement: the
+   `cash` / `card` / `credit` toggles are INERT, so the tenders appear regardless of their stored
+   state. A reader who doubted the pinned classification now has the running app agreeing with it.
+
+#### One false alarm, caught before it was reported
+
+My first read of the tenders was that they had **`aria-label: null`** — which looked like an
+accessibility defect on four buttons. **It is not.** They are `<label>` elements wrapping a radio
+`input`, and the accessible name comes from the label's own text:
+
+```
+{ text: "Cash", type: "radio", checked: true, name: "payment-method" }
+```
+
+A proper radio group with accessible names, cash preselected. **Reporting it would have been a bug
+report about correct markup** — the second false alarm this session (F8's badge was the first), and
+both were caught by asking what the structure actually is rather than what one property reads as.
+
+**This is what the device is for.** Three rounds of source-reading found the logic sound; the run
+confirms the assembled app behaves that way, on a real shift, with a real cart, through the real
+modal — and the screenshots are attached as evidence for the two claims above.
+
+No code changed. Full suite unchanged at **695 files / 11,552 passed**, typecheck 0, eslint 0.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
