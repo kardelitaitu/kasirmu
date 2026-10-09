@@ -565,6 +565,39 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 36 — a test header that claimed more coverage than it had
+
+I was checking the settings screen's save path for the F4 family (a partial write leaving
+the screen looking saved). That path is sound: one atomic `setSettingsScoped`, the success
+toast only after it resolves, and — the F5 fix from round 6 — the localStorage mirror runs
+**after** the `await`, so a rejected save leaves the mirror matching a DB it failed to
+change.
+
+But the `catch` there swallowed the error with no diagnostic, so I went looking for the
+convention and found `__tests__/toastErrorQuality.test.ts` guarding it. Its header listed
+**six** guarantees. Measured against the file and the code:
+
+| Claim | Reality |
+|---|---|
+| 1-3. `errorDetail()` extracts / handles shapes / redacts | ✅ fully covered |
+| 4. `l10nErrorMessage()` never returns the raw key | ❌ **not in this file at all** — the function isn't even imported |
+| 5. GlobalErrorReporter passes detail + title | ✅ true of the code (`:67`) — but **untested here** |
+| 6. "The Toast type enforces `detail` on error toasts" | ❌ **false** |
+
+Claim 6 is the sharp one. `Toast.detail` is `detail?: string` (`components/Toast.tsx:26`),
+optional on a single non-discriminated interface, so nothing *can* enforce it — and nothing
+does: **235 `type: 'error'` toasts exist repo-wide and ZERO pass `detail`.** The only
+producer is GlobalErrorReporter.
+
+A header asserting more than the body checks is worse than a short one: it stops the next
+reader looking. Corrected to match the cases, with claims 4 and 5 recorded as
+unverified/untested rather than deleted (`ca3268713`).
+
+**Then I closed the one real gap** rather than only noting it: `GlobalErrorReporter.test.tsx`
+now asserts the toast actually carries actionable detail (source, timestamp, extracted
+message) behind its Show-detail toggle — the behaviour claim 5 described. Kill-tested by
+dropping `detail:` from the reporter.
+
 ### Round 35 — 6 of 12 receipt toggles cannot reach the paper
 
 Rounds 33-34 found three receipt toggles the printer cannot honour. This round I measured
