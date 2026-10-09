@@ -195,6 +195,7 @@ payment-toast-points-value-failed = Failed to load points value
 payment-toast-kds-failed = Payment succeeded, but the kitchen ticket could not be created — notify the kitchen manually
 payment-toast-loyalty-redeem-failed = Payment succeeded, but the loyalty points were NOT deducted — fix the customer's points manually
 payment-toast-print-failed = Nothing was printed — check that a printer is set up and reachable
+payment-toast-receipt-unavailable = Payment succeeded, but the receipt could not be prepared — the sale is saved, check the sale history to reprint
 payment-toast-invoice-issued = Tax invoice issued successfully
 payment-toast-invoice-failed = Failed to issue tax invoice
 payment-customer-placeholder = e.g. John Doe

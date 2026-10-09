@@ -1322,8 +1322,25 @@ retryCurrencyLoad,
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
-      } catch {
-        // Receipt/KDS may not be configured — non-blocking
+      } catch (receiptErr) {
+        // Receipt/KDS may not be configured — non-blocking, so the sale must stand.
+        //
+        // But it must not be SILENT. This catch is why the defect fixed in
+        // payment/completedSale.ts stayed hidden: the read-back came back short at
+        // exactly one optional field, the builder threw on it, and this block ate the
+        // error — so the modal fell to its no-receipt done branch and a cashier saw
+        // "Sale Complete" with nothing to print and no signal that anything was wrong.
+        // Measured on the tablet 2026-10-09: sale 01-01-261009-01-000007 committed
+        // with no receipt preview and nothing in the console.
+        //
+        // The sale is already committed, so this cannot be fatal. It is logged and
+        // surfaced as a warning instead, because "no receipt" is a real operator
+        // problem (the customer is standing there) and never just noise.
+        console.error('Receipt build/read-back failed; no receipt preview', receiptErr);
+        addToast({
+          message: requiredLocalized(l10n, 'payment-toast-receipt-unavailable'),
+          type: 'warning',
+        });
       }
 
       try {

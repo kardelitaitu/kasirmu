@@ -63,6 +63,50 @@ const makePayment = (method: string, minorUnits: number, currency = 'IDR'): Paym
 });
 
 describe('buildCompletedSaleReceipt', () => {
+  it('does not throw when the read-back omits subtotal (degrades to the fallback)', () => {
+    // MEASURED ON THE TABLET 2026-10-09. A completed sale went through the modal's
+    // done-branch with NO receipt preview: `sales` row 01-01-261009-01-07 existed
+    // (total 15000, tendered 999999, status completed) but the operator saw only the
+    // bare 'Sale Complete' checkmark, so there was nothing to print.
+    //
+    // Cause: PaymentModal.tsx:1273-1327 wraps the read-back AND the receipt build in
+    // a try whose catch is `// Receipt/KDS may not be configured - non-blocking`. A
+    // throw from this builder is therefore swallowed, `setReceiptArgs` never runs,
+    // and the modal falls to its no-receipt done branch. The declared type says
+    // `subtotal: Money` is required, but the docstring two lines above the deref
+    // claims a '-short or absent read-back- degrades gracefully' - and line 139 did
+    // NOT guard it. A short read-back is exactly what the tablet produced.
+    const sale = makeSaleDetail();
+    // Deliberately strip the money fields a short read-back can omit.
+    const short = { ...sale, subtotal: undefined } as unknown as SaleDetail;
+    const receipt = buildCompletedSaleReceipt({
+      saleId: 'sale-uuid-1234',
+      saleTotal: makeMoney(10000),
+      completedSale: short,
+      cartLines: [makeCartLine('Item', 1, 9000)],
+      cartCurrency: 'IDR',
+      fallbackTotalMinor: 10000,
+      payments: [makePayment('cash', 10000)],
+    });
+    // It must still produce a usable receipt, not explode.
+    expect(receipt.total.minorUnits).toBe(10000);
+    expect(receipt.items).toHaveLength(1);
+  });
+
+  it('does not throw when the read-back omits total or taxTotal', () => {
+    const sale = makeSaleDetail();
+    const short = { ...sale, total: undefined, taxTotal: undefined } as unknown as SaleDetail;
+    const receipt = buildCompletedSaleReceipt({
+      saleId: 'sale-uuid-1234',
+      saleTotal: makeMoney(10000),
+      completedSale: short,
+      cartLines: [makeCartLine('Item', 1, 9000)],
+      cartCurrency: 'IDR',
+      fallbackTotalMinor: 10000,
+      payments: [makePayment('cash', 10000)],
+    });
+    expect(receipt.total.minorUnits).toBe(10000);
+  });
   it('prefers frozen receipt displayCode over synthetic SALE-<uuid>', () => {
     const sale = makeSaleDetail({ displayCode: '01-02-261002-05-000123' });
     const receipt = buildCompletedSaleReceipt({

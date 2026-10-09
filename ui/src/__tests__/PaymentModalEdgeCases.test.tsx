@@ -391,10 +391,25 @@ describe('PaymentModal — edge cases', () => {
     const retryBtn = document.querySelector('.payment-error-retry-btn') as HTMLButtonElement;
     await userEvent.click(retryBtn);
 
-    // Should succeed now
+    // Should succeed now.
+    //
+    // This asserted `/sale complete/i` until 2026-10-09, and that assertion was
+    // pinning a BUG rather than a behaviour. The mock below answers an unknown
+    // command with `{}`, so `get_sale_scoped` resolves to an EMPTY OBJECT — a
+    // truthy `completedSale` with no `subtotal`. `buildCompletedSaleReceipt` then
+    // dereferenced `completedSale.subtotal.minor_units` and threw; PaymentModal's
+    // `catch` swallowed it, `setReceiptArgs` never ran, and the modal fell to its
+    // no-receipt done branch — the "Sale Complete" checkmark this line saw.
+    //
+    // That is the same short-read-back path that killed the receipt on the real
+    // tablet (sale 01-01-261009-01-000007). Now that the builder degrades instead
+    // of throwing, the receipt renders, which is the correct outcome: a completed
+    // sale shows its receipt. Asserting the preview (and its Print/Skip controls)
+    // is what actually proves the retry succeeded.
     await waitFor(() => {
-      expect(screen.getByText(/sale complete/i)).toBeInTheDocument();
+      expect(document.querySelector('.receipt-preview')).toBeInTheDocument();
     }, { timeout: 3000 });
+    expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
 
     // complete_sale was called twice (first fail, second success)
     expect(callCount).toBe(2);
