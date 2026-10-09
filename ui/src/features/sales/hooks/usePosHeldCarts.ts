@@ -167,9 +167,16 @@ export function usePosHeldCarts({
         ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
         : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
 
-      // If updating an already resumed open bill, delete the previous record first so we don't produce duplicate tabs
+      // If updating an already resumed open bill, delete the previous record first so we
+      // don't produce duplicate tabs.
+      //
+      // ⚠️ This used to end `.catch(() => {})`. Swallowing it defeated the whole line:
+      // the DELETE is what prevents a duplicate, so a rejected delete followed by the
+      // hold below created the SECOND open bill for the table that this comment claims
+      // to prevent — and the toast still said "updated". A failure here is now fatal to
+      // the operation, which the caller's existing catch turns into an error toast.
       if (activeOpenBillId) {
-        await deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {});
+        await deleteHeldCartScoped(sessionToken, activeOpenBillId);
       }
 
       await holdCartScoped(sessionToken, {

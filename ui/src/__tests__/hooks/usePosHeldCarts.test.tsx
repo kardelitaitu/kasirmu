@@ -413,5 +413,71 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     );
     expect(result.current.activeOpenBillId).toBeNull();
   });
+
+  it('does NOT report a tab as updated when deleting the previous record FAILS', async () => {
+    // `deleteHeldCartScoped(...).catch(() => {})` swallowed the failure, then the
+    // code went on to holdCartScoped() and toast 'Tab for X updated'. Two problems,
+    // both money-adjacent on the restaurant POS:
+    //   1. the DELETE is what prevents a duplicate open bill for the same table,
+    //      so swallowing it produces exactly the duplicate the comment claims to
+    //      prevent;
+    //   2. the toast tells the cashier the tab was UPDATED when a second tab was
+    //      created.
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped, deleteHeldCartScoped, getHeldCartScoped } = await import('@/api/sales');
+    vi.mocked(deleteHeldCartScoped).mockRejectedValueOnce(new Error('database is locked'));
+
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'existing-bill-1',
+      label: 'Table 5',
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-01T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: 'Table 5',
+      deduction_location_id: null,
+      cart_data: JSON.stringify({ lines: [], tableNumber: '5', customerName: 'Budi' }),
+    });
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '5',
+          customerName: 'Budi',
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 2,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 50000, currency: 'IDR' },
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('existing-bill-1');
+    });
+    addToast.mockClear();
+
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+
+    // It must NOT create a duplicate record over a tab it failed to remove.
+    expect(holdCartScoped).not.toHaveBeenCalled();
+    // And it must not claim success.
+    expect(addToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/updated/i), type: 'success' }),
+    );
+    expect(addToast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'error' }),
+    );
+  });
 });
 
