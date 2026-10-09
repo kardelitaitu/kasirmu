@@ -2839,8 +2839,16 @@ warnings; bundle parity 0 missing. Kill-tested by dropping the setting from the 
 `printReceipt`. None has a consumer to gate, so each needs a product decision rather than a
 call-site addition — the distinction the plan already draws between WIRE and BUILD.
 
-**Still inert:** `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`.
-`sound_chime` is the remaining D5 key and needs a POS sound path (`useSound` is KDS-only).
+> **⚠️ Corrected round 104.** This paragraph was **duplicated**, and its second copy ended
+> *"`sound_chime` is the remaining D5 key and needs a POS sound path (`useSound` is KDS-only)."*
+> **That claim is false and D5 has been closed since round 73.** `PosScreen.tsx:897` reads
+> `restaurant.sound_chime` and `:713` plays the chime through `playSuccess` unless the merchant
+> switched it off; the wiring landed in `ea8f8a007`. I re-measured both call sites rather than
+> trusting the register at `:4700`.
+>
+> The duplicate list is the tell: **one of the two copies got updated and the other did not**, which
+> is the same drift as the P6 heading (F43) — and a good example of why a claim repeated in two
+> places is worse than a claim made once.
 
 ### F23 — three of the five core rail toggles reach nothing (round 61) — `b5c281e2e`
 

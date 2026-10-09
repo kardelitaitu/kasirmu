@@ -192,6 +192,44 @@ describe('the plan status header matches the tree (F32)', () => {
       .toMatch(/i18n sweep \(fixes F10\)/);
   });
 
+  /**
+   * A key the plan records as WIRED must not also be described as needing wiring.
+   *
+   * ⚠️ Added round 104. The plan carried `sound_chime is the remaining D5 key and needs
+   * a POS sound path` at `:2843` — for ~30 rounds after D5 was closed — while the
+   * register at `:4700` recorded it `WIRED ea8f8a007`. The paragraph was DUPLICATED, and
+   * one copy was updated while the other was not.
+   *
+   * This is F43's drift in its purest form: the same claim in two places, one refreshed.
+   * A guard cannot generally tell which copy is authoritative — but it CAN check the
+   * specific sentence that was wrong against the source, which is what this does.
+   */
+  it('does not call sound_chime unwired — it has been wired since round 73', () => {
+    // Strip fenced blocks AND blockquotes before matching. The correction note above
+    // QUOTES the stale sentence in a `>` block, and a quote is not a claim -- the same
+    // allowance the header extractor and the P6 case both make. My first version stripped
+    // fences only and failed against my own correction.
+    const body = read(PLAN)
+      .replace(/```[\s\S]*?```/g, '')
+      .split('\n')
+      .filter((l) => !l.startsWith('>'))
+      .join('\n');
+    expect(
+      body,
+      'the plan again says sound_chime needs a POS sound path — PosScreen.tsx:897 reads the ' +
+        'setting and :713 plays the chime, so this claim is false; re-measure before restoring it',
+    ).not.toMatch(/sound_chime`? is the remaining D5 key/i);
+
+    // The load-bearing fact: the setting still has a real reader. If this ever fails, the
+    // claim above would become TRUE and the guard needs revisiting rather than silencing.
+    const pos = fs.readFileSync(path.join(ROOT, 'ui/src/features/sales/PosScreen.tsx'), 'utf-8');
+    expect(
+      pos.includes("'restaurant.sound_chime'"),
+      'PosScreen no longer reads restaurant.sound_chime — D5 has reopened, and the plan needs ' +
+        'a new finding rather than a quiet deletion of this guard',
+    ).toBe(true);
+  });
+
   it('the keys F1 calls wired really do have production readers', () => {
     // The load-bearing fact behind the corrected row. A key losing its last
     // reader is exactly the regression the corrected row must not hide.
