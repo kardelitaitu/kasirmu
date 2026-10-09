@@ -551,6 +551,54 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+### Round 14 — the goal widened to the PAYMENT POPUP, and two money-path findings
+
+**I also fixed a HEAD-level regression that was not mine.** A full-suite run failed
+two tests on the key `__MOCK_FAIL`, introduced by another lane's `5f3ffeaa2`
+(`test(dev-mock): add window.__MOCK_FAIL ...`). `storageKeyPins.test.ts` pins every
+localStorage key the UI declares, and the new one had no entry — the guard's own
+failure message says exactly what to do, so I added the pin with a reason
+(`0b834156f`). Two failures, one cause; the suite went back to green at
+**679 files / 11397 passed**.
+
+**The goal was re-scoped to name the payment popup explicitly.** Note the payments
+SCREEN (`RestaurantPaymentsScreen`) is still another lane's dirty file and was NOT
+touched; the POPUP is `ui/src/features/sales/PaymentModal.tsx`, shared by restaurant
+POS (`PosScreen.tsx:1269`) and retail, and it is clean.
+
+I ran my four established detectors over the payment surface (18 files): unread state
+flags 0, latched flags 0, direct F4 0, and the swallowed-failure scan surfaced 12
+candidates. Two were real:
+
+**(1) `usePosHeldCarts.ts:172` — a swallowed delete created duplicate open bills.**
+`deleteHeldCartScoped(...).catch(() => {})` throws away the failure, then the code
+runs `holdCartScoped` and toasts "Tab for X updated". The DELETE is exactly what
+prevents a duplicate record, so swallowing it produced the duplicate the adjacent
+comment claims to prevent — and the cashier was told the tab was UPDATED when a
+second one was created. Fixed by letting the rejection abort (`50f7a5c69`); the
+caller's existing catch turns it into an error toast.
+
+**(2) `PaymentModal.tsx:1218` — a silent loyalty money leak.** The redemption is a
+SEPARATE IPC from sale completion. The customer's total was already reduced by
+`loyaltyDiscount`, so a rejected redemption gives away the discount while leaving the
+points in the account — and the catch was empty. Now a warning toast matching the
+adjacent KDS pattern (`25c249521`).
+
+**Everything else in that scan was correctly swallowed and left alone:** the
+receipt/KDS/loyalty toast paths all fire AFTER the sale is committed, where blocking
+would be worse than warning; `PosScreen.tsx:432` falls through to a currency chain;
+`:942` is a best-effort advisory table mark; `useBarcodeScanner.ts:75` is cleanup.
+Reading each before changing it is the whole job — 10 of 12 were right.
+
+⚠️ **The first version of the loyalty test did not fail for the reason I expected.**
+It found no "Use Points" button, then found the button but never fired the redemption.
+Root cause: I mocked `getPointsValue` as `{ minor_units, currency }`, but it resolves
+a PLAIN NUMBER (`api/loyalty.ts:111`) that the modal `BigInt()`s directly
+(`:562`). The object threw inside a `.catch(() => {})` and the discount stayed `0n` —
+the redemption never fired, and the test would have passed for the wrong reason had I
+asserted only absence of the warning. Kill-tested after the fix: restoring the silent
+swallow fails the case.
+
 **The last unblocked F10 literals are gone (round 13).** A scan of the restaurant
 feature for hardcoded user-visible English found 24 a11y/text props and 144 candidate
 JSX text nodes; after excluding `<Localized>` ancestors, the only ones outside the
