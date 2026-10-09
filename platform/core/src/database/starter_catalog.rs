@@ -102,6 +102,29 @@ pub fn ensure_starter_catalog_in_store(
             ],
         )
         .map_err(|e| PlatformError::Internal(format!("store db product insert: {e}")))?;
+        // The STOCK row, not just the product row.
+        //
+        // MEASURED 2026-10-09 on the tablet, after the first cut of this module
+        // seeded products WITHOUT their inventory: the menu rendered all five
+        // items and every one of them read "Unavailable". `in_stock` is derived
+        // from a positive stock count
+        // (apps/mobile-tauri/src/commands/products.rs:169,
+        // `pwd.stock_qty.is_some_and(|q| q > 0)`), and that count comes from this
+        // table - so a product without an inventory row is a product the POS
+        // refuses to sell. That is F14a again for a different field: the menu is
+        // no longer EMPTY, it is inert, which is arguably worse because it looks
+        // stocked.
+        //
+        // `provisioning.rs:642` writes both in one transaction for exactly this
+        // reason, and this mirrors it. NULL qty when the global row is absent, so
+        // an unstocked sample stays visibly unavailable rather than silently
+        // selling from a stock count nobody set.
+        tx.execute(
+            "INSERT OR REPLACE INTO inventory (product_id, qty, updated_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![row.id, row.stock_qty, row.created_at],
+        )
+        .map_err(|e| PlatformError::Internal(format!("store db inventory insert: {e}")))?;
         inserted += 1;
     }
 
@@ -122,6 +145,10 @@ struct SampleProduct {
     is_active: i64,
     tenant_id: String,
     created_at: String,
+    /// The sample's opening stock, read from the global DB's inventory row.
+    /// None when provisioning wrote no stock row - the product then renders
+    /// unavailable instead of selling from an unset count.
+    stock_qty: Option<i64>,
 }
 
 /// Read provisioning's sample products from the global DB.
@@ -132,10 +159,16 @@ struct SampleProduct {
 fn read_sample_products(global: &Connection) -> Result<Vec<SampleProduct>, PlatformError> {
     let mut stmt = global
         .prepare(
-            "SELECT id, sku, name, price_minor, currency, category_id, product_type, is_active, tenant_id, created_at
-             FROM products
-             WHERE sku LIKE ?1 AND store_id IS NULL
-             ORDER BY sku",
+            // LEFT JOIN, not JOIN: a sample with no inventory row must still be
+            // copied (its stock is then NULL and the POS shows it unavailable),
+            // because dropping the product entirely would be the empty-menu
+            // defect again with a smaller menu.
+            "SELECT p.id, p.sku, p.name, p.price_minor, p.currency, p.category_id,
+                    p.product_type, p.is_active, p.tenant_id, p.created_at, i.qty
+             FROM products p
+             LEFT JOIN inventory i ON i.product_id = p.id
+             WHERE p.sku LIKE ?1 AND p.store_id IS NULL
+             ORDER BY p.sku",
         )
         .map_err(|e| PlatformError::Internal(format!("preparing sample product read: {e}")))?;
 
@@ -153,6 +186,7 @@ fn read_sample_products(global: &Connection) -> Result<Vec<SampleProduct>, Platf
                 is_active: r.get(7)?,
                 tenant_id: r.get(8)?,
                 created_at: r.get(9)?,
+                stock_qty: r.get(10)?,
             })
         })
         .map_err(|e| PlatformError::Internal(format!("reading sample products: {e}")))?;
@@ -181,7 +215,22 @@ mod tests {
                 store_id    TEXT,
                 tenant_id   TEXT NOT NULL DEFAULT 'default',
                 is_active INTEGER NOT NULL DEFAULT 1
+             );
+             CREATE TABLE inventory (
+                product_id TEXT PRIMARY KEY,
+                qty        INTEGER,
+                updated_at TEXT NOT NULL
              );",
+        )
+        .unwrap();
+    }
+
+    /// Give a product an opening stock, the way provisioning does.
+    fn set_stock(conn: &Connection, sku: &str, qty: i64) {
+        conn.execute(
+            "INSERT OR REPLACE INTO inventory (product_id, qty, updated_at)
+             VALUES (?1, ?2, '2026-01-01T00:00:00.000Z')",
+            rusqlite::params![format!("id-{sku}"), qty],
         )
         .unwrap();
     }
@@ -280,5 +329,51 @@ mod tests {
 
         assert_eq!(ensure_starter_catalog_in_store(&global, &store).unwrap(), 0);
         assert_eq!(count(&store), 0, "a store-scoped row is not ours to copy");
+    }
+
+    /// The rule that keeps the menu SELLABLE, not merely populated.
+    ///
+    /// Measured on the tablet 2026-10-09: the first cut of this module copied
+    /// products without their inventory rows, so all five tiles rendered
+    /// "Unavailable" and the menu was inert. `in_stock` is derived from a
+    /// positive stock count, so the stock row is not optional decoration.
+    #[test]
+    fn carries_the_opening_stock_so_the_products_are_sellable() {
+        let global = Connection::open_in_memory().unwrap();
+        let store = Connection::open_in_memory().unwrap();
+        schema(&global);
+        schema(&store);
+        for i in 1..=5 {
+            let sku = format!("SMPL-REST-{i:02}");
+            insert_product(&global, &sku, None);
+            set_stock(&global, &sku, 20);
+        }
+
+        assert_eq!(ensure_starter_catalog_in_store(&global, &store).unwrap(), 5);
+        let stocked: i64 = store
+            .query_row("SELECT COUNT(*) FROM inventory WHERE qty > 0", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            stocked, 5,
+            "every seeded product must carry a positive stock count"
+        );
+    }
+
+    /// A sample with no inventory row must still reach the store.
+    #[test]
+    fn copies_a_sample_that_has_no_stock_row() {
+        let global = Connection::open_in_memory().unwrap();
+        let store = Connection::open_in_memory().unwrap();
+        schema(&global);
+        schema(&store);
+        insert_product(&global, "SMPL-REST-01", None);
+
+        assert_eq!(ensure_starter_catalog_in_store(&global, &store).unwrap(), 1);
+        let qty: Option<i64> = store
+            .query_row("SELECT qty FROM inventory", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(qty, None, "an absent global stock count stays absent");
     }
 }
