@@ -441,6 +441,50 @@ describe('WorkspaceContext', () => {
       }, FAST_WAIT);
       expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
     });
+
+    // ── A re-mint must never expose sessionToken === null ───────────────
+    //
+    // The mint effect used to `setSessionToken(null)` the moment it decided to
+    // re-mint, then wait a full IPC round trip for `createSession`. Every
+    // consumer that reads `sessionToken` observed null across that gap, and on
+    // the tablet the gap is long enough to paint: the restaurant menu's
+    // catalog load (`useProducts`) unmounted the product grid into its loading
+    // skeleton and straight back. That is the flash the cashier sees when the
+    // restaurant POS opens. The superseded token is now retired only once its
+    // replacement is in hand, so no render sees the gap at all.
+    it('keeps the superseded token on screen until the replacement is minted', async () => {
+      const { result } = renderWorkspaceHook();
+
+      await waitForLoaded(result);
+
+      act(() => { result.current.workspace.setActiveWorkspace('restaurant-pos'); });
+      await waitFor(() => {
+        expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+
+      // Hold the mint open so the window under test is observed directly
+      // instead of raced: `createSession` is in flight and unresolved below.
+      let releaseMint: ((value: CreateSessionResult) => void) | null = null;
+      mocks.createSession.mockImplementation(
+        () => new Promise<CreateSessionResult>((resolve) => { releaseMint = resolve; }),
+      );
+
+      act(() => { result.current.workspace.setActiveWorkspace('store-pos'); });
+
+      await waitFor(() => {
+        expect(mocks.createSession).toHaveBeenCalledTimes(2);
+      }, FAST_WAIT);
+
+      // The whole point: still the SUPERSEDED token, never null.
+      expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+
+      await act(async () => {
+        releaseMint?.(makeSessionResult({ session_token: 'tok-xyz' }));
+      });
+
+      expect(result.current.workspace.sessionToken).toBe('tok-xyz');
+      expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+    });
   });
 
   describe('switchStore', () => {
