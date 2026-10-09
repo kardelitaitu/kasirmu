@@ -820,6 +820,48 @@ records `printKdsChitScoped` as a known gap — *"unmocked and unreachable"* —
 downstream half of F20. The corpus search above did not surface it because it looks for the key,
 not the command; **a second search axis, and a reminder that one query is not a sweep.**
 
+### F30 — the resto-pos review was stale on its OWN subject (round 71) — `d06ed69c0`
+
+The corpus search from round 70 turned up `.agents/reviews/resto-pos-ui-review.md` — a code
+review of **exactly the surface this plan covers**. Its status block recorded F3 and F4 CLOSED
+and F2 CLOSED, but F1 still read:
+
+> *"**F1 — STILL OPEN, unchanged.** `ItemModifierModal`'s only production importer is still
+> `RetailPosScreen`; the restaurant path still cannot attach modifiers."*
+
+**Both halves of that sentence are now false, measured at HEAD:**
+
+| The claim | The tree |
+|---|---|
+| "only production importer is `RetailPosScreen`" | **three** — `RestaurantMenu.tsx:9`, `RetailPosScreen.tsx:17`, `PosScreen.tsx:61` |
+| "the restaurant path cannot attach modifiers" | `RestaurantMenu.tsx:245-249` opens the picker when `getProductModifierGroups` is non-empty, and `:230/:235-239` forwards `meta.modifiers` to `onAddProduct` |
+
+F2 — the other half of the same seam, and the review's own §6 calls them *"one seam"* — is
+recorded CLOSED with full detail. **So the file was inconsistent with itself**, and its F1 line
+was the stale one.
+
+**Why a stale status line is worse than a missing one.** This file is consulted as a work list,
+and two source files still cite it by name (`RestaurantMenu.tsx:79`, `CartLineItem.test.tsx:30`).
+A reader takes "STILL OPEN" at its word and rebuilds something that exists — and because the
+claim is *specific* (a named importer, a named grep), it reads as re-measured rather than
+remembered. That is the same failure mode as round 70's T4-3, from the opposite direction: there
+the record was still true, here it had gone false.
+
+**Corrected with the evidence inline**, and pinned by `restoPosReviewAccuracy.test.ts`, which
+checks the structural facts the status block asserts (the three importers, the `meta.modifiers`
+type, and both props on the SHARED panel — the distinction F2 turned on).
+
+**The guard's first version was unfalsifiable, and the kill-test caught it.** It asked *"does the
+F1 block contain `CLOSED`"* — and passed against a planted `- **F1 — STILL OPEN` because the rest
+of that block still mentioned the closure further down. A status is a property of the HEADLINE,
+so it now parses the token immediately after the em dash and matches `^CLOSED`.
+
+**That is the third time this session a guard passed against a planted defect** (rounds 66, and
+67's sweep). The pattern is consistent: **assertions about prose need a parser, not a search.**
+
+Verified: eight settings/review guards **23 passed**; full suite **690 files / 11,517 passed**;
+typecheck 0; eslint 0; bundle parity 0 missing. Kill-tested with the corrected extraction.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
