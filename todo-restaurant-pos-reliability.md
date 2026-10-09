@@ -2949,6 +2949,81 @@ stored, reachable over IPC, and inert end to end.
 
 Verified: no code changed. The finding is a read of the tree at `e495c6794`.
 
+#### Round 95 (2026-10-10) — F24's OBSERVABLE half closed: the family has a screen — `74d0ca6e2`
+
+F24 measured a whole settings family — key, typed getter, setter, bridge command, both
+shells, UI API wrapper — with **nothing at either end**. The first of those two ends is now
+closed.
+
+**What was already built, verified before writing any UI:**
+
+| Link | State at HEAD |
+|---|---|
+| Keys | `credit.enabled` / `.max_limit` / `.reminder_interval` (`settings/keys.rs:165,167,169`) |
+| Typed getters + setters | `settings/typed.rs:283,293,308` |
+| Bridge `get_credit_settings(_scoped)` | registered, both shells |
+| Bridge `set_credit_settings_scoped` | registered — **writes all three in ONE transaction** (`settings.rs:622-626`) |
+| UI API `getCreditSettingsScoped` / `setCreditSettingsScoped` | **both already existed** (`api/settings.ts:85,89`) |
+| A screen calling either | **none — this round added the first** |
+
+So no Rust, no IPC and no API work was needed: the chain was complete except for the
+surface. That is worth recording, because it is why the gap survived — a reader found the
+family's REPORTING side wired (`listCreditSalesScoped` + `settleCreditScoped` in the retail
+POS) and reasonably concluded the family was wired.
+
+**The deliverable:** `CreditFacilityCard` (enable switch, ceiling, reminder interval),
+mounted as a **fifth card on the existing Business Defaults screen** beside
+`LocalPaymentSettingsCard`.
+
+**Why a card and not a new nav section.** The obvious route was a new settings section, but
+`screens/registry.ts` documents *three deliberately independent lists* — `NAV_ITEMS`,
+`KEPT_SECTIONS`, `SETTINGS_SCREENS` — that `SettingsPage.test.tsx:435-437` asserts agree in
+both directions. Composing on an existing screen touches none of them, so the change carries
+no registry risk. The card also sits next to the payments card, which is where an operator
+would look.
+
+**Money is integer minor units, end to end.** The ceiling is parsed with the shared BigInt
+`parseMinorUnits` and rendered with `minorUnitsToInputString`; no amount passes through a
+binary float. Its exponent is read from the store currency rather than assumed — a wrong
+exponent scales every ceiling by 10^n, and the symptom ("the limit I typed is not the limit
+stored") looks like a save bug. Pinned by a USD case: stored 500000 renders as `5000.00` and
+saves back as 500000.
+
+**⚠️ WHAT THIS DOES NOT CLOSE — `credit.*` is still ENFORCED NOWHERE.** The second half of
+F24 is untouched: `is_credit_enabled` is still called only by the getter that returns it,
+`get_credit_max_limit` likewise, and the charge modal offers the `credit` tender
+unconditionally (gated only on a customer name, `PaymentModal.tsx:1066`). **A ceiling set on
+this card will not block a sale.**
+
+That is deliberate, and it is written on the card itself — a Fluent line saying the ceiling
+*"is recorded for your reference. Sales above it are not blocked yet"* — because the
+operator is exactly who would otherwise assume a filled-in limit is enforced. A test pins
+that sentence so a later edit cannot quietly drop it.
+
+The two remaining decisions stay OPEN:
+
+| # | Change | Why parked |
+|---|---|---|
+| B | Gate the `credit` tender on `enabled` | Checkout behaviour change. Its direction is safe (off means off) and it mirrors `open_bill`/`qris`, which already gate this way — but it is still a change to what the till offers. |
+| C | Enforce the ceiling | Changes checkout from *succeeds* to *refused*, and needs a decided refusal UX (what the cashier sees, override, authority). Wiring it without one means either no real change or a refusal with no explanation. |
+
+**Verification.** 8 new card tests. The headline case asserts a save writes **all three
+keys** — F24's shape is a three-key family behind one transactional setter, so a card saving
+two would look correct on screen while dropping the operator's ceiling, and a one-field test
+would not notice. Mutation-checked: replacing the parsed limit with `0` turns **three** cases
+red, including that one. Stylesheet registered in `screenExtraction.test.ts`'s `SCREENS`
+(not baselined) so the used-class and defined-rule walks both grade it.
+Full suite **697 files / 11,579 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
+0 missing (13 keys added en + id).
+
+**Two traps hit and recorded.** (1) `renderWithProvidersSync(ui, ...ftlContents)` takes FTL
+bundles as spread POSITIONAL args — passing an options object mounts nothing and every
+Fluent lookup silently renders its raw key, which is how the first run failed. (2) An
+`aria-label` was needed on the enable checkbox: its visible text is inside `<Localized>`, so
+`jsx-a11y/label-has-associated-control` cannot see a string to associate. Suppressing the
+rule would have been the wrong fix.
+
+---
 ### F25 — the build stamp was PERMANENTLY `+dirty` (round 63) — FIXED `c0f4e0300`
 
 Found on the connected tablet, not in the source. The footer read:
