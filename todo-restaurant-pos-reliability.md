@@ -1314,6 +1314,51 @@ be willing to conclude the test is wrong twice.
 Verified: `usePosHeldCarts` **12 passed**; typecheck 0; eslint 0 errors. The one full-suite
 failure is the known `RestaurantMenuEditorScreen` flake.
 
+### F36 — a skip that claimed a safety net that was not there (round 81) — `7aa7192d8`
+
+Round 80's lesson — *a kill-test validates that the input reaches the code* — applied to a SUSPENDED
+test rather than a passing one.
+
+`PaymentModalSplitBalance.test.tsx` carries `it.skip('C12 mixed-currency split …')`, and its
+rationale ends by naming where the invariant IS pinned instead:
+
+> *"That invariant is pinned instead at the source: the guard reads
+> `effectiveTotalInCartCurrency` (:580-588)"*
+
+**It was not.** The phrase appears in that comment and nowhere else in the file — no assertion, no
+case. So the skip documented a gap AND a cover for it, and only the gap existed.
+
+**Kill-tested before believing it:** swapping `effectiveTotalInCartCurrency` for `totalMinor` in
+`useTenderMath.ts:180` — the exact money defect the comment says is guarded — left the suite
+**GREEN**. In a mixed-currency cart that swap rings a balanced split as short by the whole rate
+delta, so Complete could never enable, and nothing would have caught it.
+
+**A stated safety net that is not there is worse than an acknowledged gap**, because it stops anyone
+looking: the skip's own comment is what a reviewer would read instead of writing the case.
+
+**Now pinned where the invariant actually lives** — the expression that computes `remaining`, since
+runtime characterisation needs four currency mocks this file deliberately avoids. The case extracts
+it and asserts `.toBe('effectiveTotalInCartCurrency')`.
+
+**The file's own header was stale too, and the fix proves the contract works.** It placed
+`splitComplete` at `PaymentModal.tsx:580-588`; the hook moved to `useTenderMath.ts:183-191` long
+ago. That is recorded rather than silently corrected, because **the cases survived the move** — they
+assert the CONTRACT ("remaining = total − Σ rows, exact BigInt"), not a location. It is the same
+lesson as the C12 comment, from the opposite side: a line number is not a safety net, and a contract
+is.
+
+#### A coordination fact worth writing down
+
+My commit reported **"nothing added to commit"** — because a concurrent lane had already landed my
+exact change as `7aa7192d8`, under its own subject. AGENTS.md §7.3 predicted this ("your work may
+already be in someone else's commit — check `git show --stat HEAD`"), and **verifying rather than
+re-applying was the right call**: the published version carries my comment and my assertion verbatim,
+and it still fails with the bug reintroduced. Re-applying would have produced a no-op diff or a
+conflict over work already on the branch.
+
+Verified: `PaymentModalSplitBalance` **13 passed / 1 skipped**; full suite **695 files /
+11,549 passed, 0 failed**; typecheck 0; eslint 0; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
