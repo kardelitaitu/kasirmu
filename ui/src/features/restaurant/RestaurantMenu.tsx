@@ -634,6 +634,12 @@ export default function RestaurantMenu({
       />
 
       {/* ── Product grid ───────────────────────────── */}
+      {/* Crash isolation (F9). This is the whole ordering surface: a throw in a grid
+          row used to propagate past RestaurantMenu into PosScreen and unmount the
+          POS screen, taking the cart with it mid-service. `resetKeys` clears the
+          caught error when the item list changes, so a bad row does not brick the
+          grid for the rest of the shift. */}
+      <LocalizedErrorBoundary onReset={reload} resetKeys={[String(filtered.length), effectiveCategory]}>
       <MenuItemGrid
         loading={loading || isTransientSessionError}
         error={isTransientSessionError ? null : (sessionError ?? error)}
@@ -652,6 +658,7 @@ export default function RestaurantMenu({
         onAdd={handleItemAdd}
         onContextMenu={handleContextMenu}
       />
+      </LocalizedErrorBoundary>
 
       {/* ── Context menu ─────────────────────────────── */}
       {contextMenu && (
@@ -665,7 +672,15 @@ export default function RestaurantMenu({
       )}
 
       {/* ── Item modifier modal ───────────────────────── */}
+      {/* Crash isolation (F9), same reasoning as the grid above: this is the step
+          where an item's options and price are chosen, so a throw must cost the
+          cashier the dialog, not the sale. `resetKeys` keys on the product so
+          reopening a different item clears a caught error. */}
       {customizingProduct && (
+        <LocalizedErrorBoundary
+          onReset={() => setCustomizingProduct(null)}
+          resetKeys={[customizingProduct.sku]}
+        >
         <ItemModifierModal
           open={Boolean(customizingProduct)}
           productName={customizingProduct.name}
@@ -675,6 +690,7 @@ export default function RestaurantMenu({
           onConfirm={handleConfirmModifiers}
           onClose={() => setCustomizingProduct(null)}
         />
+        </LocalizedErrorBoundary>
       )}
     </div>
   );

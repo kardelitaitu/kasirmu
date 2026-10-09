@@ -80,6 +80,23 @@ const SURFACES: GuardedSurface[] = [
     element: /<ProductLookupScreen\b/,
     why: 'stock inquiry, reached from the sidebar mid-service',
   },
+  // ── RestaurantMenu: the surface ITSELF, not a panel of it ──
+  //
+  // The seven entries above are panels of the POS screen. The menu is the ordering
+  // surface under all of them, and a throw inside it propagated past RestaurantMenu
+  // into PosScreen — which has no boundary around `<RestaurantMenu>` at :1224 — so
+  // the POS screen unmounted and the cart went with it. Both money steps are listed:
+  // the grid the cashier taps, and the modifier dialog where the price is chosen.
+  {
+    file: path.join(SRC, 'features/restaurant/RestaurantMenu.tsx'),
+    element: /<MenuItemGrid\b/,
+    why: 'the product grid: the whole ordering surface',
+  },
+  {
+    file: path.join(SRC, 'features/restaurant/RestaurantMenu.tsx'),
+    element: /<ItemModifierModal\b/,
+    why: 'the modifier dialog: where an item price is chosen',
+  },
 ];
 
 /**
@@ -116,8 +133,10 @@ describe('restaurant POS crash isolation (F9)', () => {
 
   it('scans a meaningful number of surfaces', () => {
     // A collector that silently found nothing would pass every case above.
-    // PosScreen has SEVEN early-return sub-screens; the list must cover all seven
-    // or the gap is exactly where the next unwrapped one will be.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(7);
+    // PosScreen has SEVEN early-return sub-screens, and RestaurantMenu contributes
+    // its two money-path surfaces — nine in all. The number is asserted because a
+    // list short of the thing it guards is exactly how three of these hid until
+    // round 18.
+    expect(SURFACES.length).toBeGreaterThanOrEqual(9);
   });
 });
