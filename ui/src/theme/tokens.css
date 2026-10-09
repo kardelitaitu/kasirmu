@@ -388,6 +388,23 @@
    * missing declaration. Chrome geometry, not theme: :root only. */
   --memo-bottom-inset: var(--space-6);
 
+  /* The restaurant portrait floating cart bar's height, consumed by the
+   * body:has(.restaurant-floating-cart-bar) override in
+   * RestaurantFloatingCartBar.css (see the chain note in
+   * __tests__/memoStackClearance.test.ts).
+   *
+   * Measured on the Redmi tablet at an 800x1280 portrait viewport, one line in
+   * the cart: the rendered bar is 49px tall. The bar's own rule says
+   * min-height: 3.75rem (60px at a 16px root, 52.5px at the tablet's 14px
+   * root); 3.75rem is kept here rather than the measured 49px because the
+   * clearance must hold for the TALLEST the bar can be, not the height it
+   * happened to have on one screen — the trigger's content (line count chip,
+   * table chip) can push it to its min-height, and a bar taller than the inset
+   * is the exact overlap this token exists to prevent.
+   *
+   * Chrome geometry, not theme: :root only, like --memo-bottom-inset. */
+  --restaurant-cart-bar-height: 3.75rem;
+
   /* ── Z-index ──────────────────────────────────────────────── */
   --z-base:      0;
   --z-dropdown:  100;

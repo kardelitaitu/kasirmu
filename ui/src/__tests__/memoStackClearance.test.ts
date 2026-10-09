@@ -54,6 +54,10 @@ const SHEETS = {
   appLayout: resolve(__dirname, '../app/AppLayout.css'),
   settings: resolve(__dirname, '../features/settings/SettingsPage.css'),
   memo: resolve(__dirname, '../features/memo/MemoBanner.css'),
+  restaurantCartBar: resolve(
+    __dirname,
+    '../features/restaurant/components/RestaurantFloatingCartBar.css',
+  ),
 } as const;
 
 function readSheet(path: string): string {
@@ -197,11 +201,56 @@ describe('Memo stack clearance — the token chain', () => {
     ).toBe(true);
   });
 
-  it('no other sheet declares the token — exactly one default, three scoped overrides, one consumer', () => {
+  it('the restaurant portrait cart bar clears the stack (its own chain link)', () => {
+    // ADDED because the chain was missing this link entirely. The bar is a fixed
+    // element at the bottom of the restaurant POS in portrait, and the stack is
+    // its fixed SIBLING under #root — so the stack rendered straight over it.
+    //
+    // Measured before this rule, tablet at an 800x1280 portrait viewport, two
+    // live memos: bar y 1220-1269, stack y 1118-1259 (39px overlap), and
+    // elementFromPoint at the bar's centre returned .memo-banner-text. The tap
+    // meant for "View Order" hit a memo, making the cart unreachable — the bar
+    // is the ONLY route back into the cart in portrait, so this blocked the
+    // terminal rather than merely obscuring a control.
+    //
+    // The e2e spec restaurant-cart-portrait.spec.ts is what surfaced it: its
+    // three sheet tests timed out on "memo-banner-text intercepts pointer
+    // events". Nothing had ever driven the portrait cart path.
+    const css = readSheet(SHEETS.restaurantCartBar);
+    const bodyRule = blocksOf(css, 'body:has\\(\\.restaurant-floating-cart-bar\\)');
+    expect(
+      bodyRule.length,
+      'RestaurantFloatingCartBar.css must declare --memo-bottom-inset on body:has(.restaurant-floating-cart-bar) — the bar is fixed and the stack is its SIBLING, so an override on the bar itself can never reach the stack',
+    ).toBeGreaterThan(0);
+    // Height + the bar's own bottom offset + its safe-area inset + the gutter:
+    // the same "bar height + inset-bottom + space-6" shape the tablet shell uses.
+    expect(
+      bodyRule.some((b) =>
+        /--memo-bottom-inset:\s*calc\(\s*var\(--restaurant-cart-bar-height\)\s*\+\s*var\(--space-3\)\s*\+\s*env\(safe-area-inset-bottom[^)]*\)\s*\+\s*var\(--space-6\)\s*\)/.test(
+          b.replace(/\s+/g, ' '),
+        ),
+      ),
+      "RestaurantFloatingCartBar.css body:has(...) --memo-bottom-inset must be calc(var(--restaurant-cart-bar-height) + var(--space-3) + env(safe-area-inset-bottom, 0px) + var(--space-6)) — the bar's height, its own bottom offset, its own safe-area inset, and the gutter",
+    ).toBe(true);
+    // The height token is single-sourced in tokens.css; a local literal here
+    // would be a second source of truth that drifts silently.
+    const tokens = readSheet(SHEETS.tokens);
+    expect(
+      customProp(blocksOf(tokens, ':root'), '--restaurant-cart-bar-height'),
+      'tokens.css :root must declare --restaurant-cart-bar-height (single source for the cart-bar clearance)',
+    ).not.toBeNull();
+    expect(
+      customProp(bodyRule, '--restaurant-cart-bar-height'),
+      'RestaurantFloatingCartBar.css must not redefine --restaurant-cart-bar-height — tokens.css is its single source',
+    ).toBeNull();
+  });
+
+  it('no other sheet declares the token — exactly one default, four scoped overrides, one consumer', () => {
     // Scopes: :root default (tokens), .tablet-shell (tablet),
     // .app-layout (desktop), body:has(.settings-footer) (settings),
-    // and the consumer read in MemoBanner.css. A stray declaration
-    // elsewhere would be a competing source of truth.
+    // body:has(.restaurant-floating-cart-bar) (restaurant portrait), and the
+    // consumer read in MemoBanner.css. A stray declaration elsewhere would be a
+    // competing source of truth.
     const expectedSheets = new Set(Object.values(SHEETS));
     const uiSrc = resolve(__dirname, '..');
     const cssFiles: string[] = [];
@@ -221,7 +270,7 @@ describe('Memo stack clearance — the token chain', () => {
     }
     expect(
       foreign,
-      'only tokens.css, tablet.css, AppLayout.css, SettingsPage.css and MemoBanner.css may touch --memo-bottom-inset; these files declare it outside the chain',
+      'only tokens.css, tablet.css, AppLayout.css, SettingsPage.css, RestaurantFloatingCartBar.css and MemoBanner.css may touch --memo-bottom-inset; these files declare it outside the chain',
     ).toEqual([]);
   });
 });
