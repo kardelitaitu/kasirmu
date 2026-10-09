@@ -595,9 +595,18 @@ Committing the **test alone** was the alternative and is worse: at HEAD the anno
 still the one-key form, so the case would land RED. A test that cannot pass at HEAD is not
 coverage.
 
-**The correction is verified and waiting**: 15/15 pass on the working tree, and the case is
-kill-tested (reverting the announcement fails it with the exact missing-key list). It needs
-the other lane to commit, then one pathspec commit of both files.
+**RESOLVED in round 39, and the resolution is worth recording.** The other lane's commit
+`9e8bc978d` (*"feat(settings): add receipt printer configuration to restaurant pos
+settings"*) **swept both of my held files in** — the source fix (their hunk and mine were
+interleaved in one file) and the test. Verified at HEAD: the announcement is now the
+`Object.keys({...}).map(k => \`receipt.${k}\`)` form, my case is present at
+`WorkspaceRestaurantPosSettings.test.tsx:252`, and the suite is **15/15**.
+
+So the fix landed, just under another lane's subject rather than mine. That is the normal
+outcome for a held change on a shared file — §7.3 notes it explicitly ("If `git commit`
+reports nothing to commit, your work may already be in someone else's commit"). What the
+hold bought was three rounds of the shared index not being contaminated by *my* pathspec;
+what it cost was nothing, because the other lane committed a coherent file.
 
 ### Round 37 — every save failure read the same generic sentence
 
