@@ -1041,6 +1041,21 @@ settings-localpay-empty-list = Belum ada jalur yang dicatat — tambahkan yang d
 settings-localpay-scope-location = Diatur di lokasi ini
 settings-localpay-scope-legal-entity = Default pasar (badan hukum)
 
+# ── Store credit (F24, Business Defaults screen) ────────────────────────
+settings-credit-title = Kredit toko
+settings-credit-subtitle = Apakah toko ini memberikan kredit, dan dengan ketentuan apa.
+settings-credit-enabled = Tawarkan penjualan kredit
+settings-credit-limit-label = Batas kredit
+settings-credit-reminder-label = Interval pengingat (jam)
+settings-credit-advisory = Batas ini hanya dicatat sebagai referensi Anda. Penjualan di atas batas ini belum diblokir.
+settings-credit-save = Simpan pengaturan kredit
+settings-credit-saving = Menyimpan…
+settings-credit-saved = Pengaturan kredit tersimpan.
+settings-credit-error-load = Gagal memuat pengaturan kredit.
+settings-credit-error-save = Gagal menyimpan pengaturan kredit.
+settings-credit-error-limit = Masukkan nominal batas yang valid.
+settings-credit-error-reminder = Masukkan interval pengingat yang valid.
+
 # ── Diagnostik (hasil ketersediaan fitur) ──
 settings-diagnostics-title = Diagnostik
 settings-diagnostics-intro = Mengapa setiap fitur tersedia atau terkunci untuk Anda saat ini — gerbang yang sama yang diterapkan aplikasi, dengan alasannya disebutkan. Hanya baca, bekerja offline.

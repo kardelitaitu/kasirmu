@@ -2019,21 +2019,28 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['settings-scope-tag--'],
     parentCss: ['settings/SettingsPage.css'],
   },
-
   {
-    // CreditFacilityCard — the fifth of the settings cards (F24). Added 2026-10-10
-    // when the card was wired into BusinessDefaultsScreen.tsx:33; the guard refused
-    // its sheet as uncited until this entry existed, and its own message is explicit
-    // that a NEW sheet may not join the shrink-only BASELINE_UNCITED list.
-    //
-    // 14 classes, measured at ZERO orphans, plus exactly one borrowed name:
-    // settings-section-title, which only settings/SettingsPage.css:514 defines — the
-    // same single-name relationship the four cards above have with that scaffold.
+    // F24 (2026-10-10): the store-credit card. Registered here rather than in
+    // BASELINE_UNCITED because it is cited by its owner — the rule this suite
+    // exists to enforce. Same shape as its LocalPaymentSettingsCard sibling,
+    // including the reason SettingsScopeTag.css joins the `css` list rather
+    // than only additionalTsx: `additionalTsx` feeds the USED-class walk and
+    // `css` feeds the DEFINED-rule walk, so citing only the component would
+    // leave settings-scope-tag reported as used-but-undefined.
     name: 'CreditFacilityCard',
     tsx: 'settings/screens/CreditFacilityCard.tsx',
-    css: ['settings/screens/CreditFacilityCard.css'],
+    css: [
+      'settings/screens/CreditFacilityCard.css',
+      'settings/SettingsScopeTag.css',
+    ],
+    additionalTsx: ['settings/SettingsScopeTag.tsx'],
+    // The five scope modifiers are composed from the prop
+    // (`settings-scope-tag settings-scope-tag--${scope}`); the static walk
+    // reaches the base and none of the tails, exactly as the sibling records.
+    dynamicClassPrefixes: ['settings-scope-tag--'],
     parentCss: ['settings/SettingsPage.css'],
   },
+
 
   // ── Settings screen scaffolds (rebuild) ────────────────────
   // Blank placeholders under features/settings/screens/, one file per screen.

@@ -1,0 +1,135 @@
+/* CreditFacilityCard — Business Defaults screen (F24).
+ * Mirrors LocalPaymentSettingsCard.css rhythm; every color is a CSS custom
+ * property so the card tracks the app theme. */
+
+.credit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.credit-intro {
+  margin: 0 0 var(--space-3);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-base);
+}
+
+.credit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.credit-label {
+  font-size: var(--text-base);
+  color: var(--color-fg-primary);
+}
+
+.credit-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.credit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 12rem;
+}
+
+.credit-field-label {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.credit-input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.375rem 0.5rem;
+  background: var(--color-bg);
+  color: var(--color-fg-primary);
+  font-size: var(--text-base);
+}
+
+/* The advisory note. Deliberately understated but present: this card makes the
+   ceiling SETTABLE, not ENFORCED, and the operator is the one who would
+   otherwise assume otherwise. */
+.credit-hint {
+  margin: var(--space-3) 0 0;
+  color: var(--color-fg-tertiary);
+  font-size: var(--text-sm);
+}
+
+.credit-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.credit-save {
+  border: none;
+  border-radius: 6px;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.credit-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.credit-status {
+  font-size: var(--text-sm);
+  color: var(--color-success);
+}
+
+.credit-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+  margin: 0;
+}
+
+.credit-loading {
+  margin: 0;
+  color: var(--color-fg-secondary);
+  font-size: var(--text-base);
+}
+
+/* ── Touch press feedback ───────────────────────────────────────
+   Store credit: the toggle tints, save scales, matching the sibling card. */
+
+.credit-save:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.credit-toggle:active {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+@media (pointer: coarse) {
+  .credit-save:not(:disabled):active,
+  .credit-toggle:active {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .credit-save:not(:disabled):active {
+    transform: none;
+    opacity: 0.75;
+  }
+}

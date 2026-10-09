@@ -1063,6 +1063,28 @@ settings-localpay-empty-list = No rails recorded yet — add the ones this site 
 settings-localpay-scope-location = Set at this site
 settings-localpay-scope-legal-entity = Market default (legal entity)
 
+# ── Store credit (F24, Business Defaults screen) ────────────────────────
+# The `credit.*` family had no surface at all before this card: a key, typed
+# accessors, a bridge command and setter, both shells registered, and a UI API
+# wrapper — but nothing called them. These strings are that surface.
+settings-credit-title = Store credit
+settings-credit-subtitle = Whether this store offers credit, and on what terms.
+settings-credit-enabled = Offer credit sales
+settings-credit-limit-label = Credit ceiling
+settings-credit-reminder-label = Reminder interval (hours)
+# The advisory note. Deliberately explicit: the card makes the ceiling
+# SETTABLE, not ENFORCED, and the operator is who would otherwise assume
+# otherwise. Removing this line would make the card promise something the
+# runtime does not do — the exact defect class this plan keeps finding.
+settings-credit-advisory = This ceiling is recorded for your reference. Sales above it are not blocked yet.
+settings-credit-save = Save credit settings
+settings-credit-saving = Saving…
+settings-credit-saved = Credit settings saved.
+settings-credit-error-load = Could not load credit settings.
+settings-credit-error-save = Could not save credit settings.
+settings-credit-error-limit = Enter a valid limit amount.
+settings-credit-error-reminder = Enter a valid reminder interval.
+
 # ── Diagnostics (feature-availability verdicts) ──
 settings-diagnostics-title = Diagnostics
 settings-diagnostics-intro = Why each feature is available or locked for you right now — the same gates the app enforces, with the reason named. Read-only, works offline.

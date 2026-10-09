@@ -12,6 +12,7 @@ import { RegionalSettingsCard } from './RegionalSettingsCard';
 import { LocalPaymentSettingsCard } from './LocalPaymentSettingsCard';
 import { ReceiptFormatSettingsCard } from './ReceiptFormatSettingsCard';
 import { StatutoryNumberingCard } from './StatutoryNumberingCard';
+import { CreditFacilityCard } from './CreditFacilityCard';
 import './screens-placeholder.css';
 
 /** Settings → Business Defaults. */
@@ -25,6 +26,11 @@ export function BusinessDefaultsScreen() {
       <LocalPaymentSettingsCard />
       <ReceiptFormatSettingsCard />
       <StatutoryNumberingCard />
+      {/* F24: the `credit.*` family had a key, typed accessors, a bridge command,
+          a setter, both shells registered and a UI API wrapper — and no screen.
+          This is the screen. It makes the values settable; it does NOT make the
+          ceiling enforced, which is stated on the card itself. */}
+      <CreditFacilityCard />
     </section>
   );
 }
