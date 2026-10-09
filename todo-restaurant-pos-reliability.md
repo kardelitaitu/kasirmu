@@ -545,6 +545,8 @@ the tablet test passes; a speculative edit would be a change with no failing tes
 
 ### F16 — the `open_bill` / `credit` toggles do nothing, and the abandoned edit would have shipped them anyway
 
+**`open_bill` half FIXED 2026-10-09 (`4737734a5`). `credit` half still open — see the ruling below.**
+
 Found round 51 while re-examining the **payment popup** (the goal names it) and the round-15
 pinned divergence at `useLocalPaymentRails.test.ts:97`.
 
@@ -585,6 +587,43 @@ the code two files over. The honest repair is a decision, not a patch:
 
 Recorded, not patched: Option B is a product decision, and Option A only improves wording.
 The round-15 pin still passes, so this remains pinned divergence — now with a named cause.
+
+#### Round 52 — `open_bill` FIXED; `credit` deliberately left alone
+
+`4737734a5`. The modal now honours the `open_bill` rail flag as a **second** gate beside the
+workspace check. The two answer different questions and both must hold:
+
+- `isRestaurantPos` is a **CAPABILITY** — the backend refuses `bill_type: 'open_bill'` outside
+  restaurant-pos, so offering it would submit a bill that fails. Unchanged.
+- the rail flag is a **MERCHANT PREFERENCE**. New.
+
+**`credit` is NOT gated, and that is a decision rather than an omission.**
+`useLocalPaymentRails.ts:70-73` records that whether `credit` is a tender at all or a facility
+orthogonal to tender is **already a parked owner question** (todo-payment.md :887). Gating it
+would answer that question by accident. The divergence the round-15 pin describes therefore
+narrows to `credit` alone.
+
+**The design bug my first attempt had, and what caught it.** I reached for the existing
+`railOffered` — and this file's own **PINNED tender-list case failed immediately**, because
+`railOffered` treats "no row in a populated list" as *not offered*. That is right for `qris`, an
+opt-in rail a store may genuinely not have, and **wrong for a core rail**: `open_bill` always
+exists as a setting, so a rail list written *before* that row existed would have silently lost
+the tender — a capability withdrawn from stores that never touched the toggle.
+
+The fix is a new `coreRailWithheld`, which encodes the real three-state semantics:
+
+| List state | `railOffered` | `coreRailWithheld` | Correct for a core rail? |
+|---|---|---|---|
+| null / empty | offered | not withheld | yes (fail open) |
+| no row for it | **not offered** | **not withheld** | `coreRailWithheld` |
+| row, `is_enabled: true` | offered | not withheld | yes |
+| row, `is_enabled: false` | not offered | **withheld** | yes |
+
+Four cases pin it, including one that asserts the two helpers **disagree** on the no-row case —
+the distinction is the whole point and would otherwise be easy to "simplify" back into the bug.
+Kill-tested by forcing `coreRailWithheld` to never withhold.
+
+Verified: 10 payment suites / **236 passed**, typecheck 0, eslint 0, bundle parity 0 missing.
 
 ---
 
