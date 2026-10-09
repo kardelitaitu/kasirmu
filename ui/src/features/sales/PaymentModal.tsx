@@ -8,7 +8,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
-import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
+import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -105,6 +105,8 @@ export default function PaymentModal({
   sessionToken,
   tableNumber,
   orderType = 'dine_in',
+  // Omitted = not loaded / never written -> the model's default, which is to print.
+  autoPrintKitchen = true,
   selectedCustomer: selectedCustomerProp,
   onCustomerChange,
   onComplete,
@@ -725,6 +727,22 @@ retryCurrencyLoad,
   // charge can bind to the real sale id (the ledger's queued finalize_sale
   // then addresses a sale the device actually has), and EDC completes
   // 'captured' with the terminal's transaction fields.
+  const printKitchenChits = useCallback(
+    async (orders: Array<{ id: string }>) => {
+      if (!autoPrintKitchen || !sessionToken) return;
+      for (const order of orders) {
+        try {
+          await printKdsChitScoped(sessionToken, order.id);
+        } catch (chitErr) {
+          // Loud but non-fatal: a printer that is offline should be visible in the
+          // console, not turn a completed sale into an error the cashier retries.
+          console.error('printKdsChitScoped failed', order.id, chitErr);
+        }
+      }
+    },
+    [autoPrintKitchen, sessionToken],
+  );
+
   const buildGatewaySale = useCallback(
     async (split: { method: string; gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
       const { cartId } = await startSaleScoped(sessionToken!, { currency: cartCurrency });
@@ -864,6 +882,17 @@ retryCurrencyLoad,
 
       try {
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // F20: the Auto-Print KOT switch. Until this round
+        // `restaurant.auto_print_kitchen` was written by the settings screen and read
+        // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
+        // so the switch promised a behaviour the app never performed. The ORDER is
+        // created regardless (the Kitchen Display and the course publish need it);
+        // only the paper is optional.
+        //
+        // Non-blocking per order: a printer that is offline must not suppress the
+        // remaining tickets, nor let the caller's catch below skip
+        // `publishFiredCourses` for a purely cosmetic failure.
+        await printKitchenChits(orders);
         await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // KDS may not be configured — but a swallowed failure here meant a
@@ -912,7 +941,7 @@ retryCurrencyLoad,
     },
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses, activeMarketProfile, paymentRails],
+     publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -1039,6 +1068,20 @@ retryCurrencyLoad,
     if (method === 'qris') return qrReference.length > 0;
     return true;
   }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference]);
+
+  /**
+   * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
+   *
+   * Defined ONCE and called from both checkout paths (cash/SplitTender and the QRIS
+   * auto path), because those two branches each carry their own catch — a helper
+   * duplicated across them is how one site keeps working while the other silently
+   * stops, the failure the `PosScreenCoreFlow` comment at :618-620 already records for
+   * the create call.
+   *
+   * Never throws. A failed chit must not fail the sale, suppress the remaining
+   * tickets, or make the caller skip `publishFiredCourses` — the sale is already
+   * committed and the kitchen ticket is recoverable; the money is not.
+   */
 
   const complete = useCallback(async () => {
     setProcessing(true);
@@ -1279,6 +1322,17 @@ retryCurrencyLoad,
 
       try {
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // F20: the Auto-Print KOT switch. Until this round
+        // `restaurant.auto_print_kitchen` was written by the settings screen and read
+        // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
+        // so the switch promised a behaviour the app never performed. The ORDER is
+        // created regardless (the Kitchen Display and the course publish need it);
+        // only the paper is optional.
+        //
+        // Non-blocking per order: a printer that is offline must not suppress the
+        // remaining tickets, nor let the caller's catch below skip
+        // `publishFiredCourses` for a purely cosmetic failure.
+        await printKitchenChits(orders);
         await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // See the QR path: a failed kitchen ticket must not stay silent.
@@ -1343,7 +1397,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits]);
 
   useEffect(() => {
     if (!done) return;

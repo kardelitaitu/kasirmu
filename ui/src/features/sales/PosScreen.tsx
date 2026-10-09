@@ -798,6 +798,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
   const [saveTabEnabled, setSaveTabEnabled] = useState<boolean | null>(null);
 
+  // ── Auto-Print KOT (F20) ────────────────────────────────────────
+  //
+  // `restaurant.auto_print_kitchen` lived ONLY in the settings screen until this
+  // round: written, loaded back into its own switch, and read by nothing — so the
+  // toggle promised a behaviour the app never performed. Both halves were already
+  // present and simply never joined: `createKdsOrderFromSaleScoped` creates the KDS
+  // order and `printKdsChitScoped` prints the chit, with the latter having zero
+  // callers anywhere under ui/src.
+  //
+  // `null` means "never written", and the default is TRUE — matching the model's
+  // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen` (settingsModel), so an unset key
+  // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
+  // what the module's own default says a kitchen expects.
+  const [autoPrintKitchen, setAutoPrintKitchen] = useState<boolean | null>(null);
+
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
     const seq = ++orderTypePromptSeq.current;
@@ -833,6 +848,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     void getSettingScoped(sessionToken, 'restaurant.save_tab')
       .then((raw) => { if (!cancelled) setSaveTabEnabled(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setSaveTabEnabled(null); });
+    // F20: the Auto-Print KOT switch. A failed read keeps `null`, which the modal
+    // treats as its default (print) — so a settings outage cannot silently stop a
+    // kitchen printing tickets, the direction of failure that goes unnoticed.
+    void getSettingScoped(sessionToken, 'restaurant.auto_print_kitchen')
+      .then((raw) => { if (!cancelled) setAutoPrintKitchen(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setAutoPrintKitchen(null); });
     return () => { cancelled = true; };
   }, [sessionToken]);
 
@@ -1317,6 +1338,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
           orderType={orderType}
+          // F20: undefined means "not loaded / never written", which the modal
+          // resolves to its default (print). Passing `null` through would make an
+          // unread setting indistinguishable from an explicit false.
+          {...(autoPrintKitchen === null ? {} : { autoPrintKitchen })}
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />

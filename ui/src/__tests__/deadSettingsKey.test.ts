@@ -33,12 +33,10 @@ const SRC = path.resolve(process.cwd(), 'src');
  * and `disabledFlagLatch.test.ts` use for their own exemptions.
  */
 const DECLARED_DEAD: Array<{ key: string; wouldNeed: string }> = [
-  {
-    key: 'restaurant.auto_print_kitchen',
-    wouldNeed:
-      'a KOT-send path on save/hold. The only auto-print in the tree is KDS-side ' +
-      '(kasirmu-bridge/src/kds.rs, try_auto_print_kds_chit_jobs) and already automatic.',
-  },
+  // `restaurant.auto_print_kitchen` was here until round 57, when the KOT-send path it
+  // asked for was built: `PosScreen` reads it and `PaymentModal.printKitchenChits`
+  // gates `printKdsChitScoped` on it (which had no caller anywhere before). Removed
+  // because the key now HAS a reader — which is what the third case below demands.
   {
     key: 'restaurant.sound_chime',
     wouldNeed:

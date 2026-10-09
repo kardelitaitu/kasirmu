@@ -27,6 +27,19 @@ export interface PaymentModalProps {
   sessionToken?: string;
   tableNumber?: string;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
+  /**
+   * Whether completing a sale prints a kitchen chit per KDS order (F20).
+   *
+   * From `restaurant.auto_print_kitchen`, read by `PosScreen` and passed down — the
+   * modal reads no `restaurant.*` key itself, matching how `save_tab` and
+   * `customer_name` reach it.
+   *
+   * Omitted means "not loaded, or never written", which resolves to the model's own
+   * default (print). The KDS ORDER is created either way: it feeds the Kitchen
+   * Display and the course-firing publish, neither of which is paper-dependent.
+   * Only the PRINT is optional, which is what the setting says.
+   */
+  autoPrintKitchen?: boolean;
   selectedCustomer?: CustomerDto | null;
   onCustomerChange?: (customer: CustomerDto | null) => void;
   onComplete: () => void;

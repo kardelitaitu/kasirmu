@@ -322,6 +322,138 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+
+  // ── Auto-Print KOT must gate the kitchen chit (F20) ───────────────
+  //
+  // `RestaurantPaymentsScreen` renders "Auto-Print Kitchen" as a switch and saves it
+  // as `restaurant.auto_print_kitchen`. Until this round the key existed ONLY in that
+  // screen — written, loaded back, and read by nothing — so the toggle promised a
+  // behaviour the app never performed.
+  //
+  // Both halves already existed and were simply never joined: `createKdsOrderFromSaleScoped`
+  // creates the KDS order (called here unconditionally), and `printKdsChitScoped` prints
+  // the chit — with ZERO callers anywhere under ui/src, which the factory-surface guard
+  // records as a known gap (`mockFactorySurface.test.ts:240`). This joins them and gates
+  // the print on the setting.
+  //
+  // The KDS ORDER is created either way, deliberately: it feeds the Kitchen Display and
+  // the course-firing publish, both of which exist regardless of whether paper comes out.
+  // Only the PRINT is optional, which is what the toggle says.
+  const completeWithKdsOrder = async () => {
+    await waitFor(() =>
+      expect(screen.getByLabelText(/amount tendered/i)).toBeInTheDocument(),
+    );
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('create_kds_order_from_sale_scoped',
+        expect.objectContaining({ saleId: 'sale-1' })),
+    );
+  };
+
+  // The setting reaches the modal as a PROP (read by PosScreen, as `save_tab` and
+  // `customer_name` are), so these cases pass it rather than mocking a settings read
+  // the modal never makes — a mock on a surface nobody reads is the trap this file
+  // documents at :148-154.
+  const kdsOrderImpl = () => {
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'create_kds_order_from_sale_scoped') {
+        // Two zones, so the print fan-out is observable rather than degenerate.
+        return Promise.resolve([
+          { id: 'kds-1', sale_id: 'sale-1', kitchen_zone: 'grill' },
+          { id: 'kds-2', sale_id: 'sale-1', kitchen_zone: 'bar' },
+        ]);
+      }
+      if (cmd === 'print_kds_chit_scoped') return Promise.resolve(true);
+      return prev(cmd);
+    });
+  };
+
+  it('prints a kitchen chit per KDS order when auto_print_kitchen is on', async () => {
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        autoPrintKitchen={true}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    // The hoisted mock is typed `(cmd: string) => …`, so its call tuple is length 1
+    // even though real call sites pass a second argument; read it through the
+    // untyped view, as this file does above for print_sales_receipt_scoped.
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      const printed = calls
+        .filter((c) => c[0] === 'print_kds_chit_scoped')
+        .map((c) => (c[1] as { orderId: string }).orderId);
+      expect(printed.sort()).toEqual(['kds-1', 'kds-2']);
+    });
+  });
+
+  it('creates the KDS order but prints NO chit when auto_print_kitchen is off', async () => {
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        autoPrintKitchen={false}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    // The order still exists — the Kitchen Display is not paper-dependent…
+    expect(invokeMock).toHaveBeenCalledWith('create_kds_order_from_sale_scoped',
+      expect.objectContaining({ saleId: 'sale-1' }));
+    // …but nothing was printed.
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    expect(
+      calls.some((c) => c[0] === 'print_kds_chit_scoped'),
+      'auto-print was OFF but a chit was printed anyway',
+    ).toBe(false);
+  });
+
+
+  it('prints by DEFAULT when the prop is absent (setting never loaded)', async () => {
+    // The backward-compatibility half, and the one that makes a `false` default
+    // unshippable: a modal rendered before PosScreen's read settles — or by any
+    // caller that does not supply the prop, like the retail screen — must keep
+    // printing. Defaulting to false would silently stop every kitchen printing.
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      const printed = calls
+        .filter((c) => c[0] === 'print_kds_chit_scoped')
+        .map((c) => (c[1] as { orderId: string }).orderId);
+      expect(printed.sort()).toEqual(['kds-1', 'kds-2']);
+    });
+  });
+
   it('calls onComplete after sale done', async () => {
     const onComplete = vi.fn();
     await renderWithFluent(
