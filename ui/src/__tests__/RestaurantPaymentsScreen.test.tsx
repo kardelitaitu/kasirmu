@@ -1028,3 +1028,93 @@ describe('RestaurantPaymentsScreen — P6 i18n sweep (no hardcoded English)', ()
     ).toEqual([]);
   });
 });
+
+// ── The device's condition: NO persisted rails (F40) ────────────────────
+//
+// ⚠️ WHAT THESE CASES DO AND DO NOT PROVE — read before trusting them.
+//
+// THEY DO distinguish the two branches of `mergeCoreRails` — the `match` branch
+// (a persisted row) from the `else` branch (`CORE_DEFAULTS`). The pre-existing
+// case for this property supplies `card` as a persisted row, so the DEFAULTED
+// branch had no test at all.
+//
+// THEY DO NOT reproduce the device bug. These pass against the real component,
+// while the tablet — with the same condition, an empty rail table — leaves the
+// screen clean and Save disabled. jsdom and the device disagree here, so the cause
+// is NOT in this component's dirty logic as exercised by these mocks, and a fix
+// aimed at this file alone would be aimed at the wrong thing.
+//
+// The open question this leaves, recorded rather than guessed at: what differs
+// between the mocked load and the real IPC one. Candidates checked so far — the
+// load effect is NOT re-running on render (a re-run would emit its failure toast),
+// and `drafts` IS updated by the toggle (the card's `isExpanded` side effect
+// fires). See the F40 note in `todo-restaurant-pos-reliability.md` for the device
+// evidence and the reproduction steps.
+//
+// `mergeCoreRails` fills every core rail from `CORE_DEFAULTS` when the store has
+// no matching row (`paymentRailsLogic.ts:70-77`). The tablet's store database
+// holds ZERO rail rows, so that is the branch it takes — and on that branch,
+// toggling a core rail did NOT mark the screen dirty: the header stayed on
+// "All changes saved" and Save stayed disabled, so the operator's change could
+// not be persisted at all.
+//
+// The existing case (`toggling a rail onto a dirty screen enables Save`) passes
+// because its fixture supplies `card` as a PERSISTED row, taking the `match`
+// branch at `:62-69` instead. Both branches were therefore never distinguished:
+// one had a test and the other, the one the real device is on, did not.
+//
+// This case supplies an EMPTY rail list, which is what the tablet actually
+// returns, and asserts the same property.
+describe('RestaurantPaymentsScreen — dirty tracking with NO persisted rails (F40)', () => {
+  it('toggling a DEFAULTED core rail marks the screen dirty and enables Save', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // The device's condition: the store has no rail rows at all.
+    mocks.getMethods.mockResolvedValue([]);
+
+    await renderScreen();
+    // The core set is synthesised from CORE_DEFAULTS, so the cards render.
+    const cashToggle = await screen.findByTestId('payment-card-toggle-cash');
+    const saveBtn = screen.getByTestId('restaurant-payments-save-btn');
+    expect(cashToggle).toBeChecked();
+    expect(saveBtn).toBeDisabled();
+
+    await user.click(cashToggle);
+    expect(cashToggle).not.toBeChecked();
+
+    // The property under test: a real change on a defaulted rail is DIRTY.
+    // On the defect this stays disabled, because the baseline was seeded from
+    // the same defaulted array and the toggle never diverges from it.
+    expect(
+      saveBtn,
+      'a toggled core rail left the screen CLEAN, so the change cannot be saved — ' +
+        'this is the state the tablet is in when its store holds no rail rows',
+    ).toBeEnabled();
+  });
+
+  it('the dirty header agrees with the Save button on a defaulted rail', async () => {
+    // The header is the operator-facing half of the same computation; a screen
+    // that forbids Save while saying "All changes saved" is worse than one that
+    // merely disables it.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    mocks.getMethods.mockResolvedValue([]);
+    await renderScreen();
+
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+    await user.click(await screen.findByTestId('payment-card-toggle-cash'));
+    expect(
+      screen.getByText('Unsaved changes'),
+      'the header still claims everything is saved after an unsaved edit',
+    ).toBeInTheDocument();
+  });
+
+  it('a persisted rail still marks dirty (guards the case above)', async () => {
+    // Confirms the two branches are genuinely different, so a fix for the
+    // defaulted case cannot silently regress the persisted one.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    const card = await screen.findByTestId('payment-card-toggle-card');
+    expect(card).not.toBeChecked();
+    await user.click(card);
+    expect(screen.getByTestId('restaurant-payments-save-btn')).toBeEnabled();
+  });
+});
