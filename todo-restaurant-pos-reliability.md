@@ -1143,6 +1143,46 @@ Kill-tested: pointing an anchor at line 99999 of a real file fails it by name.
 Verified: `evidenceAnchorResolves` + `planStatusAccuracy` **8 passed**; full suite **694 files /
 11,542 passed, 0 failed**; typecheck 0; eslint 0; bundle parity 0 missing.
 
+### F34 — the F19 allow-list had no stale rule, and one of my guards raced (round 78) — `148c5b310`
+
+**First, what I did NOT do, and why.** I spent the start of this round on the open product items and
+confirmed each is correctly parked rather than shy:
+
+- **F23's inert core rails** — `acceptedCards` writes `railParams.card.acceptedCards`, and the Rust
+  EDC path has **no concept of a card scheme** (`grep` for `network` in `edes/` returns only
+  *transport* — Bluetooth/TCP — never Visa/Mastercard). Honouring it needs terminal-side filtering.
+- **F19's `printReceipt`** — `printSalesReceipt` exists with 5+ real call sites, but **none on the
+  QRIS path**, because QRIS is a manual reference tender (`PaymentModal.tsx:1068`) and the receipt
+  prints from the checkout tail. The control promises a path that does not exist.
+
+Both are product calls, as the plan says. **Reporting that accurately is worth a round**, because
+the alternative is inventing a checkout behaviour to make a toggle look wired.
+
+**Then the real find: the F19 guard had only half a rule.**
+`railParamReaders.test.ts` checked that a written-but-unread key must be listed in
+`ALLOWED_UNWIRED`. It **never checked the inverse** — so an entry could stay listed after its
+control was wired, leaving the file asserting a defect that no longer exists.
+
+**That is the exact rot this plan has been caught by four times** (rounds 74-77), and every sibling
+guard already carries the rule: `baselineLoadSignal` fails a stale exemption, `deadSettingsKey`
+fails an entry that gains a reader, `planStatusAccuracy` fails a stale header. **This one did not**,
+and that asymmetry is how a defect list becomes a suppression list.
+
+Added, plus a floor case asserting the allow-list is not empty-by-accident. **Kill-tested by
+planting a real `requireTrace` reader in `PaymentModal.tsx` — it fails naming both the key and the
+file**, then the plant was removed and `PaymentModal` verified clean.
+
+**And one of my own guards raced.** The full suite failed once in `planStatusAccuracy` and passed
+on re-run: another lane rewrote the plan header **between this test's read and its assertion**.
+That is a race in the TEST, not a defect in the plan — so the case now carries a note saying so,
+with the instruction to re-run before changing anything. **A guard that reads a shared document
+must say what a concurrent edit looks like**, or the next reader "fixes" a plan that was never
+wrong.
+
+Verified: `railParamReaders` + `planStatusAccuracy` + `evidenceAnchorResolves` **12 passed**;
+typecheck 0; eslint 0; bundle parity 0 missing. One full-suite failure this round,
+`RestaurantMenuEditorScreen`, is the known flake — **22 passed in isolation**.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
