@@ -1163,3 +1163,49 @@ describe('RestaurantPaymentsScreen — no primary location still tracks dirty (F
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
   });
 });
+
+// ── F40 follow-up: a Retry must leave the baseline consistent ─────────────
+//
+// The F40 fix seeds the dirty baseline in the load's `finally` when it is still
+// empty — the only path that reaches it is one where the loaded-path seeding at
+// `:407` never ran. This case exercises the sequence that would expose an
+// inconsistency: the first load FAILS, then Retry SUCCEEDS, and the screen must
+// come back CLEAN with Save disabled.
+//
+// It guards the conditional `length === 0` guard: if that guard re-seeded on the
+// retry while the loaded path also seeded, the baseline could disagree with the
+// drafts the screen is showing, and the screen would report "Unsaved changes" the
+// moment it loaded.
+describe('RestaurantPaymentsScreen — a Retry after a failure loads clean (F40)', () => {
+  it('comes back clean and disables Save once the retry succeeds', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // First read fails outright.
+    mocks.getMethods.mockRejectedValueOnce(new Error('rail read failed'));
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+
+    // Retry succeeds with the normal fixture (a primary location and rails).
+    mocks.getMethods.mockResolvedValue(RAILS.map((r) => ({ ...r })));
+    await user.click(screen.getByTestId('restaurant-payments-load-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-payments-load-error')).not.toBeInTheDocument();
+    });
+
+    // The loaded values and the baseline must agree, so the screen is clean.
+    expect(
+      screen.getByTestId('restaurant-payments-save-btn'),
+      'the screen reports dirty immediately after a successful load — the baseline ' +
+        'and the rendered drafts disagree, so Save is enabled with nothing to save',
+    ).toBeDisabled();
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+
+    // And a real edit afterwards must still be dirty — the fix must not have
+    // traded a stuck-clean screen for a stuck-dirty one.
+    await user.click(await screen.findByTestId('payment-card-toggle-card'));
+    expect(screen.getByTestId('restaurant-payments-save-btn')).toBeEnabled();
+  });
+});
