@@ -1183,6 +1183,49 @@ Verified: `railParamReaders` + `planStatusAccuracy` + `evidenceAnchorResolves` *
 typecheck 0; eslint 0; bundle parity 0 missing. One full-suite failure this round,
 `RestaurantMenuEditorScreen`, is the known flake — **22 passed in isolation**.
 
+### Round 79 — the F4 campaign is CLOSED on all three settings screens, and a false alarm recorded
+
+This round asked a question nobody had asked directly: **the round-8 `loadFailed` fix was applied
+"at the source" and then patched per consumer — is it actually complete on this plan's surface,
+or does one screen still lack it?**
+
+Measured all three restaurant settings screens at HEAD:
+
+| Screen | `loadFailed` | `reloadNonce` | Retry control |
+|---|---|---|---|
+| `RestaurantSettingsScreen` | `:173` | `:175` | `:506-509` |
+| `RestaurantReceiptsScreen` | `:237` | `:238` | `:1314-1320` |
+| `RestaurantPaymentsScreen` | `:341` | `:342` | `:1001` (round 73, mine) |
+
+**All three have the full triplet** — the flag, the re-enable trigger, and the control. And the
+receipts screen gates on a SECOND flag as well (`:1340`, `|| hw.loadFailed`), which is correct: its
+values arrive from two independent reads and either can fail.
+
+**So the F4 campaign is closed on this surface, verified rather than assumed.** That statement is
+worth recording because the campaign was built in pieces across many rounds — five seeds, three
+shells, four consumers — and a piece-wise fix is exactly the kind that leaves one site behind
+without anyone noticing which.
+
+#### A false alarm, recorded so the next reader does not chase it
+
+I swept every guard in this suite for the missing-stale-rule asymmetry F34 found, and **four came
+back without one** — `evidenceAnchorResolves`, `coreRailToggleReach`, `disabledFlagLatch`,
+`unreadStateFlag`. **On inspection, three of those four have no allow-list at all**, so there is
+nothing that can go stale:
+
+- `coreRailToggleReach` **does have both directions** — one case asserts every rail is classified,
+  one that WIRED rails are really gated, one that INERT rails are really unread. Complete.
+- `disabledFlagLatch` and `unreadStateFlag` are **synthetic** — each carries explicit positive AND
+  negative fixtures (`flags a latch` / `does NOT flag the same flag once it is also cleared`), so
+  the rule is exercised rather than listed.
+- `evidenceAnchorResolves` needs none: it has no list, it reads the document.
+
+**The grep-shaped sweep was the wrong instrument, and saying so is the deliverable.** A guard with
+no exemption list cannot have a stale one; "no `STALE` keyword" is not "no stale handling". **The
+right test for this class is whether a guard's rule has both directions, not whether its source
+contains a particular word** — the same lesson as the F6 mirror and the `table_number` comment, in
+a third costume.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
