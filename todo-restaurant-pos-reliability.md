@@ -365,6 +365,54 @@ settings.
 **Consequence for beta:** a freshly provisioned restaurant terminal shows an empty menu
 it cannot fill, so every restaurant beta script has to start by hand-adding a product.
 
+#### F14a — FIXED `117891ffa` (2026-10-09): the seed now runs at session creation
+
+The missing step this finding named is now implemented. `provision_device` still writes
+the global DB — that is correct and unchanged — and the replication happens where the
+store DB is BORN: in `create_session`, immediately after `open_store` has created and
+migrated the file, in **both** shells (`crates/kasirmu-bridge/src/auth.rs` and
+`apps/mobile-tauri/src/commands/auth.rs`).
+
+It sits directly beside `ensure_session_user_in_store`, because it is the same seam and
+the same defect shape: that call already replicates the **user** row global→store for
+exactly this reason (*"every scoped command authorizes the session user in the STORE DB,
+and a store DB created by provisioning has an empty users table"*). The catalog was the
+same hole with a more visible symptom.
+
+**The new module:** `platform/core/src/database/starter_catalog.rs`,
+`ensure_starter_catalog_in_store(global, store) -> Result<usize>`.
+
+**Deliberately narrow, and the narrowing is the design:**
+
+| Rule | Why |
+|---|---|
+| Only `sku LIKE 'SMPL-%'` rows | Matches what provisioning itself writes. A prefix, not a hard-coded list, so a sixth sample is covered without a second edit. |
+| Only rows with `store_id IS NULL` | A sample that carries a store id already belongs to some store and is not ours to copy. |
+| Skip entirely when `COUNT(*) FROM products > 0` | **This is the safe-on-every-login guard.** A store that has ever held a product is the operator's, not a fresh install — so a deliberately emptied catalog stays empty. |
+| One transaction | A half-seeded catalog is a menu that is wrong in a way nothing reports. |
+| Non-fatal at the call site | A catalogue seed is a convenience for a fresh terminal; it must not cost the operator their session. Logged at `warn` with the store id. |
+
+**Why NOT `copy_reference_data`.** The obvious reach is the CLI's existing cross-db copier
+(`kasirmu-cli/src/seed_demo.rs:171-183`). It is wrong here and the difference is the whole
+point: it copies **ALL** rows of seven tables unconditionally, which is right for a demo
+seeder and destructive at session time — it would re-inject rows an operator had changed
+or deleted, on every login. The narrow version copies only what provisioning itself would
+have written, and only into an empty store.
+
+**Verification.** 5 unit tests in the module, mutation-checked: replacing the
+`if existing > 0` guard with `if false` turns exactly the two guard tests red and leaves
+the other three green, so the tests bite on the behaviour they name. Full
+`cargo test -p platform-core` 462 passed; `cargo test -p kasirmu-bridge auth` 75 passed;
+`cargo fmt --check` clean on both shells.
+
+**⚠️ Serialization trap, recorded because it cost a round.** `Set-Content -NoNewline`
+rewrote this file during the mutation test but cargo did **not** recompile — the
+mtime granularity missed it — so a later run executed the MUTATED binary while the
+source on disk was already correct, and two tests failed against source that could not
+produce that failure. The contradiction (source says correct, binary says broken) is the
+tell. `(Get-Item <f>).LastWriteTime = Get-Date` before re-testing, or touch the file.
+
+---
 **Where the fix CANNOT go (measured, so nobody re-tries it).** "Have `provision_device`
 write the store db too" reads as the obvious repair and is not available: at provisioning
 time **the store db does not exist and its id is not yet known**.
@@ -1225,6 +1273,46 @@ no exemption list cannot have a stale one; "no `STALE` keyword" is not "no stale
 right test for this class is whether a guard's rule has both directions, not whether its source
 contains a particular word** — the same lesson as the F6 mirror and the `table_number` comment, in
 a third costume.
+
+### F35 — a tested behaviour that the tests did not test (round 80) — `18dd1b4f8`
+
+`usePosHeldCarts.ts:259-260` resumes an open bill: it strips a leading `Table <word>` from
+`customer_name`, then **refuses a result that still reads `Table …`**, so a table name cannot become
+the cart's customer. The case covering it set up exactly that input — `customer_name: 'Table T4'` —
+**and never asserted the customer was left alone.**
+
+**Kill-tested by deleting the guard: the suite stayed GREEN.** Twelve tests, all passing, over a
+condition nothing checked. That is coverage that looks like coverage and is not — the input was
+there, the outcome was not.
+
+**Then the first fix failed the kill-test too, and that is the part worth recording.** I added
+`expect(setCustomerName).not.toHaveBeenCalled()` against the SAME `'Table T4'` input — and deleting
+the guard STILL passed. Tracing the code showed why: the regex on `:259` already reduces
+`'Table T4'` to `''`, so `if (cust)` rejects it **independently of the `startsWith` guard**. On that
+input the guard is unreachable; no assertion about it can discriminate.
+
+**The load-bearing input had to be found empirically.** Probing eight candidates, exactly one
+distinguishes: the regex strips the outer prefix but leaves a second one behind.
+
+| `customer_name` | after the `:259` regex | `:260` guard reachable? |
+|---|---|---|
+| `'Table T4'` | `''` | **no** — `if (cust)` already rejects |
+| `'Table 12'` | `''` | no |
+| `'Table Table 5'` | `'5'` | no |
+| **`'Table 5 (Table 7)'`** | **`'Table 7'`** | **YES — only the guard stops it** |
+
+The case now uses that input, and the pair of directions finally holds: **green with the guard,
+red without it, naming the line.**
+
+**Two failures in one round, with different causes, is the lesson.** The first test checked nothing
+because it asserted the wrong thing; the second checked nothing because it asserted the right thing
+about an input where the branch cannot run. **A kill-test does not just validate a fix — it
+validates that the input reaches the code.** That is a distinct failure mode from the four
+unfalsifiable guards earlier in this session, and the only way to catch it is to run the revert and
+be willing to conclude the test is wrong twice.
+
+Verified: `usePosHeldCarts` **12 passed**; typecheck 0; eslint 0 errors. The one full-suite
+failure is the known `RestaurantMenuEditorScreen` flake.
 
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
