@@ -919,6 +919,50 @@ the toggle asks, so the pattern now names exactly those two.
 `b5c281e2e`. Verified: full suite **685 files / 11,497 passed**; typecheck 0; eslint 0; bundle
 parity 0 missing. Kill-tested in both directions.
 
+### F24 — the `credit.*` settings are enforced nowhere, and no UI reads them (round 62)
+
+A different class from F16-F23. Those were controls whose VALUE is ignored. This is a whole
+settings family — **key, typed getter, setter, bridge command, both shells, UI API wrapper** —
+with **nothing at either end**: no UI writes it, and nothing enforces it.
+
+The chain, measured at HEAD:
+
+| Link | Where |
+|---|---|
+| Key | `credit.enabled` (`platform/core/src/settings/keys.rs:165`) |
+| Typed getter / setter | `is_credit_enabled` / `set_credit_enabled` (`typed.rs:283`, `:288`) |
+| Bridge | `get_credit_settings(_scoped)` (`settings.rs:222`, `:232`) |
+| Registered | `mobile/lib.rs:1382`, `desktop/lib.rs:1803` |
+| UI API | `getCreditSettingsScoped` (`ui/src/api/settings.ts:85`) |
+| **UI caller** | **none** |
+| **Enforcement** | **none** |
+
+`CreditSettingsDto` carries **three** settings — `enabled`, `reminder_interval_hours`,
+`max_limit_minor` (`dto.rs:78`) — and **every reader is a getter that exists to return it**. Not
+one is consulted at sale time:
+
+- `is_credit_enabled` is called only by `get_credit_settings(_scoped)`. No checkout, no tender
+  gate. The charge modal offers `credit` unconditionally — which is also why F23 records it
+  INERT.
+- `get_credit_max_limit` is called by the same two getters and nothing else. **A credit ceiling
+  is stored, returned over IPC, and never checked** — a merchant who sets a limit has no reason
+  to believe it is advisory.
+- `get_credit_reminder_interval` likewise.
+
+**The UI is half-built, which is what hid it.** The retail POS DOES use the family's *reporting*
+side — `listCreditSalesScoped` + `settleCreditScoped` (`RetailPosScreen.tsx:1424-1445`) — so a
+reader finds `credit` wiring and assumes the family is wired. But it reads sales, never
+`getCreditSettingsScoped`: the **enable switch and the limit have no UI in either direction**,
+and `StoreSettingsDto` (`api/settings.ts:35-42`) carries no credit field to smuggle them.
+
+**Not fixed here, deliberately.** Making the limit real changes checkout — a credit sale that
+exceeds it would be refused, where today it succeeds. That is a product decision, and the
+`credit` tender's own status is the parked question F23 already records. What this round adds is
+the MEASUREMENT, so the decision is made against the code rather than a guess: the settings are
+stored, reachable over IPC, and inert end to end.
+
+Verified: no code changed. The finding is a read of the tree at `e495c6794`.
+
 ---
 
 ## 3. Repair plan
