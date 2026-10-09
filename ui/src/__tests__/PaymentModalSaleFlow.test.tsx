@@ -1507,9 +1507,9 @@ describe('PaymentModal — local payment rails gating', () => {
       ),
     );
 
-  const rail = (enabled: boolean) => ({
-    rail_code: 'qris',
-    label: 'QRIS',
+  const rail = (enabled: boolean, railCode = 'qris') => ({
+    rail_code: railCode,
+    label: railCode === 'qris' ? 'QRIS' : railCode,
     is_enabled: enabled,
     scope: 'location' as const,
     parameters: '{}',
@@ -1716,6 +1716,63 @@ describe('PaymentModal — local payment rails gating', () => {
       'credit',
       'other',
     ]);
+  });
+
+
+  // ── The open_bill RAIL flag (F16) ────────────────────────────────
+  //
+  // `open_bill` had ONE gate: the workspace (`isRestaurantPos`, :303), because
+  // the backend refuses the bill_type outside restaurant-pos. That is a
+  // CAPABILITY check and it stays.
+  //
+  // But `RestaurantPaymentsScreen` also renders `open_bill` as a CORE rail
+  // (`paymentRailsLogic.ts:11` `CORE_RAIL_CODES`) with an enable/disable toggle,
+  // and the modal never consulted it. So the operator could switch the rail off
+  // and the tender kept being offered — a toggle that silently does nothing.
+  //
+  // The rail flag is a MERCHANT PREFERENCE and is orthogonal to the capability, so
+  // it is added as a SECOND gate rather than replacing the first. `railOffered`
+  // fails OPEN on a null/empty list (:48), so a store with no rails configured —
+  // and every existing caller — is unaffected, which the last case pins.
+  it('withholds the open bill tender when its rail is disabled', async () => {
+    // Restaurant workspace (capability satisfied) but the rail switched OFF.
+    expect(await renderedTenders([rail(false, 'open_bill'), rail(true)])).toEqual([
+      'cash',
+      'card',
+      'qris',
+      'credit',
+      'other',
+    ]);
+  });
+
+  it('offers the open bill tender again when its rail is enabled', async () => {
+    // The direction that must not regress: an enabled rail keeps today's list.
+    expect(await renderedTenders([rail(true, 'open_bill'), rail(true)])).toEqual(ALL_TENDERS);
+  });
+
+  it('fails open for open bill when no rail list is configured', async () => {
+    // A store that has never touched this screen keeps the tender. This is what makes
+    // the gate backward-compatible rather than a behaviour change for existing sites.
+    expect(await renderedTenders([])).toContain('open_bill');
+  });
+
+  it('KEEPS open bill when the rail list simply has no open_bill ROW', async () => {
+    // The distinction the gate turns on, and the one my first attempt got wrong.
+    //
+    // `railOffered` answers "is this rail present and enabled?" — right for `qris`,
+    // an opt-in rail a store may not have, and WRONG for a core rail. `open_bill`
+    // always exists as a setting, so a populated list that merely PREDATES the row
+    // is not a decision to remove it. Using `railOffered` here withheld the tender
+    // from every such store — a silent withdrawal nobody asked for, which this file's
+    // PINNED tender-list case caught immediately.
+    //
+    // Only an EXPLICIT `is_enabled: false` may hide it (`coreRailWithheld`).
+    const noOpenBillRow = [
+      rail(true),
+      { rail_code: 'edc', label: 'EDC', is_enabled: true, scope: 'location', parameters: '{}' },
+    ];
+    expect(noOpenBillRow.some((r) => r.rail_code === 'open_bill')).toBe(false);
+    expect(await renderedTenders(noOpenBillRow)).toContain('open_bill');
   });
 
   it('PINNED: every rail offered renders cash, card, qris, credit, other, open bill', async () => {

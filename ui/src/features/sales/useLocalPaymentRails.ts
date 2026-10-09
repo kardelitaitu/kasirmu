@@ -51,6 +51,36 @@ export function railOffered(rails: LocalPaymentRail[] | null, railCode: string):
   return rail ? rail.is_enabled : false;
 }
 
+/**
+ * Is a CORE rail withheld by an EXPLICIT `is_enabled: false`?
+ *
+ * Deliberately NOT `railOffered`, and the difference is the whole point. A core
+ * rail (`paymentRailsLogic.ts:11` `CORE_RAIL_CODES` — cash, card, qris, open_bill,
+ * credit) always exists as a setting with its own toggle, so there are three states,
+ * not two:
+ *
+ *  · no row for it in a populated list → the feature predates the row; show it
+ *  · a row with `is_enabled: true`     → the operator left it on; show it
+ *  · a row with `is_enabled: false`    → the operator switched it OFF; hide it
+ *
+ * `railOffered` collapses the first two into `false` — correct for `qris`, an opt-in
+ * rail a store may genuinely not have, and wrong here: it would remove the open-bill
+ * tender from every store whose rail list was written before that row existed, which
+ * is a silent withdrawal of a capability nobody turned off.
+ *
+ * Case-insensitive for the same reason `railOffered` is: `rail_code` is free-form and
+ * the settings screen lowercases every lookup.
+ */
+export function coreRailWithheld(
+  rails: LocalPaymentRail[] | null,
+  railCode: string,
+): boolean {
+  if (rails === null || rails.length === 0) return false;
+  const wanted = railCode.toLowerCase();
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
+  return rail ? !rail.is_enabled : false;
+}
+
 /** A tender tab the checkout offers, in the order the modal lists them. */
 export type TenderMethod = 'cash' | 'card' | 'qris' | 'credit';
 

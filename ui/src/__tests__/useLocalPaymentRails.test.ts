@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  coreRailWithheld,
   railOffered,
   visibleMethods,
   resolveTenderDisplayName,
@@ -30,6 +31,34 @@ const makeProfile = (overrides: Partial<ActiveMarketProfile> = {}): ActiveMarket
 
 describe('useLocalPaymentRails helpers', () => {
   describe('railOffered', () => {
+  describe('coreRailWithheld (F16)', () => {
+    // The three-state distinction `railOffered` cannot express for a CORE rail.
+    // Using `railOffered` for `open_bill` withheld the tender from stores whose
+    // rail list merely predated the row — a silent capability withdrawal.
+
+    it('is false for a null or empty list', () => {
+      expect(coreRailWithheld(null, 'open_bill')).toBe(false);
+      expect(coreRailWithheld([], 'open_bill')).toBe(false);
+    });
+
+    it('is false when the rail row is ABSENT from a populated list', () => {
+      // The case `railOffered` gets wrong: `qris` here IS withheld (unknown =>
+      // false), but a core rail with no row was never switched off.
+      const rails = [makeRail('qris', true), makeRail('cash', true)];
+      expect(railOffered(rails, 'qris')).toBe(true);
+      expect(railOffered(rails, 'open_bill')).toBe(false); // the trap
+      expect(coreRailWithheld(rails, 'open_bill')).toBe(false);
+    });
+
+    it('is true ONLY for an explicit is_enabled false', () => {
+      expect(coreRailWithheld([makeRail('open_bill', false)], 'open_bill')).toBe(true);
+      expect(coreRailWithheld([makeRail('open_bill', true)], 'open_bill')).toBe(false);
+    });
+
+    it('matches a differently-cased rail code, like railOffered does', () => {
+      expect(coreRailWithheld([makeRail('Open_Bill', false)], 'open_bill')).toBe(true);
+    });
+  });
     it('fails open when rails list is null or empty', () => {
       expect(railOffered(null, 'qris')).toBe(true);
       expect(railOffered([], 'qris')).toBe(true);

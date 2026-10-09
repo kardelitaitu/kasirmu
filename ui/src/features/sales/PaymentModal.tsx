@@ -18,7 +18,7 @@ import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
+import { coreRailWithheld, railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
 import { useActiveMarketProfile } from '@/hooks/useActiveMarketProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -33,6 +33,7 @@ import { useEdcTenderPhase } from './payment/useEdcTenderPhase';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import { useSplitTenderState } from './payment/useSplitTenderState';
+import { bareTableNumber } from './utils/tableLabel';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
@@ -131,6 +132,22 @@ export default function PaymentModal({
   // gates only the pay-on-terminal button inside the card panel.
   const qrisOffered = railOffered(paymentRails, 'qris');
   const edcOffered = railOffered(paymentRails, 'edc');
+  // F16: `RestaurantPaymentsScreen` renders `open_bill` as a CORE rail with an
+  // enable/disable toggle, and this modal never consulted it — so the operator could
+  // switch the rail off and the tender kept being offered. A toggle that silently does
+  // nothing is worse than no toggle: it reads as a live control.
+  //
+  // This is a SECOND gate, not a replacement for the workspace check at :303. The two
+  // answer different questions: `isRestaurantPos` is a CAPABILITY (the backend refuses
+  // `bill_type: 'open_bill'` outside restaurant-pos, so offering it would submit a bill
+  // that fails), while the rail flag is a MERCHANT PREFERENCE. Both must hold.
+  //
+  // `coreRailWithheld`, not `railOffered`: `open_bill` is a CORE rail that always
+  // exists as a setting, so only an EXPLICIT `is_enabled: false` may hide it. (Using
+  // `railOffered` here would withhold the tender from every store whose rail list was
+  // written before that row existed — a silent withdrawal nobody asked for, caught by
+  // this file's own PINNED tender-list case.) Three states, documented on the helper.
+  const openBillOffered = !coreRailWithheld(paymentRails, 'open_bill');
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
   const manualQrString = staticQrisPayload(paymentRails);
@@ -321,8 +338,11 @@ export default function PaymentModal({
   // cashier can no longer see: Complete would submit a bill the backend now
   // refuses. Same recovery shape as the QRIS reset above.
   useEffect(() => {
-    if (!isRestaurantPos && method === 'open_bill') setMethod('cash');
-  }, [isRestaurantPos, method]);
+    // `openBillOffered` joins the condition for the same reason the rail gate does:
+    // a rail switched off under a chosen tender must not strand the cashier on a
+    // hidden surface. Same recovery shape as the QRIS reset above.
+    if ((!isRestaurantPos || !openBillOffered) && method === 'open_bill') setMethod('cash');
+  }, [isRestaurantPos, openBillOffered, method]);
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
@@ -1758,8 +1778,13 @@ retryCurrencyLoad,
               <div className="payment-summary-col">
                 {tableNumber && (
                   <div className="payment-table-badge">
-                    <Localized id="payment-table-number" vars={{ number: tableNumber }}>
-                      <span>Table {tableNumber}</span>
+                    {/* `bareTableNumber`, not `tableNumber`: the stored names already
+                        read "Table 12" (see tableLabel.ts) while the Fluent value is
+                        "Table { $number }", so passing the raw value composed
+                        "Table Table 12" on a real order. The var has to be the number
+                        WITHOUT the word. */}
+                    <Localized id="payment-table-number" vars={{ number: bareTableNumber(tableNumber) }}>
+                      <span>Table {bareTableNumber(tableNumber)}</span>
                     </Localized>
                   </div>
                 )}
@@ -2047,7 +2072,7 @@ retryCurrencyLoad,
                             />
                             </Localized>
                         </div>
-                        {isRestaurantPos && (
+                        {isRestaurantPos && openBillOffered && (
                           <>
                             {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
                             <label
