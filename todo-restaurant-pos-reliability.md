@@ -1538,6 +1538,77 @@ are below. A suppression with the reasoning attached is not a debt; a suppressio
 end of a campaign**: the cheap defects are gone, so the remaining work is confirming that the
 subtle ones are actually held — and recording it so the next reader does not re-derive it.
 
+### F38 — the shift-refusal toast was hardcoded English on FIVE sites (round 85) — `223b7a67f`
+
+This round went to the **running tablet** instead of the source, and the device found what three
+rounds of reading had not.
+
+**Live evidence, all from the connected app** (`adb-e45e28d9-lFE6yH`, build at `0.0.41`):
+
+- The restaurant POS renders with **order-type, Table #, Customer and Guests** all visible.
+- **Both store DBs on the device hold ZERO `restaurant.*` rows** — so every one of those controls is
+  rendering from the unset-key fallback. That is the F4/P1 **default trap working live**: the model
+  default for `guest_count` is `false`, but the field shows, because the gate is `!== false` on an
+  ABSENT prop. Verified against the real database rather than the test fixture.
+- Tapping a product with no shift open produced **"Open a shift first"** — and that toast is where
+  the defect was.
+
+#### The defect
+
+`retail-toast-open-shift-first` existed in **both** bundles (`sales.ftl:846`,
+`sales.id.ftl:778`) and **retail already used it** — while **five production sites hardcoded the
+English literal**:
+
+| Site | Now |
+|---|---|
+| `PosScreen.tsx:528` (barcode guard) | `requiredLocalized(l10nRef.current, …)` |
+| `PosScreen.tsx:592` (pay guard) | same |
+| `usePosHeldCarts.ts:140` (open-bill guard) | same, via a new `l10nRef` param |
+| `usePosCartActions.ts:138` | same, `l10nRef` already present |
+| `CartActionBar.tsx:116` | same, `l10n` direct |
+
+So an Indonesian operator read **English on the restaurant path and Indonesian on the retail one** —
+the same "two surfaces, one string" shape as F6 and F29, in the i18n dimension.
+
+#### The test already knew, and said so in the right words
+
+`CartActionBar.test.tsx:180-182` carried this note above the assertion:
+
+> *"Defect noted, not asserted as correct: the toast message is a hardcoded English literal
+> (CartActionBar.tsx:72), the only string in this component with no Fluent key."*
+
+**That is exactly how to record a defect you are not fixing** — the assertion does not pretend the
+literal is correct, and the reason is written where the next reader will hit it. Correcting it was
+then mechanical rather than archaeological.
+
+#### The assertion had to change shape, and that is the finding's sharp edge
+
+My first replacement asserted the toast carried the key — and **failed**, because this harness
+builds a real bundle from production `sales.ftl` and
+`retail-toast-open-shift-first = Open a shift first` is the **same sentence the literal was**.
+
+**A value assertion could never have caught this defect, in either direction.** That is precisely
+why the original note sat there: the toast reads identically whether the fix is present or not. The
+discriminator had to be the **source** (no literal, key present), plus a shape assertion the
+harness can see. For `usePosHeldCarts` the fix is provable behaviourally instead — its new
+`l10nRef` stub **echoes the id**, so `«retail-toast-open-shift-first»` in the toast proves the
+localized path ran. Kill-tested: restoring the literal fails it by name.
+
+#### Recorded, not fixed — the empty state contradicts its own guard
+
+The screenshot shows the cart empty state reading **"Tap a menu item to start the order"** while the
+header reads **"No active shift"**, and tapping does nothing but warn. **`CartPanel` already
+receives `activeShift`** (`:135`, `:269`, `:949`) so it could condition that line, but the empty
+state does not mention the shift at all.
+
+**Not changed here, deliberately.** The honest fix changes what the empty cart says in a product
+surface, and the wording is an owner call — the same line the plan has drawn for F19/F23. It is
+recorded with its evidence (the screenshot and the render state) so the decision is made against
+the running app rather than a description of it.
+
+Verified: full suite **695 files / 11,552 passed, 0 failed**; `lint-i18n.sh` **no issues**;
+typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
