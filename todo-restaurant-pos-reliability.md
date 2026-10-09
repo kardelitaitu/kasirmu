@@ -551,6 +551,50 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+### Round 17 — verification note, and whose failures these are
+
+The full suite at the end of this round reports **2 failed / 677 passed**. Neither is
+mine, and the attribution is worth recording so the next reader does not chase them:
+
+- `touchTargetSizing` names `features/sales/CartPanel.css::.pos-cart-order-type-btn` — a
+  class another lane is adding right now. `CartPanel.css` and `CartPanel.tsx` are
+  **dirty in the shared tree** (162 changed lines, mid-edit).
+- `noiseDitherCompliance` fails alongside it, from the same in-flight sheet.
+
+The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. My two
+commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
+them is the failing surface.
+
+### Round 17 — three untyped literals on the money path, now typed
+
+**`bill_type` was `string` in both directions, and neither end checks it.** The UI
+writes it in two production sites (`PaymentModal.tsx:1028`, `usePosHeldCarts.ts:188`)
+and the bridge compares it with `==` against `BILL_TYPE_OPEN_BILL`
+(`crates/kasirmu-bridge/src/pos/hold_orders.rs:25`, used at
+`apps/mobile-tauri/src/commands/pos.rs:897`). But:
+
+- the UI field was `bill_type?: string` / `bill_type: string` (`api/sales.ts`), so a
+  typo compiled clean;
+- the column is `TEXT NOT NULL DEFAULT 'hold'` with **no CHECK constraint**
+  (`migrations/20260813_init.sql:166`), so it stored clean;
+- and the comparison is a plain string `==`, so it then matched nothing.
+
+So `'openbill'` would have fallen through the restaurant-only gate and parked a plain
+`hold` instead of an open bill — no error anywhere. Now a `BillType` union
+(`'hold' | 'open_bill' | 'credit' | 'pay_later' | 'other'`). Kill-tested: the typo fails
+`tsc` with `Type '"openbill"' is not assignable to type 'BillType'. Did you mean
+'"open_bill"'?`. The union also caught **two test fixtures** that were passing untyped
+strings (`b4520f11d`).
+
+**The interaction storage keys were each written twice.** `utils/interaction.ts` had
+`'pos.interaction_sound'` and `'pos.interaction_vibration'` as LITERALS in both the
+getter and the setter, twenty lines apart. A typo in either half breaks the round-trip
+silently, and the failure direction is the bad one: `isInteractionSoundEnabled` defaults
+to `true`, so a mistyped SETTER leaves sound on whatever the operator chose. Extracted
+to exported constants; `interaction-real.test.ts` pins the constants against the
+literals (a test that used one value for both would stay green while every device's
+saved preference was orphaned). Kill-tested with a renamed constant (`066c0dd4a`).
+
 ### Round 16 — a third copy of the settings key list, removed
 
 While checking the sidebar Settings screen I compared three places that each name the
