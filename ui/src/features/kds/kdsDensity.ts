@@ -7,6 +7,11 @@
  *   KdsHamburgerPanel.tsx:315  Math.max(1, settings.density - 1)
  *   KdsHamburgerPanel.tsx:317  Math.min(5, settings.density + 1)
  *   KdsMainContent.tsx:132     settings.density <= 2 ? ' kds--compact' : ''
+ *
+ * A FOURTH copy, found 2026-10-09 and not known when this module was written, sat in
+ * `WorkspaceKdsSettings.tsx:119` as `Math.min(5, Math.max(1, …))` — the settings card
+ * hydrating an unset or hand-edited stored value. It is now `clampDensity` below, which
+ * is why that helper exists.
  * __tests__/KdsSettingsConversions.test.ts retyped clampDensity and
  * compactClass to test them, because production had no name to import — and a
  * copy is invisible to a name-matching detector precisely because there is
@@ -39,6 +44,24 @@ export const DENSITY_MAX = 5;
  * is written for a two-column board.
  */
 export const DENSITY_COMPACT_AT = 2;
+
+/**
+ * Force a density into the legal range — the clamp every writer needs.
+ *
+ * Named after the retyped helper `__tests__/KdsSettingsConversions.test.ts` had to
+ * write for itself before this module existed, which is the same "give the expression
+ * a name so a change fails a test" reasoning this whole file is built on.
+ *
+ * The FOURTH inline copy was in `WorkspaceKdsSettings.tsx:119`,
+ * `Math.min(5, Math.max(1, parseInt(density ?? '', 10) || DEFAULT_KDS.density))` — a
+ * settings card hydrating an unset or out-of-range stored value. It was missed when
+ * this module was extracted (the header lists the three it knew about), so widening
+ * DENSITY_MAX would have left the card silently accepting a value the board would not
+ * render. Callers now go through here.
+ */
+export function clampDensity(density: number): number {
+  return Math.min(DENSITY_MAX, Math.max(DENSITY_MIN, density));
+}
 
 /** The class appended to .kds-content-wrap when density is at or below
  *  DENSITY_COMPACT_AT, or '' otherwise. Returns a LEADING space when present,

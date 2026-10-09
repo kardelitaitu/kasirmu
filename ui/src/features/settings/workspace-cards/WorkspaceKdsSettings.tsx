@@ -9,6 +9,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 import { clampRedThreshold, clampYellowThreshold } from '@/features/kds/kdsThresholdMinutes';
 import { DEFAULT_SETTINGS as KDS_DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
+import { clampDensity } from '@/features/kds/kdsDensity';
 import SettingsSelect from '../SettingsSelect';
 import type { WorkspaceCardProps } from './types';
 import { hasChanges } from './helpers';
@@ -116,7 +117,9 @@ export function WorkspaceKdsSettings({
         ),
         redThresholdMin,
         autoAcknowledge: ack === 'true',
-        density: Math.min(5, Math.max(1, parseInt(density ?? '', 10) || DEFAULT_KDS.density)),
+        // Through the named bound (kdsDensity), not an inline Math.min/Math.max pair:
+        // this was the fourth copy of the 1..5 range and the one the extraction missed.
+        density: clampDensity(parseInt(density ?? '', 10) || DEFAULT_KDS.density),
       };
       // Seed the loaded values, but never overwrite fields the user has
       // already edited while the load was in flight — otherwise a fast
