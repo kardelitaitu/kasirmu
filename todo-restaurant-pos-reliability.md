@@ -2110,6 +2110,58 @@ isolation.**
 No production behaviour changed — the testids are inert attributes. Full suite **696 files /
 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
 
+### F42 follow-up — the settle button was queried by its LABEL, 19 times (round 96) — `55a0f07ed`
+
+Round 95 fixed the sidebar. This round applied the same lens to the **payment popup** and found the
+same coupling on the **most consequential control in the app**: the button that takes the money.
+
+`PaymentModalSaleFlow.test.tsx` clicked it as:
+
+```ts
+screen.getByRole('button', { name: /^complete$/i })   // 19 occurrences
+```
+
+**It only works because of a coincidence in the English bundle.** `payment-complete = Complete`
+(`sales.ftl:179`) — so the accessible name is exactly `Complete`. Three separate facts have to stay
+true for those 19 call sites to keep passing:
+
+| Fact | Value | What breaks it |
+|---|---|---|
+| the en bundle value | `Complete` | any copy edit |
+| the locale under test | English | an `id` run renders `Selesaikan` |
+| the fallback child | `Complete Sale` | **differs from the bundle value** — remove the entry and the fallback breaks the query |
+
+That last row is the sharp one: the `Localized` child says `Complete Sale` while the bundle says
+`Complete`, so the fallback is not a fallback for this query at all.
+
+#### The change, and why it needed no production edit
+
+`settle-button` **already existed** on exactly that button (`PaymentModal.tsx:2079`) — and **four
+sibling suites already used it** (`PaymentModalSplitBalance:144`, `-Loyalty:192`, `-EdgeCases:796`,
+`-CustomerSection:251`). One file was the outlier. All 19 sites now read
+`screen.getByTestId('settle-button')`; **no production code changed.**
+
+**The button's label is method-dependent** — `Open Bill` / `Credit Sale` / `Complete Sale` — so the
+copy query was also silently testing only the default tender. The testid is indifferent to which.
+
+#### Both directions of the kill-test
+
+1. **Rename the bundle value to `Finish Sale`** → the suite **still passes**. The queries are now
+   genuinely copy-independent, which is the property being bought.
+2. **Revert ONE call site to the old regex** → that case **fails** with
+   `Unable to find an accessible element with the role "button" and name /^complete$/i`.
+
+The second is the important one: it shows the old form really was coupled, so the change is a fix
+rather than a stylistic preference. Without it, "the tests still pass" would be equally consistent
+with the edit having done nothing.
+
+**The pattern across F38, F42 and this round is one behaviour: the suite reaches its controls
+through bundle copy.** Each round found a different surface, and each is the same repair — address
+the element, then assert the copy separately if the copy matters.
+
+Verified: `PaymentModalSaleFlow` **52 passed**; full suite **696 files / 11,563 passed, 0 failed**;
+typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
 Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
 bundle parity 0 missing; kill-tested both directions.
 
