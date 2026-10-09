@@ -714,6 +714,49 @@ case. Verified: six settings guards / **17 passed**; full suite **688 files / 11
 typecheck 0; eslint 0; bundle parity 0 missing. The 2 failures are the long-standing
 `holdCartScoped` pair from another lane.
 
+### F29 — the two SHELLS disagree over terminal local prefs (round 69) — `d8c89ae18`
+
+Following F28 into the tablet's hardware command found a bigger defect with a sharper shape:
+**desktop and tablet behave differently on the same DTO and the same table.**
+
+`TerminalPreferencesCard` renders four operator controls — sound volume, dark mode, scale
+auto-zero, and the EDC default. All four are lost, but by **different causes**:
+
+| Field | Cause |
+|---|---|
+| `soundVolume`, `darkMode`, `scaleAutoZero` | the DTO carries them and the bridge persists them — **the tablet discards them** |
+| `defaultEdcTerminalId` | absent from every layer (F28) |
+
+**The tablet's WRITE replaces them with struct defaults.**
+`apps/mobile-tauri/src/commands/settings.rs:685-692` hand-builds the profile from five fields
+plus `..TerminalProfile::default()`, so the operator's values are silently replaced by
+**volume 80, dark off, auto-zero on**. The bridge does not do this: its
+`From<HardwareSettingsDto>` carries all three (`dto.rs:252-254`).
+
+**The tablet's READ never consults the profile at all.**
+`get_hardware_settings_scoped` (`:649-655`) returns five hardcoded store settings and never
+touches `profile_json` — where the bridge reads the row and converts the WHOLE profile back
+(`settings.rs:314`). So even a correctly-stored profile would not come back.
+
+**This is the session's oldest pattern, in its clearest form yet:** two surfaces, one field, two
+rules. Desktop keeps the values; tablet resets them.
+
+**Why it is invisible, and this is the F18 shape exactly.** `handleSave` clears the dirty flag on
+resolve (`TerminalPreferencesCard.tsx:146-147`), so the screen reports saved, the slider stays
+where the operator put it, and the reset is only visible after a reload.
+
+**PINNED, NOT FIXED.** Repairing it changes what the tablet persists, which needs an owner call
+on whether register-local prefs belong in the terminal profile at all. Each case says
+*"invert this pin"* so the fix flips them rather than deleting them.
+
+The first case **guards the premise**: it asserts the bridge STILL carries the three fields. If
+the bridge also stopped, the two shells would agree and this file would be pinning a shared bug
+instead of a disagreement — a different finding with a different fix.
+
+Kill-tested both ways: adding `sound_volume` to the tablet write, and to its read, each fails its
+case. Verified: seven settings guards / **20 passed**; full suite **689 files / 11,514 passed**;
+typecheck 0; eslint 0; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
