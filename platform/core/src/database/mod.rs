@@ -5,6 +5,7 @@ pub mod identity_sync;
 pub mod manager;
 pub mod migrations;
 pub mod pool;
+pub mod starter_catalog;
 
 /// SQL statement text — splitting, tokenizing, the canonical DDL form —
 /// and the significance predicate the runner applies per fragment. Private to
