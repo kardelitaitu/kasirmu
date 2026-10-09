@@ -565,6 +565,51 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 46 — the F8 fix never ran in production
+
+Round 45 fixed the badge. This round I traced the gate the badge describes, and found
+something worse than a wrong label: **the F8 permission check was dead code.**
+
+`RestaurantSidebar` computed:
+
+```ts
+const canEditSettings =
+  isManagerProp ??                                  // <-- wins
+  (session?.permissions !== undefined
+    ? hasGrantedPermission(session.permissions, 'settings:edit')
+    : authIsManager);
+```
+
+`PosScreen.tsx:1239` always supplies `isManager={isManager}` from `useAuth()`, and
+`AuthContext.isManager` (`:176-182`) is a **pure role check** — owner/admin/manager, no
+permission awareness at all. Because the prop took precedence, the permission branch was
+unreachable in the real app, so a "manager" role whose grant omits `settings:edit` still got
+enabled rows whose saves are refused at the IPC boundary. **The exact F8 defect, sitting
+behind a gate that reads as fixed.**
+
+Proved by rendering the production shape: the new case fails with *"the role prop bypassed
+the permission gate — the F8 fix is inert in production"*. The four original F8 cases never
+passed `isManager`, so they exercised the permission branch and stayed green against code
+production never ran — a test that could not see the bug.
+
+**The old comment justifying the precedence was also false.** It claimed the prop was kept
+for *"the workspace-card and inspector hosts"*; grepping `RestaurantSidebar` shows
+`RestaurantMenu` is its only host and `PosScreen` the only host of THAT. No such caller
+exists.
+
+Fixed by making the session's grant list authoritative whenever it is present, with the
+prop demoted to the fallback it should always have been:
+
+```ts
+session?.permissions !== undefined
+  ? hasGrantedPermission(session.permissions, 'settings:edit')
+  : (isManagerProp ?? authIsManager);
+```
+
+The role answer is still correct when the session carries no grant list — then the role is
+the only thing anyone can consult, which is the case the fallback exists for. Kill-tested by
+restoring the old precedence. `f2bdb5f02`.
+
 ### Round 45 — the badge told a Manager to become a Manager
 
 Following F8 (`settings:edit` as the authoritative gate) to the LABEL it produces. The four
