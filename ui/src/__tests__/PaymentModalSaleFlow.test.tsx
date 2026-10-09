@@ -599,6 +599,13 @@ describe('PaymentModal — shortfall resolution', () => {
           lines: [{ sku: 'COFFEE', qty: 2, unitPriceMinor: 350, unitPriceCurrency: 'USD' }],
           tipMinor: 150,
           serviceChargeMinor: 70,
+          // The RETRY must spell the tender the same way the first submission does.
+          // `bbc530642` lowercased the first path; the retry kept `method.toUpperCase()`,
+          // and the backend normalises only `payment_splits` — the scalar
+          // `sales.payment_method` is written verbatim (sales_checkout.rs:549). So the
+          // two paths disagreed on the same field for the same attempt: this sale pays
+          // by CARD, so the retry used to send 'CARD' while the first send was 'card'.
+          paymentMethod: 'card',
         },
       });
     });

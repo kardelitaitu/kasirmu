@@ -467,6 +467,38 @@ retryCurrencyLoad,
     splits,
   });
 
+  // TWO values, because the two consumers below need different things and a single
+  // variable cannot be both.
+  //
+  // `storedMethod` goes to `completeSaleScoped({ paymentMethod })`, i.e. the DB
+  // column, whose CHECK constraint requires the lowercase enum ('cash', 'card',
+  // 'qris', 'other'). `bbc530642` established that and is correct for this value.
+  //
+  // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
+  // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+  // human-readable.
+  const storedMethod = useMemo(
+    () =>
+      splitMode
+        ? 'split'
+        : method === 'other'
+          ? (otherLabel.trim().toLowerCase() || 'other')
+          : method.toLowerCase(),
+    [splitMode, method, otherLabel],
+  );
+
+  const methodLabel = useMemo(
+    () =>
+      splitMode
+        ? 'Split'
+        : method === 'other'
+          ? (otherLabel.trim() || 'Other')
+          : method === 'qris'
+            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
+            : method.toUpperCase(),
+    [splitMode, method, otherLabel, paymentRails, activeMarketProfile],
+  );
+
   useEffect(() => {
     // Entitlement first, and the same three resets the no-customer branch below
     // performs: with the feature off there is no account, and a stale account
@@ -1092,19 +1124,11 @@ retryCurrencyLoad,
       // human-readable. That commit lowercased this one too, so a cash sale started
       // printing 'cash' where it had printed 'CASH'. The two were the same variable;
       // they are not the same fact.
-      const storedMethod = splitMode
-        ? 'split'
-        : method === 'other'
-          ? (otherLabel.trim().toLowerCase() || 'other')
-          : method.toLowerCase();
-
-      const methodLabel = splitMode
-        ? 'Split'
-        : method === 'other'
-          ? (otherLabel.trim() || 'Other')
-          : method === 'qris'
-            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
-            : method.toUpperCase();
+      // `storedMethod` and `methodLabel` are derived at COMPONENT scope (see the memo
+      // near `splitComplete`) so the submit path and the shortfall-retry JSX read one
+      // definition. They lived here once, and the retry kept its own `method.toUpperCase()`
+      // after this one was lowercased — the same field, two spellings, and the backend
+      // normalises only `payment_splits`, so both reached `sales.payment_method`.
 
       const serialNumberArgs: SerialNumberArg[] | undefined = serialNumbers
         ? Object.entries(serialNumbers)
@@ -1278,7 +1302,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails, storedMethod, methodLabel]);
 
   useEffect(() => {
     if (!done) return;
@@ -1516,7 +1540,14 @@ retryCurrencyLoad,
           // PROMO-3: the SAME promotion list the first submission carried,
           // in the same order, so the retry re-applies identical discounts.
           promotionIds={promotionIds && promotionIds.length > 0 ? promotionIds : null}
-          paymentMethod={splitMode ? 'split' : method === 'other' ? otherLabel.trim() || 'OTHER' : method.toUpperCase()}
+          // The SAME spelling the first submission writes. This is the shortfall
+          // RETRY of the same attempt, so it must agree with `storedMethod` above —
+          // it kept `method.toUpperCase()` after that path was lowercased, so a cash
+          // retry sent 'CASH' where the first send was 'cash'. The backend normalises
+          // only `payment_splits`; the scalar `sales.payment_method` is written
+          // verbatim (sales_checkout.rs:549), so the two spellings both reached the
+          // column. Derived from `storedMethod` so they cannot drift again.
+          paymentMethod={storedMethod}
           tenderedMinor={method === 'cash' && !splitMode ? tenderedMinorInCartCurrency : null}
           paymentSplits={paymentSplitsFromState() ?? null}
           customerId={selectedCustomer?.id ?? null}
