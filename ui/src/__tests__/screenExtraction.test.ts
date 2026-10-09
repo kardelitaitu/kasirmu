@@ -2020,6 +2020,21 @@ const SCREENS: ScreenEntry[] = [
     parentCss: ['settings/SettingsPage.css'],
   },
 
+  {
+    // CreditFacilityCard — the fifth of the settings cards (F24). Added 2026-10-10
+    // when the card was wired into BusinessDefaultsScreen.tsx:33; the guard refused
+    // its sheet as uncited until this entry existed, and its own message is explicit
+    // that a NEW sheet may not join the shrink-only BASELINE_UNCITED list.
+    //
+    // 14 classes, measured at ZERO orphans, plus exactly one borrowed name:
+    // settings-section-title, which only settings/SettingsPage.css:514 defines — the
+    // same single-name relationship the four cards above have with that scaffold.
+    name: 'CreditFacilityCard',
+    tsx: 'settings/screens/CreditFacilityCard.tsx',
+    css: ['settings/screens/CreditFacilityCard.css'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+
   // ── Settings screen scaffolds (rebuild) ────────────────────
   // Blank placeholders under features/settings/screens/, one file per screen.
   // They share screens-placeholder.css, so each entry lists that single
