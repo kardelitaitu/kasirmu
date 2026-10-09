@@ -41,10 +41,24 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
   const addToast = vi.fn();
   const noop = vi.fn();
 
+  /**
+   * A stub l10n whose `getString` ECHOES the id.
+   *
+   * The shift refusal is a toast that used to be a hardcoded English literal
+   * while `retail-toast-open-shift-first` already existed in both bundles. This
+   * stub makes the KEY observable in the toast message, so the case below can
+   * assert that the localized path is taken — a real bundle would render English
+   * in en and pass whether or not the literal had been removed.
+   */
+  const l10nRef = {
+    current: { getString: (id: string) => `«${id}»` },
+  } as unknown as UsePosHeldCartsParams['l10nRef'];
+
   function params(overrides: Partial<UsePosHeldCartsParams> = {}): UsePosHeldCartsParams {
     return {
       sessionToken: 'tok',
       addToast: addToast as unknown as UsePosHeldCartsParams['addToast'],
+      l10nRef,
       activeShift: null,
       lines: [],
       subtotal: null,
@@ -503,5 +517,24 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       expect.objectContaining({ type: 'error' }),
     );
   });
-});
 
+  it('refuses to open a bill without a shift, using the localised message', async () => {
+    // The toast used to be a hardcoded English literal while
+    // `retail-toast-open-shift-first` already existed in BOTH bundles
+    // (`sales.ftl:846`, `sales.id.ftl:778`) and retail already used it — so an
+    // Indonesian operator read English here and Indonesian there.
+    //
+    // The `l10nRef` stub above echoes the ID, so `«retail-toast-open-shift-first»`
+    // appearing in the toast proves the localized path was taken. Asserting the
+    // English text would pass either way, because the en bundle renders exactly
+    // the words the literal had.
+    const { result } = renderHook(() => usePosHeldCarts(params()));
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+    expect(addToast).toHaveBeenCalledWith({
+      message: '«retail-toast-open-shift-first»',
+      type: 'warning',
+    });
+  });
+});

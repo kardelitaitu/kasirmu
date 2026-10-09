@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
+import { requiredLocalized } from '@/components';
 import type { Toast } from '@/components/Toast';
 import type { CartId } from '@/types/domain';
 import type { ShiftDto } from '@/api/shifts';
@@ -113,7 +114,10 @@ export function CartActionBar({
         className="pos-cart-open-bill-btn"
         onClick={() => {
           if (!activeShift) {
-            addToast({ message: 'Open a shift first', type: 'warning' });
+            addToast({
+              message: requiredLocalized(l10n, 'retail-toast-open-shift-first'),
+              type: 'warning',
+            });
             return;
           }
           if (tableNumber?.trim() || customerName?.trim() || activeOpenBillId) {

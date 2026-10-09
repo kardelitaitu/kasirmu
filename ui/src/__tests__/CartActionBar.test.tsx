@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { MutableRefObject } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -177,11 +179,39 @@ describe('CartActionBar', () => {
 
     fireEvent.click(openBillBtn());
 
-    // Defect noted, not asserted as correct: the toast message is a
-    // hardcoded English literal (CartActionBar.tsx:72), the only string
-    // in this component with no Fluent key.
+    // FIXED 2026-10-09. This assertion used to carry the opposite note:
+    //   "Defect noted, not asserted as correct: the toast message is a hardcoded
+    //    English literal (CartActionBar.tsx:72), the only string in this
+    //    component with no Fluent key."
+    // The defect was real and it was not only here: the same literal sat at four
+    // other production sites (PosScreen :528/:592, usePosHeldCarts :140,
+    // usePosCartActions :138) while `retail-toast-open-shift-first` already
+    // existed in BOTH bundles — and retail already used it. So an Indonesian
+    // operator read English on the restaurant path and Indonesian on the retail
+    // one. All five now go through the key.
+    //
+    // ⚠️ The message cannot be asserted by VALUE here. This harness builds a real
+    // bundle from production `sales.ftl`, and `retail-toast-open-shift-first =
+    // Open a shift first` — the SAME words the literal had — so the toast reads
+    // identically whether the fix is present or not. Asserting the English text
+    // would keep passing if the literal came back, which is why the ORIGINAL note
+    // could sit here for so long saying "defect noted".
+    //
+    // The discriminator is the SOURCE: the component must reach the message
+    // through the Fluent key rather than a literal.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/features/sales/components/CartActionBar.tsx'),
+      'utf-8',
+    );
+    expect(
+      src,
+      'the shift refusal is a hardcoded English literal again — route it through ' +
+        '`retail-toast-open-shift-first`, which both bundles already carry',
+    ).not.toMatch(/'Open a shift first'/);
+    expect(src).toContain('retail-toast-open-shift-first');
+    // And the behaviour still holds, asserted by the shape the harness CAN see.
     expect(props.addToast).toHaveBeenCalledWith({
-      message: 'Open a shift first',
+      message: expect.any(String),
       type: 'warning',
     });
     expect(props.setShowOpenBillInput).not.toHaveBeenCalled();

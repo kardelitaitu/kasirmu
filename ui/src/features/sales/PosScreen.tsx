@@ -525,7 +525,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     sessionToken,
     onProductFound: useCallback(async (payload: BarcodeScannedPayload) => {
       if (!activeShiftRef.current && !shiftUnavailableRef.current) {
-        addToast({ message: 'Open a shift first', type: 'warning' });
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+          type: 'warning',
+        });
         return;
       }
       try {
@@ -589,7 +592,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // Same rule as the cart guard: an unreachable shift service must not
     // block payment, because shifts are informational.
     if (!activeShiftRef.current && !shiftUnavailableRef.current) {
-      addToast({ message: 'Open a shift first', type: 'warning' });
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+        type: 'warning',
+      });
       return;
     }
     if (!total) return;
@@ -625,6 +631,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   } = usePosHeldCarts({
     sessionToken,
     addToast,
+    l10nRef,
     activeShift,
     lines,
     subtotal,

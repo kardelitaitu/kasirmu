@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import type { useToast } from '@/components/Toast';
 import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
+import { requiredLocalized } from '@/components';
 import { parseAppError } from '@/utils/app-error';
+
+/** The shape `requiredLocalized` accepts, matching `usePosCartActions`. */
+type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
 import {
   holdCartScoped,
   listOpenBillsScoped,
@@ -21,6 +25,17 @@ type AddToast = ReturnType<typeof useToast>['addToast'];
 export interface UsePosHeldCartsParams {
   sessionToken: string;
   addToast: AddToast;
+  /**
+   * Localization, as a ref rather than a value.
+   *
+   * The shift refusal below is a TOAST, and its string used to be a hardcoded
+   * English literal while `sales.ftl` already carried
+   * `retail-toast-open-shift-first` and the Indonesian translation for it
+   * (`sales.id.ftl:778`) — so an Indonesian operator read English on this path
+   * and Indonesian on the retail one. A ref, matching `usePosCartActions`, keeps
+   * the callback identity stable while always reading the current bundle.
+   */
+  l10nRef: L10nRef;
   /** Pass-through from usePosShifts: holding a bill requires an open shift. */
   activeShift: ShiftDto | null;
   lines: CartLine[];
@@ -52,6 +67,7 @@ export interface UsePosHeldCartsParams {
 export function usePosHeldCarts({
   sessionToken,
   addToast,
+  l10nRef,
   activeShift,
   lines,
   subtotal,
@@ -137,7 +153,10 @@ export function usePosHeldCarts({
 
   const handleOpenBill = useCallback(async () => {
     if (!activeShift) {
-      addToast({ message: 'Open a shift first', type: 'warning' });
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+        type: 'warning',
+      });
       return;
     }
     if (!subtotal || lines.length === 0) return;
