@@ -5360,6 +5360,25 @@ Rust hits, which is exactly the shape of a wired control — but every one belon
 `printReceipt` is a *key inside the rail's `parameters` JSON*, and the literal `"printReceipt"`
 appears in **zero** Rust files.
 
+> **⚠️ Corrected round 107.** The paragraph above says every one of the 79 hits is the printer
+> COMMAND. **That is too narrow, and the correction is instructive rather than pedantic.**
+> `print_receipt` is a NAME that appears in the HAL in three distinct roles:
+>
+> | Role | Example |
+> |---|---|
+> | the printer **trait method** | `hal/src/traits/printer.rs`, its mock at `drivers/mock.rs` |
+> | the scoped **command** | `print_receipt_scoped` / `run_print_receipt_inner`, both shells |
+> | an **EDC** trait method | `hal/src/traits/edc.rs:150` — a card terminal printing its own slip |
+>
+> All three are printers. **None of them reads the QRIS rail's `parameters` JSON**, which is the
+> fact F19 needs — so the conclusion stands and only the reasoning was overstated.
+>
+> A guard written from the wrong reasoning caught it: asserting *"every hit is the command"*
+> **failed at 6 of 16**, which is how the EDC trait method surfaced. The corrected assertion is
+> narrower and stronger — **no Rust file names the parameter KEY at all** — and `railParamNotPrinterCommand.test.ts`
+> pins it, kill-tested by planting a `printReceipt` consumer in Rust (both cases fire and name the file).
+
+
 **So a grep by name would have cleared the one control that is most obviously inert**, and it is the
 one an operator is most likely to rely on: a QRIS receipt switch that prints nothing and says nothing.
 This is F41's lesson again — *a name that matches is not a reader that runs* — and the third spelling
