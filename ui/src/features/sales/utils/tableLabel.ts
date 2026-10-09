@@ -73,3 +73,31 @@ export function heldCartLabel(
   return null;
 }
 
+/**
+ * Match an open bill / held cart to a table name.
+ * Handles variations like 'Table 2 (Bapak Budi)', 'Table 2', or bare '2'.
+ * Avoids false substring collisions (e.g. Table 20 matching Table 2).
+ */
+export function matchesTableBill(
+  bill: { label?: string; customer_name?: string | null } | null | undefined,
+  tableName: string | null | undefined,
+): boolean {
+  if (!bill || !tableName) return false;
+  const bare = bareTableNumber(tableName);
+  if (!bare) return false;
+  const escapedBare = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\btable\\s+${escapedBare}\\b`, 'i');
+
+  if (bill.label) {
+    if (pattern.test(bill.label) || bill.label.toLowerCase() === tableName.toLowerCase()) {
+      return true;
+    }
+  }
+  if (bill.customer_name) {
+    if (pattern.test(bill.customer_name) || bill.customer_name.toLowerCase() === tableName.toLowerCase()) {
+      return true;
+    }
+  }
+  return false;
+}
+

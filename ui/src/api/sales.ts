@@ -576,19 +576,31 @@ export interface SaleListResponse {
   salesHistoryCapped: boolean;
 }
 
+interface RawSaleListItem extends SaleListItem {
+  line_count?: number;
+  payment_method?: string | null;
+  user_id?: string | null;
+  created_at?: string;
+  display_code?: string | null;
+  faktur_pajak?: string | null;
+}
+
 const normalizeSaleListResponse = (res: SaleListResponse): SaleListResponse => {
   if (res && Array.isArray(res.sales)) {
     return {
       ...res,
-      sales: res.sales.map((s: any) => ({
-        ...s,
-        lineCount: s.lineCount ?? s.line_count ?? 0,
-        paymentMethod: s.paymentMethod ?? s.payment_method ?? null,
-        userId: s.userId ?? s.user_id ?? null,
-        createdAt: s.createdAt ?? s.created_at ?? '',
-        displayCode: s.displayCode ?? s.display_code ?? null,
-        fakturPajak: s.fakturPajak ?? s.faktur_pajak ?? null,
-      })),
+      sales: res.sales.map((item: SaleListItem) => {
+        const s = item as RawSaleListItem;
+        return {
+          ...s,
+          lineCount: s.lineCount ?? s.line_count ?? 0,
+          paymentMethod: s.paymentMethod ?? s.payment_method ?? null,
+          userId: s.userId ?? s.user_id ?? null,
+          createdAt: s.createdAt ?? s.created_at ?? '',
+          displayCode: s.displayCode ?? s.display_code ?? null,
+          fakturPajak: s.fakturPajak ?? s.faktur_pajak ?? null,
+        };
+      }),
     };
   }
   return res;

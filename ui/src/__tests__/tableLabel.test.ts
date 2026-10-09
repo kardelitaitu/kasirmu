@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
+import { bareTableNumber, heldCartLabel, matchesTableBill } from '@/features/sales/utils/tableLabel';
 
 /**
  * The regression these guard: the product stores table names that ALREADY read
@@ -67,6 +67,34 @@ describe('heldCartLabel', () => {
 
   it('trims the customer name it embeds', () => {
     expect(heldCartLabel('Table 3', '  Ana  ')).toBe('Table 3 (Ana)');
+  });
+});
+
+describe('matchesTableBill', () => {
+  it('matches open bill labels with stored table names', () => {
+    expect(matchesTableBill({ label: 'Table 2 (Bapak Budi)' }, 'Table 2')).toBe(true);
+    expect(matchesTableBill({ label: 'Table 2' }, 'Table 2')).toBe(true);
+    expect(matchesTableBill({ label: 'Table 2 (Bapak Budi)' }, '2')).toBe(true);
+  });
+
+  it('prevents substring collisions between similar table numbers', () => {
+    expect(matchesTableBill({ label: 'Table 20 (Bapak Budi)' }, 'Table 2')).toBe(false);
+    expect(matchesTableBill({ label: 'Table 2 (Bapak Budi)' }, 'Table 20')).toBe(false);
+  });
+
+  it('matches customer_name if tab label is custom but customer is table-tagged', () => {
+    expect(matchesTableBill({ label: 'Bill #101', customer_name: 'Table 2' }, 'Table 2')).toBe(true);
+  });
+
+  it('matches custom table names like VIP 1 or Patio 5', () => {
+    expect(matchesTableBill({ label: 'Table VIP 1 (Ana)' }, 'VIP 1')).toBe(true);
+    expect(matchesTableBill({ label: 'VIP 1' }, 'VIP 1')).toBe(true);
+  });
+
+  it('returns false for falsy or empty inputs', () => {
+    expect(matchesTableBill(null, 'Table 2')).toBe(false);
+    expect(matchesTableBill({ label: 'Table 2' }, '')).toBe(false);
+    expect(matchesTableBill({}, 'Table 2')).toBe(false);
   });
 });
 

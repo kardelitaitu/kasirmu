@@ -15,6 +15,7 @@ import {
   type Table,
 } from '@/api/tables';
 import { listen } from '@/api/tauri';
+import { matchesTableBill } from '@/features/sales/utils/tableLabel';
 import './TableManagementScreen.css';
 
 /** Vector Grid icon for empty floor plan state */
@@ -75,12 +76,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   // Match table with active open bill/tab
   const getTableBill = useCallback(
     (tableName: string): HeldCartRow | undefined => {
-      const lowerName = tableName.toLowerCase();
-      return openBills.find((b) => {
-        if (b.label.toLowerCase().includes(`table ${lowerName}`)) return true;
-        if (b.customer_name?.toLowerCase().includes(`table ${lowerName}`)) return true;
-        return false;
-      });
+      return openBills.find((b) => matchesTableBill(b, tableName));
     },
     [openBills],
   );
@@ -412,7 +408,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     closeDetail();
                   }}
                 >
-                  <Localized id="tables-assign-to-order">
+                  <Localized id={activeBill ? 'tables-resume-tab' : 'tables-assign-to-order'}>
                     <span>{activeBill ? 'Resume Tab / Order' : 'Select for Order'}</span>
                   </Localized>
                 </Button>

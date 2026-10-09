@@ -59,6 +59,7 @@ import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
+import { matchesTableBill } from './utils/tableLabel';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
@@ -977,11 +978,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       setTableNumber(tableName);
       setShowTables(false);
       // Find active tab matching this table to resume order if exists
-      const matchingBill = openBills.find(
-        (b) =>
-          b.label.toLowerCase().includes(`table ${tableName.toLowerCase()}`) ||
-          (b.customer_name && b.customer_name.toLowerCase().includes(`table ${tableName.toLowerCase()}`)),
-      );
+      const matchingBill = openBills.find((b) => matchesTableBill(b, tableName));
       if (matchingBill) {
         void handleResumeOpenBill(matchingBill.id);
       }
