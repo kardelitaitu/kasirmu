@@ -7,6 +7,7 @@ import { Localized } from '@/components/Localized';
 import { requiredLocalized } from '@/components';
 import type { Toast } from '@/components/Toast';
 import { FEATURES } from '@/hooks/useFeatures';
+import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { AnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
@@ -645,7 +646,10 @@ export function CartPanel({
             <span className="pos-cart-active-tab-info">
               <span className="pos-cart-active-tab-dot" aria-hidden="true">●</span>
               <span className="pos-cart-active-tab-text">
-                {tableNumber ? `Table ${tableNumber}` : ''}
+                {/* `bareTableNumber`: the stored names already read "Table 12"
+                    (see features/sales/utils/tableLabel.ts), so the raw value
+                    composed "Table Table 12" in this banner. */}
+                {tableNumber ? `Table ${bareTableNumber(tableNumber)}` : ''}
                 {tableNumber && customerName ? ` (${customerName})` : customerName || 'Active Tab'}
               </span>
             </span>

@@ -804,6 +804,52 @@ describe('PaymentModal — rendering & fast interaction', () => {
 
   // ── Multi-currency settlement (CUR-02) ──
 
+  it('does not print the word "Table" twice when the table NAME already contains it', async () => {
+    // The seeded/short-code table names in this product LITERALLY contain the word:
+    // the store DB's \`tables\` rows are 'Table 1', 'Table 2', 'Table 12'
+    // (verified on the tablet 2026-10-09). TableManagementScreen passes
+    // \`selected.name\` straight through (TableManagementScreen.tsx:411), and
+    // PaymentModal renders it through \`payment-table-number = Table { $number }\`
+    // (sales.ftl:40) — so the badge composed as "Table Table 12".
+    //
+    // The existing TableManagementScreen test (:457) uses \`name: 'VIP 2'\`, a name
+    // WITHOUT the prefix, which is exactly why this shipped: the only fixture that
+    // reaches this label is not shaped like the data.
+    await renderWithFluentAsRestaurantPos(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        tableNumber="Table 12"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const badge = document.querySelector('.payment-table-badge');
+    expect(badge, 'the table badge must render when tableNumber is set').not.toBeNull();
+    // The whole point: the word appears ONCE.
+    expect(badge?.textContent?.trim()).toBe('Table 12');
+  });
+
+  it('still labels a table whose name does NOT contain the word', async () => {
+    // The other shape, so the fix cannot be "drop the prefix unconditionally".
+    await renderWithFluentAsRestaurantPos(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        tableNumber="A5"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const badge = document.querySelector('.payment-table-badge');
+    expect(badge?.textContent?.trim()).toBe('Table A5');
+  });
+
   it('completes sale in selected charge currency with converted amounts (multi-currency)', async () => {
     const onComplete = vi.fn();
     await renderWithFluent(
