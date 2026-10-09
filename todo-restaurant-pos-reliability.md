@@ -5288,3 +5288,52 @@ in different clothes.
 
 Verified: `planStatusAccuracy` + `evidenceAnchorResolves` **10 passed**; full suite **697 files /
 11,579 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
+### F45 — two lanes wrote the same SCREENS entry, and mine was the weaker one (round 105) — `74d0ca6e2` (theirs)
+
+**A duplicate-entry race, caught by reading rather than by a failure.** Round 103 added a
+`CreditFacilityCard` entry to `screenExtraction`'s `SCREENS` array. The lane that built the card
+added its **own** entry at nearly the same time, and both landed in the tree.
+
+#### The suite passed with both, which is the point
+
+Two structurally identical entries are not a test failure — the array simply carries the card twice,
+and every walk runs twice over the same classes. **364 tests passed before deduplication, 361 after.**
+The extra three were the second entry's passes. **Nothing in the suite was going to tell us.**
+
+#### Theirs was correct and mine was incomplete, verified rather than assumed
+
+| Entry | `css` | `additionalTsx` |
+|---|---|---|
+| mine | `CreditFacilityCard.css` | — |
+| **theirs** | `CreditFacilityCard.css` + **`SettingsScopeTag.css`** | **`SettingsScopeTag.tsx`** |
+
+The difference is real: `CreditFacilityCard.tsx:53` imports `SettingsScopeTag` and `:190` renders
+`<SettingsScopeTag scope="workspace" />`. **My entry passed only because I audited the card's own
+`className` literals and never checked what it imports** — the exact failure `additionalTsx` exists
+to prevent, and the reason their comment spells the relationship out.
+
+**I removed mine and did not re-derive theirs.** The better artefact won on evidence, not seniority.
+
+#### The part worth recording: a `git checkout --` that could have destroyed their work
+
+Cleaning up my whitespace edit, I ran `git checkout -- ui/src/__tests__/screenExtraction.test.ts`.
+**Their entry was present in the working tree at that moment and uncommitted as far as I could see** —
+that command reverts to HEAD and discards uncommitted content, which would have deleted their work
+with no trace. It happened to be safe **only because their commit `74d0ca6e2` had already landed**, and
+I verified that afterwards (`git show HEAD:…` has exactly one entry, with `SettingsScopeTag.css`).
+
+**AGENTS.md §7.3 forbids `git reset`/`git stash` on the shared branch for exactly this reason;
+`git checkout --` is the same hazard under a different name and is not in the list.** The safe form is
+an explicit `edit` that removes only the lines you added, or a check of `git log` for the file first.
+Recording it because the command was mine, it nearly cost another lane's work, and it is not covered
+by the rule I was following.
+
+#### Final state
+
+`SCREENS` holds **one** `CreditFacilityCard` entry (theirs, `74d0ca6e2`), and the working tree carries an
+unrelated whitespace diff that was reverted. **No work lost, nothing of mine to commit this round** —
+the deliverable is the verification and the near-miss.
+
+Verified: full suite **697 files / 11,576 passed, 0 failed**; bundle parity 0 missing; the tree is
+clean apart from the three known untracked files.
