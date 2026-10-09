@@ -321,8 +321,12 @@ describe('RestaurantPosSidebar', () => {
 
     const cartPanel = document.querySelector('.pos-cart-panel') as HTMLElement;
     expect(cartPanel.querySelector('.pos-cart-header-actions')).toBeNull();
-    expect(within(cartPanel).queryByRole('button', { name: 'Kitchen Display' })).toBeNull();
-    expect(within(cartPanel).queryByRole('button', { name: 'Open a new shift' })).toBeNull();
+    // ⚠️ These NEGATIVES are the dangerous half. Addressed by copy, they pass for the
+    // worst reason once the copy changes — the name they look for simply is not
+    // there any more, in the panel OR anywhere else. Addressed by testid they still
+    // mean "the row is not in this container", which is what the case claims.
+    expect(within(cartPanel).queryByTestId('restaurant-sidebar-kds')).toBeNull();
+    expect(within(cartPanel).queryByTestId('restaurant-sidebar-open-shift')).toBeNull();
     expect(within(cartPanel).queryByRole('button', { name: 'Lock' })).toBeNull();
     await waitFor(() => {
       expect(cartPanel.querySelector('.pos-cart-header-shift')?.textContent).toContain('No active shift');
@@ -355,7 +359,7 @@ describe('RestaurantPosSidebar', () => {
 
     // The row is the header's old button, not a stub: it drives the same
     // navigation and closes the popover like every other item in it.
-    await user.click(within(sidebar).getByRole('button', { name: 'Kitchen Display' }));
+    await user.click(within(sidebar).getByTestId('restaurant-sidebar-kds'));
     expect(onNavigate).toHaveBeenCalledWith('kds');
     await waitFor(() => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
@@ -371,7 +375,14 @@ describe('RestaurantPosSidebar', () => {
 
     const cartPanel = document.querySelector('.pos-cart-panel') as HTMLElement;
     expect(cartPanel.querySelector('.pos-cart-header-actions')).not.toBeNull();
-    expect(within(cartPanel).getByRole('button', { name: 'Kitchen Display' })).toBeInTheDocument();
+    // ⚠️ The cart panel's KDS button is ICON-ONLY: its accessible name comes from
+    // `requiredLocalized(l10n, 'kds-title')`, so a copy change moved this lookup as
+    // well. It now has its own testid (`pos-cart-kds-btn`) — distinct from the
+    // SIDEBAR's `restaurant-sidebar-kds`, which is a different element on the other
+    // branch of the same feature. Verified while converting the block above: renaming
+    // `kds-title` broke this assertion and nothing else, which is how the coupling
+    // was found rather than assumed.
+    expect(within(cartPanel).getByTestId('pos-cart-kds-btn')).toBeInTheDocument();
     expect(within(cartPanel).getByRole('button', { name: 'Lock' })).toBeInTheDocument();
     // Retail has no sidebar to relocate them into.
     expect(document.querySelector('.restaurant-sidebar-btn')).not.toBeInTheDocument();

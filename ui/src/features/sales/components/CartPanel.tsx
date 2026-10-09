@@ -596,6 +596,7 @@ export function CartPanel({
                 onClick={() => onNavigate?.('kds')}
                 aria-label={requiredLocalized(l10n, 'kds-title')}
                 title={requiredLocalized(l10n, 'kds-title')}
+                data-testid="pos-cart-kds-btn"
               >
                 <KitchenDisplayIcon />
               </button>
