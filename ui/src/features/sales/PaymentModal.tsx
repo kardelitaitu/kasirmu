@@ -1680,6 +1680,18 @@ retryCurrencyLoad,
               </Localized>
             </div>
 
+            {/* Two columns, and which one scrolls is load-bearing.
+                LEFT (1fr) is the tender/entry surface and the only scroller.
+                RIGHT (fixed 19rem) is the commit rail: the total, the customer,
+                and the primary action. Putting .payment-actions in the RIGHT
+                column is the fix for a measured defect — while it lived inside
+                the scrolling tender column it sat 134px below the modal's bottom
+                edge and was clipped by the modal's overflow:hidden, so the
+                cashier had to scroll to reach Complete. Playwright never caught
+                it because it auto-scrolls before clicking.
+                DOM order is tender-then-summary so the visual order matches the
+                reading order; the grid tracks below give the tender column the
+                wide track. */}
             <div className="payment-modal-layout">
               <div className="payment-summary-col">
                 {tableNumber && (
@@ -1854,6 +1866,59 @@ retryCurrencyLoad,
                   </div>
                   </Localized>
                 )}
+
+                {/* ── Commit rail ───────────────────────────────────────
+                    Everything needed to finalise the sale, pinned in the
+                    non-scrolling column: the split toggle (one checkbox — it
+                    fits the narrow track), the customer, and the primary
+                    action. .payment-actions has margin-top:auto in the wide
+                    tier so Cancel/Complete sit on the modal's bottom edge
+                    instead of ending up 134px below it inside a scroller. */}
+                <SplitTenderRows
+                  part="toggle"
+                  splitMode={splitMode}
+                  splits={splits}
+                  currency={total.currency}
+                  remainingMinor={splitTotals.remaining}
+                  onSplitModeChange={setSplitMode}
+                  onAddSplit={addSplit}
+                  onRemoveSplit={removeSplit}
+                  onUpdateSplit={updateSplit}
+                  onAutoSplitEvenly={autoSplitEvenly}
+                />
+
+                <PaymentModalCustomerBadge
+                  customer={selectedCustomer}
+                  onOpenSearch={() => setShowCustomerSearch(true)}
+                  onRemove={() => notifyCustomerChange(null)}
+                />
+
+                <div className="payment-actions">
+                  <Localized id="payment-cancel">
+                    <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
+                      Cancel
+                    </Button>
+                  </Localized>
+                  <Button
+                    variant="primary"
+                    loading={processing}
+                    disabled={!canComplete}
+                    onClick={complete}
+                    data-testid="settle-button"
+                  >
+                    {method === 'open_bill' ? (
+                      <Localized id="payment-open-bill">
+                        <span>Open Bill</span>
+                      </Localized>
+                    ) : method === 'credit' ? (
+                      <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
+                    ) : (
+                      <Localized id="payment-complete">
+                        <span>Complete Sale</span>
+                      </Localized>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="payment-tender-col">
@@ -2006,7 +2071,11 @@ retryCurrencyLoad,
               </>
             )}
 
+            {/* The editor rows stay in this (wide) column: measured, each row
+                needs ~383px and overflows its method group by 93px at the commit
+                column's 266px. The toggle is rendered in the commit column. */}
             <SplitTenderRows
+              part="section"
               splitMode={splitMode}
               splits={splits}
               currency={total.currency}
@@ -2016,12 +2085,6 @@ retryCurrencyLoad,
               onRemoveSplit={removeSplit}
               onUpdateSplit={updateSplit}
               onAutoSplitEvenly={autoSplitEvenly}
-            />
-
-            <PaymentModalCustomerBadge
-              customer={selectedCustomer}
-              onOpenSearch={() => setShowCustomerSearch(true)}
-              onRemove={() => notifyCustomerChange(null)}
             />
 
             {loyaltyLicensed && loyaltyAccount && (
@@ -2072,33 +2135,6 @@ retryCurrencyLoad,
                     )}
                   </div>
                 )}
-
-                <div className="payment-actions">
-                  <Localized id="payment-cancel">
-                    <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
-                      Cancel
-                    </Button>
-                  </Localized>
-                  <Button
-                    variant="primary"
-                    loading={processing}
-                    disabled={!canComplete}
-                    onClick={complete}
-                    data-testid="settle-button"
-                  >
-                    {method === 'open_bill' ? (
-                      <Localized id="payment-open-bill">
-                        <span>Open Bill</span>
-                      </Localized>
-                    ) : method === 'credit' ? (
-                      <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
-                    ) : (
-                      <Localized id="payment-complete">
-                        <span>Complete Sale</span>
-                      </Localized>
-                    )}
-                  </Button>
-                </div>
               </div>
             </div>
 

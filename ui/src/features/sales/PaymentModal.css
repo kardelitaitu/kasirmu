@@ -63,17 +63,25 @@
   overflow-y: auto;
 }
 
-.payment-summary-col {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
+/* Narrow tier: one column, stacked. The tender column is ORDERED FIRST because
+   the cashier picks a method before committing, and the commit rail carries the
+   primary action — reaching Complete without ever seeing the method grid would
+   be a trap. (The wide tier does the same thing with grid-column placement.)
+   Note the visual order here matches DOM order again, so the tab-order caveat
+   documented in the wide tier does not apply below 640px. */
 .payment-tender-col {
+  order: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+}
+
+.payment-summary-col {
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 @container (min-width: 640px) {
@@ -83,23 +91,41 @@
     max-height: min(44rem, calc(100vh - 1.5rem));
   }
 
+  /* Two columns: tender/entry on the LEFT, commit rail on the RIGHT.
+     Explicit grid-column placement rather than DOM reordering, because the
+     summary block carries ~180 lines of JSX and the move would be churn with no
+     behavioural gain. The tradeoff is honest and bounded: tab order follows DOM
+     (summary, then the tender column), so focus visits the commit controls
+     before the method grid. Both columns are always visible in this tier, so the
+     eye and the caret disagree about ORDER but never about WHAT IS SHOWN.
+
+     The tracks are sized by ROLE, not by position: the tender column holds a
+     2-up method grid whose "Other" row carries a text input, and the split
+     editor rows need ~383px each (measured), so it takes the flexible track. The
+     commit rail holds a total, one checkbox, a button and the action row, all of
+     which fit 19rem (measured: total row 230px, toggle/customer/actions 266px). */
   .payment-modal-layout {
     display: grid;
-    grid-template-columns: 19rem 1fr;
+    grid-template-columns: 1fr 19rem;
     overflow: hidden;
   }
 
-  .payment-summary-col {
-    background: var(--color-bg-surface);
-    border-right: 1px solid var(--color-border);
-    padding: var(--space-4) var(--space-5);
-    overflow-y: auto;
-  }
-
   .payment-tender-col {
+    grid-column: 1;
     padding: var(--space-4) var(--space-5);
     overflow-y: auto;
     gap: var(--space-2_5);
+  }
+
+  .payment-summary-col {
+    grid-column: 2;
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border);
+    padding: var(--space-4) var(--space-5);
+    /* The commit rail must NOT scroll: .payment-actions lives here now, and the
+       whole point of moving it is that the primary action can never be pushed
+       below the modal's clipped edge. Content here is short by construction. */
+    overflow: visible;
   }
 
   .payment-methods {
