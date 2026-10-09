@@ -444,6 +444,12 @@ const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
   { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn::min-height: 34px', why: "KDS routing action button; 34px floor." },
   { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
   { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
+  // Added 2026-10-09 when `ec1c50336` introduced the animated order-type slider.
+  // 2rem = 32px against the 44px tablet floor — a REAL below-floor control, named
+  // and counted rather than quietly absorbed. Recorded here rather than fixed
+  // because the button's sizing is that slice's design call, exactly as the
+  // sibling entries above say of their sheets.
+  { key: 'features/sales/CartPanel.css::.pos-cart-order-type-btn::min-height: 2rem', why: "Cart order-type segment; 32px against the 44px tablet floor. Owned by the order-type slider slice." },
 ];
 
 function isSkipSelector(selectors: string): boolean {
@@ -819,7 +825,10 @@ describe('Touch target sizing compliance', () => {
     //   * features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-section-btn
     //     — the sheet gained a (pointer: coarse) override at :483.
     // The sibling .kds-routing-btn entry is NOT fixed and stays.
-    expect(KNOWN_VIOLATIONS.length).toBe(13);
+    // 13 -> 14 on 2026-10-09: the order-type slider's segment button
+    // (`ec1c50336`) is a new below-floor control, added with its reason rather
+    // than fixed, for the same slice-fence reason as its siblings.
+    expect(KNOWN_VIOLATIONS.length).toBe(14);
   });
 
   it('every exemption is justified, and none is a silent bypass', () => {
