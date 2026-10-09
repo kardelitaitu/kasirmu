@@ -795,6 +795,57 @@ file argues its own case for being a pin rather than a fix (arming the route on 
 token would make the whole screen vanish for a session that can open it today), and it still
 passes at HEAD. Not mine to resolve; recorded as verified-still-accurate.
 
+### F20 — Auto-Print KOT WIRED (round 57) — `542e8db92`
+
+The first of F19's five inert controls to be implemented rather than recorded, and the
+D5 entry the plan has carried for many rounds:
+
+> *Auto-Print KOT | `restaurant.auto_print_kitchen` | a POS-side KOT send on save/hold.
+> `print_kds_chit_scoped` and `createKdsOrderFromSaleScoped` EXIST, so this is a call-site
+> addition, not new plumbing.*
+
+That assessment was right, and the pieces were closer than it suggested. `createKdsOrderFromSaleScoped`
+was **already called** on both checkout paths; the missing half was `printKdsChitScoped`,
+which had **zero callers under `ui/src`** — a gap the factory-surface guard already
+records (`mockFactorySurface.test.ts:240`). So this was not "build a KOT path", it was
+**join two halves that were each already there** and gate the second on the setting.
+
+**The plumbing follows the house pattern rather than inventing one.** The modal reads no
+`restaurant.*` key itself; `PosScreen` reads it into state and passes it down, exactly as
+`save_tab` and `customer_name` reach it. The read mirrors its three siblings: `null` =
+never written, a fail-safe default, and a `.catch` that keeps `null`.
+
+**The default is `true`, and three cases pin why.** An omitted prop (modal mounted before
+`PosScreen`'s read settles, or a caller that never supplies it) must keep printing;
+defaulting to `false` would silently stop every kitchen printing tickets. So: ON prints one
+chit per KDS order, OFF creates the order but prints nothing, and **absent prints**. The
+KDS ORDER is created either way — it feeds the Kitchen Display and the course publish,
+neither of which is paper-dependent; only the paper is optional, which is what the switch
+says.
+
+**Two implementation details worth keeping:**
+
+- **One helper, called from both checkout paths.** The cash and QRIS branches each have
+  their own `catch`, and `PosScreenCoreFlow.test.tsx:618-620` already records that
+  "removing one call site leaves this test green". A duplicated helper is how one site
+  keeps working while the other silently stops.
+- **Never throws.** A failed chit must not fail the sale, suppress the remaining tickets,
+  or make the caller skip `publishFiredCourses` — the sale is committed and a ticket is
+  recoverable; the money is not.
+
+**The existing guards caught my own change, which is the system working.** `deadSettingsKey.test.ts`
+declares `auto_print_kitchen` dead and **fails when it gains a reader**; wiring it tripped
+that third case, and its message said exactly what to do. Its `wouldNeed` note had also
+predicted this fix. Entry removed.
+
+Verified: 17 payment suites / **422 passed**; full suite **683 files / 11,490 passed**;
+typecheck 0; eslint 0 **and 0 warnings** (I fixed two real `exhaustive-deps` warnings my
+helper introduced, and moved the helper above its first user rather than suppress them);
+bundle parity 0 missing. Kill-tested by dropping the setting from the condition.
+
+**Still inert:** `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`.
+`sound_chime` is the remaining D5 key and needs a POS sound path (`useSound` is KDS-only).
+
 ---
 
 ## 3. Repair plan
