@@ -664,6 +664,49 @@ round 51 disproved.
 Verified: 4 payment suites / **115 passed**, typecheck 0, eslint 0, bundle parity 0 missing.
 Kill-tested by restoring the exclusion.
 
+### F18 — the "Automatic Cash Drawer" toggle is never read (round 54) — FIXED `c988d7e57`
+
+Third of the family (F16 dead toggle, F17 absent toggle, F18 **saved toggle nobody reads**).
+The payments screen renders "Automatic Cash Drawer" as a switch (`:997-1010`) and persists it
+into the cash rail's parameters as `autoKick` (`:1006`), reading it back on load (`:386`) — so it
+is genuine saved state.
+
+But the kick site read only `sessionToken && hasCashTender` (`PaymentModal.tsx:1207`), never the
+parameter:
+
+```ts
+const hasCashTender = method === 'cash' || (splitMode && splits.some((s) => s.method === 'cash'));
+if (sessionToken && hasCashTender) { await openCashDrawerScoped(sessionToken); }
+```
+
+A cashier who switched auto-kick **OFF** still got the drawer popping open on every cash tender.
+The same shape as F16, with a **physical** consequence instead of a hidden one.
+
+**The fix adds `railParam` with an explicit fallback**, rather than reusing `railOffered` (`qris`
+semantics) or `coreRailWithheld` (`open_bill` semantics) — this is a third question: read a
+BOOLEAN the operator wrote into a free-form `parameters` bag. It tolerates no rail row, no
+`parameters`, unparseable JSON, a non-object bag, and a non-boolean value, returning the
+caller's `fallback` in every one.
+
+**The fallback must be `true`, and a case pins it.** Defaulting to `false` would silently stop
+kicking the drawer for every store whose cash rail predates the toggle — the direction of
+failure nobody notices. Three cases: OFF does not kick, ON does, and **no `autoKick` key at all
+still kicks**.
+
+**A self-inflicted detour worth recording.** I first put the cases in the wrong `describe`
+(`rail`/`mountWithRails` are scoped to the rails block), then wrote a Node script to move them
+which matched **16** duplicate `renderWithFluent` blocks instead of my 2 and rewrote 301 lines of
+another lane's — and my own — test file. Reverted the file to HEAD and redid it by hand with a
+narrow anchor. **A regex over a test file is not a parser**; round 43 taught this about JSX and I
+relearned it about test scaffolding. The real lesson: when a mechanical edit's match count is not
+what you predicted, stop and revert rather than inspect.
+
+Also fixed a real `react-hooks/exhaustive-deps` warning my own change introduced (`paymentRails`
+added to `handleComplete`'s dep array) rather than leaving it as noise.
+
+Verified: 10 payment suites / **246 passed**, typecheck 0, eslint 0 errors **and 0 warnings**,
+bundle parity 0 missing. Kill-tested by dropping `autoKickDrawer` from the condition.
+
 ---
 
 ## 3. Repair plan
