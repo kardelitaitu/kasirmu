@@ -393,77 +393,95 @@ export default function RestaurantReceiptsScreen({
         .then((prefs) => {
           const p = prefs as Record<string, string | undefined>;
           if (originalsRef.current) {
-            if (p['resto_rcpt_header_title'] !== undefined) {
-              const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
-              setHeaderTitle(v);
-              originalsRef.current.headerTitle = v;
-            }
-            if (p['resto_rcpt_header_line1'] !== undefined) {
-              const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
-              setHeaderLine1(v);
-              originalsRef.current.headerLine1 = v;
-            }
-            if (p['resto_rcpt_header_line2'] !== undefined) {
-              const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
-              setHeaderLine2(v);
-              originalsRef.current.headerLine2 = v;
-            }
-            if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
-              const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
-              setLogoPosition(v);
-              originalsRef.current.logoPosition = v;
-            }
-            if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
-              const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
-              setFontSize(v);
-              originalsRef.current.fontSize = v;
-            }
-            if (p['resto_rcpt_show_code'] !== undefined) {
-              const v = p['resto_rcpt_show_code'] === 'true';
-              setShowReceiptCode(v);
-              originalsRef.current.showReceiptCode = v;
-            }
-            if (p['resto_rcpt_show_dt'] !== undefined) {
-              const v = p['resto_rcpt_show_dt'] === 'true';
-              setShowDateTime(v);
-              originalsRef.current.showDateTime = v;
-            }
-            if (p['resto_rcpt_show_staff'] !== undefined) {
-              const v = p['resto_rcpt_show_staff'] === 'true';
-              setShowStaffName(v);
-              originalsRef.current.showStaffName = v;
-            }
-            if (p['resto_rcpt_show_footer'] !== undefined) {
-              const v = p['resto_rcpt_show_footer'] === 'true';
-              setShowFooter(v);
-              originalsRef.current.showFooter = v;
-            }
-            if (p['resto_rcpt_show_item_notes'] !== undefined) {
-              const v = p['resto_rcpt_show_item_notes'] === 'true';
-              setShowItemNotes(v);
-              originalsRef.current.showItemNotes = v;
-            }
-            if (p['resto_rcpt_thousands_sep'] !== undefined) {
-              const v = p['resto_rcpt_thousands_sep'] === 'true';
-              setShowThousandsSeparator(v);
-              originalsRef.current.showThousandsSeparator = v;
-            }
-            if (p['resto_rcpt_show_decimals'] !== undefined) {
-              const v = p['resto_rcpt_show_decimals'] === 'true';
-              setShowDecimals(v);
-              originalsRef.current.showDecimals = v;
-            }
-            if (p['resto_rcpt_tax_rate'] !== undefined) {
-              const parsed = Number(p['resto_rcpt_tax_rate']);
-              if (!isNaN(parsed)) {
-                const v = clamp(parsed, 0, 100);
-                setTaxRatePercent(v);
-                originalsRef.current.taxRatePercent = v;
+            try {
+              if (p['resto_rcpt_header_title'] !== undefined) {
+                const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
+                setHeaderTitle(v);
+                originalsRef.current.headerTitle = v;
+                localStorage.setItem('resto_rcpt_header_title', v);
               }
-            }
-            if (p['resto_rcpt_logo']) {
-              setBusinessLogo(p['resto_rcpt_logo']);
-              originalsRef.current.businessLogo = p['resto_rcpt_logo'];
+              if (p['resto_rcpt_header_line1'] !== undefined) {
+                const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
+                setHeaderLine1(v);
+                originalsRef.current.headerLine1 = v;
+                localStorage.setItem('resto_rcpt_header_line1', v);
+              }
+              if (p['resto_rcpt_header_line2'] !== undefined) {
+                const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
+                setHeaderLine2(v);
+                originalsRef.current.headerLine2 = v;
+                localStorage.setItem('resto_rcpt_header_line2', v);
+              }
+              if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
+                const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
+                setLogoPosition(v);
+                originalsRef.current.logoPosition = v;
+                localStorage.setItem('resto_rcpt_logo_pos', v);
+              }
+              if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
+                const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
+                setFontSize(v);
+                originalsRef.current.fontSize = v;
+                localStorage.setItem('resto_rcpt_font_size', v);
+              }
+              if (p['resto_rcpt_show_code'] !== undefined) {
+                const v = p['resto_rcpt_show_code'] === 'true';
+                setShowReceiptCode(v);
+                originalsRef.current.showReceiptCode = v;
+                localStorage.setItem('resto_rcpt_show_code', String(v));
+              }
+              if (p['resto_rcpt_show_dt'] !== undefined) {
+                const v = p['resto_rcpt_show_dt'] === 'true';
+                setShowDateTime(v);
+                originalsRef.current.showDateTime = v;
+                localStorage.setItem('resto_rcpt_show_dt', String(v));
+              }
+              if (p['resto_rcpt_show_staff'] !== undefined) {
+                const v = p['resto_rcpt_show_staff'] === 'true';
+                setShowStaffName(v);
+                originalsRef.current.showStaffName = v;
+                localStorage.setItem('resto_rcpt_show_staff', String(v));
+              }
+              if (p['resto_rcpt_show_footer'] !== undefined) {
+                const v = p['resto_rcpt_show_footer'] === 'true';
+                setShowFooter(v);
+                originalsRef.current.showFooter = v;
+                localStorage.setItem('resto_rcpt_show_footer', String(v));
+              }
+              if (p['resto_rcpt_show_item_notes'] !== undefined) {
+                const v = p['resto_rcpt_show_item_notes'] === 'true';
+                setShowItemNotes(v);
+                originalsRef.current.showItemNotes = v;
+                localStorage.setItem('resto_rcpt_show_item_notes', String(v));
+              }
+              if (p['resto_rcpt_thousands_sep'] !== undefined) {
+                const v = p['resto_rcpt_thousands_sep'] === 'true';
+                setShowThousandsSeparator(v);
+                originalsRef.current.showThousandsSeparator = v;
+                localStorage.setItem('resto_rcpt_thousands_sep', String(v));
+              }
+              if (p['resto_rcpt_show_decimals'] !== undefined) {
+                const v = p['resto_rcpt_show_decimals'] === 'true';
+                setShowDecimals(v);
+                originalsRef.current.showDecimals = v;
+                localStorage.setItem('resto_rcpt_show_decimals', String(v));
+              }
+              if (p['resto_rcpt_tax_rate'] !== undefined) {
+                const parsed = Number(p['resto_rcpt_tax_rate']);
+                if (!isNaN(parsed)) {
+                  const v = clamp(parsed, 0, 100);
+                  setTaxRatePercent(v);
+                  originalsRef.current.taxRatePercent = v;
+                  localStorage.setItem('resto_rcpt_tax_rate', String(v));
+                }
+              }
+              if (p['resto_rcpt_logo']) {
+                setBusinessLogo(p['resto_rcpt_logo']);
+                originalsRef.current.businessLogo = p['resto_rcpt_logo'];
+                localStorage.setItem('resto_rcpt_logo', p['resto_rcpt_logo']);
+              }
+            } catch {
+              // LocalStorage write is best-effort write-through cache; memory state is authoritative
             }
           }
           setLoadFailed(false);

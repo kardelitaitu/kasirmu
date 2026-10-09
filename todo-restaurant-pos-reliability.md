@@ -1,7 +1,7 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE (P6's third screen landed round 74;
-> P1 re-audited complete round 75). Remaining: F11, D6, and the F19/F23/F24 owner calls.**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE (P6 landed round 74; P1 re-audited complete round 75; F11 landed round 78). Remaining: D6, and the F19/F23/F24 owner calls.**
+>
 > **Header corrected 2026-10-09 (round 75):** it read *"P6 2 of 3 screens"* and *"P1's last
 > two keys (owner decision: they have no consumer at all)"*. **Both went stale in the same
 > way — the work landed and the summary was not re-read.** P6's third screen was unblocked
@@ -1775,10 +1775,10 @@ Authority is **D3**: the DB wins, localStorage is a write-through cache. The wri
 is idempotent when the key was unset, because the value came FROM localStorage in
 that case.
 
-**F11 (`resto_rcpt_*`) is NOT done** and is deliberately left open: those keys have
-a different reader path (`RestaurantReceiptsScreen` overlays
-`getUserPreferencesScoped`) and deserve their own phase rather than being folded in
-here.
+**F11 (`resto_rcpt_*`) LANDED (round 78).** `RestaurantReceiptsScreen` now writes
+loaded `getUserPreferencesScoped` values through to `localStorage` on load,
+ensuring the client cache is reconciled with durable DB preferences (D3).
+Kill-tested and verified with `RestaurantReceiptsScreen.test.tsx` (39 passed).
 
 - **Acceptance met:** `npx vitest run RestaurantSettingsScreen` → **10 tests
   passed**, including a case asserting localStorage carries the loaded DB value.
@@ -3557,6 +3557,7 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | dead control | `cd ui && npx vitest run unreadStateFlag` (kill-test v1) | **PASSED against the bug** | detector counted comment mentions; fixed to strip comments |
 | 2026-10-09 | dead control | same, kill-test v2 | **FAIL (killed)** | names `SalesHistoryScreen.tsx :: _refundsLoading` |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 12) | exit 0 | **678 files, 11389 passed / 24 skipped / 3 todo** |
+| 2026-10-09 | F11 | `cd ui && npx vitest run RestaurantReceiptsScreen -t 'when remote preferences resolve'` (kill-test) | **FAIL (killed)** | asserted WRONG TITLE -> expected 'REMOTE RESTO'; restored, passes (39 tests) |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:

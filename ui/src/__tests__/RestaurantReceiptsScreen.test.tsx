@@ -566,6 +566,8 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
       expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
       const saveBtn = screen.getByRole('button', { name: /Save/i });
       expect(saveBtn).toBeDisabled();
+      expect(localStorage.getItem('resto_rcpt_header_title')).toBe('REMOTE RESTO');
+      expect(localStorage.getItem('resto_rcpt_tax_rate')).toBe('12');
     });
   });
 
