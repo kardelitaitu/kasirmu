@@ -5509,3 +5509,53 @@ here it had stopped holding for 21 of 22, and nothing re-read it.
 
 Verified: `CloudSyncSettings` **36 passed | 1 skipped**; full suite **698 files / 11,600 passed,
 3 skipped, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
+### F47 — the last vacuous assertion, and an audit of the five remaining markers (round 110) — `6431df99f`
+
+Round 109 removed 21 skips. This round audited **what was left** and found one live vacuous assertion.
+
+#### The five remaining markers were all honest
+
+| Marker | Reason given | Verdict |
+|---|---|---|
+| `CloudSyncSettings` queue-summary skip | needs the nav sidebar | **recently re-parked with its reason (round 109)** |
+| `PosScreenCoreFlow` FastPIN skip | `ensureCart()` only reachable via the price-override chain | **accurate** — verified at `CartPanel.tsx:866-871` |
+| `PaymentModalEdgeCases` × 2 `it.todo` | *"previously an `expect(true).toBe(true)` stub … demoted so the gap shows up"* | **exemplary** |
+| `SalesReportScreen` `it.todo` | needs the loading skeleton to stay mounted; *"was `expect(true).toBe(true)`"* | **exemplary** |
+
+**Three of the five are the F36 fix already applied by someone else** — a vacuous stub demoted to
+`it.todo`, with the demotion and its reason written down. That is the treatment this session has been
+applying, found in the tree ahead of me.
+
+#### The one that was still vacuous
+
+`website/src/components/__tests__/locale-switcher.test.ts:222` asserted **`expect(true).toBe(true)`**
+after `runScript(SCRIPT)` — which reports green whether the script initialised the switcher or threw
+inside its own `new Function` body, because a throw there does not fail the case.
+
+**Replaced with the script's actual contract:** the pill is positioned over the active link.
+
+#### The replacement corrected me twice, which is the point
+
+| Assertion | My guess | Measured |
+|---|---|---|
+| `pill.style.left` | `50px` | **`-1px`** |
+| `pill.style.width` | `50px` | **`52px`** |
+
+`LocaleSwitcher.astro:75` confirms the first — `btnRect.left - switcherRect.left - 1` — and the
+second is the switcher's 102 minus the 3px inset at each end.
+
+**A vacuous assertion cannot correct its author.** Both wrong guesses were caught by the test I was
+writing, within one run each, which is the clearest demonstration available of what
+`expect(true).toBe(true)` costs: it sat there reporting green and never once disagreed with anyone.
+
+**Kill-tested:** disabling the positioning (`:75`) fails the new case and leaves the other 32 passing.
+
+#### What was NOT changed
+
+The four other markers. Each carries a reason that still holds, and **a marker with a true reason is
+not debt** — rewriting them to look tidier would have removed information. `PosScreenCoreFlow`'s skip
+in particular needs a feature-level integration harness, not a test edit.
+
+Verified: `locale-switcher` **33 passed**; website suite **72 files / 1,545 passed, 0 failed**; UI suite
+**698 files / 11,600 passed, 3 skipped, 3 todo, 0 failed**; bundle parity 0 missing.
