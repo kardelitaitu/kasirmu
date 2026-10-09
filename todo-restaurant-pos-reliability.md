@@ -1823,6 +1823,79 @@ strength of a mechanism I had not isolated.
 Verified: full suite **696 files / 11,558 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
 0 missing.
 
+### F40 — CAUSE FOUND AND FIXED (round 90) — `267e23e9e`
+
+Round 89 left this OPEN because I could not isolate the mechanism. The next round found it, and the
+answer was in the `dirty` guard all along.
+
+#### The mechanism
+
+```ts
+originalsRef = useRef({ drafts: [], defaultEdcTerminalId: '' })   // :326
+if (primary) { … originalsRef.current.drafts = fullDrafts.map(…) } // :377-395, the ONLY seed
+dirty = (loading || originalsRef.current.drafts.length === 0) ? false : …  // :534
+```
+
+**When `primary` is falsy, the only seeding site never runs.** But the screen still renders rails,
+because `drafts` comes from the **useState initializer** (`:248`), which builds the core set from
+`CORE_DEFAULTS` independently of the load. So:
+
+- rails **render** (initializer) — which is why this looked like a working screen;
+- the baseline stays the initial **`[]`**;
+- `dirty` short-circuits at `length === 0` and returns **false for ever**;
+- Save is permanently disabled, and the operator's toggle **cannot be persisted at all**.
+
+That is exactly the tablet state: an empty `local_payment_methods` table, rails visible, toggles
+flipping, `Save` disabled, and zero rows after every attempt.
+
+**Why `mergeCoreRails` was a red herring, and why round 89's cases passed.** I had focused on the
+two `mergeCoreRails` branches (persisted vs defaulted). Both are fine — the defect is not in how
+rails are *built* but in whether the **baseline is ever seeded**. jsdom passes because the test's
+`getPrimary` mock returns `{ id: 'loc-1' }`, taking the `if (primary)` path; the device returns
+nothing, taking neither. **The mocks were more generous than the device.**
+
+#### The fix
+
+The load's `finally` seeds the baseline from the **current drafts** when it was never seeded,
+before clearing `loading`:
+
+```ts
+if (!cancelled) {
+  if (originalsRef.current.drafts.length === 0) {
+    originalsRef.current.drafts = draftsRef.current.map((d) => ({ ...d }));
+    originalsRef.current.defaultEdcTerminalId = defaultEdcTerminalIdRef.current;
+    setDirtyVersion((v) => v + 1);
+  }
+  setLoading(false);
+}
+```
+
+Seeding from the shown list means the screen starts **clean** and every later edit is correctly
+dirty — the behaviour the loaded path already has. Two refs carry the values in rather than adding
+`drafts` to the dependency array, which would re-run the whole load on every toggle.
+
+**Two lint errors in my first version, both real and both fixed rather than suppressed:**
+`no-unsafe-finally` for a `return` inside `finally`, and `react-hooks/exhaustive-deps` for the two
+values the finally block reads. The refs are the honest resolution — they express "read the current
+value without depending on it", which is exactly the requirement.
+
+#### Tests, and why round 89's were the wrong shape
+
+Two cases now mock `getPrimary` → `null`, the device's condition, and assert Save becomes **enabled**
+after a rail toggle and the header reads **"Unsaved changes"**. **Both fail with the fix disabled** —
+verified twice, before and after the refactor.
+
+Round 89's three cases passed because they varied the RAIL LIST while leaving `primary` truthy.
+**They tested the wrong variable.** The corrected header note now says so, since a reader who trusted
+them would think this surface was covered.
+
+**The lesson is the one F35 taught, one layer out:** a kill-test proves the input reaches the code —
+and a MOCK can stop the input reaching the code just as effectively as a wrong fixture value. Here
+the mock supplied a location the device does not have.
+
+Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
+bundle parity 0 missing; kill-tested both directions.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
