@@ -2162,6 +2162,55 @@ the element, then assert the copy separately if the copy matters.
 Verified: `PaymentModalSaleFlow` **52 passed**; full suite **696 files / 11,563 passed, 0 failed**;
 typecheck 0; eslint 0 errors; bundle parity 0 missing.
 
+### F42 finished — the NEGATIVES, and the button nobody converted (round 97) — `765181c25`
+
+Round 95 added the sidebar testids; round 96 fixed the settle button. This round closed the sidebar
+file, and **the most valuable part was the assertion type I had not touched: the negatives.**
+
+#### Why a negative addressed by copy is worse than a positive
+
+```ts
+expect(within(cartPanel).queryByRole('button', { name: 'Kitchen Display' })).toBeNull();
+```
+
+`toBeNull()` on a name lookup passes for **two** different reasons: the row is absent (what the case
+claims) **or the name no longer exists anywhere** (a copy change). The second is silent — the test
+keeps reporting that the relocation worked while checking nothing. Both negatives now use
+`queryByTestId`, so absence means absence.
+
+#### The kill-test found a second, unconverted button
+
+Renaming `kds-title` failed **two** cases, and reading which assertions broke was the finding:
+
+| Failure | Verdict |
+|---|---|
+| `expected 'Begin a shift' to contain 'Open a new shift'` | **intended** — the secondary copy check doing its job |
+| `Unable to find … name "Kitchen Display"` | **a real gap** — a retail assertion I had left coupled |
+
+The second pointed at `CartPanel.tsx:593-601`: the cart panel's KDS button, **icon-only**, its
+accessible name coming from `kds-title` — and a **different element** from the sidebar's row on the
+other branch of the same feature. It had no testid, so nothing could address it but copy.
+
+**That distinction is why I did not simply reuse `restaurant-sidebar-kds`.** The retail workspace
+renders the cart panel's button and no sidebar; the restaurant workspace renders the sidebar's. Two
+elements, one label. Converting the retail assertion to the sidebar testid would have looked correct
+and tested the wrong node — so it got its own (`pos-cart-kds-btn`).
+
+#### Re-killed, and now the failure set is exactly right
+
+With both bundle strings renamed, **one** case fails — the secondary copy check — with a message
+naming the copy rather than a missing element. **The retail block no longer breaks**, which is the
+proof the conversion was complete rather than merely plausible.
+
+**Three rounds, one behaviour, now closed on this surface: F38 (the toast), F42 (the sidebar),
+the follow-up (the settle button), and this one (the negatives and the retail button).** The rule
+that emerged is worth stating once: **address the element by testid; assert the copy separately and
+secondly, so a copy change reads as a copy change.**
+
+No behaviour changed — one testid attribute added to an existing button. Verified: `RestaurantPosSidebar`
+**21 passed**; full suite **696 files / 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors;
+bundle parity 0 missing.
+
 Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
 bundle parity 0 missing; kill-tested both directions.
 
