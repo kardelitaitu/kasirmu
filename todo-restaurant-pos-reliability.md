@@ -2246,6 +2246,56 @@ asserted.
 
 No behaviour changed — two testid attributes on existing buttons. Verified: `RestaurantMenu`
 **57 passed**; full suite **696 files / 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors;
+
+### D6 — RESOLVED (round 99): the printer groups thousands now
+
+**D6's last open row is closed, by another lane, and this round verified it rather than trusting the
+comment.** The row was: *the printer cannot group thousands, so an Indonesian receipt prints
+`Rp15000` while the on-screen preview shows `Rp 15.000`.*
+
+#### What landed
+
+`crates/kasirmu-hal/src/drivers/receipt.rs` gained a `ThousandSeparator` enum (`:87-97`) with four
+variants and `from_setting` (`:107`), and `format_money` now groups the **major** part before the
+decimal is attached (`:355`), so a separator can never split the fraction.
+
+**Three properties make this safe, and I checked each rather than assuming:**
+
+| Property | Evidence |
+|---|---|
+| `None` is the DEFAULT, so no existing store is restyled | `:89-90`; ungrouped returns `major` untouched (`:357`) |
+| an unrecognised stored value can only **lose** grouping, never invent it | `from_setting` maps everything else to `None` (`:107-113`) |
+| the setting actually REACHES the code | `apps/mobile-tauri/src/commands/hardware.rs:339-350` reads the key and builds the config |
+
+That last row is the one that decides whether this is a feature or a decoration — the failure mode
+where a config field exists, is consumed, and is populated by nobody. It is populated.
+
+**The fallback is the nicest part.** With no explicit setting, `:351-358` checks the default currency
+and picks `Dot` for **IDR** — so the primary market gets grouping on a receipt **without the merchant
+having to find the setting**. A store on any other currency keeps the old behaviour.
+
+#### The consequence for F41's map, which is the part this round owns
+
+`CURRENCY_THOUSANDS_SEPARATOR` was **the entry that opened `ACCESSOR_WITHOUT_CONSUMER`** in round 93 —
+the key with a getter, a setter, and no third party. **That entry is now false**, and the sweep proves
+it: with the entry removed the guard still passes, because `hardware.rs:350` is a genuine production
+reader the accessor rule can see.
+
+**So the entry is deleted, not kept green.** A recorded debt that gets paid must leave the ledger, or
+the map becomes a list of things nobody re-measures. The comment left in its place names the commit
+trail for anyone who wonders why a key they saw flagged is no longer there.
+
+**This is the good version of the pattern this session kept finding.** Rounds 66/93/94 were a guard
+reporting coverage it did not have; here a guard reported a **debt that was genuinely paid off**, and
+retiring the entry is the correct response to a green. **A guard that cannot lose an entry is not
+tracking anything.**
+
+D6 now stands fully closed: the printer groups, the setting reaches it, and the staleness this left
+in the F26/F27 sweep is cleaned up. The four remaining `ACCESSOR_WITHOUT_CONSUMER` rows are the
+`PG_SYNC_*` family, which are unrelated to D6 and still real.
+
+Verified: full suite **696 files / 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle
+parity 0 missing.
 bundle parity 0 missing.
 
 No behaviour changed — one testid attribute added to an existing button. Verified: `RestaurantPosSidebar`
