@@ -565,6 +565,43 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 30 — the third site, and why the tests could not see it
+
+Round 29 fixed the retry's stored enum. Sweeping the same field for a fourth time found
+it: the retry builds its **own** `PrintSalesReceiptArgs` (`PaymentModal.tsx:1589`) and
+filled `method` with `method.toUpperCase()` (`:1621`) while the normal path uses
+`methodLabel` (`:1222`). So the receipt a customer got depended on whether the sale
+happened to hit a stock shortfall — and a merchant's configured QRIS label was dropped on
+that path, because the resolver was never consulted.
+
+Proved by observation, not reasoning: a temporary log printed `PRINTED_METHOD="CASH"`
+from the retry's receipt.
+
+**Then the interesting part: three attempts at a behavioural test, and the first two
+passed against the bug.** For a CASH sale the correct label IS `'CASH'`, which the buggy
+`toUpperCase()` also produces — so a cash assertion cannot distinguish them. The
+distinguishing tender is QRIS with a custom rail label, and the QRIS tab would not mount
+inside that suite (the rail fetch resolves after mount, and `getByRole('radio')` never
+found it). I removed the test rather than keep one that passes for the wrong reason.
+
+**So the guard is static, and that is the right call here.**
+`tenderValueSingleSource.test.ts` reads the production source and asserts:
+
+1. `storedMethod` and `methodLabel` are each derived exactly once;
+2. no send site rebuilds the tender inline (`method:` on a line using
+   `method.toUpperCase()`);
+3. the receipt sends `method: methodLabel`, the column sends
+   `paymentMethod: storedMethod`, the retry sends `paymentMethod={storedMethod}`.
+
+A source check does not care which tender a test happens to drive, which is exactly the
+limitation that defeated the behavioural version. Four kill-tests, two shapes: reverting
+the retry receipt fails case 2 naming the line, and reverting the stored column fails
+case 3.
+
+The lesson worth keeping: **when a bug's two values coincide for the common input, a
+test over that input proves nothing** — check the guard by reverting the fix and watching
+it fail. `2dc4d6110`.
+
 ### Round 29 — the SAME tender, two spellings, in one attempt
 
 Round 28 fixed the receipt's label. This round I swept the class instead of waiting to trip
