@@ -551,6 +551,41 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+### Round 16 — negative results, recorded (the payment popup resists the classes I know)
+
+I swept the payment popup and the sidebar-settings save path for the classes that have
+produced real bugs elsewhere in this plan, and **found no new defect in them**. That is
+a result worth recording, because the alternative is a future round re-investigating
+the same surfaces.
+
+| Surface | Class checked | Result |
+|---|---|---|
+| `PaymentModal.tsx` | unread state flags | 0 |
+| `PaymentModal.tsx` + `payment/` | latched disabled flags | 0 |
+| `PaymentModal.tsx` + `payment/` | direct F4 (`catch` seeds a baseline) | 0 |
+| `PaymentModal.tsx` + `payment/` | hardcoded a11y strings | 0 |
+| restaurant feature | permanently-inert controls | 0 |
+| `RestaurantSettingsScreen` | pre-await state/localStorage writes | 0 — writes AFTER the await (P3/F5) |
+| `useSplitTenderState.ts` | row-invariant violations | 0 — floor and monotonic ids enforced inline |
+| `useLocalPaymentRails.ts` | fail-open contract | correct, and documented by contract |
+
+**The one hypothesis that looked like a real double-charge, and was not.** The error
+banner's Retry is a RAW `<button>` (`PaymentModal.tsx:2059`), not the shared `<Button>`,
+so it inherits none of that component's `loading`-disable behaviour — and `complete()`
+(`:991`) opens with `setProcessing(true)` and **never re-checks `processing`**. That
+reads exactly like a double-settle window: `startSaleScoped` + `complete_sale` twice for
+one basket.
+
+It is already covered, and deliberately. `PaymentModalEdgeCases.test.tsx:403` pins it:
+`setPaymentError(null)` in the same handler unmounts the `{paymentError && ...}` block
+that owns the Retry node, so a second click has nothing to land on. I ran it — exactly
+two `complete_sale_scoped` calls, first fail then success. The comment there states the
+kill-test result (deleting `setPaymentError(null)` yields three calls). **I did not
+"fix" it.**
+
+Also checked: there is no Enter-submit path (`onKeyDown` appears once, for Escape in the
+customer search), so the keyboard cannot reach a second `complete()` either.
+
 ### Round 15 — a HEAD-level gate regression fixed, and a divergence pinned
 
 **A commit landed while I worked that turned two gates red, and neither was mine.**
