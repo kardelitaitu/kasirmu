@@ -627,6 +627,7 @@ payment-toast-customers-failed = Gagal memuat pelanggan
 payment-toast-loyalty-failed = Gagal memuat akun loyalitas
 payment-toast-points-value-failed = Gagal memuat nilai poin
 payment-toast-kds-failed = Pembayaran berhasil, tetapi tiket dapur gagal dibuat — beri tahu dapur secara manual
+payment-toast-loyalty-redeem-failed = Pembayaran berhasil, tetapi poin loyalitas TIDAK dipotong — perbaiki poin pelanggan secara manual
 payment-toast-print-failed = Tidak ada yang tercetak — periksa bahwa printer sudah diatur dan dapat dijangkau
 payment-toast-invoice-issued = Faktur pajak berhasil diterbitkan
 payment-toast-invoice-failed = Gagal menerbitkan faktur pajak
