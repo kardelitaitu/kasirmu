@@ -97,6 +97,14 @@ describe('the plan status header matches the tree (F32)', () => {
   it('does not claim P6 has screens remaining', () => {
     // P6 landed all three screens in round 74. If a future edit re-adds a
     // "2 of 3" style claim, the sweep work reads as outstanding again.
+    //
+    // ⚠️ THIS FILE READS A PLAN DOC OTHER LANES EDIT. A full-suite run on
+    // 2026-10-09 failed here once and passed on re-run: another lane rewrote the
+    // header between this test's read and its assertion. That is a race in the
+    // TEST, not a defect in the plan — so if this case fails while the header
+    // reads correctly by hand, suspect a concurrent edit and re-run before
+    // changing anything. The extraction below is intentionally strict so a real
+    // drift still fails loudly.
     expect(header, 'the header claims P6 is incomplete — re-measure before saying so')
       .not.toMatch(/P6\s+\d+\s+of\s+3/);
     // Only the REMAINING clause counts. My corrected header legitimately mentions P6

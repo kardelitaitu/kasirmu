@@ -124,4 +124,44 @@ describe('rail parameters have a reader (F19)', () => {
         'behaviour that does not happen: ' + unwired.join(', '),
     ).toEqual([]);
   });
+
+  it('has no STALE allow-list entry: a listed key that gained a reader must be removed', () => {
+    // ⚠️ THE MISSING DIRECTION, added 2026-10-09. The case above only checks one
+    // way: a written key with no reader must be listed. It never checked the
+    // INVERSE, so an entry could stay in ALLOWED_UNWIRED after its control was
+    // wired — leaving the file asserting a defect that no longer exists, which is
+    // the rot this plan has now been caught by four times (rounds 74-77).
+    //
+    // Every sibling guard in this suite carries the rule: `baselineLoadSignal`
+    // fails a stale exemption, `deadSettingsKey` fails an entry that gains a
+    // reader, `planStatusAccuracy` fails a stale header. This one did not.
+    const keys = writtenRailParams();
+    const stale: string[] = [];
+
+    for (const key of keys) {
+      if (!ALLOWED_UNWIRED[key]) continue;
+      // An entry is stale when a real reader exists outside the writer files.
+      const re = new RegExp('\\b' + key + '\\b');
+      const readers = files.filter(
+        (f) => !WRITER_FILES.has(f.path) && re.test(f.text),
+      );
+      if (readers.length > 0) {
+        stale.push(key + ' -> ' + readers.map((r) => r.path).join(', '));
+      }
+    }
+
+    expect(
+      stale,
+      'these ALLOWED_UNWIRED keys now HAVE a reader, so the entry and its INERT ' +
+        'comment are out of date. Delete the entry (and update the F19 record) so ' +
+        'the list cannot outlive the condition it records: ' + stale.join('; '),
+    ).toEqual([]);
+  });
+
+  it('the allow-list is not empty-by-accident (guards the case above)', () => {
+    // Without this, a typo that emptied ALLOWED_UNWIRED would make the stale
+    // check above iterate nothing and pass, while every INERT control went
+    // unrecorded and the first case still failed only for NEW keys.
+    expect(Object.keys(ALLOWED_UNWIRED).length, 'the allow-list lost its entries').toBeGreaterThan(5);
+  });
 });
