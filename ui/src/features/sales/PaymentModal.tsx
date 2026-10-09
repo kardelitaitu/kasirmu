@@ -1210,7 +1210,20 @@ retryCurrencyLoad,
           cartCurrency,
           fallbackTotalMinor: effectiveTotalInCartCurrency,
           // Differs from the gateway site on purpose: split mode prints one row
-          // per tender, and a single cash tender prints with its real change.
+          // per tender; a lone cash tender prints its real change.
+          //
+          // `change: null` in the split arm is CORRECT and not an omission: a
+          // split cannot produce change at all. `splitComplete` requires the rows
+          // to sum to the payable EXACTLY (useTenderMath.ts:184,
+          // `splitTotals.remaining !== 0n`), so no single row can exceed it and
+          // there is never a surplus to hand back. Change is only reachable on the
+          // lone-cash path below, where the tender may exceed the total.
+          //
+          // This comment used to read "a single cash tender prints with its real
+          // change", which described behaviour the split arm cannot have — a
+          // cash row inside a split exists, but it is always exact, so a reader
+          // who trusted the old wording would go looking for a missing
+          // change computation that was never supposed to be here.
           payments: paymentSplits
             ? paymentSplits.map((ps) => ({
                 method: ps.method,

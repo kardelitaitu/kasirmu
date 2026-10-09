@@ -236,6 +236,67 @@ describe('PaymentModal — sale flow', () => {
     expect(payment.method).not.toBe('cash');
   });
 
+  it('prints one receipt row per split tender, each with NO change', async () => {
+    // Pins the contract that the comment at PaymentModal.tsx:1212-1223 explains.
+    //
+    // The split arm passes `change: null` for every row, and that is CORRECT, not
+    // an omission: `splitComplete` requires the rows to sum to the payable
+    // EXACTLY (useTenderMath.ts:184, `splitTotals.remaining !== 0n`), so no row
+    // can over-tender and there is never a surplus to hand back. This test exists
+    // so that a future reader who assumes the null is a missing computation has
+    // to delete an assertion before "fixing" it.
+    //
+    // The lone-cash path is different on purpose: there the tender MAY exceed the
+    // total, so `change` is real and is passed through.
+    //
+    // No mock override: the hoisted harness already answers the whole sale sequence,
+    // and an earlier draft replaced `get_sale_scoped` with a hand-rolled DTO that
+    // made buildCompletedSaleReceipt throw — the receipt silently did not build, the
+    // modal fell to its no-receipt done branch, and the failure surfaced as a
+    // missing "Print Receipt" button rather than as anything about receipts.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Split mode, then allocate the whole payable across two tenders.
+    await userEvent.click(screen.getByLabelText(/split payment across methods/i));
+
+    const amountInputs = () =>
+      Array.from(document.querySelectorAll<HTMLInputElement>('.payment-split-amount-input'));
+    await waitFor(() => expect(amountInputs().length).toBeGreaterThanOrEqual(2));
+    await userEvent.type(amountInputs()[0]!, '3');
+    await userEvent.type(amountInputs()[1]!, '4');
+
+    const complete = screen.getByRole('button', { name: /^complete$/i });
+    await waitFor(() => expect(complete).toBeEnabled());
+    await userEvent.click(complete);
+
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    const call = calls.find((c) => c[0] === 'print_sales_receipt_scoped');
+    // Reaching the print call at all proves the split summed exactly: an inexact
+    // split cannot enable Complete (canComplete gates on splitComplete).
+    expect(call, 'the split must be completable, i.e. rows summing exactly to the total').toBeDefined();
+    const payments = (
+      call?.[1] as { args: { payments: Array<{ amount: { minorUnits: number }; change: unknown }> } }
+    ).args.payments;
+    expect(payments.length).toBeGreaterThanOrEqual(2);
+    // One row per tender, and NO change on any of them — the whole point.
+    for (const p of payments) {
+      expect(p.change).toBeNull();
+    }
+  });
+
   it('auto-kicks cash drawer on complete for cash sale', async () => {
     await renderWithFluent(
       <PaymentModal
