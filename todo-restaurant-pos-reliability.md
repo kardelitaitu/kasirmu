@@ -843,6 +843,37 @@ typecheck 0; eslint 0 **and 0 warnings** (I fixed two real `exhaustive-deps` war
 helper introduced, and moved the helper above its first user rather than suppress them);
 bundle parity 0 missing. Kill-tested by dropping the setting from the condition.
 
+### F21 — Order Sound Notifications WIRED (round 58) — `ea8f8a007`
+
+Second of F19's inert controls to be implemented, and **the last D5 key**. With this, every
+`restaurant.*` setting the plan lists now has a real consumer.
+
+The setting's own copy states the promise: *"Play an audible confirmation chime when orders
+are sent or updated"* (`products.ftl:115`), defaulting to **true**. It lived only in the
+settings screen, so the app never played the chime it advertised.
+
+**The D5 note was slightly wrong, and the correction matters.** It said *"`useSound()` exists
+but is KDS-only"*. `useSound` is a plain shared component hook (`components/useSound.ts`) — a
+Web Audio tone with no KDS coupling — and the **retail POS already chimes on sale completion**
+(`RetailPosScreen.tsx:1576`). So the sibling precedent existed all along and the note pointed
+away from it; the restaurant path had simply never called the hook.
+
+Same shape as F20: `PosScreen` reads the key into state (`null` = never written → the model's
+default), and `handlePaymentComplete` plays through it. Two things the placement gets right:
+
+- **At the END of a completed checkout**, the seat retail uses — so it cannot chime for a
+  failed sale.
+- **`soundChime !== false`, not truthiness.** An unset or failed read must keep chiming, the
+  same direction D2 protects for the pax field: a settings outage cannot silence the POS.
+
+`deadSettingsKey.test.ts` caught the revival and named the entry to delete, exactly as it did
+for F20. Verified: full suite **683 files / 11,492 passed**; typecheck 0; eslint 0 errors and 0
+warnings; bundle parity 0 missing. Kill-tested by dropping the setting from the condition.
+
+**Still inert** (F19): `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`,
+`printReceipt`. None has a consumer to gate, so each needs a product decision rather than a
+call-site addition — the distinction the plan already draws between WIRE and BUILD.
+
 **Still inert:** `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`.
 `sound_chime` is the remaining D5 key and needs a POS sound path (`useSound` is KDS-only).
 
