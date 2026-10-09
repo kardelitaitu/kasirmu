@@ -65,10 +65,24 @@ export function WorkspaceRestaurantPosSettings({
   // so a store switch re-seeds. originalsLoaded stays for the dirty memo at :52.
   const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
 
+  // Original hardware snapshot for dirty tracking
+  const originalHwRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (hw.profile && originalHwRef.current === null) {
+      originalHwRef.current = JSON.stringify(hw.profile.hardware);
+    }
+  }, [hw.profile]);
+
+  const hwDirty = useMemo(() => {
+    if (!originalHwRef.current || !hw.profile) return false;
+    return JSON.stringify(hw.profile.hardware) !== originalHwRef.current;
+  }, [hw.profile]);
+
   const dirty = useMemo(() => hasChanges(
     { tableManagement, courseFiring } as Record<string, unknown>,
     originalsRef.current,
-  ), [tableManagement, courseFiring, originalsLoaded, dirtyVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  ) || hwDirty, [tableManagement, courseFiring, originalsLoaded, dirtyVersion, hwDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Initialise ───────────────────────────────────────────────
 
@@ -142,10 +156,38 @@ export function WorkspaceRestaurantPosSettings({
       await Promise.all(tasks);
 
       originalsRef.current = { tableManagement, courseFiring };
+      if (hw.profile) {
+        originalHwRef.current = JSON.stringify(hw.profile.hardware);
+      }
       setDirtyVersion((v) => v + 1);
 
-      // Notify other cards that receipt and restaurant settings changed
-      markSettingsUpdated(['receipt.showTableNumber', 'restaurant.course_firing']);
+      // Notify other cards that receipt and restaurant settings changed.
+      //
+      // EVERY receipt key the `setReceiptSettingsScoped` payload above writes must appear
+      // here: this is the refetch broadcast (SettingsContext.tsx:185-196), so a key that is
+      // persisted without being announced leaves every other mounted surface holding its
+      // stale copy until an unrelated refetch. This listed only `receipt.showTableNumber`
+      // against a ten-key write, so showCurrency, decimalSeparator, showTax, footer,
+      // paperWidth and the four margins were saved silently.
+      //
+      // `RestaurantReceiptsScreen.tsx:1085-1096` writes the same receipt keys and announces
+      // all ten — that screen is the reference, and the assertion below mirrors the payload
+      // rather than re-typing it so the two cannot drift apart again.
+      markSettingsUpdated([
+        ...Object.keys({
+          showCurrency: settings.receipt.showCurrency,
+          decimalSeparator: settings.receipt.decimalSeparator,
+          showTax: settings.receipt.showTax,
+          footer: settings.receipt.footer,
+          paperWidth: settings.receipt.paperWidth,
+          showTableNumber: tableManagement,
+          marginTop: settings.receipt.marginTop,
+          marginBottom: settings.receipt.marginBottom,
+          marginLeft: settings.receipt.marginLeft,
+          marginRight: settings.receipt.marginRight,
+        }).map((k) => `receipt.${k}`),
+        'restaurant.course_firing',
+      ]);
 
       onSaved?.();
     } catch {
@@ -239,6 +281,82 @@ export function WorkspaceRestaurantPosSettings({
           )}
         </div>
       </Card>
+
+      {/* Receipt printer — cash register receipt printer */}
+      {terminalId && (
+        <Card
+          shadow="sm"
+          header={
+            <h2 className="settings-section-title">
+              <Localized id="workspace-pos-printer-heading">Printer</Localized>
+            </h2>
+          }
+        >
+          <div className="settings-form">
+            <div className="settings-field settings-field--horizontal">
+              <label htmlFor="resto-printer-conn" className="settings-label">
+                <Localized id="workspace-pos-printer-connection">Connection</Localized>
+              </label>
+              <SettingsSelect
+                id="resto-printer-conn"
+                value={hw.profile?.hardware.printer.connection ?? 'auto'}
+                onChange={(v) => hw.updatePrinter({ connection: v as 'network' | 'usb' | 'serial' | 'bluetooth' | 'auto' })}
+                options={[
+                  { value: 'auto', label: 'Auto' },
+                  { value: 'network', label: 'Network' },
+                  { value: 'bluetooth', label: 'Bluetooth' },
+                  { value: 'usb', label: 'USB' },
+                  { value: 'serial', label: 'Serial' },
+                ]}
+              />
+            </div>
+            {hw.profile?.hardware.printer.connection === 'network' && (
+              <div className="settings-field settings-field--horizontal">
+                <label htmlFor="resto-printer-ip" className="settings-label">
+                  <Localized id="workspace-pos-printer-ip">IP Address</Localized>
+                </label>
+                <input
+                  id="resto-printer-ip"
+                  type="text"
+                  className="settings-input"
+                  value={hw.profile.hardware.printer.devicePath}
+                  onChange={(e) => hw.updatePrinter({ devicePath: e.target.value })}
+                  placeholder="192.168.1.100"
+                />
+              </div>
+            )}
+            {hw.profile?.hardware.printer.connection === 'bluetooth' && (
+              <div className="settings-field settings-field--horizontal">
+                <label htmlFor="resto-printer-bt" className="settings-label">
+                  <Localized id="workspace-pos-printer-bluetooth">Device Address (MAC)</Localized>
+                </label>
+                <input
+                  id="resto-printer-bt"
+                  type="text"
+                  className="settings-input"
+                  placeholder="00:11:22:33:44:55"
+                  value={hw.profile.hardware.printer.devicePath}
+                  onChange={(e) => hw.updatePrinter({ devicePath: e.target.value })}
+                />
+              </div>
+            )}
+            <div className="settings-field settings-field--horizontal">
+              <label htmlFor="resto-printer-paper" className="settings-label">
+                <Localized id="workspace-pos-printer-paper-size">Paper Size</Localized>
+              </label>
+              <SettingsSelect
+                id="resto-printer-paper"
+                value={hw.profile?.hardware.printer.paperSize ?? '80'}
+                onChange={(v) => hw.updatePrinter({ paperSize: v as '58' | '80' | 'a4' | 'letter' })}
+                options={[
+                  { value: '80', label: '80 mm' },
+                  { value: '58', label: '58 mm' },
+                ]}
+              />
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Kitchen printer — separate from receipt printer */}
       {terminalId && (

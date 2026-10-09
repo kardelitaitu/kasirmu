@@ -41,6 +41,8 @@ const testL10n = {
 // ── Mock state ──────────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => ({
+  // Hoisted so cases can assert on the refetch broadcast.
+  markSettingsUpdated: vi.fn(),
   receiptSettings: { showTableNumber: false, showCurrency: false, showTax: true, showTableNumber_alias: false,
     footer: '', paperWidth: 'standard' as const, decimalSeparator: 'dot' as const,
     marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 },
@@ -67,7 +69,7 @@ vi.mock('@/contexts/SettingsContext', () => ({
   useSettings: () => ({
     settings: { receipt: mocks.receiptSettings, store: mocks.storeSettings },
     loading: false, error: null, hasPartialError: false,
-    refetch: vi.fn(), lastChangedKeys: [], markSettingsUpdated: vi.fn(),
+    refetch: vi.fn(), lastChangedKeys: [], markSettingsUpdated: mocks.markSettingsUpdated,
   }),
 }));
 
@@ -131,6 +133,7 @@ beforeEach(() => {
     decimalSeparator: 'dot', marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 });
   Object.assign(mocks.storeSettings, { name: '', address: '', taxId: '', currency: 'USD', branch: '' });
   mocks.hwError = null;
+  mocks.markSettingsUpdated.mockClear();
 });
 
 describe('WorkspaceRestaurantPosSettings', () => {
@@ -243,6 +246,46 @@ describe('WorkspaceRestaurantPosSettings', () => {
     const [receiptToken, receiptDto] = vi.mocked(setReceiptSettingsScoped).mock.calls[0]!;
     expect(receiptToken).toBe('test-session-token');
     expect(receiptDto.showTableNumber).toBe(true);
+  });
+
+
+  it('announces EVERY receipt key it saves, not just the table-number one', async () => {
+    // The save writes ten keys via `setReceiptSettingsScoped`, but `markSettingsUpdated`
+    // announced only `receipt.showTableNumber`. That call is the refetch broadcast
+    // (SettingsContext.tsx:185-196), so the other nine — showCurrency, decimalSeparator,
+    // showTax, footer, paperWidth, and the four margins — were persisted while every other
+    // mounted surface kept its stale copy.
+    //
+    // The sibling writer `RestaurantReceiptsScreen` saves the SAME receipt keys and
+    // announces all ten (RestaurantReceiptsScreen.tsx:1085-1096), which is what makes this
+    // a drift rather than an alternative convention.
+    renderCard();
+    await waitFor(() => expect(document.getElementById('resto-table-mgmt')).not.toBeNull());
+    fireEvent.click(document.getElementById('resto-table-mgmt') as HTMLInputElement);
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
+    mocks.markSettingsUpdated.mockClear();
+    vi.mocked(setReceiptSettingsScoped).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.markSettingsUpdated).toHaveBeenCalled());
+    const dto = vi.mocked(setReceiptSettingsScoped).mock.calls[0]![1] as unknown as Record<
+      string,
+      unknown
+    >;
+
+    const announced: string[] = mocks.markSettingsUpdated.mock.calls.at(-1)?.[0] ?? [];
+    expect(announced.length, 'markSettingsUpdated was never called').toBeGreaterThan(0);
+
+    // Every receipt key in the write payload must appear in the announcement.
+    const missing = Object.keys(dto)
+      .map((k) => `receipt.${k}`)
+      .filter((k) => !announced.includes(k));
+    expect(
+      missing,
+      'these keys were PERSISTED but not announced, so every other mounted surface keeps ' +
+        'its stale value until an unrelated refetch. Announce the same set the write sends.',
+    ).toEqual([]);
   });
 
   // ── The failed-load guard (F4) ────────────────────────────────
