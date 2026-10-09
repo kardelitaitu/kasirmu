@@ -3478,7 +3478,36 @@ startup with `Failed to load custom Reporter from basic`. Use the default report
 
 | Finding | Primary evidence |
 |---|---|
-| F1 | `RestaurantSettingsScreen.tsx:306-319`; repo-wide grep returns no reader for 7 keys |
+| F1 | `RestaurantSettingsScreen.tsx:306-319` (the WRITE side). ⚠️ **Re-measured 2026-10-09 (round 76): the "no reader for 7 keys" half of this row is STALE** — 8 of the 10 keys now have readers, `hold_order` and `table_number` were removed. See the F1 resolution note below. |
+
+#### F1's evidence row, re-measured (round 76)
+
+The row above said *"repo-wide grep returns no reader for 7 keys"*. True when written; false now,
+because **P1 wired them and the index row was never re-read** — the same rot as rounds 74/75, in a
+fourth place.
+
+Readers **outside the settings screen**, counted at HEAD:
+
+| Key | Reader files | Verdict |
+|---|---|---|
+| `restaurant.auto_print_kitchen` | 6 (`PosScreen.tsx:835`, `:886`, …) | **WIRED** (round 57) |
+| `restaurant.guest_count` | 7 | **WIRED** |
+| `restaurant.customer_name` | 5 (`PosScreen.tsx:805`) | **WIRED** |
+| `restaurant.save_tab` | 5 (`PosScreen.tsx:880`, `CartPanel.tsx:163`) | **WIRED** |
+| `restaurant.sound_chime` | 3 (`PosScreen.tsx:817`, `:890`) | **WIRED** (round 58) |
+| `restaurant.order_type_prompt` | 2 (`PosScreen.tsx:852`) | **WIRED** |
+| `restaurant.interaction_sound` | via the F6 mirror | **WIRED** |
+| `restaurant.interaction_vibration` | via the F6 mirror | **WIRED** |
+| `restaurant.hold_order` | **0** | **REMOVED** (round 42) — no reader because the key is gone |
+| `restaurant.table_number` | **0 readers** | **REMOVED** (option C) — its one grep hit is `CartPanel.tsx:737`, a COMMENT recording the removal |
+
+**So the row's "7 keys" is now zero keys, and 8 of the original 10 are wired.** The `:306-319`
+anchor is still correct as **evidence of the write side** — it is the `setSettingScoped` block — but
+the claim attached to it has been overtaken.
+
+**`table_number` is the trap worth naming.** Its only non-doc hit is a comment that *explains the
+key was removed*, so a naive grep counts it as a reader. This is the same shape as the F6 mirror
+in reverse: **a grep hit is not a reader until you read what it says.**
 | F2 | `CartPanel.tsx:612`, `CartPanel.tsx:655`; `PosScreen.tsx:756-797` |
 | F3 | `RestaurantSettingsScreen.tsx:314`, `:326-339`; `WorkspaceRestaurantPosSettings.tsx:103-117` |
 | F4 | `RestaurantSettingsScreen.tsx:180-191`, `:206-249`, `:251-258`; `WorkspaceRestaurantPosSettings.tsx:85-88` |
