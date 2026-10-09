@@ -2,7 +2,7 @@
 //!
 //! Migrated 2026-10-06 from `features/settings/FeatureToggleScreen.tsx`, per the
 //! provenance this scaffold named while it was still blank. Composition, not a
-//! re-export: the route, the scaffold shell and its migrating note stay on this
+//! re-export: the route and the scaffold shell stay on this
 //! screen while the feature-flag screen keeps its own component and stylesheet.
 //!
 //! `embedded` suppresses the composed screen's own <h1> ("Feature Toggles"),

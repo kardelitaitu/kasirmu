@@ -2,7 +2,7 @@
 //!
 //! Migrated 2026-10-06 from `features/offline/OfflineQueueScreen.tsx`, per the
 //! provenance this scaffold named while it was still blank. Composition, not a
-//! re-export: the route, the scaffold shell and its migrating note stay on this
+//! re-export: the route and the scaffold shell stay on this
 //! screen while the offline feature keeps its own component and stylesheet.
 //!
 //! `embedded` is REQUIRED here: the composed screen's <h1> reads "Offline

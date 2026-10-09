@@ -2,7 +2,7 @@
 //!
 //! Migrated 2026-10-06 from `features/currency/ExchangeRateScreen.tsx`, per the
 //! provenance this scaffold named while it was still blank. Composition, not a
-//! re-export: the route, the scaffold shell and its migrating note stay on this
+//! re-export: the route and the scaffold shell stay on this
 //! screen while the currency feature keeps its own screen and stylesheet.
 //!
 //! The composed component is a full screen, so it is passed `embedded` — that
@@ -10,9 +10,10 @@
 //! under this scaffold's heading. Its Add button stays: that is the screen's
 //! primary action and this shell has no equivalent.
 //!
-//! Copy is Fluent-only: `settings-nav-exchange-rates` for the heading, the
-//! body's own `currency-*` keys, and the shared `settings-screen-migrating`
-//! note (the one-off "being rebuilt" line goes away once the body is real).
+//! Copy is Fluent-only: `settings-nav-exchange-rates` for the heading and the
+//! body's own `currency-*` keys. The shared `settings-screen-migrating` note was
+//! removed from every settings screen in round 43 — this section is built, so
+//! telling users its content "will move here" was stale copy.
 
 import { Localized } from '@fluent/react';
 import ExchangeRateScreen from '@/features/currency/ExchangeRateScreen';
