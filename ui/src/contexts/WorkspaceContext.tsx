@@ -470,8 +470,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   // A rejected create_session has to reach the operator, not just the console.
   // The toast is the immediate surface; `sessionError` is the durable one, read
-  // by the desktop shell's `bootBadges` element. The tablet shell has no
-  // bootBadges slot, so it renders neither — and stays silent after the toast.
+  // by the shell's `bootBadges` element.
+  //
+  // CORRECTED 2026-10-09: this used to end "The tablet shell has no bootBadges
+  // slot, so it renders neither — and stays silent after the toast." That was
+  // true when written and stopped being true in `a22003c9b` (2026-09-17), which
+  // gave AppShell the `bootBadges` element — it renders at twelve sites there
+  // (:600, :613, :624, :647, :684, :712, :727, :753, :771, :797, :813, :827),
+  // and `AppShell.tsx:484` passes `onRetry: retrySessionToken`. The
+  // restaurant tablet reaches it through RestaurantMenu.tsx:647, which calls
+  // `retrySessionToken?.()` when `sessionError` is set.
+  //
+  // Measured on the tablet while chasing a missing receipt preview: a sale
+  // logged `WorkspaceContext: failed to create session token` and the operator
+  // DID get the error surface with a working retry. The failure was my own
+  // automation replaying an aged picker ticket — `create_session` verifies the
+  // ticket against the device clock (auth.rs:579-592), so a stale ticket is
+  // refused by design. The stale comment is what made me suspect a silent
+  // failure for several rounds.
   const reportSessionTokenFailure = useCallback((err: unknown) => {
     const message = requiredLocalized(
       l10nRef.current,
