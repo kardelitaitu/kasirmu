@@ -415,6 +415,69 @@ describe('PaymentModal — shortfall resolution', () => {
     invokeMock.mockImplementation(defaultInvokeImpl as (cmd: string) => Promise<unknown>);
   });
 
+  it('shows StockShortfallDialog when completeSale rejects with the REAL AppError object', async () => {
+    // The case below rejects with `new Error(JSON.stringify(payload))` — a shape
+    // the backend NEVER sends. Tauri serializes AppError with
+    // `#[serde(tag = "kind", rename_all = "camelCase")]`
+    // (apps/mobile-tauri/src/error.rs:19-21), so what actually crosses IPC is a
+    // plain object like `{ kind: 'core', subKind: 'validation', message: '…' }`.
+    //
+    // PaymentModal.tsx:1236 extracts it with
+    //   const errMsg = err instanceof Error ? err.message : String(err);
+    // and a plain object is not an Error, so String(err) is the string
+    // "[object Object]" — which contains no "{", so tryParsePartialStockResult
+    // returns null and the shortfall dialog never opens. Measured on the Redmi
+    // tablet: this is why the dialog is unreachable on a device while the suite
+    // is green. Verified on-device that the real rejection is
+    // `{ kind: 'invalidSession' }`-shaped, i.e. a tagged object.
+    const shortfallPayload = {
+      requiresResolution: true,
+      shortfalls: [
+        {
+          sku: 'COFFEE',
+          productName: 'Coffee',
+          requestedQty: 5,
+          primaryQtyAvailable: 2,
+          deficit: 3,
+          primaryLocationId: 'main',
+          alternatives: [
+            { locationId: 'alt-1', locationName: 'Warehouse', qtyAvailable: 10 },
+          ],
+        },
+      ],
+    };
+
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'complete_sale_scoped') {
+        // The real wire shape: a tagged object, NOT an Error instance.
+        return Promise.reject({
+          kind: 'core',
+          subKind: 'validation',
+          message: 'validation error: stock: ' + JSON.stringify(shortfallPayload),
+        });
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText(/Card/));
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
+    });
+  });
+
   it('shows StockShortfallDialog when completeSale fails with PartialStockResult', async () => {
     const shortfallPayload = {
       requiresResolution: true,

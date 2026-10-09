@@ -42,7 +42,7 @@ import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
 import { distributeEvenly } from './payment/splitDistribution';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
-import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
+import { classifyRetry, plainErrorMessage, rejectionText } from '@/utils/app-error';
 import './PaymentModal.css';
 
 import type { PaymentMethod } from '@/api/types/payment';
@@ -1232,8 +1232,15 @@ retryCurrencyLoad,
       if (change) setChangeDue(change);
       setDone(true);
     } catch (err) {
-      // Try to detect PartialStockResult from the backend error
-      const errMsg = err instanceof Error ? err.message : String(err);
+      // Try to detect PartialStockResult from the backend error.
+      //
+      // rejectionText, not `err instanceof Error ? err.message : String(err)`:
+      // the backend sends AppError as a plain tagged object
+      // (apps/mobile-tauri/src/error.rs:19-21), for which instanceof is false and
+      // String(err) is "[object Object]" — no "{" for the parser below to find, so
+      // the shortfall dialog never opened on a device while the unit test (which
+      // rejects with a real Error) stayed green. Measured on the Redmi tablet.
+      const errMsg = rejectionText(err);
       const parsed = tryParsePartialStockResult(errMsg);
       if (parsed) {
         setShortfallResult(parsed);
