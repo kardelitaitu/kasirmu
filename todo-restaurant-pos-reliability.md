@@ -565,6 +565,31 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 24 — a rail the operator could enable but never see
+
+With F9 complete I went back to the goal's core and compared the two surfaces that
+share the payment-rail vocabulary: the settings screen and the charge popup.
+
+**They disagreed about case, and the popup's side lost.** `rail_code` is a free-form
+string the operator can create (that screen has an "add a custom rail" form), **nothing
+normalises it on write** — the bridge passes it straight through
+(`crates/kasirmu-bridge/src/local_payment.rs:95`) and the column has no CHECK constraint
+— and `RestaurantPaymentsScreen` lowercases at every one of its 14 lookups.
+
+`useLocalPaymentRails.railOffered` compared **raw** (`r.rail_code === railCode`). So a
+rail saved as `QRIS` was switchable ON in settings and then not matched in the popup,
+falling through to `rail ? rail.is_enabled : false` = **false — hiding the tender the
+operator had just enabled.** Same failure shape as the `midtrans isActive` disagreement
+between that screen and the charge modal.
+
+Two more raw comparisons in the same file had the same bug, and one is money-path:
+`staticQrisPayload` returned **null**, so the merchant's QR code never rendered even
+though settings showed the rail configured. Both fixed (`ba7550263`).
+
+**Both tests fail on a revert** — verified by restoring the raw comparisons, which turns
+them red with `expected false to be true`. The three fixes share one root cause: a
+normalising surface and a raw-comparing one reading the same field.
+
 ### Round 23 — F9 sweep COMPLETE, and independently verified
 
 Round 20 wrapped two CHILDREN of `RestaurantMenu` and left the component itself bare at
