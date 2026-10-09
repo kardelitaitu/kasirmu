@@ -45,6 +45,22 @@ describe('useLocalPaymentRails helpers', () => {
       const rails = [makeRail('cash', true)];
       expect(railOffered(rails, 'qris')).toBe(false);
     });
+    it('matches a rail whose code is stored in a different case (the settings screen does)', () => {
+      // `RestaurantPaymentsScreen` normalises with `.toLowerCase()` at every one of
+      // its 14 lookups (:371, :380, :394, :408, :420, :436, :517, :553, :588, :616,
+      // :641, …), because `rail_code` is a free-form string the operator can create.
+      // `railOffered` compared RAW, so a rail saved as 'QRIS' was configured by the
+      // settings screen and then not matched here — falling through to
+      // `rail ? rail.is_enabled : false` = false, which HIDES the tender the operator
+      // just switched on. Nothing normalises on write either: the bridge passes
+      // `rail_code` straight through (crates/kasimru-bridge/src/local_payment.rs:95)
+      // and the column has no CHECK constraint.
+      const rails = [makeRail('QRIS', true)];
+      expect(railOffered(rails, 'qris')).toBe(true);
+
+      const mixed = [makeRail('Qris', false)];
+      expect(railOffered(mixed, 'qris')).toBe(false);
+    });
   });
 
   describe('visibleMethods', () => {
@@ -117,6 +133,15 @@ describe('useLocalPaymentRails helpers', () => {
       const profile = makeProfile({ country_code: 'ID' });
       const result = resolveTenderDisplayName('qris', null, profile, 'QRIS');
       expect(result).toBe('QRIS');
+    });
+
+
+    it('matches the QRIS rail case-insensitively (same fix as railOffered)', () => {
+      // Reached through the SAME divergence: the settings screen lowercases and
+      // nothing normalises on write, so a rail stored as `QRIS` never matched here
+      // and its configured label was ignored in favour of the market default.
+      const rails = [makeRail('QRIS', true, 'Custom PayNow')];
+      expect(resolveTenderDisplayName('qris', rails, null, 'QRIS')).toBe('Custom PayNow');
     });
 
     it('returns fallback for non-qris tenders', () => {

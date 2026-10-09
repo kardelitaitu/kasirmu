@@ -31,10 +31,23 @@ export interface LocalPaymentRails {
 /**
  * Is `railCode` offered given the effective rails? Fail-open on null or
  * empty (see the module contract); a populated list is authoritative.
+ *
+ * ⚠️ The comparison is CASE-INSENSITIVE, and that is a correctness fix rather
+ * than a convenience. `rail_code` is a free-form string the operator can create
+ * (RestaurantPaymentsScreen's "add a custom rail" form), nothing normalises it on
+ * write — the bridge passes it straight through
+ * (crates/kasirmu-bridge/src/local_payment.rs:95) and the column carries no CHECK
+ * constraint — and the SETTINGS screen normalises with `.toLowerCase()` at every
+ * one of its lookups. A raw `===` here therefore disagreed with the surface that
+ * configured the rail: one saved as `QRIS` was switchable ON in settings and then
+ * not matched here, falling through to `is_enabled: false` and HIDING the tender
+ * the operator had just enabled. Same failure shape as the `midtrans isActive`
+ * disagreement between that screen and the charge modal.
  */
 export function railOffered(rails: LocalPaymentRail[] | null, railCode: string): boolean {
   if (rails === null || rails.length === 0) return true;
-  const rail = rails.find((r) => r.rail_code === railCode);
+  const wanted = railCode.toLowerCase();
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
   return rail ? rail.is_enabled : false;
 }
 
@@ -110,7 +123,9 @@ export function resolveTenderDisplayName(
   fallback: string,
 ): string {
   if (method === 'qris' || method.toLowerCase() === 'qris') {
-    const rail = rails?.find((r) => r.rail_code === 'qris');
+    // Case-insensitive for the same reason `railOffered` is: the settings screen
+    // lowercases every lookup and nothing normalises the stored code.
+    const rail = rails?.find((r) => r.rail_code.toLowerCase() === 'qris');
     if (rail?.label && rail.label.trim().length > 0) {
       return rail.label.trim();
     }
@@ -132,7 +147,10 @@ export function resolveTenderDisplayName(
  * the wire model (`api/local-payment`); this is the checkout's view.
  */
 export function staticQrisPayload(rails: LocalPaymentRail[] | null): string | null {
-  const rail = rails?.find((r) => r.rail_code === 'qris');
+  // Case-insensitive: a merchant whose rail is stored as `QRIS` used to get null
+  // here, so the static QR payload never reached the display even though the
+  // settings screen showed the rail as configured and enabled.
+  const rail = rails?.find((r) => r.rail_code.toLowerCase() === 'qris');
   return rail ? readStaticQrPayload(rail.parameters) : null;
 }
 
