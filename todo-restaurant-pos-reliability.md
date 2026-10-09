@@ -565,6 +565,34 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 25 — the second copy of the KDS defaults
+
+Round 24 named the pattern this plan keeps producing — *two surfaces reading one field
+with different rules* — so this round I went looking for it deliberately.
+
+The value-comparison scan came back clean (the rail fix closed the last one, and no key
+is read with both the `=== 'true'` and `!== 'false'` idioms). But the **defaults** scan
+found the shape again: the five KDS settings were modelled **twice**.
+
+| | `kdsSettingsModel.DEFAULT_SETTINGS` | `WorkspaceKdsSettings.DEFAULT_KDS` |
+|---|---|---|
+| consumer | the KDS board (`KdsScreen.tsx:73`) | the Settings card |
+| used for | the board's initial state | the card's fallback for an UNSET key (`:105`, `:109`, `:114`) |
+
+The two agreed today, which is exactly why it was worth fixing rather than noting:
+change the board's default density to 4 and the card would keep **displaying and writing
+3**, so the number the operator sees is not the number the board uses. The card already
+imports from `@/features/kds/` (`:10`), so it now derives from the model.
+
+**Kill-tested, and the result is the point:** changing `DEFAULT_SETTINGS.density` to 4
+now makes the card's save write `'4'` as well — before the fix it kept writing `'3'`.
+The card's own test asserts against `KDS_DEFAULT_SETTINGS`, not the literals, so a model
+change flows through instead of failing.
+
+`c833838b9`. A follow-up scan for other cards declaring their own `DEFAULT_*` returns 0,
+and only two feature models export a default (`kdsSettingsModel`, and the
+`restaurantSettingsModel` this lane created single-sourced in round 2).
+
 ### Round 24 — a rail the operator could enable but never see
 
 With F9 complete I went back to the goal's core and compared the two surfaces that
