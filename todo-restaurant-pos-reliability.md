@@ -562,6 +562,35 @@ The sibling store (`…18dcd55aac7fed210000`) has **0** settings rows and **0** 
 rows. That is the stale, superseded database the original pull read, and it is exactly why "the
 row is absent" was true of a file the POS had stopped using.
 
+#### Round 65 — the same finding re-checked against seed data in the tree
+
+`scratch/` turned out to hold **another lane's** on-device exploration kit: ~110 screenshots, six
+pulled DBs, and **`seed_current_store.py`**, which writes settings rows **directly with SQL**.
+That is a real threat to the round-64 conclusion — if a script had inserted the nine keys, the
+rows would prove nothing about the app.
+
+Checked, and it does not. The two scripts that touch `settings` between them write exactly
+**two** `restaurant.*` keys:
+
+```
+scratch/seed_current_store.py:41  restaurant.table_management = 'true'
+scratch/seed_current_store.py:42  restaurant.unavailable      = '[]'
+```
+
+Both are accounted for: `table_management` is a **seed-only key the app never reads** (confirmed
+round 65 — it appears nowhere outside the seed script and a Rust feature test), and
+`unavailable` is one the app **itself** writes (visible in `setting_updated` with app
+terminal ids). **Not one of the nine saveable keys is seeded by any script.**
+
+So the evidence that matters is untouched by it — and the strongest item is one no seed can
+produce: **`setting_updated` holds 36 rows in two complete app-written batches, and the second
+records `restaurant.guest_count` changing from `true` to `false`.** A seed writes values; it
+cannot manufacture an app-side write-batch record with the previous value's history.
+
+**The threat was worth checking rather than assuming.** A scratch directory full of seeded
+databases is exactly the condition under which a device measurement proves nothing — and the
+only way to know was to read what the scripts write.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
