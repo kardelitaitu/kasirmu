@@ -946,6 +946,50 @@ Kill-tested: restoring the two `.catch(() => null)` reads fails both new cases b
 `RestaurantPaymentsScreen` **36 passed**; full suite **692 files / 11,523 passed, 0 failed**;
 typecheck 0; eslint 0; bundle parity 0 missing.
 
+### P6 — the i18n sweep's THIRD screen, unblocked and DONE (round 74) — `883dd842e`
+
+Round 73's win came from noticing that a "blocked" item was not blocked any more. This round I
+swept the plan for **every** blocking claim and checked each against the tree. `:3043` said:
+
+> *"**Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s). ⚠️ That file is currently
+> DIRTY with another lane's uncommitted change… It must wait until the file is clean — **this is a
+> coordination constraint, not a technical one.**"*
+
+The file has been clean since round 73. **The constraint expired and nothing re-read it.**
+
+**The scope was larger than the note.** The plan recorded *10 `aria-label`s*; the file actually
+hardcoded **24 user-visible strings**:
+
+| Kind | Count |
+|---|---|
+| `resto-compact-label` / `-block-title` text nodes | 14 ("Display Label", "Cash Suggestion Presets", …) |
+| `aria-label` attributes | 10 |
+| English placeholders (`"Cash"`, `"e.g. ovo…"`, `"e.g. OVO Wallet"`) | 3 |
+
+**20 distinct keys** — `Mode` and `Connection` each appear twice, so five literals collapse onto
+shared keys. All now read `restaurant-payment-*` from `products.ftl` / `products.id.ftl`, with
+**real Indonesian, not English copies** — the i18n gate fails a byte-identical `.id.ftl`, and it
+passes.
+
+**Two placeholders were deliberately LEFT alone**, and that is a judgement worth recording: the
+EMVCo payload, card-number, Midtrans key and Stripe key placeholders (`00020101…`, `G123456789`,
+`SB-Mid-client-XXXXX`) are **format examples, not prose**. Translating them would make them wrong.
+
+**The test asserts the bundle's VALUES, not that something rendered.** This is the round-15 lesson
+applied: a regression to a hardcoded literal renders the **same visible text**, so an
+"is it there" check passes on the bug. The case looks the expected string up **by key** from
+`products.ftl` and asserts the DOM shows *that* — so it cannot drift into agreeing with a literal,
+and it fails first if the key disappears. A second case reads the **source** and fails on any
+reintroduced literal, since a literal can render correct words and still be a literal.
+
+**Kill-tested twice, and the two prove different halves:** restoring one text node to its literal
+fails the source case; renaming a key in the bundle fails both the existence and the rendering
+case.
+
+Verified: `RestaurantPaymentsScreen` **39 passed**; full suite **692 files / 11,526 passed,
+0 failed**; `lint-i18n.sh` **no issues**; typecheck 0; eslint 0; bundle parity 0 missing and both
+bundles +20 keys, 0 orphans.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
