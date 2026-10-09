@@ -1105,6 +1105,44 @@ case; adding an entry to `DECLARED_DEAD` fails the completeness case.
 Verified: `planStatusAccuracy` + `deadSettingsKey` **6 passed**; full suite **693 files /
 11,535 passed, 0 failed**; eslint 0; bundle parity 0 missing.
 
+### F33 — the evidence index's anchors, and a guard for the whole class (round 77) — `7ad64b3a3`, `417842d1c`
+
+Round 76 checked F1's **claim** and found it stale. This round audited the **anchors** — the
+`file:line` table a reviewer actually opens — and found **two more dead**, in the row I had just
+corrected and the one next to it.
+
+**F2's anchors were the worst kind of wrong.** The row cited `CartPanel.tsx:612` and `:655` for two
+`|| activeWorkspace === 'restaurant-pos'` overrides. **P1 step 3 removed those overrides**, and
+`order_type_prompt` no longer appears in that file **at all**. The line numbers now land on an
+unrelated comment about the settings surface — which is exactly what a spotting-checker sees and
+accepts.
+
+| | The row said | The tree says |
+|---|---|---|
+| F2 anchor | `CartPanel.tsx:612`/`:655` (the overrides) | overrides **removed**; key read at `PosScreen.tsx:334`, `:852` |
+| F1 anchor | `:306-319` = "no reader for 7 keys" | correct as the WRITE side; claim corrected round 76 |
+
+**F2's replacement anchor is stronger than what it replaced**, and that is the point: the key is
+now **read rather than forced** — `PosScreen.tsx:334` seeds state from the workspace, `:852` reads
+`restaurant.order_type_prompt`, and the D2 default was raised to `true`
+(`restaurantSettingsModel.ts:54`) so removing the override did not silently drop the selector.
+Where the old evidence showed a workaround, the new evidence shows the setting working.
+
+**Then the guard, because this is the third stale-anchor round in four.**
+`evidenceAnchorResolves.test.ts` parses the index and requires every resolvable `path:NN` to point
+at a line that exists — **21 anchors across 19 rows**, with a floor asserting the extraction found
+something, so it cannot pass vacuously.
+
+**What it deliberately does NOT do:** judge whether the line *proves* the claim. That is a reading,
+not a check, and a guard that pretended otherwise would be the fifth unfalsifiable one this
+session. What it catches is precisely the drift that made F2 wrong — **the file moved on and the
+number stayed** — which is the mechanical half and the half worth automating.
+
+Kill-tested: pointing an anchor at line 99999 of a real file fails it by name.
+
+Verified: `evidenceAnchorResolves` + `planStatusAccuracy` **8 passed**; full suite **694 files /
+11,542 passed, 0 failed**; typecheck 0; eslint 0; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
