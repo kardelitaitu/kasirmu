@@ -227,7 +227,7 @@ export default function ReceiptPreview({
                         y={y}
                         width={1}
                         height={1}
-                        fill="var(--color-fg)"
+                        fill="var(--color-ink, #000000)"
                       />
                     ) : null,
                   ),
