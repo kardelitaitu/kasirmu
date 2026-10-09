@@ -279,3 +279,37 @@ fn checkout_freezes_receipt_hierarchy_code_and_it_is_readable() {
     assert_eq!(batch.len(), 1);
     assert_eq!(batch[0].1.as_deref(), Some(code.as_str()));
 }
+
+/// Restaurant menu items (product_type = 'restaurant') are prepared on demand
+/// and do not track finished-goods inventory. A checkout for an item with 0 stock
+/// and no recipe must succeed without generating a shortfall.
+#[test]
+fn checkout_restaurant_product_without_recipe_succeeds_without_shortfall() {
+    let conn = fresh();
+    let s = store(&conn);
+    let product_id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, 'TEA-01', 'Ice Lemon Tea', 1000, 'USD', 'restaurant')",
+        rusqlite::params![product_id],
+    )
+    .unwrap();
+
+    let sale = single_line_sale("TEA-01", Some("cashier-1"));
+    let result = s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[],
+        &tender(1000),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    );
+
+    assert!(
+        result.is_ok(),
+        "restaurant sale should complete without shortfall: {result:?}"
+    );
+    assert_eq!(sale_count(&conn), 1);
+}

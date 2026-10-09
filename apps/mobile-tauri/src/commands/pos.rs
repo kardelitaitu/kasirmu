@@ -30,6 +30,8 @@ use kasirmu_core::location_resolver;
 use kasirmu_core::session::SessionContext;
 use kasirmu_core::{Cart, CartId, CartLine, Currency, Money, PaymentSplitArg};
 
+use crate::commands::authz::require_permission_for_session;
+#[cfg(test)]
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -101,15 +103,15 @@ pub async fn set_cart_discount_scoped(
     // SAFETY: args.percent is validated 0..=100 above, so the unwrap is safe.
     let percent = Percentage::new(args.percent as u8).unwrap();
 
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_DISCOUNT,
-    )?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_DISCOUNT)
+        .await?;
+
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
 
     let mut cart = store
         .load_active_cart(&args.cart_id)?
@@ -147,14 +149,14 @@ pub async fn start_sale_scoped(
     let id = cart.id();
 
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
 
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
 
     // Resolve the primary deduction location for this workspace instance.
     //
@@ -197,13 +199,13 @@ pub async fn list_active_carts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CartId>, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
     let ids = store.list_active_carts()?;
     drop(db);
     Ok(ids)
@@ -219,13 +221,13 @@ pub async fn get_active_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<Cart>, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
     let cart = store.load_active_cart(&cart_id)?;
     drop(db);
     Ok(cart)
@@ -264,21 +266,20 @@ pub async fn add_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<AddLineResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    run_add_line_scoped(&db, &session.user_id, &args)
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    run_add_line_scoped_store(&db, &args)
 }
 
-/// Shared business logic: permission-check + add line to cart.
-/// Extracted so the `SALES_PROCESS` gate is unit-testable without
-/// constructing an `AppState` (Bug #3 fix).
-fn run_add_line_scoped(
+fn run_add_line_scoped_store(
     db: &rusqlite::Connection,
-    user_id: &str,
     args: &AddLineArgs,
 ) -> Result<AddLineResult, AppError> {
     let store = Store::new(db);
-
-    require_permission_for_user(&store, user_id, kasirmu_core::permissions::SALES_PROCESS)?;
 
     // ADR-19 §5.1: reject add_line_scoped when the cart has no deduction location lock.
     store
@@ -308,6 +309,22 @@ fn run_add_line_scoped(
     })
 }
 
+/// Shared business logic: permission-check + add line to cart.
+/// Extracted so the `SALES_PROCESS` gate is unit-testable without
+/// constructing an `AppState` (Bug #3 fix).
+#[cfg(test)]
+fn run_add_line_scoped(
+    db: &rusqlite::Connection,
+    user_id: &str,
+    args: &AddLineArgs,
+) -> Result<AddLineResult, AppError> {
+    let store = Store::new(db);
+
+    require_permission_for_user(&store, user_id, kasirmu_core::permissions::SALES_PROCESS)?;
+
+    run_add_line_scoped_store(db, args)
+}
+
 // ── Override Line Price ──────────────────────────────────────────────
 
 /// Override a line price within the session scope. ADR #7.
@@ -318,17 +335,20 @@ pub async fn override_line_price_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    require_permission_for_session(
+        &state,
+        &session,
+        kasirmu_core::permissions::SALES_OVERRIDE_PRICE,
+    )
+    .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let mut cart = store
         .load_active_cart(&args.cart_id)?
         .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_OVERRIDE_PRICE,
-    )?;
 
     let currency = cart.currency();
     let new_price = Money {
@@ -366,13 +386,12 @@ pub async fn set_line_course_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     kasirmu_bridge::pos::run_set_line_course_unchecked(
         &db,
         &args.cart_id,
@@ -451,17 +470,36 @@ pub async fn get_cart_deduction_location_scoped(
     cart_id: CartId,
     state: State<'_, AppState>,
 ) -> Result<Option<DeductionLocationInfo>, AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     run_get_cart_deduction_location(&db, &cart_id)
 }
 
 // ── Override Deduction Location ───────────────────────────────────────
 
+fn run_override_cart_deduction_location_store(
+    db: &rusqlite::Connection,
+    cart_id: &CartId,
+) -> Result<(), AppError> {
+    let store = Store::new(db);
+    store
+        .override_active_cart_deduction_location(cart_id)
+        .map_err(|e| AppError::Internal(format!("failed to override deduction location: {e}")))?;
+
+    tracing::info!(cart_id = %cart_id, "deduction location override recorded");
+    Ok(())
+}
+
 /// Shared business logic: permission-check + override.
 /// Extracted so both the deprecated and scoped commands share the same
 /// `SALES_OVERRIDE_PRICE` gate, and so the gate is unit-testable without
 /// constructing an `AppState`.
+#[cfg(test)]
 fn run_override_cart_deduction_location(
     db: &rusqlite::Connection,
     user_id: &str,
@@ -475,12 +513,7 @@ fn run_override_cart_deduction_location(
         kasirmu_core::permissions::SALES_OVERRIDE_PRICE,
     )?;
 
-    store
-        .override_active_cart_deduction_location(cart_id)
-        .map_err(|e| AppError::Internal(format!("failed to override deduction location: {e}")))?;
-
-    tracing::info!(cart_id = %cart_id, user_id = %user_id, "deduction location override recorded");
-    Ok(())
+    run_override_cart_deduction_location_store(db, cart_id)
 }
 
 /// Override the deduction location lock on an active cart (scoped).
@@ -494,8 +527,17 @@ pub async fn override_cart_deduction_location_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    run_override_cart_deduction_location(&db, &session.user_id, &cart_id)
+    require_permission_for_session(
+        &state,
+        &session,
+        kasirmu_core::permissions::SALES_OVERRIDE_PRICE,
+    )
+    .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    run_override_cart_deduction_location_store(&db, &cart_id)
 }
 
 // ── Complete Sale ────────────────────────────────────────────────────
@@ -528,13 +570,13 @@ pub async fn compute_cart_tax_scoped(
     let parsed: kasirmu_core::Currency = currency
         .parse()
         .map_err(|_| AppError::Invalid(format!("invalid currency code: {currency}")))?;
-    let db = state.db.lock().await;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
     let tax = store.compute_cart_tax_for_location(
         &lines,
         parsed,
@@ -770,6 +812,8 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
 
     // §B read-only lock: a lapsed grace window rejects new sales.
     {
@@ -786,24 +830,15 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     // cart id, so unlike `complete_sale_scoped` it has no cart to run out of
     // and would otherwise re-sell the same basket on every retry.
     //
-    // The guard and the write share one lock span. Tablet `state.db` is a
-    // `tokio::sync::Mutex` (state.rs:50), whose guard may be held across
-    // `.await`, and the whole lookup→write segment below contains no await
-    // point — the cart is rebuilt in memory from the request body — so one
-    // `lock().await` covers the replay lookup through the settlement write
-    // and a same-process double-tap serialises: the loser re-runs the guard
-    // AFTER the winner committed and answers with the winner's receipt.
-    // DRIFT NOTE (deliberate, not carelessness): the desktop shell cannot
-    // hold its equivalent span — its store connection is a STD `Mutex` and
-    // the plugin hooks + event publish sitting between its two lock regions
-    // are `.await` points (crates/kasirmu-bridge/src/pos.rs:1740-1754), so the
-    // desktop two-lock gap is still open for structural reasons and relies
-    // on fail-closed settlement + the UNIQUE index instead.
+    // The guard and the write share one lock span.
     // `?` so a colon-bearing attempt id is refused before any key is stamped;
     // see `normalized_attempt_id` in pos/checkout.rs for why `:` is refused at all.
     let attempt = normalized_attempt_id(args.attempt_id.as_deref())?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let settlement = {
-        let db = state.db.lock().await;
+        let db = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
         let mut effective_attempt_id = attempt.clone();
         match replay_verdict(&store, attempt.as_deref(), Some(&args.cart_id))? {
@@ -887,13 +922,8 @@ pub async fn hold_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<HoldCartResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
     if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
         return Err(AppError::PermissionDenied(format!(
             "workspace '{}' may not create an open bill; only '{}' may",
@@ -901,6 +931,11 @@ pub async fn hold_cart_scoped(
             kasirmu_core::workspace_type::RESTAURANT_POS
         )));
     }
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
     let id = store.hold_cart(
         &args.label,
         &args.cart_data,
@@ -923,13 +958,13 @@ pub async fn list_held_carts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<kasirmu_core::db::HeldCartRow>, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
     let carts = store.list_held_carts()?;
     drop(db);
     Ok(carts)
@@ -949,13 +984,8 @@ pub async fn list_open_bills_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<kasirmu_core::db::HeldCartRow>, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
     if !is_restaurant_pos_workspace(&session) {
         return Err(AppError::PermissionDenied(format!(
             "workspace '{}' may not list open bills; only '{}' may",
@@ -963,6 +993,11 @@ pub async fn list_open_bills_scoped(
             kasirmu_core::workspace_type::RESTAURANT_POS
         )));
     }
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
     let carts = store.list_open_bills()?;
     drop(db);
     Ok(carts)
@@ -976,13 +1011,13 @@ pub async fn get_held_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<kasirmu_core::db::HeldCartFull>, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
     let cart = store.get_held_cart(&id)?;
     drop(db);
     Ok(cart)
@@ -996,13 +1031,13 @@ pub async fn delete_held_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
     store.delete_held_cart(&id)?;
     drop(db);
     tracing::info!(held_cart_id = %id, "held cart deleted (scoped)");

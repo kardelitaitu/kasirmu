@@ -19,6 +19,8 @@ use kasirmu_core::events::{SaleCompleted, SaleCompletedLine};
 use kasirmu_core::session::SessionContext;
 use kasirmu_core::{CartId, PaymentSplitArg, SaleStatus};
 
+use crate::commands::authz::require_permission_for_session;
+#[cfg(test)]
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -284,30 +286,21 @@ pub async fn preview_promoted_total_scoped(
     state: State<'_, AppState>,
 ) -> Result<PreviewPromotedTotalResult, AppError> {
     let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
 
-    // ── Lock 1: peek the cart (do NOT delete it) ──────────────────
-    let (cart, rounding_mode) = {
-        let db = state.db.lock().await;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let (base_total_minor, total_minor, discounts) = {
+        let db = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        require_permission_for_user(
-            &store,
-            &session.user_id,
-            kasirmu_core::permissions::SALES_PROCESS,
-        )?;
         let cart = store
             .load_active_cart(&args.cart_id)?
             .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
         let rounding_mode = kasirmu_core::Settings::get_tax_rounding_mode(&db)?;
-        (cart, rounding_mode)
-    };
-
-    let mut sale = kasirmu_core::Sale::from_cart(&cart)
-        .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
-
-    // ── Lock 2: tax + engine discounts (no writes) ────────────────
-    let (base_total_minor, discounts) = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
+        let mut sale = kasirmu_core::Sale::from_cart(&cart)
+            .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
         store.compute_sale_tax_for_location(
             &mut sale,
             &[],
@@ -328,12 +321,12 @@ pub async fn preview_promoted_total_scoped(
                 description: app.description,
             })
             .collect();
-        (base_total_minor, discounts)
+        (base_total_minor, sale.total.minor_units, discounts)
     };
 
     Ok(PreviewPromotedTotalResult {
         base_total_minor,
-        total_minor: sale.total.minor_units,
+        total_minor,
         discounts,
     })
 }
@@ -400,20 +393,19 @@ pub async fn preview_promoted_total_from_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<PreviewPromotedTotalResult, AppError> {
     let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
 
     let cart = build_preview_cart(&args.lines, args.discount_percent)?;
     let mut sale = kasirmu_core::Sale::from_cart(&cart)
         .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
 
-    // ── Lock: permission + tax + engine discounts (no writes) ─────
+    let conn_arc = state.resolve_store(&session_token)?;
     let (base_total_minor, discounts) = {
-        let db = state.db.lock().await;
+        let db = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        require_permission_for_user(
-            &store,
-            &session.user_id,
-            kasirmu_core::permissions::SALES_PROCESS,
-        )?;
         store.compute_sale_tax_for_location(
             &mut sale,
             &[],
@@ -465,18 +457,12 @@ pub async fn preview_promoted_total_from_lines_scoped(
 /// serialise: the loser sees the winner's stamped key and answers with the
 /// winner's sale (the UNIQUE index on `payments.idempotency_key` is the back
 /// stop when a second process is involved).
-pub(super) fn run_complete_sale_scoped(
+pub(super) fn run_complete_sale_scoped_store(
     db: &rusqlite::Connection,
     session: &SessionContext,
     args: &CompleteSaleScopedArgs,
 ) -> Result<SaleSettlement, AppError> {
     let store = Store::new(db);
-
-    require_permission_for_user(
-        &store,
-        &session.user_id,
-        kasirmu_core::permissions::SALES_PROCESS,
-    )?;
 
     // ── COR-7 replay guard — BEFORE any write, including the cart ──
     // `?` so a colon-bearing id is refused here, before any key is stamped.
@@ -626,6 +612,23 @@ pub(super) fn run_complete_sale_scoped(
     })
 }
 
+#[cfg(test)]
+pub(super) fn run_complete_sale_scoped(
+    db: &rusqlite::Connection,
+    session: &SessionContext,
+    args: &CompleteSaleScopedArgs,
+) -> Result<SaleSettlement, AppError> {
+    let store = Store::new(db);
+
+    require_permission_for_user(
+        &store,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )?;
+
+    run_complete_sale_scoped_store(db, session, args)
+}
+
 /// Complete a sale within the session scope. ADR #7 / ADR-19 §6.
 ///
 /// Uses the `complete_sale_deduction` path which checks stock at the
@@ -643,6 +646,8 @@ pub async fn complete_sale_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
+        .await?;
 
     // §B read-only lock: a lapsed grace window rejects new sales.
     {
@@ -653,11 +658,13 @@ pub async fn complete_sale_scoped(
         sub.enforce_pos_writable()?;
     }
 
-    // One lock covers the replay lookup AND the settlement, so a double-tap
-    // cannot have both requests pass the guard before either writes.
+    // One lock covers the replay lookup AND the settlement on the store database.
+    let conn_arc = state.resolve_store(&session_token)?;
     let settlement = {
-        let db = state.db.lock().await;
-        run_complete_sale_scoped(&db, &session, &args)?
+        let db = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        run_complete_sale_scoped_store(&db, &session, &args)?
     };
     let CompleteSaleResult {
         sale_id,

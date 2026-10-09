@@ -280,7 +280,7 @@ impl Store<'_> {
             let has_recipe = !recipe.is_empty();
 
             if !tracks_inventory && !has_recipe {
-                // Skip checking stock for service products that do not have a recipe.
+                // Skip checking stock for non-inventory products (service and restaurant items) that do not have a recipe.
                 continue;
             }
 

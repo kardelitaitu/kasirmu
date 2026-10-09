@@ -112,7 +112,8 @@ fn a_failed_location_resolve_refuses_the_settlement() {
     seed_cashier_without_override_permission(&conn, "user-cashier");
     seed_stock(&conn, "REPLAY-COFFEE");
     let cart_id = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
-    let session = replay_session();
+    let mut session = replay_session();
+    session.instance_id = "uncached-test-instance-for-failure".into();
 
     conn.execute_batch("DROP TABLE workspace_instances;")
         .unwrap();
