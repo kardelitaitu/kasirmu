@@ -1483,6 +1483,61 @@ inside a `Localized` reads like one.
 mode it guards against is a lane that finds nothing, assumes it missed something, and edits code
 that was already correct.
 
+### Round 84 — the payment popup's money-safety invariants, verified at HEAD
+
+The second consecutive audit round. Rounds 80-82 found three real defects on these surfaces; this
+one found none, and the value is the **specific invariants now confirmed rather than assumed**.
+
+#### The idempotency id has exactly the right lifetime
+
+`attemptIdRef` guards against a double sale on replay, so its lifetime is money-critical. Every
+assignment in the file:
+
+| Line | Assignment | Correct? |
+|---|---|---|
+| `:233` | lazy init when `null` | yes — eager `useRef(crypto.randomUUID())` evaluates per render |
+| `:382` | re-mint on the `open` transition | yes — a fresh basket needs a fresh id |
+| **anywhere else** | **none** | yes — nothing re-mints mid-attempt |
+
+That last row is the load-bearing one: the QR confirm callback **can legally fire more than once**
+for one QR (a poll returning pending, then succeeding twice), and every firing carries the same id
+so the backend's replay guard returns the FIRST receipt instead of ringing a second sale
+(`:800-808`). A third assignment site anywhere would defeat it silently.
+
+The doc comment above it is the best kind of defensive writing: it explains why the id is
+attempt-scoped rather than mount-scoped, **and** why `useRef(crypto.randomUUID())` would read as a
+bug waiting to be "fixed" by moving it into state. A future lane that simplifies it now has to argue
+with the file.
+
+#### The early return is a render short-circuit, and the doc says so
+
+`:1539` `if (!open && !leaving) return null;` — **verified to sit AFTER the last hook** (`:1537`),
+which is what makes the comment's claim true: the host keeps this component mounted and toggles
+`open`, so refs survive Cancel and re-open. If the return ever moved above a hook, the id would
+reset mid-attempt and the comment would be describing a mechanism that no longer exists.
+
+#### The one `exhaustive-deps` disable is justified in writing
+
+`:420` suppresses the rule, and `:411-419` says why: `onCustomerChange` is routed through
+`notifyCustomerChangeRef` (assigned during render at `:193`, so it stays current), and the
+`useState` dispatchers are declared BELOW the effect, making them a `use-before-declaration` error
+if listed. **Both halves check out** — the ref really is render-assigned, and the setters really
+are below. A suppression with the reasoning attached is not a debt; a suppression without one is.
+
+#### What was checked and found clean
+
+- **The reset effect** (`:378-421`) clears 18 pieces of per-attempt state on `open`, including
+  `showQr` / `qrReference` (`:391-392`) — the comment's "stay off this list" refers to the DEP
+  ARRAY, not the body, and both readings are correct.
+- **`selectedCustomerProp`** is used only to initialise state (`:165`) and in the reset. That is
+  correct here rather than a missing-sync bug: **only the retail screen passes it**
+  (`RetailPosScreen.tsx:1572`, `:1740`), and the restaurant POS leaves it `undefined` so the modal
+  manages the customer internally — the two modes the `:404-409` comment describes.
+
+**Two consecutive rounds ending in "verified" rather than "fixed" is the expected shape near the
+end of a campaign**: the cheap defects are gone, so the remaining work is confirming that the
+subtle ones are actually held — and recording it so the next reader does not re-derive it.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
