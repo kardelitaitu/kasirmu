@@ -23,9 +23,13 @@
 > 1. **F19** — five payments controls with **zero Rust readers** each (`verifyDrawer`,
 >    `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`; measured by grep).
 >    Each needs a feature invented behind it, or the control deleted.
-> 2. **F23/F24** — the `credit.*` keys are stored and exposed but **enforced nowhere**:
+> 2. **F23/F24** — the `credit.*` keys are settable and exposed but **enforced nowhere**:
 >    `is_credit_enabled` is called only by its own getters, and `credit_limit` has **zero**
 >    Rust hits. A store can enable credit, set a limit, and the POS sells on credit regardless.
+>    **Updated round 101:** the *"no UI"* half of F24 closed — `CreditFacilityCard.tsx` reads and
+>    writes all three keys, so a merchant CAN now set them. **What remains is the one product
+>    question, not missing plumbing:** is a credit sale above the ceiling refused, and what does
+>    the cashier see? The card says so in the operator's words rather than leaving them to find out.
 > 3. **D6 residual (unasserted, not broken)** — the printer now groups, but the preview formats
 >    through `Intl`/locale and ignores the setting, so an operator who explicitly sets `comma`
 >    on an IDR store gets paper and preview diverging **by their own choice**. Arguably correct;
@@ -2779,6 +2783,19 @@ one is consulted at sale time:
   is stored, returned over IPC, and never checked** — a merchant who sets a limit has no reason
   to believe it is advisory.
 - `get_credit_reminder_interval` likewise.
+
+> **⚠️ HALF CLOSED since this was written (re-measured round 101).** The paragraph below says the
+> enable switch and the limit have *"no UI in either direction"*. That was true when written and is
+> **no longer**: `ui/src/features/settings/screens/CreditFacilityCard.tsx` now reads and writes all
+> three keys through `getCreditSettingsScoped` / `setCreditSettingsScoped`. **The rows above still
+> hold** — I re-verified each against the tree this round, and nothing consumes the values at sale
+> time.
+>
+> The card's own doc-comment is a model of scoping this correctly: it states what it closes (*"no UI
+> reads them"*) and what it does **not** (*"a ceiling set here is advisory"*), and names the reason
+> enforcement is a separate decision rather than an oversight. **The remaining F24 gap is now exactly
+> one question** — whether a credit sale above the ceiling is refused, and with what UX — which is
+> the product decision this section already parks.
 
 **The UI is half-built, which is what hid it.** The retail POS DOES use the family's *reporting*
 side — `listCreditSalesScoped` + `settleCreditScoped` (`RetailPosScreen.tsx:1424-1445`) — so a

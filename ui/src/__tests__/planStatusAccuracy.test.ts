@@ -172,7 +172,12 @@ describe('the plan status header matches the tree (F32)', () => {
    * which is the over-broad-matcher flaw this file has already been bitten by twice.
    */
   it('does not leave P6 marked IN PROGRESS after all three screens landed', () => {
-    const body = read(PLAN);
+    // Strip fenced code blocks FIRST. The F43 note (round 100) QUOTES the stale
+    // heading inside a fence to show what it replaced, and the guard then failed
+    // against its own documentation of the bug. Quoted history is not a live claim --
+    // the header extractor above makes the same allowance, and this is the second
+    // place in this file it has come up.
+    const body = read(PLAN).replace(/```[\s\S]*?```/g, '');
     const heading = (body.match(/^### P6 — i18n sweep[^\n]*/m) ?? [''])[0];
     expect(heading, 'the P6 section heading moved or changed shape — extraction has drifted')
       .not.toBe('');
