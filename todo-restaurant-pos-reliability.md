@@ -3574,7 +3574,7 @@ the claim attached to it has been overtaken.
 **`table_number` is the trap worth naming.** Its only non-doc hit is a comment that *explains the
 key was removed*, so a naive grep counts it as a reader. This is the same shape as the F6 mirror
 in reverse: **a grep hit is not a reader until you read what it says.**
-| F2 | `CartPanel.tsx:612`, `CartPanel.tsx:655`; `PosScreen.tsx:756-797` |
+| F2 | **Re-measured 2026-10-09 (round 77): the old anchors are DEAD.** The `\|\| activeWorkspace === 'restaurant-pos'` overrides this row cited at `CartPanel.tsx:612`/`:655` were REMOVED (P1 step 3), and `order_type_prompt` no longer appears in `CartPanel.tsx` at all. The key is now read, not forced: `PosScreen.tsx:334` (initial state from the workspace) and `:852` (`getSettingScoped('restaurant.order_type_prompt')`), with the D2 default raised to `true` so removing the override did not silently drop the selector (`restaurantSettingsModel.ts:54`). |
 | F3 | `RestaurantSettingsScreen.tsx:314`, `:326-339`; `WorkspaceRestaurantPosSettings.tsx:103-117` |
 | F4 | `RestaurantSettingsScreen.tsx:180-191`, `:206-249`, `:251-258`; `WorkspaceRestaurantPosSettings.tsx:85-88` |
 | F5 | `WorkspaceRestaurantPosSettings.tsx:99-137`; `RestaurantSettingsScreen.tsx:299-341` |
