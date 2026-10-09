@@ -405,6 +405,38 @@ the other three green, so the tests bite on the behaviour they name. Full
 `cargo test -p platform-core` 462 passed; `cargo test -p kasirmu-bridge auth` 75 passed;
 `cargo fmt --check` clean on both shells.
 
+**⚠️ The first cut of this fix was wrong, and only the DEVICE caught it (`938d72f9f`).**
+
+The module above was written, unit-tested (5 tests, mutation-checked) and committed as
+`117891ffa`. It seeded `products` only. Verified on the tablet by deleting the store DB
+and logging in, the menu then rendered all five items — every one of them Unavailable:
+
+```
+Americano (Hot/Iced)     Rp 2.500.000  Unavailable
+Butter Croissant         Rp 2.800.000  Unavailable
+Es Teh Manis             Rp 1.000.000  Unavailable
+Mineral Water 600ml        Rp 800.000  Unavailable
+Nasi Goreng Spesial      Rp 3.500.000  Unavailable
+```
+
+`provisioning.rs:642` writes BOTH a `products` row and an `inventory` row, and `in_stock` is
+derived from a positive stock count (`apps/mobile-tauri/src/commands/products.rs:169`,
+`pwd.stock_qty.is_some_and(|q| q > 0)`) — so a product without stock is one the POS refuses to
+sell. The first cut had reproduced F14a for a different field: the menu was no longer *empty*,
+it was *inert*, which is arguably worse because it looks stocked.
+
+The fix LEFT JOINs `inventory` (so a sample with no stock row still reaches the store and
+simply stays unavailable) and copies the opening qty in the same transaction. Two tests were
+added and mutation-checked: binding `None` instead of the real qty turns
+`carries_the_opening_stock_so_the_products_are_sellable` red and leaves the other six green.
+
+**The lesson is the one this log keeps relearning:** the five green unit tests were written
+against the same misunderstanding as the code, so they confirmed it. Only the device — which
+renders the derived `in_stock`, not the stored row — could tell me the seed was inert. A test
+asserting `COUNT(*) FROM products = 5` was satisfied by exactly the broken behaviour.
+
+---
+
 **⚠️ Serialization trap, recorded because it cost a round.** `Set-Content -NoNewline`
 rewrote this file during the mutation test but cargo did **not** recompile — the
 mtime granularity missed it — so a later run executed the MUTATED binary while the
@@ -1358,6 +1390,50 @@ conflict over work already on the branch.
 
 Verified: `PaymentModalSplitBalance` **13 passed / 1 skipped**; full suite **695 files /
 11,549 passed, 0 failed**; typecheck 0; eslint 0; bundle parity 0 missing.
+
+### F37 — the plan's one honestly-declared gap, now CLOSED (round 82) — `6e5acf148`
+
+`PosScreen.integration.test.tsx:29-33` was the rare thing in this campaign: **a gap declared
+accurately rather than papered over.** After removing 26 tautologies, it recorded what was still
+missing —
+
+> *"nothing asserts PosScreen's own wiring into PriceOverrideModal — i.e. that it renders when
+> `overrideTarget` is set and forwards `lineDescription` / `currentPrice` … **Prefer a real test
+> there over a new stub.**"*
+
+**The advice was followable, and it was followed.** The override modal HAS broad coverage
+(`PriceOverrideModal` `.test` / `-Sync` / `-KeyboardEdgeCases` / `-PriceStep`), but every case
+renders it in **isolation** — and the one test that opens it through `PosScreen`
+(`cart_panel_badge_click_opens_fastpin_overlay`) only **cancels** it, reading no prop. So
+`PosScreen`'s own wiring was unguarded while looking covered from two directions at once.
+
+**Kill-tested as a real gap, not a theoretical one.** Replacing the `lineDescription` argument
+with a literal left the suite **GREEN** — while the modal rendered the literal in place of the
+item name and price. The operator's only confirmation of **which line** they were overriding would
+have been wrong, and nothing would have said so.
+
+**Two cases now fail on that revert**: the behavioural one (opening the modal through `PosScreen`
+and reading `.price-override-item`) and a source-level guard that the forwarded value still carries
+both the item and its price.
+
+**The case was added where the harness already existed, which is the note's own advice.**
+`PosScreenDeductionLocation.test.tsx` already clicked the per-line Override button for an unrelated
+assertion, so closing the gap needed no new manager-override setup — the missing half was four
+lines of assertion, not a new fixture. **A declared gap with a harness one file over is cheaper to
+close than to re-describe.**
+
+**The note's line reference had drifted** (`:668-672` → `:1386-1392`), and the replacement records
+both the drift and the closure so a later reader does not re-open it.
+
+#### Two rounds, two shapes of the same defect
+
+F36 was a skip whose comment **claimed** a pin that did not exist. F37 is a note that **declared**
+a gap that did exist. Both were found by disbelieving the prose and running the revert — and only
+the second was honest. **The distinguishing test is not how a comment reads but whether a bug
+reintroduced at the place it names fails the suite.**
+
+Verified: `PosScreenDeductionLocation` **7 passed**, with `PosScreen.integration` **86 across both**;
+full suite **695 files / 11,551 passed, 0 failed**; typecheck 0; eslint 0; bundle parity 0 missing.
 
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
