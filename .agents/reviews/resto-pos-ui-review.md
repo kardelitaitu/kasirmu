@@ -267,9 +267,27 @@ convention, corrected here with the commit that changed each:
 - **F5 — DOCUMENTED, still open as a product question.** The two-tier split is now recorded
   in code (`RestaurantMenu.tsx:42-63`) and in `f4455548a`, but `unavailable` (86) staying
   terminal-local is still an undocumented intent vs gap — no ADR or product decision backs it.
-- **F1 — STILL OPEN, unchanged.** `ItemModifierModal`'s only production importer is still
-  `RetailPosScreen`; the restaurant path still cannot attach modifiers. Explicitly deferred
-  to a later tranche (same wire, once the picker has a home) — see the tackle-all plan §1.
+- **F1 — CLOSED, correcting this line's own claim.** Re-measured 2026-10-09 at `0.0.41`:
+  the restaurant path CAN attach modifiers, and the sentence above was stale. Evidence,
+  all re-read rather than inferred:
+  - **Three production importers, not one:** `ui/src/features/restaurant/RestaurantMenu.tsx:9`,
+    `ui/src/features/retail/RetailPosScreen.tsx:17`, `ui/src/features/sales/PosScreen.tsx:61`.
+    The claim "its only production importer is still `RetailPosScreen`" was true when written
+    and is now false by two.
+  - **The restaurant menu opens the picker.** `RestaurantMenu.tsx:245-249` — `handleItemAdd`
+    tests `getProductModifierGroups(product)` and routes to `setCustomizingProduct` when groups
+    exist.
+  - **The selections survive the add.** `:230` types `onAddProduct`'s `meta` as
+    `{ courseId?: CourseId; modifiers?: ModifierSelection[] }` and `:235-239` forwards it, so
+    the payload the review said was dropped is carried.
+  - **And F2's half of the same seam is on the SHARED panel**, which is what makes this a
+    closure rather than a workaround: `features/sales/components/CartPanel.tsx:188` declares
+    `onEditModifiers` and `:872` wires `onAssignCourse` — the panel `PosScreen.tsx:45` imports,
+    not retail's fork.
+
+  The review's own §6 called F1 and F2 "one seam"; F2 is recorded CLOSED above, and F1 is the
+  other half of the same wire. **Leaving them inconsistent made this file read as current
+  work-to-do** when a reader consulting it would have been chasing something already built.
 
 Committed in this pass: `a8a5eeb79` (backend: cart course, set/fire commands, sale fill,
 fan-out course test), `b07e8c3ac` (sale-based publish rework, UI API types), `51936522f`
