@@ -2062,6 +2062,54 @@ declaration and `typed.rs`: `PG_SYNC_HOST`, `PG_SYNC_PORT`, `PG_SYNC_DBNAME`, `P
 Verified: full suite **696 files / 11,562 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
 0 missing.
 
+### F42 — five of the sidebar's six rows had no testid (round 95) — `cf3e064fb`
+
+**Found by counting, not by a failing test.** `RestaurantSidebar.tsx` renders six rows — shift,
+Table Management, History, Kitchen Display, Menu Editor, Settings — and carried testids on only
+**three** (`restaurant-sidebar-deduction-override`, `-menu-editor`, `-settings`). The other five had
+none, across **two** conditional branches (open shift / close shift).
+
+**So the tests addressed them by their bundle copy.** `RestaurantPosSidebar.test.tsx` used
+`getByRole('button', { name: 'Open a new shift' })` — an accessible name from
+`pos-shift-open-aria` in `sales.ftl`:
+
+```
+41 getByText  ·  27 getByRole  ·  0 getByTestId
+```
+
+**That is F38's lesson waiting to repeat.** A copy edit or a translation change breaks the test with
+an `unable to find role` error that says nothing about the real cause — and worse, the **negative**
+assertions (`:324-325`, `queryByRole(...).toBeNull()`) would keep passing for the worst possible
+reason: the name they checked had simply changed.
+
+#### The change
+
+Five testids added (`-open-shift`, `-close-shift`, `-tables`, `-history`, `-kds`), and the case that
+had been copy-coupled now queries by testid with the visible text kept as a **secondary** assertion.
+That ordering matters: **the element lookup proves the row exists; the text check proves the copy
+still reads what the operator sees.**
+
+**Kill-tested by renaming the bundle string to "Start a shift"** — the testid lookup still succeeded
+and the failure named the copy instead:
+
+```
+expected 'Start a shift' to contain 'Open a new shift'
+```
+
+That is the whole point of the change: **a copy change now surfaces as a copy failure**, not as a
+missing element.
+
+#### A flake that was not a flake
+
+`RestaurantPosSidebar`'s logo case failed in the first suite run and **passes alone in 8 s**. The
+suite is running ~2× slower than earlier rounds (`700 s` of tests vs `540 s`) because several lanes
+are active, and a timeout under that load is not a defect. Recorded so the next reader does not
+chase it: **the tree was clean, the file is untouched by this round, and the case passes in
+isolation.**
+
+No production behaviour changed — the testids are inert attributes. Full suite **696 files /
+11,563 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
 Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
 bundle parity 0 missing; kill-tested both directions.
 
