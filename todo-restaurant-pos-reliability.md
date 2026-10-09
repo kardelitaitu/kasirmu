@@ -551,6 +551,21 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+### Round 16 — a third copy of the settings key list, removed
+
+While checking the sidebar Settings screen I compared three places that each name the
+same ten `restaurant.*` keys and found the model spec (`restaurantSettingsModel.ts:73-82`)
+and the write object (`:294-303`) in step — but a **third hand-maintained copy** in the
+`markSettingsUpdated` broadcast (`:334-345`).
+
+That copy is the one that fails silently: add a setting to the model and the broadcast
+stays at ten, so every other mounted surface keeps its stale value while the screen
+reports the save succeeded. It is now derived —
+`RESTAURANT_SETTING_SPECS.map((s) => s.key)` — and the save test asserts the broadcast
+equals the spec list rather than the ten literals, so a new setting flows through
+automatically. Kill-tested: a hand-typed two-entry list fails it with
+`expected "vi.fn()" to be called with arguments: [ [ …(10) ] ]` (`0a5cfaa47`).
+
 ### Round 16 — negative results, recorded (the payment popup resists the classes I know)
 
 I swept the payment popup and the sidebar-settings save path for the classes that have
