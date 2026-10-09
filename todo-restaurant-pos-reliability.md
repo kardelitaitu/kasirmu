@@ -565,6 +565,40 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 35 — 6 of 12 receipt toggles cannot reach the paper
+
+Rounds 33-34 found three receipt toggles the printer cannot honour. This round I measured
+the whole set instead of discovering them one at a time, by reading the printer's config
+struct rather than the UI.
+
+**`ReceiptConfig` (`crates/kasirmu-hal/src/drivers/receipt.rs:98-117`) has exactly 8
+fields** — verified by grepping `pub <name>` in that file, not by reading prose:
+
+| The screen's toggle | In `ReceiptConfig`? |
+|---|---|
+| `showCurrency` · `showTax` · `showTableNumber` | ✅ |
+| `decimalSeparator` · `paperWidth` · `footer` | ✅ |
+| `showReceiptCode` · `showDateTime` · `showItemNotes` | ❌ |
+| `showStaffName` | ❌❌ |
+| `showDecimals` · `showThousandsSeparator` | ❌ |
+
+**`showStaffName` is a sharper case than the others.** Grepping the renderer for
+`staff|cashier` returns **nothing** — the paper has no concept of a staff name at all. The
+preview renders a real one (`:1431`, fed by `session.display_name`), so that toggle shows a
+line that cannot appear on a printed receipt in *either* position. Its three siblings differ:
+those lines DO print, unconditionally (`:467` receipt number, `:468` date, `:522` item
+note), so switching them off hides them from the preview while the paper keeps them.
+
+Both facts are pinned in `receiptPreviewPrintAgreement.test.ts` — the toggle table as data,
+and the staff claim by **reading the Rust file**, so it fails if the printer ever gains a
+staff line. Kill-tested across the language boundary (adding `pub staff_name` to
+`ReceiptConfig` fails it with the "revisit this" message). `e4d72ca71`.
+
+**Not decided:** which side is wrong. The printer's shape is coherent (it prints what a
+receipt must carry, with no switch for it), and the toggles are per-user cosmetic
+preferences. Reconciling them is the same product call as round 27's dead toggles, now with
+a measured list to decide against.
+
 ### Round 33 — the preview claimed a precision the printer cannot print
 
 I read the receipts audit (`docs/records/audits/audit-receipt-settings.md`) covering the
