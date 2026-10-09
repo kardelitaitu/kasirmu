@@ -159,9 +159,21 @@ describe('posScreenUtils', () => {
 
   describe('constants', () => {
     it('exports expected constant values', () => {
-      expect(CART_WIDTH_MIN).toBe(320);
+      // 320 -> 400 on a MEASUREMENT, not a preference: at 320 the fixed parts
+      // of a line (thumb + qty pill + remove + gaps) left the name column 52 px,
+      // and "Ice Lemon Tea" needed 120 px. 400 is the smallest panel at which it
+      // fits. See the sweep recorded in cartCalculations.ts above the constant.
+      expect(CART_WIDTH_MIN).toBe(400);
       expect(CART_WIDTH_DEFAULT).toBe(440);
       expect(CART_WIDTH_MAX_CAP).toBe(1200);
+    });
+
+    it('the floor never exceeds the default, and the cap never sits below either', () => {
+      // The floor rising is only safe while it stays under the default a fresh
+      // install uses: a floor ABOVE the default would make CART_WIDTH_DEFAULT
+      // unreachable and clamp every new terminal up to the floor instead.
+      expect(CART_WIDTH_MIN).toBeLessThanOrEqual(CART_WIDTH_DEFAULT);
+      expect(CART_WIDTH_MAX_CAP).toBeGreaterThan(CART_WIDTH_DEFAULT);
     });
   });
 });

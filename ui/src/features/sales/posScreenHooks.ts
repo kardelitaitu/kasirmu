@@ -28,17 +28,17 @@ export function useShiftTimer(activeShift: { openedAt: string } | null) {
 }
 
 // ── useCartWidth ─────────────────────────────────────────────────────────
-const CART_WIDTH_MIN = 320;
-const CART_WIDTH_DEFAULT = 440;
-const CART_WIDTH_MAX_CAP = 1200;
-
-function clampCartWidth(px: number, viewportWidth: number): number {
-  const max = Math.max(
-    CART_WIDTH_MIN,
-    Math.min(viewportWidth * 0.5, CART_WIDTH_MAX_CAP),
-  );
-  return Math.max(CART_WIDTH_MIN, Math.min(Math.round(px), max));
-}
+//
+// This hook is NOT the live cart-width path. `PosScreen` uses
+// hooks/useCartResize, and this function's only importer is its own test. It
+// kept a private copy of the bounds AND of clampCartWidth until the floor moved
+// from 320 to 400 — at which point the copy here disagreed with the shipped
+// value, silently, because nothing rendered it. Both are imported from
+// utils/cartCalculations now so the two paths cannot drift again.
+//
+// If this hook is ever wired up, delete the other one rather than maintaining
+// two resizers; if it is not, delete this one.
+import { CART_WIDTH_DEFAULT, clampCartWidth } from './utils/cartCalculations';
 
 /**
  * Manages the resizable cart panel width with localStorage persistence
