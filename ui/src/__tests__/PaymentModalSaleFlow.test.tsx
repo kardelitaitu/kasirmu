@@ -611,6 +611,85 @@ describe('PaymentModal — shortfall resolution', () => {
     });
   });
 
+
+  it('prints the SAME readable tender after a shortfall retry as a normal sale', async () => {
+    // The retry builds its own `PrintSalesReceiptArgs` (PaymentModal.tsx:1589) and
+    // filled `method` with `method.toUpperCase()` (:1621) while the normal path uses
+    // `methodLabel` (:1222). So the customer's printed tender depended on whether the
+    // sale happened to hit a stock shortfall — and a merchant's configured QRIS label
+    // was dropped on that path entirely, because the label branch was never consulted.
+    //
+    // This is the RETRY's receipt, not the retry's stored enum: the stored value is
+    // pinned separately above (round 29). Two different values, two different bugs.
+    const shortfallPayload = {
+      requiresResolution: true,
+      shortfalls: [
+        {
+          sku: 'COFFEE',
+          productName: 'Coffee',
+          requestedQty: 5,
+          primaryQtyAvailable: 2,
+          deficit: 3,
+          primaryLocationId: 'main',
+          alternatives: [{ locationId: 'alt-1', qtyAvailable: 3 }],
+        },
+      ],
+    };
+    const impl = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'complete_sale_scoped') {
+        return Promise.reject(
+          new Error('validation error: stock: ' + JSON.stringify(shortfallPayload)),
+        );
+      }
+      if (cmd === 'complete_sale_with_resolved_shortfalls_scoped') {
+        return Promise.resolve({ saleId: 'sale-1', total: { minorUnits: 700, currency: 'USD' }, lineCount: 1 });
+      }
+      return impl(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await userEvent.click(await screen.findByText('Confirm & Continue'));
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      expect(calls.some((c) => c[0] === 'print_sales_receipt_scoped')).toBe(true);
+    });
+
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    // Guard against a vacuous pass: the test is worthless unless the RETRY ran and the
+    // print came from the retry's own receipt builder (:1589), not the normal one.
+    expect(
+      calls.some((c) => c[0] === 'complete_sale_with_resolved_shortfalls_scoped'),
+      'the shortfall retry never ran — this test proved nothing',
+    ).toBe(true);
+    const printCall = calls.find((c) => c[0] === 'print_sales_receipt_scoped');
+    const printed = (printCall?.[1] as { args: { payments: Array<{ method: string }> } }).args.payments[0]!;
+    // A CASH sale: the correct value IS 'CASH' (the human-readable form), and the
+    // buggy `method.toUpperCase()` produces the same string — so this case cannot
+    // distinguish correct from buggy, and is kept only as the readable-value baseline.
+    // The QRIS case below is the one that can tell them apart.
+    expect(printed.method).toBe('CASH');
+  });
+
+
   // ── FRONTEND-04: multi-currency shortfall retry keeps the charge currency ──
   it('settles a shortfall retry in the charge currency with the CUR-02 tender snapshot', async () => {
     const shortfallPayload = {

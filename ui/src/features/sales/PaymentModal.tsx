@@ -1618,7 +1618,7 @@ retryCurrencyLoad,
                     }))
                   : [
                       {
-                        method: splitMode ? 'split' : method === 'other' ? otherLabel.trim() || 'OTHER' : method.toUpperCase(),
+                        method: methodLabel,
                         amount: { minorUnits: shortfallTotalMinor, currency: shortfallCurrency },
                         change: null,
                       },
