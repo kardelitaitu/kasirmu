@@ -963,6 +963,46 @@ stored, reachable over IPC, and inert end to end.
 
 Verified: no code changed. The finding is a read of the tree at `e495c6794`.
 
+### F25 — the build stamp was PERMANENTLY `+dirty` (round 63) — FIXED `c0f4e0300`
+
+Found on the connected tablet, not in the source. The footer read:
+
+```
+v0.0.41 · 4316156+dirty
+```
+
+`build-id.node.ts` computes that suffix from `git status --porcelain`, which reports
+**untracked** paths as well as modified ones — and this checkout carries three untracked files
+(`START_TABLET_HMR.bat`, `scratch/`, `scripts/android-dev-hmr.ps1`). Measured:
+`git status --porcelain` → 3 lines; `git status --porcelain --untracked-files=no` → **0 lines.**
+
+So **every build made here stamps `+dirty` while the code is exactly the commit it names.**
+
+**Why that is a defect and not cosmetics.** The module's own contract (`:11-12`) is that the
+suffix means *"this code is not in that commit"* — the one signal that an APK cannot be
+reproduced from its SHA. `scripts/check-font-bundle.mjs:137` names the same hazard: *"DIRTY vs
+HEAD — the build cannot contain this edit"*. A signal that is always lit is not a signal; it
+trains the reader to ignore the only honest build-identity the app has.
+
+**It cost real time this session.** F15's decisive open question was *"is the tablet even
+running the build under test?"* — and the stamp could not answer it. I had to diff commits by
+hand (`4316156` is 5 behind HEAD, all docs plus one FTL fix) to establish that the device build
+was functionally current. That is exactly the question the stamp exists to answer.
+
+Fixed by asking git the question the suffix actually means: `git(['status', '--porcelain',
+'--untracked-files=no'])`. An unrelated new file cannot change the compiled bytes, so it must
+not claim they differ.
+
+**A testing note worth keeping.** My first test mocked `child_process` and called the function —
+and got the OLD behaviour, because `ui/vite.config.ts:5` imports this module at
+**config-evaluation** time, so it is already in the graph before any `vi.mock` and
+`vi.resetModules()` cannot evict it. The mock case passed for the wrong reason while the real
+assertion failed. The test now reads the source and matches the built command with comments
+stripped, which is immune to import caching and states plainly what it checks.
+
+Verified: full suite **686 files / 11,499 passed**; typecheck 0; eslint 0; bundle parity 0
+missing. Kill-tested by reverting the flag: fails naming the reason.
+
 ---
 
 ## 3. Repair plan
