@@ -2601,6 +2601,42 @@ Measured and pinned in `__tests__/receiptPreviewPrintAgreement.test.ts`. The ope
 is which side moves — the printer's shape is coherent (it prints what a receipt must carry),
 and the toggles are per-user cosmetic preferences.
 
+#### Round 59-60 — the measurement was re-derived, and the COPY was the fixable half
+
+Re-verified every claim above against HEAD before touching anything, and they all hold:
+`ReceiptConfig` still has 8 fields with no staff/date/code/notes slot; the printer still renders
+the date and receipt number with **no config gate** (`receipt.rs:467-470`); item notes still
+print unconditionally (`:522-526`); `grep -n 'staff\|cashier'` over the renderer still exits 2
+(no matches). **Round 59 produced no new finding** — the pin was already accurate, including
+the line-level half.
+
+**What was NOT yet recorded: the copy makes the promise explicit.** Every one of the six
+toggles opened its description with the imperative — *"Print unique hierarchical receipt
+number"*, *"Print serving staff or cashier name"* — on a screen titled **"Receipt & Printer
+Settings"** whose preview is badged **"Live Preview"**. The operator reads a promise about
+paper, and the switch moves a preview.
+
+`showStaffName` was the sharpest: *"Print serving staff or cashier name"* described a line the
+printer **has no field for**, so it could never appear on paper in either toggle position.
+For the other three the lines DO print but unconditionally, so the preview and the paper move
+in **opposite directions**.
+
+**Fixed the copy, not the model** — the honest repair available without an owner decision.
+Descriptions now say what the switch does (drives the preview) and, where the paper differs,
+say so outright: *"…the printer has no staff line"*, *"…The printer always prints it."* Both
+locales updated (English says "Print", Indonesian "Cetak" — same defect in both).
+
+`receiptToggleCopyHonesty.test.ts` guards it, and reads its two sources of truth directly: the
+printer's own field list and the FTL. It matches the **imperative at the start** of a
+description rather than any occurrence of the verb, so accurate copy that still *mentions* the
+printer ("The printer always prints it") is allowed — my first regex flagged my own correction,
+which is how the distinction got noticed. Kill-tested by restoring the old staff copy: it fails
+naming the key and the reason.
+
+`4a15a51bb`. Verified: full suite **684 files / 11,494 passed**; typecheck 0; eslint 0; bundle
+parity 0 missing. **D6 stays OPEN** — the six toggles still cannot reach the printer; only their
+description stopped lying about it.
+
 ### D1 — Collapse to `receipt.showTableNumber`; RESOLVED by option C
 
 **The collapse itself is settled.** Keep `receipt.showTableNumber`, delete
