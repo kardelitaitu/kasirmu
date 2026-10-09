@@ -565,6 +565,38 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 23 — F9 sweep COMPLETE, and independently verified
+
+Round 20 wrapped two CHILDREN of `RestaurantMenu` and left the component itself bare at
+its PosScreen render site (`:1224`). A boundary around a child covers what renders inside
+that child; it says nothing about the parent's own body — the header, the preferences
+state, the hooks. So the largest surface in the pane was still exposed. Both ternary
+branches are now wrapped (`c61718563`).
+
+**The reset semantics needed a correction too.** My first attempt reset the pane with
+`onReset={() => setRestaurantSidebarOpen(false)}`, copied from the pattern the other
+boundaries use. That is wrong here: the products pane is not gated by that flag, so
+resetting would have closed the sidebar the cashier was using and left the pane is the
+same state. Every other `onReset` in the file closes *its own* surface; this one has no
+surface to close, so it uses `resetKeys={[activeWorkspace]}` — the error clears when the
+workspace changes, which is the only meaningful trigger for a main pane.
+
+**The sweep is now complete, and the completion is measured, not asserted.** A scan for
+capitalised JSX components outside a boundary across the three hosts returns:
+
+```
+features/sales/PosScreen.tsx         — 0 outside a boundary
+features/restaurant/RestaurantMenu.tsx — 0 outside a boundary
+features/retail/RetailPosScreen.tsx    — 0 outside a boundary
+```
+
+That scan is the tool that should have been written in round 18, when the first gap
+appeared. **Six rounds of this sequence found 4 -> 7 -> 9 -> 11 -> 14 -> 20 -> 22
+surfaces**, every increment found by looking, none by the guard — the same limitation
+recorded in rounds 21 and 22. `PosScreen` now holds 16 boundaries.
+
+The guard lists 22 surfaces and asserts `>= 22`. `c61718563`.
+
 ### Round 22 — the money dialogs ON the sale, and the shift family
 
 Round 21 fixed the scoped boundary for the payment popup. Two rounds in a row had ended
