@@ -551,6 +551,28 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
+**The last unblocked F10 literals are gone (round 13).** A scan of the restaurant
+feature for hardcoded user-visible English found 24 a11y/text props and 144 candidate
+JSX text nodes; after excluding `<Localized>` ancestors, the only ones outside the
+blocked payments screen were:
+
+| Site | Fix |
+|---|---|
+| `RestaurantReceiptsScreen` two `<img alt="Business logo">` | Already had a key (`restaurant-logo-preview-alt`) used 40 lines below — wired to it |
+| `RestaurantMenuEditorScreen` `aria-label="Remove Group"/"Remove option"` | New keys `restaurant-menu-editor-remove-{modifier-group,option}-aria`, en + id |
+
+**The 5 remaining literals in `RestaurantReceiptsScreen:1430-1522` are CORRECT and were
+left alone.** They are a live preview of PRINTED RECEIPT output — a sample "TABLE 4",
+sample code `01-01-260929-01-000042`, sample date. They mirror what prints, so
+localizing them would be wrong: a receipt does not change language with the operator's
+UI locale. Distinguishing "hardcoded English" from "sample data that must not
+translate" is the judgement this sweep needed, and a naive scan would have flagged
+them as debt.
+
+Both new tests assert the accessible NAME against the bundle value, not a literal —
+a literal assertion would keep passing after a revert to a literal. Kill-tested: both
+fail when the literal is restored.
+
 **F4 RECURRED in the same file — fixed 2026-10-09.** `RestaurantReceiptsScreen`
 seeds its state and `originalsRef` from localStorage/context BEFORE the
 `getUserPreferencesScoped` read resolves, and that read ended in
