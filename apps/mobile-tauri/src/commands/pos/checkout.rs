@@ -461,6 +461,7 @@ pub(super) fn run_complete_sale_scoped_store(
     db: &rusqlite::Connection,
     session: &SessionContext,
     args: &CompleteSaleScopedArgs,
+    primary_override: Option<kasirmu_core::inventory::LocationId>,
 ) -> Result<SaleSettlement, AppError> {
     let store = Store::new(db);
 
@@ -567,11 +568,14 @@ pub(super) fn run_complete_sale_scoped_store(
     // Tier 4 is still the answer for a workspace with genuinely no binding, and
     // `resolve_primary_location` returns it without erroring; only a READ FAILURE
     // reaches this `?`, and that must refuse rather than deduct somewhere arbitrary.
-    let primary = kasirmu_core::location_resolver::resolve_primary_location(
-        db,
-        session.instance_id.as_str(),
-        None,
-    )?;
+    let primary = match primary_override {
+        Some(loc) => loc,
+        None => kasirmu_core::location_resolver::resolve_primary_location(
+            db,
+            session.instance_id.as_str(),
+            None,
+        )?,
+    };
     let deduct = store.complete_sale_deduction_with_locations_and_estimate(
         &sale,
         Some(&session.instance_id),
@@ -626,7 +630,7 @@ pub(super) fn run_complete_sale_scoped(
         kasirmu_core::permissions::SALES_PROCESS,
     )?;
 
-    run_complete_sale_scoped_store(db, session, args)
+    run_complete_sale_scoped_store(db, session, args, None)
 }
 
 /// Complete a sale within the session scope. ADR #7 / ADR-19 §6.
@@ -658,13 +662,31 @@ pub async fn complete_sale_scoped(
         sub.enforce_pos_writable()?;
     }
 
+    // Resolve primary deduction location from global identity DB where workspace_instances lives.
+    let primary_location = {
+        let global_db = state.db.lock().await;
+        match kasirmu_core::location_resolver::resolve_primary_location(
+            &global_db,
+            session.instance_id.as_str(),
+            None,
+        ) {
+            Ok(loc) => Some(loc),
+            Err(kasirmu_core::CoreError::NotFound { entity, .. })
+                if entity == "workspace_instance" =>
+            {
+                None
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+
     // One lock covers the replay lookup AND the settlement on the store database.
     let conn_arc = state.resolve_store(&session_token)?;
     let settlement = {
         let db = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        run_complete_sale_scoped_store(&db, &session, &args)?
+        run_complete_sale_scoped_store(&db, &session, &args, primary_location)?
     };
     let CompleteSaleResult {
         sale_id,

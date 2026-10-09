@@ -152,6 +152,19 @@ pub async fn start_sale_scoped(
     require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
 
+    let primary_location_override = {
+        let global_db = state.db.lock().await;
+        match location_resolver::resolve_primary_location(&global_db, &session.instance_id, None) {
+            Ok(loc) => Some(loc),
+            Err(kasirmu_core::CoreError::NotFound { entity, .. })
+                if entity == "workspace_instance" =>
+            {
+                None
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+
     let conn_arc = state.resolve_store(&session_token)?;
     let db = conn_arc
         .lock()
@@ -172,8 +185,10 @@ pub async fn start_sale_scoped(
     // already returns tier 4 (the canonical default) for that genuine case, so this
     // arm is only ever reached on an error. Same rule as the four bridge callers and
     // the two core callers fixed in 5a931d80f.
-    let deduction_location_id =
-        location_resolver::resolve_primary_location(&db, &session.instance_id, None)?;
+    let deduction_location_id = match primary_location_override {
+        Some(loc) => loc,
+        None => location_resolver::resolve_primary_location(&db, &session.instance_id, None)?,
+    };
 
     store.save_active_cart(&cart, Some(deduction_location_id.as_str()))?;
     drop(db);
