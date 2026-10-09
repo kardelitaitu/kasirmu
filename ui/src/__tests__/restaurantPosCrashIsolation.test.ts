@@ -113,6 +113,23 @@ const SURFACES: GuardedSurface[] = [
     element: /<PaymentModal\b/,
     why: 'the payment popup (retail POS)',
   },
+  // The retail shell's three other early-return sub-views — the twins of the
+  // restaurant shell's, fixed in the same pass.
+  {
+    file: path.join(SRC, 'features/retail/RetailPosScreen.tsx'),
+    element: /<SalesHistoryView\b/,
+    why: 'sales history (retail POS)',
+  },
+  {
+    file: path.join(SRC, 'features/retail/RetailPosScreen.tsx'),
+    element: /<TableManagementView\b/,
+    why: 'table management (retail POS)',
+  },
+  {
+    file: path.join(SRC, 'features/retail/RetailPosScreen.tsx'),
+    element: /<StockInquiryView\b/,
+    why: 'stock inquiry (retail POS)',
+  },
 ];
 
 /**
@@ -153,6 +170,6 @@ describe('restaurant POS crash isolation (F9)', () => {
     // money-path surfaces, and the payment popup appears in BOTH shells — eleven.
     // The number is asserted because a list short of the thing it guards is exactly
     // how three of these hid until round 18.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(11);
+    expect(SURFACES.length).toBeGreaterThanOrEqual(14);
   });
 });

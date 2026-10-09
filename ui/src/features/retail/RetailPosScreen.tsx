@@ -1581,18 +1581,36 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   }
 
   // ── Sales History screen ────────────────────────────────────
+  // Crash isolation (F9) on all three sub-views below, matching the restaurant
+  // shell's seven (PosScreen.tsx:957-1080) and for the same reason: each is an
+  // early return that REPLACES the POS screen, so an unwrapped throw there is not
+  // contained by anything closer than AppProviders' full-page boundary — which
+  // auto-reloads after 30s and logs the cashier out mid-shift. `onReset` returns to
+  // the cart.
   if (showSalesHistory) {
-    return <SalesHistoryView theme={theme} onBack={() => setShowSalesHistory(false)} />;
+    return (
+      <LocalizedErrorBoundary onReset={() => setShowSalesHistory(false)}>
+        <SalesHistoryView theme={theme} onBack={() => setShowSalesHistory(false)} />
+      </LocalizedErrorBoundary>
+    );
   }
 
   // ── Table Management screen ────────────────────────────────
   if (showTables) {
-    return <TableManagementView theme={theme} onBack={() => setShowTables(false)} />;
+    return (
+      <LocalizedErrorBoundary onReset={() => setShowTables(false)}>
+        <TableManagementView theme={theme} onBack={() => setShowTables(false)} />
+      </LocalizedErrorBoundary>
+    );
   }
 
   // ── Stock Inquiry screen ────────────────────────────────────
   if (showStockInquiry) {
-    return <StockInquiryView theme={theme} onBack={() => setShowStockInquiry(false)} onAddProduct={handleAdd} />;
+    return (
+      <LocalizedErrorBoundary onReset={() => setShowStockInquiry(false)}>
+        <StockInquiryView theme={theme} onBack={() => setShowStockInquiry(false)} onAddProduct={handleAdd} />
+      </LocalizedErrorBoundary>
+    );
   }
 
   return (
