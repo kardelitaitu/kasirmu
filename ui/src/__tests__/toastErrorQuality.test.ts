@@ -1,15 +1,31 @@
 /**
  * Toast Error Quality Compliance
  *
- * Error toasts MUST include actionable diagnostic detail, not just a generic
- * "Something went wrong" message. This test verifies:
+ * Error toasts SHOULD include actionable diagnostic detail, not just a generic
+ * "Something went wrong" message. What this file ACTUALLY covers, measured:
  *
- *   1. `errorDetail()` extracts useful info from every AppError kind
- *   2. `errorDetail()` handles non-AppError shapes (Error, string, unknown)
- *   3. `errorDetail()` redacts sensitive material (emails, paths, keys)
- *   4. `l10nErrorMessage()` never returns the raw fallback key as user text
- *   5. GlobalErrorReporter passes detail + title to addToast (not just message)
- *   6. The Toast type enforces `detail` is present on error toasts (type-level)
+ *   1. `errorDetail()` extracts useful info from every AppError kind   [covered]
+ *   2. `errorDetail()` handles non-AppError shapes (Error, string, unknown) [covered]
+ *   3. `errorDetail()` redacts sensitive material (emails, paths, keys) [covered]
+ *
+ * ⚠️ CORRECTED 2026-10-09 (round 36). The header used to list six guarantees. Two were
+ * never true of this file, and one was never true of the CODE:
+ *
+ *   4. "`l10nErrorMessage()` never returns the raw fallback key" — no case in this file
+ *      calls `l10nErrorMessage`; it is not imported. Unverified here, and that function
+ *      has its own suite.
+ *   5. "GlobalErrorReporter passes detail + title to addToast" — TRUE of the code
+ *      (GlobalErrorReporter.tsx:67 does pass `detail`), but NOT tested here. Recorded as
+ *      true-and-untested rather than deleted, so the gap is visible.
+ *   6. "The Toast type enforces `detail` is present on error toasts (type-level)" —
+ *      FALSE. `Toast.detail` is `detail?: string` (components/Toast.tsx:26), optional on a
+ *      single non-discriminated interface, so nothing can enforce it. Nor does anything
+ *      in practice: 235 `type: 'error'` toasts exist repo-wide and ZERO pass `detail`
+ *      — the only `detail:` producer is GlobalErrorReporter. An aspirational claim in a
+ *      test header reads as coverage; this one had none.
+ *
+ * A header asserting more than the body checks is worse than a short one: it stops the
+ * next reader looking. Keep this list equal to the cases below.
  */
 
 import { describe, it, expect } from 'vitest';
