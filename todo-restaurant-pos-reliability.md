@@ -707,6 +707,55 @@ added to `handleComplete`'s dep array) rather than leaving it as noise.
 Verified: 10 payment suites / **246 passed**, typecheck 0, eslint 0 errors **and 0 warnings**,
 bundle parity 0 missing. Kill-tested by dropping `autoKickDrawer` from the condition.
 
+### F19 — the sweep: FIVE more controls the runtime ignores, plus a guard (round 55) — `e0e02377b`
+
+F16, F17 and F18 were found one at a time. This round I stopped hunting and **swept**: grep
+every `updateRailParams` call in the payments screen, then check each key for a reader anywhere
+outside the writer and the tests.
+
+**24 keys written. 12 have no reader. They split into two classes, and conflating them would
+have been the easy mistake:**
+
+**Class 1 — INERT (the real defect). Five controls whose value nothing reads, on either side of
+the IPC boundary (`grep '*.rs'`: zero hits for every one):**
+
+| Key | Control | What is missing |
+|---|---|---|
+| `verifyDrawer` | Cashier Drawer Verification | a cashier flow |
+| `acceptedCards` | Supported Card Networks | EDC card-network filtering |
+| `requireTrace` | Require Approval Code | the EDC approval-code path |
+| `autoConfirm` | Midtrans auto-confirm | the gateway auto-confirm path |
+| `printReceipt` | print on QRIS tender | the QRIS receipt path |
+
+`acceptedCards` is the sharpest: the operator can switch **Visa OFF** and a Visa sale still goes
+through. The screen says "Supported Card Networks" and nothing enforces it.
+
+**Class 2 — REDUNDANT, not inert. Seven keys that are duplicated.** `merchantId`, `clientKey`,
+`serverKey`, `publishableKey`, `secretKey`, `nmid` and `channels` are written to the rail params
+*and* saved properly, encrypted, through `setPaymentGatewayConfigScoped` (`:737-754`). Nothing
+reads the rail-param copy, but the control still WORKS at checkout — it just stores the value
+twice. No operator can configure a behaviour that fails to happen, which is what separates this
+from Class 1. Removing them is a storage-format change, not a bug fix.
+
+**The durable deliverable is the guard, not the list.** `railParamReaders.test.ts` reads the
+source, extracts every written rail param, and fails naming any key with no reader — so the class
+cannot come back silently at the commit that adds the next unwired switch. It ships with an
+`ALLOWED_UNWIRED` map that records all 12 **with a reason and the missing implementation**, so
+the debt is visible rather than invisible.
+
+Two details that make the guard honest rather than decorative:
+- **A self-check case.** It asserts the extraction found ≥8 keys including `autoKick`, so the
+  regex silently matching nothing cannot make every other case pass vacuously — the exact failure
+  mode I hit in rounds 30 and 48.
+- **Word boundaries.** `\bmode\b` so `mode` cannot be satisfied by `model` — a substring match
+  would let a key pass on an unrelated word.
+
+Kill-tested by un-allow-listing `verifyDrawer`: the guard fails and names it. Class 1 is recorded
+as **open decisions**, not patched — each needs a product call about where the behaviour belongs.
+
+Verified: full suite **683 files / 11,485 passed**; typecheck 0; eslint 0; bundle parity 0 missing.
+The 2 failures are another lane's `holdCartScoped` (`5f9b467c3`), unchanged all session.
+
 ---
 
 ## 3. Repair plan
