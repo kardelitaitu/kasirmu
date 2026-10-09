@@ -565,6 +565,30 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 19 — two gates left red at HEAD, fixed
+
+Rounds 17 and 18 both ended with the full suite at **2 failed**, and both times I
+attributed them to another lane's in-flight `CartPanel` work. By round 19 that work had
+**landed** (`ec1c50336`, the animated order-type slider) — so the two failures were no
+longer in-flight edits. They were breakage **at HEAD that nobody owned**, and a gate
+that stays red is a gate people learn to ignore.
+
+Both named the same new surface, `.pos-cart-order-type`:
+
+| Gate | What it wanted |
+|---|---|
+| `touchTargetSizing` | `.pos-cart-order-type-btn` (min-height 2rem = 32px) is a real below-floor tablet control; add it to `KNOWN_VIOLATIONS` with a reason, or fix it |
+| `noiseDitherCompliance` | `.pos-cart-order-type-indicator` declares `box-shadow: var(--shadow-sm)`, so it needs a `::after` entry in the noise-dither block **plus** parity in the high-contrast and reduced-motion blocks, **plus** a `KNOWN_NOISE_SELECTORS` entry — the test's own message says those halves are a pair |
+
+**I fixed the gate, not the button's design.** The 32px height is that slice's call, so
+it went into the ratchet with its reason (14 entries, previously 13) exactly as the
+sibling KDS entries document. The dither overlay is a rendering fix, so that one I
+applied: selector added next to the other restaurant-cart surfaces, with the
+absolute-positioning reason recorded — the `.noise-dither` relative utility would fight
+its anchoring.
+
+**Full suite is green again: 679 files / 11403 passed.** `c66e7a3e1`.
+
 ### Round 18 — the F9 gap was THREE sub-screens, not two
 
 Checking the sidebar's entry points end-to-end turned up the real shape of F9's
