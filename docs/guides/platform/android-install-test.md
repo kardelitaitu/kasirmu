@@ -114,13 +114,30 @@ you do change the scaffold, commit the change.
 
 ### Option A — Debug Build (Fast, for Testing)
 
+> **⚠️ `--debug` IS REQUIRED (measured 2026-10-09).** `cargo tauri android build`
+> defaults to **release**. The command below previously omitted the flag while
+> being labelled "Debug Build", so following it produced a 30 MB release APK in
+> `apk/universal/release/` rather than a debug APK — with two consequences that
+> cost a full rebuild cycle to diagnose:
+>
+> 1. **No CDP.** A release build is not `DEBUGGABLE`, so the WebView never opens
+>    its `webview_devtools_remote_<pid>` socket and `adb forward tcp:9222 …`
+>    forwards to nothing. `scripts/android-settings-walk.mjs`,
+>    `scripts/android-cdp.mjs` and every ad-hoc probe are dead on it —
+>    `dumpsys package` shows `flags=[HAS_CODE ALLOW_CLEAR_USER_DATA]` with no
+>    `DEBUGGABLE`. Use the release build only for release-behaviour testing, and
+>    never to drive the UI.
+> 2. **You are not testing what you built.** The release run also re-runs the
+>    frontend build and the full Rust release profile (~4 min), so the cycle is
+>    slower *and* the artifact is the wrong one.
+
 ```bash
 # Build the tablet frontend first
 cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
-# Build debug APK from mobile-tauri
+# Build debug APK from mobile-tauri (--debug is NOT the default)
 cd apps/mobile-tauri
-cargo tauri android build --apk --target aarch64
+cargo tauri android build --apk --debug --target aarch64
 cd ../..
 ```
 
