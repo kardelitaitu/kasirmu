@@ -1220,7 +1220,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     >
       {/* ── Left: Product lookup ─────────────────── */}
       <div className="pos-products">
+        {/* Crash isolation (F9) at the SHELL level, not only inside it. Round 20
+            wrapped two children of RestaurantMenu, but the component itself is
+            rendered here and was still bare: a throw in its own body — the header,
+            the preferences state, the hooks — propagated out of this ternary and
+            took the POS screen down. The children's boundaries only cover what
+            renders INSIDE them. */}
         {activeWorkspace === 'restaurant-pos' ? (
+          <LocalizedErrorBoundary resetKeys={[activeWorkspace]}>
           <RestaurantMenu
             onAddProduct={handleAddProduct}
             sidebarOpen={restaurantSidebarOpen}
@@ -1232,8 +1239,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             isManager={isManager}
             hasFloatingCartBar={isPortraitRestaurant}
           />
+          </LocalizedErrorBoundary>
         ) : (
+          <LocalizedErrorBoundary resetKeys={[activeWorkspace]}>
           <ProductLookupScreen onAddProduct={handleAddProduct} />
+          </LocalizedErrorBoundary>
         )}
       </div>
 

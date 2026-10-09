@@ -166,6 +166,22 @@ const SURFACES: GuardedSurface[] = [
     element: /<OpenShiftModal\b/,
     why: 'open-shift: the opening float',
   },
+  // ── The products pane: the shell, not its children ──
+  //
+  // Round 20 wrapped two CHILDREN of RestaurantMenu and left the component itself
+  // bare at its PosScreen render site, so a throw in the menu's own body still took
+  // the screen down. A boundary around a child covers what renders inside the child;
+  // it says nothing about the parent. Both branches of the ternary are listed.
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<RestaurantMenu\b/,
+    why: 'the restaurant product pane itself (shell body + hooks)',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<ProductLookupScreen\b/,
+    why: 'the non-restaurant product pane',
+  },
 ];
 
 /**
@@ -206,6 +222,6 @@ describe('restaurant POS crash isolation (F9)', () => {
     // money-path surfaces, and the payment popup appears in BOTH shells — eleven.
     // The number is asserted because a list short of the thing it guards is exactly
     // how three of these hid until round 18.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(20);
+    expect(SURFACES.length).toBeGreaterThanOrEqual(22);
   });
 });
