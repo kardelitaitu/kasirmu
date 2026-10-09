@@ -5448,3 +5448,64 @@ deliverable** — a reader who grep-checks `nmid` gets 55 hits and closes the ro
 
 Verified: 19 params inventoried; 4 homonyms identified with the distinguishing fact for each;
 `autoKick` and `defaultTerminalId` measured at 0 consumers and recorded as additions to F19's list.
+
+### F46 — 21 skipped tests re-activated, and the token flow had no coverage (round 109) — `94ad0cb87`
+
+**The first round in a while that repaired coverage rather than recording debt.**
+
+`CloudSyncSettings.test.tsx` carried **22 `it.skip`** under a `PHASE 2` marker, explained by its own
+header as *"phase 1: first 15 tests migrated; the rest stay on the old SettingsPage mount"*. The
+migration had **stopped half-done and stayed that way.**
+
+#### What was actually untested
+
+Grepping the **active** tests for the token flow returned **nothing**:
+
+```
+it\(.*[Rr]equest|it\(.*[Tt]oken   ->  0 matches
+```
+
+**`SyncSection.tsx:305` renders the Request Token button and `:287` calls `requestSyncToken()`** —
+live, operator-facing, and with **zero running tests**. The nine cases that covered it were all
+skipped.
+
+#### Why the migration was one substitution
+
+The skipped tests already mounted `SyncSection` **indirectly**, through a helper that rendered the
+legacy `SettingsPage` and clicked through the nav. Phase 1 had added `mountSyncSection()`, which
+renders the same section directly. So the migration was:
+
+| From | To |
+|---|---|
+| `it.skip(` | `it(` |
+| `await waitForSyncSection();` | `await mountSyncSection();` |
+
+**21 of 22 worked immediately.** The helper and the now-unused `SettingsPage` import were deleted.
+
+#### The one that did not, and why it is parked for a real reason
+
+`auto-refreshes the queue summary every 30s` failed with `Unable to find … role "button" and name
+/operations/i`. It is **not** phase-2 debt: it drives `navigateToSync()`, which needs the sidebar the
+legacy mount provides. It goes back to `it.skip` **with that reason written above it** — a documented
+dependency rather than an unexplained skip, which is the difference between this file before and
+after.
+
+#### Kill-tested, because 21 newly-green tests prove nothing on their own
+
+Breaking the token call (`requestSyncToken()` → a resolved failure) **fails 9 of them**. Before this
+round all 9 were skipped and the broken call would have shipped silently.
+
+#### The number
+
+| | Before | After |
+|---|---|---|
+| passed | 15 | **36** |
+| skipped | 22 | **1** |
+| suite total skipped | **24** | **3** |
+
+**A `PHASE 2` comment is a debt marker, and like a `BASELINE_UNCITED` entry it has no expiry.** This
+one was two phases old. The test for keeping such a marker honest is whether the reason still holds —
+here it had stopped holding for 21 of 22, and nothing re-read it.
+
+Verified: `CloudSyncSettings` **36 passed | 1 skipped**; full suite **698 files / 11,600 passed,
+3 skipped, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
