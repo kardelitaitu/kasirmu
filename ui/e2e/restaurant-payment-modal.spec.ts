@@ -90,6 +90,46 @@ async function openRestaurantPaymentModal(page: import('@playwright/test').Page)
 }
 
 test.describe('Restaurant POS — payment modal', () => {
+  /**
+   * The shift-service-down path, which is the ONE thing here that cannot be
+   * reached from the mock's data: `shiftUnavailable` is set by a REJECTED
+   * `get_active_shift_scoped` (usePosShifts.ts:167-168) and the mock answers
+   * that name from a hardcoded object (handlers/shifts.ts:124). Without
+   * `window.__MOCK_FAIL` this branch had no end-to-end coverage at all.
+   *
+   * Why it matters: the guard in PosScreen's handlePay
+   * (`!activeShiftRef.current && !shiftUnavailableRef.current`) exists so an
+   * unreachable shift service cannot block the till — the comment at
+   * usePosShifts.ts:44-55 records that an informational feature once "silently
+   * blocked every sale". The button's `disabled` attribute was gated on
+   * `!activeShift` alone, so the guard was unreachable dead code and the till
+   * was still blocked. This test is what keeps that from regressing.
+   */
+  test('Charge stays ENABLED when the shift service is unreachable', async ({ page }) => {
+    // Must be installed before the app boots: usePosShifts loads the shift on
+    // mount, so a failure injected after navigation would be too late.
+    await page.addInitScript(() => {
+      (window as unknown as { __MOCK_FAIL?: string[] }).__MOCK_FAIL = [
+        'get_active_shift_scoped',
+      ];
+    });
+
+    await openRestaurantPosWithItem(page);
+
+    const payBtn = page.locator('.pos-cart-pay-btn');
+    await expect(payBtn).toBeVisible({ timeout: TIMEOUT });
+
+    // The assertion under test: an unreachable shift service must NOT disable
+    // Charge. If the button is disabled here, the guard's stand-down branch can
+    // never run and an informational feature is blocking every sale again.
+    await expect(payBtn).toBeEnabled({ timeout: 8_000 });
+    await expect(payBtn).not.toHaveClass(/pos-cart-pay-btn--disabled/);
+
+    // And it must actually open the modal, not merely look enabled.
+    await payBtn.click();
+    await expect(page.locator('[data-testid="payment-modal"]')).toBeVisible({ timeout: 5_000 });
+  });
+
   test('Charge opens the payment modal on the restaurant terminal', async ({ page }) => {
     const modal = await openRestaurantPaymentModal(page);
 
