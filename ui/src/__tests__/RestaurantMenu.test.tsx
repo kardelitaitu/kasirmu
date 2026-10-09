@@ -755,9 +755,19 @@ describe('RestaurantMenu', () => {
     await waitFor(() => expect(screen.getByText('No items match your search')).toBeTruthy());
     // The search box's own × ("Clear search input") and the grid recovery
     // ("Clear search") share a substring; scope to the empty-state panel.
-    const empty = screen.getByText('No items match your search').closest('.restaurant-empty')!;
-    const gridClear = empty.querySelector('.restaurant-empty-retry') as HTMLButtonElement;
-    await user.click(gridClear);
+    // Addressed by testid, not by class.
+    //
+    // TWO buttons share `.restaurant-empty-retry` in `MenuItemGrid.tsx` — the error
+    // state's Retry (`:58`) and the empty state's Clear filter (`:82`) — and they do
+    // OPPOSITE things (refetch vs clear the search box).
+    //
+    // ⚠️ Checked before claiming a hazard, and the honest answer is that the class
+    // lookup was NOT ambiguous: the two live in mutually exclusive early returns, so
+    // at most one is in the DOM at a time. What the class DOES cost is resilience —
+    // a CSS rename or a restyle of the empty state breaks the lookup with an
+    // `as HTMLButtonElement` cast that would silently yield `null` at runtime. The
+    // testid removes that coupling; it does not fix a bug.
+    await user.click(screen.getByTestId('restaurant-menu-clear-filter-btn'));
     await waitFor(() => expect(screen.queryByText('No items match your search')).toBeNull());
     expect(screen.getByText('Nasi Goreng')).toBeTruthy();
   });
@@ -769,7 +779,11 @@ describe('RestaurantMenu', () => {
     expect(screen.getByText('IPC unavailable')).toBeTruthy();
     expect(screen.queryByText('Menu is empty')).toBeNull();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    // The visible copy stays asserted, but SECOND: the testid finds the element
+    // even if the label changes, so a copy edit reads as a copy edit.
+    const retryBtn = screen.getByTestId('restaurant-menu-retry-btn');
+    expect(retryBtn.textContent).toContain('Retry');
+    await user.click(retryBtn);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
