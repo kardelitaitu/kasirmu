@@ -33,6 +33,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
+import { l10nErrorMessage } from '@/utils/app-error';
 import {
   isInteractionSoundEnabled,
   isInteractionVibrationEnabled,
@@ -236,9 +237,18 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
 
         originalsRef.current = { ...values };
         setDirtyVersion((v) => v + 1);
-      } catch {
+      } catch (err) {
+        // `l10nErrorMessage` maps a TYPED AppError to specific user-safe copy (session
+        // expired, no permission, offline, conflict) and falls back to this screen's own
+        // key for anything unrecognized — so the operator gets a message that says what to
+        // DO, while raw backend text still never renders (utils/app-error.ts:319-325).
+        //
+        // The bare `catch {}` here discarded `err` entirely, so every failure read
+        // "Failed to load restaurant settings" — including a session that had expired,
+        // which the operator could actually have fixed. `RestaurantMenuEditorScreen`
+        // already does this at 9 sites; this screen was the outlier.
         addToastRef.current({
-          message: l10nRef.current.getString('restaurant-settings-error-load') || 'Failed to load restaurant settings',
+          message: l10nErrorMessage(err, l10nRef.current, 'restaurant-settings-error-load'),
           type: 'error',
         });
       } finally {
@@ -347,9 +357,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       });
 
       onSaved?.();
-    } catch {
+    } catch (err) {
       addToast({
-        message: l10n.getString('restaurant-settings-error-save') || 'Failed to save settings',
+        message: l10nErrorMessage(err, l10n, 'restaurant-settings-error-save'),
         type: 'error',
       });
     } finally {

@@ -248,6 +248,49 @@ describe('RestaurantSettingsScreen', () => {
     expect(localStorage.getItem('pos.interaction_sound')).toBe('true');
   });
 
+
+  it('surfaces the TYPED cause on a failed save, and the screen key for an untyped one', async () => {
+    // The screen's `catch {}` discarded `err`, so every save failure read the generic
+    // "Failed to save settings". A session that had expired — which the operator can
+    // actually fix — looked identical to an unknown fault. `l10nErrorMessage` maps a typed
+    // AppError to specific user-safe copy and falls back to the screen's own key otherwise
+    // (utils/app-error.ts:319-325), which is the pattern RestaurantMenuEditorScreen already
+    // uses at 9 sites.
+    //
+    // 1. A TYPED session failure must reach the operator as the session message.
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('setting-toggle-interaction-sound')).toBeInTheDocument();
+    });
+    mocks.setSettings.mockRejectedValueOnce({ kind: 'invalidSession', message: 'token expired' });
+    fireEvent.click(screen.getByTestId('setting-toggle-interaction-sound'));
+    fireEvent.click(screen.getByTestId('restaurant-settings-save-btn'));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/session has expired/i),
+        'a typed invalidSession error must surface its own actionable copy, not the ' +
+          'screen\'s generic save-failure message',
+      ).toBeInTheDocument();
+    });
+    // The raw backend text must NEVER render.
+    expect(screen.queryByText(/token expired/)).toBeNull();
+  });
+
+  it('falls back to the screen key for an UNTYPED save failure', async () => {
+    // The other half of the contract: an unrecognized throw keeps this screen's
+    // operational context rather than collapsing to a shared generic string.
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('setting-toggle-interaction-sound')).toBeInTheDocument();
+    });
+    mocks.setSettings.mockRejectedValueOnce(new Error('ipc down'));
+    fireEvent.click(screen.getByTestId('setting-toggle-interaction-sound'));
+    fireEvent.click(screen.getByTestId('restaurant-settings-save-btn'));
+    await waitFor(() => {
+      expect(screen.getByText(/failed to save settings/i)).toBeInTheDocument();
+    });
+  });
+
   it('renders the setting labels from the FTL bundle, not hardcoded English (F10)', async () => {
     // The screen used to pass literal English into SettingRow. Asserting the
     // bundle VALUE (not just that text exists) is what makes a regression to a
