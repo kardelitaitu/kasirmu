@@ -97,6 +97,22 @@ const SURFACES: GuardedSurface[] = [
     element: /<ItemModifierModal\b/,
     why: 'the modifier dialog: where an item price is chosen',
   },
+  // ── The payment popup, in BOTH shells ──
+  //
+  // The money dialog, opened after the tender is chosen. Unwrapped, a throw here
+  // was caught only by AppProviders' FULL-PAGE boundary (:93) whose recovery is a
+  // 30s auto-reload — "a scoped failure never reloads the whole POS" is stated as
+  // the intent at AppProviders:28-31, and this surface is the clearest case for it.
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<PaymentModal\b/,
+    why: 'the payment popup (restaurant POS)',
+  },
+  {
+    file: path.join(SRC, 'features/retail/RetailPosScreen.tsx'),
+    element: /<PaymentModal\b/,
+    why: 'the payment popup (retail POS)',
+  },
 ];
 
 /**
@@ -133,10 +149,10 @@ describe('restaurant POS crash isolation (F9)', () => {
 
   it('scans a meaningful number of surfaces', () => {
     // A collector that silently found nothing would pass every case above.
-    // PosScreen has SEVEN early-return sub-screens, and RestaurantMenu contributes
-    // its two money-path surfaces — nine in all. The number is asserted because a
-    // list short of the thing it guards is exactly how three of these hid until
-    // round 18.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(9);
+    // PosScreen has SEVEN early-return sub-screens, RestaurantMenu contributes two
+    // money-path surfaces, and the payment popup appears in BOTH shells — eleven.
+    // The number is asserted because a list short of the thing it guards is exactly
+    // how three of these hid until round 18.
+    expect(SURFACES.length).toBeGreaterThanOrEqual(11);
   });
 });

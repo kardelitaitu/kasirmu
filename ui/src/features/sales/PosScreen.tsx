@@ -1277,7 +1277,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       />
 
       {/* ── Payment modal ──────────────────────────── */}
+      {/* Crash isolation (F9), and the highest-stakes surface for it: this is the
+          money dialog, opened after the tender is chosen. Without a scoped boundary
+          a throw here was caught only by AppProviders' FULL-PAGE boundary, whose
+          recovery is a 30s auto-reload — which replaces the POS and logs the cashier
+          out mid-transaction. `onReset` closes the dialog and returns to the cart,
+          which is where they need to be. `autoRefreshMs` is deliberately omitted:
+          that prop belongs to full-page boundaries (AppProviders:28-31). */}
       {total && (
+        <LocalizedErrorBoundary onReset={() => setShowPayment(false)}>
         <PaymentModal
           open={showPayment}
           lineItems={lines}
@@ -1297,6 +1305,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />
+        </LocalizedErrorBoundary>
       )}
 
       {/* ── Price Override modal ─────────────────────── */}

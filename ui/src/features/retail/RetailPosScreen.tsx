@@ -4,6 +4,7 @@ import { useBarcodeScanner } from '@/features/sales/useBarcodeScanner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { useLocalization } from '@fluent/react';
 import { plainErrorMessage } from '@/utils/app-error';
 import { isEditableTarget } from '@/utils/isEditableTarget';
@@ -1548,6 +1549,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   if (showPayment && total) {
     return (
+      // Crash isolation (F9) on the money dialog — see the twin in
+      // PosScreen.tsx:1279 for the reasoning. `onReset` closes the dialog and
+      // returns to the cart instead of letting AppProviders' full-page boundary
+      // reload the app, which would log the cashier out mid-transaction.
+      <LocalizedErrorBoundary onReset={() => setShowPayment(false)}>
       <PaymentModal
         open
         lineItems={lines.map((l) => ({
@@ -1570,6 +1576,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         onComplete={() => { setShowPayment(false); resetCart(); setSelectedCustomer(null); playSuccess(); addToast({ message: requiredLocalized(l10n, 'retail-toast-sale-complete'), type: 'success' }); }}
         onClose={() => setShowPayment(false)}
       />
+      </LocalizedErrorBoundary>
     );
   }
 
