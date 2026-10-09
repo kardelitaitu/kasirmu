@@ -679,3 +679,64 @@ fn edit_cost_permission_membership_is_manager_only() {
         Err(kasirmu_core::CoreError::PermissionDenied(_))
     ));
 }
+
+#[test]
+fn create_and_update_args_deserialize_camel_and_snake_case() {
+    let json_camel = serde_json::json!({
+        "sku": "PROD-1",
+        "name": "Mouse",
+        "priceMinor": 150000,
+        "currency": "IDR",
+        "categoryId": "cat-1",
+        "barcode": "899123456",
+        "initialStock": 10,
+        "taxRateIds": ["tax-1"],
+        "productType": "retail",
+        "costMinor": 100000,
+        "brand": "Logitech",
+        "rackLocation": "RACK-A",
+        "notes": "Fast seller",
+        "unit": "pcs",
+        "isActive": true,
+        "defaultSupplierId": "sup-1"
+    });
+
+    let json_snake = serde_json::json!({
+        "sku": "PROD-1",
+        "name": "Mouse",
+        "price_minor": 150000,
+        "currency": "IDR",
+        "category_id": "cat-1",
+        "barcode": "899123456",
+        "initial_stock": 10,
+        "tax_rate_ids": ["tax-1"],
+        "product_type": "retail",
+        "cost_minor": 100000,
+        "brand": "Logitech",
+        "rack_location": "RACK-A",
+        "notes": "Fast seller",
+        "unit": "pcs",
+        "is_active": true,
+        "default_supplier_id": "sup-1"
+    });
+
+    let parsed_camel: CreateProductScopedArgs = serde_json::from_value(json_camel.clone()).unwrap();
+    let parsed_snake: CreateProductScopedArgs = serde_json::from_value(json_snake.clone()).unwrap();
+    assert_eq!(parsed_camel.price_minor, 150000);
+    assert_eq!(parsed_snake.price_minor, 150000);
+    assert_eq!(parsed_camel.initial_stock, 10);
+    assert_eq!(parsed_snake.initial_stock, 10);
+    assert_eq!(parsed_camel.cost_minor, 100000);
+    assert_eq!(parsed_snake.cost_minor, 100000);
+    assert_eq!(parsed_camel.rack_location.as_deref(), Some("RACK-A"));
+    assert_eq!(parsed_snake.rack_location.as_deref(), Some("RACK-A"));
+
+    let update_camel: UpdateProductScopedArgs = serde_json::from_value(json_camel).unwrap();
+    let update_snake: UpdateProductScopedArgs = serde_json::from_value(json_snake).unwrap();
+    assert_eq!(update_camel.price_minor, 150000);
+    assert_eq!(update_snake.price_minor, 150000);
+    assert_eq!(update_camel.cost_minor, Some(100000));
+    assert_eq!(update_snake.cost_minor, Some(100000));
+    assert_eq!(update_camel.rack_location, Some(Some("RACK-A".into())));
+    assert_eq!(update_snake.rack_location, Some(Some("RACK-A".into())));
+}

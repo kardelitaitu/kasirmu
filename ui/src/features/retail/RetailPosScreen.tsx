@@ -1384,6 +1384,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // ── Load persisted held carts on mount ───────────────────────
 
   useEffect(() => {
+    if (!sessionToken) return;
     let mounted = true;
     listHeldCartsScoped(sessionToken)
       .then((carts) => {
