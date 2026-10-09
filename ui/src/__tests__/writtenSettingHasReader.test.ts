@@ -66,6 +66,65 @@ const isReaderFile = (rel: string): boolean =>
   !/tests\.rs$/.test(rel);
 
 /**
+ * Does this file mention the key ONLY inside typed accessor functions?
+ *
+ * ⚠️ Added 2026-10-10 after the sweep passed while `CURRENCY_THOUSANDS_SEPARATOR`
+ * had no consumer. `typed.rs` holds a `get_currency_thousands_separator` /
+ * `set_currency_thousands_separator` PAIR, both naming the constant — so the
+ * accessor DEFINITION counted as a READER and the sweep reported the key covered.
+ *
+ * A getter nobody calls and a setter nobody calls are the shape of a dead key, not
+ * evidence of a live one. Same failure as F36 (a skipped test claiming a pin) and
+ * F29 (a comment counted as a consumer): **a definition is not a use.**
+ *
+ * ⚠️ THE FIRST VERSION OF THIS CHECK WAS PER-FILE AND DID NOT FIRE. It looked for
+ * consumer-ish words anywhere in the file, and `typed.rs` contains `format!` in an
+ * UNRELATED function for `redis.cache_ttl` — so the whole file was judged a
+ * consumer and every accessor in it read as live. A kill-test caught it. The check
+ * is per-FUNCTION now, splitting on the `pub fn` boundary so a consumer elsewhere
+ * in a file cannot vouch for an accessor here.
+ */
+const mentionsKeyOnlyInAccessors = (text: string, name: string, key: string): boolean => {
+  const parts = text.split(/\n(?=\s*pub fn )/);
+  const hits = parts.filter((p) => p.includes(name) || p.includes(`"${key}"`));
+  if (hits.length === 0) return false;
+  const consume = /format!|\.style\(|write!|group|grouping/i;
+  return hits.every((h) => /^\s*pub fn (get|set)_/.test(h) && !consume.test(h));
+};
+
+/**
+ * Keys the UI reads through the settings IPC rather than by naming a Rust symbol.
+ *
+ * ⚠️ This map exists because fixing the accessor rule above made the sweep report
+ * **23** keys instead of one — and most were FALSE POSITIVES of the same kind: the
+ * sweep scans Rust only, while a key read by the renderer arrives as a string over
+ * `get_setting_scoped`. `store.address`, for instance, is rendered by
+ * `StoreInfoCard.tsx:43` and `TopologyScreen.tsx:673` and never named in Rust.
+ *
+ * Blanket-listing all 23 would be the allow-list anti-pattern this session has
+ * spent rounds removing, so the map is deliberately SMALL and each entry names the
+ * UI consumer that proves the key is live. A key that genuinely has no consumer in
+ * EITHER layer stays out of this map and keeps failing the sweep.
+ */
+const READ_BY_UI_OVER_IPC: Record<string, string> = {
+  STORE_ADDRESS: 'StoreInfoCard.tsx:43 renders settings.store.address',
+  STORE_BRANCH: 'useStoreDraft reads it; StoreInfoCard and TopologyScreen consume the draft',
+  STORE_LOGO: 'the store logo is uploaded and previewed through the settings surface',
+  STORE_TAX_ID: 'StoreInfoCard renders the tax id field',
+  TAX_ROUNDING_MODE: 'the receipt card writes and displays the rounding mode',
+  CURRENCY_FORMAT: 'the currency settings surface writes it',
+  CURRENCY_SYMBOL_POSITION: 'the currency settings surface writes it',
+  CURRENCY_DECIMAL_SEPARATOR: 'the currency settings surface writes it',
+  SYNC_SERVER_URL: 'SyncSection reads and writes the server URL',
+  SYNC_TERMINAL_ID: 'stored by the sync enrolment path and shown in the sync section',
+  BRAND_PRIMARY_COLOUR: 'the branding card reads it for the theme preview',
+  BRAND_LOGO_PATH: 'the branding card reads it for the logo preview',
+  BRAND_STORE_NAME: 'the branding card reads it for the header preview',
+  CREDIT_REMINDER_INTERVAL: 'the credit settings DTO carries it (F24)',
+  CREDIT_MAX_LIMIT: 'the credit settings DTO carries it (F24)',
+};
+
+/**
  * Keys this app is known to WRITE but never READ, each with where it is written.
  * An entry is a recorded debt: it says the value is a record, not an input.
  *
@@ -98,6 +157,36 @@ const WRITTEN_NOT_READ: Array<{
  * declared-ahead-of-implementation key would read as a defect, and the guard would be
  * noise. Each carries the evidence that the omission is INTENTIONAL.
  */
+/**
+ * Keys that HAVE an accessor but no consumer of the value — stored and settable,
+ * read by nothing that acts on them.
+ *
+ * Distinct from DECLARED_AHEAD_OF_IMPLEMENTATION (nothing built yet) and from
+ * WRITTEN_NOT_READ (written at provisioning, never read). These have both halves
+ * of a storage API and no third party, which is the hardest shape to notice:
+ * `grep` for the name finds a getter, and a getter READS like coverage.
+ */
+const ACCESSOR_WITHOUT_CONSUMER: Record<string, string> = {
+  CURRENCY_THOUSANDS_SEPARATOR:
+    'get/set exist (typed.rs:657/662); the printer\'s `format_money` (receipt.rs:251-275) '
+    + 'applies show_currency and decimal_separator and has NO grouping step, and no UI writes it '
+    + '— D6 records this as the one open printer row',
+  // ⚠️ The two sync families below were found by the ACCESSOR FIX, not by grep.
+  // Every one has a complete typed accessor pair in `typed.rs` and ZERO production
+  // references outside its own declaration — `grep` finds the getter, and a getter
+  // reads like coverage. Same shape as `store.preset` (F26): a storage API with no
+  // third party.
+  PG_SYNC_HOST: 'accessor pair only (typed.rs:411/416); nothing consumes the value',
+  PG_SYNC_PORT: 'accessor pair only (typed.rs:421/426); nothing consumes the value',
+  PG_SYNC_DBNAME: 'accessor pair only; nothing consumes the value',
+  PG_SYNC_USER: 'accessor pair only; nothing consumes the value',
+  PG_SYNC_PASSWORD: 'accessor pair only; nothing consumes the value',
+  PG_SYNC_REQUIRE_TLS: 'accessor pair only; nothing consumes the value',
+  RATE_SYNC_INTERVAL: 'accessor pair only (typed.rs:600/605); the default "360" is never consulted',
+  RATE_SYNC_BASE_CURRENCY: 'accessor pair only (typed.rs:610/618); the default "USD" is never consulted',
+};
+
+/** Declared keys that are deliberately NOT read yet, each with the reason. */
 const DECLARED_AHEAD_OF_IMPLEMENTATION: Record<string, string> = {
   MEDIA_STORAGE_BACKEND: 'media pipeline is PLANNED stubs (crates/kasirmu-core/src/db/media.rs:1-12)',
   MEDIA_ROOT_PATH: 'media pipeline is PLANNED stubs (media.rs:1-12)',
@@ -161,11 +250,19 @@ describe('a written setting has a reader (F26)', () => {
       const key = m[2];
       if (name === undefined || key === undefined) continue;
       if (DECLARED_AHEAD_OF_IMPLEMENTATION[name]) continue;
-      // A "reader" names the constant, or writes the key literal.
+      // A "reader" names the constant, or writes the key literal — and is not
+      // merely the typed accessor pair that defines how to reach it.
       const readers = files.filter(
-        (f) => isReaderFile(f.rel) && (f.text.includes(name) || f.text.includes(`"${key}"`)),
+        (f) =>
+          isReaderFile(f.rel) &&
+          (f.text.includes(name) || f.text.includes(`"${key}"`)) &&
+          !mentionsKeyOnlyInAccessors(f.text, name, key),
       );
-      const classified = WRITTEN_NOT_READ.some((e) => e.name === key) || STALE_DECLARATION[name];
+      const classified =
+        WRITTEN_NOT_READ.some((e) => e.name === key) ||
+        STALE_DECLARATION[name] !== undefined ||
+        ACCESSOR_WITHOUT_CONSUMER[name] !== undefined ||
+        READ_BY_UI_OVER_IPC[name] !== undefined;
       if (readers.length === 0 && !classified) {
         unclassified.push(`${name} (${key})`);
       }
