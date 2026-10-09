@@ -492,3 +492,26 @@ restaurant-cart-items-count =
 restaurant-cart-table-badge = Table { $table }
 restaurant-cart-empty = Cart is empty
 
+# ── Restaurant payments screen (P6 i18n sweep, third screen) ─────
+# The labels and aria-labels this screen hardcoded. Mirrored in the .id bundle
+# with real Indonesian, not English copies — the i18n gate fails identical values.
+restaurant-payment-display-label = Display Label
+restaurant-payment-auto-cash-drawer = Automatic Cash Drawer
+restaurant-payment-cash-presets = Cash Suggestion Presets
+restaurant-payment-drawer-verification = Cashier Drawer Verification
+restaurant-payment-mode = Mode
+restaurant-payment-print-pay-at-table = Print Pay-at-Table QR
+restaurant-payment-card-networks = Supported Card Networks
+restaurant-payment-require-approval = Require Approval Code
+restaurant-payment-environment = Environment
+restaurant-payment-payment-channels = Payment Channels
+restaurant-payment-instant-webhook = Instant Webhook
+restaurant-payment-connection = Connection
+restaurant-payment-qr-mode = QR Mode
+restaurant-payment-qr-payload = Static QR payload (EMVCo string)
+restaurant-payment-midtrans-env = Midtrans Environment
+restaurant-payment-stripe-mode = Stripe Mode
+restaurant-payment-custom-code = Payment method code is required
+restaurant-payment-custom-code-example = e.g. ovo, shopeepay, voucher
+restaurant-payment-custom-label-example = e.g. OVO Wallet
+restaurant-payment-cash-placeholder = Cash

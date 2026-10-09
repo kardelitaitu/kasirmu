@@ -1029,7 +1029,7 @@ export function RestaurantPaymentsScreen({
             >
               <div className="resto-compact-form">
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Display Label</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-display-label')}</span>
                   <div className="resto-compact-control">
                     <input
                       id="cash-custom-label"
@@ -1041,15 +1041,15 @@ export function RestaurantPaymentsScreen({
                         setCashCustomLabel(val);
                         updateRailLabel('cash', val);
                       }}
-                      placeholder="Cash"
-                      aria-label="Display Label"
+                      placeholder={l10n.getString('restaurant-payment-cash-placeholder')}
+                      aria-label={l10n.getString('restaurant-payment-display-label')}
                       data-testid="cash-custom-label-input"
                     />
                   </div>
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Automatic Cash Drawer</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-auto-cash-drawer')}</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
                       <label className="settings-toggle-switch" htmlFor="cash-drawer-kick">
@@ -1063,7 +1063,7 @@ export function RestaurantPaymentsScreen({
                             setCashDrawerAutoKick(val);
                             updateRailParams('cash', { autoKick: val });
                           }}
-                          aria-label="Automatic Cash Drawer"
+                          aria-label={l10n.getString('restaurant-payment-auto-cash-drawer')}
                           data-testid="cash-drawer-kick-toggle"
                         />
                         <span className="settings-toggle-slider" aria-hidden="true" />
@@ -1073,7 +1073,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-block">
-                  <span className="resto-compact-block-title">Cash Suggestion Presets</span>
+                  <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-cash-presets')}</span>
                   <div className="resto-compact-chips">
                     {['exact', '1000', '2000', '5000', '10000', '20000', '50000', '100000'].map((preset) => {
                       const active = activeCashPresets.some((p) => p.toLowerCase() === preset.toLowerCase());
@@ -1100,7 +1100,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Cashier Drawer Verification</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-drawer-verification')}</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
                       <label className="settings-toggle-switch" htmlFor="cash-drawer-verify">
@@ -1114,7 +1114,7 @@ export function RestaurantPaymentsScreen({
                             setCashDrawerVerify(val);
                             updateRailParams('cash', { verifyDrawer: val });
                           }}
-                          aria-label="Cashier Drawer Verification"
+                          aria-label={l10n.getString('restaurant-payment-drawer-verification')}
                           data-testid="cash-drawer-verify-toggle"
                         />
                         <span className="settings-toggle-slider" aria-hidden="true" />
@@ -1141,9 +1141,9 @@ export function RestaurantPaymentsScreen({
             >
               <div className="resto-compact-form">
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Mode</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-mode')}</span>
                   <div className="resto-compact-control">
-                    <div className="resto-segmented-group" role="group" aria-label="QR Mode">
+                    <div className="resto-segmented-group" role="group" aria-label={l10n.getString('restaurant-payment-qr-mode')}>
                       <button
                         type="button"
                         className={`resto-segmented-btn ${qrisMode === 'static' ? 'resto-segmented-btn--active' : ''}`}
@@ -1182,7 +1182,7 @@ export function RestaurantPaymentsScreen({
                       placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
                       value={staticQrValue}
                       onChange={(e) => handleStaticQrChange(e.target.value)}
-                      aria-label="Static QR payload (EMVCo string)"
+                      aria-label={l10n.getString('restaurant-payment-qr-payload')}
                       spellCheck={false}
                       data-testid="qris-static-payload-input"
                     />
@@ -1232,7 +1232,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Print Pay-at-Table QR</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-print-pay-at-table')}</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
                       <label className="settings-toggle-switch" htmlFor="qris-print-bill">
@@ -1246,7 +1246,7 @@ export function RestaurantPaymentsScreen({
                             setQrisPrintReceipt(val);
                             updateRailParams('qris', { printReceipt: val });
                           }}
-                          aria-label="Print Pay-at-Table QR"
+                          aria-label={l10n.getString('restaurant-payment-print-pay-at-table')}
                           data-testid="qris-print-bill-toggle"
                         />
                         <span className="settings-toggle-slider" aria-hidden="true" />
@@ -1308,7 +1308,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-block">
-                  <span className="resto-compact-block-title">Supported Card Networks</span>
+                  <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-card-networks')}</span>
                   <div className="resto-compact-chips">
                     {[
                       { id: 'gpn', label: 'Debit GPN' },
@@ -1342,7 +1342,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Require Approval Code</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-require-approval')}</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
                       <label className="settings-toggle-switch" htmlFor="edc-require-trace">
@@ -1356,7 +1356,7 @@ export function RestaurantPaymentsScreen({
                             setRequireEdcTraceCode(val);
                             updateRailParams('card', { requireTrace: val });
                           }}
-                          aria-label="Require Approval Code"
+                          aria-label={l10n.getString('restaurant-payment-require-approval')}
                           data-testid="edc-require-trace-toggle"
                         />
                         <span className="settings-toggle-slider" aria-hidden="true" />
@@ -1382,9 +1382,9 @@ export function RestaurantPaymentsScreen({
             >
               <div className="resto-compact-form">
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Environment</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-environment')}</span>
                   <div className="resto-compact-control">
-                    <div className="resto-segmented-group" role="group" aria-label="Midtrans Environment">
+                    <div className="resto-segmented-group" role="group" aria-label={l10n.getString('restaurant-payment-midtrans-env')}>
                       <button
                         type="button"
                         className={`resto-segmented-btn ${midtransEnv === 'sandbox' ? 'resto-segmented-btn--active' : ''}`}
@@ -1475,7 +1475,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-block">
-                  <span className="resto-compact-block-title">Payment Channels</span>
+                  <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-payment-channels')}</span>
                   <div className="resto-compact-chips">
                     {[
                       { key: 'gopay', label: 'GoPay / QRIS' },
@@ -1507,7 +1507,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Instant Webhook</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-instant-webhook')}</span>
                   <div className="resto-compact-control">
                     <span className="settings-toggle">
                       <label className="settings-toggle-switch" htmlFor="midtrans-auto-confirm">
@@ -1521,7 +1521,7 @@ export function RestaurantPaymentsScreen({
                             setMidtransAutoConfirm(val);
                             updateRailParams('midtrans', { autoConfirm: val });
                           }}
-                          aria-label="Instant Webhook"
+                          aria-label={l10n.getString('restaurant-payment-instant-webhook')}
                           data-testid="midtrans-auto-confirm-toggle"
                         />
                         <span className="settings-toggle-slider" aria-hidden="true" />
@@ -1531,7 +1531,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Connection</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-connection')}</span>
                   <div className="resto-compact-control">
                     <button
                       type="button"
@@ -1569,9 +1569,9 @@ export function RestaurantPaymentsScreen({
             >
               <div className="resto-compact-form">
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Mode</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-mode')}</span>
                   <div className="resto-compact-control">
-                    <div className="resto-segmented-group" role="group" aria-label="Stripe Mode">
+                    <div className="resto-segmented-group" role="group" aria-label={l10n.getString('restaurant-payment-stripe-mode')}>
                       <button
                         type="button"
                         className={`resto-segmented-btn ${stripeMode === 'test' ? 'resto-segmented-btn--active' : ''}`}
@@ -1686,7 +1686,7 @@ export function RestaurantPaymentsScreen({
                 </div>
 
                 <div className="resto-compact-row">
-                  <span className="resto-compact-label">Connection</span>
+                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-connection')}</span>
                   <div className="resto-compact-control">
                     <button
                       type="button"
@@ -1762,7 +1762,7 @@ export function RestaurantPaymentsScreen({
                           className="settings-input"
                           value={newRailCode}
                           onChange={(e) => setNewRailCode(e.target.value)}
-                          placeholder="e.g. ovo, shopeepay, voucher"
+                          placeholder={l10n.getString('restaurant-payment-custom-code-example')}
                           data-testid="new-rail-code-input"
                         />
                       </div>
@@ -1778,7 +1778,7 @@ export function RestaurantPaymentsScreen({
                           className="settings-input"
                           value={newRailLabel}
                           onChange={(e) => setNewRailLabel(e.target.value)}
-                          placeholder="e.g. OVO Wallet"
+                          placeholder={l10n.getString('restaurant-payment-custom-label-example')}
                           data-testid="new-rail-label-input"
                         />
                       </div>

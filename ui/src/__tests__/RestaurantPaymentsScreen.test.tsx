@@ -16,6 +16,8 @@
  * settings.ftl + products.ftl, mounted as the real bundles.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -923,5 +925,106 @@ describe('RestaurantPaymentsScreen — a failed gateway read is not silent (F4)'
   });
 });
 
+// ── P6 i18n sweep, third screen ─────────────────────────────────────────
+//
+// This screen hardcoded 24 user-visible strings — 14 `resto-compact-label` /
+// `resto-compact-block-title` text nodes, 10 `aria-label`s, and 3 English
+// placeholders. They now read from `products.ftl` / `products.id.ftl` as
+// `restaurant-payment-*`.
+//
+// These cases assert the BUNDLE VALUES render, not merely that something
+// appeared. A regression to a hardcoded literal would show the SAME visible
+// text, so a weaker assertion would pass on it — the round-15 lesson from the
+// plan, where an "is it there" check survived the bug it was written for.
+describe('RestaurantPaymentsScreen — P6 i18n sweep (no hardcoded English)', () => {
+  // The keys this screen must own. Each was a literal before the sweep.
+  const SWEPT = [
+    'restaurant-payment-display-label',
+    'restaurant-payment-auto-cash-drawer',
+    'restaurant-payment-cash-presets',
+    'restaurant-payment-drawer-verification',
+    'restaurant-payment-mode',
+    'restaurant-payment-print-pay-at-table',
+    'restaurant-payment-card-networks',
+    'restaurant-payment-require-approval',
+    'restaurant-payment-environment',
+    'restaurant-payment-payment-channels',
+    'restaurant-payment-instant-webhook',
+    'restaurant-payment-connection',
+    'restaurant-payment-qr-mode',
+    'restaurant-payment-qr-payload',
+    'restaurant-payment-midtrans-env',
+    'restaurant-payment-stripe-mode',
+    'restaurant-payment-custom-code-example',
+    'restaurant-payment-custom-label-example',
+    'restaurant-payment-cash-placeholder',
+  ];
 
+  /** products.ftl as shipped, read from disk so the test cannot agree with a literal. */
+  function readProductsBundle(): string {
+    return fs.readFileSync(
+      path.resolve(process.cwd(), '../shared-ui/locales/products.ftl'),
+      'utf-8',
+    );
+  }
 
+  /** The bundle's value for a key, looked up rather than retyped. */
+  function bundleValue(bundle: string, key: string): string {
+    return (bundle.match(new RegExp('^' + key + ' = (.*)$', 'm')) ?? [])[1] ?? '';
+  }
+
+  it('every swept key exists in the English bundle', () => {
+    const bundle = readProductsBundle();
+    for (const key of SWEPT) {
+      expect(
+        bundle,
+        `${key} is missing from products.ftl — if this screen went back to a ` +
+          'hardcoded literal, that is the regression this case exists for',
+      ).toMatch(new RegExp('^' + key + ' = ', 'm'));
+    }
+  });
+
+  it('renders those values from the bundle', async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('GoPay')).toBeInTheDocument();
+    });
+    const bundle = readProductsBundle();
+    // Looked up by KEY, so this cannot drift into agreeing with a literal.
+    //
+    // These three are on the DEFAULT-rendered panel. `restaurant-payment-connection`
+    // deliberately is NOT in this list: it lives inside the collapsed Stripe/EDC
+    // cards at :1534/:1689, so asserting it here would fail on layout rather than
+    // on i18n. The key's presence is covered by the case above.
+    for (const key of [
+      'restaurant-payment-display-label',
+      'restaurant-payment-cash-presets',
+      'restaurant-payment-auto-cash-drawer',
+    ]) {
+      expect(screen.getByText(bundleValue(bundle, key))).toBeInTheDocument();
+    }
+  });
+
+  it('leaves no hardcoded English label, aria-label or placeholder in the source', () => {
+    // The source-level half: a literal can render the right words and still BE a
+    // literal. Only reading the file catches that.
+    const src = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/features/restaurant/screens/RestaurantPaymentsScreen.tsx',
+      ),
+      'utf-8',
+    );
+    const offenders = src
+      .split('\n')
+      .map((line, i) => ({ n: i + 1, line }))
+      .filter(({ line }) =>
+        /aria-label="[A-Z]/.test(line) ||
+        /<span className="resto-compact-(label|block-title)">[A-Z]/.test(line) ||
+        /placeholder="(Cash|e\.g\.)/.test(line));
+    expect(
+      offenders.map((o) => `${o.n}: ${o.line.trim().slice(0, 70)}`),
+      'these lines hardcode user-visible English again — route them through l10n.getString',
+    ).toEqual([]);
+  });
+});

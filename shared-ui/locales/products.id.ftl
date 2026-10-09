@@ -484,3 +484,26 @@ restaurant-cart-items-count = { $count } item
 restaurant-cart-table-badge = Meja { $table }
 restaurant-cart-empty = Keranjang kosong
 
+# ── Restaurant payments screen (P6 i18n sweep, third screen) ─────
+# The labels and aria-labels this screen hardcoded. Mirrored in the .id bundle
+# with real Indonesian, not English copies — the i18n gate fails identical values.
+restaurant-payment-display-label = Label Tampilan
+restaurant-payment-auto-cash-drawer = Laci Kas Otomatis
+restaurant-payment-cash-presets = Preset Saran Uang Tunai
+restaurant-payment-drawer-verification = Verifikasi Laci Kasir
+restaurant-payment-mode = Mode
+restaurant-payment-print-pay-at-table = Cetak QR Bayar di Meja
+restaurant-payment-card-networks = Jaringan Kartu yang Didukung
+restaurant-payment-require-approval = Wajib Kode Persetujuan
+restaurant-payment-environment = Lingkungan
+restaurant-payment-payment-channels = Saluran Pembayaran
+restaurant-payment-instant-webhook = Webhook Instan
+restaurant-payment-connection = Koneksi
+restaurant-payment-qr-mode = Mode QR
+restaurant-payment-qr-payload = Muatan QR statis (string EMVCo)
+restaurant-payment-midtrans-env = Lingkungan Midtrans
+restaurant-payment-stripe-mode = Mode Stripe
+restaurant-payment-custom-code = Kode metode pembayaran wajib diisi
+restaurant-payment-custom-code-example = mis. ovo, shopeepay, voucher
+restaurant-payment-custom-label-example = mis. Dompet OVO
+restaurant-payment-cash-placeholder = Tunai
