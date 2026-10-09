@@ -1234,12 +1234,18 @@ retryCurrencyLoad,
     } catch (err) {
       // Try to detect PartialStockResult from the backend error.
       //
-      // rejectionText, not `err instanceof Error ? err.message : String(err)`:
-      // the backend sends AppError as a plain tagged object
-      // (apps/mobile-tauri/src/error.rs:19-21), for which instanceof is false and
-      // String(err) is "[object Object]" — no "{" for the parser below to find, so
-      // the shortfall dialog never opened on a device while the unit test (which
-      // rejects with a real Error) stayed green. Measured on the Redmi tablet.
+      // `rejectionText`, NOT the shape this used to have: an instanceof check that
+      // fell back to `String(err)` with a `.message` read. The backend sends AppError
+      // as a plain tagged object (apps/mobile-tauri/src/error.rs:19-21), for which
+      // instanceof is false and `String()` yields "[object Object]" — no "{" for the
+      // parser below to find, so the shortfall dialog never opened on a device while
+      // the unit test (which rejects with a real Error) stayed green. Measured on the
+      // Redmi tablet.
+      //
+      // The old spelling is DESCRIBED, never quoted: errorPolicyCompliance.test.ts
+      // matches raw-message reads line-by-line without stripping comments, so
+      // quoting the expression here would itself be reported as a leak site. That
+      // happened twice while writing this note.
       const errMsg = rejectionText(err);
       const parsed = tryParsePartialStockResult(errMsg);
       if (parsed) {
