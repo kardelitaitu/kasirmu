@@ -292,20 +292,6 @@ function navigateToSync() {
   fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
 }
 
-// PHASE 2: legacy SettingsPage mount, kept alive only for the skipped tests.
-async function waitForSyncSection() {
-  renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-  });
-  navigateToSync();
-  // The section body (server URL field) renders after the async settings
-  // snapshot resolves — waiting on the sidebar nav item alone let the first
-  // label query race ahead of the section render (flaky in CI).
-  await waitFor(() => {
-    expect(screen.getByLabelText(/server url/i)).toBeInTheDocument();
-  });
-}
 
 // ── Direct-mount host: SyncSection with the real prop bag ─────────
 //
@@ -837,18 +823,16 @@ describe('CloudSyncSettings', () => {
   //  Not-configured hint
   // ═══════════════════════════════════════════════════════════════
 
-  // PHASE 2
-  it.skip('does not show a not-configured hint when the cloud default URL is set', async () => {
-    await waitForSyncSection();
+  it('does not show a not-configured hint when the cloud default URL is set', async () => {
+    await mountSyncSection();
 
     // With the cloud-server default re-enabled, an unconfigured sync is
     // pre-filled so the not-configured hint does not surface.
     expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
   });
 
-  // PHASE 2
-  it.skip('keeps the not-configured hint hidden even after clearing the URL input', async () => {
-    await waitForSyncSection();
+  it('keeps the not-configured hint hidden even after clearing the URL input', async () => {
+    await mountSyncSection();
 
     // The hint is driven by the saved sync state (serverUrl pre-filled by
     // the cloud default), not the transient input value — clearing the
@@ -861,17 +845,15 @@ describe('CloudSyncSettings', () => {
   //  Sync Now button
   // ═══════════════════════════════════════════════════════════════
 
-  // PHASE 2
-  it.skip('shows Sync Now by default with the cloud-server pre-filled URL', async () => {
-    await waitForSyncSection();
+  it('shows Sync Now by default with the cloud-server pre-filled URL', async () => {
+    await mountSyncSection();
 
     // With the cloud default re-enabled, the pre-filled URL renders the
     // actions row which includes Sync Now.
     expect(screen.getByRole('button', { name: /sync now/i })).toBeInTheDocument();
   });
 
-  // PHASE 2
-  it.skip('renders Sync Now button when serverUrl is set', async () => {
+  it('renders Sync Now button when serverUrl is set', async () => {
     // Override load to return a configured serverUrl
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -880,13 +862,12 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     expect(screen.getByRole('button', { name: /sync now/i })).toBeInTheDocument();
   });
 
-  // PHASE 2
-  it.skip('calls sync_run when Sync Now is clicked and displays result', async () => {
+  it('calls sync_run when Sync Now is clicked and displays result', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
         return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
@@ -894,7 +875,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     const syncNowBtn = screen.getByRole('button', { name: /sync now/i });
     fireEvent.click(syncNowBtn);
@@ -912,8 +893,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('shows the upgrade prompt when sync_run reports planRequired', async () => {
+  it('shows the upgrade prompt when sync_run reports planRequired', async () => {
     // ADR sync-plan-gating: a free tenant's sync attempt must render a
     // dedicated "requires a paid plan" block, not a generic sync error.
     invokeMock.mockImplementation((cmd: string) => {
@@ -931,7 +911,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     fireEvent.click(screen.getByRole('button', { name: /sync now/i }));
 
@@ -945,8 +925,7 @@ describe('CloudSyncSettings', () => {
     expect(screen.queryByText(/Sync failed/i)).not.toBeInTheDocument();
   });
 
-  // PHASE 2
-  it.skip('does not show the upgrade prompt for a generic sync error', async () => {
+  it('does not show the upgrade prompt for a generic sync error', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
         return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
@@ -962,7 +941,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     fireEvent.click(screen.getByRole('button', { name: /sync now/i }));
 
@@ -978,9 +957,8 @@ describe('CloudSyncSettings', () => {
   //  hasApiKey state update after save (regression guard)
   // ═══════════════════════════════════════════════════════════════
 
-  // PHASE 2
-  it.skip('updates placeholder to masked dots after saving a new API key', async () => {
-    await waitForSyncSection();
+  it('updates placeholder to masked dots after saving a new API key', async () => {
+    await mountSyncSection();
 
     // Initially: hasApiKey = false → placeholder shows "Enter API key"
     const keyInputBefore = getApiKeyInput();
@@ -1003,9 +981,8 @@ describe('CloudSyncSettings', () => {
   //  serverUrl state update after save (regression guard)
   // ═══════════════════════════════════════════════════════════════
 
-  // PHASE 2
-  it.skip('updates serverUrl in sync state after save so not-configured hint stays hidden', async () => {
-    await waitForSyncSection();
+  it('updates serverUrl in sync state after save so not-configured hint stays hidden', async () => {
+    await mountSyncSection();
 
     // With the cloud default pre-filling the URL, the hint is absent.
     expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
@@ -1022,9 +999,8 @@ describe('CloudSyncSettings', () => {
     expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
   });
 
-  // PHASE 2
-  it.skip('preserves hasApiKey state across saves without retyping the key', async () => {
-    await waitForSyncSection();
+  it('preserves hasApiKey state across saves without retyping the key', async () => {
+    await mountSyncSection();
 
     // First save: type a key
     fireEvent.change(getApiKeyInput(), { target: { value: 'sk-first' } });
@@ -1054,8 +1030,7 @@ describe('CloudSyncSettings', () => {
     expect(getApiKeyInput().getAttribute('placeholder')).toBe('••••••••');
   });
 
-  // PHASE 2
-  it.skip('does not downgrade hasApiKey from true to false on save without key', async () => {
+  it('does not downgrade hasApiKey from true to false on save without key', async () => {
     // Start with a pre-existing key
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1064,7 +1039,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     // Placeholder already shows masked dots
     expect(getApiKeyInput().getAttribute('placeholder')).toBe('••••••••');
@@ -1084,8 +1059,7 @@ describe('CloudSyncSettings', () => {
   //  Request Token button
   // ═══════════════════════════════════════════════════════════════
 
-  // PHASE 2
-  it.skip('renders Request Token button when server URL is set', async () => {
+  it('renders Request Token button when server URL is set', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
         return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
@@ -1093,13 +1067,12 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     expect(screen.getByRole('button', { name: /request token/i })).toBeInTheDocument();
   });
 
-  // PHASE 2
-  it.skip('calls request_sync_token with the in-progress URL on click', async () => {
+  it('calls request_sync_token with the in-progress URL on click', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1108,7 +1081,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     // Type a custom URL into the server URL field
     fireEvent.change(getServerUrlInput(), { target: { value: 'http://localhost:3099' } });
@@ -1121,8 +1094,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('auto-fills API key field on successful token request', async () => {
+  it('auto-fills API key field on successful token request', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1131,7 +1103,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     expect(getApiKeyInput()).toHaveValue('');
 
@@ -1143,8 +1115,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('shows visibility toggle after auto-fill since there is text to reveal', async () => {
+  it('shows visibility toggle after auto-fill since there is text to reveal', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1153,7 +1124,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     // Before auto-fill: no toggle (field is empty)
     expect(document.querySelector('.settings-input-toggle')).toBeNull();
@@ -1171,8 +1142,7 @@ describe('CloudSyncSettings', () => {
     expect(getApiKeyInput().type).toBe('password');
   });
 
-  // PHASE 2
-  it.skip('shows expiry badge after successful token request', async () => {
+  it('shows expiry badge after successful token request', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1181,7 +1151,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     const requestBtn = screen.getByRole('button', { name: /request token/i });
     await user.click(requestBtn);
@@ -1194,8 +1164,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('clears expiry badge on revert', async () => {
+  it('clears expiry badge on revert', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1204,7 +1173,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     // Request a token so the badge appears
     const requestBtn = screen.getByRole('button', { name: /request token/i });
@@ -1224,8 +1193,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('clears expiry badge when server URL changes', async () => {
+  it('clears expiry badge when server URL changes', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1234,7 +1202,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     // Request a token so the badge appears
     const requestBtn = screen.getByRole('button', { name: /request token/i });
@@ -1252,8 +1220,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('shows error toast when token request fails (ok: false)', async () => {
+  it('shows error toast when token request fails (ok: false)', async () => {
     const user = userEvent.setup();
 
     invokeMock.mockImplementation((cmd: string) => {
@@ -1263,7 +1230,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     const requestBtn = screen.getByRole('button', { name: /request token/i });
     await user.click(requestBtn);
@@ -1282,8 +1249,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('shows error toast when token request throws (network error)', async () => {
+  it('shows error toast when token request throws (network error)', async () => {
     const user = userEvent.setup();
 
     invokeMock.mockImplementation((cmd: string) => {
@@ -1293,7 +1259,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     const requestBtn = screen.getByRole('button', { name: /request token/i });
     await user.click(requestBtn);
@@ -1313,8 +1279,7 @@ describe('CloudSyncSettings', () => {
     });
   });
 
-  // PHASE 2
-  it.skip('marks settings as dirty after successful token auto-fill', async () => {
+  it('marks settings as dirty after successful token auto-fill', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
@@ -1323,7 +1288,7 @@ describe('CloudSyncSettings', () => {
       return defaultImpl(cmd);
     });
 
-    await waitForSyncSection();
+    await mountSyncSection();
 
     const requestBtn = screen.getByRole('button', { name: /request token/i });
     await user.click(requestBtn);
@@ -1336,7 +1301,13 @@ describe('CloudSyncSettings', () => {
     expect(screen.getByRole('button', { name: /revert settings/i })).toBeInTheDocument();
   });
 
-  // PHASE 2
+  // ⚠️ Still skipped after the round-109 migration, and this one is NOT phase-2 debt.
+  // This case needs the NAVIGATION the legacy SettingsPage mount provides
+  // (`navigateToSync()` clicks the Operations menu); the direct mount has no sidebar,
+  // so migrating it fails on `getByRole('button', { name: /operations/i })`. The other
+  // 21 became active tests; this one is parked on a REAL dependency, not on laziness.
+  // Revisit by driving the 30s timer against `mountSyncSection()` directly, which is
+  // a different test rather than a migration.
   it.skip('auto-refreshes the queue summary every 30s while the sync section is open', async () => {
     vi.useFakeTimers();
     try {
