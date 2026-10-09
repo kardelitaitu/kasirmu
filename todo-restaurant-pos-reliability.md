@@ -1726,7 +1726,38 @@ TRUE.** Rounds 27-35 produced two more, both about the same thing — controls t
 affect what they claim to — and they are recorded below as D5/D6 rather than left to be
 re-discovered from the round log.
 
-### D5 — OPEN: three settings toggles whose key nothing reads (round 27)
+### D5 — PARTLY RESOLVED: Hold Order DELETED (round 42); two remain open
+
+**`restaurant.hold_order` and its toggle are GONE** (`df86bf0b3`). Removed rather than
+wired, on the same reasoning as `table_number` (option C): the key had zero readers while
+its own description promised *"Allow cashier to park or temporarily hold in-progress
+orders"* — and restaurant POS already parks carts, as `open_bill` ("Save Tab", the toggle
+immediately below it). Wiring it would have meant inventing a second park concept beside
+`save_tab`, so the control offered a duplicate name for a capability that exists.
+
+Removed across all seven places it lived: the `SettingRow`, the `useState`, the load
+setter, the dirty check, `originalsRef`, both dependency arrays, the save payload, the
+model's interface/default/spec table, and the orphaned copy in BOTH locales
+(`products.ftl`, `products.id.ftl` — 2 lines each).
+
+**The guard caught the removal, which is what it is for:** `deadSettingsKey.test.ts`'s
+written-key floor failed with `expected 9 to be greater than or equal to 10`. The floor was
+lowered deliberately, with the reason inline — *drop it when a key is DELETED, never when
+one stops being written silently.* Its `DECLARED_DEAD` entry was removed too, and the
+sibling tests that used `hold_order` as a fixture key now use the live `save_tab`.
+
+A removal assertion replaces the old presence check
+(`expect(queryByTestId('setting-toggle-hold-order')).toBeNull()`), matching how the
+`table-number` removal is already pinned one line above.
+
+**Still open in D5** — the other two, unchanged:
+
+| Toggle | Key | What wiring it would need |
+|---|---|---|
+| Auto-Print KOT | `restaurant.auto_print_kitchen` | a POS-side KOT send on save/hold. `print_kds_chit_scoped` and `createKdsOrderFromSaleScoped` EXIST, so this is a call-site addition. |
+| Order Sound Notifications | `restaurant.sound_chime` | an order-sent chime in the POS. `useSound().playBeep()` exists but is KDS-only. |
+
+_(The table that used to live under this heading is now this one.)_
 
 | Toggle | Key | What wiring it would need |
 |---|---|---|
