@@ -565,6 +565,37 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 31 — the settings screen described a POS that did not exist
+
+With the tender class closed, I turned the "one value, several consumers" lens on the goal's
+*other* named surface: the sidebar settings screen. It found a divergence in the same
+family as round 25's KDS defaults, and this one was wrong in the direction that misleads a
+merchant.
+
+`restaurant.guest_count` is read by three places, and two disagreed about an **unset** key:
+
+| Surface | Behaviour for an unset key |
+|---|---|
+| `PosScreen.tsx:1141` | `guestCountEnabled ?? true` → the pax field is **shown** |
+| `CartPanel.tsx:759` | `guestCountEnabled !== false` → shown |
+| `DEFAULT_RESTAURANT_SETTINGS.guestCount` | **`false`** → the screen rendered the toggle **OFF** |
+
+So a merchant opened Settings, saw Guest Count switched off, and the POS was showing the
+field. The screen asserted a state the till was not in.
+
+**Which side moved, and why.** The runtime's direction is deliberate and documented at
+`PosScreen.tsx:792-796`: *"an unset key cannot hide a field that has always been visible"* —
+a settings outage must not remove a POS capability. That is the safe direction, so the
+**screen's default** was the wrong one and moved to `true`.
+
+**The guard pins both directions**, which matters because either side could drift:
+`restaurantSettingDefaultsAgree.test.ts` reads the POS's own `??` default for each
+cart-field gate and requires it to equal the settings default, then counts the runtime's
+prop sites so a gate added later cannot skip the check. Kill-tested by reverting the
+screen default (fails) and by reverting the runtime default (fails).
+
+`87854c2cf`.
+
 ### Round 30 — the third site, and why the tests could not see it
 
 Round 29 fixed the retry's stored enum. Sweeping the same field for a fourth time found
