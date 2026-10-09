@@ -150,6 +150,22 @@ const SURFACES: GuardedSurface[] = [
     element: /<ItemModifierModal\b/,
     why: 'in-cart modifier editor: options and price',
   },
+  // ── The shift family: cash-drawer reconciliation ──
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<CloseShiftConfirm\b/,
+    why: 'close-shift: the cash-drawer count',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<ShiftSummary\b/,
+    why: 'shift summary: the reconciliation figures',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<OpenShiftModal\b/,
+    why: 'open-shift: the opening float',
+  },
 ];
 
 /**
@@ -190,6 +206,6 @@ describe('restaurant POS crash isolation (F9)', () => {
     // money-path surfaces, and the payment popup appears in BOTH shells — eleven.
     // The number is asserted because a list short of the thing it guards is exactly
     // how three of these hid until round 18.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(17);
+    expect(SURFACES.length).toBeGreaterThanOrEqual(20);
   });
 });

@@ -1353,6 +1353,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       />
 
       {/* -- Shift modals (Close Shift confirm / summary / Open Shift) -- */}
+      {/* Crash isolation (F9) on the shift family. These carry the CASH DRAWER
+          reconciliation figures, so a throw here lands on the operator mid-count;
+          `onReset` closes the modal back to the sale rather than reloading the app. */}
+      <LocalizedErrorBoundary onReset={() => closeShiftExit.requestClose()}>
       <CloseShiftConfirm
         closeShiftExit={closeShiftExit}
         activeShift={activeShift}
@@ -1367,13 +1371,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         handleConfirmCloseShift={handleConfirmCloseShift}
         currency={activeCurrency}
       />
+      </LocalizedErrorBoundary>
 
+      <LocalizedErrorBoundary onReset={() => shiftSummaryExit.requestClose()}>
       <ShiftSummary
         shiftSummaryExit={shiftSummaryExit}
         closedShiftSummary={closedShiftSummary}
         currency={activeCurrency}
       />
+      </LocalizedErrorBoundary>
 
+      <LocalizedErrorBoundary onReset={() => openShiftExit.requestClose()}>
       <OpenShiftModal
         openShiftExit={openShiftExit}
         openingBalance={openingBalance}
@@ -1382,6 +1390,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         handleConfirmOpenShift={handleConfirmOpenShift}
         currency={activeCurrency}
       />
+      </LocalizedErrorBoundary>
 
       {/* ── FastPIN Overlay (ADR-19 §17: badge click → manager override) ── */}
       <FastPINOverlay
