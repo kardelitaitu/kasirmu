@@ -466,6 +466,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('pos-shift-close-aria')}
               onClick={() => { cartActions.onCloseShift(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-close-shift"
             >
               <Tile>
                 <ShiftGlyph />
@@ -479,6 +480,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('pos-shift-open-aria')}
               onClick={() => { cartActions.onOpenShift(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-open-shift"
             >
               <Tile>
                 <ShiftGlyph />
@@ -493,6 +495,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('tables-title')}
               onClick={() => { cartActions.onOpenTables(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-tables"
             >
               <Tile>
                 <TablesGlyph />
@@ -506,6 +509,7 @@ export function RestaurantSidebar({
             onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('retail-fn-history')}
             onClick={() => { cartActions.onOpenHistory(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-history"
           >
             <Tile>
               <HistoryGlyph />
@@ -519,6 +523,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('kds-title')}
               onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-kds"
             >
               <Tile>
                 <KitchenGlyph />

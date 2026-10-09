@@ -330,11 +330,28 @@ describe('RestaurantPosSidebar', () => {
 
     await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
     const sidebar = document.querySelector('.restaurant-sidebar') as HTMLElement;
-    expect(within(sidebar).getByRole('button', { name: 'Open a new shift' })).toBeInTheDocument();
-    expect(within(sidebar).getByRole('button', { name: 'History' })).toBeInTheDocument();
+
+    // ⚠️ These rows are now addressed by TESTID, not by their bundle copy.
+    //
+    // They used to be `getByRole('button', { name: 'Open a new shift' })` — an
+    // accessible name that comes from `pos-shift-open-aria` in the FTL bundle. A
+    // copy edit or a translation change would therefore break the test with a
+    // confusing "unable to find role" error, and the NEGATIVE assertions below
+    // would have gone on passing for the worst reason: the name they checked had
+    // simply changed. Five of the six sidebar rows carried no testid at all
+    // (only the deduction override, Menu Editor and Settings did), so there was
+    // nothing else to query. Adding them is the fix; this file is the reason.
+    expect(within(sidebar).getByTestId('restaurant-sidebar-open-shift')).toBeInTheDocument();
+    expect(within(sidebar).getByTestId('restaurant-sidebar-history')).toBeInTheDocument();
     // Table Management is feature-gated and this harness enables no features, so
     // the row is absent rather than rendered-and-disabled.
-    expect(within(sidebar).queryByRole('button', { name: 'Table Management' })).toBeNull();
+    expect(within(sidebar).queryByTestId('restaurant-sidebar-tables')).toBeNull();
+
+    // The visible copy is still asserted — but as a SECONDARY check, so a bundle
+    // change surfaces as a copy failure rather than as a missing element.
+    expect(
+      within(sidebar).getByTestId('restaurant-sidebar-open-shift').textContent,
+    ).toContain('Open a new shift');
 
     // The row is the header's old button, not a stub: it drives the same
     // navigation and closes the popover like every other item in it.
