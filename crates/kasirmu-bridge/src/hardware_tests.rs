@@ -482,3 +482,66 @@ async fn open_cash_drawer_scoped_resolves_companion_drawer_when_default() {
         1
     );
 }
+
+// ── receipt config: digit grouping (D6) ──────────────────────────────
+
+/// D6: the renderer had no grouping at all, so an Indonesian receipt printed
+/// `Rp15000` while the on-screen preview — which groups through
+/// `Intl.NumberFormat('id-ID')` — showed `Rp 15.000`. These pin the loader's
+/// three-way resolution of `currency.thousands_separator`.
+#[test]
+fn an_explicit_grouping_setting_is_honoured() {
+    let bridge = TestBridge::new();
+    let store = bridge.db_manager().open_store("default").unwrap();
+    let guard = store.lock().expect("store db lock");
+    platform_core::settings::Settings::set(
+        &guard,
+        platform_core::settings::keys::CURRENCY_THOUSANDS_SEPARATOR,
+        "space",
+    )
+    .expect("seeding the separator");
+
+    let (config, _) = read_receipt_config_for_scope(&guard, None).expect("a config");
+    assert_eq!(
+        config.grouping,
+        receipt::ThousandSeparator::Space,
+        "a store that wrote the key must get exactly what it asked for"
+    );
+}
+
+/// The trap this deliberately avoids: the setting's OWN default is `"comma"`
+/// (`platform/core/src/settings/typed.rs:658`), which is English. Trusting it
+/// for an unset key would print `Rp15,000` beside a preview reading
+/// `Rp 15.000` — trading one divergence for another.
+#[test]
+fn an_unset_grouping_key_follows_the_stores_currency_not_the_settings_english_default() {
+    let bridge = TestBridge::new();
+    let store = bridge.db_manager().open_store("default").unwrap();
+    let guard = store.lock().expect("store db lock");
+    // A fresh store has no separator key written.
+    platform_core::settings::Settings::set_default_currency(&guard, "IDR")
+        .expect("seeding the currency");
+
+    let (config, _) = read_receipt_config_for_scope(&guard, None).expect("a config");
+    assert_eq!(
+        config.grouping,
+        receipt::ThousandSeparator::Dot,
+        "an IDR store must group with dots, matching the preview; the setting's \
+         own comma default would print Rp15,000 beside a Rp 15.000 preview"
+    );
+}
+
+/// A non-IDR store that never wrote the key keeps the ungrouped behaviour every
+/// receipt had before this field existed. This is the case that proves the
+/// grouping arrival cannot restyle existing stores by itself.
+#[test]
+fn an_unset_grouping_key_leaves_a_non_idr_store_ungrouped() {
+    let bridge = TestBridge::new();
+    let store = bridge.db_manager().open_store("default").unwrap();
+    let guard = store.lock().expect("store db lock");
+    platform_core::settings::Settings::set_default_currency(&guard, "USD")
+        .expect("seeding the currency");
+
+    let (config, _) = read_receipt_config_for_scope(&guard, None).expect("a config");
+    assert_eq!(config.grouping, receipt::ThousandSeparator::None);
+}

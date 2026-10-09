@@ -2,6 +2,13 @@ use kasirmu_core::Currency;
 
 use super::*;
 
+fn idr_money(amount: i64) -> Money {
+    Money {
+        minor_units: amount,
+        currency: "IDR".parse::<Currency>().unwrap(),
+    }
+}
+
 fn usd_money(amount: i64) -> Money {
     Money {
         minor_units: amount,
@@ -87,6 +94,96 @@ fn format_money_no_decimals() {
     };
     assert_eq!(format_money(&usd_money(1550), &cfg), "15");
     assert_eq!(format_money(&usd_money(100), &cfg), "1");
+}
+
+#[test]
+fn format_money_groups_thousands_when_configured() {
+    // D6: the renderer had NO grouping at all, so an Indonesian receipt printed
+    // `Rp15000` while the on-screen preview - which groups through
+    // `Intl.NumberFormat('id-ID')` - showed `Rp 15.000`. In the primary market
+    // that is the receipt every customer receives.
+    let cfg = ReceiptConfig {
+        show_currency: true,
+        grouping: ThousandSeparator::Dot,
+        ..default_config()
+    };
+    assert_eq!(format_money(&idr_money(1_500_000), &cfg), "Rp1.500.000");
+    assert_eq!(format_money(&idr_money(15_000), &cfg), "Rp15.000");
+    assert_eq!(format_money(&idr_money(800), &cfg), "Rp800");
+}
+
+#[test]
+fn format_money_groups_with_comma_and_space() {
+    let comma = ReceiptConfig {
+        grouping: ThousandSeparator::Comma,
+        ..default_config()
+    };
+    // 1234567 cents is 12345.67 -> the boundary falls inside the major part.
+    assert_eq!(format_money(&usd_money(1_234_567), &comma), "12,345.67");
+    let space = ReceiptConfig {
+        grouping: ThousandSeparator::Space,
+        ..default_config()
+    };
+    assert_eq!(format_money(&usd_money(1_234_567), &space), "12 345.67");
+}
+
+#[test]
+fn format_money_ungrouped_by_default() {
+    // The pre-existing behaviour, pinned so the new field cannot restyle every
+    // store that never opted in.
+    let cfg = default_config();
+    assert_eq!(cfg.grouping, ThousandSeparator::None);
+    assert_eq!(format_money(&idr_money(1_500_000), &cfg), "1500000");
+}
+
+#[test]
+fn format_money_groups_the_major_part_not_the_fraction() {
+    // The split is at the DECIMAL point, so the fraction keeps its own digits:
+    // 123456789 cents is 1234567.89, grouped as 1.234.567,89 with a comma decimal.
+    let cfg = ReceiptConfig {
+        show_currency: true,
+        grouping: ThousandSeparator::Dot,
+        decimal_separator: DecimalSeparator::Comma,
+        ..default_config()
+    };
+    assert_eq!(format_money(&usd_money(123_456_789), &cfg), "$1.234.567,89");
+}
+
+#[test]
+fn group_thousands_places_the_boundary_correctly() {
+    // The exact-multiple-of-three case has no short leading group: a naive
+    // implementation emits ",123456" here.
+    assert_eq!(group_thousands("123456", ','), "123,456");
+    assert_eq!(group_thousands("123", ','), "123");
+    assert_eq!(group_thousands("1234", ','), "1,234");
+    assert_eq!(group_thousands("1234567", '.'), "1.234.567");
+}
+
+#[test]
+fn thousands_separator_parses_the_stored_vocabulary() {
+    // `platform/core/src/settings/typed.rs:656` names these four values.
+    assert_eq!(
+        ThousandSeparator::from_setting("dot"),
+        ThousandSeparator::Dot
+    );
+    assert_eq!(
+        ThousandSeparator::from_setting("comma"),
+        ThousandSeparator::Comma
+    );
+    assert_eq!(
+        ThousandSeparator::from_setting("space"),
+        ThousandSeparator::Space
+    );
+    assert_eq!(
+        ThousandSeparator::from_setting("none"),
+        ThousandSeparator::None
+    );
+    // An unrecognised value loses grouping rather than inventing it.
+    assert_eq!(
+        ThousandSeparator::from_setting("period"),
+        ThousandSeparator::None
+    );
+    assert_eq!(ThousandSeparator::from_setting(""), ThousandSeparator::None);
 }
 
 #[test]
