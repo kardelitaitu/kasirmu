@@ -130,6 +130,26 @@ const SURFACES: GuardedSurface[] = [
     element: /<StockInquiryView\b/,
     why: 'stock inquiry (retail POS)',
   },
+  // ── The three money dialogs on the sale itself ──
+  //
+  // Each writes a figure the cashier is about to charge: an item price, a cart
+  // discount, or an edited line's options+price. All three sat outside any
+  // boundary while AppProviders' full-page one stood behind them.
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<PriceOverrideModal\b/,
+    why: 'price override: writes a line price',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<PromotionsModal\b/,
+    why: 'promotions picker: changes the cart discount',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<ItemModifierModal\b/,
+    why: 'in-cart modifier editor: options and price',
+  },
 ];
 
 /**
@@ -170,6 +190,6 @@ describe('restaurant POS crash isolation (F9)', () => {
     // money-path surfaces, and the payment popup appears in BOTH shells — eleven.
     // The number is asserted because a list short of the thing it guards is exactly
     // how three of these hid until round 18.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(14);
+    expect(SURFACES.length).toBeGreaterThanOrEqual(17);
   });
 });

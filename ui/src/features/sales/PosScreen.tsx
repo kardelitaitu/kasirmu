@@ -1309,7 +1309,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       )}
 
       {/* ── Price Override modal ─────────────────────── */}
+      {/* Crash isolation (F9): this modal writes the line price. `resetKeys` keys on
+          the target so picking a different line clears a caught error. */}
       {overrideTarget && (
+        <LocalizedErrorBoundary onReset={() => setOverrideTarget(null)} resetKeys={[overrideTarget.id]}>
         <PriceOverrideModal
           open
           lineDescription={`${overrideTarget.name ?? overrideTarget.sku} — ${formatMoney(overrideTarget.unit_price)}`}
@@ -1317,9 +1320,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           onConfirm={handleOverrideConfirm}
           onClose={() => setOverrideTarget(null)}
         />
+        </LocalizedErrorBoundary>
       )}
 
       {/* ── Promotions picker modal ───────────────────── */}
+      {/* Crash isolation (F9): applying a promotion changes the discount on the
+          sale. `resetKeys` on the open flag so reopening clears a caught error. */}
+      <LocalizedErrorBoundary onReset={() => setShowPromotions(false)} resetKeys={[showPromotions]}>
       <PromotionsModal
         open={showPromotions}
         sessionToken={sessionToken}
@@ -1328,6 +1335,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         onApply={handleSelectPromotions}
         onClose={() => setShowPromotions(false)}
       />
+      </LocalizedErrorBoundary>
 
       {/* -- Open Bill Input modal / Open Bills panel (components/OpenBillModals) -- */}
       <OpenBillInput
@@ -1397,7 +1405,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       />
 
       {/* ── Item Modifier Modal (in-cart customization editing) ────── */}
+      {/* Crash isolation (F9), the same surface wrapped in RestaurantMenu
+          (RestaurantMenu.tsx:684) and for the same reason: this is where an existing
+          cart line's options and PRICE are edited, so a throw must cost the dialog,
+          not the sale. `resetKeys` keys on the line so editing a different line
+          clears a caught error. */}
       {editingCartLine && editingProduct && (
+        <LocalizedErrorBoundary
+          onReset={() => { setEditingCartLine(null); setEditingProduct(null); }}
+          resetKeys={[editingCartLine.id]}
+        >
         <ItemModifierModal
           open={true}
           productName={editingProduct.name}
@@ -1411,6 +1428,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             setEditingProduct(null);
           }}
         />
+        </LocalizedErrorBoundary>
       )}
     </div>
   </>
