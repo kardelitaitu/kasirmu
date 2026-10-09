@@ -565,6 +565,32 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 44 — finishing round 43: the doc comments still described what was removed
+
+Round 43 removed the `settings-screen-migrating` note from all 14 screens. It left **seven
+module headers** still asserting it was there — the same defect one layer down, and the
+same class as round 34's stale claim in `kdsDensity`'s header.
+
+The clearest was `SystemDiagnosticsScreen.tsx:8-9`, which said:
+
+> *"The remaining scaffolds in this folder still render 'This page is being rebuilt' until
+> their own content is wired in."*
+
+**There are no remaining scaffolds.** That is precisely why round 43 could delete the note
+from all 14 at once. No screen in the folder renders a rebuild line, so the sentence was
+not merely stale — it was the reason a reader would have assumed the note-removal was
+incomplete.
+
+Also corrected: `LicenseSubscriptionScreen.tsx:8-9` claimed "The shared migrating note
+stays: SettingsPage.test.tsx asserts it under EVERY section body (:426)" — the assertion now
+requires the opposite, and round 43 changed that line. Four others
+(`ExchangeRates`, `FeaturesModules`, `OfflineQueue`, `TaxConfiguration`) shared the phrase
+"the route, the scaffold shell and its migrating note stay on this", plus
+`DataManagementScreen`'s matching pair.
+
+**No behaviour change** — seven comments, 30 insertions / 20 deletions. Full suite green at
+683 files / 11,451. `f2b750fac`.
+
 ### Round 43 — 14 finished screens told users their content "will move here"
 
 Chasing F13 (the two `DataManagementScreen.tsx` files — which turned out to be a DELIBERATE
