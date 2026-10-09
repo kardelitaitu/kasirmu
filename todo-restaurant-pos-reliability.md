@@ -565,6 +565,33 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 21 — the money dialog had no scoped boundary, in either shell
+
+The goal names the payment popup, so I checked its crash isolation directly. `grep`
+found **no `LocalizedErrorBoundary` anywhere in `PaymentModal.tsx`**, and neither shell
+wrapped it at its render site (`PosScreen.tsx:1281`, `RetailPosScreen.tsx:1551`).
+
+**It was not unhandled — it was handled in the worst possible way.** `AppProviders.tsx:93`
+has an app-level `LocalizedErrorBoundary`, so a throw in the popup was caught. But that
+boundary carries `autoRefreshMs={ERROR_AUTO_REFRESH_MS}` (30s), and its own comment at
+`:28-31` states the intent these boundaries violate: *"Embedded card-level boundaries
+(workspace settings, topology editor, …) intentionally do NOT set this, so a scoped
+failure never reloads the whole POS."*
+
+So the failure mode was: the cashier picks a tender, the popup throws, the **entire POS
+replaces itself with a full-page error and auto-reloads after 30 seconds** — logging
+them out mid-transaction. The fix is the design the file already describes: a scoped
+boundary whose `onReset` closes the dialog and returns to the cart, with
+`autoRefreshMs` deliberately omitted.
+
+Applied in **both** shells (`d96ffb0b7`), and then to the retail shell's three other
+early-return sub-views — `SalesHistoryView`, `TableManagementView`, `StockInquiryView` —
+which are the twins of the restaurant ones fixed in round 18 and had the same hole
+(`3048b6115`).
+
+**Final coverage: `PosScreen` 8 boundaries, `RetailPosScreen` 4; the guard lists 14
+surfaces and asserts `>= 14`.**
+
 ### Round 20 — F9's last gap was the surface UNDER the panels
 
 Rounds 18-19 fixed the crash isolation of PosScreen's seven panels. This round checked
