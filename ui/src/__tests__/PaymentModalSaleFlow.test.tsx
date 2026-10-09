@@ -276,6 +276,70 @@ describe('PaymentModal — sale flow', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
   });
 
+  it('warns instead of silently keeping points when a loyalty redemption fails', async () => {
+    // The customer's total was reduced by `loyaltyDiscount`, and the redemption is a
+    // SEPARATE IPC from sale completion. A rejected redemption therefore gives away
+    // the discount while leaving the points in the account — and the catch was empty,
+    // so the cashier was told the sale completed with no hint the points were never
+    // deducted. Same shape as the receipt-print case above: the sale is already
+    // committed, so it is a warning, not a block.
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'get_enabled_features') {
+        return Promise.resolve({ features: ['loyalty-program'] });
+      }
+      if (cmd === 'get_loyalty_account_scoped') {
+        return Promise.resolve({
+          account: {
+            id: 'la-1', customer_id: 'cust-1', points: 500, lifetime_points: 500,
+            tier_id: null, updated_at: '', created_at: '',
+          },
+          tier: null, recent_transactions: [], next_tier: null, points_to_next_tier: 0,
+        });
+      }
+      // `getPointsValue` resolves a PLAIN NUMBER of minor units (api/loyalty.ts:111);
+      // the modal BigInt()s it directly at PaymentModal.tsx:562. Returning an object
+      // here throws inside the .then and the discount silently stays 0n, which is
+      // why the redemption never fired in the first version of this test.
+      if (cmd === 'get_points_value' || cmd === 'get_points_value_scoped') {
+        return Promise.resolve(50);
+      }
+      if (cmd === 'redeem_loyalty_points_scoped') {
+        return Promise.reject(new Error('loyalty service unavailable'));
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    const onComplete = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="mock-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        selectedCustomer={{ id: 'cust-1', name: 'Ada', phone: null, email: null, notes: '', created_at: '', updated_at: '' }}
+        onComplete={onComplete}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Redeem whatever the account holds, then tender the rest in cash.
+    const redeemBtn = await screen.findByRole('button', { name: /Use Points/i });
+    await userEvent.click(redeemBtn);
+
+    // `loyaltyDiscount` is 0 until an amount is entered, and the redemption only
+    // fires when it is > 0 — clicking the affordance alone redeems nothing.
+    const pointsInput = document.querySelector('.payment-loyalty-input') as HTMLInputElement;
+    await userEvent.type(pointsInput, '100');
+
+    const input = await screen.findByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    expect(await screen.findByText(/loyalty points were NOT deducted/i)).toBeInTheDocument();
+    await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
+  });
+
   it('shows change due in done state for cash', async () => {
     await renderWithFluent(
       <PaymentModal
