@@ -2403,6 +2403,44 @@ shrink-only `BASELINE_UNCITED` list. That is the other lane's commit to land —
 and adding the file to the baseline would be the wrong repair. **My two files pass; the failure is
 named here so the next reader does not spend a round re-diagnosing it.**
 
+#### Round 102 — the card's remaining wiring, measured so the entry is ready
+
+The card is **not a screen**; it is a card that will be rendered by `BusinessDefaultsScreen`. The
+`screenExtraction` entries for its four siblings (`ReceiptFormatSettingsCard`, `StatutoryNumberingCard`,
+`RegionalSettingsCard`, `LocalPaymentSettingsCard`) all take the same shape, and I measured this
+card against it rather than guessing:
+
+| Required by | Measured |
+|---|---|
+| `css` must list the sheet | `credit-*.css` defines **14** classes |
+| every defined class must be rendered | **0 orphans** — all 14 appear in the `.tsx` |
+| any unrendered class must resolve through `css` UNION `parentCss` | exactly **one** (`settings-section-title`), which lives in `settings/SettingsPage.css` |
+
+So the entry is `{ name: 'CreditFacilityCard', tsx: …, css: ['settings/screens/CreditFacilityCard.css'],
+parentCss: ['settings/SettingsPage.css'] }` — and **it is not mine to add yet.** The card is not
+referenced from `BusinessDefaultsScreen.tsx` in the working tree, and the `.tsx`, `.css` and locale
+keys are all uncommitted in another lane. Landing the entry now would either fail (no screen cites
+the sheet) or collide with their commit.
+
+**Recorded so the fix is a two-minute edit later, not a re-investigation.** The measurement is the
+deliverable: when the wiring lands, the entry's three fields are already known and verified.
+
+#### Two more of F24's claims checked while waiting
+
+The card's doc asserts the *write* chain was complete before it existed. Verified at `settings.rs:606-628`:
+
+| Claim | Measured |
+|---|---|
+| writes all three keys in **ONE transaction** | `unchecked_transaction()` at `:622`, three `set_credit_*` calls, one `tx.commit()` at `:626` |
+| gated on `settings:edit`, scope-aware, **before** `open_store` | `require_session_permission` at `:613`, `open_store` at `:617` — the R10 gate-order convention |
+| reachable from both shells | registered at `mobile-tauri/lib.rs:1395` and `desktop-tauri/lib.rs:1592` |
+
+So F24's chain is complete end to end **except** enforcement at sale time, which is the product
+question. Nothing here is a defect.
+
+Verified: `planStatusAccuracy` + `evidenceAnchorResolves` **9 passed**; `writtenSettingHasReader` +
+`deadSettingsKey` **6 passed**; typecheck 0; bundle parity 0 missing.
+
 Verified: `planStatusAccuracy` + `evidenceAnchorResolves` **9 passed**; full suite **695 of 696**
 with the single failure being the other lane's new stylesheet; typecheck 0; eslint 0 errors; bundle
 parity 0 missing.
