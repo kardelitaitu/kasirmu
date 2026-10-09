@@ -45,15 +45,15 @@
   --primary-950: #172554;
 
   /* ── Semantic: Surfaces ───────────────────────────────────── */
-  --color-bg:              #0a0b0f;
-  --color-bg-elevated:     #12141a;
-  --color-bg-surface:      #12141a;
-  --color-bg-input:        #1a1d25;
+  --color-bg:              #060709;
+  --color-bg-elevated:     #101115;
+  --color-bg-surface:      #0e0f13;
+  --color-bg-input:        #14151a;
   --color-bg-hover:        rgba(59, 130, 246, 0.08);
-  --color-bg-overlay:      rgba(0, 0, 0, 0.70);
-  --color-bg-popover:      #161920;
-  --color-bg-primary:      #0d0f14;
-  --color-bg-secondary:    #161920;
+  --color-bg-overlay:      rgba(0, 0, 0, 0.75);
+  --color-bg-popover:      #111216;
+  --color-bg-primary:      #08090c;
+  --color-bg-secondary:    #111216;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
 
   /* --color-paper is THEME-INVARIANT on purpose (like the --text-* scale): declared
@@ -78,8 +78,8 @@
   --color-text-on-color:   #1C2B45;
 
   /* ── Semantic: Borders ────────────────────────────────────── */
-  --color-border:          #1e2230;
-  --color-border-hover:    #2a2f3e;
+  --color-border:          #1b1d24;
+  --color-border-hover:    #262933;
   --color-border-focus:    #147EFB;
   --color-border-strong:   #64748b;
   --color-border-subtle:   rgba(255, 255, 255, 0.05);
@@ -403,33 +403,33 @@
   --color-primary-pos-light:  #2e578c;
   --color-primary-pos-dark:   #112239;
   --color-fn-key-pos:         #fbbf24;
-  --color-dark-bg-pos:        #0d131f;
-  --color-dark-border-pos:    #1f2937;
-  --color-bg-pos:             #0b0f1a;
+  --color-dark-bg-pos:        #060709;
+  --color-dark-border-pos:    #1b1d24;
+  --color-bg-pos:             #040507;
   --color-ink:                #000000;
   --color-pos-on-primary:     #ffffff;
 
   /* ── POS Modal ────────────────────────────────────────────── */
-  --color-pos-modal-overlay:      rgba(0, 0, 0, 0.65);
-  --modal-backdrop-blur:          blur(2px);
-  --color-pos-modal-bg:           #0d0f14;
-  --color-pos-modal-border:       #1e2230;
+  --color-pos-modal-overlay:      rgba(0, 0, 0, 0.75);
+  --modal-backdrop-blur:          none;
+  --color-pos-modal-bg:           #08090c;
+  --color-pos-modal-border:       #1b1d24;
   --color-pos-modal-fg:           #e2e8f0;
   --color-pos-modal-heading:      #f1f5f9;
   --color-pos-modal-label:        #94a3b8;
-  --color-pos-modal-input-bg:     #12141a;
-  --color-pos-modal-input-border: #1e2230;
+  --color-pos-modal-input-bg:     #101115;
+  --color-pos-modal-input-border: #1b1d24;
   --color-pos-modal-input-fg:     #e2e8f0;
-  --color-pos-modal-btn-bg:       #1a1d25;
+  --color-pos-modal-btn-bg:       #14151a;
   --color-pos-modal-btn-fg:       #e2e8f0;
-  --color-pos-modal-btn-border:   #2a2f3e;
-  --color-pos-modal-btn-hover-bg: #2a2f3e;
+  --color-pos-modal-btn-border:   #23252e;
+  --color-pos-modal-btn-hover-bg: #23252e;
   --color-pos-modal-btn-hover-fg: #f1f5f9;
-  --color-pos-modal-shadow:       0 20px 40px -8px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --color-pos-modal-shadow:       0 20px 40px -8px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
   /* ── Toast ────────────────────────────────────────────────── */
-  --color-toast-bg:            #0d0f14;
-  --color-toast-border:        #1e2230;
+  --color-toast-bg:            #08090c;
+  --color-toast-border:        #1b1d24;
   --color-toast-fg:            #e2e8f0;
   --color-toast-fg-muted:      #94a3b8;
   --color-toast-hover-bg:      rgba(255, 255, 255, 0.05);
@@ -677,17 +677,17 @@
    ══════════════════════════════════════════════════════════════ */
 [data-theme='dark'] {
   /* ── Surfaces ─────────────────────────────────────────────── */
-  --color-bg:              #0a0b0f;
-  --color-bg-elevated:     #12141a;
-  --color-bg-surface:      #12141a;
-  --color-bg-input:        #1a1d25;
-  --color-bg-hover:        rgba(20, 126, 251, 0.08);
-  --color-bg-overlay:      rgba(0, 0, 0, 0.70);
-  --color-bg-popover:      #161920;
-  --color-bg-primary:      #0d0f14;
-  --color-bg-secondary:    #161920;
+  --color-bg:              #060709;
+  --color-bg-elevated:     #101115;
+  --color-bg-surface:      #0e0f13;
+  --color-bg-input:        #14151a;
+  --color-bg-hover:        rgba(59, 130, 246, 0.08);
+  --color-bg-overlay:      rgba(0, 0, 0, 0.75);
+  --color-bg-popover:      #111216;
+  --color-bg-primary:      #08090c;
+  --color-bg-secondary:    #111216;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
-  --receipt-paper-scrim:    #07080b;
+  --receipt-paper-scrim:    #040507;
   --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.45);
 
   /* ── Text ─────────────────────────────────────────────────── */
@@ -697,15 +697,15 @@
   --color-fg-tertiary:     #8b93a3;
   --color-fg-muted:        #8b93a3;
   --color-fg-disabled:     #5a7a99;
-  --color-fg-inverse:      #0a0b0f;
+  --color-fg-inverse:      #060709;
   --color-text:            #e8eaef;
   --color-text-muted:      #8b93a3;
   --color-text-secondary:  #8b93a3;
   --color-text-on-color:   #1C2B45;
 
   /* ── Borders ──────────────────────────────────────────────── */
-  --color-border:          #1e2230;
-  --color-border-hover:    #2a2f3e;
+  --color-border:          #1b1d24;
+  --color-border-hover:    #262933;
   --color-border-focus:    #147EFB;
   --color-border-strong:   #64748b;
   --color-border-subtle:   rgba(255, 255, 255, 0.05);
@@ -763,7 +763,7 @@
   --shadow-glow: none;
 
   /* ── POS Brand ────────────────────────────────────────────── */
-  --color-bg-pos:             #0b0f1a;
+  --color-bg-pos:             #040507;
   --color-ink:                #000000;
   --color-pos-on-primary:     #ffffff;
 }
