@@ -5399,3 +5399,52 @@ that the row is still accurate — so whoever picks it up starts from a measured
 
 Verified: `verifyDrawer`/`acceptedCards`/`requireTrace`/`autoConfirm` = 0 hits in any spelling;
 `"printReceipt"` = 0 hits; the 79 `print_receipt` hits are all the printer command.
+
+### F19 extended (round 108) — the rail params are a family, and four of them are homonyms
+
+Round 107 proved a guard is the right instrument for a homonym claim. **This round applied that
+method to every rail parameter**, and the family is larger than F19's five controls.
+
+#### The full param inventory
+
+`RestaurantPaymentsScreen` writes **19 distinct keys** into rail `parameters` JSON via
+`updateRailParams`. Checking each for a Rust consumer:
+
+| Param | Prod Rust hits | Verdict |
+|---|---|---|
+| `nmid` | **55** | **homonym** — see below |
+| `presets` | 34 | homonym — `read_tiers.rs` is loyalty tiers |
+| `channels` | 8 | homonym — auth channels |
+| `mode`, `env`, `currency`, `reader` | 186-2582 | common words, not consumers |
+| `surcharge` | 0 | no consumer |
+| `verifyDrawer`, `printReceipt`, `autoConfirm`, `acceptedCards`, `requireTrace` | 0 | **F19's five** |
+| `autoKick`, `defaultTerminalId` | 0 | **also no consumer — not previously in F19** |
+| `merchantId`, `clientKey`, `serverKey` | 0 | gateway credentials, routed via `payment_gateways` not the rail |
+
+#### The `nmid` case is the sharpest one yet
+
+`nmid` is a genuinely distinctive token and **`crates/qris-core` has 55 production hits** — a real
+QRIS module that parses NMIDs. It looks like the strongest possible evidence that the QRIS rail is
+wired.
+
+**It is not.** `qris-core` extracts the NMID from **inside the QR payload string**
+(`payload.rs:130` — `merchant_accounts[0].nmid`), which is what a QR *contains*. The rail's `nmid` is
+a **separate text input** the merchant types (`:1232`, `updateRailParams('qris', { nmid: val })`) and
+nothing reads it back except this screen. **Two different NMIDs: one is in the QR, one is in a box.**
+
+**`autoKick` and `defaultTerminalId` are new to the list.** They were not in F19's five, and neither
+has a Rust consumer — so F19's count of five was **incomplete, not wrong**. `defaultTerminalId` is
+partly a false positive: the *terminal preference* is stored in hardware prefs, and the rail copy is a
+mirror the screen writes and reads for itself.
+
+#### What this round adds, and what it does not
+
+**Adds:** the complete inventory, the homonym taxonomy, and the finding that any grep-based check of
+this family is unreliable — `nmid`, `presets` and `channels` all *look* wired and are not.
+
+**Does not:** change a control. Each is a product decision (build the consumer, or delete the control
+and migrate stored preferences), which is what F19 already says. **The count and the trap are the
+deliverable** — a reader who grep-checks `nmid` gets 55 hits and closes the row.
+
+Verified: 19 params inventoried; 4 homonyms identified with the distinguishing fact for each;
+`autoKick` and `defaultTerminalId` measured at 0 consumers and recorded as additions to F19's list.
