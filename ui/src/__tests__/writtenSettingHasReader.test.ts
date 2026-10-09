@@ -192,6 +192,14 @@ const WRITTEN_NOT_READ: Array<{
  * `grep` for the name finds a getter, and a getter READS like coverage.
  */
 const ACCESSOR_WITHOUT_CONSUMER: Record<string, string> = {
+  // NOTE: CURRENCY_THOUSANDS_SEPARATOR was the entry that OPENED this map in
+  // round 93 and it is gone as of round 99 — correctly. The receipt printer
+  // gained grouping (`receipt.rs` ThousandSeparator, `format_money:355`) and
+  // `apps/mobile-tauri/src/commands/hardware.rs:339-350` populates it by READING
+  // the key, so the sweep finds a real reader and the entry is no longer true.
+  // Removing it is the whole point of the map: an entry is a recorded debt, and
+  // paying a debt means deleting the entry, not keeping it green.
+
   CURRENCY_THOUSANDS_SEPARATOR:
     'get/set exist (typed.rs:657/662); the printer\'s `format_money` (receipt.rs:251-275) '
     + 'applies show_currency and decimal_separator and has NO grouping step, and no UI writes it '
