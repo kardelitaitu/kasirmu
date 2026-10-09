@@ -1893,6 +1893,39 @@ them would think this surface was covered.
 and a MOCK can stop the input reaching the code just as effectively as a wrong fixture value. Here
 the mock supplied a location the device does not have.
 
+#### Round 92 — the fix's own guard is load-bearing, proven by kill-test
+
+The F40 fix seeds the baseline **conditionally** (`if (originalsRef.current.drafts.length === 0)`),
+and that condition is not decoration. Removing it — re-seeding unconditionally in the `finally` —
+**fails three existing tests**, which is how the reason was confirmed rather than assumed:
+
+> `draftsRef.current` is assigned **during render**, so at `finally`-time it holds the **previous**
+> render's drafts. When the loaded path has already queued `setDrafts(fullDrafts)` at `:406`, an
+> unconditional re-seed would write the *pre-load* list into the baseline while `drafts` becomes the
+> *loaded* list — and the screen reports **dirty the instant it finishes loading**.
+
+The `length === 0` guard is what makes the fix touch only the path where the loaded seeding at
+`:407` **never ran**. **A `finally` that reads a ref is reading a render-lagged value**, and the
+guard is the thing that keeps that lag from mattering.
+
+A fourth case now pins the sequence that would expose it: **load fails → Retry succeeds → the screen
+comes back clean**, with Save disabled, and a subsequent edit still correctly dirty. It guards
+against trading a **stuck-clean** screen for a **stuck-dirty** one, which is the plausible way a fix
+for this defect goes wrong.
+
+**The `:407` seeding being unconditional is what makes the whole thing safe**, and it was worth
+checking rather than inferring: on the loaded path, drafts and baseline are always re-seeded
+TOGETHER, so the two can never drift. My conditional seed only ever runs where that pair was never
+written.
+
+**Not verified on the device.** The tablet runs the installed APK, which predates the fix, and a
+rebuild (or the HMR dev path) is a heavier, user-visible action than this round should take
+unprompted. The evidence here is the suite plus the kill-tests; the device confirmation is recorded
+as outstanding rather than claimed.
+
+Verified: full suite **696 files / 11,561 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle
+parity 0 missing; the guard kill-tested in both directions.
+
 Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
 bundle parity 0 missing; kill-tested both directions.
 
