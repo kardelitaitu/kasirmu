@@ -633,6 +633,46 @@ Verified: my four settings guards **10 passed**; typecheck 0; eslint 0. The full
 failures in `tableLabel.*` from **another lane's in-flight edit** (both files dirty, untouched by
 me — `git log` shows `c40ec0228` as the last commit there), so this commit carries only my file.
 
+### F27 — the sweep: all 80 declared keys classified (round 67) — `df2eb7f0f`
+
+F26 pinned one key. This round generalised it: walk every `pub const … : &str = "key"` in
+`platform/core/src/settings/keys.rs` and require each to have a production reader **or** a
+recorded reason it does not.
+
+**All 80 keys swept. One live defect, one deliberate security exception, four intentional
+stubs:**
+
+| Class | Keys | Evidence |
+|---|---|---|
+| **STALE DECLARATION** | `EDC_DEFAULT_TERMINAL` | declared once and used nowhere |
+| Deliberate security | `AUTH_TOKEN` | on the credential deny list; the test asserts the REFUSAL |
+| Declared ahead of implementation | `MEDIA_*` (×4) | `media.rs:1-12` is `PLANNED` stubs |
+| Written, not read | `store.preset` | F26 |
+
+**`edc.default_terminal` is the live one, and it is a new class.** It is not merely unread — its
+doc comment describes behaviour that **moved**: *"Default EDC terminal ID used when the cashier
+flow picks a card terminal."* But the owner question of 2026-09-28 settled this differently
+(`docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md:51`): the default lives in register
+`LocalPrefs` / `terminal_profile.json` and is edited in `TerminalPreferencesCard`. The settings
+key was left behind.
+
+**`AUTH_TOKEN` looks like a gap and is the opposite of one.** Its readers are all tests asserting
+`sync.auth_token` is REFUSED, and those tests carry the discovery in their own comment
+(`settings_tests.rs:458-483`) — the round-trip claim was untestable because the reader never
+existed. Classified as a deliberate exception, with that evidence.
+
+**The media keys are why the sweep needed a classification at all.** `media.rs` is honest stubs
+(`PLANNED, not implemented yet`), so its keys are declared ahead of their implementation. Without
+an explicit exception the guard would flag four intentional omissions and become noise — and a
+noisy guard is one people learn to ignore. The map says WHY, so it cannot rot into a blanket
+suppression.
+
+Kill-tested by un-classifying `EDC_DEFAULT_TERMINAL`: the sweep fails naming it. Same discipline
+as round 66, where the first version of this file passed against a planted reader because its
+needle matched no real spelling — **a guard you have not watched fail is not yet evidence.**
+
+Verified: five settings guards / **13 passed**; typecheck 0; eslint 0.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
