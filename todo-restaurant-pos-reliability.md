@@ -565,6 +565,34 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 37 — every save failure read the same generic sentence
+
+Checking the menu editor for the error-handling convention turned up the contrast that
+made a defect obvious: `RestaurantMenuEditorScreen` calls `l10nErrorMessage` **9 times**
+(with optimistic rollback on each failure), `RestaurantReceiptsScreen` twice, and
+`RestaurantSettingsScreen` **not at all**.
+
+Both of the settings screen's catches were bare:
+
+```ts
+try { ... } catch { addToast({ message: <one generic key> }) }
+```
+
+So a save that failed because the **session had expired** — something the operator can
+actually fix — read exactly like an unknown fault. `err` was discarded and never
+inspected.
+
+`l10nErrorMessage` is built for precisely this (`utils/app-error.ts:319-325`): a TYPED
+`AppError` maps to specific user-safe copy (session, permission, conflict, offline), and
+anything unrecognized falls back to the screen's own key — *"so each screen keeps its
+operational context while raw backend text never renders"*. Both catches now use it
+(`6246f56c5`).
+
+**Tested in both directions**, because only checking one would be half a contract: a typed
+`invalidSession` surfaces "session has expired" (and the raw `token expired` text must NOT
+render), while an untyped `Error` still falls back to the screen's own message. Kill-tested
+by restoring the bare catch.
+
 ### Round 36 — a test header that claimed more coverage than it had
 
 I was checking the settings screen's save path for the F4 family (a partial write leaving
