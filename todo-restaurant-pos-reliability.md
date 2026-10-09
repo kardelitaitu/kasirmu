@@ -322,6 +322,45 @@ codebase already documents as a trap (`provisioning_tests.rs:493-539`, "the spli
 and it is why D1's default cannot be a provisioning fact. Any future "default this
 setting for a new install" idea has to answer where the store db is at that moment.
 
+#### F14a — the same split also strands SAMPLE PRODUCTS (added 2026-10-09, found on the tablet)
+
+F14 above is written about a *settings* row (`show_table_number`). The split is wider
+than that: it strands the **catalog** too, and that one is visible to a beta tester on
+their first screen rather than to a developer reading a flag.
+
+Measured on the Redmi tablet, after provisioning a clean restaurant terminal with
+"seed sample products" left CHECKED (its default, `ProvisioningFlow.tsx:222`):
+
+```
+kasir.db (global, where provision_device wrote)      products: 5
+store-loc-0000…dcd55aac7fed21.sqlite (what POS reads) products: 0
+```
+
+The five rows are `SMPL-REST-01..05`, `product_type='restaurant'`, `is_active=1`,
+`store_id` NULL — correct in every column. Running the production query
+(`products_crud.rs:78` `list_products_for_store`) by hand against the **global** db
+returns all five, which is why every layer looks right in isolation and the defect is
+only visible from the store db.
+
+The POS path that reads them: `RestaurantMenu.tsx:185` → `useProducts` →
+`list_products_scoped` (`commands/products.rs:400`) → `state.resolve_scope`
+(`state.rs:367`) → `db_manager.open_store(&session.store_id)` — the store db. So the
+menu renders its empty state ("Menu is empty", the `products.length === 0` branch at
+`useProducts.ts:184-188`) with **no error and no Retry**, because an empty store
+catalog is indistinguishable from a legitimately empty one.
+
+The one thing that *does* copy products across the split is `copy_reference_data`
+(`kasirmu-cli/src/seed_demo.rs:171-183`, the only place `products` appears in a
+cross-db copy). It is a **CLI dev seeder**, and `seed_demo` has **zero** callers under
+`crates/kasirmu-bridge` or `apps/mobile-tauri` — so nothing runs it during
+provisioning. That is the missing link, and it is the same missing link F14 names for
+settings.
+
+**Consequence for beta:** a freshly provisioned restaurant terminal shows an empty menu
+it cannot fill, so every restaurant beta script has to start by hand-adding a product.
+Either the seed must write to the store db, or provisioning must create that db and copy
+the reference data into it — and the choice belongs with F14's answer, not beside it.
+
 ---
 
 ## 3. Repair plan
