@@ -757,6 +757,46 @@ Kill-tested both ways: adding `sound_volume` to the tablet write, and to its rea
 case. Verified: seven settings guards / **20 passed**; full suite **689 files / 11,514 passed**;
 typecheck 0; eslint 0; bundle parity 0 missing.
 
+#### Round 70 — F29 is a KNOWN defect, already filed and correctly blocked
+
+Checking whether F29 was fixable found that **it is not mine to fix, and the reason is already
+written down in two places** — one of them in the source.
+
+**The code says it.** `apps/mobile-tauri/src/commands/settings.rs:60-72` documents the whole thing:
+
+> *"`HardwareSettingsDto` is deliberately NOT on the list, and that is a defect being reported
+> rather than a shortcut being taken: the bridge type carries fifteen keys … while this shell's
+> type — and both of its command bodies — carry five. A re-export here would let
+> `set_hardware_settings_scoped` ACCEPT ten keys it then never writes, **converting a visible
+> absence into a silent drop.**"*
+
+It even names the two blockers: *"a storage-source decision plus the `AppState` → `BridgeCtx`
+seam T2 deferred."*
+
+**The review record says it.** `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md` files
+it as **T4-3**, still `[ ]` open, blocked on exactly two owner decisions and explicitly prohibiting
+the obvious fake-fix:
+
+> *"Do NOT 'fix' it by re-exporting the DTO: that converts ten visible absences into ten silent
+> drops."*
+
+1. **Which store is canonical** — `settings` KV or `hardware_profiles`
+2. **Whether the tablet should reach the bridge's path at all**, given T2 measured the seam at
+   7/14 fields and recorded that `plugins` would drag the mlua Lua VM into the Android APK for a
+   field that is permanently `None` there
+
+**Re-verified at HEAD before recording:** tablet's local `HardwareSettingsDto` still carries
+exactly **5** fields, the bridge's carries **15** — both figures the T4-3 note asserts.
+
+**So rounds 69-70 are an independent rediscovery, and that is worth stating plainly.** I found
+the same defect from the settings-key sweep without knowing T4-3 existed; the pin I added is
+consistent with the prohibition rather than a violation of it (it asserts the ABSENCE and says
+*"invert this pin"*). The value is that the finding now has a second, independently-derived
+confirmation — and a `ui/`-side pin where the record only had Rust-side prose.
+
+**The lesson is the one this session keeps relearning: search the plan corpus before calling
+something new.** `grep -rn 'HardwareSettingsDto' .agents/` would have found T4-3 in round 68.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
