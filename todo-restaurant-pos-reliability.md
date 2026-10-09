@@ -2207,6 +2207,47 @@ the follow-up (the settle button), and this one (the negatives and the retail bu
 that emerged is worth stating once: **address the element by testid; assert the copy separately and
 secondly, so a copy change reads as a copy change.**
 
+### F42 — the menu's two empty-state actions (round 98) — `86aacbfc6`
+
+`MenuItemGrid.tsx` renders **two buttons that share one class and do opposite things**:
+
+| Line | Action | Handler |
+|---|---|---|
+| `:58-66` | retry the failed fetch | `onRetry` |
+| `:82-90` | clear the search filter | `onClearFilter` |
+
+Both carried `className="restaurant-empty-retry"` and **no testid**, so
+`RestaurantMenu.test.tsx:759` located one of them by CSS class and cast the result with
+`as HTMLButtonElement`.
+
+#### I nearly recorded a defect that is not one
+
+My first comment on this claimed the class lookup was **ambiguous** — that a DOM reorder would make
+the case click *Retry* instead of *Clear filter* and still pass. **I checked before trusting it, and
+it is wrong.** The two live in **mutually exclusive early returns** (`if (error)` / `if
+(items.length === 0)`), so at most one is ever mounted and the class lookup was never ambiguous.
+
+The comment now says what is true: **what the class costs is resilience, not correctness.** A CSS
+rename or a restyle of the empty state breaks the lookup, and the `as HTMLButtonElement` cast means
+it would break at *runtime* with a `null` click rather than at compile time. The testid removes that
+coupling — **it does not fix a bug, and the record says so.**
+
+**That distinction is the point of writing it down.** "A shared class across two actions" reads like
+a defect and is easy to file as one; the two minutes spent checking the control flow turned it into
+an accuracy claim instead. Rounds 93–94 cost this session two over-claims already, and the habit
+that catches them is the same each time: **measure the claim, not the smell.**
+
+#### Kill-tested in the direction that matters
+
+Renaming `restaurant-menu-retry` to `Try again` makes exactly **one** case fail —
+`expected 'Try again' to contain 'Retry'` — which is the **secondary** copy assertion firing while
+the **testid still finds the element**. That is the property being bought, demonstrated rather than
+asserted.
+
+No behaviour changed — two testid attributes on existing buttons. Verified: `RestaurantMenu`
+**57 passed**; full suite **696 files / 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors;
+bundle parity 0 missing.
+
 No behaviour changed — one testid attribute added to an existing button. Verified: `RestaurantPosSidebar`
 **21 passed**; full suite **696 files / 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors;
 bundle parity 0 missing.
