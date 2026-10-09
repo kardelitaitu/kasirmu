@@ -836,12 +836,28 @@ export function RestaurantPaymentsScreen({
   const staticQrValue = qrisDraft ? readStaticQrPayload(qrisDraft.parameters) ?? '' : '';
 
   // Non-specialized payment methods (e.g. custom methods like gopay, excluding internal open_bill/credit)
-  const internalHiddenCodes = ['open_bill', 'credit'];
+  // Codes with a DEDICATED card above (or a gateway card), so they must not also
+  // appear in the Other-Rails list.
+  //
+  // ⚠️ `open_bill` and `credit` are deliberately ABSENT from both lists, and that is
+  // the fix rather than a simplification. `CORE_RAIL_CODES`
+  // (`paymentRailsLogic.ts:11`) names five non-removable rails — cash, card, qris,
+  // open_bill, credit — but this screen rendered dedicated cards for only three of
+  // them, and the `internalHiddenCodes` list below excluded the other two from the
+  // Other-Rails list as well. So both rendered NOWHERE: no card, no row, no hint they
+  // existed. The operator could not see or switch either one.
+  //
+  // That is worse than a toggle that does nothing (F16): a dead toggle is at least
+  // visible. And it stopped being cosmetic in round 52, when the charge modal began
+  // HONOURING the open_bill flag (`coreRailWithheld`) — so the tender appears at
+  // checkout with no way to switch it off from the screen that owns it.
+  //
+  // Two codes have dedicated cards (cash/qris) or gateway cards (midtrans/stripe);
+  // everything else belongs in the Other-Rails list, which is already core-aware — it
+  // badges a core rail "Core Method" and withholds the remove button via `isCoreRail`.
   const specializedCodes = ['cash', 'card', 'qris', 'midtrans', 'stripe'];
   const otherRails = drafts.filter(
-    (d) =>
-      !specializedCodes.includes(d.rail_code.toLowerCase()) &&
-      !internalHiddenCodes.includes(d.rail_code.toLowerCase()),
+    (d) => !specializedCodes.includes(d.rail_code.toLowerCase()),
   );
 
   return (

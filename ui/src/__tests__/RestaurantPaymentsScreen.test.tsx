@@ -258,6 +258,63 @@ describe('RestaurantPaymentsScreen — rails list & toggles', () => {
     await user.click(cashToggle);
     expect(cashToggle).toBeChecked();
   });
+  // ── The core rails the screen FORGETS (F17) ──────────────────────
+  //
+  // `CORE_RAIL_CODES` (paymentRailsLogic.ts:11) names FIVE rails that always exist
+  // and cannot be removed: cash, card, qris, open_bill, credit. The screen renders
+  // dedicated cards only for cash / qris / card / midtrans / stripe, and it EXCLUDES
+  // open_bill and credit from the Other-Rails list:
+  //
+  //     const internalHiddenCodes = ['open_bill', 'credit'];   (:839)
+  //     !internalHiddenCodes.includes(d.rail_code.toLowerCase()),   (:844)
+  //
+  // So those two render NOWHERE — no card and no other-rails row. The operator
+  // cannot see the rail, cannot toggle it, and gets no hint it exists. That is
+  // worse than a toggle that does nothing (F16): at least a dead toggle is visible.
+  //
+  // It matters more since round 52, because the charge modal now HONOURS the
+  // open_bill flag: `coreRailWithheld` reads `is_enabled`, and the rail row is
+  // seeded `is_enabled: true`. So open_bill shows at checkout with no way to turn
+  // it off from this screen — the operator's only recourse is the checkout itself.
+  it('offers a toggle for EVERY core rail, including open_bill and credit', async () => {
+    // The fixture seeds only card + gopay, so open_bill/credit resolve from the
+    // screen's own CORE_DEFAULTS merge. They must still be visible: a core rail is
+    // non-removable, not non-renderable.
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    // Labels come from `CORE_DEFAULTS` (paymentRailsLogic.ts:37-42), except `card`,
+    // which the fixture seeds with a shorter label of its own.
+    for (const label of ['Cash', 'Card', 'QRIS', 'Open Bill (Table Tab)', 'Customer Credit']) {
+      expect(
+        screen.queryByRole('switch', { name: label }),
+        `core rail "${label}" has no toggle on this screen`,
+      ).not.toBeNull();
+    }
+  });
+
+  it('lets the operator switch open_bill OFF, which the charge modal now honours', async () => {
+    // The end-to-end point of the gate: a rail the modal reads must be reachable.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    const openBill = screen.getByRole('switch', { name: 'Open Bill (Table Tab)' });
+    expect(openBill).toBeChecked();
+    await user.click(openBill);
+    expect(openBill).not.toBeChecked();
+  });
+
+  it('does NOT require a rail toggle for midtrans or stripe (gateway cards, not rails)', async () => {
+    // The guard against over-correcting: those two are operator-configured
+    // GATEWAYS with their own cards and their own enable switch, and they are not
+    // in CORE_RAIL_CODES. A "fix" that demanded a rail switch for them would
+    // duplicate the gateway's own control.
+    await renderScreen();
+    await screen.findByText('Cash');
+    expect(screen.queryByRole('switch', { name: 'Midtrans' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Stripe' })).toBeNull();
+  });
 });
 
 describe('RestaurantPaymentsScreen — QRIS static QR card', () => {
