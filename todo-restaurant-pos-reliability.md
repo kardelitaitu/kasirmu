@@ -5418,7 +5418,27 @@ method to every rail parameter**, and the family is larger than F19's five contr
 | `mode`, `env`, `currency`, `reader` | 186-2582 | common words, not consumers |
 | `surcharge` | 0 | no consumer |
 | `verifyDrawer`, `printReceipt`, `autoConfirm`, `acceptedCards`, `requireTrace` | 0 | **F19's five** |
-| `autoKick`, `defaultTerminalId` | 0 | **also no consumer — not previously in F19** |
+| `autoKick` | 0 Rust, **5 in the UI** | **WIRED — my table was wrong** |
+| `defaultTerminalId` | 0 Rust | read by the UI as a preselection |
+
+> **⚠️ Corrected round 112 — `autoKick` is WIRED and this table was wrong.** The row
+> above reported it with "0 Rust consumers" under a column headed "Prod Rust hits", and then
+> read that as *no consumer*. **A rail parameter is an operator toggle, and the layer that
+> honours it is whichever one acts** — for `autoKick` that is the UI:
+>
+> `PaymentModal.tsx:1263` — `railParam(paymentRails, 'cash', 'autoKick', true)` gates the
+> drawer kick at `:1264`, which is F18's fix, and the comment there records that the switch
+> was previously ignored (the drawer popped on every cash tender with the toggle OFF).
+>
+> **So the round-108 inventory would have had a reader delete a working control.** The
+> corrected table keeps the Rust column for the controls that need a Rust consumer, and
+> `railParamLayerBlindness.test.ts` now pins both directions: `autoKick` must be gated by the
+> payment path, and `verifyDrawer` must still have no reader (which is what makes it F19).
+>
+> **This is the fourth spelling of one failure this session** — a getter (93), a wrapper (94),
+> a homonym (106), and a layer-blind search. Each was caught by measuring the claim against
+> the thing that would ACT on it, and none was caught by grepping harder.
+
 | `merchantId`, `clientKey`, `serverKey` | 0 | gateway credentials, routed via `payment_gateways` not the rail |
 
 #### The `nmid` case is the sharpest one yet
