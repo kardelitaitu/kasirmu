@@ -382,6 +382,72 @@ is born at boot, and nothing seeds it*.
 
 ---
 
+### F15 — Restaurant Settings "Save" reports success and writes NOTHING (HIGH — silent data loss)
+
+Found 2026-10-09 walking the tablet flows. This is the worst of the set: the screen
+affirmatively tells the operator their changes are stored, and they are not.
+
+**Measured on the Redmi tablet, signed in as the OWNER (so the `settings:edit` gate is
+satisfied — this is not a permission refusal).**
+
+1. Opened the restaurant sidebar → Settings. The screen rendered all nine toggles with
+   their labels, and the status line read **"All changes saved"**.
+2. Flipped **Course Firing** `false → true`, confirmed the checkbox read `true`, pressed
+   **Save** (enabled, not disabled). Status stayed **"All changes saved"**.
+3. Repeated with **Guest Count (Pax)** `true → false` — same result.
+4. Read both databases back:
+
+```
+store db  settings rows:              1        -> restaurant.unavailable|[]
+store db  setting_updated audit rows: 12       -> every one of them restaurant.unavailable
+          newest audit row:           10:30:41Z
+          device clock at read time:  11:10:06Z   (39 minutes later)
+global db restaurant.* rows:          0        (20 settings rows, none restaurant)
+```
+
+**Nothing was written — not the nine `restaurant.*` keys, and not even an audit row.**
+`setting_updated` is the write-path audit table (`set_settings_scoped` bumps it per key), so
+a save that reached the backend would have added rows. The newest row predates the test by
+39 minutes, so that table is a clean control: it shows the write never arrived.
+
+**Not an error that is being swallowed, on the evidence available.** The bridge denies a
+session without `settings:edit` with a hard error
+(`crates/kasirmu-bridge/src/settings.rs:869` `require_session_permission`, pinned by
+`settings_tests.rs:1902` `set_settings_scoped_denies_a_session_without_settings_edit`), and
+the screen's own handler awaits the write and only then mirrors to localStorage and clears
+its dirty flag (`RestaurantSettingsScreen.tsx:292-324`). A rejection should therefore have
+surfaced. It did not, and the handler includes `restaurant.course_firing` in the batch
+(`:305`) — the key is in the payload the screen believes it sent.
+
+**What is NOT yet established, and is the next step:**
+- whether `set_settings_scoped` was reached at all. An attempt to observe it by patching
+  `window.__TAURI_INTERNALS__.invoke` recorded **zero** settings calls while the UI still
+  updated — so that instrumentation is blind here (the app's `api/settings.ts` wrapper does
+  not route through the patched reference) and **says nothing** about the app either way.
+  Do not read those empty calls as evidence.
+- whether the dirty-state logic short-circuits `handleSave` — e.g. `originalsRef` already
+  equal to the new values, which from the UI's seat is indistinguishable from a real save.
+
+**Why it matters for beta.** Every restaurant toggle lives in this panel — Customer Name,
+Guest Count, Order Type, Save Tab, **Course Firing**, Auto-Print, and the three interaction
+prefs. If Save is inert then (a) testers cannot turn coursing on, so the course bar and the
+per-line course chip stay unreachable however the rest of the flow behaves, and (b) a tester
+who does change a setting is told it was saved and will report "the setting does not stick"
+as a UI curiosity rather than as this. F14 is a store that is never seeded; F15 is a screen
+that never writes.
+
+**Reproduce.** Note the clock first, so the audit table can be read as a control:
+
+```bash
+# 1. note the device clock (UTC)
+adb shell date -u +%Y-%m-%dT%H:%M:%SZ
+# 2. toggle Course Firing in the UI, press Save, wait for "All changes saved"
+# 3. pull the store db and read settings + setting_updated:
+#    no restaurant.course_firing row and no NEW audit row  ===  F15 reproduced
+```
+
+---
+
 ## 3. Repair plan
 
 Each phase is independently landable and has its own acceptance. **Do not start a
