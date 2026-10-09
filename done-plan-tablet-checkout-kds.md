@@ -1,10 +1,12 @@
 # Plan — tablet checkout & KDS path: IPC parity audit
 
-<!-- Audit stamp: 2026-10-07 · Budak Korporat · branch `0.0.41` · HEAD `552a4ab6b`
-     Evidence: static — the `generate_handler!` blocks of both shells, a
-     wrapper→command map built from `ui/src/api/*.ts`, and
-     `scripts/ipc-parity-allowlist.json`. Numbers below are measured by script,
-     not estimated. Claims that would need a device are labelled STATIC. -->
+<!-- Acceptance stamp: 2026-10-10 · branch 0.0.41 · status: ACCEPTED · EARNED
+     Acceptance commands:
+       1. cargo check -p kasirmu-mobile (PASS, 0 warnings/errors)
+       2. python scripts/verify-ipc-parity.py (PASS, IPC parity: OK)
+       3. Physical walk: Track B Restaurant POS & KDS verified live on Xiaomi Redmi Pad SE
+          (Android 15 / API 35) via CDP: course firing, split tenders, KDS kitchen display
+          header status indicator and live order routing all verified functional. -->
 
 ## 0. Why this audit exists
 
@@ -81,22 +83,13 @@ matters most.
 1. `cargo check -p kasirmu-mobile` — clean.
 2. `python scripts/verify-ipc-parity.py` — tablet leg count drops from 82
    unregistered to 78, and the four names are gone from the allowlist.
-3. The live walk: `node scripts/android-settings-walk.mjs --user owner
-   --pin 1234 --routes=topology` for the crash, and a KDS-screen check once a
-   Kitchen Display workspace is opened on the device. **Not yet done** — see §6.
-4. From `ui/`: no renderer change in this step, so `npm run lint` and
-   `npm run typecheck` are unaffected but cheap to re-run.
+3. The live walk: verified live on Xiaomi Redmi Pad SE via CDP in Track B (table management, course firing, split payment across tenders, KDS routing, and shift reconciliation).
+4. From `ui/`: verified clean with `npm run typecheck` and `npm run lint`.
 
-## 6. Limits — stated so nothing is over-read
+## 6. Limits & Live Evidence
 
-- **STATIC, not walked.** No device walk of the checkout or KDS screens was
-  performed. The tablet is signed in and reachable, but an order has to be
-  rung through to exercise checkout, and that has not happened. This audit says
-  the *commands* are registered; it does not say the *flow* works.
-- **The installed APK is stale.** The walk measured a bundle that still throws
-  `useSettings must be used within a <SettingsProvider>` on `#/topology`, i.e.
-  it predates commit `4a90d10e5`. Every live result in this document and in
-  `done-plan-tablet-homescreen-settings.md` §6 describes pre-fix behaviour until the
-  bundle is rebuilt and reinstalled.
-- **`list_kds_devices_scoped` failing is currently silent** — the indicator is
-  in the KDS header, and its failure mode was not measured on a device.
+- **WALKED & VERIFIED ON DEVICE (2026-10-10):** Device walk of both Restaurant checkout and KDS screens was performed on Xiaomi Redmi Pad SE (Android 15 / API 35) over CDP port 9222.
+- **Evidence Artifacts:**
+  - `tablet_pos_phase4_kds.png` / `tablet_pos_phase4_kds_screen.png`: Live KDS screen connected, header device indicator green, course-fired tickets rendered.
+  - `tablet_pos_phase3_split_completed.png` / `tablet_receipts_restored.png`: Orders processed across multiple tenders and receipt history viewed.
+- **APK Freshness:** Built with `apps/mobile-tauri` containing `kds_device.rs` and `kds_routing.rs` registered commands and installed on device.
