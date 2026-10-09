@@ -605,6 +605,14 @@ grouping at all (`format_money` emits none; `currency.thousands_separator` is st
 that states it is a divergence, rather than silently changing a second control's semantics
 in the same commit. That is a follow-up decision.
 
+**CORRECTION (round 34).** The paragph above originally added that the printer had
+"no IDR case at all … the fixture never exercises an exp-0 currency". **That was wrong.**
+`receipt_tests.rs:154` (`format_money_idr_has_no_decimal_tail`) and `:175`
+(`format_money_kwd_three_decimals`) cover exp-0 and exp-3 exactly, asserting the ungrouped
+`"4450000"` under all three separators. My grep searched for the `usd_money` helper and
+missed the inline `Money` literals those cases use. The exp-0 behaviour was always tested;
+what was missing was the UI side, which round 33 added.
+
 `0803cee7e`.
 
 ### Round 32 — finishing the sweep instead of stopping at the bug

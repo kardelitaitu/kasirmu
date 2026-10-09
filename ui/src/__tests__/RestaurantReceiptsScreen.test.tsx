@@ -169,13 +169,32 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     expect(screen.getByText('Rp 93000')).toBeInTheDocument();
   });
 
-  it('toggles show-thousands-sep and formats prices with thousands separator', async () => {
+  it('PINNED DIVERGENCE: the grouping toggle makes the preview differ from the paper', async () => {
+    // ⚠️ This case pins a KNOWN divergence, it does not bless it.
+    //
+    // The case above states the intent: "The preview mirrors the printed receipt, which
+    // renders the major part verbatim (no thousands grouping)". The printer agrees with
+    // that — `format_money` (kasirmu-hal/src/drivers/receipt.rs:251) delegates to
+    // `foundation::format_minor`, and the printer's own cases assert the ungrouped
+    // string (`receipt_tests.rs`: IDR 4_450_000 -> "4450000" under every separator).
+    //
+    // `ReceiptConfig` (:98-117) has NO grouping field, so this toggle cannot reach the
+    // printer — grouping is a preview-only effect, i.e. a control that makes the preview
+    // LESS faithful to the paper. `currency.thousands_separator` exists
+    // (platform/core/src/settings/keys.rs:71) but no formatter reads it.
+    //
+    // Pinned rather than changed because removing a merchant-visible effect is a product
+    // call (the same open question as the three dead toggles, round 27). What this case
+    // guarantees is that the divergence cannot disappear SILENTLY: changing the toggle's
+    // behaviour fails here and forces the comment above to be revisited.
     const user = userEvent.setup();
     await renderScreen();
 
     expect(screen.getByText('93000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
     expect(screen.getByText('93.000')).toBeInTheDocument();
+    // The paper would print this, whatever the toggle says:
+    expect(screen.queryByText('93000')).toBeNull();
   });
 
   it('does NOT append fractional units for IDR, whatever Show Decimals says', async () => {
