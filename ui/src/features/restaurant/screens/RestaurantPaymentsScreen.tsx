@@ -325,6 +325,12 @@ export function RestaurantPaymentsScreen({
     defaultEdcTerminalId: string;
   }>({ drafts: [], defaultEdcTerminalId: '' });
   const [dirtyVersion, setDirtyVersion] = useState(0);
+  // F40: the load effect seeds the dirty BASELINE from the drafts the screen is
+  // showing, but it must not DEPEND on them — listing `drafts` would re-run the
+  // whole load on every keystroke and toggle. These refs carry the current values
+  // into that effect without making it reactive to them.
+  const draftsRef = useRef<DraftRail[]>([]);
+  const defaultEdcTerminalIdRef = useRef('');
   const hwInitializedRef = useRef(false);
 
   /**
@@ -353,6 +359,12 @@ export function RestaurantPaymentsScreen({
   }, [hw.profile]);
 
   // Load location, payment rails, and EDC terminals
+  // F40: publish the current values to the refs the load effect reads. Assigned
+  // during render (the same idiom `useTerminalHardware` uses) so the finally block
+  // never sees a stale drafts list.
+  draftsRef.current = drafts;
+  defaultEdcTerminalIdRef.current = defaultEdcTerminalId;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -519,7 +531,29 @@ export function RestaurantPaymentsScreen({
           type: 'error',
         });
       } finally {
-        if (!cancelled) setLoading(false);
+        // F40: the baseline MUST be seeded before `loading` clears.
+        //
+        // `originalsRef` starts as `{ drafts: [] }` (:326) and was only filled
+        // inside `if (primary)` (:377). When `primary` is falsy — or the rail read
+        // throws before reaching :395 — the screen still RENDERS rails, because
+        // `drafts` comes from the useState initializer (:248), but the baseline
+        // stays empty. The `dirty` memo then returns false at :534 on
+        // `length === 0` FOR EVER, so Save is permanently disabled and an
+        // operator's rail toggle cannot be persisted at all. That is the state the
+        // tablet is in, with an empty `local_payment_methods` table.
+        //
+        // Seeding from the CURRENT drafts makes the screen start clean and every
+        // subsequent edit correctly dirty, which is the behaviour the loaded path
+        // already has. It is deliberately `drafts` and not a fresh literal: the
+        // rendered values and the baseline must be the same list.
+        if (!cancelled) {
+          if (originalsRef.current.drafts.length === 0) {
+            originalsRef.current.drafts = draftsRef.current.map((d) => ({ ...d }));
+            originalsRef.current.defaultEdcTerminalId = defaultEdcTerminalIdRef.current;
+            setDirtyVersion((v) => v + 1);
+          }
+          setLoading(false);
+        }
       }
     };
 

@@ -1118,3 +1118,48 @@ describe('RestaurantPaymentsScreen — dirty tracking with NO persisted rails (F
     expect(screen.getByTestId('restaurant-payments-save-btn')).toBeEnabled();
   });
 });
+
+// ── F40: the baseline must be seeded even when there is no primary location ──
+//
+// The tablet's observed state: rails RENDER, but toggling one leaves the header on
+// "All changes saved" and Save disabled, and the store's `local_payment_methods`
+// table keeps ZERO rows — so the change cannot be persisted at all.
+//
+// Cause: `originalsRef` starts as `{ drafts: [] }` and was filled only inside
+// `if (primary)`. With a falsy `primary` the screen still renders rails (they come
+// from the `useState` initializer), but the `dirty` memo hits `length === 0` and
+// returns false for ever.
+describe('RestaurantPaymentsScreen — no primary location still tracks dirty (F40)', () => {
+  it('a rail toggle is dirty when the location lookup returns nothing', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // The device's condition: no primary location, so the load's seeding block
+    // (:377-395) never runs.
+    mocks.getPrimary.mockResolvedValue(null);
+
+    await renderScreen();
+
+    const cashToggle = await screen.findByTestId('payment-card-toggle-cash');
+    const saveBtn = screen.getByTestId('restaurant-payments-save-btn');
+    expect(cashToggle).toBeChecked();
+    expect(saveBtn).toBeDisabled();
+
+    await user.click(cashToggle);
+    expect(cashToggle).not.toBeChecked();
+
+    expect(
+      saveBtn,
+      'with no primary location the rail toggle cannot be saved at all — the ' +
+        'baseline stayed empty, so `dirty` was pinned false. This is the tablet state.',
+    ).toBeEnabled();
+  });
+
+  it('the header agrees once an edit is made without a primary location', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    mocks.getPrimary.mockResolvedValue(null);
+    await renderScreen();
+
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+    await user.click(await screen.findByTestId('payment-card-toggle-cash'));
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+});
