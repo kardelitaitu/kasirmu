@@ -565,6 +565,47 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 28 — the receipt started printing the database's spelling
+
+Another lane's `bbc530642` lowercased the stored tender so it would satisfy the
+`sales.payment_method` CHECK constraint. That part is right. But it changed
+`methodLabel`, and **that one variable had two consumers wanting opposite things**:
+
+| Consumer | Wants | Got |
+|---|---|---|
+| `completeSaleScoped({ paymentMethod })` — the DB column | the lowercase enum | ✅ lowercase |
+| `buildCompletedSaleReceipt({ payments: [{ method }] })` — printed for the customer | human-readable | ❌ `'cash'` |
+
+The receipt renders `pmt.method` verbatim (`ReceiptPreview.tsx:183`), so a cash sale
+began printing `cash` where it had printed `CASH`, and a merchant's configured QRIS label
+was dropped entirely (that branch was deleted, not just lowercased).
+
+**Why nothing caught it.** `ReceiptPreview.test.tsx:42` feeds the renderer a fixture with
+`'CASH'` already in it, so it tests the renderer and not the boundary; and
+`PaymentModalSaleFlow.test.tsx:186` asserted `expect.any(Object)`. The value crossed an
+untested seam.
+
+Fixed by splitting the one variable into the two facts it was carrying: `storedMethod`
+(the enum) and `methodLabel` (the label, with the `resolveTenderDisplayName` branch
+restored). `dd708c4f5`.
+
+**The kill-test needed two attempts, and the first taught me something.** Reverting how I
+wired `paymentMethod` did NOT fail the new test — because my test asserts the RECEIPT
+value, which was still correct. It only discriminates when the receipt's source is
+reverted, which is the actual regression shape. A kill-test that passes is telling you
+your test guards something else.
+
+### Round 28b — a gate that was ALREADY red, and not mine
+
+The full suite then surfaced `RetailPosScreenCheckout` expecting `paymentMethod: 'CASH'`.
+That is **not fallout from my change**: `bbc530642` lowercased production and left this
+assertion on the old spelling, so it was red at HEAD. Proved by reading the pre-commit
+blob (`bbc530642~1`), where the value was `method.toUpperCase()`.
+
+Repaired the expectation rather than the constraint (`f0c6f1497`), with the reason
+inline and a pointer to the case that pins the printed label apart from the stored enum.
+Left red it would have been a gate people learn to ignore — the round-19 lesson.
+
 ### Round 27 — the dead keys are now DECLARED, which is not the same as decided
 
 F1's three dead keys have been open since round 2 and I have re-flagged them every few
