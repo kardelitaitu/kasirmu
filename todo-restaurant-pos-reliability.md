@@ -1656,6 +1656,58 @@ modal — and the screenshots are attached as evidence for the two claims above.
 
 No code changed. Full suite unchanged at **695 files / 11,552 passed**, typecheck 0, eslint 0.
 
+### Round 87 — the sidebar settings round-trip, and the WAL that hid it
+
+Driving the sidebar's Settings surface end to end on the tablet — the goal's other named surface —
+produced the first **confirmed write round-trip** this plan has had on real hardware.
+
+#### The run
+
+| Step | Observed |
+|---|---|
+| Sidebar popover | `Close current shift` · Table Management · History · Kitchen Display · **Menu Editor** · **Settings** — all enabled |
+| Settings screen | 9 toggles, each `role="switch"` with a stable id |
+| `Auto-Print KOT` | off → **tapped on** |
+| After tap | header **"Unsaved changes"**, Save **enabled** |
+| Save | header **"All changes saved"**, Save disabled again |
+
+**The six toggles whose defaults this plan pinned render exactly as predicted**, and `guest_count`
+is the interesting one: its model default is `false` (`restaurantSettingsModel.ts:57`) yet it renders
+**ON**, because `PosScreen` maps an unset key to SHOW so the field cannot vanish for a merchant who
+never saved — the D2 default trap, now **observed rather than argued**.
+
+#### The write, proven at the database
+
+```
+key=restaurant.auto_print_kitchen value=true at=2026-10-09T17:37:02.446Z
+terminal=android-8be93155b5cd4d43a23940e5a61c5d62
+```
+
+Nine keys written in one batch at `17:37:02`, plus **`shifts` = 1 row** (the shift opened last round)
+and **12 `setting_updated` rows**. So this screen's save path, the batch write, the audit trail and
+the shift lifecycle all work on the real device — not just in the suite.
+
+#### ⚠️ The near-miss: I read "nothing was written" and it was my measurement
+
+My first read said the save persisted **nothing** — 0 rows in `settings`, 0 in `setting_updated`,
+and **0 in `shifts`** despite the app showing a running shift timer. The second fact is what exposed
+the error: a shift that visibly exists cannot have zero rows.
+
+**The cause: SQLite WAL mode.** The app writes to `store-…sqlite-wal` (4.1 MB, modified one minute
+before I looked) and my `adb exec-out cat` pulled only the main `.sqlite` file. Reading that alone
+shows the state as of the last checkpoint — which is why `shifts` was "empty" while the UI counted
+minutes.
+
+**This is round 64's lesson in a second costume.** Then, the mistake was reading a store database
+the POS had stopped using; here it is reading a database **without its write-ahead log**. Both are
+"the instrument lied, not the app", and both were caught by a fact that could not be explained
+otherwise — there, an absent row that should have been written; here, a shift timer with no row.
+
+**The rule worth keeping: a bare `.sqlite` pull is not a database.** Pull `-wal` and `-shm` with
+it, or checkpoint first. Nothing was reported as a defect, and nothing should have been.
+
+No code changed. Full suite unchanged at **695 files / 11,552 passed**, typecheck 0, eslint 0.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
