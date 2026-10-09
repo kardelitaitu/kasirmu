@@ -1772,6 +1772,57 @@ Verified: full suite **696 files / 11,555 passed, 0 failed**; typecheck 0; eslin
 0 missing; both JSON configs parse; the diff is exactly four lines, one `media-src` clause per
 key.
 
+### F40 — the payments screen's rail toggles do not persist on the tablet (round 89) — OPEN
+
+A round that **did not close its finding**, recorded as such because the negative result is the
+deliverable.
+
+#### The device evidence
+
+On `adb-e45e28d9-lFE6yH`, with the store's `local_payment_methods` table holding **zero rows**:
+
+1. The Payments screen renders 8 rail cards — `cash`, `qris`, `card`, `midtrans`, `stripe`,
+   `open_bill`, `credit`, plus the add-rail form.
+2. Toggling **cash**, **card**, **open_bill** or **midtrans** off flips the switch.
+3. The header stays on **"All changes saved"** and **Save stays disabled** — read from React's
+   own props (`memoizedProps.disabled === true`), not only the DOM.
+4. Re-reading the table **with its `-wal`** afterwards shows **still zero rows**.
+
+**So the operator's change cannot be saved at all.** Every card's label is the `CORE_DEFAULTS`
+string (`"Card / EDC Terminal"`), confirming the screen is on the defaulted branch.
+
+#### What was checked, and ruled out
+
+| Hypothesis | Result |
+|---|---|
+| The load effect re-runs and re-seeds the baseline | **ruled out** — a re-run would emit its failure toast; none appears |
+| `handleToggleCode` never reaches `setDrafts` | **ruled out** — the collapsible card's `isExpanded` side effect fires, so React's `onChange` ran |
+| The three fake cards I first saw | corrected — `"GoPay"` was the **add-rail placeholder**, not a card |
+| My first DB read ("zero rows, so nothing writes") | corrected twice — first the missing WAL (round 87), then the misread placeholder |
+
+#### What this round contributed, and what it did NOT
+
+`RestaurantPaymentsScreen.test.tsx` gained three cases covering the **defaulted** branch, which
+had no test: the pre-existing case supplies `card` as a **persisted** row and therefore exercises
+`mergeCoreRails`'s `match` branch, while the tablet is on the `else` branch.
+
+**They pass — and that is the honest problem.** They pass against the real component, so **they do
+not reproduce the device bug.** jsdom and the device disagree on the same input, which means the
+cause is not in this component's dirty logic *as the mocks exercise it*. The cases are committed
+with that stated in their own header, so nobody reads them as proof the defect is covered.
+
+**`Save` being unreachable for the operator is the real defect and it stays open.** The next step is
+to find what the mocked load omits — the mock returns `[]` from `getLocalPaymentMethodsScoped`
+while the device goes through the real IPC and a resolved location, and that gap is where to look.
+
+**A round that ends `OPEN` with a reproduction, three ruled-out hypotheses and an admitted
+non-reproduction is worth more than one that ships a speculative fix.** The alternative here was to
+change dirty-tracking on a screen whose save semantics are already an owner question (F23) on the
+strength of a mechanism I had not isolated.
+
+Verified: full suite **696 files / 11,558 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
+0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
