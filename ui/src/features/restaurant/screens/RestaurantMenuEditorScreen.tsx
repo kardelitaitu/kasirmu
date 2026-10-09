@@ -1373,7 +1373,7 @@ export default function RestaurantMenuEditorScreen({
                                   type="button"
                                   className="restaurant-menu-editor-btn-icon-danger"
                                   onClick={() => handleRemoveModifierGroup(group.id)}
-                                  aria-label="Remove Group"
+                                  aria-label={l10n.getString('restaurant-menu-editor-remove-modifier-group-aria')}
                                   data-testid={`modifier-group-remove-${gIdx}`}
                                 >
                                   <TrashGlyph />
@@ -1448,7 +1448,7 @@ export default function RestaurantMenuEditorScreen({
                                       type="button"
                                       className="restaurant-menu-editor-btn-icon-subtle"
                                       onClick={() => handleRemoveModifierOption(group.id, opt.id)}
-                                      aria-label="Remove Option"
+                                      aria-label={l10n.getString('restaurant-menu-editor-remove-option-aria')}
                                       data-testid={`modifier-option-remove-${gIdx}-${oIdx}`}
                                     >
                                       <TrashGlyph />

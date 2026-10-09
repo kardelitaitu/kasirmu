@@ -241,6 +241,26 @@ describe('RestaurantReceiptsScreen — logo', () => {
     expect(logoInput).not.toHaveValue('Custom uploaded image');
   });
 
+  it('gives the receipt logo an alt from the bundle, not a literal (F10)', async () => {
+    // The alt was the hardcoded literal 'Business logo' while the bundle key
+    // `restaurant-logo-preview-alt` already existed and was used elsewhere in this
+    // same screen. Asserting the bundle VALUE (not the old literal) is what makes a
+    // regression to a literal fail: the test bundle resolves the key to its own text.
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/l.png');
+
+    const imgs = document.querySelectorAll('.resto-receipt-logo');
+    expect(imgs.length).toBeGreaterThan(0);
+    for (const img of Array.from(imgs)) {
+      expect(img.getAttribute('alt')).not.toBe('Business logo');
+      expect(img.getAttribute('alt')).toBeTruthy();
+    }
+  });
+
   it('cycles logo position top -> left -> right', async () => {
     const user = userEvent.setup();
     await renderScreen();

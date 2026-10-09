@@ -1368,7 +1368,7 @@ export default function RestaurantReceiptsScreen({
                     logoPosition === 'top' ? (
                       <div className="resto-receipt-center">
                         <div className="resto-receipt-logo-wrap">
-                          <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                          <img src={businessLogo} alt={l10n.getString('restaurant-logo-preview-alt')} className="resto-receipt-logo" />
                         </div>
                         <div className="resto-receipt-store-title">
                           {headerTitle.trim() || (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT')}
@@ -1387,7 +1387,7 @@ export default function RestaurantReceiptsScreen({
                     ) : (
                       <div className={`resto-receipt-header-row ${logoPosition === 'right' ? 'resto-receipt-header-row--right' : ''}`}>
                         <div className="resto-receipt-header-logo-col">
-                          <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                          <img src={businessLogo} alt={l10n.getString('restaurant-logo-preview-alt')} className="resto-receipt-logo" />
                         </div>
                         <div className="resto-receipt-header-text-col">
                           <div className="resto-receipt-store-title">
