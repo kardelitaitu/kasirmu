@@ -39,14 +39,10 @@ const LOAD_FAILURE_SIGNALS = ['loadFailed', 'hasPartialError'];
  * signal — FAILS the guard below, so this list cannot grow silently or rot.
  */
 const EXEMPT: Array<{ file: string; reason: string }> = [
-  {
-    file: 'features/restaurant/screens/RestaurantPaymentsScreen.tsx',
-    reason:
-      'INDIRECT spelling, still open. Its gateway reads are `.catch(() => null)` ' +
-      '(:454-455) and their results seed the drafts baseline at :377. Fixing it ' +
-      'requires editing this file, which is blocked by another lane uncommitted ' +
-      'change (AGENTS.md section 7.3). Remove this entry WITH the fix.',
-  },
+  // EMPTY, and that is the point: the one entry this list ever held was for
+  // `RestaurantPaymentsScreen.tsx`, and the fix landed 2026-10-09. The list is
+  // kept rather than deleted so the next INDIRECT spelling has somewhere honest
+  // to go — with a reason, and failing when it goes stale.
 ];
 
 /** Production .ts/.tsx files under src/, minus tests and dev mocks. */

@@ -327,6 +327,21 @@ export function RestaurantPaymentsScreen({
   const [dirtyVersion, setDirtyVersion] = useState(0);
   const hwInitializedRef = useRef(false);
 
+  /**
+   * F4: a gateway read failed, so the Midtrans/Stripe fields show EMPTY rather than
+   * the stored config. The drafts baseline is seeded before those reads
+   * (`:377`), so without this flag the screen looks clean and saving writes the
+   * blanks over real credentials.
+   *
+   * Gating Save on a flag is only safe with a way to CLEAR it — round 8 of the F4
+   * campaign shipped four Save-gates and no recovery path, disabling Save for the
+   * rest of the session. `reloadNonce` and the banner below are that path, in the
+   * same change.
+   */
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Retry trigger. Without it `loadFailed` is a ONE-WAY LATCH and Save never returns.
+  const [reloadNonce, setReloadNonce] = useState(0);
+
   // Sync initial EDC terminal preference from hardware profile
   useEffect(() => {
     if (hwInitializedRef.current || !hw.profile) return;
@@ -344,6 +359,9 @@ export function RestaurantPaymentsScreen({
     const loadAll = async () => {
       if (!sessionToken) return;
       setLoading(true);
+      // Retry clears the latch before re-reading, so a recovered gateway returns
+      // Save to the operator instead of stranding it for the session.
+      if (reloadNonce > 0) setLoadFailed(false);
       try {
         const [primary, edcList] = await Promise.all([
           getPrimaryLocationScoped(sessionToken),
@@ -448,11 +466,23 @@ export function RestaurantPaymentsScreen({
             }
           }
 
-          // Load payment gateway credentials (stored separately in payment_gateways)
+          // Load payment gateway credentials (stored separately in payment_gateways).
+          //
+          // F4: these two used to `.catch(() => null)` INDEPENDENTLY, which swallowed a
+          // failed read. Combined with the `if (midtransGw)` / `if (stripeGw)` guards
+          // and the baseline seeded at `:377` before this point, a failure left the
+          // screen looking CLEAN while showing empty fields — so saving wrote the
+          // blanks over the stored credentials. The flag is what makes that visible.
           try {
             const [midtransGw, stripeGw] = await Promise.all([
-              getPaymentGatewayConfigScoped(sessionToken, 'midtrans').catch(() => null),
-              getPaymentGatewayConfigScoped(sessionToken, 'stripe').catch(() => null),
+              getPaymentGatewayConfigScoped(sessionToken, 'midtrans').catch(() => {
+                setLoadFailed(true);
+                return null;
+              }),
+              getPaymentGatewayConfigScoped(sessionToken, 'stripe').catch(() => {
+                setLoadFailed(true);
+                return null;
+              }),
             ]);
             if (midtransGw) {
               setMidtransLocalEnabled(midtransGw.isActive);
@@ -482,6 +512,8 @@ export function RestaurantPaymentsScreen({
           }
         }
       } catch {
+        // The whole load failed, so the drafts are defaults too — same F4 exposure.
+        setLoadFailed(true);
         addToast({
           message: l10n.getString('settings-localpay-error-load') || 'Failed to load payment methods',
           type: 'error',
@@ -495,7 +527,7 @@ export function RestaurantPaymentsScreen({
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, l10n, addToast]);
+  }, [sessionToken, l10n, addToast, reloadNonce]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
@@ -921,9 +953,15 @@ export function RestaurantPaymentsScreen({
           <div className="restaurant-settings-header-actions">
             <span
               className="restaurant-settings-header-dirty"
-              style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
+              style={{ color: dirty || loadFailed ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
             >
-              {dirty ? (
+              {/* F4/F18: on `loadFailed` the drafts are DEFAULTS, so "All changes saved"
+                  would be a claim about values that were never read. Say what is true. */}
+              {loadFailed ? (
+                <Localized id="settings-load-failed">
+                  <span>Failed to load settings</span>
+                </Localized>
+              ) : dirty ? (
                 <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
               ) : (
                 <Localized id="restaurant-all-saved">All changes saved</Localized>
@@ -932,7 +970,7 @@ export function RestaurantPaymentsScreen({
             <button
               type="button"
               className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-              disabled={!dirty || saving}
+              disabled={!dirty || saving || loadFailed}
               aria-busy={saving || undefined}
               onClick={handleSave}
               data-testid="restaurant-payments-save-btn"
@@ -947,6 +985,26 @@ export function RestaurantPaymentsScreen({
           </div>
         )}
       </div>
+
+      {/* F4: the read failed, so the values shown are defaults. Without Retry the
+          flag is a one-way latch and Save could never return this session. */}
+      {loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="restaurant-payments-load-error">
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            data-testid="restaurant-payments-load-retry-btn"
+            onClick={() => setReloadNonce((n) => n + 1)}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
 
       <div className="restaurant-settings-main">
         {loading ? (

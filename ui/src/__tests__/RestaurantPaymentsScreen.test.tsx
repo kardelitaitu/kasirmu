@@ -854,4 +854,74 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
   });
 });
 
+// ── F4 on THIS screen: a failed gateway read must not look clean ────────
+//
+// The drafts baseline is seeded at `:377`, BEFORE the two gateway reads at
+// `:453-456`. Those reads used to `.catch(() => null)` independently, and the
+// setters are behind `if (midtransGw)` / `if (stripeGw)`. So a failed read left
+// the screen looking CLEAN while showing empty fields — and saving then wrote
+// those blanks over the stored credentials.
+//
+// ⚠️ The assertion shape matters. "Save is disabled after a failure" passes
+// against the BUG too, because on the buggy path `dirty` is already false, so
+// Save is disabled either way. The discriminating property is the EDIT: on the
+// bug, editing afterwards sets `dirty` true and RE-ENABLES Save over defaults
+// that were never read. That is the round-4 lesson from the plan, applied here.
+describe('RestaurantPaymentsScreen — a failed gateway read is not silent (F4)', () => {
+  it('flags the failure, blocks Save, and refuses to claim the settings are saved', async () => {
+    mocks.getGateway.mockRejectedValue(new Error('gateway read failed'));
+
+    await renderScreen();
+
+    // 1. The operator is told.
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+
+    // 2. The header does NOT claim success over values it never read.
+    expect(screen.queryByText('All changes saved')).not.toBeInTheDocument();
+
+    // 3. The discriminating half: make an EDIT, which is what re-enables Save
+    //    on the buggy path.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const toggle = await screen.findByTestId('payment-card-toggle-cash');
+    await user.click(toggle);
+
+    // 4. Save stays disabled despite `dirty` now being true.
+    const save = screen.getByTestId('restaurant-payments-save-btn');
+    expect(save).toBeDisabled();
+  });
+
+  it('offers a Retry, and Retry CLEARS the flag so Save can return', async () => {
+    // A flag that disables a control is a one-way latch without this path —
+    // round 8 of the F4 campaign shipped four Save-gates and no recovery.
+    mocks.getGateway.mockRejectedValueOnce(new Error('first read fails'));
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // The retry succeeds.
+    mocks.getGateway.mockResolvedValue(null);
+    await user.click(screen.getByTestId('restaurant-payments-load-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-payments-load-error')).not.toBeInTheDocument();
+    });
+  });
+
+  it('a successful read shows NO failure banner (the flag is not always-on)', async () => {
+    // Guards the guard: if the banner rendered unconditionally, both cases above
+    // would pass while telling the operator nothing true.
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('GoPay')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('restaurant-payments-load-error')).not.toBeInTheDocument();
+  });
+});
+
+
 
