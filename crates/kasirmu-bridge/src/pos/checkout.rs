@@ -758,7 +758,7 @@ pub async fn complete_sale_scoped(
     } else {
         PaymentKind::Single
     };
-    sale.payment_method = Some(kind.wire_method(&args.payment_method));
+    sale.payment_method = Some(kind.wire_method(&args.payment_method.to_ascii_lowercase()));
     sale.tendered_minor = args.tendered_minor;
     sale.customer_id = args.customer_id.clone();
     // CUR-02: record tender-currency metadata when multi-currency checkout
@@ -817,10 +817,14 @@ pub async fn complete_sale_scoped(
         )?;
 
         let mut splits = if let Some(ref splits) = args.payment_splits {
-            splits.clone()
+            let mut s = splits.clone();
+            for split in &mut s {
+                split.method = split.method.to_ascii_lowercase();
+            }
+            s
         } else {
             vec![PaymentSplitArg {
-                method: args.payment_method.clone(),
+                method: args.payment_method.to_ascii_lowercase(),
                 amount_minor: sale.total.minor_units,
                 gateway_reference: args.customer_name.clone(),
                 gateway_status: None,

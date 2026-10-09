@@ -1075,7 +1075,7 @@ retryCurrencyLoad,
       if (splitMode) {
         const exp = minorUnitExponent(cartCurrency);
         paymentSplits = splits.map((s) => ({
-          method: s.method === 'other' ? s.otherLabel.trim() || 'OTHER' : s.method.toUpperCase(),
+          method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
           amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
         }));
       }
@@ -1083,10 +1083,8 @@ retryCurrencyLoad,
       const methodLabel = splitMode
         ? 'split'
         : method === 'other'
-          ? otherLabel.trim() || 'OTHER'
-          : method === 'qris'
-            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
-            : method.toUpperCase();
+          ? (otherLabel.trim().toLowerCase() || 'other')
+          : method.toLowerCase();
 
       const serialNumberArgs: SerialNumberArg[] | undefined = serialNumbers
         ? Object.entries(serialNumbers)
@@ -1329,7 +1327,7 @@ retryCurrencyLoad,
     if (!splitMode) return undefined;
     const exp = minorUnitExponent(total.currency);
     return splits.map((s) => ({
-      method: s.method === 'other' ? s.otherLabel.trim() || 'OTHER' : s.method.toUpperCase(),
+      method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
       amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
     }));
   }, [splitMode, splits, total.currency]);
