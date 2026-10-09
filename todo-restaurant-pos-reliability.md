@@ -2353,6 +2353,60 @@ and each extension was prompted by a drift it did not cover — which is the ord
 improves, and the argument for auditing a plan against its own body at a milestone rather than only
 when something breaks.
 
+### F24's UI half closed by another lane, and verified here (round 101) — `421cb2867`
+
+`ui/src/features/settings/screens/CreditFacilityCard.tsx` landed (uncommitted when I found it) and
+**closes the half of F24 that said no UI reads the `credit.*` keys.** The plan had recorded that as
+open for ~40 rounds.
+
+#### I verified its two load-bearing claims rather than trusting its doc-comment
+
+The card's header states what it closes and what it does **not**, which is unusually good practice —
+and still worth checking, because a confident doc-comment is exactly where an over-claim hides:
+
+| Claim | Verified |
+|---|---|
+| `is_credit_enabled` is called only by the getters that return it | **true** — the only callers are the two settings DTO getters (`bridge/settings.rs:225/245`, `mobile-tauri/settings.rs:546`) |
+| the `credit` tender is gated only on a customer name | **true** — `PaymentModal.tsx:1066`, no limit check anywhere in the gate |
+
+Both hold. **So F24's remaining gap is now one product question, not missing plumbing:** is a credit
+sale above the ceiling refused, and what does the cashier see? The card narrates that boundary in the
+operator's words rather than leaving them to discover it, which is why I am recording it as correctly
+scoped rather than as an incomplete fix.
+
+#### The guard caught my own documentation of the bug
+
+Adding F43's note made `planStatusAccuracy` **fail against itself**. The new case matches
+`/^### P6 — i18n sweep/m`, and my F43 record QUOTES the stale heading inside a fenced code block to
+show what it replaced — so the quote was read as a live heading.
+
+**Quoted history is not a claim**, which is the same allowance the header extractor at `:77-90`
+makes for a different reason. The fix is to strip fenced blocks before matching, and it is worth
+noting *how* this was found: **the guard I wrote last round failed on the note I wrote this round**,
+in the same file. A guard that reads a document you keep editing will be tested by your own prose.
+
+**Kill-tested in both directions:** with fence-stripping, reverting the LIVE heading still fails the
+case; the fenced quote does not. And a second, subtler mistake surfaced doing it — my first restore
+replaced the **quoted** occurrence (`:2306`) instead of the live one (`:3071`), because a
+first-match replace does not know which copy is the claim. Restored by line number, then verified
+both headings by hand.
+
+#### What the plan now says
+
+The F24 section and the plan header both carried *"no UI reads them"*. Both now record the closure
+and name the single remaining question, so a reader does not re-open a settled half — the same drift
+F43 was about, caught this time before it aged.
+
+**One unrelated suite failure, deliberately not touched:** `screenExtraction` fails on
+`CreditFacilityCard.css`, because a **new** stylesheet needs a `SCREENS` entry and may not join the
+shrink-only `BASELINE_UNCITED` list. That is the other lane's commit to land — the guard is right,
+and adding the file to the baseline would be the wrong repair. **My two files pass; the failure is
+named here so the next reader does not spend a round re-diagnosing it.**
+
+Verified: `planStatusAccuracy` + `evidenceAnchorResolves` **9 passed**; full suite **695 of 696**
+with the single failure being the other lane's new stylesheet; typecheck 0; eslint 0 errors; bundle
+parity 0 missing.
+
 Verified: full suite **696 files / 11,564 passed, 0 failed**; typecheck 0; eslint 0 errors; `lint:i18n`
 clean; bundle parity 0 missing.
 
