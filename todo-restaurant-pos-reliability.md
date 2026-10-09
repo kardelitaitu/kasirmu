@@ -689,6 +689,39 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 49 — the Auditor could not review the audit log
+
+Last of the four permissions `AuthContext`'s comment names but never checks (`:171-175`):
+`audit:export`. The screen gates THREE actions, and they need two different permissions:
+
+| Action | Backend requirement |
+|---|---|
+| Mark Reviewed | `audit:view` (`kasirmu-bridge/src/audit.rs:376`) |
+| Export CSV | `audit:export` (AUD-09) |
+| Security export | `audit:export` (`mobile-tauri/src/commands/audit.rs:203-208`) |
+
+All three used `isManager`, which covers only owner/admin/manager. **The AUDITOR preset is
+not a manager** (`rbac_presets.rs:285-305`) and its description is *"Global, read-only — views
+operational data and the audit log"*. So `Mark Reviewed` — the one write the audit viewer
+extends — was hidden from the role whose entire purpose is reviewing the log.
+
+The two exports were right in DIRECTION (the backend doc says *"Auditor has no export
+permission"*) but wrong in KIND: for the built-in presets `isManager` overlaps `audit:export`,
+yet `CUSTOM` is *"fully flexible — Admin selects every permission manually"*
+(`rbac_presets.rs:306-310`), so the two can be made to disagree either way.
+
+**A stale justification was corrected too.** The security-export comment claimed the
+`AUDIT_EXPORT` permission set "is identical (Owner/Manager/Admin), so no new check is
+invented here". That is true of the built-in presets and false of the system — the same
+species of comment that hid round 46's inert gate.
+
+Two cases: an Auditor marks reviewed and cannot export; a non-manager `CUSTOM` role exports
+and cannot mark reviewed. Both kill-tested. `86795cfa7`.
+
+**With this the four permissions the comment names are all correctly gated**: settings:edit
+(46), sales:override_price (47), sales:void + sales:process (48), audit:view + audit:export
+(49).
+
 ### Round 48 — the mirror image: a working action hidden from the people allowed to use it
 
 Rounds 46-47 fixed two role-gates that let the wrong people IN. This round found the
