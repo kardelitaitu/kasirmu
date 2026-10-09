@@ -75,6 +75,11 @@ const SURFACES: GuardedSurface[] = [
     element: /<SalesHistoryScreen\b/,
     why: 'sales history, reached from the sidebar mid-service',
   },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<ProductLookupScreen\b/,
+    why: 'stock inquiry, reached from the sidebar mid-service',
+  },
 ];
 
 /**
@@ -111,6 +116,8 @@ describe('restaurant POS crash isolation (F9)', () => {
 
   it('scans a meaningful number of surfaces', () => {
     // A collector that silently found nothing would pass every case above.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(6);
+    // PosScreen has SEVEN early-return sub-screens; the list must cover all seven
+    // or the gap is exactly where the next unwrapped one will be.
+    expect(SURFACES.length).toBeGreaterThanOrEqual(7);
   });
 });

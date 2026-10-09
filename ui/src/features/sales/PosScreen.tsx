@@ -1014,7 +1014,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <h2 className="restaurant-subscreen-top-title">{l10n.getString('nav-inventory') || 'Stock Inquiry'}</h2>
         </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <ProductLookupScreen onAddProduct={handleAddProduct} />
+          {/* Crash isolation (F9) — the third of the three that had no boundary. */}
+          <LocalizedErrorBoundary onReset={() => setShowStockInquiry(false)}>
+            <ProductLookupScreen onAddProduct={handleAddProduct} />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
