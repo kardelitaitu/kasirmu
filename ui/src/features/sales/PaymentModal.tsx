@@ -1080,11 +1080,31 @@ retryCurrencyLoad,
         }));
       }
 
-      const methodLabel = splitMode
+      // TWO values, because the two consumers below need different things and a single
+      // variable cannot be both.
+      //
+      // `storedMethod` goes to `completeSaleScoped({ paymentMethod })`, i.e. the DB
+      // column, whose CHECK constraint requires the lowercase enum ('cash', 'card',
+      // 'qris', 'other'). `bbc530642` established that and is correct for this value.
+      //
+      // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
+      // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+      // human-readable. That commit lowercased this one too, so a cash sale started
+      // printing 'cash' where it had printed 'CASH'. The two were the same variable;
+      // they are not the same fact.
+      const storedMethod = splitMode
         ? 'split'
         : method === 'other'
           ? (otherLabel.trim().toLowerCase() || 'other')
           : method.toLowerCase();
+
+      const methodLabel = splitMode
+        ? 'Split'
+        : method === 'other'
+          ? (otherLabel.trim() || 'Other')
+          : method === 'qris'
+            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
+            : method.toUpperCase();
 
       const serialNumberArgs: SerialNumberArg[] | undefined = serialNumbers
         ? Object.entries(serialNumbers)
@@ -1104,7 +1124,7 @@ retryCurrencyLoad,
 
       const saleResult = await completeSaleScoped(sessionToken!, {
             cartId,
-            paymentMethod: methodLabel,
+            paymentMethod: storedMethod,
             tenderedMinor: method === 'cash' && !splitMode ? tenderedMinorInCartCurrency : null,
             ...(selectedCustomer ? { customerId: selectedCustomer.id } : {}),
             ...(paymentSplits ? { paymentSplits } : {}),

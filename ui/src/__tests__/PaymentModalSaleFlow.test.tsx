@@ -187,6 +187,55 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+
+  it('PRINTS a human-readable tender on the receipt, not the stored enum', async () => {
+    // `bbc530642` lowercased the tender for the DB CHECK constraint. It also lowercased
+    // `methodLabel`, which is a DIFFERENT value with a different consumer: the same
+    // variable feeds `paymentMethod` (the stored column, wants 'cash') and
+    // `buildCompletedSaleReceipt({ payments: [{ method: methodLabel }] })` (the printed
+    // receipt, rendered verbatim at ReceiptPreview.tsx:183). One transform, two
+    // requirements — so the receipt started printing 'cash' where it printed 'CASH'.
+    //
+    // The existing receipt test could not catch this: it feeds ReceiptPreview a fixture
+    // with 'CASH' already in it (:42), which tests the renderer and not the boundary.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'print_sales_receipt_scoped',
+        expect.anything(),
+      );
+    });
+
+    // The hoisted mock is typed `(cmd: string) => …`, so its call tuple is length 1 even
+    // though real call sites pass a second argument; read it through the untyped view.
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    const call = calls.find((c) => c[0] === 'print_sales_receipt_scoped');
+    const payment = (
+      call?.[1] as { args: { payments: Array<{ method: string }> } }
+    ).args.payments[0]!;
+    // The stored enum is lowercase; what the CUSTOMER reads must not be.
+    expect(payment.method.toLowerCase()).toBe('cash');
+    expect(payment.method).not.toBe('cash');
+  });
+
   it('auto-kicks cash drawer on complete for cash sale', async () => {
     await renderWithFluent(
       <PaymentModal
