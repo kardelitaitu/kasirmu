@@ -5620,3 +5620,58 @@ re-diagnosing the connection.
 Verified: device reachable, CDP up, one workspace card read, store DB read **with its `-wal`** (0
 rails). F40 remains **fixed in code, unconfirmed on device** — recorded as blocked-on-fixture rather
 than as unverified.
+
+### F49 — the EDC default-terminal prop has no caller (round 113) — `451770d78`
+
+**Found by applying round 112's method to the rest of the F19 controls: find the layer that would
+ACT on the value.** `defaultTerminalId` looked like the one case where the answer was yes.
+
+#### The chain, and the missing link
+
+| Link | State |
+|---|---|
+| the payments screen offers a "Default EDC" select | `RestaurantPaymentsScreen.tsx:1314-1320` |
+| choosing one writes the rail param | `updateRailParams('card', { defaultTerminalId: v })` |
+| `useEdcTenderPhase` accepts and PREFERS that value | `:135` — *"if it is in the active rows, return it"* |
+| **a caller passes the prop** | **none — `PaymentModal.tsx:1019-1028` omits it** |
+
+**So the branch at `:135` can never fire**, and the hook always falls through to `activeRows[0]?.id` at
+`:138`. A merchant picks a preferred terminal and gets whichever one the backend lists first.
+
+#### Why three passing tests made this harder to see, not easier
+
+`useEdcTenderPhase.test.ts` exercises `defaultTerminalId` at `:94`, `:134` and `:173` — so the hook is
+**correct and covered**. What no test asks is whether anything *calls* it, because that is a different
+question about a different layer. **Thirty passing tests could cover `:135` and the control would still
+be inert.**
+
+That is the F19 shape with the sign flipped: not a control nothing reads, but a *branch* nothing
+reaches.
+
+#### The guard, and the defect it committed inside itself
+
+`edcDefaultPropCaller.test.ts` asserts the gap rather than fixing it — wiring it would change which
+terminal the POS opens, which is a behaviour decision and not a reliability repair.
+
+**My first version of the walker counted a TEST as production.** It excluded a directory named
+`__tests__` but not a co-located `*.test.ts`, so the single "caller" it found was
+`useEdcTenderPhase.test.ts` — **the guard, detecting the exact defect it exists for, inside itself.**
+The exclusion now matches `/\\.(test|spec)\\.tsx?$/`, and the reason is recorded above it.
+
+A second, smaller miss: my first caller-matching regex was `defaultTerminalId\s*[:=]`, which found
+three false positives (a comparison in `EdcTerminalsCard`, the rail write in the screen). It now
+inspects **only the argument object of a `useEdcTenderPhase({` call** — a caller of *this hook*, which
+is the question.
+
+**Kill-tested:** adding `defaultTerminalId: undefined` to the modal's call fails the guard and names
+`features/sales/PaymentModal.tsx`.
+
+#### Related, and deliberately not touched
+
+The chooser writes **two** places — the hardware pref (`:1319`) and the rail param (`:1320`) — and
+*neither* is consumed by the payment path. Wiring the rail would leave two sources of truth, one of
+which is what `TerminalPreferencesCard.tsx` reads. **That is a consolidation decision, and the guard's
+failure message says so**, so whoever resolves F49 does not resolve it twice.
+
+Verified: `edcDefaultPropCaller` **3 passed**, kill-tested both ways; full suite **700 files / 11,606
+passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
