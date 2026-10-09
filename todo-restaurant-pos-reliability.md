@@ -565,6 +565,30 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 26 — the extraction that missed a site
+
+The KDS density bound was extracted out of its inline sites into `kdsDensity.ts`, and
+that module's own header names the three it lifted (`KdsHamburgerPanel` x2,
+`KdsMainContent`). It also states the reason the extraction exists: *"a copy is
+invisible to a name-matching detector precisely because there is nothing to collide
+with."*
+
+**There was a fourth, and the extraction did not know about it.**
+`WorkspaceKdsSettings.tsx:119` held `Math.min(5, Math.max(1, parseInt(density ?? '', 10)
+|| DEFAULT_KDS.density))` — the settings card hydrating an unset or hand-edited stored
+value. Widening `DENSITY_MAX` would have left the card accepting a density the board
+would not render.
+
+Named it `clampDensity` (the name the test had to invent for itself before the module
+existed) and pointed the card at it. The module header now records the fourth site.
+
+**Kill-tested with a relationship case, not a literal one:** setting `DENSITY_MAX = 6`
+fails two cases — the new clamp case AND the pre-existing `stepDensity` ceiling case —
+which is the property that matters. The clamp and the stepper move together because both
+read the constant; a literal assertion would have let one drift.
+
+`c477185f9`.
+
 ### Round 25 — the second copy of the KDS defaults
 
 Round 24 named the pattern this plan keeps producing — *two surfaces reading one field
