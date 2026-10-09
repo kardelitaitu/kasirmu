@@ -220,7 +220,24 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     const { getHeldCartScoped } = await import('@/api/sales');
     const setLines = vi.fn();
     const setTableNumber = vi.fn();
+    // ⚠️ This spy exists to assert a NON-call. `handleResumeOpenBill` strips the
+    // table prefix from `customer_name` and refuses the result when it still reads
+    // `Table …` (`usePosHeldCarts.ts:259-260`), so a bill whose customer field holds
+    // a table name must NOT populate the cart's customer. Removing that guard left
+    // this suite GREEN until 2026-10-09 — the input was set up and the outcome never
+    // checked, which is coverage that looks like coverage and is not.
+    const setCustomerName = vi.fn();
 
+    // ⚠️ The customer field is `'Table 5 (Table 7)'`, NOT a plain table name, and
+    // the difference is the whole point. `handleResumeOpenBill` strips a leading
+    // `Table <word>` from `customer_name` (`usePosHeldCarts.ts:259`) and then
+    // refuses a result that STILL reads `Table …` (`:260`).
+    //
+    // For a plain `'Table T4'` the regex alone leaves `''`, so `if (cust)` already
+    // rejects it and `:260` is unreachable — a test built on that input passes with
+    // the guard deleted. For `'Table 5 (Table 7)'` the regex leaves `'Table 7'`, and
+    // ONLY the `startsWith` guard stops a table name becoming the customer. Both
+    // probes were run against the real code; this is the one that discriminates.
     vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
       id: 'held-1',
       label: 'Table T4',
@@ -229,7 +246,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       currency: 'IDR',
       created_at: '2026-10-01T00:00:00Z',
       bill_type: 'open_bill',
-      customer_name: 'Table T4',
+      customer_name: 'Table 5 (Table 7)',
       deduction_location_id: null,
       cart_data: JSON.stringify({
         lines: [
@@ -259,6 +276,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
         params({
           setLines,
           setTableNumber,
+          setCustomerName,
         }),
       ),
     );
@@ -268,6 +286,12 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     });
 
     expect(setTableNumber).toHaveBeenCalledWith('T4');
+    // The discriminating assertion: a TABLE NAME must not become the customer.
+    expect(
+      setCustomerName,
+      'a customer-name field holding a table name was accepted as the customer — the ' +
+        'guard at usePosHeldCarts.ts:260 is gone or no longer effective',
+    ).not.toHaveBeenCalled();
     expect(setLines).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
