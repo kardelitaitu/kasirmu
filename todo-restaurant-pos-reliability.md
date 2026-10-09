@@ -565,6 +565,39 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 20 — F9's last gap was the surface UNDER the panels
+
+Rounds 18-19 fixed the crash isolation of PosScreen's seven panels. This round checked
+what is underneath them, and found the largest hole of the set:
+
+**`<RestaurantMenu>` has no boundary in PosScreen** (`PosScreen.tsx:1224`). Only the
+sidebar INSIDE it was wrapped, so a throw in any of the menu's own children propagated
+out of `RestaurantMenu`, past `PosScreen`, and unmounted the POS screen — mid-service,
+with the cart in memory. The panels got boundaries; the surface they sit on did not.
+
+Two children are on the money path and are now wrapped in `RestaurantMenu`:
+
+| Child | Why |
+|---|---|
+| `<MenuItemGrid>` | the whole ordering surface — the rows the cashier taps |
+| `<ItemModifierModal>` | where an item's options and price are chosen |
+
+Both carry `resetKeys`, so a caught error clears when the input changes: the grid on
+the filtered-item count and category, the dialog on the product's `sku`. A bad row
+costs the grid until the list changes, not the whole shift.
+
+The remaining menu children were deliberately left alone — `MenuSearchBar`,
+`MenuCategoryTabBar`, `MenuPreferencesMenu` — because they render no product data and
+no money dialog. Wrapping every child would be noise, and a guard list that is mostly
+ceremony stops being read.
+
+**The guard now covers nine surfaces, and asserts `>= 9`.** Its list was short of the
+thing it guards twice now (four of seven in round 18, then seven of nine here), which is
+the failure mode worth naming: a drift guard that enumerates its own targets cannot
+notice a target missing from the enumeration. Both new cases are kill-tested.
+
+`736e57262`.
+
 ### Round 19 — two gates left red at HEAD, fixed
 
 Rounds 17 and 18 both ended with the full suite at **2 failed**, and both times I
