@@ -155,6 +155,11 @@ const EXPECTED_KEYS: Record<string, string> = {
   // selection has to outlive the reload that switch performs, or every tier
   // change would bounce straight back to the default.
   'kasirmu-dev-tier': 'dev-mock/core/mockTier.ts',
+  // The dev-mock failure-injection switch (`window.__MOCK_FAIL = [...]`), which
+  // makes a chosen IPC command reject so a browser test can reach a failure path.
+  // Dev-only and read from the window, but it is a localStorage key, so it is
+  // pinned like every other one rather than becoming the one exception.
+  '__MOCK_FAIL': 'dev-mock/core/mockDispatcher.ts',
 };
 
 const KEY_DECL =
