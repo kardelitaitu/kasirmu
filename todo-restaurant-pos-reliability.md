@@ -909,6 +909,43 @@ structure.**
 long-standing `holdCartScoped` pair was fixed by another lane during this round. typecheck 0;
 eslint 0; bundle parity 0 missing.
 
+### F4's last open instance — FIXED, not pinned (round 73) — `36ec26163`
+
+Rounds 68-72 were pins and doc corrections. This round fixes the **one open instance this plan
+had itself recorded**, and which sat blocked on another lane's uncommitted edit.
+
+**That block is gone** — `git status --porcelain` on the file is empty — so the work was
+available and had simply not been picked up.
+
+**The bug.** `RestaurantPaymentsScreen.tsx:454-455` read the two gateway configs with
+`.catch(() => null)` **independently**, and the setters sit behind `if (midtransGw)` /
+`if (stripeGw)`. The drafts baseline is seeded at `:377`, **before** those reads. So a failed
+gateway read left the screen showing **empty** fields while `dirty` was false — the header said
+"All changes saved", Save was disabled, and **the first edit re-enabled Save over blanks**,
+writing them over the stored credentials.
+
+**The fix is the established signal-plus-recovery shape**, and the recovery half is not optional:
+`loadFailed` set in both catches and the outer catch, Save gated on it, the header line changed
+from "All changes saved" to the failure, and a **Retry control that clears the flag** — round 8 of
+this campaign shipped four Save-gates with no way back and latched Save off for the session, so
+the re-enable path ships in the same change.
+
+**The assertion shape is the round-4 lesson applied.** "Save is disabled after a failure"
+**passes against the bug**, because on the buggy path `dirty` is already false. Both failing cases
+were therefore written to **edit first** — the edit is what re-enables Save on the bug — and a
+third case asserts a SUCCESSFUL read shows no banner, so the first two cannot pass vacuously.
+
+**A pre-existing guard caught my fix, and that is the best evidence in the round.**
+`baselineLoadSignal.test.ts` holds a narrow, reasoned `EXEMPT` list for files that seed a baseline
+without a failure signal, with a case that **fails when an exemption goes stale**. It failed the
+moment this file stopped being exempt, forcing the entry's removal — the entry itself said
+*"Remove this entry WITH the fix."* The list is now empty and kept, so the next INDIRECT spelling
+has somewhere honest to go.
+
+Kill-tested: restoring the two `.catch(() => null)` reads fails both new cases by name. Verified:
+`RestaurantPaymentsScreen` **36 passed**; full suite **692 files / 11,523 passed, 0 failed**;
+typecheck 0; eslint 0; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
