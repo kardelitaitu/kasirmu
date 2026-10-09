@@ -623,6 +623,38 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 48 — the mirror image: a working action hidden from the people allowed to use it
+
+Rounds 46-47 fixed two role-gates that let the wrong people IN. This round found the
+opposite on `SalesHistoryScreen`: a capability removed from the users the backend
+AUTHORISES.
+
+The screen gates two actions on `isManager`, but they need **different** permissions:
+
+| Action | Backend requirement |
+|---|---|
+| Void | `sales:void` (`kasirmu-bridge/src/pos/void.rs:56`) |
+| Create Faktur Pengganti | `sales:process` (`kasirmu-bridge/src/history.rs:309`) |
+
+The STAFF preset holds `sales:process` and **not** `sales:void` — and says so in its own
+description: *"Checkout-operations role — processes sales… No management access"*
+(`rbac_presets.rs:162-166`). So the e-Faktur Pengganti button was hidden from Staff, who are
+exactly the people the backend lets call it. Not an enabled button that errors — a **valid
+action made unreachable**.
+
+Both gates now derive from the permission with the role as the no-grant-list fallback, the
+same contract as `RestaurantSidebar` and `CartPanel`.
+
+**The kill-test caught a bad test, which is the part worth keeping.** My first version of the
+new case passed even after I reverted the gate to `isManager` — because the file's mock
+hardcodes `isManager: true`, so the revert changed nothing. I made the mock's role mutable
+and set the Staff case to a cashier role with Staff grants; the kill-test then failed
+correctly. **A test that cannot fail against the old code is not evidence**, and this is the
+second time this session a green kill-test pointed at the test rather than the fix (round 30
+was the first).
+
+`04bc7e76e`.
+
 ### Round 47 — the same class, one surface over: the price override
 
 Round 46 fixed `settings:edit` in the sidebar. This round I applied the same lens to the
