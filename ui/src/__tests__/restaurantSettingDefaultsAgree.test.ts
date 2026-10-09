@@ -65,4 +65,48 @@ describe('an unset restaurant setting means the same on both surfaces (F1)', () 
       .length;
     expect(GATES.length).toBe(mapped);
   });
+
+  /**
+   * The two gates that are NOT `??`-mapped, and why they still have to be pinned.
+   *
+   * `courseFiring` reads `raw === 'true'`, so an unset key yields an explicit `false`
+   * (not `null`), and its settings default is `false` — agreement by a different route.
+   * `orderTypePrompt` resolves an unset key to `activeWorkspace === 'restaurant-pos'`,
+   * which is `true` for this POS and matches its settings default.
+   *
+   * They are listed because the agreement is a fact about the PAIR, and either half can
+   * move: making course-firing's default `true` in the screen (or its read `raw !== 'false'`)
+   * would produce exactly the guest-count bug again.
+   */
+  const NON_QUERY_GATES: Array<{
+    field: keyof typeof DEFAULT_RESTAURANT_SETTINGS;
+    readPattern: RegExp;
+    unsetMeans: (m: RegExpMatchArray) => string;
+  }> = [
+    {
+      field: 'courseFiring',
+      readPattern: /setCourseFiringEnabled\(raw === 'true'\)/,
+      unsetMeans: () => 'false',
+    },
+    {
+      field: 'orderTypePrompt',
+      readPattern: /setOrderTypePromptEnabled\(raw === null \? ([^:]+) :/,
+      unsetMeans: () => 'true', // `activeWorkspace === 'restaurant-pos'`
+    },
+  ];
+
+  it.each(NON_QUERY_GATES)(
+    'agrees on the unset default for $field (read without a ?? fallback)',
+    ({ field, readPattern, unsetMeans }) => {
+      const line = posLines.find((l) => readPattern.test(l));
+      expect(line, `PosScreen no longer reads ${field} as expected`).toBeDefined();
+      const m = line!.match(readPattern)!;
+      expect(
+        unsetMeans(m),
+        `${field}: an unset key must mean DEFAULT_RESTAURANT_SETTINGS.${field}. Its read ` +
+          'and its screen default are a PAIR — moving one without the other is how ' +
+          'guest_count came to describe a POS state that did not exist.',
+      ).toBe(String(DEFAULT_RESTAURANT_SETTINGS[field]));
+    },
+  );
 });
