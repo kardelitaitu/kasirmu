@@ -756,6 +756,45 @@ as **open decisions**, not patched — each needs a product call about where the
 Verified: full suite **683 files / 11,485 passed**; typecheck 0; eslint 0; bundle parity 0 missing.
 The 2 failures are another lane's `holdCartScoped` (`5f9b467c3`), unchanged all session.
 
+#### Round 56 — a false alarm, and why it was worth chasing
+
+Ran down two suspects the F19 sweep pointed at. **Both were false alarms**, and recording that
+is the deliverable — the next lane does not have to re-derive it.
+
+**1. The cash-drawer sidebar row is ungated.** `open_cash_drawer_scoped` requires
+`payments:cash` (`crates/kasirmu-bridge/src/hardware.rs:571`), but `RestaurantSidebar.tsx:635`
+renders the row on the callback alone. Harmless, because `payments:cash` is in the Owner,
+Manager (`rbac_presets.rs:119`), Staff (`:170`), Admin (`:233`) and Custom (`:361`) presets —
+every role that reaches the restaurant POS holds it. The one preset that does not, Auditor
+(`:286`), never gets there. Correct by coincidence, with no user-visible edge.
+
+**2. The audit routes look like they lock out the Auditor.** `audit/register.tsx` arms both
+routes and both nav items on `requiredRole: 'manager'` **and** `requiredPermission: 'audit:view'`.
+Round 49 fixed the in-screen Mark Reviewed gate *for the Auditor*, so a route that never admitted
+them would have made that fix unreachable — worth checking properly rather than eyeballing.
+
+It does not: `passesGate` (`registries/page-registry/index.ts:172-177`) makes
+`requiredPermission` **authoritative** whenever the session carries granted keys, and
+`requiredRole` is only the fallback for a session that cannot answer the permission question.
+The precedent was already thorough (`pageRegistry.test.ts:117-136` pins the precedence, the
+wildcard, and the absent-keys fallback).
+
+**What was missing was the real-world pair.** Those cases use `analytics:view`/`owner`; none used
+`audit:view` with an `auditor` role against a registration that ALSO names `manager`. Two cases
+now do — positive and negative — so the redundant-looking role token on those four
+declarations cannot grow teeth unnoticed. Kill-tested by adding a role pre-check to
+`passesGate`: the positive case fails.
+
+`765ef39bd`. Verified: full suite **683 files / 11,487 passed**; typecheck 0; eslint 0; bundle
+parity 0 missing.
+
+**Also confirmed the one deliberate pin stays honest.** `eodReportExportPermissionDrift.test.ts`
+pins a LIVE hazard — the EOD-report route armed on `reports:view` while its command requires
+`reports:export`, so an Auditor can open the screen and is refused the one action on it. That
+file argues its own case for being a pin rather than a fix (arming the route on the stronger
+token would make the whole screen vanish for a session that can open it today), and it still
+passes at HEAD. Not mine to resolve; recorded as verified-still-accurate.
+
 ---
 
 ## 3. Repair plan
