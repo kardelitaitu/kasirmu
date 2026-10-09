@@ -382,10 +382,59 @@ is born at boot, and nothing seeds it*.
 
 ---
 
-### F15 — Restaurant Settings "Save" reports success and writes NOTHING (HIGH — silent data loss)
+### F15 — RETRACTED: Restaurant Settings "Save" is NOT broken (was reported as HIGH — my error)
 
-Found 2026-10-09 walking the tablet flows. This is the worst of the set: the screen
-affirmatively tells the operator their changes are stored, and they are not.
+**This finding was wrong and is withdrawn the same day it was written. Correcting it here
+rather than deleting it, because the mistake is instructive and the evidence still stands
+in the tree.**
+
+**What I claimed.** That Save reported "All changes saved" while writing nothing to any
+database — a silent-data-loss bug affecting all nine restaurant toggles.
+
+**What is actually true.** Save works. Read back through the app after a restart, the
+settings screen shows **Course Firing = true**, and the live store database contains
+**every key the save path is supposed to write**:
+
+```
+store-loc-…18dcd63b5a28b02d0000.sqlite
+  restaurant.course_firing        | true    <- the toggle I flipped
+  restaurant.guest_count          | false   <- the second toggle I flipped
+  restaurant.customer_name        | true
+  restaurant.order_type_prompt    | true
+  restaurant.save_tab             | true
+  restaurant.auto_print_kitchen   | false
+  restaurant.sound_chime          | true
+  restaurant.interaction_sound    | true
+  restaurant.interaction_vibration| true
+```
+
+**How I got it wrong.** I assumed the device had ONE store database and read
+`store-loc-…18dcd55aac7fed21.sqlite` (mtime 17:34) every time. A **second** store was
+created at 18:04 when the tablet was re-provisioned under a different owner —
+`store-loc-…18dcd63b5a28b02d0000.sqlite`. My pulls read the **stale, superseded** file, so
+"the row is absent" was true of a database the POS had stopped using, and I reported it as
+a defect in the write path. The app was reading the new store the whole time and the settings
+were in it.
+
+**The signals I ignored, all of which pointed away from a bug:**
+- `RestaurantSettingsScreen.test.tsx` has 13 passing tests including *"saves settings with
+  setSettingsScoped on clicking Save"* — the UI→API hop was already proven correct.
+- The Save button's own gate is `disabled={!dirty || saving || loadFailed}` (:467), and I
+  measured it **enabled**, which means `dirty` was true — the toggle had registered.
+- `handleSave` awaits `setSettingsScoped` and only then clears dirty and toasts success
+  (:313-351); a rejected write would have taken the `catch` at :354 and shown an error.
+- A patch of `window.__TAURI_INTERNALS__.invoke` recorded **zero** settings calls. I wrote
+  that off as blind instrumentation (true — `api/settings.ts` imports `invoke` at module
+  scope) but did not treat it as the warning it was: I had no positive evidence of a failed
+  write, only of an absent row in a file I had chosen.
+
+**Lesson worth keeping.** "The row is not in the database I read" is only evidence about
+that file. Before concluding a write path is broken, (a) enumerate every candidate store —
+they are per-owner and accumulate across re-provisions — and (b) confirm the app's own
+read-back, which is the authority. A DB pull is a snapshot of a guess.
+
+The original text follows, preserved for the record. It described a real observation and
+drew the wrong conclusion.
 
 **Measured on the Redmi tablet, signed in as the OWNER (so the `settings:edit` gate is
 satisfied — this is not a permission refusal).**
