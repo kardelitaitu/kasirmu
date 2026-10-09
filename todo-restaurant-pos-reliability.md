@@ -565,6 +565,52 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 43 — 14 finished screens told users their content "will move here"
+
+Chasing F13 (the two `DataManagementScreen.tsx` files — which turned out to be a DELIBERATE
+composition, not a duplicate: `screens/` is the route shell and the body it renders is the
+real screen, documented in-file). The plan's evidence index still listed F13 as open; it was
+resolved 2026-10-06.
+
+What that led to is worth more. The shell rendered:
+
+> `settings-screen-migrating` — "Existing settings content will move here selectively."
+
+**On every one of the 14 settings screens — 13 of them fully built.**
+`SecurityAccountScreen` renders a real `Card` with a live `RoleBadge` and an audit-trail
+note, and still carried the line — with a comment naming the reason:
+
+> *"The migration note stays (SettingsPage.test.tsx asserts it on every screen, migrated
+> ones included)."*
+
+**The assertion was the defect.** `SettingsPage.test.tsx:561-563` required the note on
+EVERY screen unconditionally, so a migrated screen could never drop it: the test pinned
+stale copy rather than catching it. Same shape as round 36's header and round 41's
+"SETTLED" section — a test asserting something untrue of the code.
+
+Fixed in the right order:
+
+1. Rewrote the assertion so a MIGRATED screen must NOT show the note, while an un-migrated
+   one still must. That immediately named the offenders one at a time (`general is migrated
+   onto real content but still shows the "will move here" note`).
+2. Removed the note from all 14, plus the now-dead `.settings-screen-placeholder-note` rule
+   — which `screenExtraction`'s dead-class check caught.
+
+**A mistake I made and had to undo:** my first removal pass used a greedy regex that ate the
+function header of `SystemDiagnosticsScreen` and `SyncStatusScreen` (and would have hit five
+more). `tsc` caught it at once; I reverted all 13 files and redid it as a line-range scan
+that finds the `<p ...>` by `className`, walks to its own `</p>`, and splices only that span.
+The lesson I keep relearning: **a regex over JSX is not a parser**, and the typechecker is
+the cheapest way to find out.
+
+`77a79d415` — 16 files, 94 deletions, 25 insertions.
+
+### Round 42 — the Hold Order toggle removed (D5, first of three)
+
+Full detail under D5 in section 4. Removed across all seven places it lived plus both
+locales; `deadSettingsKey`'s written-key floor caught the removal, which is what the floor
+is for. `df86bf0b3` + `cf4147435`.
+
 ### Round 41 — `payment_gateways.is_active` has no consumer at all
 
 Following round 40's abandoned edit to its second half. It also wanted to make the
