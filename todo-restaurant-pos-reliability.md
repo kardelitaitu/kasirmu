@@ -5559,3 +5559,44 @@ in particular needs a feature-level integration harness, not a test edit.
 
 Verified: `locale-switcher` **33 passed**; website suite **72 files / 1,545 passed, 0 failed**; UI suite
 **698 files / 11,600 passed, 3 skipped, 3 todo, 0 failed**; bundle parity 0 missing.
+
+### F40 device verification — BLOCKED, and the reason is new (round 111)
+
+F40 was fixed in round 90 (`267e23e9e`) and has been recorded as *"evidence is the suite plus the
+kill-tests; the device confirmation is outstanding"* ever since. **This round tried to close it and
+could not — for a reason earlier rounds did not know.**
+
+#### The device has no restaurant workspace
+
+| Check | Result |
+|---|---|
+| device | reachable (`192.168.0.185:46021`), app pid **28736** |
+| CDP | up — `[page] Kasir.mu — https://tauri.localhost/` |
+| workspace cards | **exactly 1: "Retail POS"** |
+| current layout | retail (`retail-fn-bar` present, no `restaurant-sidebar-btn`, no hamburger) |
+| store `local_payment_methods` | **still 0 rows** |
+
+**The restaurant Payments screen is unreachable on this tablet.** F40's reproduction in round 89
+worked because the device was then showing the restaurant POS; the workspace is gone now, and a
+restaurant workspace has to exist before the screen can be driven at all.
+
+#### Why this is worth a heading rather than a footnote
+
+**A verification that cannot run is not the same as a verification that has not run.** Rounds 91-110
+carried F40 as *"not verified on the device"*, which reads as *"nobody has tried"*. It has now been
+tried, the instrument is healthy, and the blocker is a **missing fixture** — one workspace card, a
+seeded store, and a shift.
+
+**What would unblock it, in order:** create a restaurant workspace on the tablet, open it, then drive
+`restaurant-sidebar-settings` → Payments with the store DB at zero rails. The round-89 reproduction
+recipe still applies; only the precondition is missing.
+
+#### What the healthy instrument still proves
+
+The CDP path works and the app is live, so the blocker is not tooling. That matters for the next
+attempt: **the failure is `no workspace`, not `no device`**, and a future round should not start by
+re-diagnosing the connection.
+
+Verified: device reachable, CDP up, one workspace card read, store DB read **with its `-wal`** (0
+rails). F40 remains **fixed in code, unconfirmed on device** — recorded as blocked-on-fixture rather
+than as unverified.
