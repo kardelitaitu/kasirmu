@@ -565,6 +565,30 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 39 — checked whether the receipts screen must announce its 14 preference keys: NO
+
+The round-38 fix made `WorkspaceRestaurantPosSettings` announce every `receipt.*` key it
+writes. The sibling screen `RestaurantReceiptsScreen` writes through **two** APIs —
+`setReceiptSettingsScoped` (ten `receipt.*` keys) and `setUserPreferencesScoped` (**fourteen**
+`resto_rcpt_*` keys, `:1005-1020`) — while announcing only the ten `receipt.*` ones
+(`:1085-1096`). That looked like the same asymmetry I had just fixed, so I traced it.
+
+**It is correct as written, and the reason is worth keeping.** `markSettingsUpdated` feeds
+`loadScoped`, which maps keys to scopes via `SCOPE_PREFIXES`
+(`SettingsContext.tsx:146-154`: `receipt.`, `store.`, `currency.`, `sync.`, `brand.`,
+`prefs.`, `user.`). Nothing matches `resto_rcpt_*`. But `loadScoped`'s `preferences` branch
+(`:512-530`) parses only **`cardsize`, `fontsize`, `font-smoothing`** into
+`settings.preferences` — the `resto_rcpt_*` values are fetched and then DISCARDED. They
+never enter `SettingsContext`, so there is no cached copy for any other surface to hold
+stale, and announcing them would trigger a `getUserPreferencesScoped` round-trip that
+throws the result away.
+
+The preference keys are the screen's own overlay (see F11): it reads them back directly at
+`:392-455` on mount and mirrors them to localStorage. Nothing else consumes them.
+
+Recorded because "the writer announces ten of twenty-four keys" reads like a bug, and the
+next reader should not re-derive this. **No change made.**
+
 ### Round 38 — a ten-key save that announced one key (fix HELD, not committed)
 
 The F10 shared card (`WorkspaceRestaurantPosSettings`) writes **ten** receipt keys through
