@@ -551,7 +551,28 @@ deliberate revert). Rewritten to target `#resto-header-title` and to assert the
 exact typed value; it now fails on the bug with
 `expected 'ChangedTitle' not to be 'ChangedTitle'`.
 
-### Round 15 — a NEW divergence in the payment popup, pinned rather than guessed
+### Round 15 — a HEAD-level gate regression fixed, and a divergence pinned
+
+**A commit landed while I worked that turned two gates red, and neither was mine.**
+`a8c726fe9` moved PaymentModal's raw error read into the shared `rejectionText()`
+helper — a good change — but did not carry `errorPolicyCompliance.test.ts`, so:
+
+- the whitelist entry whose anchor was the old expression no longer matched anything,
+  failing the sanity case that requires every entry to FIRE;
+- and it kept a stale line number in the map the leak case consults.
+
+Fixed by deleting the obsolete entry, with the reasoning recorded in place of it
+(`67b5abd11`). `SCAN_DIRS` omits `utils`, so the new helper home is not a scan target —
+which is why deleting the entry loses no coverage.
+
+**Then the leak case still failed, on a COMMENT.** `errorPolicyCompliance` matches raw
+read patterns line-by-line and does **not** strip comments, so a comment quoting the old
+buggy expression is reported as a leak site. It caught my own explanatory comment
+**twice** — including the note explaining the first occurrence. Both are now described
+rather than quoted. Worth naming as a checker blind spot: the rule cannot tell code
+from prose about code.
+
+
 
 **Finding: `open_bill` and `credit` are modelled as rails on one surface and as fixed
 markup on the other.**
