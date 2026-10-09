@@ -549,8 +549,13 @@ from scratch this round by a **different route**, so the two agree without shari
 
 What the device holds (`store-loc-…18dcd63b5a28b02d0000.sqlite`):
 
-- **11 `restaurant.*` rows in `settings`**, all nine saveable keys plus `table_management` and
-  `unavailable`.
+- **11 `restaurant.*` rows in `settings`** — the nine saveable keys, plus `unavailable`, plus
+  `table_management`. ⚠️ **That last one is NOT an app key.** Round 65 found it appears nowhere
+  outside `scratch/seed_current_store.py:41`, no locale file, no reader — the code names the
+  TABLE feature instead (`Feature::TableManagement`, `features.rs:106`, read at `:532`). The
+  seed script invented a settings key for a subscription feature. **So 10 rows are the app's and
+  the 11th is a scratch-script artefact**; the nine saveable keys are unaffected, and they are
+  the ones that matter here.
 - **36 rows in `setting_updated`**, in two complete batches: `11:07:26Z` (nine keys) and
   `11:09:14Z` (nine keys, with `guest_count` changing `true → false`).
 
