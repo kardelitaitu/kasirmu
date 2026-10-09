@@ -1708,6 +1708,70 @@ it, or checkpoint first. Nothing was reported as a defect, and nothing should ha
 
 No code changed. Full suite unchanged at **695 files / 11,552 passed**, typecheck 0, eslint 0.
 
+### F39 — the CSP blocked the audio the merchant had enabled (round 88) — `045a959e7`
+
+**Found by reading the WebView console on the tablet — the only place it was visible.**
+
+```
+error [security]: Loading media from 'data:audio/mp3;base64,…' violates the following
+Content Security Policy directive: "default-src 'self'". Note that 'media-src' was not
+explicitly set, so 'default-src' is used as a fallback. The action has been blocked.
+```
+
+**The chain, end to end.** `utils/interaction.ts:44` builds its audio URL with
+`new URL('../assets/sounds/' + filename, import.meta.url)`. `click.mp3` is **1,536 bytes** — under
+Vite's 4 KB `assetsInlineLimit` — so **the bundler inlines it as a `data:` URL**. Both shells' CSPs
+name `data:` for `img-src` and `font-src` but had **no `media-src`**, so audio fell back to
+`default-src 'self'` and was **blocked**.
+
+**It is a feature the merchant turned on.** `pos.interaction_sound` and `restaurant.sound_chime`
+are both settings this plan *wired and verified as read* (rounds 58, F21). With this policy the tap
+feedback and the order chime **cannot play in a shipped build** — and the failure is silent, a
+console line nobody opens on a till.
+
+**Why every source-reading round missed it:** the defect is in no `.ts` file. Each half is
+individually correct — the code builds a valid URL, the asset exists, the setting is read — and the
+policy is a build-config interaction between Vite's inlining and a Tauri key. **It took the running
+app to see that the two correct halves compose into nothing.**
+
+**The fix names the sources the audio actually needs**, mirroring `img-src` deliberately:
+
+```
+media-src 'self' data: asset: https://asset.localhost
+```
+
+`data:` is not a widening past what is already bundled — the 1.5 KB sound is *in* the app, so the
+clause cannot fetch anything off-device. Pinned by `cspMediaSrcAllowsAudio.test.ts`, which reads all
+two shells × `csp`/`devCsp` (with the floor `=== 4` so a reduced population cannot read clean) and
+fails naming the shell and key when a clause is missing.
+
+#### F23's inert rails, observed live
+
+Before the console check, the run produced a second confirmation. The Payments screen rendered all
+**11 rail toggles**, and — with the device's store DB holding **zero rows** — each core rail came
+from `CORE_DEFAULTS` rather than a persisted row. Tapping **Card** and **Cash** off flipped the
+switches and left the screen reporting **"All changes saved"** with **Save disabled**.
+
+**That is F23's pinned hazard, seen rather than argued.** But the finding is narrower than it first
+looked: a **non-core** rail (Midtrans) behaved identically, so the toggles are not merely inert in
+the modal — **no rail toggle marks this screen dirty when the rails come from the defaults**, so the
+change cannot be saved at all. The unit case for exactly this (`:225`, "toggling a rail onto a dirty
+screen enables Save") passes, because its fixture supplies `card` as a **persisted** row and takes
+the `match` branch of `mergeCoreRails` instead of the default branch.
+
+**Recorded as an open defect with its reproduction, not fixed here.** The fix changes dirty-tracking
+for a screen whose save semantics are the owner's call (F23 already parks the core-rail behaviour),
+and it needs a fixture that mirrors the device — no persisted rails — which is a test-design change
+worth making deliberately. What this round contributes is the reproduction and the reason the
+existing case does not catch it.
+
+**Two consecutive device rounds have now found what source-reading could not** (F38, F39). The
+console and the live DOM are instruments the suite does not have.
+
+Verified: full suite **696 files / 11,555 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
+0 missing; both JSON configs parse; the diff is exactly four lines, one `media-src` clause per
+key.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
