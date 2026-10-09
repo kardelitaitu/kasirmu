@@ -720,6 +720,72 @@ case. Verified: six settings guards / **17 passed**; full suite **688 files / 11
 typecheck 0; eslint 0; bundle parity 0 missing. The 2 failures are the long-standing
 `holdCartScoped` pair from another lane.
 
+### F30 — a short sale read-back killed the receipt preview SILENTLY (round 70) — FIXED `bc222a977`
+
+**Found 2026-10-09 completing a sale on the tablet.** Every sale was committing and every
+sale was losing its receipt, with nothing on screen and nothing in the console.
+
+**Measured.** Sale `01-01-261009-01-000007` (total 15000, tendered 999999, `status=completed`)
+lived in the store db, but the operator saw only the bare **"Sale Complete"** checkmark and
+then the modal closed. No `Print`/`Skip`, no receipt, no error. Reproduced with a clean
+one-item sale, probing every 500ms after Complete:
+
+```
+0:DONE 1:DONE 2:DONE 3:DONE 4:DONE 5:DONE 6:DONE 7:closed
+```
+
+`DONE` — not `PREVIEW` — is the tell. The modal branches three ways
+(`PaymentModal.tsx:1767-1795`): `done && receiptArgs` renders the receipt, `done` alone
+renders the checkmark. So the checkmark proved `receiptArgs` was **null**.
+
+**Cause (two halves, both required).**
+
+1. `payment/completedSale.ts:138` dereferenced the read-back without guarding the field:
+
+   ```ts
+   subtotal: completedSale
+     ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
+   ```
+
+   `completedSale` was checked, `completedSale.subtotal` was not. A read-back that is short at
+   exactly that one field throws `TypeError: Cannot read properties of undefined (reading
+   'minor_units')` — reproduced in a unit test before the fix.
+
+   The type says `subtotal: Money` is required and the docstring four lines above claims a
+   "short or absent read-back degrades to a receipt built from the cart". The docstring
+   described the intent; the code did not implement it. `total` and `taxTotal` were already
+   guarded — the subtotal was the single unguarded one.
+
+2. `PaymentModal.tsx:1325` swallowed it:
+
+   ```ts
+   } catch {
+     // Receipt/KDS may not be configured — non-blocking
+   }
+   ```
+
+   `setReceiptArgs(receiptData)` sits inside that `try`. A bare `catch {}` with no binding
+   meant the `TypeError` never reached the console. This is why the defect was INVISIBLE —
+   not an intermittent failure but a silent one.
+
+**Why the tests did not catch it.** `PaymentModalEdgeCases.test.tsx:396` asserted
+`/sale complete/i` after a retry, and it PASSED — because the test's catch-all mock answers
+`get_sale_scoped` with `{}`, which is precisely the short read-back that throws. The
+assertion was pinning the bug. A passing test that only passes because a silent catch hid a
+throw is not coverage; it is a second lock on the same door. Updated in the same commit to
+assert `.receipt-preview` and its `Skip` control.
+
+**Fix.** Guard the field (`completedSale?.subtotal != null`), and bind the catch so a future
+throw is `console.error`-ed and surfaced as a warning toast
+(`payment-toast-receipt-unavailable`) rather than eaten. The sale is already committed, so it
+stays non-blocking — but "no receipt" is a real operator problem and must not be silent.
+
+**Lesson.** A `catch {}` that swallows an error from a *cosmetic* path still destroys the
+feature when the failure is structural. The receipt was dead on every Android sale and the
+suite was green, because the only test that walked the path had already baked the broken
+outcome into its expectation.
+
+---
 ### F29 — the two SHELLS disagree over terminal local prefs (round 69) — `d8c89ae18`
 
 Following F28 into the tablet's hardware command found a bigger defect with a sharper shape:
