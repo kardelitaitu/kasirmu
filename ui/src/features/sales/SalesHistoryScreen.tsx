@@ -96,17 +96,18 @@ function isTaxEstimated(note: string | null | undefined): boolean {
 
 interface SwipeableOrderRowProps {
   sale: SaleListItem;
-  isManager: boolean;
+  /** `sales:void` — NOT the manager role; see `canVoidSale` on the screen. */
+  canVoid: boolean;
   onView: (id: string) => void;
   onVoid: (sale: SaleListItem) => void;
   cashierName: string;
 }
 
-function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: SwipeableOrderRowProps) {
+function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: SwipeableOrderRowProps) {
   const { l10n } = useLocalization();
   const [revealed, setRevealed] = useState(false);
   const swipe = useSwipe({
-    onSwipeLeft: () => { if (isManager) setRevealed(true); },
+    onSwipeLeft: () => { if (canVoid) setRevealed(true); },
     onSwipeRight: () => setRevealed(false),
   });
 
@@ -164,7 +165,7 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
               <span>View</span>
             </button>
           </Localized>
-          {isManager && revealed && (
+          {canVoid && revealed && (
             <Localized id="sales-history-action-void">
               <button
                 type="button"
@@ -243,7 +244,20 @@ export default function SalesHistoryScreen() {
   // READ by anything. `refundsUnknown` below carries the state that matters (the
   // three-way ok/empty/failed split), so the flag only bought two re-renders per
   // refunds load. Removed 2026-10-09; `refundsUnknown` is unchanged.
-  const { session, isManager } = useAuth();
+  const { session, isManager, hasPermission } = useAuth();
+
+  // The pengganti action is NOT manager-only. `create_faktur_pengganti_scoped`
+  // requires `sales:process` (kasirmu-bridge/src/history.rs:309) — the permission the
+  // STAFF preset holds and its description says it exists for ("Checkout-operations
+  // role — processes sales… No management access", rbac_presets.rs:162-166). Gating it
+  // on `isManager` hid a working action from exactly the people allowed to use it.
+  //
+  // The VOID action above is the opposite case and keeps `isManager`: voiding requires
+  // `sales:void` (void.rs:56), which Staff does not hold — but even there the role is
+  // only an approximation, so it is expressed as the permission with the role as the
+  // no-grant-list fallback, matching `RestaurantSidebar` and the price override.
+  const canVoidSale = hasPermission('sales:void', isManager);
+  const canCreatePengganti = hasPermission('sales:process', isManager);
   const { sessionToken } = useWorkspace();
   // ── Per-line cost / margin (HPP) for the open sale detail ──
   const [lineMargins, setLineMargins] = useState<SaleLineMarginDto[]>([]);
@@ -1213,7 +1227,7 @@ export default function SalesHistoryScreen() {
                 <SwipeableOrderRow
                   key={s.id}
                   sale={s}
-                  isManager={isManager}
+                  canVoid={canVoidSale}
                   onView={openDetail}
                   onVoid={handleOpenVoid}
                   cashierName={cashierName(s.userId)}
@@ -1624,7 +1638,7 @@ export default function SalesHistoryScreen() {
                         </div>
                       )}
                     </div>
-                    {session && isManager && (
+                    {session && canCreatePengganti && (
                       <div>
                         {detail.fakturPajak ? (
                           <Button

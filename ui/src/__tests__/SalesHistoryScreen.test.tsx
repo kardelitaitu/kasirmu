@@ -30,10 +30,25 @@ vi.mock('@/api/reports', () => ({
   getSaleLineMarginsScoped: vi.fn(),
 }));
 
+// Mirrors AuthContext.hasPermission: the grant list decides when present
+// (`*` and `domain:*` wildcards included), else the caller's role fallback.
+// `mockPermissions.current` is a mutable list so a case can switch from the
+// manager role to the STAFF preset without re-mocking the module.
+const mockPermissions = vi.hoisted(() => ({ current: undefined as string[] | undefined }));
+// Mutable so a case can model the STAFF preset, where the ROLE says cashier and the
+// GRANTS say sales:process. Both halves matter: reverting a gate to `isManager` must
+// fail these cases, which it cannot if the mock always reports a manager.
+const mockIsManager = vi.hoisted(() => ({ current: true }));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    session: { user_id: 'user-1', display_name: 'Cashier', role_name: 'cashier' },
-    isManager: true,
+    session: { user_id: 'user-1', display_name: 'Cashier', role_name: mockIsManager.current ? 'manager' : 'cashier' },
+    isManager: mockIsManager.current,
+    hasPermission: (perm: string, fallback: boolean) => {
+      const granted = mockPermissions.current;
+      if (granted === undefined) return fallback;
+      const domain = perm.includes(':') ? perm.split(':')[0]! : perm;
+      return granted.some((k) => k === perm || k === '*' || k === `${domain}:*`);
+    },
   }),
 }));
 
@@ -593,6 +608,48 @@ describe('SalesHistoryScreen', () => {
       await waitFor(() => {
         expect(mockCreateFakturPenggantiScoped).toHaveBeenCalledWith('session-1', sampleDetail.id);
       });
+    });
+    it('lets STAFF create a pengganti but not void — the two actions need different permissions', async () => {
+      // The two role-gated actions on this screen are NOT the same gate:
+      //
+      //   void      -> `sales:void`     (kasirmu-bridge/src/pos/void.rs:56)
+      //   pengganti -> `sales:process`  (kasirmu-bridge/src/history.rs:309)
+      //
+      // The STAFF preset holds `sales:process` and NOT `sales:void`, and its own
+      // description says so: "Checkout-operations role — processes sales… No management
+      // access" (rbac_presets.rs:162-166). Both were gated on `isManager`, so Staff were
+      // shown a working pengganti action HIDDEN from them — a capability removed from the
+      // people the backend authorises, which is the mirror image of the usual
+      // enabled-button-that-errors bug.
+      // The ROLE is a cashier and the GRANTS are the Staff preset. Both matter: with
+      // `isManager` true the case would pass against the OLD role gate too, and would
+      // therefore prove nothing about the permission.
+      mockIsManager.current = false;
+      mockPermissions.current = ['sales:process', 'sales:view', 'payments:settle'];
+      const user = userEvent.setup();
+      const fpDetail = {
+        ...sampleDetail,
+        fakturPajak: { nsfp: '2600000000123', kodeTransaksi: '01', status: '00', formatted: '01002600000000123' },
+      };
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(fpDetail);
+      mockListRefunds.mockResolvedValue([]);
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      // The pengganti action IS offered: Staff hold `sales:process`.
+      await waitFor(() => {
+        expect(screen.getByText('Create Faktur Pengganti')).toBeInTheDocument();
+      });
+
+      // The void affordance is NOT: it needs `sales:void`, which Staff lack. The row
+      // reveals it on swipe, and `canVoid` gates the reveal itself.
+      expect(screen.queryByText('Void')).toBeNull();
     });
 
     it('stamps e-Faktur NSFP on unstamped sale', async () => {
