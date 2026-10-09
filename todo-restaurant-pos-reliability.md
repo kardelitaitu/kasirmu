@@ -1986,6 +1986,53 @@ final rule, by removing `PG_SYNC_HOST` from the map and watching the sweep fail 
 Verified: full suite **696 files / 11,562 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
 0 missing.
 
+### F41 correction — two of the nine were WRONG (round 94) — `6c2b2b3d2`
+
+**I re-measured my own round-93 claim and two of the nine "dead" keys are live.**
+`RATE_SYNC_INTERVAL` and `RATE_SYNC_BASE_CURRENCY` **are read**:
+
+```
+platform/startup/src/rate_sync.rs:253   Settings::get_rate_sync_interval(&conn)
+platform/startup/src/rate_sync.rs:287   Settings::get_rate_sync_base_currency(&conn)
+```
+
+The daemon honours both — the interval is clamped to 5..1440 minutes and re-read every cycle.
+**Corrected count: 7 dead keys, not 9.**
+
+#### Why the rule missed them, and why the rule was not "fixed"
+
+The consumer calls `kasirmu_core::settings::Settings::get_rate_sync_interval` — a **delegating
+wrapper** at `crates/kasirmu-core/src/settings.rs:599` that forwards to the real accessor in
+`platform/core/src/settings/typed.rs`. **The wrapper is in a different file**, so a key-level search
+finds the accessor named only inside an accessor and concludes it is unused, while the value is in
+fact delivered to a running daemon.
+
+**"The accessor is unused" is not "the key is unused."** That is the sentence this correction
+exists to add.
+
+I did **not** widen the rule to follow wrapper chains, and that is deliberate: it is a two-hop
+call-graph question this file does not attempt, and a half-implemented version would fire on
+genuinely dead keys whose accessor happens to be wrapped. Instead the two are listed in a **third,
+separately-named map** (`READ_THROUGH_A_WRAPPER`) with the call site named, so a reader can see the
+distinction between "the UI reads it over IPC", "a wrapper delivers it", and "nothing reads it".
+
+**Kill-tested:** removing `RATE_SYNC_BASE_CURRENCY` from the wrapper map makes the sweep fail naming
+it.
+
+#### What this round's lesson is
+
+Rounds 66, 93 and now 94 are the same mistake in three sizes: **a search that finds a naming site
+and calls it a use.** A string that matches no real spelling (66); a getter (93); a wrapper (94).
+The guard is better each time, and each time only re-measuring found the next one — which is the
+argument for re-measuring a guard's output rather than trusting its green.
+
+**The seven survivors are confirmed dead**, each with zero production references outside its own
+declaration and `typed.rs`: `PG_SYNC_HOST`, `PG_SYNC_PORT`, `PG_SYNC_DBNAME`, `PG_SYNC_USER`,
+`PG_SYNC_PASSWORD`, `PG_SYNC_REQUIRE_TLS`, `CURRENCY_THOUSANDS_SEPARATOR`.
+
+Verified: full suite **696 files / 11,562 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
+0 missing.
+
 Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
 bundle parity 0 missing; kill-tested both directions.
 
