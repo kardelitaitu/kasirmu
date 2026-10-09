@@ -14,10 +14,17 @@ import type { Promotion } from '@/api/promotions';
 import type { ShiftDto } from '@/api/shifts';
 import type { HeldCartRow } from '@/api/sales';
 import type { CartLine, CartId, CourseId, LineId, Money } from '@/types/domain';
+import { useSwipe } from '@/hooks/useSwipe';
 import { CartLineItem } from './CartLineItem';
 import { CourseSelectorBar } from './CourseSelectorBar';
 import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
+
+const ORDER_TYPES = [
+  { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
+  { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
+  { id: 'delivery', label: 'Delivery', icon: '🛵' },
+] as const;
 
 /**
  * Split an elapsed duration (ms) into whole hours + minutes, floored.
@@ -342,6 +349,31 @@ export function CartPanel({
   // opening one line's menu closes the other's.
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
+  const orderTypeIndex = Math.max(0, ORDER_TYPES.findIndex((opt) => opt.id === orderType));
+
+  const handleOrderTypePrev = () => {
+    if (!setOrderType) return;
+    const currentIdx = ORDER_TYPES.findIndex((opt) => opt.id === orderType);
+    const prev = ORDER_TYPES[currentIdx - 1];
+    if (prev) {
+      setOrderType(prev.id);
+    }
+  };
+
+  const handleOrderTypeNext = () => {
+    if (!setOrderType) return;
+    const currentIdx = ORDER_TYPES.findIndex((opt) => opt.id === orderType);
+    const next = ORDER_TYPES[currentIdx + 1];
+    if (next) {
+      setOrderType(next.id);
+    }
+  };
+
+  const orderTypeSwipe = useSwipe({
+    onSwipeLeft: handleOrderTypeNext,
+    onSwipeRight: handleOrderTypePrev,
+  });
+
   // Animation state for sliding out/in when hidden prop toggles
   const [cartExiting, setCartExiting] = useState(false);
   const [cartEntering, setCartEntering] = useState(false);
@@ -629,44 +661,53 @@ export function CartPanel({
             TRUE on restaurant-pos in PosScreen, so removing the override keeps
             the control visible there while letting an explicit "off" take effect. */}
         {orderTypePromptEnabled && setOrderType && (
-          <div className="pos-cart-order-type-row">
-            {(
-              [
-                { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
-                { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
-                { id: 'delivery', label: 'Delivery', icon: '🛵' },
-              ] as const
-            ).map((opt) => {
-              const active = orderType === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                    padding: '4px 8px',
-                    fontSize: 'var(--text-xs, 12px)',
-                    fontWeight: active ? 600 : 500,
-                    borderRadius: 'var(--radius-md, 6px)',
-                    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                    background: active ? 'var(--color-primary-subtle, rgba(59, 130, 246, 0.12))' : 'var(--color-surface)',
-                    color: active ? 'var(--color-primary)' : 'var(--color-fg-muted)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onClick={() => setOrderType(opt.id)}
-                  aria-pressed={active}
-                  data-testid={`pos-order-type-${opt.id}`}
-                >
-                  <span aria-hidden="true">{opt.icon}</span>
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
+          <div className="pos-cart-order-type-row" {...orderTypeSwipe}>
+            <div
+              className="pos-cart-order-type-slider"
+              role="radiogroup"
+              aria-label={l10n.getString('restaurant-setting-order-type')}
+              tabIndex={-1}
+              style={{
+                '--order-type-index': orderTypeIndex,
+                '--order-type-count': ORDER_TYPES.length,
+              } as React.CSSProperties}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  handleOrderTypeNext();
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  handleOrderTypePrev();
+                } else if (e.key === 'Home') {
+                  e.preventDefault();
+                  const first = ORDER_TYPES[0];
+                  if (first) setOrderType(first.id);
+                } else if (e.key === 'End') {
+                  e.preventDefault();
+                  const last = ORDER_TYPES[ORDER_TYPES.length - 1];
+                  if (last) setOrderType(last.id);
+                }
+              }}
+            >
+              <span className="pos-cart-order-type-indicator" aria-hidden="true" />
+              {ORDER_TYPES.map((opt) => {
+                const active = orderType === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    className={`pos-cart-order-type-btn${active ? ' pos-cart-order-type-btn--active' : ''}`}
+                    onClick={() => setOrderType(opt.id)}
+                    aria-checked={active}
+                    data-testid={`pos-order-type-${opt.id}`}
+                  >
+                    <span className="pos-cart-order-type-icon" aria-hidden="true">{opt.icon}</span>
+                    <span className="pos-cart-order-type-label">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
