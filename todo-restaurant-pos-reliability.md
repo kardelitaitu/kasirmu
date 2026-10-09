@@ -797,6 +797,29 @@ confirmation — and a `ui/`-side pin where the record only had Rust-side prose.
 **The lesson is the one this session keeps relearning: search the plan corpus before calling
 something new.** `grep -rn 'HardwareSettingsDto' .agents/` would have found T4-3 in round 68.
 
+#### Round 70 — the corpus cross-check, applied to every open finding in this plan
+
+Rather than only fixing the process for next time, I ran the search over every finding this plan
+has recorded, to see which were already known elsewhere. **Six terms, four results:**
+
+| Finding | Corpus result | Verdict |
+|---|---|---|
+| F29 (hardware prefs) | `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md` **T4-3** | **KNOWN** — filed, open, correctly blocked |
+| F24 (`credit.*` unenforced) | `.agents/planning/dto-door-replication.md:31` | **DIFFERENT QUESTION** — that doc inventories WRITE doors ("does this door enqueue?"), not readers. It names the three credit keys as *written silently*; F24 is that nothing READS them. Both can be true at once. |
+| F16/F17 (rail toggles) | `.agents/planning/manager-journal-pos-screen-refactor-23.md` | **UNRELATED** — a CSS/panel-extraction journal; its `open_bill` hits are tender-panel progress notes |
+| F26 (`store.preset`) | `.agents/planning/dto-door-replication.md:42` | **DIFFERENT QUESTION** — listed as a key `complete_setup` writes, not as one nothing reads |
+| `edc.default_terminal` (F27/F28) | **0 hits** | NEW |
+| `printKdsChitScoped` (F20) | **0 hits** | NEW |
+
+**So one of six was a genuine duplicate, not six.** That ratio is the useful result: it says the
+cross-check is worth running, and that its absence cost one round rather than invalidating the
+others.
+
+**`open_bill` deserves a note of its own.** The `mockFactorySurface` guard (round 57) already
+records `printKdsChitScoped` as a known gap — *"unmocked and unreachable"* — which is the
+downstream half of F20. The corpus search above did not surface it because it looks for the key,
+not the command; **a second search axis, and a reminder that one query is not a sweep.**
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
