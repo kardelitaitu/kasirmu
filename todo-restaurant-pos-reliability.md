@@ -2993,7 +2993,17 @@ grant means.
   `npx vitest run Restaurant PosScreen CartPanel restaurantPosCrashIsolation` →
   **28 files / 525 passed, 1 skipped**.
 
-### P6 — i18n sweep (fixes F10) — 🔶 IN PROGRESS 2026-10-09
+### P6 — i18n sweep (fixes F10) — ✅ DONE 2026-10-09 (all three screens; heading corrected round 100)
+
+> **⚠️ Heading scope, corrected round 100.** This section opened as *"🔶 IN PROGRESS"* and was
+> never re-titled when the third screen landed (round 74, `883dd842e`). **All three screens are done:**
+> `RestaurantSettingsScreen` and `RestaurantReceiptsScreen` below, and `RestaurantPaymentsScreen` in
+> the round-74 record at `:1130`. A reader arriving at this heading would have concluded the sweep
+> was unfinished — the prose three paragraphs down says otherwise, which is the ordinary way a
+> status drifts: **the body is updated, the title is not.**
+>
+> **Re-accepted round 100** rather than carried forward: `npm run lint:i18n` → *no issues detected*,
+> `verify-bundle-parity.py` → 0 missing.
 
 **`RestaurantSettingsScreen` DONE.** All 17 visible labels/descriptions and the
 vibration badge moved into `products.ftl` + `products.id.ftl` (keys

@@ -155,6 +155,38 @@ describe('the plan status header matches the tree (F32)', () => {
     ).not.toMatch(/no reader/);
   });
 
+  /**
+   * A section heading that still says IN PROGRESS after its work landed.
+   *
+   * ⚠️ Added round 100. The header guard above covers the TOP of the plan, and that
+   * was still not enough: `:2996` kept the title *"P6 — i18n sweep (fixes F10) — 🔶 IN
+   * PROGRESS"* for ~26 rounds after all three screens landed, while the body three
+   * paragraphs down said DONE for two of them and the third was recorded at `:1130`.
+   *
+   * **The body gets updated and the title does not** — the same drift the header
+   * guard exists for, one level down. A reader who opens the P6 section to check
+   * whether the sweep is finished reads the title first and stops.
+   *
+   * This checks the P6 heading only, because it is the one that was wrong. A general
+   * "no heading claims in-progress" rule would fire on sections that genuinely are,
+   * which is the over-broad-matcher flaw this file has already been bitten by twice.
+   */
+  it('does not leave P6 marked IN PROGRESS after all three screens landed', () => {
+    const body = read(PLAN);
+    const heading = (body.match(/^### P6 — i18n sweep[^\n]*/m) ?? [''])[0];
+    expect(heading, 'the P6 section heading moved or changed shape — extraction has drifted')
+      .not.toBe('');
+    expect(
+      heading,
+      'the P6 heading still says IN PROGRESS, but all three screens are done (rounds 74 + 75) ' +
+        '— the body says so while the title does not, which sends the next reader to redo the sweep',
+    ).not.toMatch(/IN PROGRESS/i);
+    // And the claim is load-bearing: the i18n gate backing it must still be clean.
+    // A heading that says DONE over a dirty lint is the opposite failure.
+    expect(heading, 'the P6 heading must name its screens, not just a status word')
+      .toMatch(/i18n sweep \(fixes F10\)/);
+  });
+
   it('the keys F1 calls wired really do have production readers', () => {
     // The load-bearing fact behind the corrected row. A key losing its last
     // reader is exactly the regression the corrected row must not hide.
