@@ -20,6 +20,7 @@ use crate::error::BridgeError;
 // ── Sale list / detail ───────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Salelistitem.
 pub struct SaleListItem {
     /// Unique identifier.

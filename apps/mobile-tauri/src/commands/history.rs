@@ -22,6 +22,7 @@ use crate::state::AppState;
 // ── Sale list / detail ───────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Salelistitem.
 pub struct SaleListItem {
     /// Unique identifier.

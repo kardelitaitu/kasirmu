@@ -576,9 +576,29 @@ export interface SaleListResponse {
   salesHistoryCapped: boolean;
 }
 
+const normalizeSaleListResponse = (res: SaleListResponse): SaleListResponse => {
+  if (res && Array.isArray(res.sales)) {
+    return {
+      ...res,
+      sales: res.sales.map((s: any) => ({
+        ...s,
+        lineCount: s.lineCount ?? s.line_count ?? 0,
+        paymentMethod: s.paymentMethod ?? s.payment_method ?? null,
+        userId: s.userId ?? s.user_id ?? null,
+        createdAt: s.createdAt ?? s.created_at ?? '',
+        displayCode: s.displayCode ?? s.display_code ?? null,
+        fakturPajak: s.fakturPajak ?? s.faktur_pajak ?? null,
+      })),
+    };
+  }
+  return res;
+};
+
 /** List all completed sales. */
-export const listSales = (): Promise<SaleListResponse> =>
-  loggedInvoke<SaleListResponse>('list_sales');
+export const listSales = async (): Promise<SaleListResponse> => {
+  const res = await loggedInvoke<SaleListResponse>('list_sales');
+  return normalizeSaleListResponse(res);
+};
 
 /**
  * ADR #7: List sales scoped to the store resolved from a session token.
@@ -587,12 +607,14 @@ export const listSales = (): Promise<SaleListResponse> =>
  * optional and additive — omitted, the whole tier-capped list comes back
  * exactly as before, which is what every existing caller relies on.
  */
-export const listSalesScoped = (
+export const listSalesScoped = async (
   sessionToken: string,
   limit?: number,
   offset?: number,
-): Promise<SaleListResponse> =>
-  loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken, limit, offset });
+): Promise<SaleListResponse> => {
+  const res = await loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken, limit, offset });
+  return normalizeSaleListResponse(res);
+};
 
 /** Fetch a single sale by its identifier. */
 export const getSale = (id: string): Promise<SaleDetail | null> =>
