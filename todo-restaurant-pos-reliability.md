@@ -1435,6 +1435,54 @@ reintroduced at the place it names fails the suite.**
 Verified: `PosScreenDeductionLocation` **7 passed**, with `PosScreen.integration` **86 across both**;
 full suite **695 files / 11,551 passed, 0 failed**; typecheck 0; eslint 0; bundle parity 0 missing.
 
+### Round 83 — F8's sidebar gate verified complete, and a grep-shaped false alarm recorded
+
+Rounds 80-82 all found real defects by disbelieving prose and running reverts. This round applied
+the same method to F8 and **found nothing** — which is the result worth recording, because both the
+method and the negative outcome are reusable.
+
+**F8's sidebar gate, verified at HEAD.** `RestaurantSidebar.tsx:268-272` derives
+`canEditSettings` from `hasGrantedPermission(session.permissions, 'settings:edit')` when the session
+carries grants, falling back to the role when it cannot answer — and `:288-289`
+(`gateBlockedByPermission`) picks the badge wording by WHY the row is blocked. **Both halves are
+pinned, and the second one deliberately:**
+
+| What | Where |
+|---|---|
+| The gate disables on a missing grant | `RestaurantSidebar.logic.test.tsx:98-105` |
+| The gate enables on a present grant | `:107-113` |
+| The Owner wildcard `['*']` is accepted | `:115-121` |
+| The badge does NOT say "Manager+" to a manager | `:124-137` |
+| The role prop cannot bypass the gate | `:151-172` |
+
+**Kill-tested by inverting the `gateBlockedByPermission` condition** — and the suite failed,
+naming the case. So the branch is guarded, and the coverage is not decorative.
+
+#### The false alarm, and why it was worth raising before dismissing
+
+My first pass grepped for `"Needs permission"` and found **zero test hits**, which looked like the
+F8 label branch was unasserted. **Two things were wrong with that:**
+
+1. The tests assert the localized **key** and the DOM, not the English literal — the same
+   `grep`-shaped error as F1's `table_number`, where the only hit was a comment recording a
+   removal. **A search for a string is not a search for the behaviour.**
+2. The label check was in `RestaurantSidebar.logic.test.tsx`, a file I had not opened because I
+   grepped the two suites whose NAMES mention the sidebar.
+
+**The instructive part is the test's own comment** (`:132-136`): it says the earlier F8 cases
+*"assert disabled/enabled, never what the disabled row says"*, and closes that gap. So a previous
+lane already found this exact hole, fixed it, and documented why. **The right outcome of
+rediscovering it was to confirm and stop, not to add a second case.**
+
+**And the 1,135 English fallback children repo-wide are the established Fluent idiom, not
+defects** — `<Localized id=…>English</Localized>` supplies a fallback the real bundle overrides,
+and `products.id.ftl:11` carries the Indonesian value. Checked because a hardcoded English string
+inside a `Localized` reads like one.
+
+**A round that verifies and reports "complete, here is the proof" is a real result.** The failure
+mode it guards against is a lane that finds nothing, assumes it missed something, and edits code
+that was already correct.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
