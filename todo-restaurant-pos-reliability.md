@@ -996,6 +996,49 @@ Verified: `RestaurantPaymentsScreen` **39 passed**; full suite **692 files / 11,
 0 failed**; `lint-i18n.sh` **no issues**; typecheck 0; eslint 0; bundle parity 0 missing and both
 bundles +20 keys, 0 orphans.
 
+### F32 — P1 is COMPLETE, and the plan said otherwise (round 75) — `58509694e`, `5d7cdf0b2`
+
+Round 74 fixed a stale *blocking* claim. This round finished the job on the **progress** claim, and
+the result is the same in a different key: **P1 has been done for rounds, and both the header and
+its own table said two keys still needed an owner.**
+
+| Row | The plan said | The tree says |
+|---|---|---|
+| `restaurant.hold_order` | DELETE | **removed** with its toggle (round 42) |
+| `restaurant.auto_print_kitchen` | DELETE or BUILD | **BUILT** (round 57) |
+| `restaurant.sound_chime` | DELETE or BUILD | **BUILT** (round 58) |
+
+**Both "owner decision" rows were resolved by BUILDING the consumer**, and the evidence is live
+code, not a note:
+
+- `PaymentModal.tsx:732` — `if (!autoPrintKitchen || !sessionToken) return;` gates the KOT send.
+- `PosScreen.tsx:705` — `if (soundChime !== false) playSuccess();` gates the chime.
+
+**The load-bearing fact is that `deadSettingsKey.test.ts` holds an EMPTY `DECLARED_DEAD`.** That
+list existed precisely to record keys with no reader, and its third case **fails if an entry gains
+one** — so its emptiness is a measurement, not a claim. Three rounds of this campaign emptied it.
+
+**The header was stale in the same two ways as round 74's, which is the pattern worth naming.**
+Both times the work landed and the summary was not re-read. A progress header is the easiest thing
+in a long plan to leave behind: it is read first, written in the same confident voice as the body,
+and it sends the next reader to redo finished work. The header now names the round behind each
+correction, and the guard pins it.
+
+**The guard caught two over-broad matchers of my own before it was useful** — both recorded in the
+file, because the pattern is this session's recurring one:
+
+1. A bare `P6` mention test fired on my **correct** header, which legitimately says *"P6's third
+   screen landed round 74"*. Scoped to the `Remaining:` clause.
+2. Scanning every `> **` line read the **dated correction notes that QUOTE the stale text they
+   replaced** as live claims. Extraction now stops at the first block — **quoted history is not a
+   claim.**
+
+**Kill-tested twice, proving different halves:** reinstating `P6 2 of 3 screens` fails the header
+case; adding an entry to `DECLARED_DEAD` fails the completeness case.
+
+Verified: `planStatusAccuracy` + `deadSettingsKey` **6 passed**; full suite **693 files /
+11,535 passed, 0 failed**; eslint 0; bundle parity 0 missing.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
