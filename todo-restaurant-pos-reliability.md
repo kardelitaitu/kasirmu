@@ -5675,3 +5675,48 @@ failure message says so**, so whoever resolves F49 does not resolve it twice.
 
 Verified: `edcDefaultPropCaller` **3 passed**, kill-tested both ways; full suite **700 files / 11,606
 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
+### F49 completed — the choice has THREE homes, and read together they say something new (round 114) — `cb2f3145b`
+
+Round 113 recorded F49 as *"the prop has no caller"*. Following it down found the finding is larger,
+and that it is **three separate recorded defects that nobody had read side by side**:
+
+| # | Home | State | Recorded as |
+|---|---|---|---|
+| 1 | the register hardware pref (`updateLocalPrefs`) | set, then **lost on reload** | F28 |
+| 2 | the card rail parameter | persisted, **read by nothing** | F49 (round 113) |
+| 3 | the settings key `edc.default_terminal` | declared, **touched by no layer** | F27 |
+
+**Each is accurate alone. Together they say something none says: there is no single source of truth
+to consolidate TO.** An operator picks a preferred terminal, the screen confirms it, and the POS opens
+whichever terminal the backend lists first — and after a reload the choice is not even shown back.
+
+#### Why the guard asserts the SHAPE rather than a fix
+
+`edcDefaultThreeHomes.test.ts` pins all three, and it exists for a specific failure mode: **a partial
+repair that wires the nearest home**. Wiring the rail param into the modal is a two-line change and
+would make the control *look* fixed while leaving the hardware pref live beside it — two homes that
+can now disagree.
+
+**So the guard's job is to make a partial fix fail loudly**, and the F49 guard's message already names
+the risk: *"check the two sources of truth do not now disagree."* Each assertion is written to flip
+with a note telling the next reader what to re-measure, rather than to stay green for ever.
+
+#### Kill-tested in the direction that matters
+
+Simulating the dangerous repair — pass the prop, leave the hardware pref — **fails `edcDefaultPropCaller`
+and names `PaymentModal.tsx`**, while `edcDefaultThreeHomes` correctly stays green (the shape has not
+changed yet). That is the intended division: the F49 guard catches the wiring, the three-homes guard
+records what still has to be decided.
+
+#### The recommendation, recorded rather than taken
+
+Home 1 is the right single source: it is already read by two settings surfaces, it is where the F28
+work (UI type → local DTO → bridge DTO → `TerminalProfile` → profile migration) must land anyway, and
+the payment path can then read one value. Home 2 (`card.defaultTerminalId`) and home 3
+(`edc.default_terminal`) should be **deleted** when that lands. **Not taken here because it is a
+five-layer change touching the desktop shell**, which the F28 note already scopes; what this round
+adds is the decision the three separate records did not contain.
+
+Verified: `edcDefaultThreeHomes` **3 passed**, `edcDefaultPropCaller` **3 passed**, both kill-tested;
+full suite **701 files / 11,609 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
