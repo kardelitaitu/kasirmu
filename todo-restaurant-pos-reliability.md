@@ -494,6 +494,51 @@ the tablet test passes; a speculative edit would be a change with no failing tes
 
 ---
 
+### F16 — the `open_bill` / `credit` toggles do nothing, and the abandoned edit would have shipped them anyway
+
+Found round 51 while re-examining the **payment popup** (the goal names it) and the round-15
+pinned divergence at `useLocalPaymentRails.test.ts:97`.
+
+**The defect.** `RestaurantPaymentsScreen` renders `open_bill` and `credit` as **core rails**
+(`paymentRailsLogic.ts:11` `CORE_RAIL_CODES`), each with an enable/disable toggle. The charge
+modal never consults those flags:
+
+| Tender | Modal gate | Rail-aware? |
+|---|---|---|
+| `open_bill` | `{isRestaurantPos && (` (`PaymentModal.tsx:2050`) | **no** — workspace only |
+| `credit` | `TENDER_RAILS` entry has `railCode: null` (`useLocalPaymentRails.ts:82`) | **no** — and the header at `:70-73` says so outright: *"credit carries NO gate… which is: always"* |
+
+An operator can switch either off here and the modal keeps offering it. Not a
+working-action-hidden bug (round 48) and not an enabled-button-that-errors (round 46) — a
+**toggle that silently does nothing**, which is the F4 class this plan keeps finding.
+
+**The abandoned tree edit would have made it worse.** 20 insertions / 11 deletions sit
+uncommitted on that file (not mine; mtime Oct 8, 144 commits ago). Its central justification:
+
+> *"open_bill and credit used to be hidden here as 'internal' — but the charge modal gates
+> BOTH on their rail now (**full parity**), so hiding them made their toggle unreachable"*
+
+**"Full parity" is false in both directions**, verified against the modal source above. The
+edit adds nothing except relocating the two toggles from a labelled Other-Rails group to
+first-class cards — while asserting they WORK. It would dress a dead control up as a live one
+and **delete the comment that admitted it was dead**. Do not commit it; the verdict is now on
+record rather than left as an unexplained dirty file.
+
+**Same species as rounds 46-49**: a comment claiming the two surfaces agree, contradicted by
+the code two files over. The honest repair is a decision, not a patch:
+
+- **Option A (cheap, honest):** keep the toggles but stop implying they gate the tender — or
+  keep `open_bill`/`credit` out of this screen, as the committed version already does.
+- **Option B (correct, larger):** make the modal read the rail flag — what the abandoned edit
+  *claimed* was already true. That changes checkout behaviour and is an owner question:
+  `useLocalPaymentRails.ts:70-73` records that `credit`'s tender-vs-facility status is
+  **already parked** (todo-payment.md :887).
+
+Recorded, not patched: Option B is a product decision, and Option A only improves wording.
+The round-15 pin still passes, so this remains pinned divergence — now with a named cause.
+
+---
+
 ## 3. Repair plan
 
 Each phase is independently landable and has its own acceptance. **Do not start a
