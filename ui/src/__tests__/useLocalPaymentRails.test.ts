@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   coreRailWithheld,
+  railParam,
   railOffered,
   visibleMethods,
   resolveTenderDisplayName,
@@ -14,6 +15,19 @@ const makeRail = (rail_code: string, is_enabled: boolean, label = rail_code): Lo
   is_enabled,
   scope: 'location',
   parameters: '{}',
+});
+
+/** Same rail with an operator-written `parameters` bag, for the F18 reads. */
+const makeRailWithParams = (
+  rail_code: string,
+  parameters: string,
+  is_enabled = true,
+): LocalPaymentRail => ({
+  rail_code,
+  label: rail_code,
+  is_enabled,
+  scope: 'location',
+  parameters,
 });
 
 const makeProfile = (overrides: Partial<ActiveMarketProfile> = {}): ActiveMarketProfile => ({
@@ -32,6 +46,39 @@ const makeProfile = (overrides: Partial<ActiveMarketProfile> = {}): ActiveMarket
 describe('useLocalPaymentRails helpers', () => {
   describe('railOffered', () => {
   describe('coreRailWithheld (F16)', () => {
+  describe('railParam (F18)', () => {
+    // Every read has to tolerate a free-form `parameters` bag the operator wrote,
+    // and every unreadable case must return the FALLBACK rather than false — a false
+    // default would silently disable behaviour for stores that predate the toggle.
+
+    it('reads a boolean the operator set', () => {
+      const rails = [makeRailWithParams('cash', JSON.stringify({ autoKick: false }))];
+      expect(railParam(rails, 'cash', 'autoKick', true)).toBe(false);
+      expect(railParam(rails, 'cash', 'autoKick', false)).toBe(false);
+    });
+
+    it('returns the fallback for a missing key, rail, or bag', () => {
+      expect(railParam(null, 'cash', 'autoKick', true)).toBe(true);
+      expect(railParam([], 'cash', 'autoKick', true)).toBe(true);
+      // No row for the rail at all.
+      expect(railParam([makeRail('qris', true)], 'cash', 'autoKick', true)).toBe(true);
+      // Row present, key absent — the store that predates the toggle.
+      expect(railParam([makeRailWithParams('cash', '{}')], 'cash', 'autoKick', true)).toBe(true);
+    });
+
+    it('falls back on unparseable JSON and on a non-boolean value', () => {
+      // A malformed bag is unreadable saved state, not a preference.
+      expect(railParam([makeRailWithParams('cash', '{oops')], 'cash', 'autoKick', true)).toBe(true);
+      expect(railParam([makeRailWithParams('cash', '[1,2]')], 'cash', 'autoKick', true)).toBe(true);
+      // A string "false" is not the boolean false — guessing would be a lie.
+      expect(railParam([makeRailWithParams('cash', JSON.stringify({ autoKick: 'false' }))], 'cash', 'autoKick', true)).toBe(true);
+    });
+
+    it('honours the fallback for a rail whose code is cased differently', () => {
+      const rails = [makeRailWithParams('CASH', JSON.stringify({ autoKick: false }))];
+      expect(railParam(rails, 'cash', 'autoKick', true)).toBe(false);
+    });
+  });
     // The three-state distinction `railOffered` cannot express for a CORE rail.
     // Using `railOffered` for `open_bill` withheld the tender from stores whose
     // rail list merely predated the row — a silent capability withdrawal.

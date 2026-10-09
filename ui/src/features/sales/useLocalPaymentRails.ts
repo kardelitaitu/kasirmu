@@ -81,6 +81,40 @@ export function coreRailWithheld(
   return rail ? !rail.is_enabled : false;
 }
 
+/**
+ * The boolean an operator SET on a rail's `parameters` bag, or `fallback` when the
+ * bag or the key says nothing.
+ *
+ * `parameters` is a free-form JSON string the settings screen writes through
+ * `updateRailParams` (`RestaurantPaymentsScreen.tsx:1006`, `:1057`), so every read has
+ * to tolerate: no rail row, no `parameters`, unparseable JSON, and a missing key.
+ * Each of those means "the operator never expressed a preference" and must return the
+ * caller's `fallback` — not `false`. Defaulting a preference to `false` would silently
+ * turn off behaviour for every store that predates the toggle, which is precisely the
+ * direction that goes unnoticed.
+ */
+export function railParam(
+  rails: LocalPaymentRail[] | null,
+  railCode: string,
+  key: string,
+  fallback: boolean,
+): boolean {
+  if (rails === null || rails.length === 0) return fallback;
+  const wanted = railCode.toLowerCase();
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
+  if (!rail?.parameters) return fallback;
+  try {
+    const bag = JSON.parse(rail.parameters) as unknown;
+    if (bag === null || typeof bag !== 'object') return fallback;
+    const value = (bag as Record<string, unknown>)[key];
+    return typeof value === 'boolean' ? value : fallback;
+  } catch {
+    // A malformed bag is the operator's saved state being unreadable, not a
+    // preference: fall back rather than guess.
+    return fallback;
+  }
+}
+
 /** A tender tab the checkout offers, in the order the modal lists them. */
 export type TenderMethod = 'cash' | 'card' | 'qris' | 'credit';
 

@@ -1774,6 +1774,90 @@ describe('PaymentModal — local payment rails gating', () => {
     expect(noOpenBillRow.some((r) => r.rail_code === 'open_bill')).toBe(false);
     expect(await renderedTenders(noOpenBillRow)).toContain('open_bill');
   });
+  // ── The drawer kick must honour the settings toggle (F18) ────────
+  //
+  // `RestaurantPaymentsScreen` renders "Automatic Cash Drawer" as a switch
+  // (`:997-1010`) and persists it into the cash rail's parameters as `autoKick`
+  // (`:1006`), reading it back on load (`:386`). So it is real saved state, and the
+  // operator can switch it OFF.
+  //
+  // But the kick site read only `sessionToken && hasCashTender`
+  // (`PaymentModal.tsx:1207`), never the parameter — so a cashier who switched
+  // auto-kick OFF still got the drawer popping open on every cash tender. The F16
+  // shape, with a physical consequence rather than a hidden one.
+  //
+  // `mountWithRails` mounts the modal AND installs the rails the operator saved, so
+  // the cash rail below carries their `parameters` bag.
+  const completeCashSale = async () => {
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
+    );
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    // Gates the assertion on the sale having actually completed, so a case cannot
+    // pass merely by never reaching the kick site.
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('complete_sale_scoped', expect.anything()),
+    );
+  };
+
+  const cashRailWith = (autoKick: boolean) => ({
+    rail_code: 'cash',
+    label: 'Cash',
+    is_enabled: true,
+    scope: 'location' as const,
+    parameters: JSON.stringify({ autoKick }),
+  });
+
+  it('does NOT kick the cash drawer when the cash rail sets autoKick false', async () => {
+    const { view, restore } = await mountWithRails([cashRailWith(false), rail(true)]);
+    try {
+      await completeCashSale();
+      expect(
+        invokeMock.mock.calls.some(([cmd]) => cmd === 'open_cash_drawer_scoped'),
+        'auto-kick was OFF but the drawer was kicked anyway',
+      ).toBe(false);
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('still kicks when the cash rail sets autoKick true', async () => {
+    // The direction that must not regress — the guard against "fixing" this by never
+    // kicking at all.
+    const { view, restore } = await mountWithRails([cashRailWith(true), rail(true)]);
+    try {
+      await completeCashSale();
+      expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+        sessionToken: 'mock-token',
+        args: {},
+      });
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('kicks by DEFAULT when the cash rail carries no autoKick key at all', async () => {
+    // The backward-compatibility case, and the one that makes a `false` default
+    // unshippable: every store whose cash rail predates the toggle must keep the
+    // kick. A default of `false` would silently stop kicking the drawer everywhere.
+    const { view, restore } = await mountWithRails([
+      { rail_code: 'cash', label: 'Cash', is_enabled: true, scope: 'location', parameters: '{}' },
+      rail(true),
+    ]);
+    try {
+      await completeCashSale();
+      expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+        sessionToken: 'mock-token',
+        args: {},
+      });
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
 
   it('PINNED: every rail offered renders cash, card, qris, credit, other, open bill', async () => {
     expect(

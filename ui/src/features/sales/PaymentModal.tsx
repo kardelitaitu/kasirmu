@@ -18,7 +18,7 @@ import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { coreRailWithheld, railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
+import { coreRailWithheld, railOffered, railParam, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
 import { useActiveMarketProfile } from '@/hooks/useActiveMarketProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -1203,8 +1203,16 @@ retryCurrencyLoad,
       }
 
       // Auto-kick cash drawer on cash tenders (ADR #7 scoped)
+      //
+      // F18: the operator's "Automatic Cash Drawer" switch
+      // (`RestaurantPaymentsScreen.tsx:997-1010`) persists `autoKick` on the cash rail's
+      // parameters, and this site ignored it — so switching the toggle OFF still popped
+      // the drawer on every cash tender. The default is TRUE, which is what every store
+      // that predates the toggle already gets; a false default would silently disable
+      // the kick everywhere.
       const hasCashTender = method === 'cash' || (splitMode && splits.some((s) => s.method === 'cash'));
-      if (sessionToken && hasCashTender) {
+      const autoKickDrawer = railParam(paymentRails, 'cash', 'autoKick', true);
+      if (sessionToken && hasCashTender && autoKickDrawer) {
         try {
           await openCashDrawerScoped(sessionToken);
         } catch (drawerErr) {
@@ -1335,7 +1343,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails]);
 
   useEffect(() => {
     if (!done) return;
