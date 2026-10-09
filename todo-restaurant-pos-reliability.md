@@ -565,6 +565,42 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 45 — the badge told a Manager to become a Manager
+
+Following F8 (`settings:edit` as the authoritative gate) to the LABEL it produces. The four
+manager rows show a badge when disabled, and the badge read:
+
+> `restaurant-manager-required` — "Manager+"
+
+**But the gate is a permission, not a role.** `RestaurantSidebar.tsx:253-257` checks
+`hasGrantedPermission(session.permissions, 'settings:edit')` whenever the session carries a
+grant list, falling back to the role only when it does not. So for a session whose
+`role_name` IS `Manager` and whose grant omits `settings:edit` — a narrowed preset or a
+custom role — the row was disabled and told the operator they need **Manager+**: a thing
+they already are.
+
+Proved before changing anything: the new case fails against the old badge.
+
+**The component's own header already argued this.** `:56-64` refuses a badge on the KDS row
+because *"a 'Manager+' badge would mislabel the reason"* — the exact mistake, one row down,
+where the reason is a permission rather than a route entitlement.
+
+**The F8 tests never looked at the label.** All four cases assert disabled/enabled and the
+wildcard/fallback paths; nothing checked what a disabled row *says*. So the gate was fixed
+and the copy was not.
+
+Fix: a `gateBlockedByPermission` derivation picks the string by WHY the row is blocked.
+- blocked by a missing GRANT → new key `restaurant-permission-required` ("Needs
+  permission" / "Butuh izin"), added to both locales;
+- blocked by the ROLE (no permission list in the session, so `authIsManager` decided) →
+  "Manager+" stays, because there a role genuinely IS what is missing.
+
+Both halves are pinned: the new case covers the permission path and
+`RestaurantPosSidebar` still asserts "Manager+" on the role path. Kill-tested by forcing
+`gateBlockedByPermission = false`.
+
+`a980d31f9`.
+
 ### Round 44 — finishing round 43: the doc comments still described what was removed
 
 Round 43 removed the `settings-screen-migrating` note from all 14 screens. It left **seven
