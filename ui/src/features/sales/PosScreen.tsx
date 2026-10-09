@@ -950,10 +950,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <TableManagementScreen
-            onSelectTable={handleSelectTableFromManagement}
-            onBack={() => setShowTables(false)}
-          />
+          {/* Crash isolation (F9): this screen and Sales History below were the two
+              sub-screens of SIX that had no boundary, so a throw in either took the
+              whole POS down mid-service — with a cart in progress. `onReset` returns
+              to the sale, which is where the cashier needs to be. */}
+          <LocalizedErrorBoundary onReset={() => setShowTables(false)}>
+            <TableManagementScreen
+              onSelectTable={handleSelectTableFromManagement}
+              onBack={() => setShowTables(false)}
+            />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -979,7 +985,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <span className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</span>
         </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <SalesHistoryScreen />
+          {/* Crash isolation (F9) — see the Table Management note above. */}
+          <LocalizedErrorBoundary onReset={() => setShowSalesHistory(false)}>
+            <SalesHistoryScreen />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );

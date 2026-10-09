@@ -61,6 +61,20 @@ const SURFACES: GuardedSurface[] = [
     element: /<RestaurantSettingsScreen\b/,
     why: 'the restaurant settings screen this lane rewrote',
   },
+  // ⚠️ These two were MISSING until round 18, which is exactly how they stayed
+  // unwrapped: the guard listed the four SETTINGS sub-screens and PosScreen has
+  // six. A guard whose list is short of the thing it guards reports clean for the
+  // gap. Both are reached from the sidebar and both are heavy enough to throw.
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<TableManagementScreen\b/,
+    why: 'table management, reached from the sidebar mid-service',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<SalesHistoryScreen\b/,
+    why: 'sales history, reached from the sidebar mid-service',
+  },
 ];
 
 /**
@@ -97,6 +111,6 @@ describe('restaurant POS crash isolation (F9)', () => {
 
   it('scans a meaningful number of surfaces', () => {
     // A collector that silently found nothing would pass every case above.
-    expect(SURFACES.length).toBeGreaterThanOrEqual(5);
+    expect(SURFACES.length).toBeGreaterThanOrEqual(6);
   });
 });
