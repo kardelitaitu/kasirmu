@@ -21,6 +21,20 @@ const INTERACTIONS: Record<InteractionName, InteractionConfig> = {
   'open-bill':   { sound: 'click.mp3', vibrate: false },
 };
 
+/**
+ * The two localStorage keys this module owns.
+ *
+ * Exported so the reader and the writer cannot drift: each key used to be a
+ * literal written TWICE, twenty lines apart (`getItem` and `setItem`), and a typo
+ * in either half breaks the round-trip silently — `isInteractionSoundEnabled`
+ * falls back to `true`, so a mistyped SETTER leaves sound on regardless of what
+ * the operator chose. The runtime reads these keys, not the DB (see the P3/F5
+ * note in RestaurantSettingsScreen), so a rename here also has to be a deliberate
+ * edit in `storageKeyPins.test.ts`.
+ */
+export const INTERACTION_SOUND_KEY = 'pos.interaction_sound';
+export const INTERACTION_VIBRATION_KEY = 'pos.interaction_vibration';
+
 const audioCache = new Map<string, HTMLAudioElement>();
 
 function getAudio(filename: string): HTMLAudioElement | null {
@@ -40,7 +54,7 @@ function getAudio(filename: string): HTMLAudioElement | null {
 /** Check if interaction sound is enabled */
 export function isInteractionSoundEnabled(): boolean {
   try {
-    const val = localStorage.getItem('pos.interaction_sound');
+    const val = localStorage.getItem(INTERACTION_SOUND_KEY);
     if (val !== null) return val === 'true';
   } catch {
     /* ignore storage errors */
@@ -51,7 +65,7 @@ export function isInteractionSoundEnabled(): boolean {
 /** Check if interaction vibration is enabled */
 export function isInteractionVibrationEnabled(): boolean {
   try {
-    const val = localStorage.getItem('pos.interaction_vibration');
+    const val = localStorage.getItem(INTERACTION_VIBRATION_KEY);
     if (val !== null) return val === 'true';
   } catch {
     /* ignore storage errors */
@@ -62,7 +76,7 @@ export function isInteractionVibrationEnabled(): boolean {
 /** Set interaction sound preference */
 export function setInteractionSoundEnabled(enabled: boolean): void {
   try {
-    localStorage.setItem('pos.interaction_sound', String(enabled));
+    localStorage.setItem(INTERACTION_SOUND_KEY, String(enabled));
   } catch {
     /* ignore storage errors */
   }
@@ -71,7 +85,7 @@ export function setInteractionSoundEnabled(enabled: boolean): void {
 /** Set interaction vibration preference */
 export function setInteractionVibrationEnabled(enabled: boolean): void {
   try {
-    localStorage.setItem('pos.interaction_vibration', String(enabled));
+    localStorage.setItem(INTERACTION_VIBRATION_KEY, String(enabled));
   } catch {
     /* ignore storage errors */
   }
