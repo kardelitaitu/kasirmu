@@ -8,6 +8,7 @@ restaurant-sidebar-receipts = Struk
 restaurant-sidebar-payments = Pembayaran
 restaurant-sidebar-settings = Pengaturan
 restaurant-manager-required = Manager+
+restaurant-permission-required = Butuh izin
 restaurant-menu-editor-title = Editor Menu
 restaurant-menu-editor-categories = Kategori
 restaurant-menu-editor-all-categories = Semua Item

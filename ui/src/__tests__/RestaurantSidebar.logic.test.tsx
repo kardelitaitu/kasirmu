@@ -7,7 +7,7 @@
 // can be exercised in isolation instead of driving the whole PosScreen.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { createRef } from 'react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
@@ -118,6 +118,33 @@ describe('RestaurantSidebar — manager rows follow settings:edit (F8)', () => {
     renderSidebar({ cartActions: makeActions() });
 
     expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+  });
+
+
+  it('does not tell a MANAGER they need Manager+ when the grant is what blocks them', () => {
+    // The badge names a ROLE, but the gate is a PERMISSION. `settings:edit` is
+    // usually manager-ish, so the two coincide for the common case — but not for
+    // this one: the session's role IS 'Manager', and the row is disabled because
+    // the GRANT omits `settings:edit` (a custom role, or a narrowed preset). The
+    // badge then reads "Manager+" to a manager, which is both wrong and useless —
+    // it names a thing they already are.
+    //
+    // The gate itself is correct and pinned above. This case pins the LABEL, which
+    // the F8 tests never looked at: they assert disabled/enabled, never what the
+    // disabled row says. A row that explains the wrong reason is the same class as
+    // the KDS badge the component's own header refuses to use (RestaurantSidebar
+    // :56-64: "a 'Manager+' badge would mislabel the reason").
+    mockAuth.isManager = true;
+    mockAuth.session = { role_name: 'Manager', permissions: ['sales:process'] };
+    renderSidebar({ cartActions: makeActions() });
+
+    const settingsRow = screen.getByTestId('restaurant-sidebar-settings');
+    expect(settingsRow).toBeDisabled();
+    expect(
+      within(settingsRow).queryByText('Manager+'),
+      'the row is blocked by a missing settings:edit GRANT, not by the role — the ' +
+        'badge must not name a role the operator already holds',
+    ).toBeNull();
   });
 
   it('falls back to the role when the session carries no permission list', () => {

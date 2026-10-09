@@ -9,6 +9,9 @@ restaurant-sidebar-receipts = Receipts
 restaurant-sidebar-payments = Payments
 restaurant-sidebar-settings = Settings
 restaurant-manager-required = Manager+
+# Shown when the row is blocked by a missing permission GRANT rather than by the
+# operator's role. "Manager+" would name a role they already hold (F8).
+restaurant-permission-required = Needs permission
 restaurant-menu-editor-title = Menu Editor
 restaurant-menu-editor-categories = Categories
 restaurant-menu-editor-all-categories = All Items

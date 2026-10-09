@@ -256,6 +256,23 @@ export function RestaurantSidebar({
       ? hasGrantedPermission(session.permissions, 'settings:edit')
       : authIsManager);
   const effectiveIsManager = canEditSettings;
+
+  /**
+   * Which string a disabled manager row carries.
+   *
+   * The gate is a PERMISSION (`settings:edit`), so when the session answered the
+   * permission question and said no, a "Manager+" badge can be actively wrong: a
+   * user whose role IS Manager, blocked by a narrowed grant, would be told they
+   * need to become something they already are (`__tests__/RestaurantSidebar.logic`
+   * pins that case). The permission wording is used exactly then.
+   *
+   * The role fallback is the one case where "Manager+" is the honest answer: the
+   * session carried no permission list, so `authIsManager` decided, and a role is
+   * what is missing. Same reasoning the component's header gives for the KDS row,
+   * where a badge would mislabel a route entitlement (:56-64).
+   */
+  const gateBlockedByPermission =
+    isManagerProp === undefined && session?.permissions !== undefined;
   // The live app version, from the ONE shared probe (`StatusBar` reads the same
   // singleton, so this adds no second updater check). Not a hardcoded string:
   // the login footer's `v0.0.39` is already duplicated in three files.
@@ -516,7 +533,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
@@ -540,7 +559,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
@@ -564,7 +585,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
@@ -589,7 +612,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
