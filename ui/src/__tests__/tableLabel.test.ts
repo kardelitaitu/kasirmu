@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bareTableNumber } from '@/features/sales/utils/tableLabel';
+import { bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
 
 /**
  * The regression these guard: the product stores table names that ALREADY read
@@ -44,3 +44,29 @@ describe('bareTableNumber', () => {
     expect(bareTableNumber('   ')).toBe('');
   });
 });
+
+describe('heldCartLabel', () => {
+  it('does not double the word for a stored name that already carries it', () => {
+    // The persisted label is what the open-bill list shows, so this is the one
+    // that outlives the screen: it was saved as "Table Table 12".
+    expect(heldCartLabel('Table 12', null)).toBe('Table 12');
+    expect(heldCartLabel('Table 12', 'Ana')).toBe('Table 12 (Ana)');
+  });
+
+  it('still prefixes a table that never carried the word', () => {
+    expect(heldCartLabel('A5', null)).toBe('Table A5');
+    expect(heldCartLabel('A5', 'Ana')).toBe('Table A5 (Ana)');
+  });
+
+  it('falls back to the customer, then to null (the Open Bill #<ts> branch)', () => {
+    expect(heldCartLabel(null, 'Ana')).toBe('Ana');
+    expect(heldCartLabel('', 'Ana')).toBe('Ana');
+    expect(heldCartLabel(null, null)).toBeNull();
+    expect(heldCartLabel(undefined, '   ')).toBeNull();
+  });
+
+  it('trims the customer name it embeds', () => {
+    expect(heldCartLabel('Table 3', '  Ana  ')).toBe('Table 3 (Ana)');
+  });
+});
+

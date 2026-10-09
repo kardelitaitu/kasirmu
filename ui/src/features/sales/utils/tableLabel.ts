@@ -37,3 +37,39 @@ export function bareTableNumber(tableNumber: string): string {
   // named "Table"), so the badge never renders an empty label.
   return stripped.length > 0 ? stripped : trimmed;
 }
+
+/**
+ * Compose the persisted label for a held cart / open bill tab.
+ *
+ * WHY THIS EXISTS
+ *   Two sites built this string by hand, identically:
+ *     PaymentModal.tsx:1113   (the hold on the payment path)
+ *     hooks/usePosHeldCarts.ts:166 (the hold on the Save Tab path)
+ *   Both interpolated the RAW table value as
+ *     "Table " + trimmedTable, plus " (" + name + ")" when a customer was set.
+ *   The stored table names ALREADY read "Table 12" (see bareTableNumber above),
+ *   so the label persisted as "Table Table 12" — and unlike the badge, this one is
+ *   SAVED: it is the name the operator sees in the open-bill list, so the defect
+ *   outlives the screen.
+ *
+ *   Extracted here rather than fixed twice, because the duplication is the reason
+ *   the first fix (commit c40ec0228, which covered the badge and the cart banner)
+ *   missed it: I fixed the two render sites I could see and did not check whether
+ *   the same phrase was composed anywhere else.
+ *
+ * @param tableNumber the stored table name (may already contain the word)
+ * @param customerName optional customer attached to the tab
+ * @returns the label to persist, or null when neither is present
+ */
+export function heldCartLabel(
+  tableNumber: string | null | undefined,
+  customerName: string | null | undefined,
+): string | null {
+  const table = tableNumber ? bareTableNumber(tableNumber) : '';
+  const name = (customerName ?? '').trim();
+  if (table && name) return 'Table ' + table + ' (' + name + ')';
+  if (table) return 'Table ' + table;
+  if (name) return name;
+  return null;
+}
+

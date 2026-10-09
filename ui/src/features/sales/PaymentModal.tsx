@@ -33,7 +33,7 @@ import { useEdcTenderPhase } from './payment/useEdcTenderPhase';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import { useSplitTenderState } from './payment/useSplitTenderState';
-import { bareTableNumber } from './utils/tableLabel';
+import { bareTableNumber, heldCartLabel } from './utils/tableLabel';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
@@ -1110,9 +1110,12 @@ retryCurrencyLoad,
           ...(trimmedName ? { customerName: trimmedName } : {}),
           orderType,
         });
-        const label = trimmedTable
-          ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
-          : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+        // `heldCartLabel`, not a hand-built ternary: the stored table names already
+        // read "Table 12" (see utils/tableLabel.ts), so interpolating the raw value
+        // persisted the tab as "Table Table 12" — and unlike the badge this string is
+        // SAVED, so the doubling outlived the screen.
+        const label =
+          heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
 
         await holdCartScoped(sessionToken!, {
           label,
@@ -1121,7 +1124,10 @@ retryCurrencyLoad,
           total_minor: total.minor_units,
           currency: total.currency,
           bill_type: 'open_bill',
-          customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
+          // Same doubling as the label above, in the customer field: the stored name
+          // already reads "Table 12", so this wrote "Table Table 12" into the bill's
+          // customer_name.
+          customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
         });
         setDone(true);
         return;

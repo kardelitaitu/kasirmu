@@ -13,6 +13,7 @@ import {
 import type { Promotion } from '@/api/promotions';
 import type { ShiftDto } from '@/api/shifts';
 import type { CartLine, LineId, Money, Sku } from '@/types/domain';
+import { bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
@@ -163,9 +164,12 @@ export function usePosHeldCarts({
         ...(trimmedName ? { customerName: trimmedName } : {}),
         ...(orderType ? { orderType } : {}),
       });
-      const label = trimmedTable
-        ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
-        : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+      // `heldCartLabel`, not a hand-built ternary: the stored table names already
+      // read "Table 12" (see utils/tableLabel.ts), so interpolating the raw value
+      // persisted the tab as "Table Table 12". The sibling site in PaymentModal.tsx
+      // had the identical expression, which is why this is one function now.
+      const label =
+        heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
 
       // If updating an already resumed open bill, delete the previous record first so we
       // don't produce duplicate tabs.
@@ -186,7 +190,8 @@ export function usePosHeldCarts({
         total_minor: subtotal.minor_units,
         currency: subtotal.currency,
         bill_type: 'open_bill',
-        customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
+        // Same doubling as the label above, in the customer field.
+        customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
       });
       const wasUpdating = !!activeOpenBillId;
       resetCart();
