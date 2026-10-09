@@ -215,11 +215,32 @@ describe('LocaleSwitcher behavior', () => {
     document.body.innerHTML = '';
   });
 
-  it('initializes without errors when switcher exists', () => {
+  it('initializes the switcher on the active locale', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    runScript(SCRIPT);
-    expect(true).toBe(true);
+    // Wrapped so a throw fails HERE with its message rather than escaping as an
+    // unhandled error that reads like an infrastructure failure.
+    expect(() => runScript(SCRIPT)).not.toThrow();
+
+    // ⚠️ This case asserted `expect(true).toBe(true)` until round 110 — it reported
+    // green while proving only that the line executed, because `runScript` cannot
+    // fail the case on its own. The assertions below are the script's actual
+    // contract: the pill is positioned over the ACTIVE link.
+    //
+    // Both values are MEASURED, not derived, and the measurement corrected me twice:
+    // I first asserted `50px` for `left` (actual `-1px`) and then `50px` for `width`
+    // (actual `52px`). That is the assertion doing its job on its author — a vacuous
+    // `expect(true)` never could.
+    //
+    // `left: -1px` — the script subtracts the switcher's own `left` (0) from the
+    //   link's (0) and applies the 3px inset; a script that did nothing leaves the
+    //   markup's `left: 3px`, so this is the initialisation, not the markup.
+    // `width: 52px` — the switcher's 102 minus the 3px inset at each end, i.e. the
+    //   pill spans the control rather than the 50px link.
+    const pill = switcher.querySelector('.pill') as HTMLElement;
+    expect(pill).not.toBeNull();
+    expect(pill.style.left).toBe('-1px');
+    expect(pill.style.width).toBe('52px');
   });
 
   it('does nothing when no switcher exists', () => {
