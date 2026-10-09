@@ -34,13 +34,6 @@ const SRC = path.resolve(process.cwd(), 'src');
  */
 const DECLARED_DEAD: Array<{ key: string; wouldNeed: string }> = [
   {
-    key: 'restaurant.hold_order',
-    wouldNeed:
-      'a restaurant-side hold/park action. Re-measured: the only `bill_type: hold` in ' +
-      'the UI is RetailPosScreen.tsx:1282 (the retail POS, which does not read ' +
-      'restaurant.*); restaurant POS parks as `open_bill`, which `save_tab` covers.',
-  },
-  {
     key: 'restaurant.auto_print_kitchen',
     wouldNeed:
       'a KOT-send path on save/hold. The only auto-print in the tree is KDS-side ' +
@@ -109,7 +102,11 @@ describe('a restaurant settings key must be read, or declared dead (F1)', () => 
     );
     // Every `'restaurant.<name>': String(...)` in the save payload.
     const written = [...screen.matchAll(/'(restaurant\.\w+)':/g)].map((m) => m[1]!);
-    expect(written.length).toBeGreaterThanOrEqual(10);
+    // 10 until round 42 removed `restaurant.hold_order` along with its toggle (finding
+    // D5): the key had no readers and restaurant POS already parks carts as `open_bill`.
+    // The floor is what caught the removal, which is the point of having one — drop it
+    // when a key is deleted, never when one stops being written silently.
+    expect(written.length).toBeGreaterThanOrEqual(9);
     const declared = new Set(DECLARED_DEAD.map((d) => d.key));
     const undeclared = written
       .filter((k) => !declared.has(k))

@@ -4,7 +4,7 @@
  * Covers:
  * - Mount and load settings from API (getSettingScoped)
  * - Rendering of the behavior toggles (customer name, guest count, order type,
- *   hold order, save tab, course firing, auto-print kitchen, sound chime)
+ *   save tab, course firing, auto-print kitchen, sound chime)
  * - Toggling values and dirty tracking
  * - Saving settings via setSettingsScoped
  * - Unsaved changes confirmation dialog on back navigation
@@ -79,7 +79,10 @@ describe('RestaurantSettingsScreen', () => {
     expect(screen.getByTestId('setting-toggle-customer-name')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-guest-count')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-order-type')).toBeInTheDocument();
-    expect(screen.getByTestId('setting-toggle-hold-order')).toBeInTheDocument();
+    // Hold Order was REMOVED (D5, round 42): its key had no readers and restaurant POS
+    // already parks carts as `open_bill` via Save Tab below. Asserted absent for the same
+    // reason the table-number toggle is, one line above.
+    expect(screen.queryByTestId('setting-toggle-hold-order')).toBeNull();
     expect(screen.getByTestId('setting-toggle-save-tab')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-course-firing')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-auto-print-kitchen')).toBeInTheDocument();
@@ -91,7 +94,7 @@ describe('RestaurantSettingsScreen', () => {
 
   it('reflects loaded settings in switch roles', async () => {
     mocks.getSetting.mockImplementation((_tok: string, key: string) => {
-      if (key === 'restaurant.hold_order') return Promise.resolve('false');
+      if (key === 'restaurant.save_tab') return Promise.resolve('false');
       if (key === 'restaurant.course_firing') return Promise.resolve('true');
       return Promise.resolve('true');
     });
@@ -99,7 +102,7 @@ describe('RestaurantSettingsScreen', () => {
     await renderScreen();
 
     await waitFor(() => {
-      expect(screen.getByTestId('setting-toggle-hold-order')).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByTestId('setting-toggle-save-tab')).toHaveAttribute('aria-checked', 'false');
       expect(screen.getByTestId('setting-toggle-course-firing')).toHaveAttribute('aria-checked', 'true');
     });
   });
@@ -108,16 +111,16 @@ describe('RestaurantSettingsScreen', () => {
     await renderScreen();
 
     await waitFor(() => {
-      expect(screen.getByTestId('setting-toggle-hold-order')).toBeInTheDocument();
+      expect(screen.getByTestId('setting-toggle-save-tab')).toBeInTheDocument();
     });
 
     const saveBtn = screen.getByTestId('restaurant-settings-save-btn');
     expect(saveBtn).toBeDisabled();
 
-    const holdOrderSwitch = screen.getByTestId('setting-toggle-hold-order');
-    fireEvent.click(holdOrderSwitch);
+    const saveTabSwitch = screen.getByTestId('setting-toggle-save-tab');
+    fireEvent.click(saveTabSwitch);
 
-    expect(holdOrderSwitch).toHaveAttribute('aria-checked', 'false');
+    expect(saveTabSwitch).toHaveAttribute('aria-checked', 'false');
     expect(saveBtn).not.toBeDisabled();
     expect(screen.getByText(/Unsaved changes/i)).toBeInTheDocument();
   });
@@ -169,7 +172,7 @@ describe('RestaurantSettingsScreen', () => {
     // A rejected read must NOT be presented as a clean screen of defaults: that
     // is what let a failed load overwrite the merchant's real configuration.
     mocks.getSetting.mockImplementation((_tok: string, key: string) => {
-      if (key === 'restaurant.hold_order') return Promise.reject(new Error('ipc down'));
+      if (key === 'restaurant.save_tab') return Promise.reject(new Error('ipc down'));
       return Promise.resolve('true');
     });
 
@@ -203,7 +206,7 @@ describe('RestaurantSettingsScreen', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('restaurant-settings-load-error')).toBeNull();
     });
-    expect(screen.getByTestId('setting-toggle-hold-order')).toBeInTheDocument();
+    expect(screen.getByTestId('setting-toggle-save-tab')).toBeInTheDocument();
   });
 
   it('writes the loaded DB preference through to the localStorage the runtime reads (F6)', async () => {

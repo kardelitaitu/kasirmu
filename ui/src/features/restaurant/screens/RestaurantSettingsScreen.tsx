@@ -148,7 +148,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   const [customerName, setCustomerName] = useState(DEFAULT_RESTAURANT_SETTINGS.customerName);
   const [guestCount, setGuestCount] = useState(DEFAULT_RESTAURANT_SETTINGS.guestCount);
   const [orderTypePrompt, setOrderTypePrompt] = useState(DEFAULT_RESTAURANT_SETTINGS.orderTypePrompt);
-  const [holdOrder, setHoldOrder] = useState(DEFAULT_RESTAURANT_SETTINGS.holdOrder);
   const [saveTab, setSaveTab] = useState(DEFAULT_RESTAURANT_SETTINGS.saveTab);
   const [courseFiring, setCourseFiring] = useState(DEFAULT_RESTAURANT_SETTINGS.courseFiring);
   const [autoPrintKitchen, setAutoPrintKitchen] = useState(DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen);
@@ -212,7 +211,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         setCustomerName(values.customerName);
         setGuestCount(values.guestCount);
         setOrderTypePrompt(values.orderTypePrompt);
-        setHoldOrder(values.holdOrder);
         setSaveTab(values.saveTab);
         setCourseFiring(values.courseFiring);
         setAutoPrintKitchen(values.autoPrintKitchen);
@@ -270,7 +268,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       customerName !== orig.customerName ||
       guestCount !== orig.guestCount ||
       orderTypePrompt !== orig.orderTypePrompt ||
-      holdOrder !== orig.holdOrder ||
       saveTab !== orig.saveTab ||
       courseFiring !== orig.courseFiring ||
       autoPrintKitchen !== orig.autoPrintKitchen ||
@@ -282,7 +279,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     customerName,
     guestCount,
     orderTypePrompt,
-    holdOrder,
     saveTab,
     courseFiring,
     autoPrintKitchen,
@@ -305,7 +301,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
           'restaurant.customer_name': String(customerName),
           'restaurant.guest_count': String(guestCount),
           'restaurant.order_type_prompt': String(orderTypePrompt),
-          'restaurant.hold_order': String(holdOrder),
           'restaurant.save_tab': String(saveTab),
           'restaurant.course_firing': String(courseFiring),
           'restaurant.auto_print_kitchen': String(autoPrintKitchen),
@@ -332,7 +327,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         customerName,
         guestCount,
         orderTypePrompt,
-        holdOrder,
         saveTab,
         courseFiring,
         autoPrintKitchen,
@@ -370,7 +364,6 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     customerName,
     guestCount,
     orderTypePrompt,
-    holdOrder,
     saveTab,
     courseFiring,
     autoPrintKitchen,
@@ -553,14 +546,15 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
             {/* ── 2. Order Workflow & Tabs ────────────────────────── */}
             <div className="resto-settings-group-card" data-testid="settings-card-workflow">
               <div className="resto-compact-form">
-                <SettingRow
-                  id="resto-setting-hold-order"
-                  label={l10n.getString('restaurant-setting-hold-order')}
-                  description={l10n.getString('restaurant-setting-hold-order-desc')}
-                  checked={holdOrder}
-                  onChange={setHoldOrder}
-                  testId="setting-toggle-hold-order"
-                />
+                {/* Hold Order was REMOVED here (finding D5, round 42). Its key
+                    `restaurant.hold_order` had zero readers anywhere, while its own
+                    description promised "Allow cashier to park or temporarily hold
+                    in-progress orders" — and restaurant POS already DOES park carts, as
+                    `open_bill` ("Save Tab", the toggle immediately below). So the control
+                    offered a second name for a capability that exists, and changed nothing.
+                    Removed rather than wired: wiring it would mean inventing a duplicate
+                    park concept beside `save_tab`. Same call as `restaurant.table_number`
+                    (option C). */}
                 <SettingRow
                   id="resto-setting-save-tab"
                   label={l10n.getString('restaurant-setting-save-tab')}

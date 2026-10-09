@@ -25,7 +25,6 @@ export interface RestaurantSettingsValues {
   customerName: boolean;
   guestCount: boolean;
   orderTypePrompt: boolean;
-  holdOrder: boolean;
   saveTab: boolean;
   courseFiring: boolean;
   autoPrintKitchen: boolean;
@@ -53,7 +52,6 @@ export const DEFAULT_RESTAURANT_SETTINGS: RestaurantSettingsValues = {
   // `__tests__/restaurantSettingDefaultsAgree.test.ts`.
   guestCount: true,
   orderTypePrompt: true,
-  holdOrder: true,
   saveTab: true,
   courseFiring: false,
   autoPrintKitchen: false,
@@ -81,7 +79,6 @@ export const RESTAURANT_SETTING_SPECS: readonly SettingSpec[] = [
   { field: 'customerName', key: 'restaurant.customer_name', fallback: DEFAULT_RESTAURANT_SETTINGS.customerName },
   { field: 'guestCount', key: 'restaurant.guest_count', fallback: DEFAULT_RESTAURANT_SETTINGS.guestCount },
   { field: 'orderTypePrompt', key: 'restaurant.order_type_prompt', fallback: DEFAULT_RESTAURANT_SETTINGS.orderTypePrompt },
-  { field: 'holdOrder', key: 'restaurant.hold_order', fallback: DEFAULT_RESTAURANT_SETTINGS.holdOrder },
   { field: 'saveTab', key: 'restaurant.save_tab', fallback: DEFAULT_RESTAURANT_SETTINGS.saveTab },
   { field: 'courseFiring', key: 'restaurant.course_firing', fallback: DEFAULT_RESTAURANT_SETTINGS.courseFiring },
   { field: 'autoPrintKitchen', key: 'restaurant.auto_print_kitchen', fallback: DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen },

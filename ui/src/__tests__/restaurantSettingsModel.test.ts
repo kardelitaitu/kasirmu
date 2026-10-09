@@ -39,23 +39,23 @@ describe('loadRestaurantSettings', () => {
   it('reports a failed read instead of silently defaulting (the F4 guard)', async () => {
     const result = await loadRestaurantSettings(
       TOKEN,
-      readerOf({}, ['restaurant.hold_order']),
+      readerOf({}, ['restaurant.save_tab']),
       LOCALS,
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failedKeys).toEqual(['restaurant.hold_order']);
+    expect(result.failedKeys).toEqual(['restaurant.save_tab']);
   });
 
   it('names EVERY failed key, not just the first', async () => {
     const result = await loadRestaurantSettings(
       TOKEN,
-      readerOf({}, ['restaurant.hold_order', 'restaurant.sound_chime']),
+      readerOf({}, ['restaurant.save_tab', 'restaurant.sound_chime']),
       LOCALS,
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failedKeys.sort()).toEqual(['restaurant.hold_order', 'restaurant.sound_chime']);
+    expect(result.failedKeys.sort()).toEqual(['restaurant.save_tab', 'restaurant.sound_chime']);
   });
 
   it('reads stored "false" as false rather than falling back to the default', async () => {
@@ -63,14 +63,14 @@ describe('loadRestaurantSettings', () => {
     // that used `raw || default` would turn "false" back into true.
     const result = await loadRestaurantSettings(
       TOKEN,
-      readerOf({ 'restaurant.hold_order': 'false' }),
+      readerOf({ 'restaurant.save_tab': 'false' }),
       LOCALS,
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.values.holdOrder).toBe(false);
+    expect(result.values.saveTab).toBe(false);
     // ...while a different unset key still takes its default.
-    expect(result.values.saveTab).toBe(DEFAULT_RESTAURANT_SETTINGS.saveTab);
+    expect(result.values.customerName).toBe(DEFAULT_RESTAURANT_SETTINGS.customerName);
   });
 
   it('uses the LOCAL preference when an interaction key is unset', async () => {
