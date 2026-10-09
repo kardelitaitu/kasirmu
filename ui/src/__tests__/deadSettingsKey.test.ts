@@ -37,12 +37,12 @@ const DECLARED_DEAD: Array<{ key: string; wouldNeed: string }> = [
   // asked for was built: `PosScreen` reads it and `PaymentModal.printKitchenChits`
   // gates `printKdsChitScoped` on it (which had no caller anywhere before). Removed
   // because the key now HAS a reader — which is what the third case below demands.
-  {
-    key: 'restaurant.sound_chime',
-    wouldNeed:
-      'an order-sent chime in the POS. `useSound` exists but is KDS-only ' +
-      '(KdsScreen, ExpoScreen, KdsTicketCard); nothing in the sales path calls it.',
-  },
+  //
+  // `restaurant.sound_chime` was here until round 58, for the same reason and by the
+  // same route: `PosScreen` now reads it and `handlePaymentComplete` chimes through
+  // the shared `useSound` hook unless the merchant switched it off. The note above was
+  // also slightly wrong — `useSound` was never KDS-only (the retail POS uses it too),
+  // the RESTAURANT path simply never called it.
 ];
 
 /** Production source under src/, minus tests and dev mocks. */

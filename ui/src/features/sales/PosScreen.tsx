@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
+import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
@@ -140,6 +141,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const sessionToken = rawToken || '';
   const { products } = useProducts(sessionToken || undefined);
   const { isEnabled } = useFeatures();
+  // F21: the shared chime hook. Not KDS-specific — a plain Web Audio tone, and the
+  // retail POS already uses it for the same order-complete confirmation.
+  const { playSuccess } = useSound();
+  // F21: `null` = never written -> the setting's own default (chime). Declared here,
+  // not with the other restaurant flags below, because `handlePaymentComplete` reads
+  // it and is defined before them.
+  const [soundChime, setSoundChime] = useState<boolean | null>(null);
   const userId = session?.user_id ?? '';
 
   const handleOpenSettings = useCallback(() => {
@@ -690,7 +698,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setGuestCount('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+    // F21: the order-sent chime. Placed here, at the end of a COMPLETED checkout —
+    // the same seat the retail POS uses (`RetailPosScreen.tsx:1576`) — so it cannot
+    // fire for a sale that failed. `null` means never written, which the setting's own
+    // default (true) says should chime.
+    if (soundChime !== false) playSuccess();
+  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -798,6 +811,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
   const [saveTabEnabled, setSaveTabEnabled] = useState<boolean | null>(null);
 
+  // ── Order Sound Notifications (F21) ─────────────────────────────
+  //
+  // `restaurant.sound_chime` promises "Play an audible confirmation chime when orders
+  // are sent or updated" (products.ftl:115) and defaults to TRUE, but lived ONLY in
+  // the settings screen until this round — written, loaded into its own switch, and
+  // read by nothing, so the app never played the chime it advertised.
+  //
+  // The pieces were present, as they were for F20: `useSound()` is a shared component
+  // hook (not KDS-only — it is a plain Web Audio beep), and the RETAIL POS already
+  // plays `playSuccess()` on sale completion (`RetailPosScreen.tsx:1576`). The
+  // restaurant path simply never called it.
+  //
+  // `null` = never written -> the model's default (true), so an unset key keeps the
+  // behaviour the default describes rather than silently disabling sound.
+  //
+  // The STATE is declared beside `playSuccess` above, because `handlePaymentComplete`
+  // reads it and is defined earlier in the component than this comment block.
+
   // ── Auto-Print KOT (F20) ────────────────────────────────────────
   //
   // `restaurant.auto_print_kitchen` lived ONLY in the settings screen until this
@@ -854,6 +885,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     void getSettingScoped(sessionToken, 'restaurant.auto_print_kitchen')
       .then((raw) => { if (!cancelled) setAutoPrintKitchen(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setAutoPrintKitchen(null); });
+    // F21: the Order Sound Notifications switch, same contract as its siblings.
+    void getSettingScoped(sessionToken, 'restaurant.sound_chime')
+      .then((raw) => { if (!cancelled) setSoundChime(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setSoundChime(null); });
     return () => { cancelled = true; };
   }, [sessionToken]);
 
