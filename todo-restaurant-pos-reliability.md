@@ -565,6 +565,40 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 38 — a ten-key save that announced one key (fix HELD, not committed)
+
+The F10 shared card (`WorkspaceRestaurantPosSettings`) writes **ten** receipt keys through
+`setReceiptSettingsScoped` and then called:
+
+```ts
+markSettingsUpdated(['receipt.showTableNumber', 'restaurant.course_firing']);
+```
+
+That call is the refetch broadcast (`SettingsContext.tsx:185-196`), so **nine** keys —
+`showCurrency`, `decimalSeparator`, `showTax`, `footer`, `paperWidth` and the four margins
+— were persisted while every other mounted surface kept its stale copy until an unrelated
+refetch. Proved before touching it: the new case fails with
+`[ 'receipt.showCurrency', …(8) ]` persisted-but-unannounced.
+
+`RestaurantReceiptsScreen.tsx:1085-1096` writes the same receipt keys and announces all
+ten, which is what makes this drift rather than a second convention. The fix mirrors the
+write payload (`Object.keys({...}).map(k => \`receipt.${k}\`)`) instead of re-typing the
+list, so the two cannot diverge again.
+
+**⚠️ HELD — the fix and its test are on disk but NOT committed, deliberately.** The source
+file is being actively edited by another lane (121 added lines across 5 hunks: a new Receipt
+Printer card, `useTerminalHardware` wiring, and this file's `markSettingsUpdated`). My hunk
+sits *interleaved* with theirs, and a pathspec commit takes the whole working-tree file —
+so committing my fix would sweep their unfinished work in, which §7.3 forbids.
+
+Committing the **test alone** was the alternative and is worse: at HEAD the announcement is
+still the one-key form, so the case would land RED. A test that cannot pass at HEAD is not
+coverage.
+
+**The correction is verified and waiting**: 15/15 pass on the working tree, and the case is
+kill-tested (reverting the announcement fails it with the exact missing-key list). It needs
+the other lane to commit, then one pathspec commit of both files.
+
 ### Round 37 — every save failure read the same generic sentence
 
 Checking the menu editor for the error-handling convention turned up the contrast that
