@@ -5337,3 +5337,46 @@ the deliverable is the verification and the near-miss.
 
 Verified: full suite **697 files / 11,576 passed, 0 failed**; bundle parity 0 missing; the tree is
 clean apart from the three known untracked files.
+
+### F19 re-measured (round 106) — all five controls confirmed inert, and `printReceipt` is NOT the printer
+
+**The plan's largest open item, re-measured against HEAD with exact counts rather than a bare grep.**
+F19 records five payments-screen controls that round-trip to storage and reach nothing:
+`verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`.
+
+#### The measurement, with the near-miss that matters
+
+| Control | snake_case in Rust | camelCase in Rust | Verdict |
+|---|---|---|---|
+| `verifyDrawer` | 0 | 0 | **inert** |
+| `acceptedCards` | 0 | 0 | **inert** |
+| `requireTrace` | 0 | 0 | **inert** |
+| `autoConfirm` | 0 | 0 | **inert** |
+| `printReceipt` | **79** | 0 | **inert anyway — see below** |
+
+**`print_receipt` looks like a consumer and is not one.** A grep for the snake_case spelling finds 79
+Rust hits, which is exactly the shape of a wired control — but every one belongs to
+`print_receipt_scoped` / `run_print_receipt_inner`, the **printer command**. The QRIS rail's
+`printReceipt` is a *key inside the rail's `parameters` JSON*, and the literal `"printReceipt"`
+appears in **zero** Rust files.
+
+**So a grep by name would have cleared the one control that is most obviously inert**, and it is the
+one an operator is most likely to rely on: a QRIS receipt switch that prints nothing and says nothing.
+This is F41's lesson again — *a name that matches is not a reader that runs* — and the third spelling
+of it this session (a getter in round 93, a wrapper in round 94, a homonym here).
+
+#### What is actually true about the five
+
+They are **not** unwired. Each is a real control with a real round trip: the load reads it back
+(`:417`, `:432`, `:443`, `:444`, `:460`) and every toggle writes it (`:1149`, `:1281`, `:1366`,
+`:1391`, `:1556`). **What is missing is a consumer that acts on the value** — the distinction the plan
+already draws between WIRE and BUILD. Each therefore needs a feature invented behind it, or the
+control removed; neither is a call-site addition.
+
+**No change made, deliberately.** Deleting five hardware controls is a product decision with a
+migration consequence (a merchant who set them has stored preferences), and building the five
+features is five features. What this round adds is the count, the homonym trap, and the confirmation
+that the row is still accurate — so whoever picks it up starts from a measured state.
+
+Verified: `verifyDrawer`/`acceptedCards`/`requireTrace`/`autoConfirm` = 0 hits in any spelling;
+`"printReceipt"` = 0 hits; the 79 `print_receipt` hits are all the printer command.
