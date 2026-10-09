@@ -31,11 +31,6 @@ export function DataManagementScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-data-management">Data Management</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <DataManagementBody embedded />
     </section>
   );

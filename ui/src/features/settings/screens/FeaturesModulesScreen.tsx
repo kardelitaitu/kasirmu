@@ -26,11 +26,6 @@ export function FeaturesModulesScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-features-modules">Features &amp; Modules</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <FeatureToggleBody embedded />
     </section>
   );

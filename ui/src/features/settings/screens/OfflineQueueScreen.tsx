@@ -29,11 +29,6 @@ export function OfflineQueueScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-offline-queue">Offline Queue</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <OfflineQueueBody embedded />
     </section>
   );

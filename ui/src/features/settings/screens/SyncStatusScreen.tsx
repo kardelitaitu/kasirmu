@@ -154,13 +154,6 @@ export function SyncStatusScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-sync-status">Sync Status</Localized>
       </h1>
-      {/* The migration note stays (SettingsPage.test.tsx asserts it on every
-          screen, migrated ones included). */}
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
 
       <Card
         shadow="sm"

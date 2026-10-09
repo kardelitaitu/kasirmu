@@ -34,11 +34,6 @@ export function TaxConfigurationScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-tax-configuration">Tax Configuration</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       {/* `embedded` suppresses the body's duplicate <h1>. See the file header. */}
       <TaxConfigurationBody embedded />
     </section>

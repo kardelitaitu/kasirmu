@@ -64,14 +64,6 @@ export function GeneralScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-general">General</Localized>
       </h1>
-      {/* The migration note stays (SettingsPage.test.tsx asserts it on every
-          screen, migrated ones included); the one-off placeholder line goes away
-          now that the body is real content. */}
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
 
       <GeneralSection
         store={draft.store}

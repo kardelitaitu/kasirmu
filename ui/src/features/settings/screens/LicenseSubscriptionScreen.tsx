@@ -20,11 +20,6 @@ export function LicenseSubscriptionScreen() {
         <Localized id="settings-nav-license-subscription">License Subscription</Localized>
       </h1>
       <LicenseSettings />
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
     </section>
   );
 }

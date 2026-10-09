@@ -25,11 +25,6 @@ export function BusinessDefaultsScreen() {
       <LocalPaymentSettingsCard />
       <ReceiptFormatSettingsCard />
       <StatutoryNumberingCard />
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
     </section>
   );
 }

@@ -27,11 +27,6 @@ export function ExchangeRatesScreen() {
       </h1>
       {/* SettingsPage.test.tsx asserts this note on EVERY settings screen,
           migrated ones included. */}
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <ExchangeRateScreen embedded />
     </section>
   );
