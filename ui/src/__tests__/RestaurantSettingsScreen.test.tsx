@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantSettingsScreen, { type RestaurantSettingsScreenProps } from '@/features/restaurant/screens/RestaurantSettingsScreen';
+import { RESTAURANT_SETTING_SPECS } from '@/features/restaurant/screens/restaurantSettingsModel';
 import productsFtl from '@/locales/products.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
 
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   getReceiptSettings: vi.fn(),
   setReceiptSettings: vi.fn(),
   sessionToken: 'test-session-tok-1',
+  markSettingsUpdated: vi.fn(),
 }));
 
 vi.mock('@/api/settings', () => ({
@@ -46,6 +48,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 vi.mock('@/contexts/SettingsContext', () => ({
   useOptionalSettings: () => ({
     refresh: vi.fn().mockResolvedValue(undefined),
+    markSettingsUpdated: mocks.markSettingsUpdated,
   }),
 }));
 
@@ -151,6 +154,15 @@ describe('RestaurantSettingsScreen', () => {
     expect(mocks.setReceiptSettings).not.toHaveBeenCalled();
 
     expect(onSaved).toHaveBeenCalled();
+
+    // The "settings changed" broadcast must be the MODEL's key list, not a
+    // re-typed copy. Asserting equality against RESTAURANT_SETTING_SPECS (rather
+    // than the ten literals) is what makes adding a setting to the model flow
+    // through here automatically: a hand-maintained list would stay at ten and
+    // every other mounted surface would keep its stale value.
+    expect(mocks.markSettingsUpdated).toHaveBeenCalledWith(
+      RESTAURANT_SETTING_SPECS.map((s) => s.key),
+    );
   });
 
   it('refuses to look saved when a settings read FAILS (F4 data-loss guard)', async () => {

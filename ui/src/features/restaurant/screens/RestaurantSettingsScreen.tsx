@@ -41,6 +41,7 @@ import {
 } from '@/utils/interaction';
 import {
   DEFAULT_RESTAURANT_SETTINGS,
+  RESTAURANT_SETTING_SPECS,
   loadRestaurantSettings,
   type RestaurantSettingsValues,
 } from './restaurantSettingsModel';
@@ -331,17 +332,13 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       };
       setDirtyVersion((v) => v + 1);
 
+      // Derived from the model's spec list rather than re-typed. This list was a
+      // THIRD hand-maintained copy of the same ten keys (the spec table and the write
+      // object above are the others), so adding a setting to the model would silently
+      // leave it out of the "settings changed" broadcast and every other mounted
+      // surface would keep its stale copy of the value.
       settingsContext?.markSettingsUpdated?.([
-        'restaurant.customer_name',
-        'restaurant.guest_count',
-        'restaurant.order_type_prompt',
-        'restaurant.hold_order',
-        'restaurant.save_tab',
-        'restaurant.course_firing',
-        'restaurant.auto_print_kitchen',
-        'restaurant.sound_chime',
-        'restaurant.interaction_sound',
-        'restaurant.interaction_vibration',
+        ...RESTAURANT_SETTING_SPECS.map((s) => s.key),
       ]);
 
       addToast({
