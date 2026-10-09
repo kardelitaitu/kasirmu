@@ -565,6 +565,33 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 41 — `payment_gateways.is_active` has no consumer at all
+
+Following round 40's abandoned edit to its second half. It also wanted to make the
+gateway `is_active` follow the rail row instead of an independent flag, and THAT half is
+defensible — a screen writing two values that can disagree is the shape this plan keeps
+finding. But before endorsing it I traced where `is_active` is actually read.
+
+**Nowhere that matters.** The chain, measured:
+
+| Step | Evidence |
+|---|---|
+| Stored, upsertable | `db/payment_gateways.rs:150-160` writes `is_active` |
+| Readable | `get_payment_gateway` (:180), `list_payment_gateways` (:214), `list_active_payment_gateways` (:248-256, `WHERE is_active = 1`) |
+| `list_active_*` callers | **its own tests only** — `payment_gateways_tests.rs:154`, plus a doc example at `:308`. No production call site. |
+| UI readers of any gateway config | `RestaurantPaymentsScreen.tsx:454-455` — **the only one**, i.e. the same screen that wrote it |
+| Charge path | never touches `payment_gateways`; midtrans on the server comes from ENV (`apps/cloud-server/src/config.rs:107`, `:113`) |
+
+So `is_active` is a closed loop: the screen writes it and reads it back. The `list_active_*
+WHERE is_active = 1` helper — the one function that would make the flag meaningful — never
+runs in production.
+
+**Consequence for the abandoned edit:** its `open_bill`/`credit` half is wrong (round 40),
+and its `isActive` half would fix a disagreement **between two values that are both
+unconsumed**. Neither half is the parity the code needs. Storing the flag is fine; pretending
+it gates something is what the comments should stop implying — that is a documentation fix
+in a file I cannot commit, so it is recorded here instead.
+
 ### Round 40 — 19-hour-old abandoned work that would have REGRESSED if committed
 
 `RestaurantPaymentsScreen.tsx` has shown ` M` in every round I have observed — I read it as
