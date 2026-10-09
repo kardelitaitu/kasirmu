@@ -2438,6 +2438,44 @@ The card's doc asserts the *write* chain was complete before it existed. Verifie
 So F24's chain is complete end to end **except** enforcement at sale time, which is the product
 question. Nothing here is a defect.
 
+#### Round 103 — the measured entry landed, and the guard now grades the card
+
+The card was wired into `BusinessDefaultsScreen.tsx:33` and the suite went **red exactly as the
+guard predicted**: `settings/screens/CreditFacilityCard.css` was uncited. Round 102 had measured the
+entry's three fields precisely so this would be a small edit, and it was.
+
+**The guard's own error message was the best instruction available**, and it is worth quoting because
+it encodes a policy rather than a rule:
+
+> *"if this is a NEW sheet, author its entry: a new stylesheet may not join a shrink-only list, so
+> land its css, its tsx and its SCREENS entry in the same commit. Only an existing sheet nobody has
+> read belongs in `BASELINE_UNCITED`."*
+
+That is the reason I did **not** take the shorter path. `BASELINE_UNCITED` would have gone green in
+one line and permanently exempted a brand-new sheet from both walks — the list is shrink-only by
+design, and adding to it is the failure the message names.
+
+**The entry follows the four siblings exactly** (`tsx`, `css`, `parentCss: ['settings/SettingsPage.css']`),
+because that is what the card actually is: 14 own classes and one borrowed `settings-section-title` —
+the same single-name relationship the other cards have with that scaffold.
+
+**Kill-tested:** removing the entry reproduces the uncited failure verbatim, naming the sheet. The
+entry is load-bearing, not decoration — and now the card's classes are graded in **both** directions
+(used-but-undefined, defined-but-unused) where before neither ran.
+
+#### Sequencing, recorded because it worked
+
+Round 102 measured the entry while the card was mid-flight and deliberately **did not** add it: the
+file was uncited, unwired, and another lane owned all three of its parts. One round later the wiring
+landed, the guard went red on schedule, and the fix was the measurement already taken.
+
+**Measuring into a plan note rather than acting immediately is the right shape when the artefact is
+ownership-contested** — it converts a future investigation into a future edit without touching
+another lane's uncommitted work.
+
+Verified: `screenExtraction` **361 passed**; full suite **697 files / 11,575 passed, 0 failed**;
+typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
 Verified: `planStatusAccuracy` + `evidenceAnchorResolves` **9 passed**; `writtenSettingHasReader` +
 `deadSettingsKey` **6 passed**; typecheck 0; bundle parity 0 missing.
 
