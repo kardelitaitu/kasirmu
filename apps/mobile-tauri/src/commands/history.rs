@@ -315,18 +315,23 @@ pub async fn list_sales_scoped(
     // the global db and adds the branch/workspace scope, exactly as
     // `kasirmu_bridge::history::list_sales_scoped` does.
     require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
+    // C1.2: the tier's history window lives on the tenant subscription in the
+    // global identity DB; the sales themselves come from the store DB.
+    let days = {
+        let global_db = state.db.lock().await;
+        let sub = TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.effective_tier().sales_history_days()
+    };
     let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    let sub = TenantSubscription::load(&db, "default")?
-        .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-    sub.verify_signature()?;
-    let days = sub.effective_tier().sales_history_days();
     let (sales, capped) = store.list_sales_with_history_cap_bounded(days, limit, offset)?;
-    drop(db);
+    drop(db_guard);
     Ok(SaleListResponse {
         sales: sales
             .into_iter()
