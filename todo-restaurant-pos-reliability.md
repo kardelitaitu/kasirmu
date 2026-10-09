@@ -1926,6 +1926,66 @@ as outstanding rather than claimed.
 Verified: full suite **696 files / 11,561 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle
 parity 0 missing; the guard kill-tested in both directions.
 
+### F41 — a typed accessor was counted as a reader (round 93) — `57cb01760`
+
+The F26/F27 sweep has now been wrong twice in the same direction, and this round found the second
+instance.
+
+**The starting point was another lane's D6 narrowing**, which I verified rather than trusted: the
+printer's `format_money` (`receipt.rs:251-275`) applies `show_currency` and `decimal_separator` and
+has **no grouping step**, so `currency.thousands_separator` is stored, settable, and read by **no
+formatter**. Their record holds.
+
+**Then the question the sweep should have answered.** `CURRENCY_THOUSANDS_SEPARATOR` has
+`get_`/`set_` in `typed.rs:657/662` — and my sweep counted that file as a **reader**, so it passed.
+
+**The flaw: a definition is not a use.** `typed.rs` names the constant twice, inside an accessor
+PAIR. A getter nobody calls and a setter nobody calls are the *shape of a dead key*, not evidence of
+a live one — the same failure as F36 (a skipped test claiming a pin) and F29 (a comment counted as a
+consumer), now in a third costume.
+
+#### The fix, and the fix's own fix
+
+My first version of the check was **per-file**: look for consumer-ish words (`format!`, `group`, …)
+anywhere in the file and treat any hit as proof the key is live. **It did not fire** — because
+`typed.rs` contains `format!` in an unrelated function for `redis.cache_ttl`, so the whole file was
+judged a consumer.
+
+**A kill-test caught it**, which is the only reason the check is per-FUNCTION now: it splits on the
+`pub fn` boundary so a consumer elsewhere in a file cannot vouch for an accessor here.
+
+#### What the corrected rule surfaced
+
+With the rule working, the sweep went from **passing** to reporting **23** keys. Those needed
+triage, not a blanket allow-list:
+
+| Class | Keys | Verdict |
+|---|---|---|
+| **Genuinely dead** — a complete accessor pair, zero production references | `PG_SYNC_*` (6), `RATE_SYNC_INTERVAL`, `RATE_SYNC_BASE_CURRENCY`, `CURRENCY_THOUSANDS_SEPARATOR` | **9 recorded defections** |
+| Read by the **UI over IPC**, never named in Rust | `STORE_*` (4), `CURRENCY_*` (3), `BRAND_*` (3), `SYNC_*` (2), `TAX_ROUNDING_MODE`, `CREDIT_*` (2) | **false positives of a Rust-only sweep** |
+| Already classified | `CURRENCY_*` partial | covered |
+
+**The second row is why this is a scoped map and not an allow-list.** The sweep scans Rust only,
+while a renderer read arrives as a string over `get_setting_scoped` — `store.address`, for instance,
+is rendered by `StoreInfoCard.tsx:43` and `TopologyScreen.tsx:673` and appears in **no** Rust file.
+Blanket-listing all 23 would be exactly the anti-pattern this session has spent rounds removing, so
+each entry names the UI consumer that proves the key live, and a key with no consumer in **either**
+layer still fails.
+
+**Nine dead keys is the real yield**, and every one has the same signature: **`grep` finds a getter,
+and a getter reads like coverage.** The two sync families even carry defaults that are never
+consulted (`"360"`, `"USD"`).
+
+**Not fixed — recorded.** Wiring a sync interval or a Postgres connection string is a feature, not a
+reliability repair; what this round establishes is that the storage API exists and nothing acts on
+it. `ACCESSOR_WITHOUT_CONSUMER` now carries the evidence per key.
+
+**Kill-tested twice:** the per-file version (which is how the per-function fix was found) and the
+final rule, by removing `PG_SYNC_HOST` from the map and watching the sweep fail naming it.
+
+Verified: full suite **696 files / 11,562 passed, 0 failed**; typecheck 0; eslint 0; bundle parity
+0 missing.
+
 Verified: full suite **696 files / 11,560 passed, 0 failed**; typecheck 0; **eslint 0 errors**;
 bundle parity 0 missing; kill-tested both directions.
 
