@@ -596,6 +596,43 @@ cannot manufacture an app-side write-batch record with the previous value's hist
 databases is exactly the condition under which a device measurement proves nothing — and the
 only way to know was to read what the scripts write.
 
+### F26 — `store.preset` is written at provisioning and read by nothing (round 66) — `dafcb6789`
+
+The write-side twin of the F1 dead-key class. F1 asked *"is this key the UI shows actually
+read?"*; this asks *"is this key the backend WRITES actually read?"* — and it is invisible from
+the UI, because a key with no control has no screen on which to notice it.
+
+Found by listing every setting on the device. `store.preset` appears in the global DB holding
+`'restaurant'`, alongside **ten explicit `feature.*` rows** — and it is the FEATURES the app
+reads (`features.rs:289`). The preset is a label recording **how** the device was provisioned;
+nothing derives behaviour from it.
+
+| Link | Where |
+|---|---|
+| Declaration | `platform/core/src/settings/keys.rs:18` |
+| **The only write** | `crates/kasirmu-core/src/db/provisioning.rs:825` |
+| Production reads | **none** — every other reference is a `*_tests.rs` file |
+
+**Not removed: pinned.** Dropping the write is a data-format change across provisioning, and the
+key may be intended as a support record. What is wrong today is that **nothing says it is a
+record rather than an input** — so the guard says it, and fails if either side moves.
+
+**My own kill-test caught the guard being unfalsifiable, which is the part worth keeping.**
+The first version searched for `store_preset` — a spelling that appears in **no** Rust file: the
+constant is `STORE_PRESET` and the key literal is `"store.preset"`. I planted a production reader
+and the guard **passed**. A check whose needle matches nothing can never fail, and it would have
+sat there looking like coverage. Fixed to search every plausible spelling, plus a second
+case asserting each needle occurs somewhere at all. Re-killed: it now fails naming the planted
+file.
+
+Same lesson as rounds 30 and 48, and worth stating plainly: **a test you have not watched fail is
+not yet evidence.** Here the failure was in the test, not the code — which is exactly the case a
+kill-test exists to find.
+
+Verified: my four settings guards **10 passed**; typecheck 0; eslint 0. The full suite shows 6
+failures in `tableLabel.*` from **another lane's in-flight edit** (both files dirty, untouched by
+me — `git log` shows `c40ec0228` as the last commit there), so this commit carries only my file.
+
 **No code changed.** This round adds independent confirmation to an existing retraction, which is
 worth having: a retraction rests on one lane's measurement, and a second measurement from a
 different direction is what makes it safe to act on. The lesson both rounds share is the one in
