@@ -223,8 +223,31 @@ export interface CompleteSaleScopedArgs {
   documentKind?: 'receipt' | 'invoice';
 }
 
-export const completeSaleScoped = (sessionToken: string, args: CompleteSaleScopedArgs): Promise<CompleteSaleResult> =>
-  loggedInvoke<CompleteSaleResult>('complete_sale_scoped', { sessionToken, args });
+interface RawCompleteSale {
+  saleId?: string;
+  sale_id?: string;
+  total?: Money | null;
+  lineCount?: number;
+  line_count?: number;
+  receiptNumber?: string | null;
+  receipt_number?: string | null;
+  statutoryNumber?: string | null;
+  statutory_number?: string | null;
+}
+
+export const completeSaleScoped = async (
+  sessionToken: string,
+  args: CompleteSaleScopedArgs,
+): Promise<CompleteSaleResult> => {
+  const raw = await loggedInvoke<RawCompleteSale>('complete_sale_scoped', { sessionToken, args });
+  return {
+    saleId: raw.saleId ?? raw.sale_id ?? '',
+    total: raw.total ?? null,
+    lineCount: raw.lineCount ?? raw.line_count ?? 0,
+    receiptNumber: raw.receiptNumber ?? raw.receipt_number ?? null,
+    statutoryNumber: raw.statutoryNumber ?? raw.statutory_number ?? null,
+  };
+};
 
 /** PROMO-3: one promotion's discount in the checkout preview. */
 export interface PromotionDiscountPreview {

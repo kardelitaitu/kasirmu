@@ -140,7 +140,8 @@ pub struct CompleteSaleScopedArgs {
     pub document_kind: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Completesaleresult.
 pub struct CompleteSaleResult {
     /// ID of the associated sale.
