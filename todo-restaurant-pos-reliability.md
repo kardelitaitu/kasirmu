@@ -877,6 +877,48 @@ call-site addition — the distinction the plan already draws between WIRE and B
 **Still inert:** `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`.
 `sound_chime` is the remaining D5 key and needs a POS sound path (`useSound` is KDS-only).
 
+### F23 — three of the five core rail toggles reach nothing (round 61) — `b5c281e2e`
+
+F16 fixed `open_bill`, F17 made the pair *visible*. This round asked the general question
+instead of chasing the next instance: **every core rail has a toggle on the payments screen —
+which ones does the charge modal actually honour?**
+
+Measured, not inferred, against HEAD:
+
+| Core rail | Modal gate | Verdict |
+|---|---|---|
+| `qris` | `railOffered(paymentRails, 'qris')` | **WIRED** |
+| `open_bill` | `coreRailWithheld(paymentRails, 'open_bill')` | **WIRED** (round 52) |
+| `cash` | — | **INERT** |
+| `card` | — | **INERT** |
+| `credit` | — | **INERT** (parked) |
+
+**So four of five core rails had an inert toggle, and two of them (`cash`, `card`) had never
+been noticed.** An operator switches Card / EDC Terminal OFF and the Card tab keeps working.
+
+**Why this is a pin and not a fix — and the code already says why.** The modal's `TENDER_RAILS`
+documents each case (`useLocalPaymentRails.ts:127-137`), and the reasoning holds: `cash` and
+`card` are treated as **universal tenders** — the `card` rail models the EDC *terminal*, and a
+site with no terminal still takes a card by hand — while `credit`'s tender-vs-facility status is
+an explicitly parked owner question. Wiring any of them changes checkout behaviour. That is a
+product decision, not a reliability repair, and inventing one would repeat exactly the mistake
+round 48 caught.
+
+**The deliverable is the mapping**, which existed nowhere: `coreRailToggleReach.test.ts`
+classifies all five and fails when either half moves — a rail wired without updating the list,
+OR an entry left INERT after being wired. Its first case guards the guard by extracting
+`CORE_RAIL_CODES` and requiring an entry for every member, so a sixth rail cannot pass by
+omission.
+
+**The kill-test caught a real distinction.** My first INERT pattern matched
+`railParam(paymentRails, 'cash', 'autoKick', …)` — my own round-54 auto-kick fix — and reported
+`cash` as wired. It is not: `railParam` reads a **parameter** on the rail, while the toggle
+writes the rail's **`is_enabled`**. Only `railOffered` / `coreRailWithheld` answer the question
+the toggle asks, so the pattern now names exactly those two.
+
+`b5c281e2e`. Verified: full suite **685 files / 11,497 passed**; typecheck 0; eslint 0; bundle
+parity 0 missing. Kill-tested in both directions.
+
 ---
 
 ## 3. Repair plan
