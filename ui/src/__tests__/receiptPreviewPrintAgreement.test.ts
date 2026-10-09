@@ -14,6 +14,8 @@
 // `Rp 1.500,00` where the paper prints `Rp 1500`.
 
 import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { formatPrice } from '@/features/restaurant/screens/receiptLogic';
 
 describe('receipt preview/print agreement (IDR)', () => {
@@ -60,5 +62,70 @@ describe('receipt preview/print agreement (IDR)', () => {
     expect(previewed).toBe('Rp 1.500');
     const printed = 'Rp 1500';
     expect(previewed).not.toBe(printed);
+  });
+  it('lists which receipt toggles the PRINTER can actually honour', () => {
+    // ⚠️ A MEASUREMENT, not a pass/fail gate on behaviour: it states the mapping between
+    // the screen's toggles and `ReceiptConfig` (kasirmu-hal/src/drivers/receipt.rs:98-117),
+    // which is the only thing that reaches the paper. A toggle absent from that struct
+    // cannot affect a printed receipt, whatever the preview shows.
+    //
+    // This exists so the three divergences found in rounds 33-34 are recorded in ONE
+    // place as data, instead of only in prose, and so a future toggle can be checked
+    // against the same list.
+    const printerCanHonour: Record<string, boolean> = {
+      showCurrency: true, // ReceiptConfig.show_currency
+      showTax: true, // ReceiptConfig.show_tax
+      showTableNumber: true, // ReceiptConfig.show_table_number
+      decimalSeparator: true, // ReceiptConfig.decimal_separator
+      paperWidth: true, // ReceiptConfig.paper_width
+      footer: true, // ReceiptConfig.footer
+      // ── No ReceiptConfig field, so the paper cannot render these ──
+      showReceiptCode: false,
+      showDateTime: false,
+      showStaffName: false,
+      showItemNotes: false,
+      showDecimals: false,
+      showThousandsSeparator: false,
+    };
+    const unhonourable = Object.entries(printerCanHonour)
+      .filter(([, ok]) => !ok)
+      .map(([name]) => name);
+    // Recorded so the count is visible: 6 of 12.
+    expect(unhonourable).toEqual([
+      'showReceiptCode',
+      'showDateTime',
+      'showStaffName',
+      'showItemNotes',
+      'showDecimals',
+      'showThousandsSeparator',
+    ]);
+  });
+  it('the staff line exists ONLY in the preview: the printer has no staff field at all', () => {
+    // Sharper than `showStaffName` merely being unswitchable. Grepping
+    // `kasirmu-hal/src/drivers/receipt.rs` for staff/cashier returns NOTHING: the paper has
+    // no concept of a staff name, so the preview's `staffSpan`
+    // (RestaurantReceiptsScreen.tsx:1431, fed by `session.display_name`) renders a line that
+    // cannot ever appear on a printed receipt — in either toggle position.
+    //
+    // The sibling toggles (showReceiptCode / showDateTime / showItemNotes) differ: those
+    // lines DO print, unconditionally (:467 receipt number, :468 date, :522 item note), so
+    // switching them off hides them from the preview while the paper keeps them.
+    //
+    // Read from the renderer rather than asserted from memory, so this fails if the printer
+    // ever gains a staff line.
+    const printer = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        '../crates/kasirmu-hal/src/drivers/receipt.rs',
+      ),
+      'utf-8',
+    );
+    expect(
+      /staff|cashier/i.test(printer),
+      'the ESC/POS renderer now mentions a staff/cashier line. The receipt preview has a ' +
+        'Show Staff Name toggle whose preview line previously had NO printed counterpart — ' +
+        'if the printer renders one now, that toggle became meaningful and this case (and ' +
+        'the note above it) must be revisited.',
+    ).toBe(false);
   });
 });
