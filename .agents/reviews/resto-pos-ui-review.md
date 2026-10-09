@@ -264,9 +264,26 @@ convention, corrected here with the commit that changed each:
   string surviving only in the header comment (`:9`). The 26 tautologies are gone.
 - **F4 — CLOSED (moot).** The vestigial workspace settings modal was dropped (`3af8e2989`);
   no `workspaceType=` remains in `PosScreen.tsx`. There is no hardcode left to fix.
-- **F5 — DOCUMENTED, still open as a product question.** The two-tier split is now recorded
-  in code (`RestaurantMenu.tsx:42-63`) and in `f4455548a`, but `unavailable` (86) staying
-  terminal-local is still an undocumented intent vs gap — no ADR or product decision backs it.
+- **F5 — CLOSED on the half that mattered; the rest stays a product question.**
+  Re-measured 2026-10-09 at `0.0.41`. This line said `unavailable` (86) *"staying
+  terminal-local is still an undocumented intent vs gap"*. **It no longer stays terminal-local
+  — the gap this finding named was closed in response to it:**
+  - **`unavailable` is now backend-backed and cross-terminal.** It rehydrates through
+    `getSettingScoped` (`RestaurantMenu.tsx:281`) under a LOCATION-scoped key
+    (`:228`, `restaurant.unavailable.<locationId>`), and `:302-309` re-polls it when the tab
+    regains visibility, with the comment naming this finding: *"86'd items from another
+    terminal appear within seconds of refocusing … **(Cross-terminal awareness gap — §F5.)**"*
+  - **The scope is the right one.** `unavailableKey` (`:128-129`) keys by LOCATION, not
+    terminal — an 86 is a property of the kitchen, not of the screen that reported it. That is
+    the promotion to Tier 1 this finding asked for, done with the correct key.
+  - Independently corroborated on the connected tablet in round 64 of
+    `todo-restaurant-pos-reliability.md`: `restaurant.unavailable` appears in the store DB with
+    app-written `setting_updated` rows carrying the app's terminal id.
+
+  **What genuinely remains open is the split itself, not `unavailable`:** `pinned`, `colors`
+  and `pop` are localStorage-only by design, and no ADR records whether that is intended. The
+  code says so honestly at `:75-79` and asks for the decision. That is the surviving product
+  question, and it is narrower than this line claimed.
 - **F1 — CLOSED, correcting this line's own claim.** Re-measured 2026-10-09 at `0.0.41`:
   the restaurant path CAN attach modifiers, and the sentence above was stale. Evidence,
   all re-read rather than inferred:

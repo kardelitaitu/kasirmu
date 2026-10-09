@@ -85,6 +85,28 @@ describe('the resto-pos review status block matches the tree (F30)', () => {
       .toContain('modifiers?: ModifierSelection[]');
   });
 
+  it('F5 records the unavailable gap as CLOSED and it really syncs', () => {
+    // The half of F5 that WAS a defect: an 86'd item not reaching other terminals. The
+    // review line said it "stays terminal-local"; the code now polls the backend and the
+    // comment names §F5. If that polling is removed the claim goes false again.
+    expect(statusOf('F5'), 'F5 is no longer recorded as closed on the unavailable half')
+      .toMatch(/^CLOSED/);
+    const menu = read(MENU);
+    expect(menu, 'RestaurantMenu stopped rehydrating unavailable from the backend — F5 has regressed')
+      .toContain('getSettingScoped(sessionToken, unavailableSettingKey)');
+    // Anchored on the DEFINITION and the visibility LISTENER, not on the bare name.
+    // My first version asserted `toContain('refetchUnavailable')` and passed against a
+    // planted rename, because the name survives at its call sites — the same
+    // string-vs-structure flaw the round-71 kill-test caught one case over.
+    expect(menu, 'the re-poll helper lost its declaration — F5 has regressed')
+      .toMatch(/const refetchUnavailable = useCallback\(\(\) => \{/);
+    expect(
+      menu,
+      'the visibility listener that makes this CROSS-TERMINAL is gone — the backend\n' +
+        'read alone only syncs on mount, which is what F5 reported as the gap',
+    ).toMatch(/visibilityState === 'visible'\)\s*refetchUnavailable\(\)/);
+  });
+
   it('F2 claims CLOSED and the SHARED cart panel carries both props', () => {
     expect(statusOf('F2')).toMatch(/^CLOSED/);
     const panel = read(SHARED_PANEL);
