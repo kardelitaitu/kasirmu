@@ -4,6 +4,8 @@
 //   1. cart_panel_renders_locked_deduction_location
 //   2. cart_panel_unbound_rejects_add_line
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { screen, waitFor } from '@testing-library/react';
@@ -426,5 +428,97 @@ describe('PosScreen – ADR-19 §17 deduction location', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
     }, FAST_WAIT);
+  });
+
+  it('PosScreen forwards the line description and price into PriceOverrideModal', async () => {
+    // ⚠️ This case closes the KNOWN REMAINING GAP that
+    // `PosScreen.integration.test.tsx:29-33` names and leaves open:
+    //
+    //   "nothing asserts PosScreen's own wiring into PriceOverrideModal — i.e.
+    //    that it renders when `overrideTarget` is set and forwards
+    //    `lineDescription` / `currentPrice`"
+    //
+    // The modal HAS coverage, but every existing case renders it in ISOLATION
+    // (`PriceOverrideModal.test.tsx`, `-Sync`, `-KeyboardEdgeCases`, `-PriceStep`),
+    // and the one test that opens it through PosScreen
+    // (`cart_panel_badge_click_opens_fastpin_overlay`) only cancels it — it never
+    // reads a prop. Kill-tested 2026-10-09 by replacing the `lineDescription`
+    // argument with a literal: the suite stayed GREEN while the modal rendered
+    // "KILLTEST" in place of the item name and price. The operator's only
+    // confirmation that they are overriding the RIGHT line would have been wrong.
+    vi.mocked(salesApi.startSaleScoped).mockResolvedValue({
+      cartId: 'cart-1' as CartId,
+      deductionLocationId: 'loc-store-inventory',
+    });
+    vi.mocked(salesApi.getCartDeductionLocationScoped).mockResolvedValue({
+      locationId: 'loc-store-inventory',
+      locationName: 'Store Inventory',
+    });
+
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+    await waitFor(() => {
+      expect(mockedBarcode.useBarcodeScanner).toHaveBeenCalled();
+    }, FAST_WAIT);
+    await screen.findByText('Close');
+
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 400, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      product_type: 'standard',
+      tax_rate_ids: [],
+      created_at: '',
+      price_updated_at: '',
+    });
+
+    await act(async () => {
+      mockedBarcode.triggerScan('BARCODE-001');
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    await userEvent.click(screen.getByRole('button', { name: /override price for test item/i }));
+
+    // The forwarded `lineDescription` is `${name} — ${formatted price}`, rendered by
+    // `PriceOverrideModal.tsx:238` into `.price-override-item`. Query that element
+    // rather than the text: the CART LINE also reads "Test Item", so a text query
+    // matches two nodes and fails on ambiguity rather than on the wiring.
+    //
+    // Assert the NAME (which line) and that a PRICE is present, rather than a full
+    // formatted string — the latter would re-implement `formatMoney`.
+    const description = await waitFor(() => {
+      const el = document.querySelector('.price-override-item');
+      expect(el, 'the override modal did not render its line description').not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(description.textContent).toMatch(/Test Item/);
+    expect(
+      description.textContent,
+      'only the item NAME reached the modal — the price half of the forwarded ' +
+        'description is missing, so the operator cannot confirm the amount',
+    ).toMatch(/\d/);
+  });
+
+  it('the override line description is NOT a bare label (guards the case above)', async () => {
+    // Guards the guard: the assertions above would also pass if `lineDescription`
+    // were the product name alone, so this pins that the FORWARDED value carries
+    // the price separator the production expression builds.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/features/sales/PosScreen.tsx'),
+      'utf-8',
+    );
+    const m = src.match(/lineDescription=\{`([^`]*)`\}/);
+    expect(m, 'the `lineDescription` expression moved — this pin has drifted').not.toBeNull();
+    expect(
+      m![1],
+      'the line description no longer interpolates the item or its price; the override ' +
+        'modal would identify the wrong line',
+    ).toMatch(/overrideTarget\.(name|sku)/);
+    expect(m![1]).toMatch(/formatMoney|unit_price/);
   });
 });
