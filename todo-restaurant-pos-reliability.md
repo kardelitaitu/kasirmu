@@ -565,6 +565,34 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 32 — finishing the sweep instead of stopping at the bug
+
+Round 31 fixed `guest_count` and pinned the three gates whose runtime prop is a `??`
+fallback. This round I checked the two gates that are **not** mapped that way, because a
+guard covering three of five is the same short-list failure that hid surfaces twice in
+rounds 18 and 20.
+
+**Both agree — by a different route, which is exactly why they needed their own cases:**
+
+| Gate | Unset-key read | Effective | Screen default |
+|---|---|---|---|
+| `customerName` / `guestCount` / `saveTab` | `null` → `?? true` | shown | `true` |
+| `courseFiring` | `raw === 'true'` → explicit `false` | off | `false` |
+| `orderTypePrompt` | `activeWorkspace === 'restaurant-pos'` | on for this POS | `true` |
+
+The agreement is a fact about each **pair**, and either half can move. Making
+courseFiring's read `raw !== 'false'` — the tempting "be permissive like the other three"
+edit — would reproduce the guest-count bug exactly. That case is now pinned and
+kill-tested (flipping the screen default to `true` fails it).
+
+**One asymmetry is deliberate and worth recording**: `courseFiring` treats an *unset* key
+(`raw === null` → `false`) differently from a *failed* read (`null` → shown, `:785`). The
+other three collapse both into `null`. That is correct here — an unset course-firing key
+means "the feature was never turned on", while a failed read must not remove a capability.
+I checked rather than assumed, and left it alone.
+
+`cd73b5dda`.
+
 ### Round 31 — the settings screen described a POS that did not exist
 
 With the tender class closed, I turned the "one value, several consumers" lens on the goal's
