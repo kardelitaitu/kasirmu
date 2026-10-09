@@ -625,6 +625,45 @@ Kill-tested by forcing `coreRailWithheld` to never withhold.
 
 Verified: 10 payment suites / **236 passed**, typecheck 0, eslint 0, bundle parity 0 missing.
 
+#### Round 53 — F17: two core rails rendered NOWHERE, and the abandoned "fix" was a no-op
+
+`77329b8a4`. Followed F16 into the screen that owns the rail flags, and found the other half
+of the same story — **worse than F16, not better.**
+
+`CORE_RAIL_CODES` (`paymentRailsLogic.ts:11`) names five non-removable rails: cash, card, qris,
+**open_bill**, **credit**. The screen rendered dedicated cards for only three. The other two were
+excluded from the Other-Rails list *as well*, by `internalHiddenCodes = ['open_bill', 'credit']`.
+
+So they rendered **nowhere**: no card, no row, no hint they existed. The operator could not see
+them or switch them. **F16 was a toggle that did nothing; F17 is a toggle that is not there** —
+and a dead toggle is at least visible.
+
+**The abandoned tree edit made it worse, and this is why it must not be committed.** It deleted
+`internalHiddenCodes` — good — but added both codes to `specializedCodes` instead. Since the
+Other-Rails filter is `!specializedCodes.includes(...)`, that is the *same exclusion* by a
+different name: the rails stayed invisible, and the list that had **documented why** was gone.
+Its comment meanwhile claimed *"the charge modal gates BOTH on their rail now (full parity)"* —
+false for `credit` even now, and it deleted the only note that admitted the rails were hidden.
+
+**The kill-test proves it is the same bug.** Re-adding `open_bill`/`credit` to `specializedCodes`
+— the abandoned edit's exact change — reproduces the failure verbatim. A "fix" whose diff is
+indistinguishable from the defect is not a fix.
+
+**The repair** is to remove them from `specializedCodes` only. The Other-Rails loop is already
+core-aware — it badges a core rail "Core Method" and withholds the remove button via
+`isCoreRail` — so both render correctly with nothing further. Added a guard case asserting
+`midtrans`/`stripe` get **no** rail switch, since they are operator-configured GATEWAYS with
+their own cards and are not in `CORE_RAIL_CODES`; a fix that demanded one would duplicate the
+gateway's own control.
+
+**Clean-diff discipline.** The file was dirty with the abandoned work, so I `git checkout --`
+it to HEAD and reapplied **only my change** — 20 insertions, 4 deletions, no `isActive` hunk and
+no "full parity" comment. Committing the dirty file would have swept in a change whose premise
+round 51 disproved.
+
+Verified: 4 payment suites / **115 passed**, typecheck 0, eslint 0, bundle parity 0 missing.
+Kill-tested by restoring the exclusion.
+
 ---
 
 ## 3. Repair plan
