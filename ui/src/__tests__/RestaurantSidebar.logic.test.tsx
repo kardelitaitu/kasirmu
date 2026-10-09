@@ -147,6 +147,31 @@ describe('RestaurantSidebar — manager rows follow settings:edit (F8)', () => {
     ).toBeNull();
   });
 
+
+  it('PRODUCTION SHAPE: the role-based prop must not bypass the permission gate', () => {
+    // ⚠️ The four F8 cases above never pass `isManager`, so they exercise the
+    // PERMISSION branch. But `PosScreen.tsx:1239` always supplies
+    // `isManager={isManager}` from `useAuth()`, and that prop WINS:
+    //
+    //     const canEditSettings = isManagerProp ?? (session?.permissions !== undefined ? ... )
+    //
+    // `AuthContext.isManager` is a pure ROLE check (owner/admin/manager), with no
+    // permission awareness, so in the real app the permission logic never runs and
+    // the F8 defect it was written to fix is still live: a "manager" role whose
+    // grant omits `settings:edit` reaches these rows, and their save is refused at
+    // the IPC boundary — the enabled-control-that-always-errors F8 names.
+    //
+    // This case renders the real production shape to pin it.
+    mockAuth.isManager = true; // the role says manager...
+    mockAuth.session = { role_name: 'Manager', permissions: ['sales:process'] }; // ...the grant says no
+    renderSidebar({ cartActions: makeActions(), isManager: true }); // what PosScreen passes
+
+    expect(
+      screen.getByTestId('restaurant-sidebar-settings'),
+      'the role prop bypassed the permission gate — the F8 fix is inert in production',
+    ).toBeDisabled();
+  });
+
   it('falls back to the role when the session carries no permission list', () => {
     // An older session shape cannot answer the permission question, so it must
     // not be silently locked out of every settings screen.

@@ -248,13 +248,27 @@ export function RestaurantSidebar({
   // shape — it falls back to the role, so a session that cannot answer the
   // question is not silently locked out. That is exactly `passesGate`'s contract.
   //
-  // `isManagerProp` still wins when supplied: it is the explicit override the
-  // workspace-card and inspector hosts pass, and it predates this fix.
+  // ⚠️ THE SESSION'S PERMISSION LIST OUTRANKS `isManagerProp`, and that order was the
+  // fix — the prop used to win outright, which made everything above inert in the
+  // real app.
+  //
+  // `PosScreen.tsx:1239` supplies `isManager={isManager}` from `useAuth()`, whose
+  // `isManager` is a pure ROLE check (AuthContext.tsx:176-182, owner/admin/manager,
+  // no permission awareness). Because that prop took precedence, production never
+  // reached the permission branch at all: a "manager" role whose grant omits
+  // `settings:edit` still got enabled rows whose saves are refused at the IPC
+  // boundary — exactly the F8 defect, still live behind a fixed-looking gate.
+  //
+  // The prop is now the FALLBACK rather than the override. It is still the right
+  // answer when the session carries no grant list, because then the role is the
+  // only thing anyone can consult. (This also corrects the old note here, which
+  // said the prop was kept for "workspace-card and inspector hosts": grepping
+  // `RestaurantSidebar` shows `RestaurantMenu` is its only host and `PosScreen` the
+  // only host of THAT, so no such caller exists.)
   const canEditSettings =
-    isManagerProp ??
-    (session?.permissions !== undefined
+    session?.permissions !== undefined
       ? hasGrantedPermission(session.permissions, 'settings:edit')
-      : authIsManager);
+      : (isManagerProp ?? authIsManager);
   const effectiveIsManager = canEditSettings;
 
   /**
