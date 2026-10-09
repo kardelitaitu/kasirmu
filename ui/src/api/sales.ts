@@ -728,18 +728,8 @@ export interface HeldCartFull {
 }
 
 /** ADR #7: Hold a cart in the store resolved from a session token. */
-export const holdCartScoped = (sessionToken: string, args: HoldCartArgs): Promise<{ id: string }> => {
-  const payload = {
-    ...args,
-    cartData: args.cart_data,
-    itemCount: args.item_count,
-    totalMinor: args.total_minor,
-    billType: args.bill_type,
-    customerName: args.customer_name,
-    deductionLocationId: args.deduction_location_id,
-  };
-  return loggedInvoke<{ id: string }>('hold_cart_scoped', { sessionToken, args: payload });
-};
+export const holdCartScoped = (sessionToken: string, args: HoldCartArgs): Promise<{ id: string }> =>
+  loggedInvoke<{ id: string }>('hold_cart_scoped', { sessionToken, args });
 
 /** ADR #7: Scoped held carts listing. */
 export const listHeldCartsScoped = (sessionToken: string): Promise<HeldCartRow[]> =>
