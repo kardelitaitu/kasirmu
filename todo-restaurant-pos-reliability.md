@@ -1,6 +1,35 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE (P6 landed round 74; P1 re-audited complete round 75; F11 landed round 78). Remaining: D6, and the F19/F23/F24 owner calls.**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. Remaining: the F19 and F23/F24 owner calls, plus one unasserted D6 pairing.**
+>
+> **Header corrected again 2026-10-10 (this round), and the reason it needed correcting is the
+> point.** It read *"Remaining: D6, and the F19/F23/F24 owner calls."* **D6 is now closed** —
+> its last open row (the printer had no thousands grouping, so IDR printed `Rp15000` beside a
+> `Rp 15.000` preview) was fixed in `ac8d82fd0`; the other five rows had already been closed by
+> copy fixes in `4a15a51bb` or by construction. **D5 was also already resolved** when the header
+> named it: both remaining toggles had been wired by `542e8db92` and `ea8f8a007`, and the
+> "two remain open" text was stale prose, not open work. F40 — the only finding marked OPEN in
+> this file — was fixed by `267e23e9e` in a later round whose heading the earlier one did not
+> supersede.
+>
+> That is now the **fourth** time this header has described work that had already landed (see
+> the round-75 note below and the two it names). Recording it plainly: a header that summarises
+> progress decays faster than anything else in a plan, and the failure mode is always the same —
+> the work lands, the summary is not re-read, and a later reader starts on a defect that no
+> longer exists. **Every claim above was re-measured against HEAD before writing it.**
+>
+> What is actually left, verified this round:
+>
+> 1. **F19** — five payments controls with **zero Rust readers** each (`verifyDrawer`,
+>    `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`; measured by grep).
+>    Each needs a feature invented behind it, or the control deleted.
+> 2. **F23/F24** — the `credit.*` keys are stored and exposed but **enforced nowhere**:
+>    `is_credit_enabled` is called only by its own getters, and `credit_limit` has **zero**
+>    Rust hits. A store can enable credit, set a limit, and the POS sells on credit regardless.
+> 3. **D6 residual (unasserted, not broken)** — the printer now groups, but the preview formats
+>    through `Intl`/locale and ignores the setting, so an operator who explicitly sets `comma`
+>    on an IDR store gets paper and preview diverging **by their own choice**. Arguably correct;
+>    nothing pins it either way.
 >
 > **Header corrected 2026-10-09 (round 75):** it read *"P6 2 of 3 screens"* and *"P1's last
 > two keys (owner decision: they have no consumer at all)"*. **Both went stale in the same
@@ -4178,14 +4207,23 @@ This is the one phase whose correct output is a correction rather than a diff.
 
 ---
 
-## 4. Decisions — D1-D5 RESOLVED; **D6 narrowed to ONE row** (round 73)
+## 4. Decisions — **ALL RESOLVED** (D1–D6; D6 closed round 94, `ac8d82fd0`)
 
-D5 is closed as of round 73 (both remaining toggles were wired by later rounds; re-verified
-against the code, not the prose). D6 has been re-measured and now stands at a single open
-row — the printer cannot group thousands — with the other five toggles closed by copy fixes
-or by construction. See the D6 heading for the three-way split.
+D1–D4 were settled 2026-10-09. **D5 was resolved in round 73** — both toggles it listed as
+needing work had been wired by later rounds, so the "two remain open" text was stale prose
+rather than open work. **D6 was closed in round 94**: five of its six toggles had already been
+closed by copy fixes (`4a15a51bb`) or by construction, and the last row — the printer had no
+thousands grouping, so IDR printed `Rp15000` beside a `Rp 15.000` preview — was fixed in
+`ac8d82fd0`. Each heading below states its own status and names the commit that earned it.
 
-_(The previous header read "D1-D4 SETTLED 2026-10-09; D5-D6 OPEN".)_
+One residual is recorded under D6 and is **not** a defect: the preview formats through
+`Intl`/locale rather than reading `currency.thousands_separator`, so an operator who
+explicitly sets `comma` on an IDR store gets paper and preview diverging by their own choice.
+Nothing asserts that either way.
+
+_(Previous headers read "D1-D4 SETTLED 2026-10-09; D5-D6 OPEN", then "D1-D5 RESOLVED; D6
+narrowed to ONE row". Both went stale the same way — the work landed and the summary was not
+re-read.)_
 
 D1-D4 are decided, and each answer records the evidence that decided it, not just the
 choice, so a later reader can re-derive it.
@@ -4266,7 +4304,7 @@ _(The table that used to live under this heading is now this one.)_
 Each toggle renders a description promising behaviour the app does not deliver. Pinned as
 declared-dead in `__tests__/deadSettingsKey.test.ts`, so a fourth cannot appear silently.
 
-### D6 — OPEN: receipt toggles the printer cannot honour (rounds 33-35)
+### D6 — CLOSED (round 94): receipt toggles vs the printer (raised rounds 33-35, closed `ac8d82fd0`)
 
 `ReceiptConfig` (`crates/kasirmu-hal/src/drivers/receipt.rs:98-117`) has 8 fields;
 **6 of the receipts screen's 12 toggles have none** — `showReceiptCode`, `showDateTime`,
@@ -4362,7 +4400,7 @@ the receipt every customer receives.
 | Preview-only, copy already honest | `showReceiptCode`, `showDateTime`, `showItemNotes` | **CLOSED** in `4a15a51bb` | none — the description now names the divergence |
 | No printer field at all | `showStaffName` | **CLOSED** in `4a15a51bb` | copy says *"the printer has no staff line"* |
 | Exp-0 by construction | `showDecimals` | **CLOSED** round 33 | none |
-| **Printer simply cannot group** | `showThousandsSeparator` | **OPEN — and this is a defect, not a preference** | the printer needs grouping; the setting needs a reader |
+| **Printer simply cannot group** | `showThousandsSeparator` | **CLOSED — `ac8d82fd0`** | the printer groups now; the setting has a reader. See round 94 below. |
 
 **Why the last row is not a product decision.** The other five are cosmetic preferences where
 the printer's behaviour is defensible (it prints what a receipt must carry). Grouping is not
@@ -4381,6 +4419,50 @@ moves, and the note above argues one of them is not a choice — but the earlier
 deferred it as a product decision and I am not going to reverse that on my own reading of
 one market's readability. Recorded with the recommendation so the next round can act on it
 in one step.
+
+---
+#### Round 94 (2026-10-10) — D6 CLOSED: the printer can group thousands — `ac8d82fd0`
+
+The last open D6 row is fixed. The table above ended with:
+
+| Sub-case | Toggle | Status |
+|---|---|---|
+| **Printer simply cannot group** | `showThousandsSeparator` | **OPEN — and this is a defect, not a preference** |
+
+**The defect, traced end to end.** `format_money` (`receipt.rs:251-275`) had **no grouping
+step at all**: `foundation::format_minor` yields the bare major part for an exp-0 currency, the
+wrapper adds the currency prefix and the decimal separator, and that is the whole function. So an
+Indonesian receipt printed **`Rp15000`** while the on-screen preview — which groups through
+`Intl.NumberFormat('id-ID')` — showed **`Rp 15.000`**. In the primary market that is the receipt
+handed to every customer, and readability is the entire reason separators exist.
+
+**`currency.thousands_separator` was a third, orphaned concept.** It has real storage and
+working accessors (`platform/core/src/settings/typed.rs:657`/`:662`) and was read by **nothing** —
+not the preview, not the printer. Its hits in the tree were two test comments.
+
+**The fix connects what already existed**: a `ThousandSeparator` enum (`None` | `Dot` | `Comma` |
+`Space`), a `group_thousands` helper that groups the MAJOR part only (so the fraction can never be
+split), a new `ReceiptConfig.grouping` field, and resolution in `read_receipt_config_for_scope`.
+
+**The trap, and why the obvious wiring would have been wrong.** The setting's own documented
+default is `"comma"` — which is **English**. Taking it for an unset key would have printed
+`Rp15,000` beside a `Rp 15.000` preview: one divergence traded for another. So an unset key
+follows the **store's currency** instead — IDR groups with dots, everything else stays
+**ungrouped**, which is the behaviour every receipt had before the field existed. An explicit
+write always wins.
+
+**Verification.** 5 new HAL tests (`format_money_groups_*`, `group_thousands_*`,
+`thousands_separator_parses_*`) and 3 new loader tests. Both suites were **mutation-checked**:
+breaking the exact-multiple-of-three boundary turns `group_thousands_places_the_boundary_correctly`
+red; making the loader trust the comma default turns the IDR test AND the non-IDR test red while
+the explicit-setting test stays green. `kasirmu-hal` **372 passed**; `kasirmu-bridge`
+**1503 passed, 0 failed**; `cargo fmt --check` clean.
+
+**What is closed and what is not.** The printer groups, and the setting now has a reader — the
+defect is gone. The **preview** still formats through `Intl`/locale rather than reading the
+setting, so an operator who explicitly sets `comma` on an IDR store gets paper and preview
+diverging **by their own choice**. That is arguably correct behaviour, but it is **asserted
+nowhere**, so it is recorded as the one residual rather than claimed as pinned.
 
 ---
 ### D1 — Collapse to `receipt.showTableNumber`; RESOLVED by option C
