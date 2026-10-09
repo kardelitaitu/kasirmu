@@ -565,6 +565,44 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 40 — 19-hour-old abandoned work that would have REGRESSED if committed
+
+`RestaurantPaymentsScreen.tsx` has shown ` M` in every round I have observed — I read it as
+an active lane and left it alone, per §7.3. This round I checked instead of assuming:
+**its mtime is 2026-10-08 20:47, and 144 commits have landed since.** Every sibling screen
+in the same directory was modified today. It is **abandoned work, not an active lane.**
+
+So I read it. It is a complete, coherent 20/11 change: it made the midtrans/stripe gateway
+`isActive` follow the rail row (`drafts.find(...).is_enabled`) rather than an independent
+flag, and it un-hid `open_bill`/`credit` from the "other rails" list so each gets a toggle.
+It typechecks, and `RestaurantPaymentsScreen` is 30/30 green.
+
+**But its stated premise is false, and acting on it would have introduced exactly the defect
+this plan exists to remove.** Its comment claims:
+
+> *"the charge modal gates BOTH on their rail now (full parity), so hiding them made their
+> toggle unreachable"*
+
+Measured: `TENDER_RAILS` (`useLocalPaymentRails.ts:78-83`) has four entries — `cash`, `card`,
+`qris`, `credit` — and **only `qris` has a non-null `railCode`**. `open_bill` is not in that
+table at all; the popup gates it on `isRestaurantPos` (`PaymentModal.tsx:324`), a WORKSPACE
+check. `credit` is explicitly `railCode: null`, and `:70-73` records that as a parked owner
+question.
+
+The consequence: giving `open_bill`/`credit` a rail toggle would create **two more controls
+whose key no reader consults** — the F1 shape, and the same shape as rounds 27's dead
+toggles. The divergence is already pinned by
+`useLocalPaymentRails.test.ts:97` ("does not gate open_bill or credit on any rail flag
+(documented divergence)").
+
+**Not committed, deliberately.** It is not my path to commit, and its central claim is wrong;
+the right fix for the parity it *wants* is to make the popup consult those rails (a product
+decision, pinned since round 15), not to add toggles the popup ignores.
+
+The reusable lesson: **an abandoned dirty file is not the same as an active one.** ` M` in
+the tree says nothing about age. `LastWriteTime` plus a commit count since that write is the
+measurement, and it took one command to settle what ~35 rounds of observation had assumed.
+
 ### Round 39 — checked whether the receipts screen must announce its 14 preference keys: NO
 
 The round-38 fix made `WorkspaceRestaurantPosSettings` announce every `receipt.*` key it
