@@ -183,9 +183,16 @@ describe('RetailPosScreen — checkout & navigation', () => {
     // ReceiptPreview shows after sale completes — verify it rendered
     await waitFor(() => expect(screen.getByText('Print Receipt')).toBeInTheDocument(), { timeout: 5000 });
     await userEvent.click(screen.getByText('Print Receipt'));
+    // LOWERCASE, and load-bearing: the `sales.payment_method` CHECK constraint accepts
+    // only the lowercase enum, which is why `bbc530642` lowercased the stored value
+    // (it was `method.toUpperCase()` before). That commit changed production and left
+    // this assertion on the old spelling, so this test was RED at HEAD — not from the
+    // receipt-label fix that happened to be running when it surfaced. The printed
+    // tender is a SEPARATE value (`methodLabel`) and is still human-readable; see the
+    // case in PaymentModalSaleFlow.test.tsx that pins the two apart.
     expect(salesApi.completeSaleScoped).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ paymentMethod: 'CASH', tenderedMinor: 3500 }),
+      expect.objectContaining({ paymentMethod: 'cash', tenderedMinor: 3500 }),
     );
     expect(salesApi.printSalesReceipt).toHaveBeenCalled();
   });
