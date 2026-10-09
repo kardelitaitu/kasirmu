@@ -565,6 +565,41 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 22 — the money dialogs ON the sale, and the shift family
+
+Round 21 fixed the scoped boundary for the payment popup. Two rounds in a row had ended
+with the F9 guard's list short of reality, so this round I stopped adding one target per
+round and enumerated the render sites instead — the method that actually works.
+
+**Six more surfaces in `PosScreen` had no boundary**, every one of them a dialog the
+cashier reaches mid-sale:
+
+| Dialog | What it writes |
+|---|---|
+| `PriceOverrideModal` | a line price |
+| `PromotionsModal` | the cart discount |
+| `ItemModifierModal` | an existing line's options and price |
+| `CloseShiftConfirm` | the cash-drawer count |
+| `ShiftSummary` | the reconciliation figures |
+| `OpenShiftModal` | the opening float |
+
+The first three are the money on the sale; the last three are cash-drawer
+reconciliation. All six are now wrapped, with `onReset` routed through each modal's own
+exit controller (`closeShiftExit.requestClose()` etc.) rather than a guessed setter —
+three of the flags live in `usePosShifts`, not PosScreen state, which `tsc` caught.
+
+**`PosScreen` now holds 14 boundaries: 7 sub-screens + the payment popup + 6 dialogs.**
+The guard lists 20 surfaces and asserts `>= 20`. Both new groups are kill-tested
+(`PromotionsModal`, `CloseShiftConfirm`).
+
+**One I deliberately did NOT wrap:** `RetailPosScreen.tsx:1965` renders an
+`ItemModifierModal` that its own comment documents as *deliberately inert*
+(`groups={[]}`, wired to a stub) — "Wiring the button to an always-empty dialog is worse
+than the stub: it looks finished. Leave it inert until the backend read exists." There
+is no user data for it to throw on. Wrapping it would be ceremony.
+
+`747247a97`, `39f1d6aac`.
+
 ### Round 21 — the money dialog had no scoped boundary, in either shell
 
 The goal names the payment popup, so I checked its crash isolation directly. `grep`
