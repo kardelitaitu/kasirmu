@@ -446,6 +446,52 @@ adb shell date -u +%Y-%m-%dT%H:%M:%SZ
 #    no restaurant.course_firing row and no NEW audit row  ===  F15 reproduced
 ```
 
+#### F15 follow-up (round 50) — the write path is CLEAN; the cause is not in this code
+
+Traced end to end rather than assumed. **Every layer is correct**, and one of them is
+proven by an existing test that uses F15's own key and role:
+
+| Layer | Finding |
+|---|---|
+| `RestaurantSettingsScreen.handleSave` (`:292-311`) | Sends all nine keys; `entries` matches the backend signature; awaits before clearing dirty. |
+| `restaurantSettingsModel` | The nine spec keys equal the nine payload keys **exactly**. |
+| `api/settings.ts:359` | Rejects a null token rather than resolving — so a missing token cannot read as success. |
+| `utils/logged-invoke.ts` → `api/tauri.ts` | `invoke` settles exactly once, forwards rejections, preserves the 2-arg shape. |
+| `mobile-tauri/commands/settings.rs:817` | Resolves the STORE db, requires `settings:edit`, propagates every error. |
+| `settings/core.rs:255` batch funnel | Two batch-wide pre-flights, both `Err` (never a silent skip). |
+| `is_manager_owned_key` / `is_secret_setting_key` | **Neither matches `restaurant.*`** — the batch cannot be refused. |
+
+**The sharpest evidence: the tablet's own test already proves the write.**
+`apps/mobile-tauri/src/commands/settings_tests.rs:1812`
+`set_settings_scoped_writes_every_entry_and_queues_on_the_session_store` writes
+**`restaurant.course_firing = "true"`** through `set_settings_scoped` as an **owner** — F15's
+exact key and role — and asserts the row lands in the session's store DB (`:1844-1849`). A
+unit-level reproduction of the reported flow passes.
+
+**A correction to the F15 note.** Its hypothesis 1 said patching
+`window.__TAURI_INTERNALS__.invoke` "says nothing about the app either way". It says a little
+more than that: `logged-invoke.ts:1` imports `invoke` from **`@/api/tauri`**, a local module
+that captures its own reference at `tauri.ts:32`. Patching the global therefore **cannot**
+observe this app's calls — the blind instrument is explained, and the app is not implicated.
+
+**So where is it?** Not in the UI or the bridge command. The remaining candidates are all
+environmental, and the next step belongs on the DEVICE:
+
+1. **Is the tablet running the build under test?** The repo is `0.0.41`; a stale APK would
+   explain a UI whose code no longer matches its bundle. Check the installed version before
+   anything else — this is cheap and would invalidate the rest.
+2. **`require_permission_for_session` is SCOPE-AWARE** (`authz.rs:99-113`): it passes
+   `session.store_id` and `session.type_key`, so a role holding `settings:edit` *globally* with
+   no assignment **for that store/workspace** is denied. A denial should raise an error — but
+   it is the one gate between the UI and a write that depends on device state, so it is the
+   first thing to log.
+3. **Watch the real call.** Instrument `api/tauri.ts:85` (the wrapper's `invoke`), not the
+   `window` global, and re-run the tablet flow. That is the only observation point that can
+   see the app's IPC.
+
+**Do not "fix" this with a code change on the current evidence.** The layers are correct and
+the tablet test passes; a speculative edit would be a change with no failing test behind it.
+
 ---
 
 ## 3. Repair plan
