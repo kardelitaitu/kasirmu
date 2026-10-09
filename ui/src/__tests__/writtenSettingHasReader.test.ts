@@ -93,6 +93,31 @@ const mentionsKeyOnlyInAccessors = (text: string, name: string, key: string): bo
 };
 
 /**
+ * Keys whose consumer reaches them through a DELEGATING WRAPPER.
+ *
+ * Added 2026-10-10 after round 93 listed RATE_SYNC_INTERVAL and
+ * RATE_SYNC_BASE_CURRENCY as dead on the strength of "the accessor is unused".
+ * THEY ARE LIVE. platform/startup/src/rate_sync.rs:253 and :287 read both, and the
+ * daemon honours them - but the call site names
+ * kasirmu_core::settings::Settings::get_rate_sync_interval, a WRAPPER in
+ * crates/kasirmu-core/src/settings.rs:599 that forwards to the real accessor. The
+ * wrapper is in a different file, so a key-level search sees the accessor
+ * "unused" while the value is in fact delivered.
+ *
+ * "The accessor is unused" is not "the key is unused." Listing these is the honest
+ * resolution rather than widening the rule: following a wrapper chain is a two-hop
+ * call-graph question this file does not attempt, and pretending otherwise would
+ * make the rule fire on genuinely dead keys whose accessor happens to be wrapped.
+ */
+const READ_THROUGH_A_WRAPPER: Record<string, string> = {
+  RATE_SYNC_INTERVAL:
+    'rate_sync.rs:253 calls the wrapper at kasirmu-core/src/settings.rs:599; the daemon '
+    + 're-reads it every cycle and clamps it to 5..1440 minutes',
+  RATE_SYNC_BASE_CURRENCY:
+    'rate_sync.rs:287 calls the wrapper at kasirmu-core/src/settings.rs:609',
+};
+
+/**
  * Keys the UI reads through the settings IPC rather than by naming a Rust symbol.
  *
  * ⚠️ This map exists because fixing the accessor rule above made the sweep report
@@ -182,8 +207,14 @@ const ACCESSOR_WITHOUT_CONSUMER: Record<string, string> = {
   PG_SYNC_USER: 'accessor pair only; nothing consumes the value',
   PG_SYNC_PASSWORD: 'accessor pair only; nothing consumes the value',
   PG_SYNC_REQUIRE_TLS: 'accessor pair only; nothing consumes the value',
-  RATE_SYNC_INTERVAL: 'accessor pair only (typed.rs:600/605); the default "360" is never consulted',
-  RATE_SYNC_BASE_CURRENCY: 'accessor pair only (typed.rs:610/618); the default "USD" is never consulted',
+  // WARNING: RATE_SYNC_INTERVAL and RATE_SYNC_BASE_CURRENCY were listed here in the
+  // round-93 draft and REMOVED after re-measuring: platform/startup/src/rate_sync.rs
+  // reads both (:253, :287) and the daemon honours them. They were a FALSE POSITIVE of
+  // the accessor rule, and the reason is worth keeping — the consumer calls a
+  // DELEGATING WRAPPER (kasirmu-core/src/settings.rs:599), so the call site names the
+  // wrapper rather than the key, and the wrapper lives in a different file from the
+  // accessor. "The accessor is unused" is not "the key is unused": a wrapper can
+  // forward a value to a real consumer, and this one does.
 };
 
 /** Declared keys that are deliberately NOT read yet, each with the reason. */
@@ -262,7 +293,8 @@ describe('a written setting has a reader (F26)', () => {
         WRITTEN_NOT_READ.some((e) => e.name === key) ||
         STALE_DECLARATION[name] !== undefined ||
         ACCESSOR_WITHOUT_CONSUMER[name] !== undefined ||
-        READ_BY_UI_OVER_IPC[name] !== undefined;
+        READ_BY_UI_OVER_IPC[name] !== undefined ||
+        READ_THROUGH_A_WRAPPER[name] !== undefined;
       if (readers.length === 0 && !classified) {
         unclassified.push(`${name} (${key})`);
       }
