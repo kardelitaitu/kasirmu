@@ -38,6 +38,33 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf-8');
 const PLAN = 'todo-restaurant-pos-reliability.md';
 const DEAD_GUARD = 'ui/src/__tests__/deadSettingsKey.test.ts';
 
+/**
+ * Production `.ts`/`.tsx` under `ui/src`, minus tests and dev mocks.
+ *
+ * The reader search must exclude tests — a key named only in its own test is not
+ * wired — and dev mocks, which mirror the wire without being a consumer.
+ */
+function collectUiSources(): Array<{ rel: string; text: string }> {
+  const out: Array<{ rel: string; text: string }> = [];
+  const root = path.join(ROOT, 'ui/src');
+  const walk = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === '__tests__' || e.name === 'dev-mock') continue;
+        walk(full);
+      } else if (/\.(ts|tsx)$/.test(e.name)) {
+        out.push({
+          rel: path.relative(ROOT, full).split(path.sep).join('/'),
+          text: fs.readFileSync(full, 'utf-8'),
+        });
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
 describe('the plan status header matches the tree (F32)', () => {
   /**
    * The status header: the FIRST `> **…` block only.
@@ -103,5 +130,45 @@ describe('the plan status header matches the tree (F32)', () => {
       'DECLARED_DEAD gained an entry — a restaurant setting has no reader again, and the ' +
         "plan's P1-complete claim needs re-measuring",
     ).not.toMatch(/\{\s*key:/);
+  });
+
+  it("F1's evidence row does not claim its keys are unread", () => {
+    // The row read "repo-wide grep returns no reader for 7 keys" — true when
+    // written, false after P1 wired eight of them. It is the FOURTH place this
+    // plan's summary outlived its body (rounds 74, 75, and twice here).
+    const body = read(PLAN);
+    const row = (body.match(/^\| F1 \|[^\n]*/m) ?? [''])[0];
+    expect(row, 'the F1 evidence row was not found — the index table has been restructured')
+      .not.toBe('');
+    expect(
+      row,
+      "the F1 row again claims its keys have no reader — 8 of 10 are wired and 2 were removed; " +
+        're-measure with the readers table in the F1 resolution note before restoring this claim',
+    ).not.toMatch(/no reader/);
+  });
+
+  it('the keys F1 calls wired really do have production readers', () => {
+    // The load-bearing fact behind the corrected row. A key losing its last
+    // reader is exactly the regression the corrected row must not hide.
+    const WIRED = [
+      'restaurant.auto_print_kitchen',
+      'restaurant.sound_chime',
+      'restaurant.customer_name',
+      'restaurant.save_tab',
+    ];
+    const sources = collectUiSources();
+    const missing = WIRED.filter((key) => {
+      // The settings screen WRITES these; a reader is any OTHER production file.
+      return !sources.some(
+        (f) =>
+          !f.rel.includes('RestaurantSettingsScreen') &&
+          f.text.includes(key),
+      );
+    });
+    expect(
+      missing,
+      'these keys lost their production reader — the F1 resolution note is now wrong, and the ' +
+        'P1-complete claim with it: ' + missing.join(', '),
+    ).toEqual([]);
   });
 });
