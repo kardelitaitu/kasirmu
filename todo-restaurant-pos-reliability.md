@@ -2294,6 +2294,64 @@ D6 now stands fully closed: the printer groups, the setting reaches it, and the 
 in the F26/F27 sweep is cleaned up. The four remaining `ACCESSOR_WITHOUT_CONSUMER` rows are the
 `PG_SYNC_*` family, which are unrelated to D6 and still real.
 
+### F43 — a section heading outlived its body for 26 rounds (round 100) — `0ca137921`
+
+**Found by auditing the plan at its own round-100 mark**, not by a failing test. `:2996` read:
+
+```
+### P6 — i18n sweep (fixes F10) — 🔶 IN PROGRESS 2026-10-09
+```
+
+The body three paragraphs down said **DONE** for two screens, and the third was recorded at `:1130`
+as `unblocked and DONE (round 74) — 883dd842e`. **All three landed; the title never changed.**
+
+**This is the fifth instance of one behaviour in this plan**: the body gets updated and a summary
+above it does not. The header guard (`:97-123`) was written for exactly this after two occurrences,
+and the drift simply moved one level down — into the section heading, which the guard does not read.
+
+#### I nearly reported an F10 regression that was not one
+
+A grep for hardcoded English found `:996` and `:1029` — `<span>Failed to load settings</span>` — and
+I drafted a finding that P6's acceptance had regressed. **It had not.** Both are the *fallback
+children* of a `<Localized id="settings-load-failed">` parent, which is the required pattern, not a
+literal.
+
+The authoritative check settled it: `npm run lint:i18n` → **no issues detected**. **The regex was
+mine and the checker was the project's** — the same mistake rounds 93/94/98 each cost this session,
+and the same correction: **run the project's own gate before believing a pattern you invented.**
+
+#### The repair, and the guard
+
+The heading is corrected, the correction names the round that landed the work, and the P6 acceptance
+is **re-run rather than carried forward** (`lint:i18n` clean, parity 0 missing). A second guard case
+now pins the P6 heading so the drift cannot return silently.
+
+**Two details in that guard are deliberate, both from earlier burnings in this file:**
+
+- it matches `/^### P6 — i18n sweep[^\n]*/m`, **not** `/^### P6 —/m` — because there are **two** `###
+  P6` headings (the round-74 record at `:1130` and the section at `:2996`), and the loose pattern
+  matched the record. My first version failed for that reason.
+- it checks **P6 only**. A general "no heading says in-progress" rule would fire on sections that
+  genuinely are, which is the over-broad-matcher flaw this file has been bitten by twice.
+
+**Kill-tested:** restoring `🔶 IN PROGRESS` to the heading fails the new case naming the heading.
+
+#### The count, which is the argument
+
+| # | Where the stale summary lived | Found |
+|---|---|---|
+| 1-2 | the plan's status header | rounds 74, 75 |
+| 3-4 | the same header, twice | the `F32` guard's own comment |
+| 5 | **a section heading** | **this round** |
+
+**Five times, three locations, one behaviour.** The guard earned its keep each time it was extended,
+and each extension was prompted by a drift it did not cover — which is the ordinary way a guard
+improves, and the argument for auditing a plan against its own body at a milestone rather than only
+when something breaks.
+
+Verified: full suite **696 files / 11,564 passed, 0 failed**; typecheck 0; eslint 0 errors; `lint:i18n`
+clean; bundle parity 0 missing.
+
 Verified: full suite **696 files / 11,563 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle
 parity 0 missing.
 bundle parity 0 missing.
