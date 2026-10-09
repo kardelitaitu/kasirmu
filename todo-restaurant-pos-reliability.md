@@ -358,8 +358,27 @@ settings.
 
 **Consequence for beta:** a freshly provisioned restaurant terminal shows an empty menu
 it cannot fill, so every restaurant beta script has to start by hand-adding a product.
-Either the seed must write to the store db, or provisioning must create that db and copy
-the reference data into it — and the choice belongs with F14's answer, not beside it.
+
+**Where the fix CANNOT go (measured, so nobody re-tries it).** "Have `provision_device`
+write the store db too" reads as the obvious repair and is not available: at provisioning
+time **the store db does not exist and its id is not yet known**.
+
+- `open_store` is what creates the file and runs migrations (`auth.rs:671-672`, "open the
+  store db BEFORE taking the global lock: on a cache miss `open_store` creates the file
+  and runs migrations").
+- `store_id` is **caller-supplied to `create_session`** (`auth.rs:111-112`, "the resolved
+  store ID") and is resolved earlier still by `resolve_boot_store`
+  (`workspaces.rs:863`), documented as *"called once at boot time (before
+  authentication)"*. Local installs land on the literal `"default"`
+  (`workspaces.rs:168` `store_id == "default"`), which the picker remaps to a
+  location-derived id before `open_store`.
+- Device measurement agrees: `kasir.db` and `store-loc-…dcd55aac7fed21.sqlite` carry the
+  **same** mtime, both created after the reinstall at the point the workspace picker ran
+  — not at provisioning, which happened earlier.
+
+So the seed has to run at **boot/workspace resolution** (or a first-open hook), which is
+where F14's settings answer has to land too. Both are the same missing step: *the store db
+is born at boot, and nothing seeds it*.
 
 ---
 
