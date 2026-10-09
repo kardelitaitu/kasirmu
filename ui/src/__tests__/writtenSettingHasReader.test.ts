@@ -91,6 +91,35 @@ const WRITTEN_NOT_READ: Array<{
   },
 ];
 
+/**
+ * Declared keys that are deliberately NOT read yet, each with the reason.
+ *
+ * These are the deliberate exceptions that keep the sweep honest: without them a
+ * declared-ahead-of-implementation key would read as a defect, and the guard would be
+ * noise. Each carries the evidence that the omission is INTENTIONAL.
+ */
+const DECLARED_AHEAD_OF_IMPLEMENTATION: Record<string, string> = {
+  MEDIA_STORAGE_BACKEND: 'media pipeline is PLANNED stubs (crates/kasirmu-core/src/db/media.rs:1-12)',
+  MEDIA_ROOT_PATH: 'media pipeline is PLANNED stubs (media.rs:1-12)',
+  MEDIA_MAX_INPUT_BYTES: 'media pipeline is PLANNED stubs (media.rs:1-12)',
+  MEDIA_MAX_PIXELS: 'media pipeline is PLANNED stubs (media.rs:1-12)',
+  AUTH_TOKEN:
+    'on the shared credential DENY LIST, so having no reader is the design — the test '
+    + 'asserts the refusal instead (apps/mobile-tauri/src/commands/settings_tests.rs:458-483)',
+};
+
+/**
+ * Keys whose behaviour MOVED elsewhere, leaving the declaration behind as a lie.
+ *
+ * This is the live defect class, not an exception: the constant stays and its doc
+ * comment describes a mechanism that no longer reads it.
+ */
+const STALE_DECLARATION: Record<string, string> = {
+  EDC_DEFAULT_TERMINAL:
+    'moved to register LocalPrefs / terminal_profile.json '
+    + '(docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md:51); key declared once, used nowhere',
+};
+
 describe('a written setting has a reader (F26)', () => {
   const files = rustFiles().map((f) => ({
     rel: path.relative(ROOT, f).split(path.sep).join('/'),
@@ -113,6 +142,41 @@ describe('a written setting has a reader (F26)', () => {
         ).toBe(true);
       }
     }
+  });
+
+  it('every declared settings key is either read, or classified here', () => {
+    // The SWEEP, generalised from round 66: walk every `pub const … : &str = "key"` in
+    // keys.rs and require each to be a production reader OR an entry in one of the two
+    // maps above. A key that is neither is the defect this file exists for.
+    const keysSrc = files.find((f) => f.rel.endsWith('settings/keys.rs'))?.text ?? '';
+    const declared = [...keysSrc.matchAll(/pub const (\w+): &str = "([^"]+)"/g)];
+    expect(declared.length, 'the key extraction found nothing — the regex has drifted')
+      .toBeGreaterThan(50);
+
+    const unclassified: string[] = [];
+    for (const m of declared) {
+      // Regex captures are `string | undefined` to the compiler; a matched group cannot
+      // be undefined here, so narrow once rather than sprinkling assertions.
+      const name = m[1];
+      const key = m[2];
+      if (name === undefined || key === undefined) continue;
+      if (DECLARED_AHEAD_OF_IMPLEMENTATION[name]) continue;
+      // A "reader" names the constant, or writes the key literal.
+      const readers = files.filter(
+        (f) => isReaderFile(f.rel) && (f.text.includes(name) || f.text.includes(`"${key}"`)),
+      );
+      const classified = WRITTEN_NOT_READ.some((e) => e.name === key) || STALE_DECLARATION[name];
+      if (readers.length === 0 && !classified) {
+        unclassified.push(`${name} (${key})`);
+      }
+    }
+
+    expect(
+      unclassified,
+      'these declared settings keys have NO production reader and are not classified as '
+        + 'declared-ahead-of-implementation or stale. Either read them, or add them to one of '
+        + 'the maps with evidence: ' + unclassified.join(', '),
+    ).toEqual([]);
   });
 
   it('the recorded keys really are unread in production', () => {
