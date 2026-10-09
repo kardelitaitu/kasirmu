@@ -565,6 +565,48 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 33 — the preview claimed a precision the printer cannot print
+
+I read the receipts audit (`docs/records/audits/audit-receipt-settings.md`) covering the
+screen the goal's sidebar leads to, and chased its finding 6 — "`formatPrice` always uses
+**id-ID** separators … the preview visibly ignores one of its own controls".
+
+**That finding is stale** — `formatPrice` now takes `decimalSeparator`
+(`receiptLogic.ts:76`), the screen passes it through a local wrapper (`:1204-1212`), and
+the import is aliased `_formatPrice` (`:27`) precisely so the wrapper can shadow it. Half
+of finding 6 was fixed.
+
+**The other half was not, and is worse than the audit describes.** Following the separator
+to the printer:
+
+| | Value |
+|---|---|
+| screen | `effectiveDecimalSeparator = 'comma'` for IDR, `showDecimals ? 2 : 0` (`:1199-1210`) |
+| printer | `format_money` → `foundation::format_minor` → the currency's CANONICAL exponent (`receipt.rs:251-273`) |
+
+IDR is exp-0, so the printer's `frac` is `None`, the match falls to its `(_, _)` arm, and
+the paper prints the major ALONE — no separator, no fraction. The preview rendered
+`Rp 1.500,00`. Measured before touching anything: `expected 'Rp 1.500,00' to be 'Rp 1500'`.
+
+**Root cause, and why the toggle cannot be fixed from the screen:** `ReceiptConfig`
+(`receipt.rs:98-117`) has **no `showDecimals` field**. The preference is stored, read back
+by the same screen, and applied to the preview — it can never reach the printer. So the
+honest fix is the preview, which now caps its fraction digits by `minorUnitExponent`
+(the same canonical exponent the Rust side uses, `types/domain.ts:217`).
+
+Three existing tests **pinned the divergence** and were updated
+(`receiptLogic.test.ts:104,131`, `RestaurantReceiptsScreen.test.tsx:181` asserted
+`93000,00` for IDR). The kill-test reverts the cap and all three cases fail.
+
+**Recorded, not fixed — `showThousandsSeparator` is the same shape.** The printer has no
+grouping at all (`format_money` emits none; `currency.thousands_separator` is stored at
+`platform/core/src/settings/keys.rs:71` and read by NO formatter). The preview groups, so
+`Rp 1.500` vs `Rp 1500` remains a live divergence. I pinned the current behaviour in a case
+that states it is a divergence, rather than silently changing a second control's semantics
+in the same commit. That is a follow-up decision.
+
+`0803cee7e`.
+
 ### Round 32 — finishing the sweep instead of stopping at the bug
 
 Round 31 fixed `guest_count` and pinned the three gates whose runtime prop is a `??`
