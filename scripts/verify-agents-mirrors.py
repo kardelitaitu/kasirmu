@@ -2590,10 +2590,22 @@ def _self_test_cases() -> int:
                     print(f"  WRONG {rel}: case (13) anchored on nothing -- no numbered "
                           "bold items to drop")
                     short += 1
-                elif expect_lines and lost != 7:
-                    print(f"  WRONG {rel}: case (13) dropped {lost} line(s), expected the "
-                          "7-step enumeration -- the predicate would be accidental")
-                    short += 1
+                elif expect_lines:
+                    # Derived from the fixture, never hard-coded: this assertion
+                    # exists to prove the mutation dropped the WHOLE enumeration,
+                    # so the expected number is the enumeration's own length. It
+                    # was written as a literal 7 and went stale the moment the
+                    # hook gained an eighth step (2026-10-09), failing a checker
+                    # whose own subject had changed underneath the fixture.
+                    enum_lines = sum(
+                        1 for l in base13.splitlines()
+                        if ENUM_ITEM_RE.match(l) and BOLD_RE.search(l)
+                    )
+                    if lost != enum_lines:
+                        print(f"  WRONG {rel}: case (13) dropped {lost} line(s), expected the "
+                              f"{enum_lines}-item enumeration -- the predicate would be "
+                              "accidental")
+                        short += 1
                 io.open(tmp / rel, "w", encoding="utf-8",
                         newline="\n").write(mut13)
             if short:
