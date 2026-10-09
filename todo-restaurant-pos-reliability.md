@@ -565,6 +565,39 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 27 — the dead keys are now DECLARED, which is not the same as decided
+
+F1's three dead keys have been open since round 2 and I have re-flagged them every few
+rounds. This round I re-verified them (still zero readers) and then asked a different
+question than "delete or build?": **what is true regardless of that answer?**
+
+The answer is that the debt was **implicit**. Nothing in the code said those three keys
+are known-dead, so the next reader had to redo the grep, and a fourth could be added
+without anyone noticing. `ui/src/__tests__/deadSettingsKey.test.ts` now:
+
+1. reads every `'restaurant.<key>':` the screen writes, and fails on any that no file
+   outside the writer/model mentions — unless it is in `DECLARED_DEAD`;
+2. fails if a `DECLARED_DEAD` entry GAINS a reader, so the list cannot outlive the
+   condition it records (the same stale-entry rule my other guards use).
+
+**The guard independently rediscovered the exact three** (`hold_order`,
+`auto_print_kitchen`, `sound_chime`) — which is the check that it measures reality rather
+than restating my notes. It also surfaced something I had not written down: the two
+interaction keys ARE live, reached through the **F6 mirror** (`restaurant.interaction_sound`
+→ `pos.interaction_sound`, which `utils/interaction.ts` reads). That is the same "one
+field, two names" shape as round 24, and it is now mapped explicitly with the reason
+rather than being waved through.
+
+Both cases are kill-tested: adding a fourth dead key fails, and removing the mirror
+mapping fails on the interaction pair.
+
+**The product question is still open** and I have not guessed at it. Wiring any of the
+three means INVENTING the feature its description promises — a KOT-send path, an
+order-sent chime, or a restaurant-side hold action — and P1's own rule says that must not
+ride in on a reliability repair. What changed is that the debt is now stated in code.
+
+`af7978610`.
+
 ### Round 26 — the extraction that missed a site
 
 The KDS density bound was extracted out of its inline sites into `kdsDensity.ts`, and
