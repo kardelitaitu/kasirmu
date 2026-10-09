@@ -565,6 +565,44 @@ The 12 suites that cover my changes pass: **271 passed / 1 skipped / 2 todo**. M
 commits touch `api/sales.ts`, `utils/interaction.ts` and two test fixtures — none of
 them is the failing surface.
 
+### Round 47 — the same class, one surface over: the price override
+
+Round 46 fixed `settings:edit` in the sidebar. This round I applied the same lens to the
+permissions `AuthContext`'s own comment names but never checks (`:171-175`): `sales:void`,
+`sales:refund`, `sales:override_price`, `audit:export`.
+
+**The price override was the clearest.** The backend requires `sales:override_price`
+(`kasirmu-bridge/src/pos/cart.rs:345`) and it is a first-class registry entry with its own
+description (`platform/core/src/permission_registry.rs:72-77`), so operators assign it
+independently of a role. The UI gated the affordance on `isManager` — a ROLE
+(`AuthContext.tsx:176-182`, owner/admin/manager, no permission awareness).
+
+**Custom roles make that a real divergence, not a theoretical one.** `create_role_scoped`
+ships on both shells with an arbitrary grants array, so a role named "Manager" can lack the
+permission and any other role can hold it. In the first case the operator gets a button
+whose save the backend refuses — the enabled-control-that-always-errors shape.
+
+Fixed by adding `hasPermission(permission, fallback)` to `AuthContext`, delegating to the
+existing `hasGrantedPermission` so the wildcard rules (`*`, `domain:*`) match the backend,
+with the role as the fallback **only** when the session carries no grant list. `CartPanel`
+takes an optional `canOverridePrice` (absent = `isManager`, so retail and every existing
+caller are untouched) and `PosScreen` supplies it from the permission.
+
+**Three cases, because the two directions and the fallback are different claims:** a
+manager WITHOUT the grant sees no button; a non-manager WITH it does; and no prop means the
+role decides. Kill-tested by restoring `isManager` alone.
+
+**What the fix immediately exposed: five wrong tests.** `PosScreenDeductionLocation` ran the
+prod shape — `isManager: true` with an EMPTY grant list — and relied on the override button
+to reach the FastPIN overlay. It had been asserting the bug: a role granting a permission it
+does not hold. That suite now grants `sales:override_price` explicitly, which is both
+realistic and the reason its five cases failed the moment the gate was honest.
+
+The shared test factory (`test-utils/mocks/contexts.tsx`) already carried a `permissions`
+array, so its new `hasPermission` **mirrors the real hook** rather than stubbing a constant —
+a stub returning `fallback` would let a test pass while production did something else, the
+divergence this session keeps finding. `3f291e5db`.
+
 ### Round 46 — the F8 fix never ran in production
 
 Round 45 fixed the badge. This round I traced the gate the badge describes, and found
