@@ -1716,10 +1716,48 @@ This is the one phase whose correct output is a correction rather than a diff.
 
 ---
 
-## 4. Decisions — SETTLED 2026-10-09
+## 4. Decisions — D1-D4 SETTLED 2026-10-09; **D5-D6 OPEN**
 
-All four open questions are decided. Each answer records the evidence that decided
-it, not just the choice, so a later reader can re-derive it.
+D1-D4 are decided, and each answer records the evidence that decided it, not just the
+choice, so a later reader can re-derive it.
+
+⚠️ **THE HEADING USED TO READ "All four open questions are decided", WHICH IS NO LONGER
+TRUE.** Rounds 27-35 produced two more, both about the same thing — controls that cannot
+affect what they claim to — and they are recorded below as D5/D6 rather than left to be
+re-discovered from the round log.
+
+### D5 — OPEN: three settings toggles whose key nothing reads (round 27)
+
+| Toggle | Key | What wiring it would need |
+|---|---|---|
+| Hold Order | `restaurant.hold_order` | a restaurant-side park action. The only `bill_type: 'hold'` in the UI is retail (`RetailPosScreen.tsx:1282`); restaurant POS parks as `open_bill`, which `save_tab` covers. **Delete is the recommendation.** |
+| Auto-Print KOT | `restaurant.auto_print_kitchen` | a POS-side KOT send on save/hold. `print_kds_chit_scoped` and `createKdsOrderFromSaleScoped` EXIST, so this is a call-site addition, not new plumbing. |
+| Order Sound Notifications | `restaurant.sound_chime` | an order-sent chime in the POS. `useSound().playBeep()` exists but is KDS-only. |
+
+Each toggle renders a description promising behaviour the app does not deliver. Pinned as
+declared-dead in `__tests__/deadSettingsKey.test.ts`, so a fourth cannot appear silently.
+
+### D6 — OPEN: receipt toggles the printer cannot honour (rounds 33-35)
+
+`ReceiptConfig` (`crates/kasirmu-hal/src/drivers/receipt.rs:98-117`) has 8 fields;
+**6 of the receipts screen's 12 toggles have none** — `showReceiptCode`, `showDateTime`,
+`showStaffName`, `showItemNotes`, `showDecimals`, `showThousandsSeparator`.
+
+Two sub-cases, because they are not the same:
+
+- `showReceiptCode` / `showDateTime` / `showItemNotes`: the printer renders those lines
+  UNCONDITIONALLY (`:467`, `:468`, `:522`), so switching the toggle off hides them from the
+  preview while the paper keeps them.
+- `showStaffName`: the printer has **no staff field at all** (grepping the renderer for
+  `staff|cashier` returns nothing), so the preview line can never appear on paper.
+- `showDecimals`: inert for exp-0 currencies by construction — fixed so the preview stops
+  claiming a `,00` the printer cannot print (round 33).
+- `showThousandsSeparator`: the printer has no grouping at all, and
+  `currency.thousands_separator` is stored but read by no formatter.
+
+Measured and pinned in `__tests__/receiptPreviewPrintAgreement.test.ts`. The open question
+is which side moves — the printer's shape is coherent (it prints what a receipt must carry),
+and the toggles are per-user cosmetic preferences.
 
 ### D1 — Collapse to `receipt.showTableNumber`; RESOLVED by option C
 
