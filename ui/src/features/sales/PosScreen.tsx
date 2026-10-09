@@ -135,7 +135,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
-  const { session, logout, isManager } = useAuth();
+  const { session, logout, isManager, hasPermission } = useAuth();
   const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
   const { products } = useProducts(sessionToken || undefined);
@@ -1149,7 +1149,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
     onEditModifiers: handleEditModifiers,
-    isManager, setOverrideTarget, ensureCart,
+    isManager,
+    // Priced overrides require `sales:override_price` on the backend, which a
+    // custom role may hold independently of being a "manager". `isManager`
+    // remains the fallback for a session carrying no grant list.
+    canOverridePrice: hasPermission('sales:override_price', isManager),
+    setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
     courseFiringEnabled,
   };

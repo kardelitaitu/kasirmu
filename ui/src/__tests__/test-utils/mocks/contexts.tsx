@@ -71,6 +71,15 @@ export function createAuthContextMock(overrides: AuthContextOverrides = {}) {
     swapSession: vi.fn(),
     isManager,
     isOwner,
+    // Mirrors AuthContext.hasPermission exactly: the grant list decides when
+    // present (wildcard-aware `*` / `domain:*`), else the caller's fallback. A
+    // stub that always returned `fallback` would let a test pass while the real
+    // check did something else — the divergence this session keeps finding.
+    hasPermission: (perm: string, fallback: boolean): boolean => {
+      if (permissions === undefined) return fallback;
+      const domain = perm.includes(':') ? perm.split(':')[0]! : perm;
+      return permissions.some((k) => k === perm || k === '*' || k === `${domain}:*`);
+    },
   });
 }
 

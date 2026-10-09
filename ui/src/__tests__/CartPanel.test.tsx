@@ -370,4 +370,46 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     renderPanel(withSubtotal());
     expect(screen.getByTestId('pos-cart-save-tab-btn')).toBeInTheDocument();
   });
+  // ── Price override: a PERMISSION gate, not a role gate ────────────
+  //
+  // `override_cart_line_price` requires `sales:override_price` on the backend
+  // (`kasirmu-bridge/src/pos/cart.rs:345`), and it is a first-class registry entry
+  // (`platform/core/src/permission_registry.rs:72-77`), so operators assign it
+  // independently of a role. Custom roles ship (`create_role_scoped`), so a role
+  // named "Manager" can lack it and any other role can hold it.
+  //
+  // The affordance used to render on `isManager` alone, so a "Manager" whose grant
+  // omits the permission got a button whose save is refused at the IPC boundary —
+  // the enabled-control-that-always-errors shape. `canOverridePrice` now decides,
+  // and its ABSENCE still means `isManager`, which is why retail and every other
+  // caller are unaffected (pinned by the third case).
+
+  it('hides the override when the grant is absent, even for a manager role', () => {
+    renderPanel({
+      lines: [makeLine('Kopi')],
+      isManager: true, // the role says manager...
+      canOverridePrice: false, // ...the grant says no
+    });
+    expect(screen.queryByText('Override')).toBeNull();
+  });
+
+  it('shows the override for a non-manager role that HOLDS the grant', () => {
+    // The direction a role gate can never express: a custom role granted
+    // `sales:override_price` without being owner/admin/manager.
+    renderPanel({
+      lines: [makeLine('Kopi')],
+      isManager: false,
+      canOverridePrice: true,
+    });
+    expect(screen.getByText('Override')).toBeInTheDocument();
+  });
+
+  it('falls back to isManager when the host supplies no permission answer', () => {
+    // `canOverridePrice` is optional precisely so this stays true.
+    const asManager = renderPanel({ lines: [makeLine('Kopi')], isManager: true });
+    expect(within(asManager.panel).getByText('Override')).toBeInTheDocument();
+    asManager.unmount();
+    renderPanel({ lines: [makeLine('Kopi')], isManager: false });
+    expect(screen.queryByText('Override')).toBeNull();
+  });
 });

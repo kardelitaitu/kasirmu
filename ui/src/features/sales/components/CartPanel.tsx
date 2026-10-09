@@ -190,6 +190,18 @@ export interface CartPanelProps {
   handleIncreaseQty: (line: CartLine) => void;
   setCartLineRef: (lineId: LineId, el: HTMLDivElement | null) => void;
   isManager: boolean;
+  /**
+   * Whether the price-override affordance is available, when it differs from
+   * `isManager`.
+   *
+   * The backend refuses `override_cart_line_price` without
+   * `sales:override_price` (`kasirmu-bridge/src/pos/cart.rs:345`), NOT without a
+   * manager ROLE — and custom roles ship (`create_role_scoped`), so the two can
+   * disagree in either direction. `PosScreen` therefore supplies this from the
+   * permission. Optional so the retail panel and every existing caller keep the
+   * role behaviour they were written against; absent means "same as isManager".
+   */
+  canOverridePrice?: boolean | undefined;
   setOverrideTarget: Dispatch<SetStateAction<CartLine | null>>;
   ensureCart: (currency: string) => Promise<CartId | null>;
   animatedUndoStack: AnimatedUndoStack<CartLine>;
@@ -290,6 +302,7 @@ export function CartPanel({
   handleIncreaseQty,
   setCartLineRef,
   isManager,
+  canOverridePrice,
   setOverrideTarget,
   ensureCart,
   animatedUndoStack,
@@ -841,7 +854,11 @@ export function CartPanel({
                 onIncreaseQty={handleIncreaseQty}
                 registerRef={setCartLineRef}
                 {...(updateLineNote ? { onUpdateNote: updateLineNote } : {})}
-                {...(isManager ? {
+                // A permission gate, not a role gate, when the host can answer:
+                // the backend checks `sales:override_price` (cart.rs:345) and a
+                // custom role may hold it without being "manager" — or lack it
+                // while being one. Absent means fall back to `isManager`.
+                {...((canOverridePrice ?? isManager) ? {
                   onOverride: (l: CartLine) => {
                     setOverrideTarget(l);
                     ensureCart(l.unit_price.currency);

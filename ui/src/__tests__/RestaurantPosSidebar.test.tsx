@@ -76,6 +76,9 @@ vi.mock('@/contexts/AuthContext', () => ({
     clearError: vi.fn(),
     isManager: mockIsManager.current,
     isOwner: false,
+    // No `permissions` on this session, so the real hook falls back to the role —
+    // which is what this suite exercises (mockIsManager drives it).
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   }),
 }));
 

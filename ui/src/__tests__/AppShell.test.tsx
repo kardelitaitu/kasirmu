@@ -152,6 +152,8 @@ const mockAuthSession: Mock<() => AuthContextValue> =
   pickerTicket: null,
   isManager: false,
   isOwner: false,
+  // Mirrors AuthContext.hasPermission: the grant list decides when present.
+  hasPermission: (_perm: string, fallback: boolean) => fallback,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -242,6 +244,8 @@ function mockKitchenRole() {
   pickerTicket: null,
     isManager: false,
     isOwner: false,
+    // Mirrors AuthContext.hasPermission: the grant list decides when present.
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   });
 }
 
@@ -269,6 +273,8 @@ describe('AppShell — KDS workspace navigation', () => {
   pickerTicket: null,
       isManager: false,
       isOwner: false,
+      // Mirrors AuthContext.hasPermission: the grant list decides when present.
+      hasPermission: (_perm: string, fallback: boolean) => fallback,
     });
     clearPages();
     // Register the kds page so handleNavigate's accessibility check passes
@@ -300,6 +306,8 @@ describe('AppShell — KDS workspace navigation', () => {
   pickerTicket: null,
         isManager: false,
         isOwner: false,
+        // Mirrors AuthContext.hasPermission: the grant list decides when present.
+        hasPermission: (_perm: string, fallback: boolean) => fallback,
       });
 
       mockWorkspace.mockReturnValue({
@@ -343,6 +351,8 @@ describe('AppShell — KDS workspace navigation', () => {
   pickerTicket: null,
         isManager: false,
         isOwner: false,
+        // Mirrors AuthContext.hasPermission: the grant list decides when present.
+        hasPermission: (_perm: string, fallback: boolean) => fallback,
       });
 
       mockWorkspace.mockReturnValue({
@@ -400,6 +410,8 @@ describe('AppShell — KDS workspace navigation', () => {
         pickerTicket: null,
         isManager: false,
         isOwner: false,
+        // Mirrors AuthContext.hasPermission: the grant list decides when present.
+        hasPermission: (_perm: string, fallback: boolean) => fallback,
       });
       mockRestaurantPos();
 
@@ -639,6 +651,8 @@ describe('AppShell — KDS workspace navigation', () => {
   pickerTicket: null,
         isManager: false,
         isOwner: false,
+        // Mirrors AuthContext.hasPermission: the grant list decides when present.
+        hasPermission: (_perm: string, fallback: boolean) => fallback,
       });
 
       await renderWithProviders(<AppShell />);
@@ -845,6 +859,8 @@ describe('AppShell — KDS workspace navigation', () => {
         pickerTicket: null,
         isManager: false,
         isOwner: false,
+        // Mirrors AuthContext.hasPermission: the grant list decides when present.
+        hasPermission: (_perm: string, fallback: boolean) => fallback,
       });
       await renderWithProviders(<AppShell />);
       await waitFor(() => {
@@ -1031,6 +1047,15 @@ describe('AppShell — KDS workspace navigation', () => {
         pickerTicket: null,
         isManager: roleName === 'manager' || roleName === 'owner',
         isOwner: roleName === 'owner',
+        // Mirrors AuthContext.hasPermission: the grant list decides when present,
+        // wildcard-aware (`*`, `domain:*`), else the role fallback.
+        hasPermission: (perm: string, fallback: boolean) => {
+          if (permissions === undefined) return fallback;
+          const domain = perm.includes(':') ? perm.split(':')[0]! : perm;
+          return permissions.some(
+            (k) => k === perm || k === '*' || k === `${domain}:*`,
+          );
+        },
       });
     }
 
@@ -1235,6 +1260,15 @@ describe('AppShell — KDS workspace navigation', () => {
         pickerTicket: null,
         isManager: roleName === 'manager' || roleName === 'owner',
         isOwner: roleName === 'owner',
+        // Mirrors AuthContext.hasPermission: the grant list decides when present,
+        // wildcard-aware (`*`, `domain:*`), else the role fallback.
+        hasPermission: (perm: string, fallback: boolean) => {
+          if (permissions === undefined) return fallback;
+          const domain = perm.includes(':') ? perm.split(':')[0]! : perm;
+          return permissions.some(
+            (k) => k === perm || k === '*' || k === `${domain}:*`,
+          );
+        },
       });
     }
 

@@ -100,7 +100,15 @@ vi.mock('@/utils/interaction', () => ({
 vi.mock('@/contexts/AuthContext', async () => {
   const { createAuthContextMock } = await import('@/__tests__/test-utils/mocks/contexts');
   return {
-    useAuth: createAuthContextMock({ isManager: true }),
+    // `sales:override_price` is REQUIRED, not implied by the role: the price-override
+    // affordance is gated on the permission (kasirmu-bridge/src/pos/cart.rs:345), and
+    // this suite uses that button to reach the FastPIN overlay. An empty grant list
+    // with `isManager: true` is the exact combination that used to render a button
+    // whose save the backend would refuse.
+    useAuth: createAuthContextMock({
+      isManager: true,
+      permissions: ['sales:override_price'],
+    }),
   };
 });
 

@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { staffLogin, type LoginSessionDto } from "@/api/staff";
+import { hasGrantedPermission } from "@/registries/page-registry";
 import { classifyRetry, plainErrorMessage, USER_ERROR_FALLBACKS } from "@/utils/app-error";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -44,6 +45,19 @@ export interface AuthContextValue extends AuthState {
   isManager: boolean;
   /** Whether the current user has owner-level access. */
   isOwner: boolean;
+  /**
+   * Whether the current user holds a specific PERMISSION, mirroring the backend.
+   *
+   * `isManager` is a role check, and the two are not interchangeable for a
+   * deployment using custom roles (`create_role_scoped` ships, and a role carries
+   * an arbitrary grant array). Where a control's save is refused on a permission,
+   * gate it on THAT rather than on a role that usually implies it.
+   *
+   * When the session carries no grant list — an older shape — this falls back to
+   * `fallback`, so a session that cannot answer the question is not silently locked
+   * out. Same contract as `passesGate` and `RestaurantSidebar.canEditSettings`.
+   */
+  hasPermission: (permission: string, fallback: boolean) => boolean;
   /**
    * ADR #6: Hot-swap the session to a different user without triggering
    * the full login/logout lifecycle (no workspace reset). Used by
@@ -184,6 +198,26 @@ export function AuthProvider({ children, onLogin }: AuthProviderProps) {
     normalizedRoleName === "owner" ||
     normalizedRoleName === "role-owner";
 
+  /**
+   * Backend-mirroring permission check, with an explicit role fallback.
+   *
+   * Delegates to `hasGrantedPermission` so the wildcard rules (`*`, `domain:*`)
+   * match the backend and `passesGate` exactly — a raw `Array.includes` would lock
+   * an Owner out (`AuthContext`'s own `isManager` comment names that trap).
+   *
+   * The fallback applies only when the session carries NO grant list: an older
+   * session shape cannot answer the permission question, so refusing would lock a
+   * legitimate user out of their own POS. When the list IS present it is
+   * authoritative, because that is what the backend enforces.
+   */
+  const hasPermission = useCallback(
+    (permission: string, fallback: boolean): boolean =>
+      session?.permissions !== undefined
+        ? hasGrantedPermission(session.permissions, permission)
+        : fallback,
+    [session?.permissions],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -197,6 +231,7 @@ export function AuthProvider({ children, onLogin }: AuthProviderProps) {
       updatePickerTicket,
       isManager,
       isOwner,
+      hasPermission,
     }),
     [
       session,
@@ -210,6 +245,7 @@ export function AuthProvider({ children, onLogin }: AuthProviderProps) {
       updatePickerTicket,
       isManager,
       isOwner,
+      hasPermission,
     ],
   );
 
