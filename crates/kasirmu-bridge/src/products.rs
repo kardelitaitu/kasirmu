@@ -34,7 +34,10 @@ use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
 pub mod dto;
-pub use dto::{MoneyDto, ProductDto, ProductImageDto, SerialTrackRow};
+pub use dto::{
+    CatalogItemDto, MoneyDto, ProductDto, ProductImageDto, RestaurantMenuItemDto, RetailProductDto,
+    SerialTrackRow, ServiceItemDto,
+};
 
 /// Business logic for listing products over a locked store connection.
 ///

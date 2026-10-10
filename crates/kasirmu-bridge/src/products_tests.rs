@@ -740,3 +740,49 @@ fn create_and_update_args_deserialize_camel_and_snake_case() {
     assert_eq!(update_camel.rack_location, Some(Some("RACK-A".into())));
     assert_eq!(update_snake.rack_location, Some(Some("RACK-A".into())));
 }
+
+#[test]
+fn product_dto_into_catalog_item_domain_views() {
+    let make_dto = |ptype: &str| ProductDto {
+        id: "p1".into(),
+        sku: "SKU-1".into(),
+        name: "Test".into(),
+        category: None,
+        price: MoneyDto {
+            minor_units: 100,
+            currency: "USD".into(),
+        },
+        barcode: None,
+        in_stock: true,
+        stock_qty: Some(10),
+        tax_rate_ids: vec![],
+        created_at: "2026-01-01".into(),
+        price_updated_at: "2026-01-01".into(),
+        product_type: ptype.into(),
+        cost_minor: 0,
+        brand: None,
+        rack_location: None,
+        notes: None,
+        unit: None,
+        is_active: true,
+        default_supplier_id: None,
+        popularity_score: 0.0,
+        image_hash: None,
+        images: None,
+    };
+
+    match make_dto("retail").into_catalog_item() {
+        CatalogItemDto::Retail(r) => assert_eq!(r.product.sku, "SKU-1"),
+        _ => panic!("expected retail"),
+    }
+
+    match make_dto("restaurant").into_catalog_item() {
+        CatalogItemDto::Restaurant(r) => assert_eq!(r.product.sku, "SKU-1"),
+        _ => panic!("expected restaurant"),
+    }
+
+    match make_dto("service").into_catalog_item() {
+        CatalogItemDto::Service(s) => assert_eq!(s.product.sku, "SKU-1"),
+        _ => panic!("expected service"),
+    }
+}

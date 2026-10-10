@@ -3,6 +3,13 @@ import { act } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useProducts } from '@/features/products/useProducts';
 import type { ProductDto, CategoryDto } from '@/api/products';
+import {
+  type Product,
+  type Sku,
+  isRetailProduct,
+  isRestaurantMenuItem,
+  isServiceItem,
+} from '@/types/domain';
 
 const mocks = vi.hoisted(() => ({
   listProducts: vi.fn(),
@@ -318,6 +325,34 @@ describe('useProducts', () => {
 
       // listProducts must NOT be called again — l10n is captured via ref
       expect(mocks.listProducts).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('domain views (Option B)', () => {
+    it('discriminates product types correctly', () => {
+      const baseProduct = (ptype: 'retail' | 'restaurant' | 'service'): Product => ({
+        sku: 'SKU-1' as Sku,
+        name: 'Item',
+        category: 'cat-1',
+        price: { minor_units: 100, currency: 'USD' },
+        barcode: null,
+        inStock: true,
+        stockQty: 5,
+        productType: ptype,
+      });
+
+      const retail = baseProduct('retail');
+      const restaurant = baseProduct('restaurant');
+      const service = baseProduct('service');
+
+      expect(isRetailProduct(retail)).toBe(true);
+      expect(isRetailProduct(restaurant)).toBe(false);
+
+      expect(isRestaurantMenuItem(restaurant)).toBe(true);
+      expect(isRestaurantMenuItem(retail)).toBe(false);
+
+      expect(isServiceItem(service)).toBe(true);
+      expect(isServiceItem(retail)).toBe(false);
     });
   });
 });

@@ -166,6 +166,39 @@ export interface Product {
   readonly modifierGroups?: ModifierGroup[];
 }
 
+/** A retail product with physical barcode, ledger inventory, and shelf placement. */
+export interface RetailProduct extends Product {
+  readonly productType: 'retail';
+}
+
+/** A restaurant menu item with courses, modifier customizations, and recipe deduction. */
+export interface RestaurantMenuItem extends Product {
+  readonly productType: 'restaurant';
+}
+
+/** A service item (untracked stock, appointment or hourly rate). */
+export interface ServiceItem extends Product {
+  readonly productType: 'service';
+}
+
+/** Discriminated union of typed catalog domain models. */
+export type CatalogItem = RetailProduct | RestaurantMenuItem | ServiceItem;
+
+/** Type guard for retail products. */
+export function isRetailProduct(p: Product): p is RetailProduct {
+  return p.productType === 'retail';
+}
+
+/** Type guard for restaurant menu items. */
+export function isRestaurantMenuItem(p: Product): p is RestaurantMenuItem {
+  return p.productType === 'restaurant';
+}
+
+/** Type guard for service items. */
+export function isServiceItem(p: Product): p is ServiceItem {
+  return p.productType === 'service';
+}
+
 /** Extract configured modifier groups from a product or its serialized metadata. */
 export function getProductModifierGroups(product: Product): ModifierGroup[] {
   if (product.modifierGroups && product.modifierGroups.length > 0) {

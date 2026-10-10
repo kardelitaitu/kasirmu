@@ -93,3 +93,44 @@ pub struct SerialTrackRow {
     /// Whether the product is configured for serial tracking.
     pub track_serial: bool,
 }
+
+/// A typed retail product view for inventory tracking, barcode scanning, and shelf placement.
+#[derive(Debug, Serialize)]
+pub struct RetailProductDto {
+    #[serde(flatten)]
+    pub product: ProductDto,
+}
+
+/// A typed restaurant menu item view for menu display, coursing, and kitchen prep.
+#[derive(Debug, Serialize)]
+pub struct RestaurantMenuItemDto {
+    #[serde(flatten)]
+    pub product: ProductDto,
+}
+
+/// A typed service item view (non-physical goods with unlimited availability).
+#[derive(Debug, Serialize)]
+pub struct ServiceItemDto {
+    #[serde(flatten)]
+    pub product: ProductDto,
+}
+
+/// A typed catalog domain item, discriminated by its product type.
+#[derive(Debug, Serialize)]
+#[serde(tag = "catalog_kind", rename_all = "snake_case")]
+pub enum CatalogItemDto {
+    Retail(RetailProductDto),
+    Restaurant(RestaurantMenuItemDto),
+    Service(ServiceItemDto),
+}
+
+impl ProductDto {
+    /// Convert to a typed domain catalog item based on `product_type`.
+    pub fn into_catalog_item(self) -> CatalogItemDto {
+        match self.product_type.as_str() {
+            "restaurant" => CatalogItemDto::Restaurant(RestaurantMenuItemDto { product: self }),
+            "service" => CatalogItemDto::Service(ServiceItemDto { product: self }),
+            _ => CatalogItemDto::Retail(RetailProductDto { product: self }),
+        }
+    }
+}
