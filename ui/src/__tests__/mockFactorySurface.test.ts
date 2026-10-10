@@ -221,7 +221,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // forward in the same pass, so those two are mocked rather than listed here —
   // the deletion direction this map is designed to force a visible edit for.
   '@/api/settings <- createSettingsApiMock': [
-    'getCreditSettingsScoped', 'getDeploymentInfo', 'getHardwareSettingsScoped',
+    'getDeploymentInfo', 'getHardwareSettingsScoped',
     'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',
     'setSetting', 'setSettingScoped', 'setSettingsScoped',
   ],

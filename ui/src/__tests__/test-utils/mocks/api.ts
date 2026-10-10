@@ -222,6 +222,9 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
     })),
     setReceiptSettingsScoped: vi.fn((_token: string) => Promise.resolve()),
     setStoreSettingsScoped: vi.fn((_token: string) => Promise.resolve()),
+    getCreditSettingsScoped: vi.fn((_token: string) => Promise.resolve({
+      enabled: true, reminderIntervalHours: 24, maxLimitMinor: 500000,
+    })),
     setCreditSettingsScoped: vi.fn((_token: string) => Promise.resolve()),
     listCreditSalesScoped: vi.fn((_token: string) => Promise.resolve([])),
     settleCreditScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),
@@ -300,6 +303,9 @@ export interface ProductsApiOverrides {
   updateProductScoped?: ReturnType<typeof vi.fn>;
   deleteProductScoped?: ReturnType<typeof vi.fn>;
   adjustStockScoped?: ReturnType<typeof vi.fn>;
+  getRecipeScoped?: ReturnType<typeof vi.fn>;
+  setRecipeScoped?: ReturnType<typeof vi.fn>;
+  deleteRecipeScoped?: ReturnType<typeof vi.fn>;
 }
 
 export function createProductsApiMock(overrides: ProductsApiOverrides = {}) {
@@ -321,6 +327,9 @@ export function createProductsApiMock(overrides: ProductsApiOverrides = {}) {
     updateProductScoped: vi.fn((_token: string) => Promise.resolve({ sku: 'updated' })),
     deleteProductScoped: vi.fn((_token: string, _sku: string) => Promise.resolve()),
     adjustStockScoped: vi.fn((_token: string) => Promise.resolve(0)),
+    getRecipeScoped: vi.fn((_token: string, _productId: string) => Promise.resolve(null)),
+    setRecipeScoped: vi.fn((_token: string, _args: unknown) => Promise.resolve()),
+    deleteRecipeScoped: vi.fn((_token: string, _productId: string) => Promise.resolve()),
     ...overrides,
   };
 }
