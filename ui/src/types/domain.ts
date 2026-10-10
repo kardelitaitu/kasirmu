@@ -144,8 +144,8 @@ export interface Product {
   readonly createdAt?: string;
   /** ISO-8601 timestamp of the last price change. */
   readonly priceUpdatedAt?: string;
-  /** Product type: "retail" | "restaurant" | "both" | "service". */
-  readonly productType: 'retail' | 'restaurant' | 'both' | 'service';
+  /** Product type: "retail" | "restaurant" | "service". */
+  readonly productType: 'retail' | 'restaurant' | 'service';
   /** Cost price in minor units (local-only, ADR #36). */
   readonly costMinor?: number;
   /** Brand (free text). */

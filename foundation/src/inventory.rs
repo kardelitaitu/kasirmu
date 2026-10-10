@@ -71,9 +71,6 @@ pub enum ProductType {
     /// Restaurant Menu product.
     #[serde(rename = "restaurant")]
     Restaurant,
-    /// Both retail and restaurant.
-    #[serde(rename = "both")]
-    Both,
     /// Service item.
     #[serde(rename = "service")]
     Service,
@@ -85,7 +82,6 @@ impl ProductType {
         match s {
             "retail" => Some(Self::Retail),
             "restaurant" => Some(Self::Restaurant),
-            "both" => Some(Self::Both),
             "service" => Some(Self::Service),
             _ => None,
         }
@@ -124,19 +120,18 @@ impl ProductType {
         match self {
             Self::Retail => "retail",
             Self::Restaurant => "restaurant",
-            Self::Both => "both",
             Self::Service => "service",
         }
     }
 
     /// Whether this product type consumes finished-goods inventory stock.
     ///
-    /// `Retail` and `Both` products track physical warehouse stock directly.
+    /// `Retail` products track physical warehouse stock directly.
     /// `Restaurant` items are prepared to order in the kitchen and consume stock
     /// through their BOM recipes (ingredients) rather than pre-stocked finished
     /// goods. `Service` items do not track physical stock.
     pub fn tracks_inventory(&self) -> bool {
-        matches!(self, Self::Retail | Self::Both)
+        matches!(self, Self::Retail)
     }
 }
 

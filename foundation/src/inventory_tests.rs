@@ -44,7 +44,6 @@ fn parse_stored_or_default_valid_value_returns_variant() {
     for variant in [
         ProductType::Retail,
         ProductType::Restaurant,
-        ProductType::Both,
         ProductType::Service,
     ] {
         assert_eq!(
@@ -116,7 +115,6 @@ fn product_type_parse_str_roundtrip() {
     for variant in [
         ProductType::Retail,
         ProductType::Restaurant,
-        ProductType::Both,
         ProductType::Service,
     ] {
         let s = variant.as_str();
@@ -135,7 +133,6 @@ fn product_type_parse_str_unknown_returns_none() {
 fn product_type_tracks_inventory_for_physical_types() {
     assert!(ProductType::Retail.tracks_inventory());
     assert!(!ProductType::Restaurant.tracks_inventory());
-    assert!(ProductType::Both.tracks_inventory());
     assert!(!ProductType::Service.tracks_inventory());
 }
 
@@ -149,7 +146,6 @@ fn product_type_serde_roundtrip() {
     for variant in [
         ProductType::Retail,
         ProductType::Restaurant,
-        ProductType::Both,
         ProductType::Service,
     ] {
         let json = serde_json::to_string(&variant).unwrap();

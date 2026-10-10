@@ -205,7 +205,6 @@ proptest! {
         pair in prop::sample::select(vec![
             (ProductType::Retail, "retail"),
             (ProductType::Restaurant, "restaurant"),
-            (ProductType::Both, "both"),
             (ProductType::Service, "service"),
         ])
     ) {
@@ -246,20 +245,19 @@ proptest! {
         prop_assert_eq!(parsed, ProductType::Retail);
     }
 
-    /// `Retail` and `Both` track finished goods; `Restaurant` and `Service`
+    /// `Retail` tracks finished goods; `Restaurant` and `Service`
     /// do not (consuming stock only through BOM recipes if present).
     #[test]
-    fn tracks_inventory_is_stable_per_variant(idx in 0usize..4usize) {
+    fn tracks_inventory_is_stable_per_variant(idx in 0usize..3usize) {
         let all = [
             ProductType::Retail,
             ProductType::Restaurant,
-            ProductType::Both,
             ProductType::Service,
         ];
         let t = all[idx];
         prop_assert_eq!(
             t.tracks_inventory(),
-            matches!(t, ProductType::Retail | ProductType::Both)
+            matches!(t, ProductType::Retail)
         );
     }
 }
