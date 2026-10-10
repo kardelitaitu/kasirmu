@@ -116,7 +116,7 @@ impl Store<'_> {
              FROM products p
              LEFT JOIN categories c ON p.category_id = c.id
              LEFT JOIN inventory i ON p.id = i.product_id
-             WHERE p.product_type != 'service'
+             WHERE p.product_type = 'retail'
              ORDER BY p.name",
         )?;
         let rows = stmt.query_map([], row_to_product_with_details)?;
@@ -145,7 +145,7 @@ impl Store<'_> {
                      COALESCE((SELECT ss.qty FROM stock_summary ss WHERE ss.item_id = p.id AND ss.location_id = ?1), 0) AS stock_qty
              FROM products p
              LEFT JOIN categories c ON p.category_id = c.id
-             WHERE p.product_type != 'service'
+             WHERE p.product_type = 'retail'
              ORDER BY p.name",
         )?;
         let rows = stmt.query_map(params![location_id], row_to_product_with_details)?;
@@ -407,8 +407,18 @@ impl Store<'_> {
             }
         }
 
-        // Service products never get inventory rows — they have unlimited stock.
-        if initial_stock > 0 && product_type != "service" {
+        // Parse product type using the canonical helper.
+        let parsed_pt = crate::ProductType::parse_stored_or_default(
+            Some(product_type),
+            sku.trim(),
+            "Store::create_product_with_attributes",
+        );
+
+        // Physical inventory-tracked products (retail) always get an initial stock row,
+        // even when initial_stock == 0, so stock_summary has an authoritative ledger row
+        // and stock_qty returns 0 rather than NULL.
+        // Untracked products (restaurant, service) never get inventory rows.
+        if parsed_pt.tracks_inventory() {
             tx.execute(
                 "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, ?3)",
                 params![id, initial_stock, now],
@@ -458,17 +468,6 @@ impl Store<'_> {
             cache.invalidate_product(sku.trim());
         }
 
-        // The string written above is the caller's verbatim, so an unmapped
-        // value can already be committed by the time we get here. The insert
-        // succeeded, so keep returning the row and let the helper warn. Note
-        // `None` from the caller became "retail" at the unwrap_or above and is
-        // deliberately passed as Some: that is the documented default, not a
-        // failed read.
-        let parsed_pt = crate::ProductType::parse_stored_or_default(
-            Some(product_type),
-            sku.trim(),
-            "Store::create_product_with_attributes",
-        );
         Ok(Product {
             id,
             sku: Sku::new(sku.trim()),

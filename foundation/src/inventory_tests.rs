@@ -372,6 +372,41 @@ fn product_with_details_none_fields_roundtrip() {
     assert!(back.stock_qty.is_none());
 }
 
+#[test]
+fn product_with_details_is_in_stock_rules() {
+    // Retail product with positive stock -> true
+    let mut retail = ProductWithDetails {
+        product: make_product().with_product_type(ProductType::Retail),
+        category_name: None,
+        stock_qty: Some(5),
+    };
+    assert!(retail.is_in_stock());
+
+    // Retail product with zero stock -> false
+    retail.stock_qty = Some(0);
+    assert!(!retail.is_in_stock());
+
+    // Retail product with None stock -> false
+    retail.stock_qty = None;
+    assert!(!retail.is_in_stock());
+
+    // Restaurant product with None or 0 stock -> always true (orderable)
+    let restaurant = ProductWithDetails {
+        product: make_product().with_product_type(ProductType::Restaurant),
+        category_name: None,
+        stock_qty: None,
+    };
+    assert!(restaurant.is_in_stock());
+
+    // Service product with None stock -> always true
+    let service = ProductWithDetails {
+        product: make_product().with_product_type(ProductType::Service),
+        category_name: None,
+        stock_qty: None,
+    };
+    assert!(service.is_in_stock());
+}
+
 // ── InventoryLocation ───────────────────────────────────────────
 
 #[test]

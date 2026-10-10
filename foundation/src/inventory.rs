@@ -334,6 +334,21 @@ pub struct ProductWithDetails {
     pub stock_qty: Option<i64>,
 }
 
+impl ProductWithDetails {
+    /// Whether the product is available for sale.
+    ///
+    /// Products that do not track inventory (e.g. restaurant menu items, services)
+    /// are orderable by definition (`in_stock = true`).
+    /// Physical retail products depend strictly on available ledger stock (`qty > 0`).
+    pub fn is_in_stock(&self) -> bool {
+        if !self.product.product_type.tracks_inventory() {
+            true
+        } else {
+            self.stock_qty.unwrap_or(0) > 0
+        }
+    }
+}
+
 /// An inventory location where physical/logical stock is stored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InventoryLocation {

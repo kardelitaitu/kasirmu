@@ -83,11 +83,11 @@ fn product_info_by_sku_missing_is_none() {
 #[test]
 fn ingredient_info_by_id_returns_sku_and_type() {
     let mut conn = fresh();
-    seed_product(&conn, "ing-1", "FLOUR", "ingredient");
+    seed_product(&conn, "ing-1", "FLOUR", "retail");
     let t = tx(&mut conn);
     let info = ingredient_info_by_id_in_tx(&t, "ing-1").unwrap().unwrap();
     assert_eq!(info.product_id, "FLOUR");
-    assert_eq!(info.product_type, "ingredient");
+    assert_eq!(info.product_type, "retail");
 }
 
 #[test]

@@ -67,6 +67,7 @@ fn map_products_to_dtos(
                 .to_owned();
             let sku = pwd.product.sku.to_string();
             let tax_rate_ids = tax_rates_by_sku.get(&sku).cloned().unwrap_or_default();
+            let in_stock = pwd.is_in_stock();
             ProductDto {
                 id: pwd.product.id.clone(),
                 sku,
@@ -77,7 +78,7 @@ fn map_products_to_dtos(
                     currency: cur_str,
                 },
                 barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-                in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
+                in_stock,
                 stock_qty: pwd.stock_qty,
                 created_at: pwd.product.created_at,
                 price_updated_at: pwd.product.price_updated_at,
@@ -151,6 +152,7 @@ fn map_pwd_to_dto(
         let cur_str = std::str::from_utf8(&pwd.product.price.currency.0)
             .unwrap_or("USD")
             .to_owned();
+        let in_stock = pwd.is_in_stock();
         ProductDto {
             id: pwd.product.id.clone(),
             sku: pwd.product.sku.to_string(),
@@ -161,7 +163,7 @@ fn map_pwd_to_dto(
                 currency: cur_str,
             },
             barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-            in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
+            in_stock,
             stock_qty: pwd.stock_qty,
             tax_rate_ids,
             product_type: pwd.product.product_type.as_str().to_owned(),
