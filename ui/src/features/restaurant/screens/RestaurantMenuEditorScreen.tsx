@@ -69,6 +69,7 @@ import {
   type DraftModifierGroup,
   type DraftModifierOption,
 } from './menuEditorLogic';
+import { RecipeEditorModal } from '@/features/products/RecipeEditorModal';
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
 
@@ -215,6 +216,27 @@ function CopyGlyph() {
   );
 }
 
+/** Decorative recipe / book glyph for BOM management. */
+function RecipeGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="15"
+      height="15"
+      aria-hidden="true"
+    >
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+      <path d="M6 6h10" />
+      <path d="M6 10h10" />
+    </svg>
+  );
+}
+
 const EMPTY_DRAFT: MenuDraft = {
   sku: null,
   name: '',
@@ -249,6 +271,7 @@ export default function RestaurantMenuEditorScreen({
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [categoryModal, setCategoryModal] = useState<CategoryModalState | null>(null);
+  const [recipeModalTarget, setRecipeModalTarget] = useState<{ sku: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
@@ -1497,6 +1520,19 @@ export default function RestaurantMenuEditorScreen({
                           <span>Cancel</span>
                         </Localized>
                       </button>
+                      {draft.sku && (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => setRecipeModalTarget({ sku: draft.sku!, name: draft.name })}
+                          data-testid="restaurant-menu-editor-manage-recipe-btn"
+                        >
+                          <RecipeGlyph />
+                          <Localized id="recipe-editor-manage-recipe">
+                            <span>Recipe (BOM)</span>
+                          </Localized>
+                        </button>
+                      )}
                     </div>
                   </form>
                 )}
@@ -1598,6 +1634,16 @@ export default function RestaurantMenuEditorScreen({
                             </button>
 
                             <div className="restaurant-menu-editor-card-actions">
+                              <button
+                                type="button"
+                                className="restaurant-menu-editor-card-btn"
+                                onClick={() => setRecipeModalTarget({ sku: p.sku, name: p.name })}
+                                aria-label={l10n.getString('recipe-editor-manage-recipe-aria', { name: p.name })}
+                                title={l10n.getString('recipe-editor-manage-recipe')}
+                                data-testid={`restaurant-menu-editor-recipe-${p.sku}`}
+                              >
+                                <RecipeGlyph />
+                              </button>
                               <button
                                 type="button"
                                 className="restaurant-menu-editor-card-btn restaurant-menu-editor-card-btn--duplicate"
@@ -1821,6 +1867,19 @@ export default function RestaurantMenuEditorScreen({
           }
         }}
       />
+
+      {/* ── Recipe (BOM) Editor Modal ─────────────────────────── */}
+      {recipeModalTarget && (
+        <RecipeEditorModal
+          open={Boolean(recipeModalTarget)}
+          onClose={() => setRecipeModalTarget(null)}
+          productSku={recipeModalTarget.sku}
+          productName={recipeModalTarget.name}
+          sessionToken={sessionToken}
+          currency={currency}
+          onSaved={reloadData}
+        />
+      )}
     </div>
   );
 }

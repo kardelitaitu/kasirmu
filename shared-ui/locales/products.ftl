@@ -515,3 +515,25 @@ restaurant-payment-custom-code = Payment method code is required
 restaurant-payment-custom-code-example = e.g. ovo, shopeepay, voucher
 restaurant-payment-custom-label-example = e.g. OVO Wallet
 restaurant-payment-cash-placeholder = Cash
+
+# ── Recipe / BOM (Bill of Materials) ──────────────────────────────────
+recipe-editor-title = Recipe & Ingredients (BOM)
+recipe-editor-dish-label = Dish
+recipe-editor-loading = Loading recipe…
+recipe-editor-empty-ingredients = No ingredients added yet. Add raw materials or retail products needed to prepare this dish.
+recipe-editor-add-ingredient = Add Ingredient
+recipe-editor-col-ingredient = Ingredient
+recipe-editor-col-qty = Quantity
+recipe-editor-col-unit = Unit
+recipe-editor-col-cost = Est. Cost
+recipe-editor-select-placeholder = Select an ingredient…
+recipe-editor-total-cost = Total Estimated Cost (HPP)
+recipe-editor-save-success = Recipe saved successfully
+recipe-editor-delete-success = Recipe cleared successfully
+recipe-editor-delete-btn = Clear Recipe
+recipe-editor-delete-confirm = Are you sure you want to clear the recipe for { $name }? No ingredient stock will be deducted when this dish is sold.
+recipe-editor-validation-duplicate = Duplicate ingredient selected: { $name }
+recipe-editor-validation-empty-sku = Please select an ingredient for all rows
+recipe-editor-validation-invalid-qty = Quantities must be greater than 0
+recipe-editor-manage-recipe = Recipe (BOM)
+recipe-editor-manage-recipe-aria = Manage recipe for { $name }

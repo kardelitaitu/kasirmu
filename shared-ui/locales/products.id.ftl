@@ -507,3 +507,25 @@ restaurant-payment-custom-code = Kode metode pembayaran wajib diisi
 restaurant-payment-custom-code-example = mis. ovo, shopeepay, voucher
 restaurant-payment-custom-label-example = mis. Dompet OVO
 restaurant-payment-cash-placeholder = Tunai
+
+# ── Recipe / BOM (Bill of Materials) ──────────────────────────────────
+recipe-editor-title = Resep & Bahan Baku (BOM)
+recipe-editor-dish-label = Menu
+recipe-editor-loading = Memuat resep…
+recipe-editor-empty-ingredients = Belum ada bahan baku. Tambahkan bahan atau produk retail yang dibutuhkan untuk membuat menu ini.
+recipe-editor-add-ingredient = Tambah Bahan Baku
+recipe-editor-col-ingredient = Bahan Baku
+recipe-editor-col-qty = Jumlah
+recipe-editor-col-unit = Satuan
+recipe-editor-col-cost = Estimasi Biaya
+recipe-editor-select-placeholder = Pilih bahan baku…
+recipe-editor-total-cost = Total Estimasi HPP
+recipe-editor-save-success = Resep berhasil disimpan
+recipe-editor-delete-success = Resep berhasil dikosongkan
+recipe-editor-delete-btn = Kosongkan Resep
+recipe-editor-delete-confirm = Anda yakin ingin mengosongkan resep untuk { $name }? Pengurangan stok bahan tidak akan dilakukan saat menu ini terjual.
+recipe-editor-validation-duplicate = Bahan baku duplikat dipilih: { $name }
+recipe-editor-validation-empty-sku = Silakan pilih bahan baku untuk semua baris
+recipe-editor-validation-invalid-qty = Jumlah bahan harus lebih besar dari 0
+recipe-editor-manage-recipe = Resep (BOM)
+recipe-editor-manage-recipe-aria = Kelola resep untuk { $name }

@@ -637,7 +637,8 @@ export function createCatalogHandlers(deps: CatalogDeps): Record<string, MockHan
       const args = deps.unwrapArgs<{ parentProductId: string; ingredients: Array<{ ingredientProductId: string; quantityRequired: number; unit: string }> }>(raw);
       const { parentProductId, ingredients } = args;
       for (let i = MOCK_RECIPES.length - 1; i >= 0; i--) {
-        if (MOCK_RECIPES[i].parentProductId === parentProductId) {
+        const item = MOCK_RECIPES[i];
+        if (item && item.parentProductId === parentProductId) {
           MOCK_RECIPES.splice(i, 1);
         }
       }
@@ -670,7 +671,8 @@ export function createCatalogHandlers(deps: CatalogDeps): Record<string, MockHan
       const { parentProductId } = (raw as { parentProductId?: string }) ?? {};
       let count = 0;
       for (let i = MOCK_RECIPES.length - 1; i >= 0; i--) {
-        if (MOCK_RECIPES[i].parentProductId === parentProductId) {
+        const item = MOCK_RECIPES[i];
+        if (item && item.parentProductId === parentProductId) {
           MOCK_RECIPES.splice(i, 1);
           count++;
         }
