@@ -35,7 +35,7 @@ export function WorkspaceRestaurantPosSettings({
   const { sessionToken } = useWorkspace();
   const { l10n } = useLocalization();
   const { addToast } = useToast();
-  const hw = useTerminalHardware(terminalId ?? '', settings.store.currency);
+  const hw = useTerminalHardware(terminalId ?? '', settings?.store?.currency);
 
   // ── Draft state ──────────────────────────────────────────────
 

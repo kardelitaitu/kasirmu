@@ -36,7 +36,7 @@ export function WorkspaceStorePosSettings({
   const { sessionToken } = useWorkspace();
   const { l10n } = useLocalization();
   const { addToast } = useToast();
-  const hw = useTerminalHardware(terminalId ?? '', settings.store.currency);
+  const hw = useTerminalHardware(terminalId ?? '', settings?.store?.currency);
 
   // ── Draft state ──────────────────────────────────────────────
 
@@ -140,7 +140,7 @@ export function WorkspaceStorePosSettings({
     }
     setTestingPrint(true);
     try {
-      const currency = settings.store.currency || 'IDR';
+      const currency = settings?.store?.currency || 'IDR';
       const res = await printSalesReceipt(sessionToken, {
         receiptNumber: 'TEST-0001',
         date: new Date().toLocaleDateString(),
@@ -159,7 +159,7 @@ export function WorkspaceStorePosSettings({
     } finally {
       setTestingPrint(false);
     }
-  }, [sessionToken, settings.store.currency, addToast, l10n]);
+  }, [sessionToken, settings?.store?.currency, addToast, l10n]);
 
   const handleTestDrawer = useCallback(async () => {
     if (!sessionToken) {

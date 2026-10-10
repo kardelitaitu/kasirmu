@@ -452,14 +452,12 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("hardware", 0, &[]),
     ("health", 0, &[]),
     // Re-pinned 13-09-26: 3a15dafe8 put a real permission check in the five
-    // scoped history twins. Re-measured 2026-09-29: 7 gate calls —
-    // :320,:364 (SALES_VIEW), :400,:420,:440 (REPORTS_EXPORT) and the two
-    // e-faktur stamping doors at :512,:535 (SALES_PROCESS, added with the
-    // desktop pair). The earlier pin of 5 predates those two.
+    // scoped history twins. Re-measured 2026-10-10: 6 gate calls — get_sale_scoped
+    // delegated to bridge in 818bbd910, shifting its gate check to bridge.
     // history_tests.rs is skipped by stem, so 268198aba contributes nothing here.
     (
         "history",
-        7,
+        6,
         &["REPORTS_EXPORT", "SALES_PROCESS", "SALES_VIEW"],
     ),
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
@@ -482,9 +480,10 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     // 3 -> 4 by the same fd4a0ff6e as the desktop row: the module is parity-shared.
     ("offline", 4, &["SYNC_MANAGE"]),
     ("picker_ticket", 0, &[]),
+    // 17 -> 22: aggregated with pos/ submodules in tablet commands.
     (
         "pos",
-        17,
+        22,
         &["SALES_DISCOUNT", "SALES_OVERRIDE_PRICE", "SALES_PROCESS"],
     ),
     (
