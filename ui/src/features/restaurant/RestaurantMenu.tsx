@@ -129,15 +129,6 @@ function unavailableKey(uid: string, locId?: string | null): string {
   return locId ? `restaurant-loc-${locId}-unavail` : key(uid, 'unavail');
 }
 
-function loadUnavailable(uid: string, locId?: string | null): Set<string> {
-  try {
-    const raw = (locId ? localStorage.getItem(unavailableKey(uid, locId)) : null) ?? localStorage.getItem(key(uid, 'unavail'));
-    return new Set<string>(raw ? JSON.parse(raw) : []);
-  } catch {
-    return new Set();
-  }
-}
-
 function saveUnavailable(unavail: Set<string>, uid: string, locId?: string | null) {
   try {
     const serialized = JSON.stringify([...unavail]);
@@ -269,7 +260,15 @@ export default function RestaurantMenu({
   const [searchQuery, setSearchQuery] = useState('');
   const [pinned, setPinned] = useState<Set<string>>(loadPinned(userId));
   const [colors, setColors] = useState<Record<string, string>>(loadColors(userId));
-  const [unavailable, setUnavailable] = useState<Set<string>>(loadUnavailable(userId, locationId));
+  // Seed the unavailable set EMPTY rather than from localStorage. The
+  // local cache was the previous source of truth, but on open a stale
+  // cache would paint items as "Unavailable" for one frame, then the
+  // remote fetch would replace it — the second suspect for the flash on
+  // opening restaurant-pos (visible in the Tauri mobile build, where
+  // the IPC round trip is long enough to render the intermediate state).
+  // The remote is now authoritative; localStorage below becomes a
+  // write-through cache populated by the fetch effect.
+  const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set<string>());
 
   // Rehydrate unavailable items from backend when sessionToken or locationId resolves.
   useEffect(() => {
@@ -365,7 +364,11 @@ export default function RestaurantMenu({
     setAddedSku(null);
     setPinned(loadPinned(userId));
     setColors(loadColors(userId));
-    setUnavailable(loadUnavailable(userId, locationId));
+    // Match the initial-state policy: seed empty and let the remote
+    // fetch effect (re-keyed by userId+locationId) populate it. A user
+    // switch would otherwise hydrate a stale local cache and flash
+    // again on the next fetch.
+    setUnavailable(new Set<string>());
     addCountRef.current = loadPop(userId);
     setPopularityCounts(addCountRef.current);
     try {

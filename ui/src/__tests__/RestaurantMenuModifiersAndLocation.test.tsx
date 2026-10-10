@@ -204,4 +204,41 @@ describe('RestaurantMenu — Modifiers & Location-Aware 86 state', () => {
       expect(card?.textContent).toContain('Unavailable');
     });
   });
+
+  it('ignores stale localStorage unavailable cache on open (no local-to-remote flash)', async () => {
+    // Pre-populate both key tiers a previous session might have left
+    // behind. The remote says nothing is 86'd; the previous code seeded
+    // the initial state from these keys, then the fetch replaced the
+    // set and the grid flashed from "Unavailable" to "Available".
+    localStorage.setItem(
+      'restaurant-loc-loc-branch-1-unavail',
+      JSON.stringify(['MINERAL-WATER']),
+    );
+    localStorage.setItem(
+      'restaurant-cashier-1-unavail',
+      JSON.stringify(['MINERAL-WATER']),
+    );
+    mockGetSettingScoped.mockResolvedValue(null);
+
+    renderWithFluentSync(
+      <RestaurantMenu />,
+      sharedFtl,
+      productsFtl,
+      salesFtl,
+    );
+
+    // Synchronously, on the very first render, the grid must not have
+    // folded the stale cache into `unavailable` — the items must show
+    // as available before the fetch even resolves.
+    const initialCard = screen.getByText('Mineral Water').closest('.restaurant-card');
+    expect(initialCard?.className).not.toContain('restaurant-card--disabled');
+    expect(initialCard?.textContent).not.toContain('Unavailable');
+
+    // And the same after the fetch resolves with an empty list.
+    await waitFor(() => {
+      expect(mockGetSettingScoped).toHaveBeenCalled();
+    });
+    const settledCard = screen.getByText('Mineral Water').closest('.restaurant-card');
+    expect(settledCard?.className).not.toContain('restaurant-card--disabled');
+  });
 });
