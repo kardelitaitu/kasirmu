@@ -200,6 +200,13 @@ export default function RestaurantMenu({
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [locationId, setLocationId] = useState<string | null>(null);
+  // Gate for the server write in the persistence effect below. It means
+  // "the local set was successfully read back from the server", NOT "the
+  // read was attempted" — until it is true, `unavailable` is untrusted
+  // (it is only the empty seed) and pushing it would overwrite the real
+  // 86'd list with `[]`. It is flipped ONLY in the `.then` of a
+  // successful `getSettingScoped`; every other path (no token, no API,
+  // rejected read, cancelled read) deliberately leaves it false.
   const unavailableLoadedRef = useRef(false);
   const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
 
@@ -272,8 +279,12 @@ export default function RestaurantMenu({
 
   // Rehydrate unavailable items from backend when sessionToken or locationId resolves.
   useEffect(() => {
+    // No token (or no settings API) yet. Do NOT mark the set as loaded:
+    // nothing has been read, so the persistence effect must keep the server
+    // write closed. Leaving the gate shut is safe — its own guard already
+    // requires a token — and it stops a token arriving later from pushing
+    // our empty seed over the real list before this read lands.
     if (!sessionToken || typeof settingsApi.getSettingScoped !== 'function') {
-      unavailableLoadedRef.current = true;
       return;
     }
     let cancelled = false;
@@ -293,7 +304,13 @@ export default function RestaurantMenu({
         }
       })
       .catch(() => {
-        unavailableLoadedRef.current = true;
+        // A FAILED read must leave the gate shut. `unavailable` is still the
+        // empty seed, so the next state change (86'ing an item, the location
+        // resolving, a user switch) would push `[]` to the server and wipe
+        // the real 86'd list. Losing one local edit is recoverable; wiping
+        // the server's list is not. The visibility re-poll
+        // (`refetchUnavailable`) retries the read; a successful one opens
+        // the gate again.
       });
     return () => { cancelled = true; };
   }, [sessionToken, unavailableSettingKey, userId, locationId]);
