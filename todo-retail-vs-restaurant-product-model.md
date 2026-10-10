@@ -1,6 +1,6 @@
 # todo — separate the restaurant MENU from the retail PRODUCT
 
-> **Created 2026-10-10 · updated 2026-10-11 · status: DONE — Steps 0, 1, 2, 3 implemented and verified (c49fa1dbf, 66eea4443, c07279f02, 26d790335). Step 4 deferred per todo-restaurant-recipe-authoring.md.**
+> **Created 2026-10-10 · updated 2026-10-11 · status: DONE — Steps 0, 1, 2, 3, 4 implemented and verified (c49fa1dbf, 66eea4443, c07279f02, 26d790335, daa86e7ac, ceb4f17eb, 7c00c1281, a1739a2aa, 57b2a6e79).**
 >
 > **RULING (§5a) EXECUTED:** Option A (discriminator CHECK constraint, write-side zero-stock initialization, unified in_stock rule) and Option B (typed domain views `RetailProduct`, `RestaurantMenuItem`, `ServiceItem` across Rust and UI) are implemented and verified. Option C remains REFUSED. Dead variant `both` has been removed.
 >
@@ -528,7 +528,7 @@ wheel. This is the same shape as F24 earlier in this campaign: *a complete chain
 | **1** | **Remove `both`** (open question 5) | Unproducible, unreachable, two contradictory consumers. Pure debt removal; makes `product_type` a clean 3-way discriminator. |
 | **2** | **A: constrain discriminator + fix `products_crud.rs:411` stock row creation** | Adds CHECK constraint on `product_type`. Fixes §10.5 write-side defect so products created with 0 initial stock get inventory rows. Unifies 4 `in_stock` copies. |
 | **3** | **B: `RestaurantMenuItem` / `RetailProduct` types** | The readable separation. Now *well-motivated*: the two domains genuinely differ — one is stock-gated on itself, the other on ingredients. |
-| **4** | **RECIPE AUTHORING (Post-beta feature)** | Deferred per `todo-restaurant-recipe-authoring.md`. Bridge `set_recipe`/`get_recipe` + IPC in both shells + UI Recipe editor. |
+| **4** | **RECIPE AUTHORING** | Implemented & verified end-to-end across Core, Bridge, Desktop & Mobile IPC, UI API & Dev-Mock, and `RecipeEditorModal` UI (`todo-restaurant-recipe-authoring.md`). |
 | **C** | **Still REFUSED** | §5a's reasoning is unchanged and, with the recipe mechanism in hand, *stronger*: the two domains share `sku`, recipes, images, tax and sales lines. Table split buys nothing here. |
 
 **Recommendation: 0 → 1 → 2 → 3, then 4 as its own post-beta feature.** Item 4 is a **feature build**

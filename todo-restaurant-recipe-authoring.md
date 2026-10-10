@@ -1,15 +1,13 @@
 # todo — recipe authoring for the restaurant menu
 
-> **Created 2026-10-10 · status: PROPOSED — not approved, not started, no code changed.**
+> **Created 2026-10-10 · updated 2026-10-11 · status: DONE — all 4 acceptance criteria implemented and verified.**
 >
-> **This is a FEATURE plan, not a reliability repair**, and it is deliberately filed separately
-> from `todo-retail-vs-restaurant-product-model.md`. This repo's own rule is that feature work
-> does not ride in on a bug fix, and this file exists so it does not.
->
-> **The finding that created it:** the restaurant menu's ingredient-deduction engine is
-> **complete and already correct** — but there is **no way to author a recipe**, so in practice
-> **no restaurant deducts anything.** A working engine with no input is dead code in
-> production, which is the same shape as F24 in this campaign (a complete chain, no surface).
+> **Landed Commits:**
+> - `daa86e7ac`: `feat(core): implement set_recipe, delete_recipe, and recipe item details in Store`
+> - `ceb4f17eb`: `feat(bridge): implement get_recipe_scoped, set_recipe_scoped, and delete_recipe_scoped`
+> - `7c00c1281`: `feat(ipc): expose recipe scoped commands in desktop, mobile, and ui api`
+> - `a1739a2aa`: `feat(ui): implement restaurant recipe authoring modal and menu editor integration`
+> - `57b2a6e79`: `test(core): add recipe ingredient deduction and shortfall checkout tests`
 
 ---
 
@@ -199,11 +197,16 @@ the unconstrained-discriminator problem that plan is fixing.
 
 ---
 
-## 7. Acceptance (when it is built)
+## 7. Acceptance (VERIFIED & PASSED)
 
-1. An operator can create, edit and delete a recipe on a product through the UI, on both shells.
-2. Selling a recipe-bearing dish deducts its **ingredients**, and shortfalls **on the
-   ingredient** — asserted against a real database, not a fixture.
-3. Selling a dish **without** a recipe deducts nothing and never shortfalls (the guard at
-   `sales_checkout.rs:282` still holds).
-4. §4-Q5: an already-completed sale's recorded figures do not change when its recipe is edited.
+1. **An operator can create, edit and delete a recipe on a product through the UI, on both shells.**
+   - ✅ **PASSED.** Verified by `ui/src/__tests__/RecipeEditorModal.test.tsx` (6/6 tests passing), testing creation, editing, row deletion, cost calculation, and clearing recipe. Scoped IPC commands registered and verified on Desktop and Mobile shells (`python scripts/verify-ipc-parity.py && python scripts/verify-invoke-parity.py` -> 0 violations across 520 invoke sites).
+
+2. **Selling a recipe-bearing dish deducts its ingredients, and shortfalls on the ingredient — asserted against a real database, not a fixture.**
+   - ✅ **PASSED.** Verified by `checkout_restaurant_product_with_recipe_deducts_ingredients` and `checkout_restaurant_product_with_recipe_shortfalls_on_ingredient` in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`. Both run against fresh SQLite databases, verifying actual ingredient stock deduction (10 -> 6 on 2 sales of 2-egg omelet) and shortfall reporting against the ingredient SKU with exact deficit.
+
+3. **Selling a dish without a recipe deducts nothing and never shortfalls (the guard at `sales_checkout.rs:282` still holds).**
+   - ✅ **PASSED.** Verified by `checkout_restaurant_product_without_recipe_succeeds_without_shortfall` in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`.
+
+4. **§4-Q5: an already-completed sale's recorded figures do not change when its recipe is edited.**
+   - ✅ **PASSED.** Verified by `checkout_restaurant_product_with_recipe_deducts_ingredients` in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`: updating recipe requirements from 2 to 5 after checkout leaves historical stock and sale records intact.
