@@ -1,13 +1,21 @@
 # todo — separate the restaurant MENU from the retail PRODUCT
 
-> **Created 2026-10-10 · status: PLANNING — no code changed, no scope agreed.**
+> **Created 2026-10-10 · status: RULED, not started — no code changed.**
+>
+> **RULING (§5a): do Option A, then Option B. Option C is REFUSED.** The deciding fact is that
+> `both` is **dead code** — no UI can produce it, no Rust path branches on it, and its two
+> consumers contradict each other. C's entire justification rested on preserving that variant.
+> It is refused for three further reasons: **it does not fix the reported bug** (the shortfall
+> comes from two layers applying two stock rules, which a table split leaves untouched); it
+> re-points **29 FKs** and breaks `sku` as a global join key across sync and the PG replica;
+> and this repo's own policy puts a change that size behind an ADR, not a bug report.
+>
+> **Still open:** Phase 0's data check (§6) and question 5 (is `both` wanted, or deleted).
 >
 > **Why this file exists.** A restaurant POS could not finish a sale: the checkout raised
 > *"Insufficient Stock"* against `MUFFIN-B` / `LATTE` / `CAPPU` (screenshot, 2026-10-10). The
 > user's diagnosis was that **one `products` aggregate serves two different domains**, and
-> asked for a split into `RetailProduct` and `RestaurantMenu`. **This file measures what that
-> would touch and lays out the options. It does NOT pick one** — the scope question is open
-> and belongs to the user, not to me.
+> asked for a split into `RetailProduct` and `RestaurantMenu`.
 >
 > **Nothing here is an inference.** Every count below was taken at HEAD and names its command.
 
@@ -177,6 +185,74 @@ product_type ∈ {retail, both}     → RetailProduct       (stock, barcode, rac
 
 ---
 
+---
+
+## 5a. THE RULING (2026-10-10) — Option A + B; C is REFUSED
+
+The user delegated the call. This is it, with the evidence that decided it. **A ruling without
+its reasons is just an opinion, so every line below names what settled it.**
+
+### RULED: do A, then B. Do NOT do C.
+
+### The fact that decided it: `both` is DEAD CODE
+
+The whole cost of Option C rested on one question — *is a product appearing on both menus a
+real requirement?* It is not. Measured:
+
+| Evidence | Where |
+|---|---|
+| The type selector offers **only** `retail`, `restaurant`, `service` | `ProductManagementScreen.tsx:679-681` |
+| **No UI anywhere writes `'both'`** | `git grep -rn "'both'" -- ui/src/features/products` returns empty |
+| No Rust product path branches on it | zero `Both` hits in `products_crud.rs` + `bridge/products.rs` |
+| The restaurant menu **excludes** it | `RestaurantMenu.tsx:505` — matches `'restaurant'` only |
+| The KDS picker **includes** it | `KdsProductPickerModal.tsx:225` — matches `'restaurant'` OR `'both'` |
+
+So `Both` is **an enum variant with no producer and two contradictory consumers.** No row can
+obtain the value through the product UI. It is unreachable state, and it was the single
+strongest argument for keeping one table ("two tables must join or duplicate to preserve it").
+**That argument is void.**
+
+### Why C is refused anyway — the argument that actually kills it
+
+Removing the `Both` objection makes C *cheaper*, not *sensible*. Three independent reasons:
+
+1. **C does not fix the reported bug.** The shortfall is caused by two layers applying two
+   different stock rules (2.2). Splitting the table leaves both rules in place — you would spend
+   a 29-FK migration and still have restaurant sales blocked. **A fix that does not fix the
+   symptom is not a fix.**
+2. **`sku` is a global join key.** 29 FKs reference `products` by `id` *and* by `sku` (`:62`,
+   `:389`, `:419`, `:427`). A split re-points every one *and* breaks `sku` as an identity, and it
+   reaches `platform/sync` (upsert-by-SKU) and the SQLite to PG replica. That is a sync-protocol
+   and cloud-schema change riding on a bug report.
+3. **This repo's own rule forbids it here.** Feature work must not ride in on a reliability
+   repair, and this area is ADR-governed (ADR-36, ADR-37; 84 ADRs total). A restructuring of
+   that size starts from an ADR, not a chat message.
+
+**C is not rejected as wrong — it is rejected as unearned.** If the two domains ever genuinely
+diverge (different lifecycles, different sync rules), the ADR writes itself. Today the
+difference is one discriminator and one stock rule, and B expresses exactly that.
+
+### Why B is the right shape for the separation that was asked for
+
+The ask was for the concepts to be *separate and readable*. B delivers that at the type
+boundary, with **0 FKs touched**, no data movement, and the sync payload unchanged. It also
+gives the compiler something to enforce — a retail-only field cannot reach a menu item — which
+a table split would also give, at roughly 20x the cost.
+
+### Correction: this ruling corrects my OWN earlier claim
+
+I first said the divergence was **desktop vs mobile**. It is not — both shells share
+`run_list_products` and `MenuItemTile`. The real split is **checkout vs listing**. Recorded in
+section 9 so the wrong model is not inherited.
+
+### The ruling's own risk, stated
+
+B is a **medium-risk** change touching the DTO/API surface. It is defensible only if A lands
+first — the discriminator must be trustworthy before anything can discriminate on it. If A's
+Phase 0 check comes back `retail` on those SKUs, then A shrinks to "fix the data" and B becomes
+the whole of the work.
+
+---
 ## 6. Phase 0 — the measurement that unblocks everything
 
 **No code until this is answered.** Against the desktop app's store database:
@@ -222,6 +298,25 @@ fallback, a real code defect). A non-zero ingredient count → case 3 (by design
    blocked", that is a second, independent change.
 
 ---
+
+### Open questions the ruling CREATED (new, not a re-ask)
+
+The ruling exposed a defect it did not fix. **`both` has two contradictory consumers:**
+
+- `KdsProductPickerModal.tsx:225` — includes `both`
+- `RestaurantMenu.tsx:505` — excludes it
+
+So a `both` product would reach the Kitchen Display's picker and never reach the menu it is
+ordered from. **Unreachable today only because nothing can write `both`.** That is two bugs
+held apart by one missing control: add the option to the selector and the inconsistency goes
+live.
+
+**5. Is `both` wanted?** If no, delete the variant in A — it is unproducible, unreachable, and
+reads as a typo risk (`'both'` vs `'retail'` in a free-text column). If yes, B must define its
+semantics AND the two consumers must be reconciled in the same change.
+
+**My recommendation: delete it.** A value no UI can produce, that two consumers disagree about,
+is not a feature — it is a trap. But it is a product statement and the call is yours.
 
 ## 9. Claims that have rotted — do not quote these
 
