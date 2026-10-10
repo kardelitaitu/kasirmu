@@ -206,12 +206,25 @@ A dev build, with an **empty** store database or unmounted catalog, must not per
 
 ---
 
-## 6. Out of scope
+## 6. Scope — Unified fix across Restaurant and Retail
 
-- **The stock model.** `todo-retail-vs-restaurant-product-model.md` owns that, and this file
-  explains why its reported symptom needed no model change.
-- **Recipe authoring.** Separate feature, separate plan (`todo-restaurant-recipe-authoring.md`).
-- **The retail fixture catalogue** (`RETAIL_SAMPLE_PRODUCTS`). `RetailPosScreen.tsx:498-506` has
-  the identical pattern in its `.catch()` block (substituting fixtures when `isDemoMode()` is true).
-  It shares the exact same hazard and should be aligned (either in this PR or an immediate follow-up)
-  so retail dev does not retain the same trap.
+- **IN SCOPE — Restaurant POS:** Both fallback sites in `useProducts.ts` (`:133-142` and `:175-188`)
+  must return `[]`.
+- **IN SCOPE — Retail POS:** `RetailPosScreen.tsx:498-506` has the identical pattern in its `.catch()`
+  block (substituting `RETAIL_SAMPLE_PRODUCTS` when `isDemoMode()` is true). It shares the exact same
+  hazard and is fixed in the same pass by returning `[]` on failure instead of phantom sellable items.
+- **OUT OF SCOPE:** The stock model itself (`todo-retail-vs-restaurant-product-model.md`) and recipe
+  authoring (`todo-restaurant-recipe-authoring.md`).
+
+---
+
+## 7. Architectural Invariant — Local-First Single Source of Truth
+
+> **INVARIANT (DATA-01): SQLite is the sole source of truth for sellable products across all screens.**
+>
+> 1. UI components and data hooks (`useProducts`, `RetailPosScreen`) must **NEVER** synthesize
+>    in-memory mock product catalogues for active POS carts.
+> 2. An empty database must render the legitimate empty catalogue state, never fictional rows.
+> 3. Demo/dev catalogues must be provisioned as real rows into SQLite via database seed scripts
+>    (`provisioning.rs`), ensuring `products`, `stock_summary`, and tax configurations are mutually
+>    consistent before a cashier reaches checkout.

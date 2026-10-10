@@ -140,17 +140,37 @@ If a recipe changes today, what happens to **already-completed sales**?
   **The clean solution:** Snapshot at sale time. `sale_lines` ALREADY has a `cost_minor INTEGER` column
   (`migrations/20260813_init.sql:595`). Stamping the computed recipe cost snapshot onto `sale_lines.cost_minor`
   at checkout freezes historical margins forever without complex multi-table historical recipe joins.
-- **The Refund/Void Gap (critical interaction):**
-  In `sales_checkout.rs:363` vs `444`, recipe ingredient allocations are sent to `adjust_stock_batch`,
-  but **never mapped into `line_deductions`**. Consequently, `deduction_locations` JSON on `sales` records
-  the *dish* SKU, not the *ingredient* SKUs.
-  When a sale is refunded or voided (`crates/kasirmu-core/src/db/refunds/credit.rs`), it reads `deduction_locations`
-  and attempts to credit stock back to `line.sku` (the dish, which has no inventory tracking), dropping the
-  ingredient stock restoration.
-  **Therefore, recipe authoring touches checkout, voids/refunds (`credit.rs`), and margin reporting.**
-  That schema and contract must be designed together before writing the first recipe.
 
-So this likely needs **recipe versioning** or snapshotting, decided before the first recipe is written — not after.
+### Q6 — Unit of Measure (UoM) & Precision Scaling
+
+`product_recipes.quantity_required` is `INTEGER NOT NULL` and `unit` defaults to `'pcs'` (`init.sql:407-414`).
+In real restaurant kitchens:
+- Coffee beans are purchased in 1 kg bags, but an espresso recipe consumes 18 grams.
+- Cooking oil is purchased in 5 L jugs, but a dish consumes 50 ml.
+
+An integer `quantity_required` with no conversion engine forces one of two architectural choices:
+1. **Base-Unit Normalization (Simplest):** All raw inventory is tracked strictly in atomic integer base units
+   (e.g. grams, milliliters, pieces). Purchasing 1 kg of beans records an inventory entry of `1000` grams.
+2. **UoM Conversion Dictionary:** Introduce a `unit_conversions` table (e.g. `1 kg = 1000 g`, `1 L = 1000 ml`)
+   and decimal quantity support.
+
+This must be settled before opening a Recipe Editor in the UI, or merchants will be unable to author
+recipes for liquids, spices, and bulk grains.
+
+### Q7 — ⚠️ Reverse Stock on Voids and Refunds (The `credit.rs` gap)
+
+Verified in the code:
+- In `sales_checkout.rs:363` vs `:444`, ingredient allocations are sent to `adjust_stock_batch`,
+  but **never mapped into `line_deductions`**.
+- As a result, `deduction_locations` JSON on `sales` records the *dish* SKU, not the *ingredient* SKUs.
+- When a sale is refunded or voided (`crates/kasirmu-core/src/db/refunds/credit.rs`), it reads `deduction_locations`
+  and attempts to credit stock back to `line.sku` (the dish, which has no inventory tracking), dropping the
+  ingredient stock restoration entirely.
+
+**Architectural requirement before recipe authoring ships:**
+1. `sales_checkout.rs` must record ingredient allocations into `line_deductions` under the dish's line item.
+2. `deduction_locations` JSON must preserve the actual ingredient SKUs and quantities deducted.
+3. `credit_refund_from_deduction_locations` in `credit.rs` must restore inventory to the recorded ingredient SKUs.
 
 ---
 

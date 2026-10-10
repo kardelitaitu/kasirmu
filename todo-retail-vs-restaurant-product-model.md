@@ -278,9 +278,17 @@ Removing the `Both` objection makes C *cheaper*, not *sensible*. Three independe
 3. **This repo's own rule forbids it here.** Feature work must not ride in on a reliability
    repair, and this area is ADR-governed (ADR-36, ADR-37; 84 ADRs total). A restructuring of
    that size starts from an ADR, not a chat message.
+4. **Offline-first & Hybrid Domain Architecture:**
+   - In SQLite, splitting into two tables forces polymorphic foreign keys on `sale_lines`,
+     tax dependency checks, and audit logs—a pattern SQLite cannot enforce without triggers.
+   - Real-world merchants are frequently hybrid (cafés selling packaged coffee beans and mugs
+     alongside espresso; bakeries selling bottled sodas alongside made-to-order sandwiches).
+     Forcing separate physical tables breaks hybrid operations. Industry POS engines (Square,
+     Toast, Shopify POS) consistently maintain a single catalog aggregate with typed domain
+     capabilities, exactly what Option B provides.
 
-**C is not rejected as wrong — it is rejected as unearned.** If the two domains ever genuinely
-diverge (different lifecycles, different sync rules), the ADR writes itself. Today the
+**C is not rejected as wrong — it is rejected as unearned and structurally inferior.** If the two domains
+ever genuinely diverge (different lifecycles, different sync rules), the ADR writes itself. Today the
 difference is one discriminator and one stock rule, and B expresses exactly that.
 
 ### Why B is the right shape for the separation that was asked for
@@ -573,18 +581,26 @@ is reachable by anyone who adds a product and skips the stock field.** The repor
 symptom is one visible instance of it; my F14a seeding fix earlier in this campaign
 (`938d72f9f`) masked it on one device by writing inventory rows for the samples.
 
-**Consequences for the plan:**
+**The Two-Part Architectural Fix:**
 
-1. **Item 2 (A) must define what `in_stock` means when there is NO stock row at all.** The
-   current expression cannot distinguish *"tracked, genuinely zero"* from *"untracked, never
-   had stock"*. That distinction is the whole of this defect, and a recipe-bearing dish is one
-   case of it — not the only one.
-2. **`tracks_inventory()` alone is NOT sufficient for item 2.** It correctly exempts
-   `Restaurant`/`Service`, but a `Retail` product created with blank stock still lands
-   Unavailable. The rule needs a third state, or `create_product` must always write a row.
-3. **The cheapest correct fix may be at the write side:** always insert an inventory row
-   (including `0`) for any type that tracks inventory, so absence stops meaning unavailable.
-   **That is a one-line change** and it should be evaluated before touching the read side.
+1. **Write-side initialization (`products_crud.rs:411`):**
+   When creating a product whose type tracks inventory (`Retail`), always insert initial rows into
+   `inventory`, `stock_movements`, and call `upsert_stock_summary_in_tx` **even when `initial_stock == 0`**.
+   This ensures `stock_summary` has an authoritative ledger row (`qty: 0`) instead of empty silence,
+   so `(SELECT SUM(ss.qty)...)` evaluates to `0` rather than `NULL`.
+2. **Read-side DTO mapping (`kasirmu-bridge/src/products.rs`):**
+   Unify the 4 duplicated `in_stock` sites into:
+   ```rust
+   let in_stock = if !ptype.tracks_inventory() {
+       true // Restaurant and Service without recipes are always orderable
+   } else {
+       pwd.stock_qty.unwrap_or(0) > 0
+   };
+   ```
+   This cleanly separates the two concerns:
+   - Untracked items (`Restaurant`, `Service`) are orderable by definition (`in_stock = true`).
+   - Tracked items (`Retail`) depend strictly on available ledger stock (`qty > 0`).
+   - Absence of initial stock input at creation never leaves a retail product in an undefined NULL state.
 
 **This is the fourth time in this file that measurement changed the plan. It is also the first
 time the finding is broader than the original report — the user's restaurant symptom was a
