@@ -152,10 +152,10 @@ satisfies it differently.
 
 | | |
 |---|---|
-| **Change** | Make the empty-DB path return `[]` **always**, and surface the empty state (which already exists) instead of fixtures |
+| **Change** | Make **both** fallback paths in `ui/src/features/products/useProducts.ts` return `[]` **always** (`applyUnavailableCatalog` at `:133-142` and the empty-array branch at `:175-188`), and surface the empty state (which already exists) instead of fixtures |
 | **Pros** | Smallest change; removes the mismatch by construction — the menu and the DB can no longer disagree |
-| **Cons** | Loses the preview value of an empty-database demo; the fixtures become dead code |
-| **Risk** | Low — but it deletes a deliberate feature, so it needs an owner's call |
+| **Cons** | Loses the preview value of an unseeded dev environment; phantom fixtures can be removed or relocated to test mocks |
+| **Risk** | Low — proper demo catalogues in dev/demo should be provisioned into SQLite via database seeders, not injected in-memory |
 
 ### Option 3 — seed the demo database
 
@@ -178,22 +178,31 @@ would inherit that defect unless it seeds stock too — the same trap, one layer
 
 Option 2 removes the mismatch **by construction** — if the menu can never show a product the
 database does not have, the class of bug cannot recur. That is strictly stronger than detecting
-it at checkout, which Option 1 does. Option 1 is still worth having, because the *preview* use
-case is legitimate and someone will want it back; it turns a silent wrong behaviour into a
-stated one.
+it at checkout, which Option 1 does. Both fallback sites in `useProducts.ts` (`:133-142` on
+null token / IPC catch, and `:175-188` on empty array) must return `[]` so that mount delays or
+IPC blips do not leak fixtures onto the screen.
+
+Option 1 is still worth having as a defense-in-depth guard: if any test fixture or fallback catalogue
+ever reaches a cart, an explicit refusal (*"demo catalogue — not sellable"*) prevents a confusing
+`Available: 0` stock dialog.
 
 **Option 3 is the one I would not start with**, despite it being the most "complete": it makes
 rendering a screen write to the database, and it would need to solve §10.5's stock-row problem
-first or the demo rows land Unavailable too — reproducing this bug one level deeper.
+first or the demo rows land Unavailable too — reproducing this bug one level deeper. The proper
+place to seed demo data is the workspace/store provisioning scripts, not a React hook.
 
 ### Acceptance
 
-A dev build, with an **empty** store database, must not permit a sale. Concretely:
+A dev build, with an **empty** store database or unmounted catalog, must not permit a phantom sale:
 
-1. The 4-row table in §2 — the bottom case — must end in a **stated refusal**, not a stock dialog.
-2. A test pins that no `useProducts` fallback path can hand a sellable product to a cart while
-   the real catalogue is empty.
-3. Kill-tested: reverting the guard must turn that test red.
+1. The 4-row table in §2 — the bottom case (dev/demo with empty DB or unavailable catalog) —
+   renders the legitimate **empty menu state**; no fixture cards render, and the cart remains empty
+   (checkout is never reachable with phantom items).
+2. If fixtures ever reach a cart via any other route, Option 1's durable guard states an explicit
+   **refusal** (*"demo catalogue — not sellable"*), never a stock shortfall dialog.
+3. A test pins that neither `useProducts` fallback path (`applyUnavailableCatalog` or empty result)
+   can hand a sellable product to a cart while the real catalogue is empty.
+4. Kill-tested: reverting the guard must turn that test red.
 
 ---
 
@@ -201,7 +210,8 @@ A dev build, with an **empty** store database, must not permit a sale. Concretel
 
 - **The stock model.** `todo-retail-vs-restaurant-product-model.md` owns that, and this file
   explains why its reported symptom needed no model change.
-- **Recipe authoring.** Separate feature, separate plan.
-- **The retail fixture catalogue** (`RETAIL_SAMPLE_PRODUCTS`). It shares the hazard and the
-  same fix shape, but it is a different screen and a different cart. Fixing it is a follow-up,
-  and it should be checked against §2's table before assuming it is broken.
+- **Recipe authoring.** Separate feature, separate plan (`todo-restaurant-recipe-authoring.md`).
+- **The retail fixture catalogue** (`RETAIL_SAMPLE_PRODUCTS`). `RetailPosScreen.tsx:498-506` has
+  the identical pattern in its `.catch()` block (substituting fixtures when `isDemoMode()` is true).
+  It shares the exact same hazard and should be aligned (either in this PR or an immediate follow-up)
+  so retail dev does not retain the same trap.

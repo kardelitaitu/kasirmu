@@ -430,38 +430,20 @@ gate. This is the third time in this file that measurement corrected the plan, a
 
 ---
 
-## 8. Open questions — these are the user's to answer
+## 8. Questions — RESOLVED (decisions and evidence recorded)
 
-1. **Phase 0's result:** what is `product_type` on those three SKUs? (Blocks the fix choice.)
-2. **Scope:** Option A (bug fix), B (types + separation), or C (real split + ADR)?
-3. **The `Both` case:** is a single product appearing on BOTH the retail grid and the
-   restaurant menu a real requirement? If **no**, Option C gets materially cheaper and this
-   whole question should be re-costed. If **yes**, two tables need a join or a duplicate row.
-4. **The recipe question:** should a restaurant dish WITH a BOM recipe be stock-checked?
-   Today it is (by design, `sales_checkout.rs:282`) — so a dish built from tracked
-   ingredients *does* shortfall on those ingredients. If the answer is "dishes are never
-   blocked", that is a second, independent change.
+1. **Phase 0's result (RESOLVED):** The reported SKUs were in-memory dev fixtures in
+   `useProducts.ts:19-21`, not database rows at all. See `todo-demo-fixtures-sellable.md`.
+2. **Scope (RULED, §5a):** Option A, then Option B. Option C (table split) is REFUSED.
+3. **The `Both` case / Q5 (RESOLVED):** `both` is unproducible dead code with contradictory
+   consumers (`RestaurantMenu` excludes it; `KdsProductPickerModal` includes it). Decision:
+   **delete `both`** in Option A, making `product_type` a clean 3-way discriminator
+   (`retail`, `restaurant`, `service`).
+4. **The recipe question (RESOLVED):** Dishes with BOM recipes are stock-checked on their
+   ingredients by design (`sales_checkout.rs:282`). Recipe authoring is confirmed **not
+   beta-blocking** and tracked separately in `todo-restaurant-recipe-authoring.md`.
 
 ---
-
-### Open questions the ruling CREATED (new, not a re-ask)
-
-The ruling exposed a defect it did not fix. **`both` has two contradictory consumers:**
-
-- `KdsProductPickerModal.tsx:225` — includes `both`
-- `RestaurantMenu.tsx:505` — excludes it
-
-So a `both` product would reach the Kitchen Display's picker and never reach the menu it is
-ordered from. **Unreachable today only because nothing can write `both`.** That is two bugs
-held apart by one missing control: add the option to the selector and the inconsistency goes
-live.
-
-**5. Is `both` wanted?** If no, delete the variant in A — it is unproducible, unreachable, and
-reads as a typo risk (`'both'` vs `'retail'` in a free-text column). If yes, B must define its
-semantics AND the two consumers must be reconciled in the same change.
-
-**My recommendation: delete it.** A value no UI can produce, that two consumers disagree about,
-is not a feature — it is a trap. But it is a product statement and the call is yours.
 
 ## 9. Claims that have rotted — do not quote these
 
@@ -542,16 +524,16 @@ wheel. This is the same shape as F24 earlier in this campaign: *a complete chain
 
 | # | Change | Why, and what it closes |
 |---|---|---|
-| **0** | **Run Phase 0** (§6) | Still the only blocker. Decides whether the reported dialog is data or code. |
+| **0** | **Fix demo fixtures sellable** (`todo-demo-fixtures-sellable.md`) | **Phase 0 closed.** The reported SKUs were in-memory fixtures in `useProducts.ts`. Return `[]` to eliminate phantom sales by construction. |
 | **1** | **Remove `both`** (open question 5) | Unproducible, unreachable, two contradictory consumers. Pure debt removal; makes `product_type` a clean 3-way discriminator. |
-| **2** | **A: constrain the discriminator + honour `tracks_inventory()` in the listing** | Kills the silent `RETAIL` downgrade and the grey tile for restaurant items. **Unifies 4 copies into the one rule the checkout already uses.** |
+| **2** | **A: constrain discriminator + fix `products_crud.rs:411` stock row creation** | Adds CHECK constraint on `product_type`. Fixes §10.5 write-side defect so products created with 0 initial stock get inventory rows. Unifies 4 `in_stock` copies. |
 | **3** | **B: `RestaurantMenuItem` / `RetailProduct` types** | The readable separation. Now *well-motivated*: the two domains genuinely differ — one is stock-gated on itself, the other on ingredients. |
-| **4** | **RECIPE AUTHORING — the actual product gap** | Bridge `set_recipe`/`get_recipe` + IPC in both shells + a Recipe editor on the product screen. **Without this, "reduce kitchen inventory via recipe" is unreachable.** |
+| **4** | **RECIPE AUTHORING (Post-beta feature)** | Deferred per `todo-restaurant-recipe-authoring.md`. Bridge `set_recipe`/`get_recipe` + IPC in both shells + UI Recipe editor. |
 | **C** | **Still REFUSED** | §5a's reasoning is unchanged and, with the recipe mechanism in hand, *stronger*: the two domains share `sku`, recipes, images, tax and sales lines. Table split buys nothing here. |
 
-**Recommendation: 0 → 1 → 2 → 3, then 4 as its own piece of work.** Item 4 is a **feature build**
+**Recommendation: 0 → 1 → 2 → 3, then 4 as its own post-beta feature.** Item 4 is a **feature build**
 (IPC + UI), not a reliability repair — so by this repo's own rule it should not ride in on the
-bug fix. It deserves its own plan file.
+bug fix. It is tracked separately in `todo-restaurant-recipe-authoring.md`.
 
 ### 10.4 What this changes in the ruling — and one claim WITHDRAWN
 

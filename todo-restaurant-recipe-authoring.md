@@ -61,14 +61,12 @@ missing screen: **core → bridge → IPC → UI**.
 
 ---
 
-## 3. ⚠️ The decision that must be made first: is this needed for beta?
+## 3. The decision: NOT needed for beta (DECIDED)
 
 Stated before any design, because it determines whether this file is a plan or an archive note.
 
 **Today:** no recipes exist in any store → **no restaurant deducts inventory** → the engine has
 never run in production.
-
-So the honest question is not "how do we build this" but:
 
 > **Can a restaurant run the beta without ingredient-level inventory?**
 
@@ -78,14 +76,17 @@ variance**, which is valuable but not usually a day-one blocker.
 
 | Verdict | Consequence |
 |---|---|
-| **Not beta-blocking** | This file stays `todo-` and is scheduled deliberately. §10's recommendation in the sibling plan (do A → B first) stands unchanged. |
+| **Not beta-blocking (CONFIRMED)** | This file stays `todo-` and is scheduled deliberately for post-beta. §10's recommendation in the sibling plan (do A → B first) stands unchanged. |
 | **Beta-blocking** | This jumps the queue and the sibling plan's item 4 becomes the next work item. |
 
-**My read: not beta-blocking.** The evidence is that the engine shipped without an authoring
-surface and nothing has broken — restaurants are transacting, just without ingredient
-deduction. Building a data model under beta pressure is how the wrong one gets chosen.
+**The ruling: NOT beta-blocking.** Restaurants are transacting today without ingredient deduction —
+nothing is broken, a capability is absent. Frontline beta needs speed (table map, firing orders to KDS,
+split bills, payments, shift closure). Building a data model under beta pressure is how the wrong
+one gets chosen.
 
-**This is the one question I am not deciding for you.**
+**Operator positioning for beta:**
+> *"Ingredient-level raw material deduction (BOM) is scheduled post-beta; beta tracks finished goods
+> and reconciles kitchen inventory via physical stocktake / adjustments."*
 
 ---
 
@@ -126,17 +127,30 @@ has **no substitution concept** — this is a data model change, not a UI option
 `product_variants` exists. Does "Large Nasi Goreng" need its own recipe, or a multiplier on the
 base? This is a parent/child relationship the table does not currently express.
 
-### Q5 — ⚠️ Retroactivity (the one I would worry about most)
+### Q5 — ⚠️ Retroactivity & Historical Integrity (the architectural prerequisite)
 
 If a recipe changes today, what happens to **already-completed sales**?
 
-- **Historical sales must not change** — a closed sale is a record, not a projection.
-- But cost reporting reads recipes. A recipe edited in March would silently restate January's
-  margins.
+- **Physical Inventory Ledger (already safe):** `sales_checkout.rs:518-525` writes deductions directly to
+  `stock_movements` at checkout with an immutable transaction ID, timestamp, and delta. Editing a recipe
+  later does NOT rewrite physical stock movements.
+- **Historical Costing / COGS (the retroactivity trap):**
+  `crates/kasirmu-reporting/src/margin.rs:93` computes margins from `COALESCE(sl.cost_minor, p.cost_minor, 0)`.
+  If recipe costing is introduced dynamically, editing a recipe would silently restate past margins.
+  **The clean solution:** Snapshot at sale time. `sale_lines` ALREADY has a `cost_minor INTEGER` column
+  (`migrations/20260813_init.sql:595`). Stamping the computed recipe cost snapshot onto `sale_lines.cost_minor`
+  at checkout freezes historical margins forever without complex multi-table historical recipe joins.
+- **The Refund/Void Gap (critical interaction):**
+  In `sales_checkout.rs:363` vs `444`, recipe ingredient allocations are sent to `adjust_stock_batch`,
+  but **never mapped into `line_deductions`**. Consequently, `deduction_locations` JSON on `sales` records
+  the *dish* SKU, not the *ingredient* SKUs.
+  When a sale is refunded or voided (`crates/kasirmu-core/src/db/refunds/credit.rs`), it reads `deduction_locations`
+  and attempts to credit stock back to `line.sku` (the dish, which has no inventory tracking), dropping the
+  ingredient stock restoration.
+  **Therefore, recipe authoring touches checkout, voids/refunds (`credit.rs`), and margin reporting.**
+  That schema and contract must be designed together before writing the first recipe.
 
-So this likely needs **recipe versioning**, or an explicit decision that cost reports are
-approximate. `product_recipes` has **no version or validity columns** today (`init.sql:407-416`),
-so this is a schema decision that must be made before the first recipe is written — not after.
+So this likely needs **recipe versioning** or snapshotting, decided before the first recipe is written — not after.
 
 ---
 
