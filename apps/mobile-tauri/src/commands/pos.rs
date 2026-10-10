@@ -156,11 +156,10 @@ pub async fn start_sale_scoped(
         let global_db = state.db.lock().await;
         match location_resolver::resolve_primary_location(&global_db, &session.instance_id, None) {
             Ok(loc) => Some(loc),
-            Err(kasirmu_core::CoreError::NotFound { entity, .. })
-                if entity == "workspace_instance" =>
-            {
-                None
-            }
+            Err(kasirmu_core::CoreError::NotFound {
+                entity: "workspace_instance",
+                ..
+            }) => None,
             Err(e) => return Err(e.into()),
         }
     };

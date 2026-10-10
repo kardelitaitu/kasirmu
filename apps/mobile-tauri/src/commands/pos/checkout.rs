@@ -675,11 +675,10 @@ pub async fn complete_sale_scoped(
             None,
         ) {
             Ok(loc) => Some(loc),
-            Err(kasirmu_core::CoreError::NotFound { entity, .. })
-                if entity == "workspace_instance" =>
-            {
-                None
-            }
+            Err(kasirmu_core::CoreError::NotFound {
+                entity: "workspace_instance",
+                ..
+            }) => None,
             Err(e) => return Err(e.into()),
         }
     };
