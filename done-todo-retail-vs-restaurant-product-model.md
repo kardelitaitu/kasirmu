@@ -441,7 +441,7 @@ gate. This is the third time in this file that measurement corrected the plan, a
    (`retail`, `restaurant`, `service`).
 4. **The recipe question (RESOLVED):** Dishes with BOM recipes are stock-checked on their
    ingredients by design (`sales_checkout.rs:282`). Recipe authoring is confirmed **not
-   beta-blocking** and tracked separately in `todo-restaurant-recipe-authoring.md`.
+   beta-blocking** and tracked separately in `done-todo-restaurant-recipe-authoring.md`.
 
 ---
 
@@ -528,12 +528,12 @@ wheel. This is the same shape as F24 earlier in this campaign: *a complete chain
 | **1** | **Remove `both`** (open question 5) | Unproducible, unreachable, two contradictory consumers. Pure debt removal; makes `product_type` a clean 3-way discriminator. |
 | **2** | **A: constrain discriminator + fix `products_crud.rs:411` stock row creation** | Adds CHECK constraint on `product_type`. Fixes §10.5 write-side defect so products created with 0 initial stock get inventory rows. Unifies 4 `in_stock` copies. |
 | **3** | **B: `RestaurantMenuItem` / `RetailProduct` types** | The readable separation. Now *well-motivated*: the two domains genuinely differ — one is stock-gated on itself, the other on ingredients. |
-| **4** | **RECIPE AUTHORING** | Implemented & verified end-to-end across Core, Bridge, Desktop & Mobile IPC, UI API & Dev-Mock, and `RecipeEditorModal` UI (`todo-restaurant-recipe-authoring.md`). |
+| **4** | **RECIPE AUTHORING** | Implemented & verified end-to-end across Core, Bridge, Desktop & Mobile IPC, UI API & Dev-Mock, and `RecipeEditorModal` UI (`done-todo-restaurant-recipe-authoring.md`). |
 | **C** | **Still REFUSED** | §5a's reasoning is unchanged and, with the recipe mechanism in hand, *stronger*: the two domains share `sku`, recipes, images, tax and sales lines. Table split buys nothing here. |
 
 **Recommendation: 0 → 1 → 2 → 3, then 4 as its own post-beta feature.** Item 4 is a **feature build**
 (IPC + UI), not a reliability repair — so by this repo's own rule it should not ride in on the
-bug fix. It is tracked separately in `todo-restaurant-recipe-authoring.md`.
+bug fix. It is tracked separately in `done-todo-restaurant-recipe-authoring.md`.
 
 ### 10.4 What this changes in the ruling — and one claim WITHDRAWN
 

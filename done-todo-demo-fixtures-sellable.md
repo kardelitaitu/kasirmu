@@ -2,7 +2,7 @@
 
 > **Created 2026-10-10 · status: DONE — Option 2 implemented across useProducts.ts and RetailPosScreen.tsx; verified by npm run test -- src/__tests__/useProducts.test.tsx.**
 >
-> **Found while investigating** `todo-retail-vs-restaurant-product-model.md`, and it appears to be
+> **Found while investigating** `done-todo-retail-vs-restaurant-product-model.md`, and it appears to be
 > **the actual cause of that file's reported symptom.** A restaurant sale was refused with an
 > *"Insufficient Stock"* dialog listing `MUFFIN-B` / `LATTE` / `CAPPU`, all `Available: 0`.
 >
@@ -166,7 +166,7 @@ satisfies it differently.
 | **Cons** | Writes to the DB from the UI path; needs a decision on whether it also writes stock rows |
 | **Risk** | Medium — writing data as a side effect of rendering is a pattern to be careful with |
 
-**Note the relationship to `todo-retail-vs-restaurant-product-model.md` §10.5:** that file
+**Note the relationship to `done-todo-retail-vs-restaurant-product-model.md` §10.5:** that file
 records that `create_product` writes an inventory row **only when `initial_stock > 0`**. Option 3
 would inherit that defect unless it seeds stock too — the same trap, one layer down.
 
@@ -213,8 +213,8 @@ A dev build, with an **empty** store database or unmounted catalog, must not per
 - **IN SCOPE — Retail POS:** `RetailPosScreen.tsx:498-506` has the identical pattern in its `.catch()`
   block (substituting `RETAIL_SAMPLE_PRODUCTS` when `isDemoMode()` is true). It shares the exact same
   hazard and is fixed in the same pass by returning `[]` on failure instead of phantom sellable items.
-- **OUT OF SCOPE:** The stock model itself (`todo-retail-vs-restaurant-product-model.md`) and recipe
-  authoring (`todo-restaurant-recipe-authoring.md`).
+- **OUT OF SCOPE:** The stock model itself (`done-todo-retail-vs-restaurant-product-model.md`) and recipe
+  authoring (`done-todo-restaurant-recipe-authoring.md`).
 
 ---
 
