@@ -388,10 +388,10 @@ pub async fn create_product(
     if sku.trim().is_empty() {
         return Err(PgError::Validation("SKU must not be empty".into()));
     }
-    if sku.len() > 50 {
+    if sku.chars().count() > 50 {
         return Err(PgError::Validation(format!(
             "SKU must not exceed 50 characters, got {}",
-            sku.len()
+            sku.chars().count()
         )));
     }
     if name.trim().is_empty() {
@@ -402,10 +402,10 @@ pub async fn create_product(
     // `POST /api/v1/products`, so without this the cloud accepted a name the
     // embedded/local branch refused. The PG column is plain TEXT (no length
     // constraint), so this check is the whole rule on both sides.
-    if name.len() > 255 {
+    if name.chars().count() > 255 {
         return Err(PgError::Validation(format!(
             "name must not exceed 255 characters, got {}",
-            name.len()
+            name.chars().count()
         )));
     }
     if price.minor_units < 0 {

@@ -55,6 +55,19 @@ const mockCategories: productsApi.CategoryDto[] = [
   { id: 'cat-drinks', name: 'Drinks', colour: '#06b6d4', icon: 'cold-drink' },
 ];
 
+/**
+ * Resolve a key to the text the loaded `products.ftl` actually carries.
+ *
+ * The F10 cases assert an accessible NAME equals this, not a literal: the point of
+ * the fix is that the string comes from the bundle, so a test that hardcoded
+ * 'Remove option' would keep passing after a revert to a literal.
+ */
+function l10nOf(key: string): string {
+  const line = productsFtl.split(/\r?\n/).find((l) => l.startsWith(key + ' ='));
+  if (!line) throw new Error('missing FTL key: ' + key);
+  return line.slice(key.length + 3).trim();
+}
+
 describe('RestaurantMenuEditorScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -417,13 +430,21 @@ describe('RestaurantMenuEditorScreen', () => {
     await user.click(screen.getByTestId('modifier-option-add-0'));
     expect(screen.getByTestId('modifier-option-name-0-1')).toBeInTheDocument();
 
-    // Remove the first option (index 0)
+    // Remove the first option (index 0). The accessible NAME is asserted, not just
+    // the testid: these two buttons carried hardcoded literals until F10 moved them
+    // into the bundle, and a testid-only click passes either way.
+    expect(screen.getByTestId('modifier-option-remove-0-0')).toHaveAccessibleName(
+      l10nOf('restaurant-menu-editor-remove-option-aria'),
+    );
     await user.click(screen.getByTestId('modifier-option-remove-0-0'));
     // Only one option should remain in group 0
     expect(screen.queryByTestId('modifier-option-name-0-1')).not.toBeInTheDocument();
     expect(screen.getByTestId('modifier-option-name-0-0')).toBeInTheDocument();
 
     // Remove the whole group
+    expect(screen.getByTestId('modifier-group-remove-0')).toHaveAccessibleName(
+      l10nOf('restaurant-menu-editor-remove-modifier-group-aria'),
+    );
     await user.click(screen.getByTestId('modifier-group-remove-0'));
     expect(screen.queryByTestId('modifier-group-0')).not.toBeInTheDocument();
   });
@@ -596,5 +617,29 @@ describe('RestaurantMenuEditorScreen', () => {
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('renders saved categories immediately on initial load without adding new category', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    // Verify categories loaded from backend are rendered in the category rail immediately
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-mains')).toBeInTheDocument();
+      expect(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-drinks')).toBeInTheDocument();
+    });
+
+    const rail = screen.getByLabelText('Categories');
+    expect(within(rail).getByText('Mains')).toBeInTheDocument();
+    expect(within(rail).getByText('Drinks')).toBeInTheDocument();
+
+    // Open add item draft to verify saved categories are populated in the select dropdown
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    const categorySelect = screen.getByTestId('restaurant-menu-editor-draft-category') as HTMLSelectElement;
+    expect(categorySelect).toBeInTheDocument();
+    const options = Array.from(categorySelect.options).map((o) => o.value);
+    expect(options).toContain('Mains');
+    expect(options).toContain('Drinks');
   });
 });

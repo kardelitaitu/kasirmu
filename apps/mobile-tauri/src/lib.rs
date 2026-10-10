@@ -1208,6 +1208,7 @@ pub fn run() {
                 commands::terminals::set_device_binding_scoped,
                 commands::workspaces::list_workspaces,
                 commands::workspaces::list_workspace_screens,
+                commands::workspaces::list_all_workspaces_scoped,
                 commands::workspaces::resolve_boot_store,
                 commands::sync::test_sync_connection,
                 commands::refunds::process_refund_scoped,

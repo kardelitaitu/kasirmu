@@ -135,9 +135,25 @@ export function buildCompletedSaleReceipt({
         ...(line.note ? { note: line.note } : {}),
       };
     }),
-    subtotal: completedSale
-      ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
-      : { minorUnits: saleTotal?.minor_units ?? fallbackTotalMinor, currency: cartCurrency },
+    // `completedSale?.` on the SUBTOTAL too, not just on `completedSale`.
+    //
+    // MEASURED 2026-10-09 on the tablet: a completed sale (row 01-01-261009-01-000007,
+    // total 15000, status completed) showed the bare "Sale Complete" branch with NO
+    // receipt preview, so the operator had nothing to print. The cause was here — the
+    // read-back came back SHORT and `completedSale.subtotal` was undefined, so this
+    // dereference threw. PaymentModal.tsx:1325 wraps the build in a try whose catch is
+    // "Receipt/KDS may not be configured - non-blocking", so the throw was swallowed,
+    // `setReceiptArgs` never ran, and the modal silently fell to its no-receipt branch.
+    //
+    // The declared type says `subtotal: Money` is required, and the docstring above
+    // claims a "short or absent read-back degrades to a receipt built from the cart" —
+    // this line did not honour that. `total` and `taxTotal` were already guarded; the
+    // subtotal was the one that was not. Falling back keeps the promise the type cannot
+    // enforce at runtime against an IPC boundary.
+    subtotal:
+      completedSale?.subtotal != null
+        ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
+        : { minorUnits: saleTotal?.minor_units ?? fallbackTotalMinor, currency: cartCurrency },
     ...(completedSale && completedSale.taxTotal && completedSale.taxTotal.minor_units > 0
       ? { tax: { minorUnits: completedSale.taxTotal.minor_units, currency: cartCurrency } }
       : {}),

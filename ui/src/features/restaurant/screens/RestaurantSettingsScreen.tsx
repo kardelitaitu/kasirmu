@@ -1,21 +1,51 @@
+// ── Restaurant POS settings — the sidebar's full-screen Settings screen ──
+//
+// OWNERSHIP OF EACH TOGGLE'S KEY (P1 of todo-restaurant-pos-reliability.md).
+// This screen is one of THREE surfaces that write restaurant settings — the
+// F10 WorkspaceRestaurantPosSettings card and RestaurantReceiptsScreen are the
+// others — so which key each control owns is stated here rather than inferred:
+//
+//   restaurant.customer_name        owned here; gates the cart's customer field
+//   restaurant.guest_count          owned here; gates the cart's pax field
+//   restaurant.order_type_prompt    owned here; read by PosScreen (order-type effect)
+//   restaurant.hold_order           owned here
+//   restaurant.save_tab             owned here
+//   restaurant.course_firing        SHARED with the F10 card (both write it)
+//   restaurant.auto_print_kitchen   owned here
+//   restaurant.sound_chime          owned here
+//   restaurant.interaction_sound    owned here; mirrored to localStorage
+//   restaurant.interaction_vibration owned here; mirrored to localStorage
+//
+// TABLE CAPTURE IS NOT A TOGGLE HERE, deliberately. The cart's table input is
+// part of what a restaurant POS IS, so it renders unconditionally
+// (`CartPanel.tsx:655`) and the only table-number control is the PRINT toggle in
+// RestaurantReceiptsScreen (`receipt.showTableNumber`, `:1889`). This screen used
+// to render a second toggle writing `restaurant.table_number`, a key with NO
+// reader anywhere: it persisted and reloaded faithfully while changing nothing.
+// It was removed rather than wired because the value the POS reads
+// (`receipt.show_table_number`) lives in the STORE database while provisioning
+// writes the GLOBAL one, so a restaurant default for it is not expressible as a
+// provisioning fact — see finding F14 in the plan doc.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
-import {
-  getSettingScoped,
-  setSettingsScoped,
-  getReceiptSettingsScoped,
-  setReceiptSettingsScoped,
-} from '@/api/settings';
+import { getSettingScoped, setSettingsScoped } from '@/api/settings';
+import { l10nErrorMessage } from '@/utils/app-error';
 import {
   isInteractionSoundEnabled,
   isInteractionVibrationEnabled,
   setInteractionSoundEnabled,
   setInteractionVibrationEnabled,
 } from '@/utils/interaction';
+import {
+  DEFAULT_RESTAURANT_SETTINGS,
+  RESTAURANT_SETTING_SPECS,
+  loadRestaurantSettings,
+  type RestaurantSettingsValues,
+} from './restaurantSettingsModel';
 import './RestaurantSettingsScreens.css';
 
 // ── Settings Icon ───────────────────────────────────────────────────
@@ -90,34 +120,10 @@ function SettingRow({ id, label, description, checked, onChange, testId, badge }
 }
 
 // ── Screen State Interface ──────────────────────────────────────────
-
-interface RestaurantSettingsValues {
-  tableNumber: boolean;
-  customerName: boolean;
-  guestCount: boolean;
-  orderTypePrompt: boolean;
-  holdOrder: boolean;
-  saveTab: boolean;
-  courseFiring: boolean;
-  autoPrintKitchen: boolean;
-  soundChime: boolean;
-  interactionSound: boolean;
-  interactionVibration: boolean;
-}
-
-const DEFAULT_RESTAURANT_SETTINGS: RestaurantSettingsValues = {
-  tableNumber: true,
-  customerName: true,
-  guestCount: false,
-  orderTypePrompt: true,
-  holdOrder: true,
-  saveTab: true,
-  courseFiring: false,
-  autoPrintKitchen: false,
-  soundChime: true,
-  interactionSound: true,
-  interactionVibration: true,
-};
+//
+// `RestaurantSettingsValues` and `DEFAULT_RESTAURANT_SETTINGS` now live in
+// ./settingsModel so the load logic that applies them is unit-testable without a
+// DOM, and so there is exactly ONE copy of each default.
 
 export interface RestaurantSettingsScreenProps {
   onSaved?: () => void;
@@ -139,11 +145,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
   // Settings states
-  const [tableNumber, setTableNumber] = useState(DEFAULT_RESTAURANT_SETTINGS.tableNumber);
   const [customerName, setCustomerName] = useState(DEFAULT_RESTAURANT_SETTINGS.customerName);
   const [guestCount, setGuestCount] = useState(DEFAULT_RESTAURANT_SETTINGS.guestCount);
   const [orderTypePrompt, setOrderTypePrompt] = useState(DEFAULT_RESTAURANT_SETTINGS.orderTypePrompt);
-  const [holdOrder, setHoldOrder] = useState(DEFAULT_RESTAURANT_SETTINGS.holdOrder);
   const [saveTab, setSaveTab] = useState(DEFAULT_RESTAURANT_SETTINGS.saveTab);
   const [courseFiring, setCourseFiring] = useState(DEFAULT_RESTAURANT_SETTINGS.courseFiring);
   const [autoPrintKitchen, setAutoPrintKitchen] = useState(DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen);
@@ -155,6 +159,21 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   const originalsRef = useRef<RestaurantSettingsValues>({ ...DEFAULT_RESTAURANT_SETTINGS });
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
+  // True when a key's read FAILED (as opposed to returning null = never written).
+  //
+  // This is the F4 fix, and it is a data-loss guard rather than polish. Every key
+  // below used to be loaded with `.catch(() => null)`, which made a transport
+  // failure indistinguishable from "never written": the resolver fell back to
+  // DEFAULT_RESTAURANT_SETTINGS and then seeded `originalsRef` from those
+  // defaults, so `dirty` read false and the screen looked clean and saved. The
+  // merchant's next Save then wrote the DEFAULTS over their real configuration.
+  //
+  // With this flag the screen refuses to present a loaded state it cannot vouch
+  // for: no Save, an explicit error, and a retry that re-reads.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Bumped by Retry to re-run the load effect.
+  const [reloadNonce, setReloadNonce] = useState(0);
+
   // Load settings on mount
   useEffect(() => {
     let cancelled = false;
@@ -163,94 +182,71 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       if (!sessionToken) return;
       setLoading(true);
       try {
-        const [
-          tableNumRaw,
-          custNameRaw,
-          guestCountRaw,
-          orderTypeRaw,
-          holdOrderRaw,
-          saveTabRaw,
-          courseFiringRaw,
-          autoPrintRaw,
-          soundChimeRaw,
-          interactionSoundRaw,
-          interactionVibrationRaw,
-          receiptSettings,
-        ] = await Promise.all([
-          getSettingScoped(sessionToken, 'restaurant.table_number').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.customer_name').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.guest_count').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.order_type_prompt').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.hold_order').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.save_tab').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.course_firing').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.auto_print_kitchen').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.sound_chime').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.interaction_sound').catch(() => null),
-          getSettingScoped(sessionToken, 'restaurant.interaction_vibration').catch(() => null),
-          getReceiptSettingsScoped(sessionToken).catch(() => null),
-        ]);
+        // Every read goes through the model, which keeps "never written" (null,
+        // serve the default) apart from "could not read" (reject, refuse to
+        // pretend). See settingsModel.ts for why that distinction is a data-loss
+        // guard and not a nicety.
+        const result = await loadRestaurantSettings(
+          sessionToken,
+          getSettingScoped,
+          {
+            interactionSound: isInteractionSoundEnabled(),
+            interactionVibration: isInteractionVibrationEnabled(),
+          },
+        );
 
         if (cancelled) return;
 
-        const resolvedTableNum =
-          tableNumRaw !== null
-            ? tableNumRaw === 'true'
-            : receiptSettings?.showTableNumber ?? DEFAULT_RESTAURANT_SETTINGS.tableNumber;
-        const resolvedCustName =
-          custNameRaw !== null ? custNameRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.customerName;
-        const resolvedGuestCount =
-          guestCountRaw !== null ? guestCountRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.guestCount;
-        const resolvedOrderType =
-          orderTypeRaw !== null ? orderTypeRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.orderTypePrompt;
-        const resolvedHoldOrder =
-          holdOrderRaw !== null ? holdOrderRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.holdOrder;
-        const resolvedSaveTab =
-          saveTabRaw !== null ? saveTabRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.saveTab;
-        const resolvedCourseFiring =
-          courseFiringRaw !== null ? courseFiringRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.courseFiring;
-        const resolvedAutoPrint =
-          autoPrintRaw !== null ? autoPrintRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen;
-        const resolvedSoundChime =
-          soundChimeRaw !== null ? soundChimeRaw === 'true' : DEFAULT_RESTAURANT_SETTINGS.soundChime;
-        const resolvedInteractionSound =
-          interactionSoundRaw !== null
-            ? interactionSoundRaw === 'true'
-            : isInteractionSoundEnabled();
-        const resolvedInteractionVibration =
-          interactionVibrationRaw !== null
-            ? interactionVibrationRaw === 'true'
-            : isInteractionVibrationEnabled();
+        // Refuse to present a loaded state we cannot vouch for: no values are
+        // seeded, so `originalsRef` keeps its previous contents, `dirty` cannot
+        // read a false "clean", and the Save button stays disabled (see the
+        // header render). Seeding defaults here is precisely the F4 bug.
+        if (!result.ok) {
+          setLoadFailed(true);
+          return;
+        }
+        setLoadFailed(false);
+        const values = result.values;
 
-        setTableNumber(resolvedTableNum);
-        setCustomerName(resolvedCustName);
-        setGuestCount(resolvedGuestCount);
-        setOrderTypePrompt(resolvedOrderType);
-        setHoldOrder(resolvedHoldOrder);
-        setSaveTab(resolvedSaveTab);
-        setCourseFiring(resolvedCourseFiring);
-        setAutoPrintKitchen(resolvedAutoPrint);
-        setSoundChime(resolvedSoundChime);
-        setInteractionSound(resolvedInteractionSound);
-        setInteractionVibration(resolvedInteractionVibration);
+        setCustomerName(values.customerName);
+        setGuestCount(values.guestCount);
+        setOrderTypePrompt(values.orderTypePrompt);
+        setSaveTab(values.saveTab);
+        setCourseFiring(values.courseFiring);
+        setAutoPrintKitchen(values.autoPrintKitchen);
+        setSoundChime(values.soundChime);
+        setInteractionSound(values.interactionSound);
+        setInteractionVibration(values.interactionVibration);
 
-        originalsRef.current = {
-          tableNumber: resolvedTableNum,
-          customerName: resolvedCustName,
-          guestCount: resolvedGuestCount,
-          orderTypePrompt: resolvedOrderType,
-          holdOrder: resolvedHoldOrder,
-          saveTab: resolvedSaveTab,
-          courseFiring: resolvedCourseFiring,
-          autoPrintKitchen: resolvedAutoPrint,
-          soundChime: resolvedSoundChime,
-          interactionSound: resolvedInteractionSound,
-          interactionVibration: resolvedInteractionVibration,
-        };
+        // F6 / D3 — the DB is authoritative, and the RUNTIME reads localStorage.
+        //
+        // `utils/interaction.ts` decides whether to play a sound or vibrate by
+        // reading `pos.interaction_sound` / `pos.interaction_vibration` from
+        // localStorage. The DB keys above are what actually sync across devices,
+        // so without this write-through a fresh device, a cleared webview cache,
+        // or a second terminal keeps the localStorage default (true) and ignores
+        // the saved preference entirely. The save path already writes these two;
+        // this closes the same gap on the load path.
+        //
+        // Idempotent when the key was unset: the value came FROM localStorage, so
+        // writing it back changes nothing.
+        setInteractionSoundEnabled(values.interactionSound);
+        setInteractionVibrationEnabled(values.interactionVibration);
+
+        originalsRef.current = { ...values };
         setDirtyVersion((v) => v + 1);
-      } catch {
+      } catch (err) {
+        // `l10nErrorMessage` maps a TYPED AppError to specific user-safe copy (session
+        // expired, no permission, offline, conflict) and falls back to this screen's own
+        // key for anything unrecognized — so the operator gets a message that says what to
+        // DO, while raw backend text still never renders (utils/app-error.ts:319-325).
+        //
+        // The bare `catch {}` here discarded `err` entirely, so every failure read
+        // "Failed to load restaurant settings" — including a session that had expired,
+        // which the operator could actually have fixed. `RestaurantMenuEditorScreen`
+        // already does this at 9 sites; this screen was the outlier.
         addToastRef.current({
-          message: l10nRef.current.getString('restaurant-settings-error-load') || 'Failed to load restaurant settings',
+          message: l10nErrorMessage(err, l10nRef.current, 'restaurant-settings-error-load'),
           type: 'error',
         });
       } finally {
@@ -262,17 +258,16 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     return () => {
       cancelled = true;
     };
-  }, [sessionToken]);
+    // `reloadNonce` is the Retry control's re-run trigger.
+  }, [sessionToken, reloadNonce]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
     const orig = originalsRef.current;
     return (
-      tableNumber !== orig.tableNumber ||
       customerName !== orig.customerName ||
       guestCount !== orig.guestCount ||
       orderTypePrompt !== orig.orderTypePrompt ||
-      holdOrder !== orig.holdOrder ||
       saveTab !== orig.saveTab ||
       courseFiring !== orig.courseFiring ||
       autoPrintKitchen !== orig.autoPrintKitchen ||
@@ -281,11 +276,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       interactionVibration !== orig.interactionVibration
     );
   }, [
-    tableNumber,
     customerName,
     guestCount,
     orderTypePrompt,
-    holdOrder,
     saveTab,
     courseFiring,
     autoPrintKitchen,
@@ -305,11 +298,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       // 1. Write restaurant settings keys atomically
       tasks.push(
         setSettingsScoped(sessionToken, {
-          'restaurant.table_number': String(tableNumber),
           'restaurant.customer_name': String(customerName),
           'restaurant.guest_count': String(guestCount),
           'restaurant.order_type_prompt': String(orderTypePrompt),
-          'restaurant.hold_order': String(holdOrder),
           'restaurant.save_tab': String(saveTab),
           'restaurant.course_firing': String(courseFiring),
           'restaurant.auto_print_kitchen': String(autoPrintKitchen),
@@ -319,33 +310,23 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         }),
       );
 
-      // 2. Keep local interaction preference in sync immediately
+      await Promise.all(tasks);
+
+      // 2. Mirror the interaction preferences to localStorage — AFTER the DB
+      //    write, not before (P3/F5).
+      //
+      //    This used to run before `await`, so a rejected save left localStorage
+      //    saying "sound off" while the DB still said "sound on": the device and
+      //    the store disagreed, and the runtime believes localStorage. Doing it
+      //    after the await means a failed save leaves the local mirror exactly as
+      //    it was, matching the DB it failed to change.
       setInteractionSoundEnabled(interactionSound);
       setInteractionVibrationEnabled(interactionVibration);
 
-      // 3. Keep receiptSettings.showTableNumber in sync
-      try {
-        const currentReceipt = await getReceiptSettingsScoped(sessionToken);
-        if (currentReceipt && currentReceipt.showTableNumber !== tableNumber) {
-          tasks.push(
-            setReceiptSettingsScoped(sessionToken, {
-              ...currentReceipt,
-              showTableNumber: tableNumber,
-            }),
-          );
-        }
-      } catch {
-        // Fallback: receipt read error should not block general settings save
-      }
-
-      await Promise.all(tasks);
-
       originalsRef.current = {
-        tableNumber,
         customerName,
         guestCount,
         orderTypePrompt,
-        holdOrder,
         saveTab,
         courseFiring,
         autoPrintKitchen,
@@ -355,19 +336,13 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       };
       setDirtyVersion((v) => v + 1);
 
+      // Derived from the model's spec list rather than re-typed. This list was a
+      // THIRD hand-maintained copy of the same ten keys (the spec table and the write
+      // object above are the others), so adding a setting to the model would silently
+      // leave it out of the "settings changed" broadcast and every other mounted
+      // surface would keep its stale copy of the value.
       settingsContext?.markSettingsUpdated?.([
-        'restaurant.table_number',
-        'restaurant.customer_name',
-        'restaurant.guest_count',
-        'restaurant.order_type_prompt',
-        'restaurant.hold_order',
-        'restaurant.save_tab',
-        'restaurant.course_firing',
-        'restaurant.auto_print_kitchen',
-        'restaurant.sound_chime',
-        'restaurant.interaction_sound',
-        'restaurant.interaction_vibration',
-        'receipt.showTableNumber',
+        ...RESTAURANT_SETTING_SPECS.map((s) => s.key),
       ]);
 
       addToast({
@@ -376,9 +351,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       });
 
       onSaved?.();
-    } catch {
+    } catch (err) {
       addToast({
-        message: l10n.getString('restaurant-settings-error-save') || 'Failed to save settings',
+        message: l10nErrorMessage(err, l10n, 'restaurant-settings-error-save'),
         type: 'error',
       });
     } finally {
@@ -386,11 +361,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     }
   }, [
     sessionToken,
-    tableNumber,
     customerName,
     guestCount,
     orderTypePrompt,
-    holdOrder,
     saveTab,
     courseFiring,
     autoPrintKitchen,
@@ -476,16 +449,22 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               className="restaurant-settings-header-dirty"
               style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
             >
-              {dirty ? (
+              {/* A failed load must not claim "All changes saved". The values on
+                  screen are the model's defaults, not the merchant's, so the
+                  honest answer is the error banner below and nothing here. */}
+              {loadFailed ? null : dirty ? (
                 <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
               ) : (
                 <Localized id="restaurant-all-saved">All changes saved</Localized>
               )}
             </span>
+            {/* `loadFailed` disables Save outright. The screen is showing values it
+                could not read, so letting it write would overwrite the real ones
+                with defaults — the F4 loss. Retry is the only way forward. */}
             <button
               type="button"
               className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-              disabled={!dirty || saving}
+              disabled={!dirty || saving || loadFailed}
               aria-busy={saving || undefined}
               onClick={handleSave}
               data-testid="restaurant-settings-save-btn"
@@ -510,37 +489,53 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         ) : (
           <div className="resto-settings-cards-list">
 
+            {/* ── Load failure (F4) ─────────────────────────────────
+                Shown INSTEAD of trusting the controls. The values below are the
+                model's defaults, not the merchant's, so the banner says the read
+                failed and Retry re-runs it. Save is disabled above. */}
+            {loadFailed && (
+              <div className="settings-error-banner" role="alert" data-testid="restaurant-settings-load-error">
+                <span>
+                  <Localized id="restaurant-settings-error-load">
+                    <span>Failed to load restaurant settings</span>
+                  </Localized>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  data-testid="restaurant-settings-retry-btn"
+                  onClick={() => setReloadNonce((n) => n + 1)}
+                >
+                  <Localized id="retry">
+                    <span>Retry</span>
+                  </Localized>
+                </button>
+              </div>
+            )}
+
             {/* ── 1. Order Entry & Identification ─────────────────── */}
             <div className="resto-settings-group-card" data-testid="settings-card-order-entry">
               <div className="resto-compact-form">
                 <SettingRow
-                  id="resto-setting-table-number"
-                  label="Table Number"
-                  description="Prompt for table assignment when starting a new dine-in order"
-                  checked={tableNumber}
-                  onChange={setTableNumber}
-                  testId="setting-toggle-table-number"
-                />
-                <SettingRow
                   id="resto-setting-customer-name"
-                  label="Customer Name"
-                  description="Allow capturing guest or customer name on order tickets and tabs"
+                  label={l10n.getString('restaurant-setting-customer-name')}
+                  description={l10n.getString('restaurant-setting-customer-name-desc')}
                   checked={customerName}
                   onChange={setCustomerName}
                   testId="setting-toggle-customer-name"
                 />
                 <SettingRow
                   id="resto-setting-guest-count"
-                  label="Guest Count (Pax)"
-                  description="Prompt for party size and number of seated guests per table"
+                  label={l10n.getString('restaurant-setting-guest-count')}
+                  description={l10n.getString('restaurant-setting-guest-count-desc')}
                   checked={guestCount}
                   onChange={setGuestCount}
                   testId="setting-toggle-guest-count"
                 />
                 <SettingRow
                   id="resto-setting-order-type"
-                  label="Order Type Selection"
-                  description="Require selecting Dine-in, Takeaway, or Delivery before adding items"
+                  label={l10n.getString('restaurant-setting-order-type')}
+                  description={l10n.getString('restaurant-setting-order-type-desc')}
                   checked={orderTypePrompt}
                   onChange={setOrderTypePrompt}
                   testId="setting-toggle-order-type"
@@ -551,26 +546,27 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
             {/* ── 2. Order Workflow & Tabs ────────────────────────── */}
             <div className="resto-settings-group-card" data-testid="settings-card-workflow">
               <div className="resto-compact-form">
-                <SettingRow
-                  id="resto-setting-hold-order"
-                  label="Hold Order"
-                  description="Allow cashier to park or temporarily hold in-progress orders"
-                  checked={holdOrder}
-                  onChange={setHoldOrder}
-                  testId="setting-toggle-hold-order"
-                />
+                {/* Hold Order was REMOVED here (finding D5, round 42). Its key
+                    `restaurant.hold_order` had zero readers anywhere, while its own
+                    description promised "Allow cashier to park or temporarily hold
+                    in-progress orders" — and restaurant POS already DOES park carts, as
+                    `open_bill` ("Save Tab", the toggle immediately below). So the control
+                    offered a second name for a capability that exists, and changed nothing.
+                    Removed rather than wired: wiring it would mean inventing a duplicate
+                    park concept beside `save_tab`. Same call as `restaurant.table_number`
+                    (option C). */}
                 <SettingRow
                   id="resto-setting-save-tab"
-                  label="Save Tab / Open Bill"
-                  description="Enable running customer tabs and table tabs for deferred settlement"
+                  label={l10n.getString('restaurant-setting-save-tab')}
+                  description={l10n.getString('restaurant-setting-save-tab-desc')}
                   checked={saveTab}
                   onChange={setSaveTab}
                   testId="setting-toggle-save-tab"
                 />
                 <SettingRow
                   id="resto-setting-course-firing"
-                  label="Course Firing"
-                  description="Enable coursing rules (appetizers, mains, desserts) for kitchen firing"
+                  label={l10n.getString('restaurant-setting-course-firing')}
+                  description={l10n.getString('restaurant-setting-course-firing-desc')}
                   checked={courseFiring}
                   onChange={setCourseFiring}
                   testId="setting-toggle-course-firing"
@@ -583,16 +579,16 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               <div className="resto-compact-form">
                 <SettingRow
                   id="resto-setting-auto-print-kitchen"
-                  label="Auto-Print Kitchen Ticket (KOT)"
-                  description="Automatically send order tickets to kitchen printer upon saving or holding"
+                  label={l10n.getString('restaurant-setting-auto-print')}
+                  description={l10n.getString('restaurant-setting-auto-print-desc')}
                   checked={autoPrintKitchen}
                   onChange={setAutoPrintKitchen}
                   testId="setting-toggle-auto-print-kitchen"
                 />
                 <SettingRow
                   id="resto-setting-sound-chime"
-                  label="Order Sound Notifications"
-                  description="Play an audible confirmation chime when orders are sent or updated"
+                  label={l10n.getString('restaurant-setting-sound-chime')}
+                  description={l10n.getString('restaurant-setting-sound-chime-desc')}
                   checked={soundChime}
                   onChange={setSoundChime}
                   testId="setting-toggle-sound-chime"
@@ -621,7 +617,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
                     l10n.getString('restaurant-settings-interaction-vibration-desc') ||
                     'Device vibration on taps (supported on Android/tablet only; not available on Windows, Linux, or macOS)'
                   }
-                  badge="Mobile/Tablet only (not on Win/Linux/Mac)"
+                  badge={l10n.getString('restaurant-setting-vibration-badge')}
                   checked={interactionVibration}
                   onChange={setInteractionVibration}
                   testId="setting-toggle-interaction-vibration"

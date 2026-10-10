@@ -30,7 +30,15 @@ use crate::traits::barcode::BarcodeScanner;
 use crate::transport::usb::{UsbDeviceInfo, open_device};
 use crate::types::{Barcode, DeviceInfo};
 
-/// Maximum length of a single scanned barcode string (1024 chars) to bound heap buffers.
+/// Maximum length of a single scanned barcode buffer (1024 bytes) to bound memory.
+///
+/// BYTES, not characters: the check is `String::len()`, which is a byte length in Rust.
+/// (This doc said "1024 chars" while the two sibling copies of this same constant in
+/// `bt_scanner` and `serial_scanner` both correctly said bytes — the three are
+/// independent definitions with no shared source, so their prose could drift apart while
+/// the VALUE agreed. The wording now matches all three.) The two counts are equal here in
+/// practice because every entry in `HID_KEY_TABLE` is ASCII, but a future non-ASCII key
+/// would make them diverge, and the doc is what a reader would have trusted.
 pub const MAX_BARCODE_LEN: usize = 1024;
 
 // ---------------------------------------------------------------------------

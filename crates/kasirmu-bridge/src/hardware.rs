@@ -397,6 +397,44 @@ fn read_receipt_config_for_scope(
                 .filter(|f| !f.is_empty())
         })
         .or_else(|| legacy_footer.clone());
+    // D6: digit grouping.
+    //
+    // The renderer had NONE, so an Indonesian receipt printed `Rp15000` while the
+    // on-screen preview - which groups through `Intl.NumberFormat('id-ID')` - showed
+    // `Rp 15.000`. In the primary market that is the receipt handed to every customer,
+    // and the grouping is the whole reason separators exist.
+    //
+    // `currency.thousands_separator` is the one value that EXISTS to express this and
+    // until now was read by NOTHING - neither the preview nor the printer
+    // (accessors have existed since the typed-settings layer:
+    // `platform/core/src/settings/typed.rs:657`). Its vocabulary is
+    // comma|dot|space|none.
+    //
+    // The stored value wins when the key is present. When it is ABSENT the setting's
+    // own default (`"comma"`) is deliberately NOT used: that default is English, and
+    // taking it would print `Rp15,000` beside a preview reading `Rp 15.000` - trading
+    // one divergence for another. An unwritten key instead follows the store's
+    // currency, so IDR groups with dots (the market convention the preview already
+    // renders) and everything else stays UNGROUPED, which is the behaviour every
+    // receipt had before this field existed.
+    let grouping = {
+        let explicit = Settings::get(
+            conn,
+            kasirmu_core::settings::keys::CURRENCY_THOUSANDS_SEPARATOR,
+        )?
+        .filter(|v| !v.is_empty());
+        match explicit {
+            Some(stored) => receipt::ThousandSeparator::from_setting(&stored),
+            None => {
+                let currency = Settings::get_default_currency(conn)?;
+                if currency.is_some_and(|c| c.eq_ignore_ascii_case("IDR")) {
+                    receipt::ThousandSeparator::Dot
+                } else {
+                    receipt::ThousandSeparator::None
+                }
+            }
+        }
+    };
     let config = receipt::ReceiptConfig {
         paper_width,
         show_currency,
@@ -405,6 +443,7 @@ fn read_receipt_config_for_scope(
         footer,
         show_table_number: effective.layout.show_table_number.unwrap_or(false),
         barcode_enabled: false,
+        grouping,
         payment_link_template: None,
     };
     let tax_id_label = effective

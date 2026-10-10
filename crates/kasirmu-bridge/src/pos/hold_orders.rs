@@ -53,21 +53,26 @@ pub struct HoldCartArgs {
     /// Label.
     pub label: String,
     /// Cart Data.
+    #[serde(alias = "cart_data")]
     pub cart_data: String,
     /// Item Count.
+    #[serde(alias = "item_count")]
     pub item_count: i64,
     /// Total amount in minor currency units.
+    #[serde(alias = "total_minor")]
     pub total_minor: i64,
     /// ISO-4217 currency code.
     pub currency: String,
-    #[serde(default = "default_bill_type")]
+    #[serde(default = "default_bill_type", alias = "bill_type")]
     /// Bill Type.
     pub bill_type: String,
     /// Customer Name.
+    #[serde(default, alias = "customer_name")]
     pub customer_name: Option<String>,
     /// ADR-19 §6.3: deduction location UUID locked at cart-start time.
     /// When restoring a held cart, the caller should pass the same
     /// `deduction_location_id` that was stored when the cart was held.
+    #[serde(default, alias = "deduction_location_id")]
     pub deduction_location_id: Option<String>,
 }
 

@@ -12,6 +12,7 @@ import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
 import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
 import { RestaurantSidebar, type RestaurantSidebarActions, type RestaurantSidebarProfile } from './components/RestaurantSidebar';
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
@@ -605,18 +606,24 @@ export default function RestaurantMenu({
         />
       </div>
 
-      <RestaurantSidebar
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        sidebarRef={sidebarRef}
-        triggerRef={sidebarButtonRef}
-        container={menuRoot}
-        cartActions={cartActions}
-        profile={profile}
-        onChangePhoto={onChangePhoto}
-        onRequestExit={onRequestExit}
-        isManager={isManager}
-      />
+      {/* Crash isolation (F9). The sidebar is a panel over a LIVE sale: a throw
+          inside it must not take the POS screen with it, or the cashier loses the
+          cart mid-transaction. `onReset` remounts just the panel, and `resetKeys`
+          clears a caught error when the open state changes so reopening recovers. */}
+      <LocalizedErrorBoundary onReset={() => setMenuOpen(false)} resetKeys={[menuOpen]}>
+        <RestaurantSidebar
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          sidebarRef={sidebarRef}
+          triggerRef={sidebarButtonRef}
+          container={menuRoot}
+          cartActions={cartActions}
+          profile={profile}
+          onChangePhoto={onChangePhoto}
+          onRequestExit={onRequestExit}
+          isManager={isManager}
+        />
+      </LocalizedErrorBoundary>
 
       {/* ── Category pills ─────────────────────────── */}
       <MenuCategoryTabBar
@@ -627,6 +634,12 @@ export default function RestaurantMenu({
       />
 
       {/* ── Product grid ───────────────────────────── */}
+      {/* Crash isolation (F9). This is the whole ordering surface: a throw in a grid
+          row used to propagate past RestaurantMenu into PosScreen and unmount the
+          POS screen, taking the cart with it mid-service. `resetKeys` clears the
+          caught error when the item list changes, so a bad row does not brick the
+          grid for the rest of the shift. */}
+      <LocalizedErrorBoundary onReset={reload} resetKeys={[String(filtered.length), effectiveCategory]}>
       <MenuItemGrid
         loading={loading || isTransientSessionError}
         error={isTransientSessionError ? null : (sessionError ?? error)}
@@ -645,6 +658,7 @@ export default function RestaurantMenu({
         onAdd={handleItemAdd}
         onContextMenu={handleContextMenu}
       />
+      </LocalizedErrorBoundary>
 
       {/* ── Context menu ─────────────────────────────── */}
       {contextMenu && (
@@ -658,7 +672,15 @@ export default function RestaurantMenu({
       )}
 
       {/* ── Item modifier modal ───────────────────────── */}
+      {/* Crash isolation (F9), same reasoning as the grid above: this is the step
+          where an item's options and price are chosen, so a throw must cost the
+          cashier the dialog, not the sale. `resetKeys` keys on the product so
+          reopening a different item clears a caught error. */}
       {customizingProduct && (
+        <LocalizedErrorBoundary
+          onReset={() => setCustomizingProduct(null)}
+          resetKeys={[customizingProduct.sku]}
+        >
         <ItemModifierModal
           open={Boolean(customizingProduct)}
           productName={customizingProduct.name}
@@ -668,6 +690,7 @@ export default function RestaurantMenu({
           onConfirm={handleConfirmModifiers}
           onClose={() => setCustomizingProduct(null)}
         />
+        </LocalizedErrorBoundary>
       )}
     </div>
   );

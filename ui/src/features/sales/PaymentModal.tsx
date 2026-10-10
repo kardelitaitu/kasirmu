@@ -8,7 +8,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
-import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
+import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -18,7 +18,7 @@ import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
+import { coreRailWithheld, railOffered, railParam, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
 import { useActiveMarketProfile } from '@/hooks/useActiveMarketProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -33,6 +33,7 @@ import { useEdcTenderPhase } from './payment/useEdcTenderPhase';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import { useSplitTenderState } from './payment/useSplitTenderState';
+import { bareTableNumber, heldCartLabel } from './utils/tableLabel';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
@@ -42,7 +43,7 @@ import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
 import { distributeEvenly } from './payment/splitDistribution';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
-import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
+import { classifyRetry, plainErrorMessage, rejectionText } from '@/utils/app-error';
 import './PaymentModal.css';
 
 import type { PaymentMethod } from '@/api/types/payment';
@@ -104,6 +105,8 @@ export default function PaymentModal({
   sessionToken,
   tableNumber,
   orderType = 'dine_in',
+  // Omitted = not loaded / never written -> the model's default, which is to print.
+  autoPrintKitchen = true,
   selectedCustomer: selectedCustomerProp,
   onCustomerChange,
   onComplete,
@@ -131,6 +134,22 @@ export default function PaymentModal({
   // gates only the pay-on-terminal button inside the card panel.
   const qrisOffered = railOffered(paymentRails, 'qris');
   const edcOffered = railOffered(paymentRails, 'edc');
+  // F16: `RestaurantPaymentsScreen` renders `open_bill` as a CORE rail with an
+  // enable/disable toggle, and this modal never consulted it — so the operator could
+  // switch the rail off and the tender kept being offered. A toggle that silently does
+  // nothing is worse than no toggle: it reads as a live control.
+  //
+  // This is a SECOND gate, not a replacement for the workspace check at :303. The two
+  // answer different questions: `isRestaurantPos` is a CAPABILITY (the backend refuses
+  // `bill_type: 'open_bill'` outside restaurant-pos, so offering it would submit a bill
+  // that fails), while the rail flag is a MERCHANT PREFERENCE. Both must hold.
+  //
+  // `coreRailWithheld`, not `railOffered`: `open_bill` is a CORE rail that always
+  // exists as a setting, so only an EXPLICIT `is_enabled: false` may hide it. (Using
+  // `railOffered` here would withhold the tender from every store whose rail list was
+  // written before that row existed — a silent withdrawal nobody asked for, caught by
+  // this file's own PINNED tender-list case.) Three states, documented on the helper.
+  const openBillOffered = !coreRailWithheld(paymentRails, 'open_bill');
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
   const manualQrString = staticQrisPayload(paymentRails);
@@ -321,8 +340,11 @@ export default function PaymentModal({
   // cashier can no longer see: Complete would submit a bill the backend now
   // refuses. Same recovery shape as the QRIS reset above.
   useEffect(() => {
-    if (!isRestaurantPos && method === 'open_bill') setMethod('cash');
-  }, [isRestaurantPos, method]);
+    // `openBillOffered` joins the condition for the same reason the rail gate does:
+    // a rail switched off under a chosen tender must not strand the cashier on a
+    // hidden surface. Same recovery shape as the QRIS reset above.
+    if ((!isRestaurantPos || !openBillOffered) && method === 'open_bill') setMethod('cash');
+  }, [isRestaurantPos, openBillOffered, method]);
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
@@ -466,6 +488,38 @@ retryCurrencyLoad,
     method,
     splits,
   });
+
+  // TWO values, because the two consumers below need different things and a single
+  // variable cannot be both.
+  //
+  // `storedMethod` goes to `completeSaleScoped({ paymentMethod })`, i.e. the DB
+  // column, whose CHECK constraint requires the lowercase enum ('cash', 'card',
+  // 'qris', 'other'). `bbc530642` established that and is correct for this value.
+  //
+  // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
+  // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+  // human-readable.
+  const storedMethod = useMemo(
+    () =>
+      splitMode
+        ? 'split'
+        : method === 'other'
+          ? (otherLabel.trim().toLowerCase() || 'other')
+          : method.toLowerCase(),
+    [splitMode, method, otherLabel],
+  );
+
+  const methodLabel = useMemo(
+    () =>
+      splitMode
+        ? 'Split'
+        : method === 'other'
+          ? (otherLabel.trim() || 'Other')
+          : method === 'qris'
+            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
+            : method.toUpperCase(),
+    [splitMode, method, otherLabel, paymentRails, activeMarketProfile],
+  );
 
   useEffect(() => {
     // Entitlement first, and the same three resets the no-customer branch below
@@ -673,6 +727,22 @@ retryCurrencyLoad,
   // charge can bind to the real sale id (the ledger's queued finalize_sale
   // then addresses a sale the device actually has), and EDC completes
   // 'captured' with the terminal's transaction fields.
+  const printKitchenChits = useCallback(
+    async (orders: Array<{ id: string }>) => {
+      if (!autoPrintKitchen || !sessionToken) return;
+      for (const order of orders) {
+        try {
+          await printKdsChitScoped(sessionToken, order.id);
+        } catch (chitErr) {
+          // Loud but non-fatal: a printer that is offline should be visible in the
+          // console, not turn a completed sale into an error the cashier retries.
+          console.error('printKdsChitScoped failed', order.id, chitErr);
+        }
+      }
+    },
+    [autoPrintKitchen, sessionToken],
+  );
+
   const buildGatewaySale = useCallback(
     async (split: { method: string; gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
       const { cartId } = await startSaleScoped(sessionToken!, { currency: cartCurrency });
@@ -812,6 +882,17 @@ retryCurrencyLoad,
 
       try {
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // F20: the Auto-Print KOT switch. Until this round
+        // `restaurant.auto_print_kitchen` was written by the settings screen and read
+        // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
+        // so the switch promised a behaviour the app never performed. The ORDER is
+        // created regardless (the Kitchen Display and the course publish need it);
+        // only the paper is optional.
+        //
+        // Non-blocking per order: a printer that is offline must not suppress the
+        // remaining tickets, nor let the caller's catch below skip
+        // `publishFiredCourses` for a purely cosmetic failure.
+        await printKitchenChits(orders);
         await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // KDS may not be configured — but a swallowed failure here meant a
@@ -860,7 +941,7 @@ retryCurrencyLoad,
     },
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses, activeMarketProfile, paymentRails],
+     publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -988,6 +1069,20 @@ retryCurrencyLoad,
     return true;
   }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference]);
 
+  /**
+   * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
+   *
+   * Defined ONCE and called from both checkout paths (cash/SplitTender and the QRIS
+   * auto path), because those two branches each carry their own catch — a helper
+   * duplicated across them is how one site keeps working while the other silently
+   * stops, the failure the `PosScreenCoreFlow` comment at :618-620 already records for
+   * the create call.
+   *
+   * Never throws. A failed chit must not fail the sale, suppress the remaining
+   * tickets, or make the caller skip `publishFiredCourses` — the sale is already
+   * committed and the kitchen ticket is recoverable; the money is not.
+   */
+
   const complete = useCallback(async () => {
     setProcessing(true);
 
@@ -1015,9 +1110,12 @@ retryCurrencyLoad,
           ...(trimmedName ? { customerName: trimmedName } : {}),
           orderType,
         });
-        const label = trimmedTable
-          ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
-          : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+        // `heldCartLabel`, not a hand-built ternary: the stored table names already
+        // read "Table 12" (see utils/tableLabel.ts), so interpolating the raw value
+        // persisted the tab as "Table Table 12" — and unlike the badge this string is
+        // SAVED, so the doubling outlived the screen.
+        const label =
+          heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
 
         await holdCartScoped(sessionToken!, {
           label,
@@ -1026,7 +1124,10 @@ retryCurrencyLoad,
           total_minor: total.minor_units,
           currency: total.currency,
           bill_type: 'open_bill',
-          customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
+          // Same doubling as the label above, in the customer field: the stored name
+          // already reads "Table 12", so this wrote "Table Table 12" into the bill's
+          // customer_name.
+          customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
         });
         setDone(true);
         return;
@@ -1075,18 +1176,28 @@ retryCurrencyLoad,
       if (splitMode) {
         const exp = minorUnitExponent(cartCurrency);
         paymentSplits = splits.map((s) => ({
-          method: s.method === 'other' ? s.otherLabel.trim() || 'OTHER' : s.method.toUpperCase(),
+          method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
           amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
         }));
       }
 
-      const methodLabel = splitMode
-        ? 'split'
-        : method === 'other'
-          ? otherLabel.trim() || 'OTHER'
-          : method === 'qris'
-            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, 'QRIS')
-            : method.toUpperCase();
+      // TWO values, because the two consumers below need different things and a single
+      // variable cannot be both.
+      //
+      // `storedMethod` goes to `completeSaleScoped({ paymentMethod })`, i.e. the DB
+      // column, whose CHECK constraint requires the lowercase enum ('cash', 'card',
+      // 'qris', 'other'). `bbc530642` established that and is correct for this value.
+      //
+      // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
+      // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+      // human-readable. That commit lowercased this one too, so a cash sale started
+      // printing 'cash' where it had printed 'CASH'. The two were the same variable;
+      // they are not the same fact.
+      // `storedMethod` and `methodLabel` are derived at COMPONENT scope (see the memo
+      // near `splitComplete`) so the submit path and the shortfall-retry JSX read one
+      // definition. They lived here once, and the retry kept its own `method.toUpperCase()`
+      // after this one was lowercased — the same field, two spellings, and the backend
+      // normalises only `payment_splits`, so both reached `sales.payment_method`.
 
       const serialNumberArgs: SerialNumberArg[] | undefined = serialNumbers
         ? Object.entries(serialNumbers)
@@ -1106,7 +1217,7 @@ retryCurrencyLoad,
 
       const saleResult = await completeSaleScoped(sessionToken!, {
             cartId,
-            paymentMethod: methodLabel,
+            paymentMethod: storedMethod,
             tenderedMinor: method === 'cash' && !splitMode ? tenderedMinorInCartCurrency : null,
             ...(selectedCustomer ? { customerId: selectedCustomer.id } : {}),
             ...(paymentSplits ? { paymentSplits } : {}),
@@ -1141,8 +1252,16 @@ retryCurrencyLoad,
       }
 
       // Auto-kick cash drawer on cash tenders (ADR #7 scoped)
+      //
+      // F18: the operator's "Automatic Cash Drawer" switch
+      // (`RestaurantPaymentsScreen.tsx:997-1010`) persists `autoKick` on the cash rail's
+      // parameters, and this site ignored it — so switching the toggle OFF still popped
+      // the drawer on every cash tender. The default is TRUE, which is what every store
+      // that predates the toggle already gets; a false default would silently disable
+      // the kick everywhere.
       const hasCashTender = method === 'cash' || (splitMode && splits.some((s) => s.method === 'cash'));
-      if (sessionToken && hasCashTender) {
+      const autoKickDrawer = railParam(paymentRails, 'cash', 'autoKick', true);
+      if (sessionToken && hasCashTender && autoKickDrawer) {
         try {
           await openCashDrawerScoped(sessionToken);
         } catch (drawerErr) {
@@ -1168,7 +1287,20 @@ retryCurrencyLoad,
           cartCurrency,
           fallbackTotalMinor: effectiveTotalInCartCurrency,
           // Differs from the gateway site on purpose: split mode prints one row
-          // per tender, and a single cash tender prints with its real change.
+          // per tender; a lone cash tender prints its real change.
+          //
+          // `change: null` in the split arm is CORRECT and not an omission: a
+          // split cannot produce change at all. `splitComplete` requires the rows
+          // to sum to the payable EXACTLY (useTenderMath.ts:184,
+          // `splitTotals.remaining !== 0n`), so no single row can exceed it and
+          // there is never a surplus to hand back. Change is only reachable on the
+          // lone-cash path below, where the tender may exceed the total.
+          //
+          // This comment used to read "a single cash tender prints with its real
+          // change", which described behaviour the split arm cannot have — a
+          // cash row inside a split exists, but it is always exact, so a reader
+          // who trusted the old wording would go looking for a missing
+          // change computation that was never supposed to be here.
           payments: paymentSplits
             ? paymentSplits.map((ps) => ({
                 method: ps.method,
@@ -1190,12 +1322,40 @@ retryCurrencyLoad,
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
-      } catch {
-        // Receipt/KDS may not be configured — non-blocking
+      } catch (receiptErr) {
+        // Receipt/KDS may not be configured — non-blocking, so the sale must stand.
+        //
+        // But it must not be SILENT. This catch is why the defect fixed in
+        // payment/completedSale.ts stayed hidden: the read-back came back short at
+        // exactly one optional field, the builder threw on it, and this block ate the
+        // error — so the modal fell to its no-receipt done branch and a cashier saw
+        // "Sale Complete" with nothing to print and no signal that anything was wrong.
+        // Measured on the tablet 2026-10-09: sale 01-01-261009-01-000007 committed
+        // with no receipt preview and nothing in the console.
+        //
+        // The sale is already committed, so this cannot be fatal. It is logged and
+        // surfaced as a warning instead, because "no receipt" is a real operator
+        // problem (the customer is standing there) and never just noise.
+        console.error('Receipt build/read-back failed; no receipt preview', receiptErr);
+        addToast({
+          message: requiredLocalized(l10n, 'payment-toast-receipt-unavailable'),
+          type: 'warning',
+        });
       }
 
       try {
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // F20: the Auto-Print KOT switch. Until this round
+        // `restaurant.auto_print_kitchen` was written by the settings screen and read
+        // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
+        // so the switch promised a behaviour the app never performed. The ORDER is
+        // created regardless (the Kitchen Display and the course publish need it);
+        // only the paper is optional.
+        //
+        // Non-blocking per order: a printer that is offline must not suppress the
+        // remaining tickets, nor let the caller's catch below skip
+        // `publishFiredCourses` for a purely cosmetic failure.
+        await printKitchenChits(orders);
         await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // See the QR path: a failed kitchen ticket must not stay silent.
@@ -1215,16 +1375,38 @@ retryCurrencyLoad,
               );
             }
           }
-        } catch {
-          // Loyalty redemption failure is non-blocking
+        } catch (redeemErr) {
+          // Non-blocking for the SALE — the payment already succeeded and rolling it
+          // back is worse — but it must not be silent. The customer received the
+          // `loyaltyDiscount` on this total, so a failed redemption gives away the
+          // discount while leaving the points in the account: a money leak the
+          // cashier has to settle by hand. Same shape as the KDS failure above.
+          console.error('redeemLoyaltyPoints failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10n, 'payment-toast-loyalty-redeem-failed'),
+            type: 'warning',
+          });
         }
       }
 
       if (change) setChangeDue(change);
       setDone(true);
     } catch (err) {
-      // Try to detect PartialStockResult from the backend error
-      const errMsg = err instanceof Error ? err.message : String(err);
+      // Try to detect PartialStockResult from the backend error.
+      //
+      // `rejectionText`, NOT the shape this used to have: an instanceof check that
+      // fell back to `String(err)` with a `.message` read. The backend sends AppError
+      // as a plain tagged object (apps/mobile-tauri/src/error.rs:19-21), for which
+      // instanceof is false and `String()` yields "[object Object]" — no "{" for the
+      // parser below to find, so the shortfall dialog never opened on a device while
+      // the unit test (which rejects with a real Error) stayed green. Measured on the
+      // Redmi tablet.
+      //
+      // The old spelling is DESCRIBED, never quoted: errorPolicyCompliance.test.ts
+      // matches raw-message reads line-by-line without stripping comments, so
+      // quoting the expression here would itself be reported as a leak site. That
+      // happened twice while writing this note.
+      const errMsg = rejectionText(err);
       const parsed = tryParsePartialStockResult(errMsg);
       if (parsed) {
         setShortfallResult(parsed);
@@ -1238,7 +1420,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, paymentRails]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits]);
 
   useEffect(() => {
     if (!done) return;
@@ -1259,6 +1441,28 @@ retryCurrencyLoad,
   useFocusTrap(panelRef, open && !leaving && !processing && !done, () => {
     if (!showCustomerSearch && !showQr) animateLeave(onClose);
   });
+
+  /**
+   * Backdrop click closes the modal — the repo-wide overlay idiom
+   * (Modal.tsx:84, SettingsPopup.tsx:101, and a dozen feature sheets).
+   *
+   * Guarded exactly like Escape above, because a backdrop click is the same
+   * intent expressed with a pointer:
+   *   - `processing`/`done`: a charge in flight must not be abandoned by a
+   *     stray tap, and a completed sale is already past the point of closing;
+   *   - `showQr`/`showCustomerSearch`: those are NESTED dialogs. Closing the
+   *     payment modal underneath one would tear down the surface the operator is
+   *     looking at, so the inner dialog owns the click until it is dismissed.
+   */
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (processing || done) return;
+      if (showCustomerSearch || showQr) return;
+      animateLeave(onClose);
+    },
+    [processing, done, showCustomerSearch, showQr, animateLeave, onClose],
+  );
 
   // ── Focus trap for nested customer search modal ────────────
   useFocusTrap(customerSearchPanelRef, showCustomerSearch, () => setShowCustomerSearch(false));
@@ -1285,7 +1489,7 @@ retryCurrencyLoad,
     if (!splitMode) return undefined;
     const exp = minorUnitExponent(total.currency);
     return splits.map((s) => ({
-      method: s.method === 'other' ? s.otherLabel.trim() || 'OTHER' : s.method.toUpperCase(),
+      method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
       amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
     }));
   }, [splitMode, splits, total.currency]);
@@ -1338,8 +1542,20 @@ retryCurrencyLoad,
   const modalStateClass = leaving ? 'payment-modal--exit' : 'payment-modal--enter';
 
   return (
-      <Localized id="payment-dialog-aria" attrs={{ 'aria-label': true }}>
-        <div className={`payment-overlay ${stateClass}`} role="dialog" aria-modal="true" {...paymentSwipe}>
+      <>
+        {/* The BACKDROP, not the dialog. role="presentation" because this element
+            is a click target and nothing more: ARIA forbids a click handler on a
+            non-interactive role, and naming it "dialog" made the backdrop the
+            dialog while the modal panel inside was an unlabelled child. The role
+            and the label now sit on .payment-modal below, which is the element
+            the operator actually reads — the structure FastPINOverlay.tsx:524-539
+            already uses for the same reason. */}
+        <div
+          className={`payment-overlay ${stateClass}`}
+          role="presentation"
+          onClick={handleBackdropClick}
+          {...paymentSwipe}
+        >
       <QrisQrDisplay
         amount={total.minor_units}
         currency={total.currency}
@@ -1442,7 +1658,14 @@ retryCurrencyLoad,
           // PROMO-3: the SAME promotion list the first submission carried,
           // in the same order, so the retry re-applies identical discounts.
           promotionIds={promotionIds && promotionIds.length > 0 ? promotionIds : null}
-          paymentMethod={splitMode ? 'split' : method === 'other' ? otherLabel.trim() || 'OTHER' : method.toUpperCase()}
+          // The SAME spelling the first submission writes. This is the shortfall
+          // RETRY of the same attempt, so it must agree with `storedMethod` above —
+          // it kept `method.toUpperCase()` after that path was lowercased, so a cash
+          // retry sent 'CASH' where the first send was 'cash'. The backend normalises
+          // only `payment_splits`; the scalar `sales.payment_method` is written
+          // verbatim (sales_checkout.rs:549), so the two spellings both reached the
+          // column. Derived from `storedMethod` so they cannot drift again.
+          paymentMethod={storedMethod}
           tenderedMinor={method === 'cash' && !splitMode ? tenderedMinorInCartCurrency : null}
           paymentSplits={paymentSplitsFromState() ?? null}
           customerId={selectedCustomer?.id ?? null}
@@ -1513,7 +1736,7 @@ retryCurrencyLoad,
                     }))
                   : [
                       {
-                        method: splitMode ? 'split' : method === 'other' ? otherLabel.trim() || 'OTHER' : method.toUpperCase(),
+                        method: methodLabel,
                         amount: { minorUnits: shortfallTotalMinor, currency: shortfallCurrency },
                         change: null,
                       },
@@ -1540,11 +1763,24 @@ retryCurrencyLoad,
       )}
 
       {!shortfallResult && (
-      <div className={`payment-modal ${modalStateClass}`} data-testid="payment-modal" ref={(el) => {
-        // Combine panelRef (focus trap) with keyboardAvoidRef (scroll-into-view)
-        (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-      }}>
+      // `payment-dialog-aria` is a Fluent ATTRIBUTE (.aria-label = Payment), not a
+      // message value, so it must be applied through <Localized attrs> —
+      // l10n.getString() returns the raw key name for an attribute, which is the
+      // trap PaymentModal.test.tsx:296-298 pins. Wrapping the panel rather than
+      // the backdrop keeps the accessible name on the element a screen reader
+      // should announce.
+      <Localized id="payment-dialog-aria" attrs={{ 'aria-label': true }}>
+      <div
+        className={`payment-modal ${modalStateClass}`}
+        data-testid="payment-modal"
+        role="dialog"
+        aria-modal="true"
+        ref={(el) => {
+          // Combine panelRef (focus trap) with keyboardAvoidRef (scroll-into-view)
+          (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+          (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }}
+      >
         {done && receiptArgs ? (
           <ReceiptPreview
             receipt={receiptArgs}
@@ -1611,256 +1847,339 @@ retryCurrencyLoad,
               </Localized>
             </div>
 
-            {tableNumber && (
-              <div className="payment-table-badge">
-                <Localized id="payment-table-number" vars={{ number: tableNumber }}>
-                  <span>Table {tableNumber}</span>
-                </Localized>
-              </div>
-            )}
-
-            <div className="payment-total-row">
-              <Localized id="payment-total-due">
-                <span className="payment-total-label">Total Due</span>
-              </Localized>
-              <span className="payment-total-amount">
-                {promoPreview
-                  ? formatMoney({ minor_units: effectiveTotalInCartCurrency, currency: cartCurrency })
-                  : loyaltyDiscount > 0n ? formatMoney(effectiveTotalMoney) : formatMoney(total)}
-              </span>
-            </div>
-
-            {promoPreview && promoPreview.discounts.length > 0 && (
-              <div className="payment-promotions-row">
-                {promoPreview.discounts.map((d) => (
-                  <div key={d.promotionId} className="payment-promotions-item">
-                    <span className="payment-promotions-label">{d.description}</span>
-                    <span className="payment-promotions-amount">
-                      −{formatMoney({ minor_units: d.discountMinor, currency: cartCurrency })}
-                    </span>
+            {/* Two columns, and which one scrolls is load-bearing.
+                LEFT (1fr) is the tender/entry surface and the only scroller.
+                RIGHT (fixed 19rem) is the commit rail: the total, the customer,
+                and the primary action. Putting .payment-actions in the RIGHT
+                column is the fix for a measured defect — while it lived inside
+                the scrolling tender column it sat 134px below the modal's bottom
+                edge and was clipped by the modal's overflow:hidden, so the
+                cashier had to scroll to reach Complete. Playwright never caught
+                it because it auto-scrolls before clicking.
+                DOM order is tender-then-summary so the visual order matches the
+                reading order; the grid tracks below give the tender column the
+                wide track. */}
+            <div className="payment-modal-layout">
+              <div className="payment-summary-col">
+                {tableNumber && (
+                  <div className="payment-table-badge">
+                    {/* `bareTableNumber`, not `tableNumber`: the stored names already
+                        read "Table 12" (see tableLabel.ts) while the Fluent value is
+                        "Table { $number }", so passing the raw value composed
+                        "Table Table 12" on a real order. The var has to be the number
+                        WITHOUT the word. */}
+                    <Localized id="payment-table-number" vars={{ number: bareTableNumber(tableNumber) }}>
+                      <span>Table {bareTableNumber(tableNumber)}</span>
+                    </Localized>
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            {multiCurrency && (
-              <div className="payment-currency-selector">
-                  <Localized id="payment-currency-aria" attrs={{ 'aria-label': true }}>
-                  {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- accessible text via Localized span at runtime */}
-                  <label htmlFor="payment-currency-select">
-                    <Localized id="payment-currency-label">
-                      <span className="payment-currency-label">Charge Currency</span>
-                    </Localized>
-                      <Localized id="payment-currency-select-aria" attrs={{ 'aria-label': true }}>
-                      <select
-                        id="payment-currency-select"
-                        className="payment-currency-select"
-                        value={selectedCurrency}
-                        onChange={(e) => setSelectedCurrency(e.target.value)}
-                      >
-                        {currencies.length === 0 && (
-                          <option value={total.currency}>{total.currency}</option>
-                        )}
-                        {currencies.map((c) => (
-                          <option key={c.code} value={c.code}>
-                            {c.code} — {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      </Localized>
-                  </label>
+                <div className="payment-total-row">
+                  <Localized id="payment-total-due">
+                    <span className="payment-total-label">Total Due</span>
                   </Localized>
-              </div>
-            )}
-            {(currenciesUnknown || baseCurrencyUnknown) && (
-              <div className="payment-currency-unknown" role="alert">
-                <div className="payment-currency-unknown-text">
-                  {currenciesUnknown && (
-                    <Localized id="payment-currency-list-unknown">
-                      <span>The list of supported currencies could not be loaded.</span>
-                    </Localized>
-                  )}
-                  {baseCurrencyUnknown && (
-                    <Localized id="payment-default-currency-unknown">
-                      <span>The default currency for this store could not be loaded.</span>
-                    </Localized>
-                  )}
-                </div>
-                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
-                <button
-                  type="button"
-                  className="payment-currency-unknown-retry"
-                  onClick={retryCurrencyLoad}
-                >
-                  <Localized id="payment-retry">
-                    <span>Retry</span>
-                  </Localized>
-                </button>
-                </Localized>
-              </div>
-            )}
-
-            {selectedCurrency !== total.currency && rateUnknown && (
-              <div className="payment-rate-unknown" role="alert">
-                <Localized id="payment-rate-unknown">
-                  <span className="payment-rate-unknown-text">
-                    Could not load the exchange rate for this pair.
-                  </span>
-                </Localized>
-                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
-                <button
-                  type="button"
-                  className="payment-rate-unknown-retry"
-                  onClick={retryRateRead}
-                >
-                  <Localized id="payment-retry">
-                    <span>Retry</span>
-                  </Localized>
-                </button>
-                </Localized>
-              </div>
-            )}
-
-            {selectedCurrency !== total.currency && effectiveRateInfo && (
-              <Localized id="payment-exchange-aria" attrs={{ 'aria-label': true }}>
-              <div className="payment-exchange-notice">
-                <div className="payment-exchange-row">
-                  <Localized id="payment-exchange-rate">
-                    <span>Exchange rate</span>
-                  </Localized>
-                  <span>
-                    1 {effectiveRateInfo.from_currency} = {effectiveRateInfo.rate.toFixed(6)} {effectiveRateInfo.to_currency}
+                  <span className="payment-total-amount">
+                    {promoPreview
+                      ? formatMoney({ minor_units: effectiveTotalInCartCurrency, currency: cartCurrency })
+                      : loyaltyDiscount > 0n ? formatMoney(effectiveTotalMoney) : formatMoney(total)}
                   </span>
                 </div>
-                <div className="payment-exchange-row">
-                  <Localized id="payment-rate-source">
-                    <span>Rate source</span>
-                  </Localized>
-                  <span>{effectiveRateInfo.source || l10n.getString('payment-rate-source-manual')}</span>
-                </div>
-                <div className="payment-exchange-row">
-                  <Localized id="payment-rate-timestamp">
-                    <span>Rate timestamp</span>
-                  </Localized>
-                  <span>{effectiveRateInfo.effective_date}</span>
-                </div>
-              </div>
-              </Localized>
-            )}
 
-            {selectedCurrency !== total.currency && (
-              <Localized id="payment-receipt-currency-aria" attrs={{ 'aria-label': true }}>
-              <div className="payment-receipt-currency">
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-charged-in">
-                    <span>Charged in</span>
-                  </Localized>
-                  <span>{selectedCurrency}</span>
-                </div>
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-default-currency">
-                    <span>Default currency</span>
-                  </Localized>
-                  <span>{baseCurrencyUnknown ? '—' : baseCurrency}</span>
-                </div>
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-base-amount">
-                    <span>Base amount</span>
-                  </Localized>
-                  <span>{formatMoney(total)}</span>
-                </div>
-                <div className="payment-receipt-currency-row">
-                  <Localized id="payment-charge-amount">
-                    <span>Charge amount</span>
-                  </Localized>
-                  <span>
-                    {formatMoney({
-                      minor_units: convertToChargeCurrency(total.minor_units),
-                      currency: selectedCurrency,
-                    } as Money)}
-                  </span>
-                </div>
-              </div>
-              </Localized>
-            )}
-
-            {!splitMode && (
-              <>
-                <fieldset className="payment-methods">
-                  <Localized id="payment-method-label">
-                    <legend className="payment-section-title">Payment Method</legend>
-                  </Localized>
-                  <div className="payment-method-options">
-                    {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
-                      <label key={m} className="payment-method-label" data-testid="quick-pay-button">
-                        <input
-                          type="radio"
-                          name="payment-method"
-                          value={m}
-                          checked={method === m}
-                          onChange={() => setMethod(m)}
-                        />
-                        <span className="payment-method-name">
-                          {m === 'qris'
-                            ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m]))
-                            : requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
+                {promoPreview && promoPreview.discounts.length > 0 && (
+                  <div className="payment-promotions-row">
+                    {promoPreview.discounts.map((d) => (
+                      <div key={d.promotionId} className="payment-promotions-item">
+                        <span className="payment-promotions-label">{d.description}</span>
+                        <span className="payment-promotions-amount">
+                          −{formatMoney({ minor_units: d.discountMinor, currency: cartCurrency })}
                         </span>
-                      </label>
+                      </div>
                     ))}
-                    <div className="payment-method-label">
-                      {/* This row is a div, not a label, because it holds two controls —
-                          the radio and the name field. Nothing in the row therefore names the
-                          radio, and an unselected "Other" shows an empty DISABLED input, so the
-                          accessible name has to come from here or the radio announces as bare
-                          "radio button". */}
-                      <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
-                      <input
-                        type="radio"
-                        name="payment-method"
-                        value="other"
-                        checked={method === 'other'}
-                        onChange={() => setMethod('other')}
-                      />
-                      </Localized>
-                      {/* .payment-method-name on the text input below is not decoration:
-                          the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
-                          selector, so that input - the radio's next sibling, and the element
-                          the cashier actually reads for this row - is the only one the rule
-                          can treat. Without the class, Other was the one selected tender
-                          whose name kept neither the accent nor the semibold. */}
-                        <Localized id="payment-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
-                        <input
-                          type="text"
-                          className="payment-other-input payment-method-name"
-                          value={otherLabel}
-                          onChange={(e) => {
-                            setMethod('other');
-                            setOtherLabel(e.target.value);
-                          }}
-                          disabled={method !== 'other'}
-                        />
+                  </div>
+                )}
+
+                {multiCurrency && (
+                  <div className="payment-currency-selector">
+                      <Localized id="payment-currency-aria" attrs={{ 'aria-label': true }}>
+                      {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- accessible text via Localized span at runtime */}
+                      <label htmlFor="payment-currency-select">
+                        <Localized id="payment-currency-label">
+                          <span className="payment-currency-label">Charge Currency</span>
                         </Localized>
+                          <Localized id="payment-currency-select-aria" attrs={{ 'aria-label': true }}>
+                          <select
+                            id="payment-currency-select"
+                            className="payment-currency-select"
+                            value={selectedCurrency}
+                            onChange={(e) => setSelectedCurrency(e.target.value)}
+                          >
+                            {currencies.length === 0 && (
+                              <option value={total.currency}>{total.currency}</option>
+                            )}
+                            {currencies.map((c) => (
+                              <option key={c.code} value={c.code}>
+                                {c.code} — {c.name}
+                              </option>
+                            ))}
+                          </select>
+                          </Localized>
+                      </label>
+                      </Localized>
+                  </div>
+                )}
+                {(currenciesUnknown || baseCurrencyUnknown) && (
+                  <div className="payment-currency-unknown" role="alert">
+                    <div className="payment-currency-unknown-text">
+                      {currenciesUnknown && (
+                        <Localized id="payment-currency-list-unknown">
+                          <span>The list of supported currencies could not be loaded.</span>
+                        </Localized>
+                      )}
+                      {baseCurrencyUnknown && (
+                        <Localized id="payment-default-currency-unknown">
+                          <span>The default currency for this store could not be loaded.</span>
+                        </Localized>
+                      )}
                     </div>
-                    {isRestaurantPos && (
-                      <>
-                        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-                        <label className="payment-method-label" htmlFor="payment-method-open-bill">
+                    <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                    <button
+                      type="button"
+                      className="payment-currency-unknown-retry"
+                      onClick={retryCurrencyLoad}
+                    >
+                      <Localized id="payment-retry">
+                        <span>Retry</span>
+                      </Localized>
+                    </button>
+                    </Localized>
+                  </div>
+                )}
+
+                {selectedCurrency !== total.currency && rateUnknown && (
+                  <div className="payment-rate-unknown" role="alert">
+                    <Localized id="payment-rate-unknown">
+                      <span className="payment-rate-unknown-text">
+                        Could not load the exchange rate for this pair.
+                      </span>
+                    </Localized>
+                    <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                    <button
+                      type="button"
+                      className="payment-rate-unknown-retry"
+                      onClick={retryRateRead}
+                    >
+                      <Localized id="payment-retry">
+                        <span>Retry</span>
+                      </Localized>
+                    </button>
+                    </Localized>
+                  </div>
+                )}
+
+                {selectedCurrency !== total.currency && effectiveRateInfo && (
+                  <Localized id="payment-exchange-aria" attrs={{ 'aria-label': true }}>
+                  <div className="payment-exchange-notice">
+                    <div className="payment-exchange-row">
+                      <Localized id="payment-exchange-rate">
+                        <span>Exchange rate</span>
+                      </Localized>
+                      <span>
+                        1 {effectiveRateInfo.from_currency} = {effectiveRateInfo.rate.toFixed(6)} {effectiveRateInfo.to_currency}
+                      </span>
+                    </div>
+                    <div className="payment-exchange-row">
+                      <Localized id="payment-rate-source">
+                        <span>Rate source</span>
+                      </Localized>
+                      <span>{effectiveRateInfo.source || l10n.getString('payment-rate-source-manual')}</span>
+                    </div>
+                    <div className="payment-exchange-row">
+                      <Localized id="payment-rate-timestamp">
+                        <span>Rate timestamp</span>
+                      </Localized>
+                      <span>{effectiveRateInfo.effective_date}</span>
+                    </div>
+                  </div>
+                  </Localized>
+                )}
+
+                {selectedCurrency !== total.currency && (
+                  <Localized id="payment-receipt-currency-aria" attrs={{ 'aria-label': true }}>
+                  <div className="payment-receipt-currency">
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-charged-in">
+                        <span>Charged in</span>
+                      </Localized>
+                      <span>{selectedCurrency}</span>
+                    </div>
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-default-currency">
+                        <span>Default currency</span>
+                      </Localized>
+                      <span>{baseCurrencyUnknown ? '—' : baseCurrency}</span>
+                    </div>
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-base-amount">
+                        <span>Base amount</span>
+                      </Localized>
+                      <span>{formatMoney(total)}</span>
+                    </div>
+                    <div className="payment-receipt-currency-row">
+                      <Localized id="payment-charge-amount">
+                        <span>Charge amount</span>
+                      </Localized>
+                      <span>
+                        {formatMoney({
+                          minor_units: convertToChargeCurrency(total.minor_units),
+                          currency: selectedCurrency,
+                        } as Money)}
+                      </span>
+                    </div>
+                  </div>
+                  </Localized>
+                )}
+
+                {/* ── Commit rail ───────────────────────────────────────
+                    Everything needed to finalise the sale, pinned in the
+                    non-scrolling column: the split toggle (one checkbox — it
+                    fits the narrow track), the customer, and the primary
+                    action. .payment-actions has margin-top:auto in the wide
+                    tier so Cancel/Complete sit on the modal's bottom edge
+                    instead of ending up 134px below it inside a scroller. */}
+                <SplitTenderRows
+                  part="toggle"
+                  splitMode={splitMode}
+                  splits={splits}
+                  currency={total.currency}
+                  remainingMinor={splitTotals.remaining}
+                  onSplitModeChange={setSplitMode}
+                  onAddSplit={addSplit}
+                  onRemoveSplit={removeSplit}
+                  onUpdateSplit={updateSplit}
+                  onAutoSplitEvenly={autoSplitEvenly}
+                />
+
+                <PaymentModalCustomerBadge
+                  customer={selectedCustomer}
+                  onOpenSearch={() => setShowCustomerSearch(true)}
+                  onRemove={() => notifyCustomerChange(null)}
+                />
+
+                <div className="payment-actions">
+                  <Localized id="payment-cancel">
+                    <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
+                      Cancel
+                    </Button>
+                  </Localized>
+                  <Button
+                    variant="primary"
+                    loading={processing}
+                    disabled={!canComplete}
+                    onClick={complete}
+                    data-testid="settle-button"
+                  >
+                    {method === 'open_bill' ? (
+                      <Localized id="payment-open-bill">
+                        <span>Open Bill</span>
+                      </Localized>
+                    ) : method === 'credit' ? (
+                      <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
+                    ) : (
+                      <Localized id="payment-complete">
+                        <span>Complete Sale</span>
+                      </Localized>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="payment-tender-col">
+                {!splitMode && (
+                  <>
+                    <fieldset className="payment-methods">
+                      <Localized id="payment-method-label">
+                        <legend className="payment-section-title">Payment Method</legend>
+                      </Localized>
+                      <div className="payment-method-options">
+                        {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
+                          <label
+                            key={m}
+                            className={`payment-method-label payment-method-label--${m}${method === m ? ' payment-method-label--active' : ''}`}
+                            data-testid="quick-pay-button"
+                          >
+                            <input
+                              type="radio"
+                              name="payment-method"
+                              value={m}
+                              checked={method === m}
+                              onChange={() => setMethod(m)}
+                            />
+                            <span className="payment-method-name">
+                              {m === 'qris'
+                                ? resolveTenderDisplayName('qris', paymentRails, activeMarketProfile, requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m]))
+                                : requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
+                            </span>
+                          </label>
+                        ))}
+                        <div
+                          className={`payment-method-label payment-method-label--other${method === 'other' ? ' payment-method-label--active' : ''}`}
+                        >
+                          {/* This row is a div, not a label, because it holds two controls —
+                              the radio and the name field. Nothing in the row therefore names the
+                              radio, and an unselected "Other" shows an empty DISABLED input, so the
+                              accessible name has to come from here or the radio announces as bare
+                              "radio button". */}
+                          <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
                           <input
-                            id="payment-method-open-bill"
                             type="radio"
                             name="payment-method"
-                            value="open_bill"
-                            checked={method === 'open_bill'}
-                            onChange={() => setMethod('open_bill')}
+                            value="other"
+                            checked={method === 'other'}
+                            onChange={() => setMethod('other')}
                           />
-                          <span className="payment-method-name">
-                            <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
-                          </span>
-                        </label>
-                      </>
-                    )}
-                  </div>
-                </fieldset>
+                          </Localized>
+                          {/* .payment-method-name on the text input below is not decoration:
+                              the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
+                              selector, so that input - the radio's next sibling, and the element
+                              the cashier actually reads for this row - is the only one the rule
+                              can treat. Without the class, Other was the one selected tender
+                              whose name kept neither the accent nor the semibold. */}
+                            <Localized id="payment-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
+                            <input
+                              type="text"
+                              className="payment-other-input payment-method-name"
+                              value={otherLabel}
+                              onChange={(e) => {
+                                setMethod('other');
+                                setOtherLabel(e.target.value);
+                              }}
+                              disabled={method !== 'other'}
+                            />
+                            </Localized>
+                        </div>
+                        {isRestaurantPos && openBillOffered && (
+                          <>
+                            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                            <label
+                              className={`payment-method-label payment-method-label--open_bill${method === 'open_bill' ? ' payment-method-label--active' : ''}`}
+                              htmlFor="payment-method-open-bill"
+                            >
+                              <input
+                                id="payment-method-open-bill"
+                                type="radio"
+                                name="payment-method"
+                                value="open_bill"
+                                checked={method === 'open_bill'}
+                                onChange={() => setMethod('open_bill')}
+                              />
+                              <span className="payment-method-name">
+                                <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
+                              </span>
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    </fieldset>
 
                 {(method === 'open_bill' || method === 'credit') && (
                   <div className="payment-open-bill-section">
@@ -1924,7 +2243,11 @@ retryCurrencyLoad,
               </>
             )}
 
+            {/* The editor rows stay in this (wide) column: measured, each row
+                needs ~383px and overflows its method group by 93px at the commit
+                column's 266px. The toggle is rendered in the commit column. */}
             <SplitTenderRows
+              part="section"
               splitMode={splitMode}
               splits={splits}
               currency={total.currency}
@@ -1934,12 +2257,6 @@ retryCurrencyLoad,
               onRemoveSplit={removeSplit}
               onUpdateSplit={updateSplit}
               onAutoSplitEvenly={autoSplitEvenly}
-            />
-
-            <PaymentModalCustomerBadge
-              customer={selectedCustomer}
-              onOpenSearch={() => setShowCustomerSearch(true)}
-              onRemove={() => notifyCustomerChange(null)}
             />
 
             {loyaltyLicensed && loyaltyAccount && (
@@ -1964,32 +2281,34 @@ retryCurrencyLoad,
               />
             )}
 
-            {paymentError && (
-              <div className="payment-error-banner" role="alert">
-                <svg className="payment-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <span className="payment-error-text">{paymentError.message}</span>
-                {paymentError.retryable && (
-                  <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
-                  <button
-                    type="button"
-                    className="payment-error-retry-btn"
-                    onClick={() => {
-                      setPaymentError(null);
-                      complete();
-                    }}
-                  >
-                    <Localized id="payment-retry">
-                      <span>Retry</span>
-                    </Localized>
-                  </button>
-                  </Localized>
+                {paymentError && (
+                  <div className="payment-error-banner" role="alert">
+                    <svg className="payment-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <span className="payment-error-text">{paymentError.message}</span>
+                    {paymentError.retryable && (
+                      <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                      <button
+                        type="button"
+                        className="payment-error-retry-btn"
+                        onClick={() => {
+                          setPaymentError(null);
+                          complete();
+                        }}
+                      >
+                        <Localized id="payment-retry">
+                          <span>Retry</span>
+                        </Localized>
+                      </button>
+                      </Localized>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
 
             {showCustomerSearch && (
               <>
@@ -2065,38 +2384,12 @@ retryCurrencyLoad,
                 </div>
               </div>
             </>)}
-
-            <div className="payment-actions">
-              <Localized id="payment-cancel">
-                <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
-                  Cancel
-                </Button>
-              </Localized>
-              <Button
-                variant="primary"
-                loading={processing}
-                disabled={!canComplete}
-                onClick={complete}
-                data-testid="settle-button"
-              >
-                {method === 'open_bill' ? (
-                  <Localized id="payment-open-bill">
-                    <span>Open Bill</span>
-                  </Localized>
-                ) : method === 'credit' ? (
-                  <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
-                ) : (
-                  <Localized id="payment-complete">
-                    <span>Complete Sale</span>
-                  </Localized>
-                )}
-              </Button>
-            </div>
           </>
         )}
       </div>
+      </Localized>
       )}
     </div>
-      </Localized>
+      </>
   );
 }

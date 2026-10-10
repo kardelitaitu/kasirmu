@@ -228,6 +228,14 @@ export default function RestaurantReceiptsScreen({
   // Track originals for dirty state
   const originalsRef = useRef<ReceiptFormValues | null>(null);
   const [loaded, setLoaded] = useState(false);
+
+  // True when the user-preferences read FAILED (F4). The screen seeds its state
+  // and `originalsRef` from localStorage/context BEFORE that read resolves, so a
+  // rejected read used to leave `dirty` false and the screen looking saved — with
+  // Save enabled over values that were never confirmed. Same guard as
+  // RestaurantSettingsScreen: no Save, an explicit error, and a retry.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const receiptInitializedRef = useRef(false);
   const hwInitializedRef = useRef(false);
 
@@ -385,86 +393,110 @@ export default function RestaurantReceiptsScreen({
         .then((prefs) => {
           const p = prefs as Record<string, string | undefined>;
           if (originalsRef.current) {
-            if (p['resto_rcpt_header_title'] !== undefined) {
-              const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
-              setHeaderTitle(v);
-              originalsRef.current.headerTitle = v;
-            }
-            if (p['resto_rcpt_header_line1'] !== undefined) {
-              const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
-              setHeaderLine1(v);
-              originalsRef.current.headerLine1 = v;
-            }
-            if (p['resto_rcpt_header_line2'] !== undefined) {
-              const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
-              setHeaderLine2(v);
-              originalsRef.current.headerLine2 = v;
-            }
-            if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
-              const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
-              setLogoPosition(v);
-              originalsRef.current.logoPosition = v;
-            }
-            if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
-              const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
-              setFontSize(v);
-              originalsRef.current.fontSize = v;
-            }
-            if (p['resto_rcpt_show_code'] !== undefined) {
-              const v = p['resto_rcpt_show_code'] === 'true';
-              setShowReceiptCode(v);
-              originalsRef.current.showReceiptCode = v;
-            }
-            if (p['resto_rcpt_show_dt'] !== undefined) {
-              const v = p['resto_rcpt_show_dt'] === 'true';
-              setShowDateTime(v);
-              originalsRef.current.showDateTime = v;
-            }
-            if (p['resto_rcpt_show_staff'] !== undefined) {
-              const v = p['resto_rcpt_show_staff'] === 'true';
-              setShowStaffName(v);
-              originalsRef.current.showStaffName = v;
-            }
-            if (p['resto_rcpt_show_footer'] !== undefined) {
-              const v = p['resto_rcpt_show_footer'] === 'true';
-              setShowFooter(v);
-              originalsRef.current.showFooter = v;
-            }
-            if (p['resto_rcpt_show_item_notes'] !== undefined) {
-              const v = p['resto_rcpt_show_item_notes'] === 'true';
-              setShowItemNotes(v);
-              originalsRef.current.showItemNotes = v;
-            }
-            if (p['resto_rcpt_thousands_sep'] !== undefined) {
-              const v = p['resto_rcpt_thousands_sep'] === 'true';
-              setShowThousandsSeparator(v);
-              originalsRef.current.showThousandsSeparator = v;
-            }
-            if (p['resto_rcpt_show_decimals'] !== undefined) {
-              const v = p['resto_rcpt_show_decimals'] === 'true';
-              setShowDecimals(v);
-              originalsRef.current.showDecimals = v;
-            }
-            if (p['resto_rcpt_tax_rate'] !== undefined) {
-              const parsed = Number(p['resto_rcpt_tax_rate']);
-              if (!isNaN(parsed)) {
-                const v = clamp(parsed, 0, 100);
-                setTaxRatePercent(v);
-                originalsRef.current.taxRatePercent = v;
+            try {
+              if (p['resto_rcpt_header_title'] !== undefined) {
+                const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
+                setHeaderTitle(v);
+                originalsRef.current.headerTitle = v;
+                localStorage.setItem('resto_rcpt_header_title', v);
               }
-            }
-            if (p['resto_rcpt_logo']) {
-              setBusinessLogo(p['resto_rcpt_logo']);
-              originalsRef.current.businessLogo = p['resto_rcpt_logo'];
+              if (p['resto_rcpt_header_line1'] !== undefined) {
+                const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
+                setHeaderLine1(v);
+                originalsRef.current.headerLine1 = v;
+                localStorage.setItem('resto_rcpt_header_line1', v);
+              }
+              if (p['resto_rcpt_header_line2'] !== undefined) {
+                const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
+                setHeaderLine2(v);
+                originalsRef.current.headerLine2 = v;
+                localStorage.setItem('resto_rcpt_header_line2', v);
+              }
+              if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
+                const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
+                setLogoPosition(v);
+                originalsRef.current.logoPosition = v;
+                localStorage.setItem('resto_rcpt_logo_pos', v);
+              }
+              if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
+                const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
+                setFontSize(v);
+                originalsRef.current.fontSize = v;
+                localStorage.setItem('resto_rcpt_font_size', v);
+              }
+              if (p['resto_rcpt_show_code'] !== undefined) {
+                const v = p['resto_rcpt_show_code'] === 'true';
+                setShowReceiptCode(v);
+                originalsRef.current.showReceiptCode = v;
+                localStorage.setItem('resto_rcpt_show_code', String(v));
+              }
+              if (p['resto_rcpt_show_dt'] !== undefined) {
+                const v = p['resto_rcpt_show_dt'] === 'true';
+                setShowDateTime(v);
+                originalsRef.current.showDateTime = v;
+                localStorage.setItem('resto_rcpt_show_dt', String(v));
+              }
+              if (p['resto_rcpt_show_staff'] !== undefined) {
+                const v = p['resto_rcpt_show_staff'] === 'true';
+                setShowStaffName(v);
+                originalsRef.current.showStaffName = v;
+                localStorage.setItem('resto_rcpt_show_staff', String(v));
+              }
+              if (p['resto_rcpt_show_footer'] !== undefined) {
+                const v = p['resto_rcpt_show_footer'] === 'true';
+                setShowFooter(v);
+                originalsRef.current.showFooter = v;
+                localStorage.setItem('resto_rcpt_show_footer', String(v));
+              }
+              if (p['resto_rcpt_show_item_notes'] !== undefined) {
+                const v = p['resto_rcpt_show_item_notes'] === 'true';
+                setShowItemNotes(v);
+                originalsRef.current.showItemNotes = v;
+                localStorage.setItem('resto_rcpt_show_item_notes', String(v));
+              }
+              if (p['resto_rcpt_thousands_sep'] !== undefined) {
+                const v = p['resto_rcpt_thousands_sep'] === 'true';
+                setShowThousandsSeparator(v);
+                originalsRef.current.showThousandsSeparator = v;
+                localStorage.setItem('resto_rcpt_thousands_sep', String(v));
+              }
+              if (p['resto_rcpt_show_decimals'] !== undefined) {
+                const v = p['resto_rcpt_show_decimals'] === 'true';
+                setShowDecimals(v);
+                originalsRef.current.showDecimals = v;
+                localStorage.setItem('resto_rcpt_show_decimals', String(v));
+              }
+              if (p['resto_rcpt_tax_rate'] !== undefined) {
+                const parsed = Number(p['resto_rcpt_tax_rate']);
+                if (!isNaN(parsed)) {
+                  const v = clamp(parsed, 0, 100);
+                  setTaxRatePercent(v);
+                  originalsRef.current.taxRatePercent = v;
+                  localStorage.setItem('resto_rcpt_tax_rate', String(v));
+                }
+              }
+              if (p['resto_rcpt_logo']) {
+                setBusinessLogo(p['resto_rcpt_logo']);
+                originalsRef.current.businessLogo = p['resto_rcpt_logo'];
+                localStorage.setItem('resto_rcpt_logo', p['resto_rcpt_logo']);
+              }
+            } catch {
+              // LocalStorage write is best-effort write-through cache; memory state is authoritative
             }
           }
+          setLoadFailed(false);
           setDirtyVersion((v) => v + 1);
         })
         .catch(() => {
-          // Fall back gracefully
+          // A FAILED preferences read is not an answer. Do NOT leave the screen
+          // looking saved over values that were never confirmed (F4) — the
+          // operator's next Save would write them over the real ones.
+          setLoadFailed(true);
         });
     }
-  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading]);
+    // `reloadNonce` is the Retry control's re-run trigger. The init guard above
+    // is a ref, so Retry must clear it too (see the handler).
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading, reloadNonce]);
 
   // Overlay the SCOPED receipt format (the same layer the Settings → Business
   // Defaults card owns) on top of the legacy base above, and remember the
@@ -1007,7 +1039,15 @@ export default function RestaurantReceiptsScreen({
         );
       }
 
-      // Cache to localStorage for instantaneous client load
+      await Promise.all(tasks);
+
+      // Cache to localStorage for instantaneous client load — AFTER the writes
+      // resolve, not before (F5, the same defect fixed in
+      // RestaurantSettingsScreen). Writing the cache first meant a REJECTED save
+      // left localStorage holding the new values while the DB still held the old
+      // ones, so the next mount would render the un-persisted edit as if it had
+      // been saved. Doing it after the await keeps the cache consistent with what
+      // actually committed.
       try {
         localStorage.setItem('resto_rcpt_header_title', headerTitle);
         localStorage.setItem('resto_rcpt_header_line1', headerLine1);
@@ -1026,8 +1066,6 @@ export default function RestaurantReceiptsScreen({
       } catch {
         // Safe to ignore
       }
-
-      await Promise.all(tasks);
 
       originalsRef.current = {
         paperWidth,
@@ -1261,12 +1299,36 @@ export default function RestaurantReceiptsScreen({
           </div>
         </div>
 
+        {/* Load failure (F4): shown instead of trusting the controls. Retry clears
+            the one-shot init guard so the effect re-runs. */}
+        {loadFailed && (
+          <div className="settings-error-banner" role="alert" data-testid="restaurant-receipts-load-error">
+            <span>
+              <Localized id="restaurant-settings-error-load">
+                <span>Failed to load restaurant settings</span>
+              </Localized>
+            </span>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              data-testid="restaurant-receipts-retry-btn"
+              onClick={() => {
+                receiptInitializedRef.current = false;
+                setReloadNonce((n) => n + 1);
+              }}
+            >
+              <Localized id="retry"><span>Retry</span></Localized>
+            </button>
+          </div>
+        )}
+
         <div className="restaurant-settings-header-actions">
           <span
             className="restaurant-settings-header-dirty"
             style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
           >
-            {dirty ? (
+            {/* A failed load must not claim "All changes saved" (F4). */}
+            {loadFailed ? null : dirty ? (
               <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
             ) : (
               <Localized id="restaurant-all-saved">All changes saved</Localized>
@@ -1275,7 +1337,7 @@ export default function RestaurantReceiptsScreen({
           <button
             type="button"
             className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-            disabled={!dirty || saving}
+            disabled={!dirty || saving || loadFailed || hw.loadFailed}
             aria-busy={saving || undefined}
             onClick={handleSave}
             data-testid="restaurant-receipts-save-btn"
@@ -1324,7 +1386,7 @@ export default function RestaurantReceiptsScreen({
                     logoPosition === 'top' ? (
                       <div className="resto-receipt-center">
                         <div className="resto-receipt-logo-wrap">
-                          <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                          <img src={businessLogo} alt={l10n.getString('restaurant-logo-preview-alt')} className="resto-receipt-logo" />
                         </div>
                         <div className="resto-receipt-store-title">
                           {headerTitle.trim() || (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT')}
@@ -1343,7 +1405,7 @@ export default function RestaurantReceiptsScreen({
                     ) : (
                       <div className={`resto-receipt-header-row ${logoPosition === 'right' ? 'resto-receipt-header-row--right' : ''}`}>
                         <div className="resto-receipt-header-logo-col">
-                          <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                          <img src={businessLogo} alt={l10n.getString('restaurant-logo-preview-alt')} className="resto-receipt-logo" />
                         </div>
                         <div className="resto-receipt-header-text-col">
                           <div className="resto-receipt-store-title">
@@ -2101,9 +2163,15 @@ export default function RestaurantReceiptsScreen({
                   <div className="resto-logo-row">
                     <div className="resto-logo-thumb-box">
                       {businessLogo ? (
-                        <img src={businessLogo} alt="Logo preview" className="resto-logo-thumb" />
+                        <img
+                          src={businessLogo}
+                          alt={l10n.getString('restaurant-logo-preview-alt')}
+                          className="resto-logo-thumb"
+                        />
                       ) : (
-                        <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>No logo</span>
+                        <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                          <Localized id="restaurant-logo-no-logo"><span>No logo</span></Localized>
+                        </span>
                       )}
                     </div>
                     <div className="resto-logo-actions">
@@ -2163,7 +2231,11 @@ export default function RestaurantReceiptsScreen({
                       <div className="resto-toggle-desc" style={{ marginBottom: '4px', fontWeight: 500 }}>
                         <Localized id="restaurant-logo-position-heading">Logo Position</Localized>
                       </div>
-                      <div className="resto-segmented-group" role="group" aria-label="Logo Position">
+                      <div
+                        className="resto-segmented-group"
+                        role="group"
+                        aria-label={l10n.getString('restaurant-logo-position-heading')}
+                      >
                         <button
                           type="button"
                           className={`resto-segmented-btn ${logoPosition === 'left' ? 'resto-segmented-btn--active' : ''}`}

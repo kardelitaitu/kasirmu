@@ -96,17 +96,18 @@ function isTaxEstimated(note: string | null | undefined): boolean {
 
 interface SwipeableOrderRowProps {
   sale: SaleListItem;
-  isManager: boolean;
+  /** `sales:void` — NOT the manager role; see `canVoidSale` on the screen. */
+  canVoid: boolean;
   onView: (id: string) => void;
   onVoid: (sale: SaleListItem) => void;
   cashierName: string;
 }
 
-function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: SwipeableOrderRowProps) {
+function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: SwipeableOrderRowProps) {
   const { l10n } = useLocalization();
   const [revealed, setRevealed] = useState(false);
   const swipe = useSwipe({
-    onSwipeLeft: () => { if (isManager) setRevealed(true); },
+    onSwipeLeft: () => { if (canVoid) setRevealed(true); },
     onSwipeRight: () => setRevealed(false),
   });
 
@@ -164,7 +165,7 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
               <span>View</span>
             </button>
           </Localized>
-          {isManager && revealed && (
+          {canVoid && revealed && (
             <Localized id="sales-history-action-void">
               <button
                 type="button"
@@ -239,8 +240,24 @@ export default function SalesHistoryScreen() {
   // failed read tries a refund the database will refuse for a reason the screen
   // has hidden. `refundsUnknown` keeps the three states apart.
   const [refundsUnknown, setRefundsUnknown] = useState(false);
-  const [_refundsLoading, setRefundsLoading] = useState(false);
-  const { session, isManager } = useAuth();
+  // A `_refundsLoading` flag lived here, set true/false around the read and never
+  // READ by anything. `refundsUnknown` below carries the state that matters (the
+  // three-way ok/empty/failed split), so the flag only bought two re-renders per
+  // refunds load. Removed 2026-10-09; `refundsUnknown` is unchanged.
+  const { session, isManager, hasPermission } = useAuth();
+
+  // The pengganti action is NOT manager-only. `create_faktur_pengganti_scoped`
+  // requires `sales:process` (kasirmu-bridge/src/history.rs:309) — the permission the
+  // STAFF preset holds and its description says it exists for ("Checkout-operations
+  // role — processes sales… No management access", rbac_presets.rs:162-166). Gating it
+  // on `isManager` hid a working action from exactly the people allowed to use it.
+  //
+  // The VOID action above is the opposite case and keeps `isManager`: voiding requires
+  // `sales:void` (void.rs:56), which Staff does not hold — but even there the role is
+  // only an approximation, so it is expressed as the permission with the role as the
+  // no-grant-list fallback, matching `RestaurantSidebar` and the price override.
+  const canVoidSale = hasPermission('sales:void', isManager);
+  const canCreatePengganti = hasPermission('sales:process', isManager);
   const { sessionToken } = useWorkspace();
   // ── Per-line cost / margin (HPP) for the open sale detail ──
   const [lineMargins, setLineMargins] = useState<SaleLineMarginDto[]>([]);
@@ -542,20 +559,21 @@ export default function SalesHistoryScreen() {
         // `display_code` is NULL for legacy sales, so fall back to the id.
         receiptNumber: detail.displayCode ?? detail.id,
         items: detail.lines.map((l): LineItemDto => {
+          const currency = l.unit_price?.currency ?? detail.total?.currency ?? 'IDR';
           const item: LineItemDto = {
-            name: l.name,
+            name: l.name || l.sku,
             quantity: l.qty,
-            unitPrice: { minorUnits: l.unit_price.minor_units, currency: l.unit_price.currency },
-            totalPrice: { minorUnits: l.total_minor, currency: l.unit_price.currency },
+            unitPrice: { minorUnits: l.unit_price?.minor_units ?? 0, currency },
+            totalPrice: { minorUnits: l.total_minor ?? (l as { line_total?: { minor_units: number } }).line_total?.minor_units ?? 0, currency },
           };
           if (l.tax_amount) {
-            item.taxAmount = { minorUnits: l.tax_amount.minor_units, currency: l.tax_amount.currency };
+            item.taxAmount = { minorUnits: l.tax_amount.minor_units, currency: l.tax_amount.currency ?? currency };
           }
           return item;
         }),
-        subtotal: { minorUnits: detail.subtotal.minor_units, currency: detail.total.currency },
-        ...(detail.taxTotal.minor_units > 0
-          ? { tax: { minorUnits: detail.taxTotal.minor_units, currency: detail.total.currency } }
+        subtotal: { minorUnits: detail.subtotal?.minor_units ?? detail.total.minor_units, currency: detail.total.currency },
+        ...((detail.taxTotal?.minor_units ?? 0) > 0
+          ? { tax: { minorUnits: detail.taxTotal!.minor_units, currency: detail.total.currency } }
           : {}),
         total: { minorUnits: detail.total.minor_units, currency: detail.total.currency },
         payments: [
@@ -703,11 +721,9 @@ export default function SalesHistoryScreen() {
   }, []);
 
   const loadRefunds = useCallback(async (saleId: string) => {
-    setRefundsLoading(true);
     const data = await settleRead('refunds', listRefundsScoped(sessionToken!, saleId));
     setRefundsUnknown(!data.ok);
     setRefunds(data.ok ? data.value : []);
-    setRefundsLoading(false);
     // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
     // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
     // change -- this array just omitted it. With [] the callback kept the mount-time token, and
@@ -1212,7 +1228,7 @@ export default function SalesHistoryScreen() {
                 <SwipeableOrderRow
                   key={s.id}
                   sale={s}
-                  isManager={isManager}
+                  canVoid={canVoidSale}
                   onView={openDetail}
                   onVoid={handleOpenVoid}
                   cashierName={cashierName(s.userId)}
@@ -1558,14 +1574,14 @@ export default function SalesHistoryScreen() {
                     <Localized id="sales-history-detail-subtotal">
                       <strong><span>Subtotal:</span></strong>
                     </Localized>
-                    {' '}{formatMoney(detail.subtotal)}
+                    {' '}{formatMoney(detail.subtotal ?? detail.total)}
                   </div>
-                  {detail.taxTotal.minor_units > 0 && (
+                  {(detail.taxTotal?.minor_units ?? 0) > 0 && (
                     <div>
                       <Localized id="sales-history-detail-tax">
                         <strong><span>Tax:</span></strong>
                       </Localized>
-                      {' '}{formatMoney(detail.taxTotal)}
+                      {' '}{detail.taxTotal ? formatMoney(detail.taxTotal) : '\u2014'}
                       {isTaxEstimated(detail.taxEstimateNote) && (
                         <Badge variant="warning" style={{ marginLeft: 8 }}>
                           <Localized id="sales-history-tax-estimated-badge">
@@ -1623,7 +1639,7 @@ export default function SalesHistoryScreen() {
                         </div>
                       )}
                     </div>
-                    {session && isManager && (
+                    {session && canCreatePengganti && (
                       <div>
                         {detail.fakturPajak ? (
                           <Button
@@ -1719,18 +1735,19 @@ export default function SalesHistoryScreen() {
                   <tbody>{detail.lines.map((line) => (
                       <tr key={line.id}>
                         <td>{line.sku}</td>
-                        <td>{line.name}</td>
+                        <td>{line.name || line.sku}</td>
                         <td>{line.qty}</td>
-                        <td>{formatMoney(line.unit_price)}</td>
-                        <td>{formatMoney({ minor_units: line.total_minor, currency: line.unit_price.currency })}</td>
+                        <td>{line.unit_price ? formatMoney(line.unit_price) : '\u2014'}</td>
+                        <td>{formatMoney({ minor_units: line.total_minor ?? (line as { line_total?: { minor_units: number } }).line_total?.minor_units ?? ((line.unit_price?.minor_units ?? 0) * (line.qty || 1)), currency: line.unit_price?.currency ?? detail.total?.currency ?? 'IDR' })}</td>
                         {lineMargins.length > 0 && (
                           (() => {
                             const m = lineMargins.find((lm) => lm.sale_line_id === line.id);
                             if (!m) return <td>{'\u2014'}</td>;
+                            const lineCurrency = line.unit_price?.currency ?? detail.total?.currency ?? 'IDR';
                             return (
                               <>
-                                <td className="sales-history-cell-mono">{formatMoney({ minor_units: m.unit_cost_minor, currency: line.unit_price.currency })}</td>
-                                <td className={`sales-history-cell-mono${m.margin_minor < 0 ? ' sales-history-cell-negative' : ''}`}>{formatMoney({ minor_units: m.margin_minor, currency: line.unit_price.currency })}</td>
+                                <td className="sales-history-cell-mono">{formatMoney({ minor_units: m.unit_cost_minor, currency: lineCurrency })}</td>
+                                <td className={`sales-history-cell-mono${m.margin_minor < 0 ? ' sales-history-cell-negative' : ''}`}>{formatMoney({ minor_units: m.margin_minor, currency: lineCurrency })}</td>
                                 <td className={`sales-history-cell-mono${m.margin_percent < 0 ? ' sales-history-cell-negative' : ''}`}>{m.margin_percent.toFixed(1)}%</td>
                               </>
                             );

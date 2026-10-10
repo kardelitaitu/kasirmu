@@ -396,6 +396,13 @@
    overlay rather than a waiver: the exempt-prefix door it was tried on first
    breached that door's frozen ceiling (9 > 8). */
 .restaurant-size-btn::after,
+/* Cart order-type slider's active pill (CartPanel.css:498). It is a --shadow-sm
+   element that sits ABSOLUTE inside the segmented track with an explicit z-index,
+   so the .noise-dither position:relative utility would fight its anchoring — the
+   documented reason the absolute-positioned selectors below use this route too.
+   Named here rather than exempted: 32px tall and as wide as a third of the cart,
+   so it bands at the same order as .restaurant-size-btn above. */
+.pos-cart-order-type-indicator::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -589,6 +596,8 @@
   /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
      entry: the overlay was granted, not waived). */
   .restaurant-size-btn::after,
+  /* Same parity for the cart order-type pill (also granted, not waived). */
+  .pos-cart-order-type-indicator::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -737,6 +746,8 @@
   /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
      entry: the overlay was granted, not waived). */
   .restaurant-size-btn::after,
+  /* Same parity for the cart order-type pill (also granted, not waived). */
+  .pos-cart-order-type-indicator::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,

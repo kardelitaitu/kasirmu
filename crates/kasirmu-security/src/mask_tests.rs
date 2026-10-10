@@ -271,13 +271,41 @@ fn mask_pan_exact_invariant_11_through_19() {
 /// (not Unicode scalar values). This test documents the boundary
 /// so future readers know what to expect for multi-byte input.
 ///
-/// `'é'` (U+00E9) is 2 bytes UTF-8 → falls in the short-string branch
-/// and is returned unchanged. `'😊'` (U+1F60A) is 4 bytes UTF-8 →
-/// enters the masking branch and becomes `<first>**<last>`.
+/// Masking must never produce MORE characters than the input.
+///
+/// WAS A CAVEAT, NOW AN INVARIANT. This test previously pinned
+/// `mask_name('😊') == '😊**😊'` as EXPECTED, which recorded a byte-vs-char bug as
+/// a contract. `part.len()` counts BYTES, so a 4-byte single-character emoji yielded
+/// `masked_len = 2` and came back three characters long — longer than the one-character
+/// secret, with that character visible at both ends. `"ééé"` (6 bytes, 3 chars) came back
+/// as `"é****é"`: six characters from three.
+///
+/// A name is TEXT, so the unit is the character. The property below is what the function
+/// is for; the byte length is an implementation detail that must not leak into the result.
 #[test]
-fn mask_name_byte_vs_char_caveat() {
+fn mask_name_never_grows_the_value_it_masks() {
+    for name in [
+        "\u{00E9}",
+        "\u{1F60A}",
+        "\u{00E9}\u{00E9}\u{00E9}",
+        "J\u{00F6}hn",
+        "\u{1F60A}\u{1F60A}\u{1F60A}\u{1F60A}",
+    ] {
+        let masked = mask_name(name);
+        assert!(
+            masked.chars().count() <= name.chars().count(),
+            "masking must never emit MORE characters than the input: {name:?} ({} chars) \
+             became {masked:?} ({} chars)",
+            name.chars().count(),
+            masked.chars().count()
+        );
+    }
+    // A part of one or two characters is too short to mask and is returned as-is.
     assert_eq!(mask_name("\u{00E9}"), "\u{00E9}");
-    assert_eq!(mask_name("\u{1F60A}"), "\u{1F60A}**\u{1F60A}");
+    assert_eq!(mask_name("\u{1F60A}"), "\u{1F60A}");
+    // Three characters mask exactly the middle one, whatever its byte width.
+    assert_eq!(mask_name("\u{00E9}\u{00E9}\u{00E9}"), "\u{00E9}*\u{00E9}");
+    assert_eq!(mask_name("Bob"), "B*b");
 }
 
 /// `split_whitespace` collapses runs of any unicode whitespace
@@ -381,4 +409,70 @@ fn mask_token_is_deterministic_so_logs_can_correlate() {
         mask_token("018f3b2c-7de7-7a91-9c4d-2f1b8a6e0000"),
         "two different sessions must not collapse onto one label"
     );
+}
+
+// ── mask_pan: the short-PAN branch and its floor ─────────────────────
+
+/// A 7-DIGIT input must still come back with its leading digits replaced.
+///
+/// WHY THIS EXISTS. `mask_pan`'s `digits.len() <= 10` branch computes
+/// `masked_len = len - 4`, so for lengths 7, 8 and 9 the raw subtraction gives 3, 4 and
+/// 5. The `.max(4)` floor is what keeps the prefix at four stars. MEASURED: deleting the
+/// floor left all 38 tests in this file GREEN, and for a 7-digit value the function then
+/// returns THE INPUT UNCHANGED -- the mask disappears exactly where it is needed.
+/// `mask_pan` does not validate before masking (its docs promise a masked string "even
+/// for short inputs"), so it must not be assumed to always see a 13-19 digit PAN.
+#[test]
+fn mask_pan_seven_digits_does_not_return_the_input() {
+    let input = "1234567";
+    let masked = mask_pan(input);
+    assert_ne!(
+        masked, input,
+        "a 7-digit value must never come back unchanged: that is a total masking failure"
+    );
+    assert_eq!(masked, "****4567");
+}
+
+/// The 8- and 9-digit boundaries, pinned as literals so an edit to the arithmetic
+/// cannot move the expectation with it.
+#[test]
+fn mask_pan_eight_and_nine_digit_boundaries() {
+    assert_eq!(mask_pan("12345678"), "****5678");
+    assert_eq!(mask_pan("123456789"), "*****6789");
+}
+
+/// The 11-digit boundary, where the general first-6/last-4 branch sees its
+/// thinnest-ever masking (a single star). The 10-digit case sits beside it because the
+/// two branches meet between them.
+#[test]
+fn mask_pan_eleven_digit_boundary_shows_only_six_plus_four() {
+    assert_eq!(mask_pan("12345678901"), "123456*8901");
+    assert_eq!(mask_pan("1234567890"), "******7890");
+}
+
+/// A property over the whole short branch: for every length 7..=10 the result must keep
+/// at least four masked characters, still end with the last four digits, and never be
+/// SHORTER than the input (a shorter result would mean a digit was dropped rather than
+/// replaced).
+#[test]
+fn mask_pan_short_branch_never_leaks_the_masked_prefix() {
+    for len in 7..=10usize {
+        let digits: String = (0..len)
+            .map(|d| char::from(b'0' + (d % 10) as u8))
+            .collect();
+        let masked = mask_pan(&digits);
+        let stars = masked.chars().take_while(|c| *c == '*').count();
+        assert!(
+            stars >= 4,
+            "length {len} produced only {stars} masked characters: {masked}"
+        );
+        assert!(
+            masked.ends_with(&digits[digits.len() - 4..]),
+            "length {len} must still end with the last four digits: {masked}"
+        );
+        assert!(
+            masked.len() >= digits.len(),
+            "length {len}: masked form {masked} is SHORTER than the input"
+        );
+    }
 }

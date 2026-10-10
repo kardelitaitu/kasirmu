@@ -7,7 +7,7 @@
 // can be exercised in isolation instead of driving the whole PosScreen.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { createRef } from 'react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
@@ -25,8 +25,15 @@ vi.mock('@/hooks/useWorkspaceNav', () => ({
   useWorkspaceNav: () => ({ goToWorkspacePicker: mockGoToWorkspacePicker }),
 }));
 
+// F8 needs the session's granted keys to be controllable per case: the manager
+// rows are gated on `settings:edit` when the session carries permissions, and
+// fall back to the role when it does not.
+const mockAuth = vi.hoisted(() => ({
+  session: undefined as { role_name?: string; permissions?: string[] } | undefined,
+  isManager: false,
+}));
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ isManager: false, isOwner: false }),
+  useAuth: () => ({ isManager: mockAuth.isManager, isOwner: false, session: mockAuth.session }),
 }));
 
 vi.mock('@/hooks/useVersionStatus', () => ({
@@ -45,6 +52,9 @@ function makeActions(overrides: Partial<RestaurantSidebarActions> = {}): Restaur
     showTables: false,
     onOpenTables: vi.fn(),
     onOpenHistory: vi.fn(),
+    // Default true so the existing cases keep exercising the row; the gating
+    // case overrides it to false.
+    showKitchenDisplay: true,
     onOpenKitchenDisplay: vi.fn(),
     onOpenReceipts: vi.fn(),
     onOpenPayments: vi.fn(),
@@ -78,6 +88,100 @@ function Harness({ open = true, cartActions, onRequestExit, isManager, onOpenCha
 }
 
 const FTL = [salesFtl, productsFtl, inventoryFtl, settingsFtl, tablesFtl, kdsFtl];
+describe('RestaurantSidebar — manager rows follow settings:edit (F8)', () => {
+  beforeEach(() => { mockGoToWorkspacePicker.mockClear(); });
+
+  // The backend refuses every one of these screens' writes without
+  // `settings:edit`. Gating on the role alone produced an enabled control whose
+  // save always failed. These four cases pin the permission as authoritative.
+
+  it('disables the manager rows when the session lacks settings:edit', () => {
+    mockAuth.isManager = true; // the role says manager...
+    mockAuth.session = { role_name: 'Manager', permissions: ['sales:process'] }; // ...the grant says no
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).toBeDisabled();
+    expect(screen.getByTestId('restaurant-sidebar-menu-editor')).toBeDisabled();
+  });
+
+  it('enables the manager rows when the session holds settings:edit', () => {
+    mockAuth.session = { role_name: 'Manager', permissions: ['settings:edit'] };
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+    expect(screen.getByTestId('restaurant-sidebar-menu-editor')).not.toBeDisabled();
+  });
+
+  it('accepts the Owner wildcard, which is not a literal settings:edit match', () => {
+    // The Owner preset grants ['*'], so a raw includes() would lock an owner out.
+    mockAuth.session = { role_name: 'Owner', permissions: ['*'] };
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+  });
+
+
+  it('does not tell a MANAGER they need Manager+ when the grant is what blocks them', () => {
+    // The badge names a ROLE, but the gate is a PERMISSION. `settings:edit` is
+    // usually manager-ish, so the two coincide for the common case — but not for
+    // this one: the session's role IS 'Manager', and the row is disabled because
+    // the GRANT omits `settings:edit` (a custom role, or a narrowed preset). The
+    // badge then reads "Manager+" to a manager, which is both wrong and useless —
+    // it names a thing they already are.
+    //
+    // The gate itself is correct and pinned above. This case pins the LABEL, which
+    // the F8 tests never looked at: they assert disabled/enabled, never what the
+    // disabled row says. A row that explains the wrong reason is the same class as
+    // the KDS badge the component's own header refuses to use (RestaurantSidebar
+    // :56-64: "a 'Manager+' badge would mislabel the reason").
+    mockAuth.isManager = true;
+    mockAuth.session = { role_name: 'Manager', permissions: ['sales:process'] };
+    renderSidebar({ cartActions: makeActions() });
+
+    const settingsRow = screen.getByTestId('restaurant-sidebar-settings');
+    expect(settingsRow).toBeDisabled();
+    expect(
+      within(settingsRow).queryByText('Manager+'),
+      'the row is blocked by a missing settings:edit GRANT, not by the role — the ' +
+        'badge must not name a role the operator already holds',
+    ).toBeNull();
+  });
+
+
+  it('PRODUCTION SHAPE: the role-based prop must not bypass the permission gate', () => {
+    // ⚠️ The four F8 cases above never pass `isManager`, so they exercise the
+    // PERMISSION branch. But `PosScreen.tsx:1239` always supplies
+    // `isManager={isManager}` from `useAuth()`, and that prop WINS:
+    //
+    //     const canEditSettings = isManagerProp ?? (session?.permissions !== undefined ? ... )
+    //
+    // `AuthContext.isManager` is a pure ROLE check (owner/admin/manager), with no
+    // permission awareness, so in the real app the permission logic never runs and
+    // the F8 defect it was written to fix is still live: a "manager" role whose
+    // grant omits `settings:edit` reaches these rows, and their save is refused at
+    // the IPC boundary — the enabled-control-that-always-errors F8 names.
+    //
+    // This case renders the real production shape to pin it.
+    mockAuth.isManager = true; // the role says manager...
+    mockAuth.session = { role_name: 'Manager', permissions: ['sales:process'] }; // ...the grant says no
+    renderSidebar({ cartActions: makeActions(), isManager: true }); // what PosScreen passes
+
+    expect(
+      screen.getByTestId('restaurant-sidebar-settings'),
+      'the role prop bypassed the permission gate — the F8 fix is inert in production',
+    ).toBeDisabled();
+  });
+
+  it('falls back to the role when the session carries no permission list', () => {
+    // An older session shape cannot answer the permission question, so it must
+    // not be silently locked out of every settings screen.
+    mockAuth.isManager = true;
+    mockAuth.session = { role_name: 'Manager' };
+    renderSidebar({ cartActions: makeActions() });
+
+    expect(screen.getByTestId('restaurant-sidebar-settings')).not.toBeDisabled();
+  });
+});
 
 const renderSidebar = (props: HarnessProps) =>
   renderWithFluentSync((<Harness {...props} />) as ReactElement, ...FTL);
@@ -90,7 +194,13 @@ const exitRow = () => screen.getByRole('button', { name: /Exit Terminal/i });
 const lockRow = () => screen.getByRole('button', { name: /Lock Terminal/i });
 
 describe('RestaurantSidebar — roving keyboard navigation', () => {
-  beforeEach(() => mockGoToWorkspacePicker.mockClear());
+  beforeEach(() => {
+    mockGoToWorkspacePicker.mockClear();
+    // Default: no session permissions, so the pre-existing cases keep exercising
+    // the role fallback they were written against.
+    mockAuth.session = undefined;
+    mockAuth.isManager = false;
+  });
 
   it('ignores non-roving keys without moving focus', () => {
     renderSidebar({});
@@ -212,6 +322,24 @@ describe('RestaurantSidebar — action row handlers', () => {
     const actions = makeActions({ showTables: false });
     renderSidebar({ cartActions: actions });
     expect(screen.queryByRole('button', { name: /Table Management/i })).toBeNull();
+  });
+
+  // F7: KDS access is an entitlement, not a role, so the row is HIDDEN rather
+  // than shown disabled with a Manager+ badge. Before this the row always
+  // rendered and its click silently no-opped (or bounced to Products).
+  it('omits the Kitchen Display row when the user cannot reach the route', () => {
+    const actions = makeActions({ showKitchenDisplay: false });
+    renderSidebar({ cartActions: actions });
+    expect(screen.queryByRole('button', { name: /Kitchen Display/i })).toBeNull();
+  });
+
+  it('renders and fires the Kitchen Display row when it is reachable', () => {
+    const actions = makeActions({ showKitchenDisplay: true });
+    const onOpenChange = vi.fn();
+    renderSidebar({ cartActions: actions, onOpenChange });
+    fireEvent.click(screen.getByRole('button', { name: /Kitchen Display/i }));
+    expect(actions.onOpenKitchenDisplay).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('deduction row renders with the location and fires onOverrideDeduction when clicked', () => {

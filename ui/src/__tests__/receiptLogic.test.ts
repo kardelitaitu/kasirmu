@@ -102,11 +102,17 @@ describe('formatPrice', () => {
   });
 
   it('applies the decimal separator only when there are fractional digits', () => {
-    expect(formatPrice(85255, true, 'IDR', 'dot', 2)).toBe('Rp 85255.00');
-    expect(formatPrice(85255, true, 'IDR', 'comma', 2)).toBe('Rp 85255,00');
+    // IDR is exp-0, so asking for 2 fraction digits yields NONE — the printer's
+    // `format_money` delegates to `foundation::format_minor`, which uses the currency's
+    // canonical exponent, so the paper never shows a `,00` for Rupiah. An exp-2 currency
+    // is where the separator is actually observable.
+    expect(formatPrice(85255, true, 'IDR', 'dot', 2)).toBe('Rp 85255');
+    expect(formatPrice(85255, true, 'IDR', 'comma', 2)).toBe('Rp 85255');
     expect(formatPrice(85255, true, 'IDR', 'none', 2)).toBe('Rp 85255');
+    expect(formatPrice(85255, true, 'USD', 'dot', 2)).toBe('USD 85255.00');
+    expect(formatPrice(85255, true, 'USD', 'comma', 2)).toBe('USD 85255,00');
     // whole minor units render identically under dot/comma
-    expect(formatPrice(85255, true, 'IDR', 'comma')).toBe('Rp 85255');
+    expect(formatPrice(85255, true, 'USD', 'comma')).toBe('USD 85255');
   });
 
   it('renders a negative amount with a leading minus', () => {
@@ -117,8 +123,9 @@ describe('formatPrice', () => {
     // With comma decimal separator (IDR convention): thousand separator is dot '.'
     expect(formatPrice(10000, false, 'IDR', 'comma', 0, true)).toBe('10.000');
     expect(formatPrice(10000, false, 'IDR', 'comma', 0, false)).toBe('10000');
-    expect(formatPrice(10000, false, 'IDR', 'comma', 2, true)).toBe('10.000,00');
-    expect(formatPrice(10000, false, 'IDR', 'comma', 2, false)).toBe('10000,00');
+    // exp-0: no fraction is appended, so only the grouping differs here.
+    expect(formatPrice(10000, false, 'IDR', 'comma', 2, true)).toBe('10.000');
+    expect(formatPrice(10000, false, 'IDR', 'comma', 2, false)).toBe('10000');
 
     // With dot decimal separator (US convention): thousand separator is comma ','
     expect(formatPrice(10000, false, 'USD', 'dot', 0, true)).toBe('10,000');
@@ -128,7 +135,7 @@ describe('formatPrice', () => {
 
     // With currency prefix and large numbers
     expect(formatPrice(1250000, true, 'IDR', 'comma', 0, true)).toBe('Rp 1.250.000');
-    expect(formatPrice(1250000, true, 'IDR', 'comma', 2, true)).toBe('Rp 1.250.000,00');
+    expect(formatPrice(1250000, true, 'IDR', 'comma', 2, true)).toBe('Rp 1.250.000');
   });
 });
 

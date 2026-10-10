@@ -40,6 +40,8 @@ fn sale_detail_carries_the_estimate_stamp_when_claimed() {
     let detail = SaleDetail {
         id: "s-est".into(),
         total: price(770),
+        subtotal: price(700),
+        tax_total: price(70),
         line_count: 1,
         status: "Pending".into(),
         payment_method: Some("cash".into()),
@@ -48,6 +50,9 @@ fn sale_detail_carries_the_estimate_stamp_when_claimed() {
         created_at: "2026-09-10T00:00:00.000Z".into(),
         lines: vec![],
         tax_estimate_note: Some("{\"estimated\":true,\"computed_tax\":70}".into()),
+        display_code: None,
+        faktur_pajak: None,
+        statutory_number: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(
@@ -61,6 +66,8 @@ fn sale_detail_serializes_null_when_unstamped() {
     let detail = SaleDetail {
         id: "s-est".into(),
         total: price(770),
+        subtotal: price(700),
+        tax_total: price(70),
         line_count: 1,
         status: "Pending".into(),
         payment_method: None,
@@ -69,6 +76,9 @@ fn sale_detail_serializes_null_when_unstamped() {
         created_at: "2026-09-10T00:00:00.000Z".into(),
         lines: vec![],
         tax_estimate_note: None,
+        display_code: None,
+        faktur_pajak: None,
+        statutory_number: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert!(
@@ -108,9 +118,9 @@ fn sale_list_item_serialize() {
     };
     let json = serde_json::to_value(&item).unwrap();
     assert_eq!(json["id"], "s2");
-    assert_eq!(json["line_count"], 1);
+    assert_eq!(json["lineCount"], 1);
     assert_eq!(json["status"], "voided");
-    assert!(json["payment_method"].is_null());
+    assert!(json["paymentMethod"].is_null());
 }
 
 // ── SaleDetail ──────────────────────────────────────────────────────
@@ -120,6 +130,8 @@ fn sale_detail_debug() {
     let detail = SaleDetail {
         id: "sd1".into(),
         total: price(10000),
+        subtotal: price(10000),
+        tax_total: price(0),
         line_count: 2,
         status: "completed".into(),
         payment_method: Some("card".into()),
@@ -128,6 +140,9 @@ fn sale_detail_debug() {
         created_at: "2025-03-15".into(),
         lines: vec![make_sale_line("sd1", "SKU-A", 2, 5000)],
         tax_estimate_note: None,
+        display_code: None,
+        faktur_pajak: None,
+        statutory_number: None,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -139,6 +154,8 @@ fn sale_detail_serialize() {
     let detail = SaleDetail {
         id: "sd2".into(),
         total: price(3000),
+        subtotal: price(3000),
+        tax_total: price(0),
         line_count: 1,
         status: "completed".into(),
         payment_method: None,
@@ -147,6 +164,9 @@ fn sale_detail_serialize() {
         created_at: "2025-01-01".into(),
         lines: vec![],
         tax_estimate_note: None,
+        display_code: None,
+        faktur_pajak: None,
+        statutory_number: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");

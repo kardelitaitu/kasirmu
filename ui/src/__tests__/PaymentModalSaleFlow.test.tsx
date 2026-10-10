@@ -177,7 +177,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -185,6 +185,116 @@ describe('PaymentModal — sale flow', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('print_sales_receipt_scoped', { sessionToken: 'mock-token', args: expect.any(Object) });
     });
+  });
+
+
+  it('PRINTS a human-readable tender on the receipt, not the stored enum', async () => {
+    // `bbc530642` lowercased the tender for the DB CHECK constraint. It also lowercased
+    // `methodLabel`, which is a DIFFERENT value with a different consumer: the same
+    // variable feeds `paymentMethod` (the stored column, wants 'cash') and
+    // `buildCompletedSaleReceipt({ payments: [{ method: methodLabel }] })` (the printed
+    // receipt, rendered verbatim at ReceiptPreview.tsx:183). One transform, two
+    // requirements — so the receipt started printing 'cash' where it printed 'CASH'.
+    //
+    // The existing receipt test could not catch this: it feeds ReceiptPreview a fixture
+    // with 'CASH' already in it (:42), which tests the renderer and not the boundary.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'print_sales_receipt_scoped',
+        expect.anything(),
+      );
+    });
+
+    // The hoisted mock is typed `(cmd: string) => …`, so its call tuple is length 1 even
+    // though real call sites pass a second argument; read it through the untyped view.
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    const call = calls.find((c) => c[0] === 'print_sales_receipt_scoped');
+    const payment = (
+      call?.[1] as { args: { payments: Array<{ method: string }> } }
+    ).args.payments[0]!;
+    // The stored enum is lowercase; what the CUSTOMER reads must not be.
+    expect(payment.method.toLowerCase()).toBe('cash');
+    expect(payment.method).not.toBe('cash');
+  });
+
+  it('prints one receipt row per split tender, each with NO change', async () => {
+    // Pins the contract that the comment at PaymentModal.tsx:1212-1223 explains.
+    //
+    // The split arm passes `change: null` for every row, and that is CORRECT, not
+    // an omission: `splitComplete` requires the rows to sum to the payable
+    // EXACTLY (useTenderMath.ts:184, `splitTotals.remaining !== 0n`), so no row
+    // can over-tender and there is never a surplus to hand back. This test exists
+    // so that a future reader who assumes the null is a missing computation has
+    // to delete an assertion before "fixing" it.
+    //
+    // The lone-cash path is different on purpose: there the tender MAY exceed the
+    // total, so `change` is real and is passed through.
+    //
+    // No mock override: the hoisted harness already answers the whole sale sequence,
+    // and an earlier draft replaced `get_sale_scoped` with a hand-rolled DTO that
+    // made buildCompletedSaleReceipt throw — the receipt silently did not build, the
+    // modal fell to its no-receipt done branch, and the failure surfaced as a
+    // missing "Print Receipt" button rather than as anything about receipts.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Split mode, then allocate the whole payable across two tenders.
+    await userEvent.click(screen.getByLabelText(/split payment across methods/i));
+
+    const amountInputs = () =>
+      Array.from(document.querySelectorAll<HTMLInputElement>('.payment-split-amount-input'));
+    await waitFor(() => expect(amountInputs().length).toBeGreaterThanOrEqual(2));
+    await userEvent.type(amountInputs()[0]!, '3');
+    await userEvent.type(amountInputs()[1]!, '4');
+
+    const complete = screen.getByTestId('settle-button');
+    await waitFor(() => expect(complete).toBeEnabled());
+    await userEvent.click(complete);
+
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    const call = calls.find((c) => c[0] === 'print_sales_receipt_scoped');
+    // Reaching the print call at all proves the split summed exactly: an inexact
+    // split cannot enable Complete (canComplete gates on splitComplete).
+    expect(call, 'the split must be completable, i.e. rows summing exactly to the total').toBeDefined();
+    const payments = (
+      call?.[1] as { args: { payments: Array<{ amount: { minorUnits: number }; change: unknown }> } }
+    ).args.payments;
+    expect(payments.length).toBeGreaterThanOrEqual(2);
+    // One row per tender, and NO change on any of them — the whole point.
+    for (const p of payments) {
+      expect(p.change).toBeNull();
+    }
   });
 
   it('auto-kicks cash drawer on complete for cash sale', async () => {
@@ -202,13 +312,145 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
         sessionToken: 'mock-token',
         args: {},
       });
+    });
+  });
+
+
+  // ── Auto-Print KOT must gate the kitchen chit (F20) ───────────────
+  //
+  // `RestaurantPaymentsScreen` renders "Auto-Print Kitchen" as a switch and saves it
+  // as `restaurant.auto_print_kitchen`. Until this round the key existed ONLY in that
+  // screen — written, loaded back, and read by nothing — so the toggle promised a
+  // behaviour the app never performed.
+  //
+  // Both halves already existed and were simply never joined: `createKdsOrderFromSaleScoped`
+  // creates the KDS order (called here unconditionally), and `printKdsChitScoped` prints
+  // the chit — with ZERO callers anywhere under ui/src, which the factory-surface guard
+  // records as a known gap (`mockFactorySurface.test.ts:240`). This joins them and gates
+  // the print on the setting.
+  //
+  // The KDS ORDER is created either way, deliberately: it feeds the Kitchen Display and
+  // the course-firing publish, both of which exist regardless of whether paper comes out.
+  // Only the PRINT is optional, which is what the toggle says.
+  const completeWithKdsOrder = async () => {
+    await waitFor(() =>
+      expect(screen.getByLabelText(/amount tendered/i)).toBeInTheDocument(),
+    );
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('create_kds_order_from_sale_scoped',
+        expect.objectContaining({ saleId: 'sale-1' })),
+    );
+  };
+
+  // The setting reaches the modal as a PROP (read by PosScreen, as `save_tab` and
+  // `customer_name` are), so these cases pass it rather than mocking a settings read
+  // the modal never makes — a mock on a surface nobody reads is the trap this file
+  // documents at :148-154.
+  const kdsOrderImpl = () => {
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'create_kds_order_from_sale_scoped') {
+        // Two zones, so the print fan-out is observable rather than degenerate.
+        return Promise.resolve([
+          { id: 'kds-1', sale_id: 'sale-1', kitchen_zone: 'grill' },
+          { id: 'kds-2', sale_id: 'sale-1', kitchen_zone: 'bar' },
+        ]);
+      }
+      if (cmd === 'print_kds_chit_scoped') return Promise.resolve(true);
+      return prev(cmd);
+    });
+  };
+
+  it('prints a kitchen chit per KDS order when auto_print_kitchen is on', async () => {
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        autoPrintKitchen={true}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    // The hoisted mock is typed `(cmd: string) => …`, so its call tuple is length 1
+    // even though real call sites pass a second argument; read it through the
+    // untyped view, as this file does above for print_sales_receipt_scoped.
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      const printed = calls
+        .filter((c) => c[0] === 'print_kds_chit_scoped')
+        .map((c) => (c[1] as { orderId: string }).orderId);
+      expect(printed.sort()).toEqual(['kds-1', 'kds-2']);
+    });
+  });
+
+  it('creates the KDS order but prints NO chit when auto_print_kitchen is off', async () => {
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        autoPrintKitchen={false}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    // The order still exists — the Kitchen Display is not paper-dependent…
+    expect(invokeMock).toHaveBeenCalledWith('create_kds_order_from_sale_scoped',
+      expect.objectContaining({ saleId: 'sale-1' }));
+    // …but nothing was printed.
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    expect(
+      calls.some((c) => c[0] === 'print_kds_chit_scoped'),
+      'auto-print was OFF but a chit was printed anyway',
+    ).toBe(false);
+  });
+
+
+  it('prints by DEFAULT when the prop is absent (setting never loaded)', async () => {
+    // The backward-compatibility half, and the one that makes a `false` default
+    // unshippable: a modal rendered before PosScreen's read settles — or by any
+    // caller that does not supply the prop, like the retail screen — must keep
+    // printing. Defaulting to false would silently stop every kitchen printing.
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      const printed = calls
+        .filter((c) => c[0] === 'print_kds_chit_scoped')
+        .map((c) => (c[1] as { orderId: string }).orderId);
+      expect(printed.sort()).toEqual(['kds-1', 'kds-2']);
     });
   });
 
@@ -227,7 +469,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -265,7 +507,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -273,6 +515,70 @@ describe('PaymentModal — sale flow', () => {
     // The cashier is told nothing printed, and the sale still completes — it is
     // already committed, so the failure is a warning, not a block.
     expect(await screen.findByText(/Nothing was printed/i)).toBeInTheDocument();
+    await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
+  });
+
+  it('warns instead of silently keeping points when a loyalty redemption fails', async () => {
+    // The customer's total was reduced by `loyaltyDiscount`, and the redemption is a
+    // SEPARATE IPC from sale completion. A rejected redemption therefore gives away
+    // the discount while leaving the points in the account — and the catch was empty,
+    // so the cashier was told the sale completed with no hint the points were never
+    // deducted. Same shape as the receipt-print case above: the sale is already
+    // committed, so it is a warning, not a block.
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'get_enabled_features') {
+        return Promise.resolve({ features: ['loyalty-program'] });
+      }
+      if (cmd === 'get_loyalty_account_scoped') {
+        return Promise.resolve({
+          account: {
+            id: 'la-1', customer_id: 'cust-1', points: 500, lifetime_points: 500,
+            tier_id: null, updated_at: '', created_at: '',
+          },
+          tier: null, recent_transactions: [], next_tier: null, points_to_next_tier: 0,
+        });
+      }
+      // `getPointsValue` resolves a PLAIN NUMBER of minor units (api/loyalty.ts:111);
+      // the modal BigInt()s it directly at PaymentModal.tsx:562. Returning an object
+      // here throws inside the .then and the discount silently stays 0n, which is
+      // why the redemption never fired in the first version of this test.
+      if (cmd === 'get_points_value' || cmd === 'get_points_value_scoped') {
+        return Promise.resolve(50);
+      }
+      if (cmd === 'redeem_loyalty_points_scoped') {
+        return Promise.reject(new Error('loyalty service unavailable'));
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    const onComplete = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="mock-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        selectedCustomer={{ id: 'cust-1', name: 'Ada', phone: null, email: null, notes: '', created_at: '', updated_at: '' }}
+        onComplete={onComplete}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Redeem whatever the account holds, then tender the rest in cash.
+    const redeemBtn = await screen.findByRole('button', { name: /Use Points/i });
+    await userEvent.click(redeemBtn);
+
+    // `loyaltyDiscount` is 0 until an amount is entered, and the redemption only
+    // fires when it is > 0 — clicking the affordance alone redeems nothing.
+    const pointsInput = document.querySelector('.payment-loyalty-input') as HTMLInputElement;
+    await userEvent.type(pointsInput, '100');
+
+    const input = await screen.findByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    expect(await screen.findByText(/loyalty points were NOT deducted/i)).toBeInTheDocument();
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
   });
 
@@ -290,7 +596,7 @@ describe('PaymentModal — sale flow', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     expect(await screen.findByRole('region', { name: /Receipt Preview/i })).toBeInTheDocument();
     expect(await screen.findByText(/CHANGE:/i)).toBeInTheDocument();
@@ -311,8 +617,8 @@ describe('PaymentModal — sale flow', () => {
     );
 
     await userEvent.click(screen.getByLabelText(/Card/));
-    expect(screen.getByRole('button', { name: /^complete$/i })).not.toBeDisabled();
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    expect(screen.getByTestId('settle-button')).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
     await userEvent.click(printBtn);
@@ -349,6 +655,69 @@ describe('PaymentModal — shortfall resolution', () => {
   afterEach(() => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(defaultInvokeImpl as (cmd: string) => Promise<unknown>);
+  });
+
+  it('shows StockShortfallDialog when completeSale rejects with the REAL AppError object', async () => {
+    // The case below rejects with `new Error(JSON.stringify(payload))` — a shape
+    // the backend NEVER sends. Tauri serializes AppError with
+    // `#[serde(tag = "kind", rename_all = "camelCase")]`
+    // (apps/mobile-tauri/src/error.rs:19-21), so what actually crosses IPC is a
+    // plain object like `{ kind: 'core', subKind: 'validation', message: '…' }`.
+    //
+    // PaymentModal.tsx:1236 extracts it with
+    //   const errMsg = err instanceof Error ? err.message : String(err);
+    // and a plain object is not an Error, so String(err) is the string
+    // "[object Object]" — which contains no "{", so tryParsePartialStockResult
+    // returns null and the shortfall dialog never opens. Measured on the Redmi
+    // tablet: this is why the dialog is unreachable on a device while the suite
+    // is green. Verified on-device that the real rejection is
+    // `{ kind: 'invalidSession' }`-shaped, i.e. a tagged object.
+    const shortfallPayload = {
+      requiresResolution: true,
+      shortfalls: [
+        {
+          sku: 'COFFEE',
+          productName: 'Coffee',
+          requestedQty: 5,
+          primaryQtyAvailable: 2,
+          deficit: 3,
+          primaryLocationId: 'main',
+          alternatives: [
+            { locationId: 'alt-1', locationName: 'Warehouse', qtyAvailable: 10 },
+          ],
+        },
+      ],
+    };
+
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'complete_sale_scoped') {
+        // The real wire shape: a tagged object, NOT an Error instance.
+        return Promise.reject({
+          kind: 'core',
+          subKind: 'validation',
+          message: 'validation error: stock: ' + JSON.stringify(shortfallPayload),
+        });
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText(/Card/));
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
+    });
   });
 
   it('shows StockShortfallDialog when completeSale fails with PartialStockResult', async () => {
@@ -395,7 +764,7 @@ describe('PaymentModal — shortfall resolution', () => {
     );
 
     await userEvent.click(screen.getByLabelText(/Card/));
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
@@ -423,10 +792,96 @@ describe('PaymentModal — shortfall resolution', () => {
           lines: [{ sku: 'COFFEE', qty: 2, unitPriceMinor: 350, unitPriceCurrency: 'USD' }],
           tipMinor: 150,
           serviceChargeMinor: 70,
+          // The RETRY must spell the tender the same way the first submission does.
+          // `bbc530642` lowercased the first path; the retry kept `method.toUpperCase()`,
+          // and the backend normalises only `payment_splits` — the scalar
+          // `sales.payment_method` is written verbatim (sales_checkout.rs:549). So the
+          // two paths disagreed on the same field for the same attempt: this sale pays
+          // by CARD, so the retry used to send 'CARD' while the first send was 'card'.
+          paymentMethod: 'card',
         },
       });
     });
   });
+
+
+  it('prints the SAME readable tender after a shortfall retry as a normal sale', async () => {
+    // The retry builds its own `PrintSalesReceiptArgs` (PaymentModal.tsx:1589) and
+    // filled `method` with `method.toUpperCase()` (:1621) while the normal path uses
+    // `methodLabel` (:1222). So the customer's printed tender depended on whether the
+    // sale happened to hit a stock shortfall — and a merchant's configured QRIS label
+    // was dropped on that path entirely, because the label branch was never consulted.
+    //
+    // This is the RETRY's receipt, not the retry's stored enum: the stored value is
+    // pinned separately above (round 29). Two different values, two different bugs.
+    const shortfallPayload = {
+      requiresResolution: true,
+      shortfalls: [
+        {
+          sku: 'COFFEE',
+          productName: 'Coffee',
+          requestedQty: 5,
+          primaryQtyAvailable: 2,
+          deficit: 3,
+          primaryLocationId: 'main',
+          alternatives: [{ locationId: 'alt-1', qtyAvailable: 3 }],
+        },
+      ],
+    };
+    const impl = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'complete_sale_scoped') {
+        return Promise.reject(
+          new Error('validation error: stock: ' + JSON.stringify(shortfallPayload)),
+        );
+      }
+      if (cmd === 'complete_sale_with_resolved_shortfalls_scoped') {
+        return Promise.resolve({ saleId: 'sale-1', total: { minorUnits: 700, currency: 'USD' }, lineCount: 1 });
+      }
+      return impl(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    await userEvent.click(await screen.findByText('Confirm & Continue'));
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      expect(calls.some((c) => c[0] === 'print_sales_receipt_scoped')).toBe(true);
+    });
+
+    const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+    // Guard against a vacuous pass: the test is worthless unless the RETRY ran and the
+    // print came from the retry's own receipt builder (:1589), not the normal one.
+    expect(
+      calls.some((c) => c[0] === 'complete_sale_with_resolved_shortfalls_scoped'),
+      'the shortfall retry never ran — this test proved nothing',
+    ).toBe(true);
+    const printCall = calls.find((c) => c[0] === 'print_sales_receipt_scoped');
+    const printed = (printCall?.[1] as { args: { payments: Array<{ method: string }> } }).args.payments[0]!;
+    // A CASH sale: the correct value IS 'CASH' (the human-readable form), and the
+    // buggy `method.toUpperCase()` produces the same string — so this case cannot
+    // distinguish correct from buggy, and is kept only as the readable-value baseline.
+    // The QRIS case below is the one that can tell them apart.
+    expect(printed.method).toBe('CASH');
+  });
+
 
   // ── FRONTEND-04: multi-currency shortfall retry keeps the charge currency ──
   it('settles a shortfall retry in the charge currency with the CUR-02 tender snapshot', async () => {
@@ -489,7 +944,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Select charge currency'), 'IDR');
     await userEvent.click(screen.getByLabelText(/Card/));
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       expect(screen.getByText('Insufficient Stock')).toBeInTheDocument();
@@ -533,7 +988,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     const input = screen.getByLabelText(/amount tendered/i);
     await userEvent.type(input, '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
 
     await waitFor(() => {
       // The modal adds lines via add_line (or add_line_scoped when a
@@ -592,7 +1047,7 @@ describe('PaymentModal — shortfall resolution', () => {
 
     const completeOnce = async () => {
       await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
-      await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+      await userEvent.click(screen.getByTestId('settle-button'));
       await waitFor(() => expect(attemptIds().length).toBeGreaterThan(0));
     };
 
@@ -732,7 +1187,7 @@ describe('PaymentModal — taxEstimated claim', () => {
 
   const completeOnce = async () => {
     await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
-    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId('settle-button'));
     await waitFor(() => expect(completeArgs().length).toBeGreaterThan(0));
   };
 
@@ -1184,9 +1639,9 @@ describe('PaymentModal — local payment rails gating', () => {
       ),
     );
 
-  const rail = (enabled: boolean) => ({
-    rail_code: 'qris',
-    label: 'QRIS',
+  const rail = (enabled: boolean, railCode = 'qris') => ({
+    rail_code: railCode,
+    label: railCode === 'qris' ? 'QRIS' : railCode,
     is_enabled: enabled,
     scope: 'location' as const,
     parameters: '{}',
@@ -1393,6 +1848,147 @@ describe('PaymentModal — local payment rails gating', () => {
       'credit',
       'other',
     ]);
+  });
+
+
+  // ── The open_bill RAIL flag (F16) ────────────────────────────────
+  //
+  // `open_bill` had ONE gate: the workspace (`isRestaurantPos`, :303), because
+  // the backend refuses the bill_type outside restaurant-pos. That is a
+  // CAPABILITY check and it stays.
+  //
+  // But `RestaurantPaymentsScreen` also renders `open_bill` as a CORE rail
+  // (`paymentRailsLogic.ts:11` `CORE_RAIL_CODES`) with an enable/disable toggle,
+  // and the modal never consulted it. So the operator could switch the rail off
+  // and the tender kept being offered — a toggle that silently does nothing.
+  //
+  // The rail flag is a MERCHANT PREFERENCE and is orthogonal to the capability, so
+  // it is added as a SECOND gate rather than replacing the first. `railOffered`
+  // fails OPEN on a null/empty list (:48), so a store with no rails configured —
+  // and every existing caller — is unaffected, which the last case pins.
+  it('withholds the open bill tender when its rail is disabled', async () => {
+    // Restaurant workspace (capability satisfied) but the rail switched OFF.
+    expect(await renderedTenders([rail(false, 'open_bill'), rail(true)])).toEqual([
+      'cash',
+      'card',
+      'qris',
+      'credit',
+      'other',
+    ]);
+  });
+
+  it('offers the open bill tender again when its rail is enabled', async () => {
+    // The direction that must not regress: an enabled rail keeps today's list.
+    expect(await renderedTenders([rail(true, 'open_bill'), rail(true)])).toEqual(ALL_TENDERS);
+  });
+
+  it('fails open for open bill when no rail list is configured', async () => {
+    // A store that has never touched this screen keeps the tender. This is what makes
+    // the gate backward-compatible rather than a behaviour change for existing sites.
+    expect(await renderedTenders([])).toContain('open_bill');
+  });
+
+  it('KEEPS open bill when the rail list simply has no open_bill ROW', async () => {
+    // The distinction the gate turns on, and the one my first attempt got wrong.
+    //
+    // `railOffered` answers "is this rail present and enabled?" — right for `qris`,
+    // an opt-in rail a store may not have, and WRONG for a core rail. `open_bill`
+    // always exists as a setting, so a populated list that merely PREDATES the row
+    // is not a decision to remove it. Using `railOffered` here withheld the tender
+    // from every such store — a silent withdrawal nobody asked for, which this file's
+    // PINNED tender-list case caught immediately.
+    //
+    // Only an EXPLICIT `is_enabled: false` may hide it (`coreRailWithheld`).
+    const noOpenBillRow = [
+      rail(true),
+      { rail_code: 'edc', label: 'EDC', is_enabled: true, scope: 'location', parameters: '{}' },
+    ];
+    expect(noOpenBillRow.some((r) => r.rail_code === 'open_bill')).toBe(false);
+    expect(await renderedTenders(noOpenBillRow)).toContain('open_bill');
+  });
+  // ── The drawer kick must honour the settings toggle (F18) ────────
+  //
+  // `RestaurantPaymentsScreen` renders "Automatic Cash Drawer" as a switch
+  // (`:997-1010`) and persists it into the cash rail's parameters as `autoKick`
+  // (`:1006`), reading it back on load (`:386`). So it is real saved state, and the
+  // operator can switch it OFF.
+  //
+  // But the kick site read only `sessionToken && hasCashTender`
+  // (`PaymentModal.tsx:1207`), never the parameter — so a cashier who switched
+  // auto-kick OFF still got the drawer popping open on every cash tender. The F16
+  // shape, with a physical consequence rather than a hidden one.
+  //
+  // `mountWithRails` mounts the modal AND installs the rails the operator saved, so
+  // the cash rail below carries their `parameters` bag.
+  const completeCashSale = async () => {
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
+    );
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+    // Gates the assertion on the sale having actually completed, so a case cannot
+    // pass merely by never reaching the kick site.
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('complete_sale_scoped', expect.anything()),
+    );
+  };
+
+  const cashRailWith = (autoKick: boolean) => ({
+    rail_code: 'cash',
+    label: 'Cash',
+    is_enabled: true,
+    scope: 'location' as const,
+    parameters: JSON.stringify({ autoKick }),
+  });
+
+  it('does NOT kick the cash drawer when the cash rail sets autoKick false', async () => {
+    const { view, restore } = await mountWithRails([cashRailWith(false), rail(true)]);
+    try {
+      await completeCashSale();
+      expect(
+        invokeMock.mock.calls.some(([cmd]) => cmd === 'open_cash_drawer_scoped'),
+        'auto-kick was OFF but the drawer was kicked anyway',
+      ).toBe(false);
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('still kicks when the cash rail sets autoKick true', async () => {
+    // The direction that must not regress — the guard against "fixing" this by never
+    // kicking at all.
+    const { view, restore } = await mountWithRails([cashRailWith(true), rail(true)]);
+    try {
+      await completeCashSale();
+      expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+        sessionToken: 'mock-token',
+        args: {},
+      });
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('kicks by DEFAULT when the cash rail carries no autoKick key at all', async () => {
+    // The backward-compatibility case, and the one that makes a `false` default
+    // unshippable: every store whose cash rail predates the toggle must keep the
+    // kick. A default of `false` would silently stop kicking the drawer everywhere.
+    const { view, restore } = await mountWithRails([
+      { rail_code: 'cash', label: 'Cash', is_enabled: true, scope: 'location', parameters: '{}' },
+      rail(true),
+    ]);
+    try {
+      await completeCashSale();
+      expect(invokeMock).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+        sessionToken: 'mock-token',
+        args: {},
+      });
+    } finally {
+      restore();
+      view.unmount();
+    }
   });
 
   it('PINNED: every rail offered renders cash, card, qris, credit, other, open bill', async () => {

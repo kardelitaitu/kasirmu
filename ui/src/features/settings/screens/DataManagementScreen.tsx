@@ -2,17 +2,17 @@
 //!
 //! Migrated 2026-10-06 from `features/settings/DataManagementScreen.tsx`, per
 //! the provenance this scaffold named while it was still blank. Composition, not
-//! a re-export: the route, the scaffold shell and its migrating note stay on
-//! this screen while the data-management feature keeps its own screen and
-//! stylesheet.
+//! a re-export: the route and the scaffold shell stay on this screen while the
+//! data-management feature keeps its own screen and stylesheet.
 //!
 //! The composed component is a full screen with its own <h1>, so it is passed
 //! `embedded` — that suppresses the duplicate title. Its tab bar
 //! (Export / Import / Backup / Restore) is real navigation and stays.
 //!
-//! Copy is Fluent-only: `settings-nav-data-management` for the heading, the
-//! body's own `data-mgmt-*` keys, and the shared `settings-screen-migrating`
-//! note (the one-off "being rebuilt" line goes away once the body is real).
+//! Copy is Fluent-only: `settings-nav-data-management` for the heading and the
+//! body's own `data-mgmt-*` keys. The shared `settings-screen-migrating` note was
+//! removed from every settings screen in round 43 — the section is built, so
+//! telling users its content "will move here" was stale copy.
 
 import { Localized } from '@fluent/react';
 // Aliased: this file's own exported component is ALSO named
@@ -31,11 +31,6 @@ export function DataManagementScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-data-management">Data Management</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <DataManagementBody embedded />
     </section>
   );

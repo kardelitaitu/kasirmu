@@ -134,6 +134,32 @@ describe('passesGate — permission precedence', () => {
     // Wildcard only covers its own domain.
     expect(passesGate('owner', 'analytics:view', 'owner', ['sales:*'])).toBe(false);
   });
+  // ── The Auditor reaches the audit log, which reads as blocked ───────
+  //
+  // `features/audit/register.tsx` arms BOTH routes and both nav items on
+  // `requiredRole: 'manager', requiredPermission: 'audit:view'`. Read quickly that
+  // looks like it locks out the AUDITOR preset — which holds `audit:view`
+  // (rbac_presets.rs:296) and is NOT a manager (`isManager` covers only
+  // owner/admin/manager). Round 49 fixed the in-screen Mark Reviewed gate for
+  // exactly that role, so a route that never let them in would have made that fix
+  // unreachable.
+  //
+  // It does NOT lock them out: `requiredPermission` is authoritative whenever the
+  // session carries granted keys, and `requiredRole` is only the fallback for a
+  // session that cannot answer the permission question. This case pins that for the
+  // real pair, so the redundant-looking role token cannot grow teeth unnoticed.
+  it('lets an Auditor through a manager-role registration that names audit:view', () => {
+    // Exactly what audit/register.tsx passes, for the Auditor's actual grants.
+    expect(passesGate('manager', 'audit:view', 'auditor', ['audit:view'])).toBe(true);
+    // …and the role is genuinely not satisfied, so this is the permission deciding.
+    expect(passesGate('manager', undefined, 'auditor', ['audit:view'])).toBe(false);
+  });
+
+  it('still refuses an Auditor who lacks audit:view', () => {
+    // The other direction: the permission is what admits them, not the route's
+    // redundant role token having been left off.
+    expect(passesGate('manager', 'audit:view', 'auditor', ['reports:view'])).toBe(false);
+  });
 });
 
 /* ── hasGrantedPermission ────────────────────────────────────────── */

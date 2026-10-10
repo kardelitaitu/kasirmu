@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
+import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
@@ -16,6 +17,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
@@ -57,10 +59,12 @@ import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
+import { matchesTableBill } from './utils/tableLabel';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
 import { isTabletShell } from '@/utils/shellKind';
+import { getPage, isPageAccessible } from '@/registries/page-registry';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -133,11 +137,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
-  const { session, logout, isManager } = useAuth();
+  const { session, logout, isManager, hasPermission } = useAuth();
   const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
   const { products } = useProducts(sessionToken || undefined);
   const { isEnabled } = useFeatures();
+  // F21: the shared chime hook. Not KDS-specific — a plain Web Audio tone, and the
+  // retail POS already uses it for the same order-complete confirmation.
+  const { playSuccess } = useSound();
+  // F21: `null` = never written -> the setting's own default (chime). Declared here,
+  // not with the other restaurant flags below, because `handlePaymentComplete` reads
+  // it and is defined before them.
+  const [soundChime, setSoundChime] = useState<boolean | null>(null);
   const userId = session?.user_id ?? '';
 
   const handleOpenSettings = useCallback(() => {
@@ -315,7 +326,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
-  const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(false);
+  // Defaults ON for restaurant POS and OFF elsewhere. The key is restaurant-only,
+  // so a retail workspace must not gain an order-type prompt from an unset value.
+  // This default is what lets `CartPanel` drop its `|| restaurant-pos` override
+  // (P1/D2): the control stays visible on restaurant while an explicit stored
+  // "false" can finally turn it off.
+  const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(activeWorkspace === 'restaurant-pos');
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -509,7 +525,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     sessionToken,
     onProductFound: useCallback(async (payload: BarcodeScannedPayload) => {
       if (!activeShiftRef.current && !shiftUnavailableRef.current) {
-        addToast({ message: 'Open a shift first', type: 'warning' });
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+          type: 'warning',
+        });
         return;
       }
       try {
@@ -573,7 +592,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // Same rule as the cart guard: an unreachable shift service must not
     // block payment, because shifts are informational.
     if (!activeShiftRef.current && !shiftUnavailableRef.current) {
-      addToast({ message: 'Open a shift first', type: 'warning' });
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+        type: 'warning',
+      });
       return;
     }
     if (!total) return;
@@ -609,6 +631,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   } = usePosHeldCarts({
     sessionToken,
     addToast,
+    l10nRef,
     activeShift,
     lines,
     subtotal,
@@ -683,7 +706,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setGuestCount('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+    // F21: the order-sent chime. Placed here, at the end of a COMPLETED checkout —
+    // the same seat the retail POS uses (`RetailPosScreen.tsx:1576`) — so it cannot
+    // fire for a sale that failed. `null` means never written, which the setting's own
+    // default (true) says should chime.
+    if (soundChime !== false) playSuccess();
+  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -780,6 +808,50 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => { courseFiringSeq.current += 1; };
   }, [sessionToken]);
 
+  // ── Restaurant cart-field gates (P1) ────────────────────────────
+  // `restaurant.customer_name` / `restaurant.guest_count` gate the cart's two
+  // optional fields. Both use `null` = "never written" as SHOW, matching the
+  // `!== false` props on CartPanel, so an unset key cannot hide a field that has
+  // always been visible. A failed read is also SHOW, for the same reason the
+  // course-firing flag falls back to its workspace default: a settings outage
+  // must not remove a POS capability.
+  const [customerNameEnabled, setCustomerNameEnabled] = useState<boolean | null>(null);
+  const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
+  const [saveTabEnabled, setSaveTabEnabled] = useState<boolean | null>(null);
+
+  // ── Order Sound Notifications (F21) ─────────────────────────────
+  //
+  // `restaurant.sound_chime` promises "Play an audible confirmation chime when orders
+  // are sent or updated" (products.ftl:115) and defaults to TRUE, but lived ONLY in
+  // the settings screen until this round — written, loaded into its own switch, and
+  // read by nothing, so the app never played the chime it advertised.
+  //
+  // The pieces were present, as they were for F20: `useSound()` is a shared component
+  // hook (not KDS-only — it is a plain Web Audio beep), and the RETAIL POS already
+  // plays `playSuccess()` on sale completion (`RetailPosScreen.tsx:1576`). The
+  // restaurant path simply never called it.
+  //
+  // `null` = never written -> the model's default (true), so an unset key keeps the
+  // behaviour the default describes rather than silently disabling sound.
+  //
+  // The STATE is declared beside `playSuccess` above, because `handlePaymentComplete`
+  // reads it and is defined earlier in the component than this comment block.
+
+  // ── Auto-Print KOT (F20) ────────────────────────────────────────
+  //
+  // `restaurant.auto_print_kitchen` lived ONLY in the settings screen until this
+  // round: written, loaded back into its own switch, and read by nothing — so the
+  // toggle promised a behaviour the app never performed. Both halves were already
+  // present and simply never joined: `createKdsOrderFromSaleScoped` creates the KDS
+  // order and `printKdsChitScoped` prints the chit, with the latter having zero
+  // callers anywhere under ui/src.
+  //
+  // `null` means "never written", and the default is TRUE — matching the model's
+  // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen` (settingsModel), so an unset key
+  // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
+  // what the module's own default says a kitchen expects.
+  const [autoPrintKitchen, setAutoPrintKitchen] = useState<boolean | null>(null);
+
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
     const seq = ++orderTypePromptSeq.current;
@@ -787,13 +859,45 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     getSettingScoped(sessionToken || null, 'restaurant.order_type_prompt')
       .then((raw) => {
         if (stale()) return;
-        setOrderTypePromptEnabled(raw === 'true');
+        // `null` means never written, which is not the same as "false".
+        setOrderTypePromptEnabled(raw === null ? activeWorkspace === 'restaurant-pos' : raw === 'true');
       })
       .catch(() => {
         if (stale()) return;
-        setOrderTypePromptEnabled(false);
+        // A failed read must not hide a restaurant's order-type selector; the
+        // workspace default is the safe fallback, matching the pre-load value.
+        setOrderTypePromptEnabled(activeWorkspace === 'restaurant-pos');
       });
     return () => { orderTypePromptSeq.current += 1; };
+    // `activeWorkspace` IS a dependency, unlike the course-firing effect above:
+    // that one's fallback is the workspace-independent `null`, while this one's
+    // fallback is computed FROM the workspace. Omitting it would leave the
+    // pre-switch workspace's answer in state after a store switch.
+  }, [sessionToken, activeWorkspace]);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    let cancelled = false;
+    void getSettingScoped(sessionToken, 'restaurant.customer_name')
+      .then((raw) => { if (!cancelled) setCustomerNameEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setCustomerNameEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.guest_count')
+      .then((raw) => { if (!cancelled) setGuestCountEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setGuestCountEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.save_tab')
+      .then((raw) => { if (!cancelled) setSaveTabEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setSaveTabEnabled(null); });
+    // F20: the Auto-Print KOT switch. A failed read keeps `null`, which the modal
+    // treats as its default (print) — so a settings outage cannot silently stop a
+    // kitchen printing tickets, the direction of failure that goes unnoticed.
+    void getSettingScoped(sessionToken, 'restaurant.auto_print_kitchen')
+      .then((raw) => { if (!cancelled) setAutoPrintKitchen(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setAutoPrintKitchen(null); });
+    // F21: the Order Sound Notifications switch, same contract as its siblings.
+    void getSettingScoped(sessionToken, 'restaurant.sound_chime')
+      .then((raw) => { if (!cancelled) setSoundChime(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setSoundChime(null); });
+    return () => { cancelled = true; };
   }, [sessionToken]);
 
   const handleRequestExit = useCallback(() => {
@@ -881,11 +985,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       setTableNumber(tableName);
       setShowTables(false);
       // Find active tab matching this table to resume order if exists
-      const matchingBill = openBills.find(
-        (b) =>
-          b.label.toLowerCase().includes(`table ${tableName.toLowerCase()}`) ||
-          (b.customer_name && b.customer_name.toLowerCase().includes(`table ${tableName.toLowerCase()}`)),
-      );
+      const matchingBill = openBills.find((b) => matchesTableBill(b, tableName));
       if (matchingBill) {
         void handleResumeOpenBill(matchingBill.id);
       }
@@ -910,10 +1010,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <TableManagementScreen
-            onSelectTable={handleSelectTableFromManagement}
-            onBack={() => setShowTables(false)}
-          />
+          {/* Crash isolation (F9): this screen and Sales History below were the two
+              sub-screens of SIX that had no boundary, so a throw in either took the
+              whole POS down mid-service — with a cart in progress. `onReset` returns
+              to the sale, which is where the cashier needs to be. */}
+          <LocalizedErrorBoundary onReset={() => setShowTables(false)}>
+            <TableManagementScreen
+              onSelectTable={handleSelectTableFromManagement}
+              onBack={() => setShowTables(false)}
+            />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -939,7 +1045,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <span className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</span>
         </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <SalesHistoryScreen />
+          {/* Crash isolation (F9) — see the Table Management note above. */}
+          <LocalizedErrorBoundary onReset={() => setShowSalesHistory(false)}>
+            <SalesHistoryScreen />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -965,7 +1074,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <h2 className="restaurant-subscreen-top-title">{l10n.getString('nav-inventory') || 'Stock Inquiry'}</h2>
         </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <ProductLookupScreen onAddProduct={handleAddProduct} />
+          {/* Crash isolation (F9) — the third of the three that had no boundary. */}
+          <LocalizedErrorBoundary onReset={() => setShowStockInquiry(false)}>
+            <ProductLookupScreen onAddProduct={handleAddProduct} />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -976,10 +1088,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantMenuEditorScreen
-            onBack={() => setShowMenuEditor(false)}
-            sessionToken={sessionToken}
-          />
+          {/* Crash isolation (F9): a throw in a settings sub-screen must not take
+              the POS screen with it. `onReset` returns to the sale. */}
+          <LocalizedErrorBoundary onReset={() => setShowMenuEditor(false)}>
+            <RestaurantMenuEditorScreen
+              onBack={() => setShowMenuEditor(false)}
+              sessionToken={sessionToken}
+            />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -990,10 +1106,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantReceiptsScreen
-            onBack={() => setShowReceiptsSettings(false)}
-            tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
-          />
+          <LocalizedErrorBoundary onReset={() => setShowReceiptsSettings(false)}>
+            <RestaurantReceiptsScreen
+              onBack={() => setShowReceiptsSettings(false)}
+              tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
+            />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -1004,7 +1122,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
+          <LocalizedErrorBoundary onReset={() => setShowPaymentsSettings(false)}>
+            <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -1015,7 +1135,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+          <LocalizedErrorBoundary onReset={() => setShowRestaurantSettings(false)}>
+            <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+          </LocalizedErrorBoundary>
         </div>
       </div>
     );
@@ -1075,6 +1197,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setCustomerName,
     guestCount,
     setGuestCount,
+    customerNameEnabled: customerNameEnabled ?? true,
+    guestCountEnabled: guestCountEnabled ?? true,
+    saveTabEnabled: saveTabEnabled ?? true,
     orderType,
     setOrderType,
     orderTypePromptEnabled,
@@ -1084,7 +1209,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
     onEditModifiers: handleEditModifiers,
-    isManager, setOverrideTarget, ensureCart,
+    isManager,
+    // Priced overrides require `sales:override_price` on the backend, which a
+    // custom role may hold independently of being a "manager". `isManager`
+    // remains the fallback for a session carrying no grant list.
+    canOverridePrice: hasPermission('sales:override_price', isManager),
+    setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
     courseFiringEnabled,
   };
@@ -1125,6 +1255,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     showTables: isEnabled(FEATURES.TABLE_MANAGEMENT),
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
+    // F7/D4: hide the row when KDS is unreachable rather than let it no-op or
+    // bounce to Products. Computed with the SAME predicate the shell's
+    // `handleNavigate` uses (`isPageAccessible`), so the row is visible exactly
+    // when the navigation would succeed — a second predicate would be free to
+    // disagree with the thing it is predicting.
+    showKitchenDisplay: isPageAccessible(getPage('kds'), session?.role_name ?? '', session?.permissions),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
     onOpenMenuEditor: () => setShowMenuEditor(true),
     onOpenReceipts: () => setShowReceiptsSettings(true),
@@ -1149,7 +1285,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     >
       {/* ── Left: Product lookup ─────────────────── */}
       <div className="pos-products">
+        {/* Crash isolation (F9) at the SHELL level, not only inside it. Round 20
+            wrapped two children of RestaurantMenu, but the component itself is
+            rendered here and was still bare: a throw in its own body — the header,
+            the preferences state, the hooks — propagated out of this ternary and
+            took the POS screen down. The children's boundaries only cover what
+            renders INSIDE them. */}
         {activeWorkspace === 'restaurant-pos' ? (
+          <LocalizedErrorBoundary resetKeys={[activeWorkspace]}>
           <RestaurantMenu
             onAddProduct={handleAddProduct}
             sidebarOpen={restaurantSidebarOpen}
@@ -1161,8 +1304,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             isManager={isManager}
             hasFloatingCartBar={isPortraitRestaurant}
           />
+          </LocalizedErrorBoundary>
         ) : (
+          <LocalizedErrorBoundary resetKeys={[activeWorkspace]}>
           <ProductLookupScreen onAddProduct={handleAddProduct} />
+          </LocalizedErrorBoundary>
         )}
       </div>
 
@@ -1206,7 +1352,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       />
 
       {/* ── Payment modal ──────────────────────────── */}
+      {/* Crash isolation (F9), and the highest-stakes surface for it: this is the
+          money dialog, opened after the tender is chosen. Without a scoped boundary
+          a throw here was caught only by AppProviders' FULL-PAGE boundary, whose
+          recovery is a 30s auto-reload — which replaces the POS and logs the cashier
+          out mid-transaction. `onReset` closes the dialog and returns to the cart,
+          which is where they need to be. `autoRefreshMs` is deliberately omitted:
+          that prop belongs to full-page boundaries (AppProviders:28-31). */}
       {total && (
+        <LocalizedErrorBoundary onReset={() => setShowPayment(false)}>
         <PaymentModal
           open={showPayment}
           lineItems={lines}
@@ -1223,13 +1377,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
           orderType={orderType}
+          // F20: undefined means "not loaded / never written", which the modal
+          // resolves to its default (print). Passing `null` through would make an
+          // unread setting indistinguishable from an explicit false.
+          {...(autoPrintKitchen === null ? {} : { autoPrintKitchen })}
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />
+        </LocalizedErrorBoundary>
       )}
 
       {/* ── Price Override modal ─────────────────────── */}
+      {/* Crash isolation (F9): this modal writes the line price. `resetKeys` keys on
+          the target so picking a different line clears a caught error. */}
       {overrideTarget && (
+        <LocalizedErrorBoundary onReset={() => setOverrideTarget(null)} resetKeys={[overrideTarget.id]}>
         <PriceOverrideModal
           open
           lineDescription={`${overrideTarget.name ?? overrideTarget.sku} — ${formatMoney(overrideTarget.unit_price)}`}
@@ -1237,9 +1399,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           onConfirm={handleOverrideConfirm}
           onClose={() => setOverrideTarget(null)}
         />
+        </LocalizedErrorBoundary>
       )}
 
       {/* ── Promotions picker modal ───────────────────── */}
+      {/* Crash isolation (F9): applying a promotion changes the discount on the
+          sale. `resetKeys` on the open flag so reopening clears a caught error. */}
+      <LocalizedErrorBoundary onReset={() => setShowPromotions(false)} resetKeys={[showPromotions]}>
       <PromotionsModal
         open={showPromotions}
         sessionToken={sessionToken}
@@ -1248,6 +1414,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         onApply={handleSelectPromotions}
         onClose={() => setShowPromotions(false)}
       />
+      </LocalizedErrorBoundary>
 
       {/* -- Open Bill Input modal / Open Bills panel (components/OpenBillModals) -- */}
       <OpenBillInput
@@ -1265,6 +1432,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       />
 
       {/* -- Shift modals (Close Shift confirm / summary / Open Shift) -- */}
+      {/* Crash isolation (F9) on the shift family. These carry the CASH DRAWER
+          reconciliation figures, so a throw here lands on the operator mid-count;
+          `onReset` closes the modal back to the sale rather than reloading the app. */}
+      <LocalizedErrorBoundary onReset={() => closeShiftExit.requestClose()}>
       <CloseShiftConfirm
         closeShiftExit={closeShiftExit}
         activeShift={activeShift}
@@ -1279,13 +1450,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         handleConfirmCloseShift={handleConfirmCloseShift}
         currency={activeCurrency}
       />
+      </LocalizedErrorBoundary>
 
+      <LocalizedErrorBoundary onReset={() => shiftSummaryExit.requestClose()}>
       <ShiftSummary
         shiftSummaryExit={shiftSummaryExit}
         closedShiftSummary={closedShiftSummary}
         currency={activeCurrency}
       />
+      </LocalizedErrorBoundary>
 
+      <LocalizedErrorBoundary onReset={() => openShiftExit.requestClose()}>
       <OpenShiftModal
         openShiftExit={openShiftExit}
         openingBalance={openingBalance}
@@ -1294,6 +1469,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         handleConfirmOpenShift={handleConfirmOpenShift}
         currency={activeCurrency}
       />
+      </LocalizedErrorBoundary>
 
       {/* ── FastPIN Overlay (ADR-19 §17: badge click → manager override) ── */}
       <FastPINOverlay
@@ -1317,7 +1493,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       />
 
       {/* ── Item Modifier Modal (in-cart customization editing) ────── */}
+      {/* Crash isolation (F9), the same surface wrapped in RestaurantMenu
+          (RestaurantMenu.tsx:684) and for the same reason: this is where an existing
+          cart line's options and PRICE are edited, so a throw must cost the dialog,
+          not the sale. `resetKeys` keys on the line so editing a different line
+          clears a caught error. */}
       {editingCartLine && editingProduct && (
+        <LocalizedErrorBoundary
+          onReset={() => { setEditingCartLine(null); setEditingProduct(null); }}
+          resetKeys={[editingCartLine.id]}
+        >
         <ItemModifierModal
           open={true}
           productName={editingProduct.name}
@@ -1331,6 +1516,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             setEditingProduct(null);
           }}
         />
+        </LocalizedErrorBoundary>
       )}
     </div>
   </>

@@ -185,8 +185,24 @@ const UNASKABLE_COMMAND_RE = new RegExp(
   'i',
 );
 
-/** A thrown value's own text, for the three shapes an IPC rejection takes. */
-function rejectionText(err: unknown): string {
+/**
+ * A thrown value's own text, for the three shapes an IPC rejection takes.
+ *
+ * Exported because the shapes are the trap, not an implementation detail. Tauri
+ * serializes `AppError` as a plain tagged object
+ * (`#[serde(tag = "kind", rename_all = "camelCase")]`,
+ * apps/mobile-tauri/src/error.rs:19-21), so `err instanceof Error` is FALSE for
+ * the ordinary failure path and `String(err)` yields "[object Object]". A caller
+ * that needs the backend's own message text — not the user-safe copy — must read
+ * `.message` off the object, which is what this does.
+ *
+ * PaymentModal.tsx:1236 had exactly the broken form
+ * (`err instanceof Error ? err.message : String(err)`) and it silently disabled
+ * the stock-shortfall dialog on every real device: the parser downstream looks
+ * for the first `{` in the text, and "[object Object]" has none, so it returned
+ * null and the generic error banner was shown instead.
+ */
+export function rejectionText(err: unknown): string {
   if (typeof err === 'string') return err;
   if (err instanceof Error) return err.message;
   if (typeof err === 'object' && err !== null && 'message' in err) {

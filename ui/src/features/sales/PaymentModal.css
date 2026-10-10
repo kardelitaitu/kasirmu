@@ -6,30 +6,8 @@
   align-items: center;
   justify-content: center;
   background: var(--color-pos-modal-overlay);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  will-change: backdrop-filter;
-  transform: translateZ(0);
-  /* The overlay's own query container (ADR-0001 T2 / Slice 5). UNNAMED on
-     purpose, the same choice RetailPosScreen.css, KdsScreen.css, PosScreen.css
-     and SalesHistoryScreen.css each record and for the same reason: the shell's
-     content slot carries the name app-content, but a named query would find no
-     container in any mount that does not go through the shell (tests, e2e
-     harness, the modal rendered standalone).
-
-     WHY THE OVERLAY AND NOT THE SHELL SLOT. This modal is not a page body: it
-     renders as position: fixed; inset: 0, so the box it is given IS the
-     viewport — the shell's content slot is not its containing block and a tier
-     keyed on it would measure the wrong box. Declaring the container here is
-     therefore not a viewport query in disguise; it is the same measurement this
-     modal has always had, made explicit and reachable from the rest of the
-     sheet. Desktop landscape renders exactly as before.
-
-     The COST, recorded rather than hidden: .payment-overlay also contains
-     .payment-customer-search-overlay, itself position: fixed. A fixed
-     descendant does not re-root a container query — the query still resolves
-     against this ancestor — so the tiers below reach the search modal too.
-     That is intended, and is why the search panel is styled in them. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   container-type: inline-size;
 }
 
@@ -48,26 +26,18 @@
   @keyframes payment-overlay-in {
     from {
       opacity: 0;
-      backdrop-filter: blur(0px);
-      -webkit-backdrop-filter: blur(0px);
     }
     to {
       opacity: 1;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
     }
   }
 
   @keyframes payment-overlay-out {
     from {
       opacity: 1;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
     }
     to {
       opacity: 0;
-      backdrop-filter: blur(0px);
-      -webkit-backdrop-filter: blur(0px);
     }
   }
 }
@@ -75,17 +45,142 @@
 .payment-modal {
   position: relative;
   width: 26.25rem;
-  /* max-width: 100%, not 92vw: the panel's containing block is .payment-overlay
-     (position: fixed; inset: 0), which IS the viewport for this modal, so this
-     states against the box what the old 92vw stated against the window — and the
-     two are the same number at every width below 456px (see the tier note at the
-     end of this sheet). */
-  max-width: 100%;
+  max-width: calc(100vw - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
   background: var(--color-pos-modal-bg);
   border: 1px solid var(--color-pos-modal-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--color-pos-modal-shadow);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+/* Landscape POS layout */
+.payment-modal-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Narrow tier: one column, stacked. The tender column is ORDERED FIRST because
+   the cashier picks a method before committing, and the commit rail carries the
+   primary action — reaching Complete without ever seeing the method grid would
+   be a trap. (The wide tier does the same thing with grid-column placement.)
+   Note the visual order here matches DOM order again, so the tab-order caveat
+   documented in the wide tier does not apply below 640px. */
+.payment-tender-col {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.payment-summary-col {
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@container (min-width: 640px) {
+  .payment-modal {
+    width: 52rem;
+    max-width: min(56rem, calc(100vw - 2rem));
+    max-height: min(44rem, calc(100vh - 1.5rem));
+  }
+
+  /* Two columns: tender/entry on the LEFT, commit rail on the RIGHT.
+     Explicit grid-column placement rather than DOM reordering, because the
+     summary block carries ~180 lines of JSX and the move would be churn with no
+     behavioural gain. The tradeoff is honest and bounded: tab order follows DOM
+     (summary, then the tender column), so focus visits the commit controls
+     before the method grid. Both columns are always visible in this tier, so the
+     eye and the caret disagree about ORDER but never about WHAT IS SHOWN.
+
+     The tracks are sized by ROLE, not by position: the tender column holds a
+     2-up method grid whose "Other" row carries a text input, and the split
+     editor rows need ~383px each (measured), so it takes the flexible track. The
+     commit rail holds a total, one checkbox, a button and the action row, all of
+     which fit 19rem (measured: total row 230px, toggle/customer/actions 266px). */
+  .payment-modal-layout {
+    display: grid;
+    grid-template-columns: 1fr 19rem;
+    overflow: hidden;
+  }
+
+  .payment-tender-col {
+    grid-column: 1;
+    grid-row: 1;
+    padding: var(--space-4) var(--space-5);
+    overflow-y: auto;
+    gap: var(--space-2_5);
+  }
+
+  .payment-summary-col {
+    grid-column: 2;
+    grid-row: 1;
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border);
+    padding: var(--space-4) var(--space-5);
+    /* The commit rail must NOT scroll: .payment-actions lives here now, and the
+       whole point of moving it is that the primary action can never be pushed
+       below the modal's clipped edge. Content here is short by construction. */
+    overflow: visible;
+  }
+
+  .payment-methods {
+    padding: 0;
+  }
+
+  .payment-method-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+  }
+
+  .payment-method-label {
+    min-height: 2.375rem;
+  }
+
+  .payment-cash-section,
+  .payment-open-bill-section {
+    padding: 0;
+  }
+
+  .payment-actions {
+    margin-top: auto;
+    padding: var(--space-3) 0 0;
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+/* ADR-0060 T1/T2. This block used to be a second copy of the `@container`
+   tier directly above, under `@media (min-width: 640px) and (orientation:
+   landscape)`. Both carried the SAME nine rules, byte-identical, so removing
+   this one changes no rendered output: `.pos-screen` is the page's query
+   container (PosScreen.css:40), and the container tier measures the space the
+   shell grants the modal rather than the viewport.
+
+   It had to go for two reasons, and only the second is stylistic:
+     1. T1 licenses `@media (orientation: ...)` ONLY in the shell
+        (ui/src/app/AppLayout.css, ui/src/app/tablet/tablet.css). A feature
+        sheet holding one is the violation orientationAdaptiveWalker.test.ts
+        exists to catch, and it caught this one.
+     2. Duplication is what let the drift happen: the container tier and this
+        block could diverge, and whichever the cascade resolved last would win
+        in landscape only -- a difference no portrait test can see.
+
+   If a landscape-specific difference is ever genuinely needed here, it is a
+   T2 change (another `@container` tier), not a return of this query. */
+
+.payment-modal:has(.payment-done),
+.payment-modal:has(.receipt-preview) {
+  width: 28rem !important;
+  max-width: 90vw !important;
 }
 
 .payment-modal--enter {
@@ -197,23 +292,71 @@
 }
 
 .payment-method-options {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-2);
 }
 
 .payment-method-label {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-base);
+  justify-content: center;
+  min-height: 2.625rem;
+  padding: var(--space-2) var(--space-2_5);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
   color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
   cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition: background var(--duration-150) var(--ease-out),
+              border-color var(--duration-150) var(--ease-out),
+              box-shadow var(--duration-150) var(--ease-out),
+              color var(--duration-150) var(--ease-out);
+}
+
+.payment-method-label:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-hover);
+}
+
+.payment-method-label:has(input[type="radio"]:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.payment-method-label:has(input[type="radio"]:checked),
+.payment-method-label--active {
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
+  color: var(--color-accent-active);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .payment-method-label input[type="radio"] {
-  accent-color: var(--color-accent);
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  margin: 0;
 }
+
+/* 2-column layout ordering:
+   Row 1: [Cash] [QRIS]
+   Row 2: [Card] [Credit]
+   Row 3: [Other] [Open Bill] */
+.payment-method-label--cash { order: 1; }
+.payment-method-label--qris { order: 2; }
+.payment-method-label--card { order: 3; }
+.payment-method-label--credit { order: 4; }
+.payment-method-label--other { order: 5; }
+.payment-method-label--open_bill { order: 6; }
 
 /* The tender row inherited everything from .payment-method-label, so the name
    never claimed the row and the selected method never read as selected — the
@@ -221,31 +364,40 @@
    off the input so the chosen tender's text changes with it. */
 .payment-method-name {
   flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.payment-method-label input[type="radio"]:checked + .payment-method-name {
-  color: var(--color-accent);
+.payment-method-label input[type="radio"]:checked + .payment-method-name,
+.payment-method-label--active .payment-method-name {
+  color: var(--color-accent-active);
   font-weight: var(--font-weight-semibold);
 }
 
 .payment-other-input {
   border: none;
-  border-bottom: 1px solid var(--color-border);
   background: transparent;
-  font-size: var(--text-base);
-  color: var(--color-fg);
-  padding: var(--space-1) var(--space-2);
-  flex: 1;
-  min-width: 6.25rem;
+  font-size: var(--text-sm);
+  font-weight: inherit;
+  color: inherit;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  outline: none;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
-.payment-other-input:focus-visible {
-  border-color: var(--color-border-focus);
-  box-shadow: inset 0 0 0 1px var(--color-accent-subtle);
+.payment-other-input:focus {
+  cursor: text;
 }
 
 .payment-other-input:disabled {
-  opacity: 0.4;
+  opacity: 0.85;
+  cursor: pointer;
 }
 
 .payment-cash-section {
@@ -921,7 +1073,7 @@
 
 .payment-error-text {
   flex: 1;
-  line-height: 1.4;
+  line-height: var(--leading-snug);
 }
 
 .payment-error-retry-btn {
@@ -1013,10 +1165,6 @@
   align-items: center;
   justify-content: center;
   background: var(--color-bg-overlay);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  will-change: backdrop-filter;
-  transform: translateZ(0);
   animation: payment-overlay-in var(--duration-300) var(--ease-out);
 }
 .payment-customer-search-modal {
@@ -1472,3 +1620,21 @@
     opacity: 0.72;
   }
 }
+
+/* ── Rails-degraded notice ── REMOVED 2026-10-08 ────────────────────
+   Nine rules stood here (.payment-rails-degraded, -icon, -text, -retry and
+   their :hover / :focus-visible / pointer:coarse variants), describing a notice
+   for when the rail read failed or came back empty.
+
+   They were deleted rather than kept because nothing ever rendered them:
+   `git grep -rn degraded ui/src/features/sales ui/e2e` returns this sheet and
+   nothing else -- no JSX, no hook state, no e2e locator. The rules arrived with
+   add32d8e6, whose own subject is a layout redesign, so this was CSS written
+   ahead of markup that never landed; screenExtraction's dead-class walk was
+   right to flag it and the block sat red until now.
+
+   Recover it from add32d8e6 if the notice is built: the markup it expected is
+   a danger-tinted row in the tender column carrying an icon, a message and a
+   Retry button, with the retry at --touch-target-min under (pointer: coarse).
+   Note that no Fluent key for the message exists either, so restoring this is
+   a feature (key + JSX + state), not a revert. */

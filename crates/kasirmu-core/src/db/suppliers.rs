@@ -92,12 +92,12 @@ impl Store<'_> {
                 message: "supplier name must not be empty".into(),
             });
         }
-        if name.len() > 255 {
+        if name.chars().count() > 255 {
             return Err(CoreError::Validation {
                 field: "name",
                 message: format!(
                     "supplier name must not exceed 255 characters, got {}",
-                    name.len()
+                    name.chars().count()
                 ),
             });
         }
@@ -107,12 +107,12 @@ impl Store<'_> {
                 message: "supplier code must not be empty".into(),
             });
         }
-        if code.len() > 50 {
+        if code.chars().count() > 50 {
             return Err(CoreError::Validation {
                 field: "code",
                 message: format!(
                     "supplier code must not exceed 50 characters, got {}",
-                    code.len()
+                    code.chars().count()
                 ),
             });
         }
@@ -179,12 +179,12 @@ impl Store<'_> {
                 message: "supplier name must not be empty".into(),
             });
         }
-        if name.len() > 255 {
+        if name.chars().count() > 255 {
             return Err(CoreError::Validation {
                 field: "name",
                 message: format!(
                     "supplier name must not exceed 255 characters, got {}",
-                    name.len()
+                    name.chars().count()
                 ),
             });
         }
@@ -194,12 +194,12 @@ impl Store<'_> {
                 message: "supplier code must not be empty".into(),
             });
         }
-        if code.len() > 50 {
+        if code.chars().count() > 50 {
             return Err(CoreError::Validation {
                 field: "code",
                 message: format!(
                     "supplier code must not exceed 50 characters, got {}",
-                    code.len()
+                    code.chars().count()
                 ),
             });
         }

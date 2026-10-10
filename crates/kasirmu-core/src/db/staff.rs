@@ -530,13 +530,15 @@ impl Store<'_> {
                 message: "username must not be empty".into(),
             });
         }
-        if username.len() > 100 {
+        // CHARACTERS, not bytes -- measured once so the check and the reported number
+        // cannot disagree. The message has always said "100 characters" while
+        // `username.len()` counted UTF-8 bytes, so a 100-character accented username was
+        // refused with the self-contradicting "must not exceed 100 characters, got 200".
+        let username_chars = username.chars().count();
+        if username_chars > 100 {
             return Err(CoreError::Validation {
                 field: "username",
-                message: format!(
-                    "username must not exceed 100 characters, got {}",
-                    username.len()
-                ),
+                message: format!("username must not exceed 100 characters, got {username_chars}"),
             });
         }
         if display_name.trim().is_empty() {
@@ -545,12 +547,14 @@ impl Store<'_> {
                 message: "display name must not be empty".into(),
             });
         }
-        if display_name.len() > 255 {
+        // Same unit correction as the username above: a display name is text, and the
+        // message counts characters.
+        let display_name_chars = display_name.chars().count();
+        if display_name_chars > 255 {
             return Err(CoreError::Validation {
                 field: "display_name",
                 message: format!(
-                    "display name must not exceed 255 characters, got {}",
-                    display_name.len()
+                    "display name must not exceed 255 characters, got {display_name_chars}"
                 ),
             });
         }

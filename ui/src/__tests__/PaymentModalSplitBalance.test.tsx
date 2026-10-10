@@ -1,10 +1,12 @@
 /**
  * CHARACTERIZATION TEST — the split-tender balance guard.
  *
- * Pins the money contract of PaymentModal's `splitComplete` (currently
- * src/features/sales/PaymentModal.tsx:580-588, feeding `canComplete` :953-961
- * and gating the settle button :2211) BEFORE anyone extracts the split-tender
- * surface. Line numbers drift; the CONTRACT does not:
+ * Pins the money contract of PaymentModal's `splitComplete` — **which has since
+ * MOVED**, as this file's own rule anticipated: the hook now lives in
+ * `src/features/sales/payment/useTenderMath.ts:183-191`, consumed at
+ * `PaymentModal.tsx:479` (feeding `canComplete` around `:1054-1070`). The
+ * original pointer (`PaymentModal.tsx:580-588`) had drifted; the CONTRACT below
+ * is what the cases actually assert, which is why they survived the move:
  *
  *   remaining = total(minor) - sum(parsed split rows)   [bigint, exact]
  *   permitted <=> remaining === 0n
@@ -23,6 +25,8 @@
  * no mock that replaces `splitComplete` — every assertion travels through the
  * real DOM input → parse → guard → disabled-attribute path.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
@@ -299,6 +303,32 @@ describe('PaymentModal split-tender balance guard (characterization)', () => {
 
     await fillRows(total, [{ minor: 100000 }, { minor: 49999, method: 'card' }]);
     expect(settle()).toBeDisabled();
+  });
+
+  it('splitComplete compares against the CONVERTED total, not the raw one (C12, source-level)', () => {
+    // ⚠️ This case exists because the C12 skip below CLAIMED it already existed.
+    // Its comment says the invariant is "pinned instead at the source: the guard
+    // reads effectiveTotalInCartCurrency (:580-588)" — but nothing asserted that.
+    // Kill-tested 2026-10-09 by swapping the converted total for `totalMinor` in
+    // `useTenderMath.ts`: the suite stayed GREEN, with the exact money defect the
+    // comment says is guarded. A stated safety net that is not there is worse than
+    // an acknowledged gap, because it stops anyone looking.
+    //
+    // Runtime characterisation needs four currency mocks, which this file
+    // deliberately avoids — so the invariant is pinned where it actually lives:
+    // the expression that computes `remaining`.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/features/sales/payment/useTenderMath.ts'),
+      'utf-8',
+    );
+    const remaining = src.match(/remaining:\s*BigInt\(([^)]+)\)\s*-\s*splitSum/);
+    expect(remaining, 'the `remaining` expression moved — this pin has drifted').not.toBeNull();
+    expect(
+      remaining![1],
+      'splitComplete now compares the split sum against the RAW total. In a mixed-currency \n' +
+        'cart that rings a balanced split as short by the whole rate delta, so Complete \n' +
+        'can never enable. The conversion must stay in this expression.',
+    ).toBe('effectiveTotalInCartCurrency');
   });
 
   it.skip('C12 mixed-currency split (base currency != charge currency) — NOT characterizable from outside', async () => {

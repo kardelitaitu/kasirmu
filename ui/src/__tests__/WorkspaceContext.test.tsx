@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { createContext } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -38,6 +38,12 @@ const mocks = vi.hoisted(() => ({
 interface MockAuthCtxValue {
   session: LoginSessionDto | null;
   pickerTicket: string | null;
+  /**
+   * Omitted by the shared MockAuthProvider below, which is why the picker
+   * ticket can never move in most of this suite — see the "persisted picker
+   * ticket" describe for the case that needs it wired.
+   */
+  updatePickerTicket?: (ticket: string) => void;
 }
 
 const MockAuthCtx = createContext<MockAuthCtxValue>({
@@ -141,6 +147,33 @@ function MockAuthProvider({
 }) {
   return (
     <MockAuthCtx.Provider value={{ session, pickerTicket }}>
+      {children}
+    </MockAuthCtx.Provider>
+  );
+}
+
+/**
+ * An auth context whose picker ticket is REAL state with a real setter.
+ *
+ * The shared MockAuthProvider above hands down a static `pickerTicket` and no
+ * `updatePickerTicket`, so `WorkspaceProvider`'s `updatePickerTicketFn` falls
+ * back to the module-level no-op and the ticket never moves. Coverage that
+ * depends on the ticket actually changing needs this provider instead.
+ */
+function LiveTicketAuthProvider({
+  children,
+  session,
+  initialTicket,
+}: {
+  children: ReactNode;
+  session: LoginSessionDto | null;
+  initialTicket: string | null;
+}) {
+  const [ticket, setTicket] = useState<string | null>(initialTicket);
+  return (
+    <MockAuthCtx.Provider
+      value={{ session, pickerTicket: ticket, updatePickerTicket: setTicket }}
+    >
       {children}
     </MockAuthCtx.Provider>
   );
@@ -441,6 +474,50 @@ describe('WorkspaceContext', () => {
       }, FAST_WAIT);
       expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
     });
+
+    // ── A re-mint must never expose sessionToken === null ───────────────
+    //
+    // The mint effect used to `setSessionToken(null)` the moment it decided to
+    // re-mint, then wait a full IPC round trip for `createSession`. Every
+    // consumer that reads `sessionToken` observed null across that gap, and on
+    // the tablet the gap is long enough to paint: the restaurant menu's
+    // catalog load (`useProducts`) unmounted the product grid into its loading
+    // skeleton and straight back. That is the flash the cashier sees when the
+    // restaurant POS opens. The superseded token is now retired only once its
+    // replacement is in hand, so no render sees the gap at all.
+    it('keeps the superseded token on screen until the replacement is minted', async () => {
+      const { result } = renderWorkspaceHook();
+
+      await waitForLoaded(result);
+
+      act(() => { result.current.workspace.setActiveWorkspace('restaurant-pos'); });
+      await waitFor(() => {
+        expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+
+      // Hold the mint open so the window under test is observed directly
+      // instead of raced: `createSession` is in flight and unresolved below.
+      let releaseMint: ((value: CreateSessionResult) => void) | null = null;
+      mocks.createSession.mockImplementation(
+        () => new Promise<CreateSessionResult>((resolve) => { releaseMint = resolve; }),
+      );
+
+      act(() => { result.current.workspace.setActiveWorkspace('store-pos'); });
+
+      await waitFor(() => {
+        expect(mocks.createSession).toHaveBeenCalledTimes(2);
+      }, FAST_WAIT);
+
+      // The whole point: still the SUPERSEDED token, never null.
+      expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+
+      await act(async () => {
+        releaseMint?.(makeSessionResult({ session_token: 'tok-xyz' }));
+      });
+
+      expect(result.current.workspace.sessionToken).toBe('tok-xyz');
+      expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+    });
   });
 
   describe('switchStore', () => {
@@ -656,6 +733,57 @@ describe('WorkspaceContext', () => {
       const call = mocks.createSession.mock.calls.at(-1);
       const sent = (call?.[0] as { picker_ticket?: string } | undefined)?.picker_ticket;
       expect(sent).toBe('ticket-second-user');
+    });
+  });
+
+  // ── A persisted picker ticket must not re-trigger the mint ────────────
+  //
+  // The mint effect refreshes the picker ticket and writes it back through
+  // `updatePickerTicket`. With `pickerTicket` in that effect's dep array, the
+  // write re-fired the effect over the instance it had just minted for: a
+  // second createSession went out, and the first run's cleanup then discarded
+  // its own result — so that second session stayed live server-side with
+  // nobody holding the token. The ticket is now read through `pickerTicketRef`
+  // and is no longer a dep, so one switch is one mint whether or not the
+  // ticket moved.
+  //
+  // This case is the reason LiveTicketAuthProvider exists: with the shared
+  // static-ticket provider the write is a no-op, so the self-trigger could
+  // never be observed here.
+  describe('a persisted picker ticket does not re-trigger the mint', () => {
+    function renderWithLiveTicket() {
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        withFluent(
+          <LiveTicketAuthProvider session={DEFAULT_SESSION} initialTicket={DEFAULT_TICKET}>
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </LiveTicketAuthProvider>,
+        );
+      return renderHook(() => ({ workspace: useWorkspace() }), { wrapper });
+    }
+
+    it('mints exactly once per switch when the refreshed ticket is persisted', async () => {
+      const { result } = renderWithLiveTicket();
+      await waitForLoaded(result);
+
+      act(() => { result.current.workspace.setActiveWorkspace('restaurant-pos'); });
+      await waitFor(() => {
+        expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+      const mintsBeforeSwitch = mocks.createSession.mock.calls.length;
+
+      // A refresh that SUCCEEDS is the branch that writes the ticket back. The
+      // suite default REJECTS, which never reaches `updatePickerTicket`.
+      mocks.refreshPickerTicket.mockResolvedValue({ picker_ticket: 'ticket-refreshed' });
+      mocks.createSession.mockResolvedValue(makeSessionResult({ session_token: 'tok-xyz' }));
+
+      act(() => { result.current.workspace.setActiveWorkspace('store-pos'); });
+      await waitFor(() => {
+        expect(result.current.workspace.sessionToken).toBe('tok-xyz');
+      }, FAST_WAIT);
+
+      // One mint for the switch — not one for the switch plus a second for the
+      // ticket write that very switch performed.
+      expect(mocks.createSession.mock.calls.length).toBe(mintsBeforeSwitch + 1);
     });
   });
 

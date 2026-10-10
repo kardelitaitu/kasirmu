@@ -187,3 +187,36 @@
     opacity: 0.75;
   }
 }
+
+/* ── Memo-stack clearance (the missing link in an existing chain) ──────
+   The fixed .memo-stack sits at bottom: var(--memo-bottom-inset, var(--space-6))
+   with z-index: var(--z-overlay) (300), deliberately above this bar's
+   var(--z-sticky) (200). The clearance chain — tokens.css :root default,
+   tablet.css .tablet-shell, AppLayout.css .app-layout, SettingsPage.css
+   body:has(.settings-footer) — computes that inset from status bar, tab bar and
+   settings footer, and knew nothing about this bar.
+
+   Measured on the tablet at an 800x1280 portrait viewport with two live memos,
+   BEFORE this rule: bar occupied y 1220-1269, memo stack y 1118-1259 — a 39px
+   vertical overlap, and document.elementFromPoint at the bar's centre returned
+   .memo-banner-text. The tap meant for "View Order" landed on a memo, so the
+   cart was unreachable behind any live banner, which is a functional block
+   rather than a cosmetic one.
+
+   The stack renders as a SIBLING of this bar under #root (both are fixed), so
+   the override has to hang off an ancestor that actually contains the stack —
+   body, gated by :has() on this bar so it applies only while the bar exists.
+   Same idiom as SettingsPage.css's body:has(.settings-footer), and it composes
+   correctly: .tablet-shell declares its own inset and a nearer ancestor wins,
+   so the landscape paths keep their tab-bar arithmetic.
+
+   The clearance is the bar's height + its own bottom offset + the gutter,
+   mirroring the tablet shell's "bar height + inset-bottom + --space-6". */
+body:has(.restaurant-floating-cart-bar) {
+  --memo-bottom-inset: calc(
+    var(--restaurant-cart-bar-height) +
+    var(--space-3) +
+    env(safe-area-inset-bottom, 0px) +
+    var(--space-6)
+  );
+}

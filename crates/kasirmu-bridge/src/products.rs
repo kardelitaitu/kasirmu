@@ -371,35 +371,41 @@ pub use stock::{AdjustStockArgs, adjust_stock_scoped};
 
 /// Arguments for creating a product (global variant, `user_id` supplied).
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateProductArgs {
     /// ID of the associated user.
+    #[serde(alias = "user_id")]
     pub user_id: String,
     /// Stock-keeping unit identifier.
     pub sku: String,
     /// Display name.
     pub name: String,
     /// Price Minor.
+    #[serde(alias = "price_minor")]
     pub price_minor: i64,
     /// ISO-4217 currency code.
     pub currency: String,
     /// ID of the associated category.
+    #[serde(alias = "category_id")]
     pub category_id: Option<String>,
     /// Barcode string.
     pub barcode: Option<String>,
     /// Initial Stock.
+    #[serde(alias = "initial_stock")]
     pub initial_stock: i64,
     /// Tax Rate Ids.
+    #[serde(alias = "tax_rate_ids")]
     pub tax_rate_ids: Vec<String>,
-    #[serde(default = "default_product_type")]
+    #[serde(default = "default_product_type", alias = "product_type")]
     /// Product Type.
     pub product_type: String,
-    #[serde(default)]
+    #[serde(default, alias = "cost_minor")]
     /// Cost price in minor units (ADR #36, local-only).
     pub cost_minor: i64,
     #[serde(default)]
     /// Brand (free text).
     pub brand: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "rack_location")]
     /// Rack position code.
     pub rack_location: Option<String>,
     #[serde(default)]
@@ -408,10 +414,10 @@ pub struct CreateProductArgs {
     #[serde(default)]
     /// Unit of measure.
     pub unit: Option<String>,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "is_active")]
     /// Active/sellable status.
     pub is_active: bool,
-    #[serde(default)]
+    #[serde(default, alias = "default_supplier_id")]
     /// Default supplier FK (local-only).
     pub default_supplier_id: Option<String>,
 }
@@ -423,33 +429,38 @@ fn default_true() -> bool {
 /// Args for `create_product_scoped` — identical to [`CreateProductArgs`]
 /// but without `user_id` (read from the session token instead).
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateProductScopedArgs {
     /// Stock-keeping unit identifier.
     pub sku: String,
     /// Display name.
     pub name: String,
     /// Price Minor.
+    #[serde(alias = "price_minor")]
     pub price_minor: i64,
     /// ISO-4217 currency code.
     pub currency: String,
     /// ID of the associated category.
+    #[serde(alias = "category_id")]
     pub category_id: Option<String>,
     /// Barcode string.
     pub barcode: Option<String>,
     /// Initial Stock.
+    #[serde(alias = "initial_stock")]
     pub initial_stock: i64,
     /// Tax Rate Ids.
+    #[serde(alias = "tax_rate_ids")]
     pub tax_rate_ids: Vec<String>,
-    #[serde(default = "default_product_type")]
+    #[serde(default = "default_product_type", alias = "product_type")]
     /// Product Type.
     pub product_type: String,
-    #[serde(default)]
+    #[serde(default, alias = "cost_minor")]
     /// Cost price in minor units (ADR #36, local-only).
     pub cost_minor: i64,
     #[serde(default)]
     /// Brand (free text).
     pub brand: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "rack_location")]
     /// Rack position code.
     pub rack_location: Option<String>,
     #[serde(default)]
@@ -458,10 +469,10 @@ pub struct CreateProductScopedArgs {
     #[serde(default)]
     /// Unit of measure.
     pub unit: Option<String>,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "is_active")]
     /// Active/sellable status.
     pub is_active: bool,
-    #[serde(default)]
+    #[serde(default, alias = "default_supplier_id")]
     /// Default supplier FK (local-only).
     pub default_supplier_id: Option<String>,
 }
@@ -592,32 +603,38 @@ pub async fn create_scoped(
 
 /// Arguments for updating a product (global variant, `user_id` supplied).
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateProductArgs {
     /// ID of the associated user.
+    #[serde(alias = "user_id")]
     pub user_id: String,
     /// Stock-keeping unit identifier.
     pub sku: String,
     /// Display name.
     pub name: String,
     /// Price Minor.
+    #[serde(alias = "price_minor")]
     pub price_minor: i64,
     /// ISO-4217 currency code.
     pub currency: String,
     /// ID of the associated category.
+    #[serde(alias = "category_id")]
     pub category_id: Option<String>,
     /// Barcode string.
     pub barcode: Option<String>,
     /// Tax Rate Ids.
+    #[serde(alias = "tax_rate_ids")]
     pub tax_rate_ids: Vec<String>,
     /// Product Type.
+    #[serde(alias = "product_type")]
     pub product_type: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "cost_minor")]
     /// Updated cost in minor units (None keeps).
     pub cost_minor: Option<i64>,
     #[serde(default)]
     /// Updated brand — `null` clears, string sets, absent keeps.
     pub brand: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, alias = "rack_location")]
     /// Updated rack position code — `null` clears, string sets, absent keeps.
     pub rack_location: Option<Option<String>>,
     #[serde(default)]
@@ -626,10 +643,10 @@ pub struct UpdateProductArgs {
     #[serde(default)]
     /// Updated unit — `null` clears, string sets, absent keeps.
     pub unit: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, alias = "is_active")]
     /// Updated active status.
     pub is_active: Option<bool>,
-    #[serde(default)]
+    #[serde(default, alias = "default_supplier_id")]
     /// Updated default supplier — `null` clears, string sets, absent keeps.
     pub default_supplier_id: Option<Option<String>>,
 }
@@ -637,30 +654,35 @@ pub struct UpdateProductArgs {
 /// Args for `update_product_scoped` — identical to [`UpdateProductArgs`]
 /// but without `user_id` (read from the session token instead).
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateProductScopedArgs {
     /// Stock-keeping unit identifier.
     pub sku: String,
     /// Display name.
     pub name: String,
     /// Price Minor.
+    #[serde(alias = "price_minor")]
     pub price_minor: i64,
     /// ISO-4217 currency code.
     pub currency: String,
     /// ID of the associated category.
+    #[serde(alias = "category_id")]
     pub category_id: Option<String>,
     /// Barcode string.
     pub barcode: Option<String>,
     /// Tax Rate Ids.
+    #[serde(alias = "tax_rate_ids")]
     pub tax_rate_ids: Vec<String>,
     /// Product Type.
+    #[serde(alias = "product_type")]
     pub product_type: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "cost_minor")]
     /// Updated cost in minor units (None keeps).
     pub cost_minor: Option<i64>,
     #[serde(default)]
     /// Updated brand — `null` clears, string sets, absent keeps.
     pub brand: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, alias = "rack_location")]
     /// Updated rack position code — `null` clears, string sets, absent keeps.
     pub rack_location: Option<Option<String>>,
     #[serde(default)]
@@ -669,10 +691,10 @@ pub struct UpdateProductScopedArgs {
     #[serde(default)]
     /// Updated unit — `null` clears, string sets, absent keeps.
     pub unit: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, alias = "is_active")]
     /// Updated active status.
     pub is_active: Option<bool>,
-    #[serde(default)]
+    #[serde(default, alias = "default_supplier_id")]
     /// Updated default supplier — `null` clears, string sets, absent keeps.
     pub default_supplier_id: Option<Option<String>>,
 }
@@ -806,8 +828,10 @@ pub async fn record_product_search(
 
 /// Arguments for deleting a product (global variant, `user_id` supplied).
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteProductArgs {
     /// ID of the associated user.
+    #[serde(alias = "user_id")]
     pub user_id: String,
     /// Stock-keeping unit identifier.
     pub sku: String,
@@ -815,6 +839,7 @@ pub struct DeleteProductArgs {
 
 /// Args for `delete_product_scoped` — no `user_id`; read from session.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteProductScopedArgs {
     /// Stock-keeping unit identifier.
     pub sku: String,

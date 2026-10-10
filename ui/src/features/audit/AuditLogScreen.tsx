@@ -94,7 +94,28 @@ export default function AuditLogScreen() {
 function AuditLogScreenContent() {
   const { l10n } = useLocalization();
   const locale = activeLocale(l10n);
-  const { isManager } = useAuth();
+  const { isManager, hasPermission } = useAuth();
+
+  // The screen's three manager-gated actions need TWO DIFFERENT permissions, and one
+  // of them is held by a role `isManager` excludes:
+  //
+  //   Mark Reviewed      -> `audit:view`   (kasirmu-bridge/src/audit.rs:376)
+  //   Export CSV         -> `audit:export` (audit.rs, AUD-09)
+  //   Security export    -> `audit:export` (apps/mobile-tauri/src/commands/audit.rs:203-208)
+  //
+  // The AUDITOR preset holds `audit:view` and NOT `audit:export`, and it is not a
+  // manager (rbac_presets.rs:285-305; `isManager` covers only owner/admin/manager).
+  // So `isManager &&` hid Mark Reviewed from the role whose entire purpose is reviewing
+  // the log — a working action made unreachable, the shape round 48 found on the
+  // pengganti button.
+  //
+  // The two exports were right in DIRECTION (the Auditor legitimately has no export) but
+  // wrong in KIND: `isManager` overlaps `audit:export` for the built-in presets, yet
+  // `CUSTOM` roles are "fully flexible — Admin selects every permission manually"
+  // (rbac_presets.rs:306-310), so the two can be made to disagree either way. The
+  // permission is authoritative wherever the session can answer.
+  const canMarkReviewed = hasPermission('audit:view', isManager);
+  const canExportAudit = hasPermission('audit:export', isManager);
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
 
@@ -322,7 +343,7 @@ function AuditLogScreenContent() {
           )}
         </div>
         <div className="audit-log-header-right">
-          {isManager && unreviewedCount > 0 && (
+          {canMarkReviewed && unreviewedCount > 0 && (
             <Button variant="secondary" onClick={() => void handleMarkReviewed()} loading={markingReviewed} size="sm">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true" className="audit-log-btn-icon">
                 <polyline points="20 6 9 17 4 12" />
@@ -330,7 +351,7 @@ function AuditLogScreenContent() {
               <Localized id="audit-log-mark-reviewed"><span>Mark Reviewed</span></Localized>
             </Button>
           )}
-          {isManager && (
+          {canExportAudit && (
             <Button variant="secondary" onClick={() => void handleExport()} loading={exporting}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
@@ -363,9 +384,10 @@ function AuditLogScreenContent() {
       )}
 
       {/* Security-event export (ruling D61-7 / D84): SECURITY_ACTIONS-only
-          CSV with exact actor + date-range bounds. Same visibility gate as
-          the AUD-09 export button above. */}
-      {isManager && (
+          CSV with exact actor + date-range bounds. Same `audit:export` gate as
+          the AUD-09 export button above — NOT `audit:view`, which Mark Reviewed
+          uses: the Auditor holds the view and legitimately lacks the export. */}
+      {canExportAudit && (
         <div className="audit-log-security-export">
           <input
             type="text"

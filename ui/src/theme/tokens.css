@@ -20,11 +20,11 @@
    ══════════════════════════════════════════════════════════════ */
 :root {
   /* ── Palette (internal use — components prefer semantic) ──── */
-  --neutral-50:  #12141a;
-  --neutral-100: #1c1f27;
-  --neutral-200: #262a34;
-  --neutral-300: #2a2e39;
-  --neutral-400: #3a3f4c;
+  --neutral-50:  #0a0b0f;
+  --neutral-100: #12141a;
+  --neutral-200: #1a1d25;
+  --neutral-300: #1e2230;
+  --neutral-400: #2a2f3e;
   --neutral-500: #64748b;
   --neutral-600: #94a3b8;
   --neutral-700: #cbd5e1;
@@ -45,15 +45,15 @@
   --primary-950: #172554;
 
   /* ── Semantic: Surfaces ───────────────────────────────────── */
-  --color-bg:              #12141a;
-  --color-bg-elevated:     #1c1f27;
-  --color-bg-surface:      #1c1f27;
-  --color-bg-input:        #262a34;
+  --color-bg:              #060709;
+  --color-bg-elevated:     #101115;
+  --color-bg-surface:      #0e0f13;
+  --color-bg-input:        #14151a;
   --color-bg-hover:        rgba(59, 130, 246, 0.08);
-  --color-bg-overlay:      rgba(0, 0, 0, 0.60);
-  --color-bg-popover:      #1e293b;
-  --color-bg-primary:      #111827;
-  --color-bg-secondary:    #1e293b;
+  --color-bg-overlay:      rgba(0, 0, 0, 0.75);
+  --color-bg-popover:      #111216;
+  --color-bg-primary:      #08090c;
+  --color-bg-secondary:    #111216;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
 
   /* --color-paper is THEME-INVARIANT on purpose (like the --text-* scale): declared
@@ -78,11 +78,11 @@
   --color-text-on-color:   #1C2B45;
 
   /* ── Semantic: Borders ────────────────────────────────────── */
-  --color-border:          #2a2e39;
-  --color-border-hover:    #3a3f4c;
+  --color-border:          #1b1d24;
+  --color-border-hover:    #262933;
   --color-border-focus:    #147EFB;
   --color-border-strong:   #64748b;
-  --color-border-subtle:   rgba(255, 255, 255, 0.06);
+  --color-border-subtle:   rgba(255, 255, 255, 0.05);
   --color-danger-border:   #FF6B68;
 
   /* ── Semantic: Brand / Accent ─────────────────────────────── */
@@ -388,6 +388,23 @@
    * missing declaration. Chrome geometry, not theme: :root only. */
   --memo-bottom-inset: var(--space-6);
 
+  /* The restaurant portrait floating cart bar's height, consumed by the
+   * body:has(.restaurant-floating-cart-bar) override in
+   * RestaurantFloatingCartBar.css (see the chain note in
+   * __tests__/memoStackClearance.test.ts).
+   *
+   * Measured on the Redmi tablet at an 800x1280 portrait viewport, one line in
+   * the cart: the rendered bar is 49px tall. The bar's own rule says
+   * min-height: 3.75rem (60px at a 16px root, 52.5px at the tablet's 14px
+   * root); 3.75rem is kept here rather than the measured 49px because the
+   * clearance must hold for the TALLEST the bar can be, not the height it
+   * happened to have on one screen — the trigger's content (line count chip,
+   * table chip) can push it to its min-height, and a bar taller than the inset
+   * is the exact overlap this token exists to prevent.
+   *
+   * Chrome geometry, not theme: :root only, like --memo-bottom-inset. */
+  --restaurant-cart-bar-height: 3.75rem;
+
   /* ── Z-index ──────────────────────────────────────────────── */
   --z-base:      0;
   --z-dropdown:  100;
@@ -403,37 +420,37 @@
   --color-primary-pos-light:  #2e578c;
   --color-primary-pos-dark:   #112239;
   --color-fn-key-pos:         #fbbf24;
-  --color-dark-bg-pos:        #0d131f;
-  --color-dark-border-pos:    #1f2937;
-  --color-bg-pos:             #0b0f1a;
+  --color-dark-bg-pos:        #060709;
+  --color-dark-border-pos:    #1b1d24;
+  --color-bg-pos:             #040507;
   --color-ink:                #000000;
   --color-pos-on-primary:     #ffffff;
 
   /* ── POS Modal ────────────────────────────────────────────── */
-  --color-pos-modal-overlay:      rgba(0, 0, 0, 0.58);
-  --modal-backdrop-blur:          blur(2px);
-  --color-pos-modal-bg:           #111827;
-  --color-pos-modal-border:       #334155;
+  --color-pos-modal-overlay:      rgba(0, 0, 0, 0.75);
+  --modal-backdrop-blur:          none;
+  --color-pos-modal-bg:           #08090c;
+  --color-pos-modal-border:       #1b1d24;
   --color-pos-modal-fg:           #e2e8f0;
   --color-pos-modal-heading:      #f1f5f9;
   --color-pos-modal-label:        #94a3b8;
-  --color-pos-modal-input-bg:     #1e293b;
-  --color-pos-modal-input-border: #334155;
+  --color-pos-modal-input-bg:     #101115;
+  --color-pos-modal-input-border: #1b1d24;
   --color-pos-modal-input-fg:     #e2e8f0;
-  --color-pos-modal-btn-bg:       #334155;
+  --color-pos-modal-btn-bg:       #14151a;
   --color-pos-modal-btn-fg:       #e2e8f0;
-  --color-pos-modal-btn-border:   #475569;
-  --color-pos-modal-btn-hover-bg: #475569;
+  --color-pos-modal-btn-border:   #23252e;
+  --color-pos-modal-btn-hover-bg: #23252e;
   --color-pos-modal-btn-hover-fg: #f1f5f9;
-  --color-pos-modal-shadow:       0 20px 40px -8px rgba(0, 0, 0, 0.60), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --color-pos-modal-shadow:       0 20px 40px -8px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
   /* ── Toast ────────────────────────────────────────────────── */
-  --color-toast-bg:            #111827;
-  --color-toast-border:        #334155;
+  --color-toast-bg:            #08090c;
+  --color-toast-border:        #1b1d24;
   --color-toast-fg:            #e2e8f0;
   --color-toast-fg-muted:      #94a3b8;
-  --color-toast-hover-bg:      rgba(255, 255, 255, 0.06);
-  --color-toast-shadow:        0 10px 24px rgba(0, 0, 0, 0.60), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --color-toast-hover-bg:      rgba(255, 255, 255, 0.05);
+  --color-toast-shadow:        0 10px 24px rgba(0, 0, 0, 0.70), 0 2px 6px rgba(0, 0, 0, 0.50);
   --color-toast-accent-success: #22c55e;
   --color-toast-accent-error:   #ef4444;
   --color-toast-accent-warning: #f59e0b;
@@ -677,18 +694,18 @@
    ══════════════════════════════════════════════════════════════ */
 [data-theme='dark'] {
   /* ── Surfaces ─────────────────────────────────────────────── */
-  --color-bg:              #12141a;
-  --color-bg-elevated:     #1c1f27;
-  --color-bg-surface:      #1c1f27;
-  --color-bg-input:        #262a34;
-  --color-bg-hover:        rgba(20, 126, 251, 0.08);
-  --color-bg-overlay:      rgba(0, 0, 0, 0.60);
-  --color-bg-popover:      #1e293b;
-  --color-bg-primary:      #1c1f27;
-  --color-bg-secondary:    #262a34;
+  --color-bg:              #060709;
+  --color-bg-elevated:     #101115;
+  --color-bg-surface:      #0e0f13;
+  --color-bg-input:        #14151a;
+  --color-bg-hover:        rgba(59, 130, 246, 0.08);
+  --color-bg-overlay:      rgba(0, 0, 0, 0.75);
+  --color-bg-popover:      #111216;
+  --color-bg-primary:      #08090c;
+  --color-bg-secondary:    #111216;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
-  --receipt-paper-scrim:    #0f1218;
-  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.35);
+  --receipt-paper-scrim:    #040507;
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.45);
 
   /* ── Text ─────────────────────────────────────────────────── */
   --color-fg:              #e8eaef;
@@ -697,18 +714,18 @@
   --color-fg-tertiary:     #8b93a3;
   --color-fg-muted:        #8b93a3;
   --color-fg-disabled:     #5a7a99;
-  --color-fg-inverse:      #12141a;
+  --color-fg-inverse:      #060709;
   --color-text:            #e8eaef;
   --color-text-muted:      #8b93a3;
   --color-text-secondary:  #8b93a3;
   --color-text-on-color:   #1C2B45;
 
   /* ── Borders ──────────────────────────────────────────────── */
-  --color-border:          #2a2e39;
-  --color-border-hover:    #3a3f4c;
+  --color-border:          #1b1d24;
+  --color-border-hover:    #262933;
   --color-border-focus:    #147EFB;
   --color-border-strong:   #64748b;
-  --color-border-subtle:   rgba(255, 255, 255, 0.06);
+  --color-border-subtle:   rgba(255, 255, 255, 0.05);
 
   /* ── Brand / Accent ───────────────────────────────────────── */
   /* Explicit dark block mirrors :root (contrast-managed accent ladder;
@@ -763,7 +780,7 @@
   --shadow-glow: none;
 
   /* ── POS Brand ────────────────────────────────────────────── */
-  --color-bg-pos:             #0b0f1a;
+  --color-bg-pos:             #040507;
   --color-ink:                #000000;
   --color-pos-on-primary:     #ffffff;
 }

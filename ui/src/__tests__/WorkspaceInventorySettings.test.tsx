@@ -12,7 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/components/Toast';
 import { WorkspaceInventorySettings } from '@/features/settings/workspace-cards/WorkspaceInventorySettings';
-import { setSettingsScoped } from '@/api/settings';
+import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 
 // Resolve the settings IPC instantly (the dev-mock invoke adds a fixed
 // 50ms real-timer delay per call). The card's mount load calls setState
@@ -185,6 +185,28 @@ describe('WorkspaceInventorySettings', () => {
     }
     // A number here would be a silent whole-batch rejection at the Rust boundary.
     expect(entries!['inventory.low_stock_threshold']).toBe('5');
+  });
+
+  it('keeps Save disabled after a FAILED settings read, even once the user edits (F4)', async () => {
+    // The discriminating property is the EDIT: on the buggy path the catch seeded
+    // originalsRef from the defaults, so a change made afterwards sets dirty=true
+    // and Save ENABLES over values the card never read.
+    vi.mocked(getSettingScoped).mockRejectedValue(new Error('ipc down'));
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+    });
+
+    // Now edit. On the bug this is what re-enables Save.
+    fireEvent.change(document.getElementById('inv-low-stock') as HTMLInputElement, { target: { value: '42' } });
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    // Retry must exist: without it `loadFailed` is a one-way latch and the card
+    // could never save again this session.
+    expect(screen.getByTestId('inv-settings-load-retry-btn')).toBeInTheDocument();
   });
 
   it('hides Save button in inspector-drawer variant', () => {

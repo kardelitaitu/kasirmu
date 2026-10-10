@@ -309,3 +309,107 @@ describe('CartPanel — course assignment wiring', () => {
     expect(assignCourse).toHaveBeenCalledWith(line.id, 'dessert');
   });
 });
+
+describe('CartPanel — restaurant cart-field gates (P1)', () => {
+  // 'restaurant.customer_name' / 'restaurant.guest_count' used to be written by
+  // RestaurantSettingsScreen and read by nothing. These pin the gate that makes
+  // them real, and — more importantly — the '!== false' semantics: an ABSENT
+  // prop must SHOW the field, because retail passes nothing and an unset key
+  // must not remove a field that has always been there.
+
+  const withFields = () => ({
+    activeWorkspace: 'restaurant-pos' as const,
+    lines: [makeLine('Espresso')],
+    setCustomerName: noop,
+    setGuestCount: noop,
+  });
+
+  // The action bar (and so the Save Tab button) only mounts once a subtotal
+  // exists — `CartPanel.tsx:854` guards CartFooterTotals on `subtotal &&`.
+  // Every save-tab case therefore supplies one.
+  const withSubtotal = () => ({ ...withFields(), subtotal: SUBTOTAL });
+
+  it('shows both fields when the gates are absent (retail / unset key)', () => {
+    renderPanel(withFields());
+
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+
+  it('hides the customer field when customer_name is explicitly false', () => {
+    renderPanel({ ...withFields(), customerNameEnabled: false });
+
+    expect(screen.queryByTestId('pos-cart-customer-input')).toBeNull();
+    // The pax field is a SEPARATE setting and must be unaffected.
+    expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+
+  it('hides the pax field when guest_count is explicitly false', () => {
+    renderPanel({ ...withFields(), guestCountEnabled: false });
+
+    expect(screen.queryByTestId('pos-cart-guest-input')).toBeNull();
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+  });
+
+  it('treats an explicit true as show', () => {
+    renderPanel({ ...withFields(), customerNameEnabled: true, guestCountEnabled: true });
+
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-cart-guest-input')).toBeInTheDocument();
+  });
+  it('hides the Save Tab action when save_tab is explicitly false', () => {
+    renderPanel({ ...withSubtotal(), saveTabEnabled: false });
+
+    expect(screen.queryByTestId('pos-cart-save-tab-btn')).toBeNull();
+    // The other gates are independent settings and must be unaffected.
+    expect(screen.getByTestId('pos-cart-customer-input')).toBeInTheDocument();
+  });
+
+  it('shows the Save Tab action when save_tab is absent or true', () => {
+    // Absent = show, which is what retail and an unset key both need.
+    renderPanel(withSubtotal());
+    expect(screen.getByTestId('pos-cart-save-tab-btn')).toBeInTheDocument();
+  });
+  // ── Price override: a PERMISSION gate, not a role gate ────────────
+  //
+  // `override_cart_line_price` requires `sales:override_price` on the backend
+  // (`kasirmu-bridge/src/pos/cart.rs:345`), and it is a first-class registry entry
+  // (`platform/core/src/permission_registry.rs:72-77`), so operators assign it
+  // independently of a role. Custom roles ship (`create_role_scoped`), so a role
+  // named "Manager" can lack it and any other role can hold it.
+  //
+  // The affordance used to render on `isManager` alone, so a "Manager" whose grant
+  // omits the permission got a button whose save is refused at the IPC boundary —
+  // the enabled-control-that-always-errors shape. `canOverridePrice` now decides,
+  // and its ABSENCE still means `isManager`, which is why retail and every other
+  // caller are unaffected (pinned by the third case).
+
+  it('hides the override when the grant is absent, even for a manager role', () => {
+    renderPanel({
+      lines: [makeLine('Kopi')],
+      isManager: true, // the role says manager...
+      canOverridePrice: false, // ...the grant says no
+    });
+    expect(screen.queryByText('Override')).toBeNull();
+  });
+
+  it('shows the override for a non-manager role that HOLDS the grant', () => {
+    // The direction a role gate can never express: a custom role granted
+    // `sales:override_price` without being owner/admin/manager.
+    renderPanel({
+      lines: [makeLine('Kopi')],
+      isManager: false,
+      canOverridePrice: true,
+    });
+    expect(screen.getByText('Override')).toBeInTheDocument();
+  });
+
+  it('falls back to isManager when the host supplies no permission answer', () => {
+    // `canOverridePrice` is optional precisely so this stays true.
+    const asManager = renderPanel({ lines: [makeLine('Kopi')], isManager: true });
+    expect(within(asManager.panel).getByText('Override')).toBeInTheDocument();
+    asManager.unmount();
+    renderPanel({ lines: [makeLine('Kopi')], isManager: false });
+    expect(screen.queryByText('Override')).toBeNull();
+  });
+});

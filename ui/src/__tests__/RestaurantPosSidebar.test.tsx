@@ -76,6 +76,9 @@ vi.mock('@/contexts/AuthContext', () => ({
     clearError: vi.fn(),
     isManager: mockIsManager.current,
     isOwner: false,
+    // No `permissions` on this session, so the real hook falls back to the role —
+    // which is what this suite exercises (mockIsManager drives it).
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   }),
 }));
 
@@ -318,8 +321,12 @@ describe('RestaurantPosSidebar', () => {
 
     const cartPanel = document.querySelector('.pos-cart-panel') as HTMLElement;
     expect(cartPanel.querySelector('.pos-cart-header-actions')).toBeNull();
-    expect(within(cartPanel).queryByRole('button', { name: 'Kitchen Display' })).toBeNull();
-    expect(within(cartPanel).queryByRole('button', { name: 'Open a new shift' })).toBeNull();
+    // ⚠️ These NEGATIVES are the dangerous half. Addressed by copy, they pass for the
+    // worst reason once the copy changes — the name they look for simply is not
+    // there any more, in the panel OR anywhere else. Addressed by testid they still
+    // mean "the row is not in this container", which is what the case claims.
+    expect(within(cartPanel).queryByTestId('restaurant-sidebar-kds')).toBeNull();
+    expect(within(cartPanel).queryByTestId('restaurant-sidebar-open-shift')).toBeNull();
     expect(within(cartPanel).queryByRole('button', { name: 'Lock' })).toBeNull();
     await waitFor(() => {
       expect(cartPanel.querySelector('.pos-cart-header-shift')?.textContent).toContain('No active shift');
@@ -327,15 +334,32 @@ describe('RestaurantPosSidebar', () => {
 
     await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
     const sidebar = document.querySelector('.restaurant-sidebar') as HTMLElement;
-    expect(within(sidebar).getByRole('button', { name: 'Open a new shift' })).toBeInTheDocument();
-    expect(within(sidebar).getByRole('button', { name: 'History' })).toBeInTheDocument();
+
+    // ⚠️ These rows are now addressed by TESTID, not by their bundle copy.
+    //
+    // They used to be `getByRole('button', { name: 'Open a new shift' })` — an
+    // accessible name that comes from `pos-shift-open-aria` in the FTL bundle. A
+    // copy edit or a translation change would therefore break the test with a
+    // confusing "unable to find role" error, and the NEGATIVE assertions below
+    // would have gone on passing for the worst reason: the name they checked had
+    // simply changed. Five of the six sidebar rows carried no testid at all
+    // (only the deduction override, Menu Editor and Settings did), so there was
+    // nothing else to query. Adding them is the fix; this file is the reason.
+    expect(within(sidebar).getByTestId('restaurant-sidebar-open-shift')).toBeInTheDocument();
+    expect(within(sidebar).getByTestId('restaurant-sidebar-history')).toBeInTheDocument();
     // Table Management is feature-gated and this harness enables no features, so
     // the row is absent rather than rendered-and-disabled.
-    expect(within(sidebar).queryByRole('button', { name: 'Table Management' })).toBeNull();
+    expect(within(sidebar).queryByTestId('restaurant-sidebar-tables')).toBeNull();
+
+    // The visible copy is still asserted — but as a SECONDARY check, so a bundle
+    // change surfaces as a copy failure rather than as a missing element.
+    expect(
+      within(sidebar).getByTestId('restaurant-sidebar-open-shift').textContent,
+    ).toContain('Open a new shift');
 
     // The row is the header's old button, not a stub: it drives the same
     // navigation and closes the popover like every other item in it.
-    await user.click(within(sidebar).getByRole('button', { name: 'Kitchen Display' }));
+    await user.click(within(sidebar).getByTestId('restaurant-sidebar-kds'));
     expect(onNavigate).toHaveBeenCalledWith('kds');
     await waitFor(() => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
@@ -351,7 +375,14 @@ describe('RestaurantPosSidebar', () => {
 
     const cartPanel = document.querySelector('.pos-cart-panel') as HTMLElement;
     expect(cartPanel.querySelector('.pos-cart-header-actions')).not.toBeNull();
-    expect(within(cartPanel).getByRole('button', { name: 'Kitchen Display' })).toBeInTheDocument();
+    // ⚠️ The cart panel's KDS button is ICON-ONLY: its accessible name comes from
+    // `requiredLocalized(l10n, 'kds-title')`, so a copy change moved this lookup as
+    // well. It now has its own testid (`pos-cart-kds-btn`) — distinct from the
+    // SIDEBAR's `restaurant-sidebar-kds`, which is a different element on the other
+    // branch of the same feature. Verified while converting the block above: renaming
+    // `kds-title` broke this assertion and nothing else, which is how the coupling
+    // was found rather than assumed.
+    expect(within(cartPanel).getByTestId('pos-cart-kds-btn')).toBeInTheDocument();
     expect(within(cartPanel).getByRole('button', { name: 'Lock' })).toBeInTheDocument();
     // Retail has no sidebar to relocate them into.
     expect(document.querySelector('.restaurant-sidebar-btn')).not.toBeInTheDocument();

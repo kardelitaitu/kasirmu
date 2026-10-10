@@ -202,6 +202,13 @@ const KNOWN_NOISE_SELECTORS = [
   '.restaurant-cart-sheet-panel',
   '.restaurant-floating-cart-bar',
   '.restaurant-floating-cart-action-btn',
+  // The cart order-type slider's active pill (ec1c50336). A --shadow-sm surface
+  // sitting absolute inside the segmented track, so it takes the overlay through
+  // its own ::after entry in components.css rather than the .noise-dither
+  // utility — which would fight its anchoring, the same reason the
+  // absolute-positioned selectors listed there give. Present HERE because the
+  // coverage assertion's own fix states the two halves are a pair.
+  '.pos-cart-order-type-indicator',
   '.refund-modal',
   '.shortfall-modal',
   '.settings-footer-shortcut kbd',

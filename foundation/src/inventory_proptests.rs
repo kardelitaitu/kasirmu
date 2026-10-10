@@ -246,9 +246,8 @@ proptest! {
         prop_assert_eq!(parsed, ProductType::Retail);
     }
 
-    /// Only `Service` and `Retail`-family types are non-tracking in the
-    /// way the doc claims — asserted as the actual mapping, so a future
-    /// edit that changed `tracks_inventory` for one variant fails here.
+    /// `Retail` and `Both` track finished goods; `Restaurant` and `Service`
+    /// do not (consuming stock only through BOM recipes if present).
     #[test]
     fn tracks_inventory_is_stable_per_variant(idx in 0usize..4usize) {
         let all = [
@@ -258,9 +257,9 @@ proptest! {
             ProductType::Service,
         ];
         let t = all[idx];
-        // `Service` is the only variant that does not track stock; the
-        // other three all do. Any change here changes whether a sale
-        // deducts, so it must be a deliberate edit with a failing test.
-        prop_assert_eq!(t.tracks_inventory(), t != ProductType::Service);
+        prop_assert_eq!(
+            t.tracks_inventory(),
+            matches!(t, ProductType::Retail | ProductType::Both)
+        );
     }
 }

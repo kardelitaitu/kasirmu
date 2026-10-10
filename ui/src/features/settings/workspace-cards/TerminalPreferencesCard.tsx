@@ -268,6 +268,24 @@ export function TerminalPreferencesCard({
         </div>
       </Card>
 
+      {/* F4: `hw.profile` is a DEFAULT when the read failed, so the baseline this
+          card compares against is not the terminal's real config. */}
+      {hw.loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="terminal-prefs-load-error">
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          {/* `loadFailed` would otherwise be a ONE-WAY LATCH: nothing else in this
+              card clears it, so a transient read failure would disable Save for the
+              rest of the session. `hw.reload()` re-runs the load and clears it. */}
+          <Button variant="secondary" onClick={() => hw.reload()} data-testid="terminal-prefs-retry-btn">
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
+      )}
+
       {hw.error && (
         <div className="settings-error-banner" role="alert">
           {hw.error}
@@ -277,7 +295,7 @@ export function TerminalPreferencesCard({
       {/* Save button */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || hw.loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

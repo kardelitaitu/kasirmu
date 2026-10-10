@@ -27,8 +27,9 @@ use crate::state::AppState;
 // without `id` its image commands had no product id to pass. Both mapper
 // sites below now populate them. Command bodies stay tablet-native.
 pub use kasirmu_bridge::products::{
-    AdjustStockArgs, CreateProductArgs, CreateProductResult, DeleteProductArgs, MoneyDto,
-    ProductDto, SerialTrackRow, UpdateProductArgs, UpdateProductResult,
+    AdjustStockArgs, CreateProductArgs, CreateProductResult, CreateProductScopedArgs,
+    DeleteProductArgs, MoneyDto, ProductDto, SerialTrackRow, UpdateProductArgs,
+    UpdateProductResult, UpdateProductScopedArgs,
 };
 
 /// Project the store's image assignments into the wire DTO shape (spec 0046b).
@@ -263,10 +264,12 @@ fn map_pwd_to_dto(
 
 /// Map the PATCH-style attribute fields onto the core update struct.
 ///
-/// Free function rather than an inherent impl: `UpdateProductArgs` is
+/// Free function rather than an inherent impl: `UpdateProductScopedArgs` is
 /// re-exported from `kasirmu_bridge::products` (Phase 3.3 T6), and Rust does not
 /// permit an inherent impl for a type defined in another crate.
-fn to_update_attributes(args: &UpdateProductArgs) -> kasirmu_core::db::UpdateProductAttributes {
+fn to_update_attributes(
+    args: &UpdateProductScopedArgs,
+) -> kasirmu_core::db::UpdateProductAttributes {
     kasirmu_core::db::UpdateProductAttributes {
         cost_minor: args.cost_minor,
         brand: args.brand.clone(),
@@ -473,7 +476,7 @@ pub async fn lookup_product_by_sku_scoped(
 #[command]
 pub async fn create_product_scoped(
     session_token: String,
-    args: CreateProductArgs,
+    args: CreateProductScopedArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateProductResult, AppError> {
     // R10 gate-KIND + gate-ORDER, 2026-09-25: the session and BOTH gates are resolved
@@ -581,7 +584,7 @@ pub async fn create_product_scoped(
 #[command]
 pub async fn update_product_scoped(
     session_token: String,
-    args: UpdateProductArgs,
+    args: UpdateProductScopedArgs,
     state: State<'_, AppState>,
 ) -> Result<UpdateProductResult, AppError> {
     // R10 gate-KIND + gate-ORDER, 2026-09-25: adopt the scope-aware form the bridge twin

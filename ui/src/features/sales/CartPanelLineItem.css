@@ -275,7 +275,7 @@
 
 .pos-cart-line-remove {
   flex: 0 0 auto;
-  margin-left: var(--space-5);
+  margin-left: var(--space-1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -354,7 +354,9 @@
 /* ── Price override button (inside cart line) ───────────────── */
 
 .pos-cart-line-override {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
   padding: var(--space-0_5) var(--space-2);
   margin-top: 0.25rem;
   font-size: var(--text-2xs);
@@ -643,11 +645,14 @@
 @media (pointer: coarse) {
   .pos-cart-qty-btn,
   .pos-cart-line-remove,
-  .pos-cart-line-override,
   .pos-cart-course-chip,
   .pos-cart-course-option,
   .pos-cart-line-note-btn {
     min-height: var(--touch-target-min);
+  }
+
+  .pos-cart-line-override {
+    min-height: 1.75rem;
   }
 }
 

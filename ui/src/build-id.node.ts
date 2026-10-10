@@ -41,13 +41,33 @@ function git(args: string[]): string {
 /**
  * `short-sha` for a clean tree, `short-sha+dirty` for a modified one, and
  * `unknown` when git is unavailable for any reason.
+ *
+ * ⚠️ `--untracked-files=no` is LOAD-BEARING, and its absence made this stamp useless
+ * on the checkout it was written in. Bare `git status --porcelain` reports UNTRACKED
+ * paths too, so a tree holding any scratch file — build logs, an editor's backup, the
+ * tablet helper scripts this repo happens to keep untracked — stamped `+dirty` even
+ * when EVERY TRACKED FILE matched HEAD. Measured on the connected tablet 2026-10-09:
+ * the footer read `v0.0.41 · 4316156+dirty` while `status --porcelain
+ * --untracked-files=no` was empty.
+ *
+ * That inverts the suffix's meaning. This module's contract is that `+dirty` says
+ * "this code is NOT in that commit" — the one signal that a build is unreproducible.
+ * A signal that is always lit is not a signal, and it cost real time: answering "is
+ * the tablet even running the build under test?" required diffing commits by hand
+ * because the stamp could not be trusted.
+ *
+ * The question this answers is "does the WORKTREE differ from the INDEX/HEAD for a
+ * tracked path", which is exactly what `--untracked-files=no` asks git for. An
+ * unrelated new file cannot make the compiled bytes differ from the named commit, so it
+ * must not claim they do.
  */
 export function computeBuildId(): string {
   try {
     const sha = git(['rev-parse', '--short=7', 'HEAD']);
     if (!sha) return UNKNOWN_BUILD_ID;
-    // `--porcelain` prints one line per changed path; empty output is clean.
-    const dirty = git(['status', '--porcelain']).length > 0;
+    // One line per changed TRACKED path; empty output is clean. Untracked files are
+    // excluded deliberately — see the doc comment above.
+    const dirty = git(['status', '--porcelain', '--untracked-files=no']).length > 0;
     return dirty ? `${sha}+dirty` : sha;
   } catch {
     // No git, not a repository, no HEAD, or a permission failure. All four mean

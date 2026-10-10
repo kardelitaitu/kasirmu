@@ -340,6 +340,24 @@ pub async fn print_sales_receipt_scoped(
                     .filter(|f| !f.is_empty())
             })
             .or_else(|| legacy_footer.clone());
+        let grouping = {
+            let explicit = Settings::get(
+                &conn,
+                kasirmu_core::settings::keys::CURRENCY_THOUSANDS_SEPARATOR,
+            )?
+            .filter(|v| !v.is_empty());
+            match explicit {
+                Some(stored) => receipt::ThousandSeparator::from_setting(&stored),
+                None => {
+                    let currency = Settings::get_default_currency(&conn)?;
+                    if currency.is_some_and(|c| c.eq_ignore_ascii_case("IDR")) {
+                        receipt::ThousandSeparator::Dot
+                    } else {
+                        receipt::ThousandSeparator::None
+                    }
+                }
+            }
+        };
         let cfg = receipt::ReceiptConfig {
             paper_width,
             show_currency,
@@ -348,6 +366,7 @@ pub async fn print_sales_receipt_scoped(
             footer,
             show_table_number: effective.layout.show_table_number.unwrap_or(false),
             barcode_enabled: false,
+            grouping,
             payment_link_template: None,
         };
         let tax_id_label = effective

@@ -31,14 +31,6 @@ export function DevicesConnectivityScreen() {
           Devices &amp; Connectivity
         </Localized>
       </h1>
-      {/* The migration note stays (SettingsPage.test.tsx asserts it on every
-          screen, migrated ones included); the placeholder line goes away once
-          the body below is real content. */}
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <EdcTerminalsCard />
     </section>
   );

@@ -53,8 +53,39 @@
 // not re-run this sweep on a hunch.
 
 import { describe, it, expect } from 'vitest';
-import { compactClass, stepDensity } from '@/features/kds/kdsDensity';
+import { clampDensity, compactClass, stepDensity } from '@/features/kds/kdsDensity';
 import { minutesToSlaThresholds } from '@/features/kds/hooks/useTicketSla';
+
+
+describe('clampDensity', () => {
+  // Extracted 2026-10-09 from WorkspaceKdsSettings.tsx:119, which held the FOURTH
+  // inline copy of the 1..5 range as `Math.min(5, Math.max(1, …))`. The header above
+  // lists the three sites this module was created for and does not know about that
+  // one — a settings card hydrating an unset or hand-edited stored value. Widening
+  // DENSITY_MAX used to leave the card accepting a density the board would not render.
+  it('passes a legal value through unchanged', () => {
+    expect(clampDensity(1)).toBe(1);
+    expect(clampDensity(3)).toBe(3);
+    expect(clampDensity(5)).toBe(5);
+  });
+
+  it('raises a below-range value to the floor', () => {
+    expect(clampDensity(0)).toBe(1);
+    expect(clampDensity(-4)).toBe(1);
+  });
+
+  it('lowers an above-range value to the ceiling', () => {
+    expect(clampDensity(6)).toBe(5);
+    expect(clampDensity(99)).toBe(5);
+  });
+
+  it('agrees with the stepper bounds rather than restating them', () => {
+    // A relationship case, not a literal one: if DENSITY_MIN/MAX move, the stepper
+    // and the clamp must move together or this fails.
+    expect(clampDensity(Number.NEGATIVE_INFINITY)).toBe(stepDensity(1, 'down'));
+    expect(clampDensity(Number.POSITIVE_INFINITY)).toBe(stepDensity(5, 'up'));
+  });
+});
 
 describe('minutesToSlaThresholds', () => {
   it('converts default thresholds (5 min / 10 min)', () => {

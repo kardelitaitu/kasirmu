@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import type { useToast } from '@/components/Toast';
 import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
+import { requiredLocalized } from '@/components';
 import { parseAppError } from '@/utils/app-error';
+
+/** The shape `requiredLocalized` accepts, matching `usePosCartActions`. */
+type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
 import {
   holdCartScoped,
   listOpenBillsScoped,
@@ -13,6 +17,7 @@ import {
 import type { Promotion } from '@/api/promotions';
 import type { ShiftDto } from '@/api/shifts';
 import type { CartLine, LineId, Money, Sku } from '@/types/domain';
+import { bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
@@ -20,6 +25,17 @@ type AddToast = ReturnType<typeof useToast>['addToast'];
 export interface UsePosHeldCartsParams {
   sessionToken: string;
   addToast: AddToast;
+  /**
+   * Localization, as a ref rather than a value.
+   *
+   * The shift refusal below is a TOAST, and its string used to be a hardcoded
+   * English literal while `sales.ftl` already carried
+   * `retail-toast-open-shift-first` and the Indonesian translation for it
+   * (`sales.id.ftl:778`) — so an Indonesian operator read English on this path
+   * and Indonesian on the retail one. A ref, matching `usePosCartActions`, keeps
+   * the callback identity stable while always reading the current bundle.
+   */
+  l10nRef: L10nRef;
   /** Pass-through from usePosShifts: holding a bill requires an open shift. */
   activeShift: ShiftDto | null;
   lines: CartLine[];
@@ -51,6 +67,7 @@ export interface UsePosHeldCartsParams {
 export function usePosHeldCarts({
   sessionToken,
   addToast,
+  l10nRef,
   activeShift,
   lines,
   subtotal,
@@ -136,7 +153,10 @@ export function usePosHeldCarts({
 
   const handleOpenBill = useCallback(async () => {
     if (!activeShift) {
-      addToast({ message: 'Open a shift first', type: 'warning' });
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+        type: 'warning',
+      });
       return;
     }
     if (!subtotal || lines.length === 0) return;
@@ -163,13 +183,23 @@ export function usePosHeldCarts({
         ...(trimmedName ? { customerName: trimmedName } : {}),
         ...(orderType ? { orderType } : {}),
       });
-      const label = trimmedTable
-        ? (trimmedName ? `Table ${trimmedTable} (${trimmedName})` : `Table ${trimmedTable}`)
-        : (trimmedName ? trimmedName : `Open Bill #${Date.now()}`);
+      // `heldCartLabel`, not a hand-built ternary: the stored table names already
+      // read "Table 12" (see utils/tableLabel.ts), so interpolating the raw value
+      // persisted the tab as "Table Table 12". The sibling site in PaymentModal.tsx
+      // had the identical expression, which is why this is one function now.
+      const label =
+        heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
 
-      // If updating an already resumed open bill, delete the previous record first so we don't produce duplicate tabs
+      // If updating an already resumed open bill, delete the previous record first so we
+      // don't produce duplicate tabs.
+      //
+      // ⚠️ This used to end `.catch(() => {})`. Swallowing it defeated the whole line:
+      // the DELETE is what prevents a duplicate, so a rejected delete followed by the
+      // hold below created the SECOND open bill for the table that this comment claims
+      // to prevent — and the toast still said "updated". A failure here is now fatal to
+      // the operation, which the caller's existing catch turns into an error toast.
       if (activeOpenBillId) {
-        await deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {});
+        await deleteHeldCartScoped(sessionToken, activeOpenBillId);
       }
 
       await holdCartScoped(sessionToken, {
@@ -179,7 +209,8 @@ export function usePosHeldCarts({
         total_minor: subtotal.minor_units,
         currency: subtotal.currency,
         bill_type: 'open_bill',
-        customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
+        // Same doubling as the label above, in the customer field.
+        customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
       });
       const wasUpdating = !!activeOpenBillId;
       resetCart();

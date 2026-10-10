@@ -4,6 +4,7 @@ import { useBarcodeScanner } from '@/features/sales/useBarcodeScanner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { useLocalization } from '@fluent/react';
 import { plainErrorMessage } from '@/utils/app-error';
 import { isEditableTarget } from '@/utils/isEditableTarget';
@@ -1383,6 +1384,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // ── Load persisted held carts on mount ───────────────────────
 
   useEffect(() => {
+    if (!sessionToken) return;
     let mounted = true;
     listHeldCartsScoped(sessionToken)
       .then((carts) => {
@@ -1548,6 +1550,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   if (showPayment && total) {
     return (
+      // Crash isolation (F9) on the money dialog — see the twin in
+      // PosScreen.tsx:1279 for the reasoning. `onReset` closes the dialog and
+      // returns to the cart instead of letting AppProviders' full-page boundary
+      // reload the app, which would log the cashier out mid-transaction.
+      <LocalizedErrorBoundary onReset={() => setShowPayment(false)}>
       <PaymentModal
         open
         lineItems={lines.map((l) => ({
@@ -1570,22 +1577,41 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         onComplete={() => { setShowPayment(false); resetCart(); setSelectedCustomer(null); playSuccess(); addToast({ message: requiredLocalized(l10n, 'retail-toast-sale-complete'), type: 'success' }); }}
         onClose={() => setShowPayment(false)}
       />
+      </LocalizedErrorBoundary>
     );
   }
 
   // ── Sales History screen ────────────────────────────────────
+  // Crash isolation (F9) on all three sub-views below, matching the restaurant
+  // shell's seven (PosScreen.tsx:957-1080) and for the same reason: each is an
+  // early return that REPLACES the POS screen, so an unwrapped throw there is not
+  // contained by anything closer than AppProviders' full-page boundary — which
+  // auto-reloads after 30s and logs the cashier out mid-shift. `onReset` returns to
+  // the cart.
   if (showSalesHistory) {
-    return <SalesHistoryView theme={theme} onBack={() => setShowSalesHistory(false)} />;
+    return (
+      <LocalizedErrorBoundary onReset={() => setShowSalesHistory(false)}>
+        <SalesHistoryView theme={theme} onBack={() => setShowSalesHistory(false)} />
+      </LocalizedErrorBoundary>
+    );
   }
 
   // ── Table Management screen ────────────────────────────────
   if (showTables) {
-    return <TableManagementView theme={theme} onBack={() => setShowTables(false)} />;
+    return (
+      <LocalizedErrorBoundary onReset={() => setShowTables(false)}>
+        <TableManagementView theme={theme} onBack={() => setShowTables(false)} />
+      </LocalizedErrorBoundary>
+    );
   }
 
   // ── Stock Inquiry screen ────────────────────────────────────
   if (showStockInquiry) {
-    return <StockInquiryView theme={theme} onBack={() => setShowStockInquiry(false)} onAddProduct={handleAdd} />;
+    return (
+      <LocalizedErrorBoundary onReset={() => setShowStockInquiry(false)}>
+        <StockInquiryView theme={theme} onBack={() => setShowStockInquiry(false)} onAddProduct={handleAdd} />
+      </LocalizedErrorBoundary>
+    );
   }
 
   return (

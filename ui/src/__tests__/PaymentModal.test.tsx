@@ -705,6 +705,55 @@ describe('PaymentModal — rendering & fast interaction', () => {
     }, { timeout: 2000 });
   });
 
+  // ── Backdrop click (click the area outside the modal) ──
+
+  it('closes when the backdrop is clicked', async () => {
+    const onClose = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    // The backdrop is the role=presentation overlay; the dialog is the panel
+    // INSIDE it. Clicking the overlay itself is "outside the modal".
+    const backdrop = document.querySelector('.payment-overlay') as HTMLElement;
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop);
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    }, { timeout: 2000 });
+  });
+
+  it('does NOT close when a click lands inside the modal panel', async () => {
+    const onClose = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    // A click on the panel bubbles to the overlay handler, so the handler must
+    // compare target to currentTarget rather than assume every bubble is a
+    // backdrop click -- otherwise selecting a tender would dismiss the modal.
+    fireEvent.click(screen.getByTestId('payment-modal'));
+
+    // Give the 300ms leave animation room to start if it were going to.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   // ── Quick tender presets ──
 
   it('clicking a quick tender preset sets the tendered amount', async () => {
@@ -754,6 +803,52 @@ describe('PaymentModal — rendering & fast interaction', () => {
   });
 
   // ── Multi-currency settlement (CUR-02) ──
+
+  it('does not print the word "Table" twice when the table NAME already contains it', async () => {
+    // The seeded/short-code table names in this product LITERALLY contain the word:
+    // the store DB's \`tables\` rows are 'Table 1', 'Table 2', 'Table 12'
+    // (verified on the tablet 2026-10-09). TableManagementScreen passes
+    // \`selected.name\` straight through (TableManagementScreen.tsx:411), and
+    // PaymentModal renders it through \`payment-table-number = Table { $number }\`
+    // (sales.ftl:40) — so the badge composed as "Table Table 12".
+    //
+    // The existing TableManagementScreen test (:457) uses \`name: 'VIP 2'\`, a name
+    // WITHOUT the prefix, which is exactly why this shipped: the only fixture that
+    // reaches this label is not shaped like the data.
+    await renderWithFluentAsRestaurantPos(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        tableNumber="Table 12"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const badge = document.querySelector('.payment-table-badge');
+    expect(badge, 'the table badge must render when tableNumber is set').not.toBeNull();
+    // The whole point: the word appears ONCE.
+    expect(badge?.textContent?.trim()).toBe('Table 12');
+  });
+
+  it('still labels a table whose name does NOT contain the word', async () => {
+    // The other shape, so the fix cannot be "drop the prefix unconditionally".
+    await renderWithFluentAsRestaurantPos(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        tableNumber="A5"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const badge = document.querySelector('.payment-table-badge');
+    expect(badge?.textContent?.trim()).toBe('Table A5');
+  });
 
   it('completes sale in selected charge currency with converted amounts (multi-currency)', async () => {
     const onComplete = vi.fn();
@@ -830,6 +925,74 @@ describe('PaymentModal — rendering & fast interaction', () => {
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalled();
     });
+  });
+
+  it('re-derives the payable and the change when the charge currency changes mid-tender', async () => {
+    // Closes the gap PaymentModalSplitBalance.test.tsx:304 (C12) names and skips:
+    // "the converted-total path needs FEATURES.MULTI_CURRENCY on *and* four
+    // @/api/currency mocks plus a charge-currency dropdown interaction". This file
+    // already carries those four mocks (:139-181), so the case belongs here rather
+    // than as new mocks in the split file, which deliberately keeps nothing between
+    // fixture and guard.
+    //
+    // What it pins: switching the charge currency while a tender is already typed
+    // must re-derive BOTH the displayed payable and the change against the NEW
+    // currency's exponent — not leave the old-currency numbers on screen. IDR has
+    // exponent 0 and USD exponent 2, so a stale conversion is visible as a wrong
+    // digit count, not just a wrong label.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem({ unit_price: usd(350), qty: 2 })]} // 2 * $3.50 = $7.00
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="test-session-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/select charge currency/i)).toBeInTheDocument();
+    });
+
+    // Tender in the BASE currency first: $10.00 against a $7.00 payable -> $3.00 change.
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await waitFor(() => {
+      expect(screen.getByText(/\$\s*3[.,]00/)).toBeInTheDocument();
+    });
+
+    // Switch the charge currency to IDR (1 USD = 16,000 IDR), so the payable becomes
+    // Rp 112.000 and the SAME "10" re-parses at IDR's exponent (0, not 2): Rp 10.
+    const currencySelect = screen.getByLabelText(/select charge currency/i) as HTMLSelectElement;
+    await userEvent.selectOptions(currencySelect, 'IDR');
+
+    // Re-tender Rp 5,000 — the discriminating value, and choosing it is the whole
+    // point. The payable is 700 minor units in the BASE currency ($7.00) but 112000
+    // in the converted charge currency (Rp 112.000), so a tender of 5000 straddles
+    // the two and the outcome depends on whether the conversion actually ran:
+    //   converted   -> 5000 < 112000 -> insufficient  (correct)
+    //   unconverted -> 5000 >= 700   -> sufficient    (the bug this must catch)
+    //
+    // Two earlier drafts could not fail, and both are worth recording because the
+    // mistake is easy to repeat: tendering "10" or "100" is short of BOTH 700 and
+    // 112000, so the assertion held with the conversion deleted. Verified by
+    // mutation — deleting convertToChargeCurrency from the payable now fails this.
+    //
+    // Also note what is NOT asserted here: the Total Due row keeps rendering
+    // formatMoney(total), the BASE total, by design (PaymentModal.tsx:1774), so it
+    // still reads "$ 7,00" after the switch. The conversion shows up in the change
+    // read-out and the Complete gate, not in that row.
+    const tender = screen.getByLabelText(/amount tendered/i) as HTMLInputElement;
+    await userEvent.clear(tender);
+    await userEvent.type(tender, '5000');
+    await waitFor(() => {
+      expect(document.querySelector('.payment-change-insufficient')).not.toBeNull();
+    });
+    // The stale $3.00 change must not survive the switch.
+    expect(screen.queryByText(/\$\s*3[.,]00/)).not.toBeInTheDocument();
+    // And Complete is refused while the tender is short of the CONVERTED total.
+    expect(screen.getByRole('button', { name: /Complete/i })).toBeDisabled();
   });
 });
 

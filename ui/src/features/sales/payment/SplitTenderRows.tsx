@@ -81,6 +81,21 @@ export interface SplitTenderRowsProps {
   onUpdateSplit: (id: number, patch: SplitTenderPatch) => void;
   /** The shell's autoSplitEvenly — the minor-units split of the payable. */
   onAutoSplitEvenly: () => void;
+  /**
+   * Which half of the component to render.
+   *
+   * The payment modal lays out in two columns: the tender/entry column on the
+   * left and the commit column (total, customer, Complete) on the right. The
+   * TOGGLE belongs with the commit decisions — it is one checkbox and it fits
+   * the narrow track — while the EDITOR rows must stay in the wide column: each
+   * row is a flex line of cash/card/other radios, an other-label input, an
+   * amount input and a remove button, and it needs ~383px. Measured on the
+   * tablet at the commit column's 266px it overflowed its method group by 93px
+   * (76px available, 227px required), so the editor cannot move right.
+   *
+   * Defaults to 'both' so every existing caller and test is unaffected.
+   */
+  part?: 'both' | 'toggle' | 'section';
 }
 
 /** The split-tender section plus the split-mode toggle. */
@@ -94,12 +109,15 @@ export default function SplitTenderRows({
   onRemoveSplit,
   onUpdateSplit,
   onAutoSplitEvenly,
+  part = 'both',
 }: SplitTenderRowsProps) {
   const { l10n } = useLocalization();
+  const showSection = part === 'both' || part === 'section';
+  const showToggle = part === 'both' || part === 'toggle';
 
   return (
     <>
-            {splitMode && (
+            {showSection && splitMode && (
               <div className="payment-split-section">
                 <div className="payment-split-header">
                   <Localized id="payment-split-title">
@@ -207,17 +225,19 @@ export default function SplitTenderRows({
               </div>
             )}
 
-            <div className="payment-split-toggle">
-              <label className="payment-split-toggle-label" htmlFor="payment-split-toggle-cb">
-                <input
-                  id="payment-split-toggle-cb"
-                  type="checkbox"
-                  checked={splitMode}
-                  onChange={(e) => onSplitModeChange(e.target.checked)}
-                />
-                {l10n.getString('payment-split-toggle')}
-              </label>
-            </div>
+            {showToggle && (
+              <div className="payment-split-toggle">
+                <label className="payment-split-toggle-label" htmlFor="payment-split-toggle-cb">
+                  <input
+                    id="payment-split-toggle-cb"
+                    type="checkbox"
+                    checked={splitMode}
+                    onChange={(e) => onSplitModeChange(e.target.checked)}
+                  />
+                  {l10n.getString('payment-split-toggle')}
+                </label>
+              </div>
+            )}
     </>
   );
 }

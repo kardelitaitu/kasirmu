@@ -1397,7 +1397,22 @@ const SCREENS: ScreenEntry[] = [
     // alone, so the shared sheet is never graded for dead or duplicate rules
     // through this entry.
     parentCss: ['../theme/components.css'],
-    dynamicClassPrefixes: [ 'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit'],
+    dynamicClassPrefixes: [
+      'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit',
+      // The tender grid composes its modifier from the method key at :1801 --
+      // `payment-method-label--${m}` -- so the four literal modifiers the sheet
+      // styles (--cash, --qris, --card, --credit) never appear verbatim in the
+      // TSX. They are reachable at runtime; the static extractor cannot see the
+      // interpolation, which is what this field is for.
+      'payment-method-label--',
+    ],
+    // The modal renders <ReceiptPreview> at :1549, and that component applies
+    // `receipt-preview` from its OWN sheet (ReceiptPreview.tsx:66 imports
+    // ReceiptPreview.css). PaymentModal.css only ever SELECTS it, from the
+    // `:has(.receipt-preview)` width rule at :151 -- an ancestor selector
+    // reaching into a child's class, which is a real cross-component reference
+    // rather than a rule this sheet owes and never uses.
+    externalClasses: ['receipt-preview'],
     additionalTsx: [
       'sales/payment/CashTenderPanel.tsx',
       'sales/payment/CardTenderPanel.tsx',
@@ -2004,6 +2019,28 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['settings-scope-tag--'],
     parentCss: ['settings/SettingsPage.css'],
   },
+  {
+    // F24 (2026-10-10): the store-credit card. Registered here rather than in
+    // BASELINE_UNCITED because it is cited by its owner — the rule this suite
+    // exists to enforce. Same shape as its LocalPaymentSettingsCard sibling,
+    // including the reason SettingsScopeTag.css joins the `css` list rather
+    // than only additionalTsx: `additionalTsx` feeds the USED-class walk and
+    // `css` feeds the DEFINED-rule walk, so citing only the component would
+    // leave settings-scope-tag reported as used-but-undefined.
+    name: 'CreditFacilityCard',
+    tsx: 'settings/screens/CreditFacilityCard.tsx',
+    css: [
+      'settings/screens/CreditFacilityCard.css',
+      'settings/SettingsScopeTag.css',
+    ],
+    additionalTsx: ['settings/SettingsScopeTag.tsx'],
+    // The five scope modifiers are composed from the prop
+    // (`settings-scope-tag settings-scope-tag--${scope}`); the static walk
+    // reaches the base and none of the tails, exactly as the sibling records.
+    dynamicClassPrefixes: ['settings-scope-tag--'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+
 
   // ── Settings screen scaffolds (rebuild) ────────────────────
   // Blank placeholders under features/settings/screens/, one file per screen.

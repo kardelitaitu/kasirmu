@@ -44,7 +44,7 @@ The project already has significant updater scaffolding in place:
 | `tauri.conf.json` updater config | ✅ Configured | `apps/desktop-client/tauri.conf.json:60` |
 | Public key file | ✅ Present | `oz-pos-updater.key.pub` |
 | `updater:default` permission | ✅ Granted | `apps/desktop-client/capabilities/default.json` |
-| `UpdateBanner` component | ✅ Exists | `ui/src/components/UpdateBanner.tsx` |
+| `UpdateBanner` component | ✅ Exists | `ui/src/app/UpdateBanner.tsx` (the `components/` twin was unreachable and retired 2026-10-09, commit `f9d6f2e65`) |
 | Fluent strings (banner) | ✅ Present | `ui/src/locales/shared.ftl` lines 85-91 |
 | GitHub Release endpoint | ⚡ Referenced | `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` |
 | Settings About page updater UI | ❌ Missing | `ui/src/features/settings/SettingsPage.tsx` |
@@ -292,7 +292,7 @@ Rely solely on the existing `UpdateBanner` component that auto-checks on mount.
 - `apps/desktop-client/tauri.conf.json` — Updater plugin configuration (endpoints, pubkey, installMode)
 - `apps/desktop-client/capabilities/default.json` — `updater:default` permission
 - `apps/desktop-client/src/lib.rs` — `tauri_plugin_updater::Builder` registration
-- `ui/src/components/UpdateBanner.tsx` — Auto-check-on-mount update banner (existing)
+- `ui/src/app/UpdateBanner.tsx` — Auto-check-on-mount update banner (existing; the unreachable `components/` twin was retired 2026-10-09, commit `f9d6f2e65`)
 - `ui/src/features/settings/SettingsPage.tsx` — Target for the manual check button
 - `ui/src/locales/settings.ftl` — Fluent strings for settings (~line 600 where `settings-app-version` is defined)
 - `ui/src/locales/settings.id.ftl` — Indonesian locale mirror

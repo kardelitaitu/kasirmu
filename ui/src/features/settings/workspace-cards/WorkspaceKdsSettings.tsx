@@ -8,13 +8,15 @@ import { requiredLocalized } from '@/components';
 import { useSettings } from '@/contexts/SettingsContext';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 import { clampRedThreshold, clampYellowThreshold } from '@/features/kds/kdsThresholdMinutes';
+import { DEFAULT_SETTINGS as KDS_DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
+import { clampDensity } from '@/features/kds/kdsDensity';
 import SettingsSelect from '../SettingsSelect';
 import type { WorkspaceCardProps } from './types';
 import { hasChanges } from './helpers';
 
 // ── Local types ──────────────────────────────────────────────────────
 
-type DisplayDensity = number;
+import type { DisplayDensity } from '@/features/kds/kdsSettingsModel';
 
 interface KdsDraftState {
   soundEnabled: boolean;
@@ -24,13 +26,17 @@ interface KdsDraftState {
   density: DisplayDensity;
 }
 
-const DEFAULT_KDS: KdsDraftState = {
-  soundEnabled: true,
-  yellowThresholdMin: 5,
-  redThresholdMin: 10,
-  autoAcknowledge: false,
-  density: 3,
-};
+/**
+ * The card's fallback for an UNSET key, taken from the model the runtime uses.
+ *
+ * This was a second hand-written copy of the same five default values. It is not
+ * decorative: `:105`, `:109` and `:114` fall back to it when a key has never been
+ * written, so the number shown here is the number the operator will get — and the
+ * KDS board reads its own copy (`kdsSettingsModel.DEFAULT_SETTINGS`) for the same
+ * case. Changing one default without the other would make Settings display a value
+ * the board does not use. Derived now, so the two cannot disagree.
+ */
+const DEFAULT_KDS: KdsDraftState = KDS_DEFAULT_SETTINGS;
 
 // ── Component ────────────────────────────────────────────────────────
 
@@ -57,6 +63,12 @@ export function WorkspaceKdsSettings({
   const [draft, setDraft] = useState<KdsDraftState>(DEFAULT_KDS);
   const [saving, setSaving] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
+  // True when the settings read FAILED (F4). The catch below used to seed
+  // `originalsRef` from `DEFAULT_KDS`, so a failed read looked clean and Save
+  // stayed enabled over values the card never confirmed.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Retry trigger. Without it `loadFailed` is a ONE-WAY LATCH and Save never returns.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<KdsDraftState>({ ...draft });
@@ -77,7 +89,8 @@ export function WorkspaceKdsSettings({
   useEffect(() => {
     // Only seed initial values once per session; subsequent re-runs must not
     // overwrite user edits. "Once" is scoped to the token, not to the mount.
-    if (originalsLoadedForRef.current === sessionToken) return;
+    // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
+    if (reloadNonce === 0 && originalsLoadedForRef.current === sessionToken) return;
     originalsLoadedForRef.current = sessionToken;
 
     // Load all 5 KDS settings from the backend, then set originals
@@ -104,7 +117,9 @@ export function WorkspaceKdsSettings({
         ),
         redThresholdMin,
         autoAcknowledge: ack === 'true',
-        density: Math.min(5, Math.max(1, parseInt(density ?? '', 10) || DEFAULT_KDS.density)),
+        // Through the named bound (kdsDensity), not an inline Math.min/Math.max pair:
+        // this was the fourth copy of the 1..5 range and the one the extraction missed.
+        density: clampDensity(parseInt(density ?? '', 10) || DEFAULT_KDS.density),
       };
       // Seed the loaded values, but never overwrite fields the user has
       // already edited while the load was in flight — otherwise a fast
@@ -117,10 +132,13 @@ export function WorkspaceKdsSettings({
         }
         return merged;
       });
+      setLoadFailed(false);
       originalsRef.current = loaded;
     }).catch(() => {
-      // Fallback: keep DEFAULT_KDS values
-      originalsRef.current = { ...draft };
+      // A FAILED read is not an answer (F4). Do NOT seed `originalsRef` from the
+      // defaults — that is what made a failure look saved. `loadFailed` disables
+      // Save instead.
+      setLoadFailed(true);
     }).finally(() => {
       setOriginalsLoaded(true);
     });
@@ -130,7 +148,7 @@ export function WorkspaceKdsSettings({
     // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
     // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [originalsLoaded, sessionToken]);
+  }, [originalsLoaded, sessionToken, reloadNonce]);
 
   // ── Update helpers ───────────────────────────────────────────
 
@@ -313,10 +331,29 @@ export function WorkspaceKdsSettings({
         </div>
       </Card>
 
+      {/* F4: the read failed, so the values shown are defaults. Without Retry the
+          flag is a one-way latch and Save could never return this session. */}
+      {loadFailed && (
+        <div className="settings-error-banner" role="alert" data-testid="kds-settings-load-error">
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          <Button
+            variant="secondary"
+            data-testid="kds-settings-load-retry-btn"
+            onClick={() => setReloadNonce((n) => n + 1)}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
+      )}
+
       {/* Save button */}
       {variant !== 'inspector-drawer' && (
         <div className="settings-actions">
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || loadFailed}>
             <Localized id="save">Save</Localized>
           </Button>
         </div>

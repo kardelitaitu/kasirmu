@@ -27,6 +27,7 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { isRovingKey, computeRovingIndex } from './sidebarLogic';
+import { hasGrantedPermission } from '@/registries/page-registry';
 
 /** The signed-in cashier, as the sidebar header shows them. */
 export interface RestaurantSidebarProfile {
@@ -52,6 +53,16 @@ export interface RestaurantSidebarActions {
   showTables: boolean;
   onOpenTables: () => void;
   onOpenHistory: () => void;
+  /**
+   * Whether the Kitchen Display row is reachable for this user.
+   *
+   * KDS access is a feature/route ENTITLEMENT, not a role, so a disabled row with
+   * a "Manager+" badge would mislabel the reason. It is hidden instead, matching
+   * `showTables` — and for the same cause: the host decides before render, because
+   * a click-time answer cannot hide a row that is already on screen. Without this
+   * the row silently no-opped or bounced the user to Products (F7).
+   */
+  showKitchenDisplay: boolean;
   onOpenKitchenDisplay: () => void;
   /** Full-page configuration sub-screens */
   onOpenMenuEditor?: () => void;
@@ -222,8 +233,60 @@ export function RestaurantSidebar({
   isManager: isManagerProp,
 }: RestaurantSidebarProps) {
   const { l10n } = useLocalization();
-  const { isManager: authIsManager } = useAuth();
-  const effectiveIsManager = isManagerProp ?? authIsManager;
+  const { isManager: authIsManager, session } = useAuth();
+
+  // F8: the manager rows (Menu Editor / Receipts / Payments / Settings) all write
+  // through commands that enforce `permissions::SETTINGS_EDIT` on the backend —
+  // e.g. `kasirmu-bridge/src/settings.rs` on every settings write. Gating them on
+  // the ROLE alone let a user whose role is "manager" but whose grant omits
+  // `settings:edit` reach a control whose save is then refused at the IPC
+  // boundary: an enabled button that always errors.
+  //
+  // The check now mirrors the backend: when the session carries granted keys, the
+  // PERMISSION is authoritative (wildcard-aware via `hasGrantedPermission`, which
+  // handles the Owner preset's `["*"]`). When it carries none — an older session
+  // shape — it falls back to the role, so a session that cannot answer the
+  // question is not silently locked out. That is exactly `passesGate`'s contract.
+  //
+  // ⚠️ THE SESSION'S PERMISSION LIST OUTRANKS `isManagerProp`, and that order was the
+  // fix — the prop used to win outright, which made everything above inert in the
+  // real app.
+  //
+  // `PosScreen.tsx:1239` supplies `isManager={isManager}` from `useAuth()`, whose
+  // `isManager` is a pure ROLE check (AuthContext.tsx:176-182, owner/admin/manager,
+  // no permission awareness). Because that prop took precedence, production never
+  // reached the permission branch at all: a "manager" role whose grant omits
+  // `settings:edit` still got enabled rows whose saves are refused at the IPC
+  // boundary — exactly the F8 defect, still live behind a fixed-looking gate.
+  //
+  // The prop is now the FALLBACK rather than the override. It is still the right
+  // answer when the session carries no grant list, because then the role is the
+  // only thing anyone can consult. (This also corrects the old note here, which
+  // said the prop was kept for "workspace-card and inspector hosts": grepping
+  // `RestaurantSidebar` shows `RestaurantMenu` is its only host and `PosScreen` the
+  // only host of THAT, so no such caller exists.)
+  const canEditSettings =
+    session?.permissions !== undefined
+      ? hasGrantedPermission(session.permissions, 'settings:edit')
+      : (isManagerProp ?? authIsManager);
+  const effectiveIsManager = canEditSettings;
+
+  /**
+   * Which string a disabled manager row carries.
+   *
+   * The gate is a PERMISSION (`settings:edit`), so when the session answered the
+   * permission question and said no, a "Manager+" badge can be actively wrong: a
+   * user whose role IS Manager, blocked by a narrowed grant, would be told they
+   * need to become something they already are (`__tests__/RestaurantSidebar.logic`
+   * pins that case). The permission wording is used exactly then.
+   *
+   * The role fallback is the one case where "Manager+" is the honest answer: the
+   * session carried no permission list, so `authIsManager` decided, and a role is
+   * what is missing. Same reasoning the component's header gives for the KDS row,
+   * where a badge would mislabel a route entitlement (:56-64).
+   */
+  const gateBlockedByPermission =
+    isManagerProp === undefined && session?.permissions !== undefined;
   // The live app version, from the ONE shared probe (`StatusBar` reads the same
   // singleton, so this adds no second updater check). Not a hardcoded string:
   // the login footer's `v0.0.39` is already duplicated in three files.
@@ -403,6 +466,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('pos-shift-close-aria')}
               onClick={() => { cartActions.onCloseShift(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-close-shift"
             >
               <Tile>
                 <ShiftGlyph />
@@ -416,6 +480,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('pos-shift-open-aria')}
               onClick={() => { cartActions.onOpenShift(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-open-shift"
             >
               <Tile>
                 <ShiftGlyph />
@@ -430,6 +495,7 @@ export function RestaurantSidebar({
               onKeyDown={handleSidebarKeyDown}
               aria-label={l10n.getString('tables-title')}
               onClick={() => { cartActions.onOpenTables(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-tables"
             >
               <Tile>
                 <TablesGlyph />
@@ -443,24 +509,28 @@ export function RestaurantSidebar({
             onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('retail-fn-history')}
             onClick={() => { cartActions.onOpenHistory(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-history"
           >
             <Tile>
               <HistoryGlyph />
             </Tile>
             <Localized id="retail-fn-history"><span>History</span></Localized>
           </button>
-          <button
-            type="button"
-            className="restaurant-sidebar-item"
-            onKeyDown={handleSidebarKeyDown}
-            aria-label={l10n.getString('kds-title')}
-            onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
-          >
-            <Tile>
-              <KitchenGlyph />
-            </Tile>
-            <Localized id="kds-title"><span>Kitchen Display</span></Localized>
-          </button>
+          {cartActions.showKitchenDisplay && (
+            <button
+              type="button"
+              className="restaurant-sidebar-item"
+              onKeyDown={handleSidebarKeyDown}
+              aria-label={l10n.getString('kds-title')}
+              onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
+              data-testid="restaurant-sidebar-kds"
+            >
+              <Tile>
+                <KitchenGlyph />
+              </Tile>
+              <Localized id="kds-title"><span>Kitchen Display</span></Localized>
+            </button>
+          )}
           <button
             type="button"
             className={`restaurant-sidebar-item${!effectiveIsManager ? ' restaurant-sidebar-item--disabled' : ''}`}
@@ -482,7 +552,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
@@ -506,7 +578,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
@@ -530,7 +604,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>
@@ -555,7 +631,9 @@ export function RestaurantSidebar({
             {!effectiveIsManager && (
               <span className="restaurant-sidebar-badge-manager">
                 <LockSmallGlyph />
-                <Localized id="restaurant-manager-required"><span>Manager+</span></Localized>
+                <Localized id={gateBlockedByPermission ? 'restaurant-permission-required' : 'restaurant-manager-required'}>
+                  <span>{gateBlockedByPermission ? 'Needs permission' : 'Manager+'}</span>
+                </Localized>
               </span>
             )}
           </button>

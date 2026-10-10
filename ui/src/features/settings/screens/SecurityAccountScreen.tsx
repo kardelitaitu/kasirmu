@@ -58,14 +58,6 @@ export function SecurityAccountScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-security-account">Security &amp; Account</Localized>
       </h1>
-      {/* The migration note stays (SettingsPage.test.tsx asserts it on every
-          screen, migrated ones included). */}
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
-
       <Card
         shadow="sm"
         header={<Localized id="settings-section-security"><h2 className="settings-section-title">Active session</h2></Localized>}

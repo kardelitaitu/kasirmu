@@ -206,9 +206,10 @@ export function useProducts(sessionToken?: string): UseProductsResult {
     // whenever the effect RUNS, but nothing re-ran it when the token changed until it was added
     // to the dependency array below. After
     // a store switch the catalogue kept showing the previous store's products until someone
-    // called reload() explicitly -- and six production screens consume this hook
-    // (ProductLookupScreen, ProductManagementScreen, RestaurantMenu, WarehouseConsole,
-    // WarehouseCountFlow, and api/products.ts).
+    // called reload() explicitly -- and three production screens consume this hook
+    // (ProductLookupScreen at :91, PosScreen at :143 and RestaurantMenu at :185).
+    // It used to name six; the list had gone stale, and a stale consumer list is
+    // worse than none because it reads as a swept tree when it was never checked.
   }, [reloadKey, sessionToken]);
 
   // Derive categories from products (memoized).

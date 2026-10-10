@@ -7,6 +7,7 @@ import { Localized } from '@/components/Localized';
 import { requiredLocalized } from '@/components';
 import type { Toast } from '@/components/Toast';
 import { FEATURES } from '@/hooks/useFeatures';
+import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { AnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
@@ -14,10 +15,17 @@ import type { Promotion } from '@/api/promotions';
 import type { ShiftDto } from '@/api/shifts';
 import type { HeldCartRow } from '@/api/sales';
 import type { CartLine, CartId, CourseId, LineId, Money } from '@/types/domain';
+import { useSwipe } from '@/hooks/useSwipe';
 import { CartLineItem } from './CartLineItem';
 import { CourseSelectorBar } from './CourseSelectorBar';
 import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
+
+const ORDER_TYPES = [
+  { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
+  { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
+  { id: 'delivery', label: 'Delivery', icon: '🛵' },
+] as const;
 
 /**
  * Split an elapsed duration (ms) into whole hours + minutes, floored.
@@ -143,6 +151,17 @@ export interface CartPanelProps {
   setTableNumber: Dispatch<SetStateAction<string>>;
   guestCount?: string;
   setGuestCount?: Dispatch<SetStateAction<string>>;
+  /**
+   * Whether the customer-name field shows. `restaurant.customer_name`, owned by
+   * RestaurantSettingsScreen. Absent = show, so retail and every test render are
+   * unaffected; only an explicit `false` hides it. Same `!== false` idiom as
+   * `courseFiringEnabled`.
+   */
+  customerNameEnabled?: boolean;
+  /** Whether the pax field shows. `restaurant.guest_count`; absent = show. */
+  guestCountEnabled?: boolean;
+  /** Whether the Save Tab action shows. `restaurant.save_tab`; absent = show. */
+  saveTabEnabled?: boolean;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
   setOrderType?: Dispatch<SetStateAction<'dine_in' | 'takeaway' | 'delivery'>>;
   orderTypePromptEnabled?: boolean;
@@ -172,6 +191,18 @@ export interface CartPanelProps {
   handleIncreaseQty: (line: CartLine) => void;
   setCartLineRef: (lineId: LineId, el: HTMLDivElement | null) => void;
   isManager: boolean;
+  /**
+   * Whether the price-override affordance is available, when it differs from
+   * `isManager`.
+   *
+   * The backend refuses `override_cart_line_price` without
+   * `sales:override_price` (`kasirmu-bridge/src/pos/cart.rs:345`), NOT without a
+   * manager ROLE — and custom roles ship (`create_role_scoped`), so the two can
+   * disagree in either direction. `PosScreen` therefore supplies this from the
+   * permission. Optional so the retail panel and every existing caller keep the
+   * role behaviour they were written against; absent means "same as isManager".
+   */
+  canOverridePrice?: boolean | undefined;
   setOverrideTarget: Dispatch<SetStateAction<CartLine | null>>;
   ensureCart: (currency: string) => Promise<CartId | null>;
   animatedUndoStack: AnimatedUndoStack<CartLine>;
@@ -252,6 +283,9 @@ export function CartPanel({
   tableNumber,
   setTableNumber,
   guestCount,
+  customerNameEnabled,
+  guestCountEnabled,
+  saveTabEnabled,
   setGuestCount,
   orderType = 'dine_in',
   setOrderType,
@@ -269,6 +303,7 @@ export function CartPanel({
   handleIncreaseQty,
   setCartLineRef,
   isManager,
+  canOverridePrice,
   setOverrideTarget,
   ensureCart,
   animatedUndoStack,
@@ -327,6 +362,31 @@ export function CartPanel({
   // Which line's course dropdown is open. Held here rather than per row so
   // opening one line's menu closes the other's.
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
+
+  const orderTypeIndex = Math.max(0, ORDER_TYPES.findIndex((opt) => opt.id === orderType));
+
+  const handleOrderTypePrev = () => {
+    if (!setOrderType) return;
+    const currentIdx = ORDER_TYPES.findIndex((opt) => opt.id === orderType);
+    const prev = ORDER_TYPES[currentIdx - 1];
+    if (prev) {
+      setOrderType(prev.id);
+    }
+  };
+
+  const handleOrderTypeNext = () => {
+    if (!setOrderType) return;
+    const currentIdx = ORDER_TYPES.findIndex((opt) => opt.id === orderType);
+    const next = ORDER_TYPES[currentIdx + 1];
+    if (next) {
+      setOrderType(next.id);
+    }
+  };
+
+  const orderTypeSwipe = useSwipe({
+    onSwipeLeft: handleOrderTypeNext,
+    onSwipeRight: handleOrderTypePrev,
+  });
 
   // Animation state for sliding out/in when hidden prop toggles
   const [cartExiting, setCartExiting] = useState(false);
@@ -536,6 +596,7 @@ export function CartPanel({
                 onClick={() => onNavigate?.('kds')}
                 aria-label={requiredLocalized(l10n, 'kds-title')}
                 title={requiredLocalized(l10n, 'kds-title')}
+                data-testid="pos-cart-kds-btn"
               >
                 <KitchenDisplayIcon />
               </button>
@@ -586,7 +647,10 @@ export function CartPanel({
             <span className="pos-cart-active-tab-info">
               <span className="pos-cart-active-tab-dot" aria-hidden="true">●</span>
               <span className="pos-cart-active-tab-text">
-                {tableNumber ? `Table ${tableNumber}` : ''}
+                {/* `bareTableNumber`: the stored names already read "Table 12"
+                    (see features/sales/utils/tableLabel.ts), so the raw value
+                    composed "Table Table 12" in this banner. */}
+                {tableNumber ? `Table ${bareTableNumber(tableNumber)}` : ''}
                 {tableNumber && customerName ? ` (${customerName})` : customerName || 'Active Tab'}
               </span>
             </span>
@@ -609,49 +673,70 @@ export function CartPanel({
         {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
         {/* Styling lives in CartPanel.css (.pos-cart-order-type-row); it used to
             be an inline style block with hardcoded 6px values and no sheet behind it. */}
-        {(orderTypePromptEnabled || activeWorkspace === 'restaurant-pos') && setOrderType && (
-          <div className="pos-cart-order-type-row">
-            {(
-              [
-                { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
-                { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
-                { id: 'delivery', label: 'Delivery', icon: '🛵' },
-              ] as const
-            ).map((opt) => {
-              const active = orderType === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                    padding: '4px 8px',
-                    fontSize: 'var(--text-xs, 12px)',
-                    fontWeight: active ? 600 : 500,
-                    borderRadius: 'var(--radius-md, 6px)',
-                    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                    background: active ? 'var(--color-primary-subtle, rgba(59, 130, 246, 0.12))' : 'var(--color-surface)',
-                    color: active ? 'var(--color-primary)' : 'var(--color-fg-muted)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onClick={() => setOrderType(opt.id)}
-                  aria-pressed={active}
-                  data-testid={`pos-order-type-${opt.id}`}
-                >
-                  <span aria-hidden="true">{opt.icon}</span>
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
+        {/* The workspace arm that used to sit here was removed (P1/D2 of
+            todo-restaurant-pos-reliability.md): it made the setting inert on the
+            one workspace it exists for. `orderTypePromptEnabled` now defaults to
+            TRUE on restaurant-pos in PosScreen, so removing the override keeps
+            the control visible there while letting an explicit "off" take effect. */}
+        {orderTypePromptEnabled && setOrderType && (
+          <div className="pos-cart-order-type-row" {...orderTypeSwipe}>
+            <div
+              className="pos-cart-order-type-slider"
+              role="radiogroup"
+              aria-label={l10n.getString('restaurant-setting-order-type')}
+              tabIndex={-1}
+              style={{
+                '--order-type-index': orderTypeIndex,
+                '--order-type-count': ORDER_TYPES.length,
+              } as React.CSSProperties}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  handleOrderTypeNext();
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  handleOrderTypePrev();
+                } else if (e.key === 'Home') {
+                  e.preventDefault();
+                  const first = ORDER_TYPES[0];
+                  if (first) setOrderType(first.id);
+                } else if (e.key === 'End') {
+                  e.preventDefault();
+                  const last = ORDER_TYPES[ORDER_TYPES.length - 1];
+                  if (last) setOrderType(last.id);
+                }
+              }}
+            >
+              <span className="pos-cart-order-type-indicator" aria-hidden="true" />
+              {ORDER_TYPES.map((opt) => {
+                const active = orderType === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    className={`pos-cart-order-type-btn${active ? ' pos-cart-order-type-btn--active' : ''}`}
+                    onClick={() => setOrderType(opt.id)}
+                    aria-checked={active}
+                    data-testid={`pos-order-type-${opt.id}`}
+                  >
+                    <span className="pos-cart-order-type-icon" aria-hidden="true">{opt.icon}</span>
+                    <span className="pos-cart-order-type-label">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* ── Table number input & optional customer name ── */}
+        {/* ── Table number input & optional customer name ──
+            The `|| restaurant-pos` arm is INTENTIONAL, not a leftover: table
+            capture is part of what a restaurant POS is, so it does not depend on
+            a setting. `showTableNumberSetting` still governs the other
+            workspaces (retail), where it comes from the receipt toggle. The
+            restaurant-side settings toggle that used to write a competing
+            `restaurant.table_number` key was removed — see
+            RestaurantSettingsScreen.tsx's header. */}
         {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && (
           <div className="pos-cart-table-row">
             <div className="pos-cart-table-field">
@@ -668,7 +753,11 @@ export function CartPanel({
                 placeholder={l10n.getString('pos-cart-table-placeholder')}
               />
             </div>
-            {setCustomerName && (
+            {/* `!== false` (not truthiness) so an ABSENT prop shows the field:
+                retail passes nothing, and only RestaurantSettingsScreen's explicit
+                `restaurant.customer_name = false` hides it. Same idiom as
+                `courseFiringEnabled` above. */}
+            {setCustomerName && customerNameEnabled !== false && (
               <div className="pos-cart-customer-field">
                 <label htmlFor="pos-customer-name" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-customer-label') || 'Customer (opt)'}
@@ -685,7 +774,7 @@ export function CartPanel({
                 />
               </div>
             )}
-            {setGuestCount && (
+            {setGuestCount && guestCountEnabled !== false && (
               <div className="pos-cart-guest-field">
                 <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
@@ -770,7 +859,11 @@ export function CartPanel({
                 onIncreaseQty={handleIncreaseQty}
                 registerRef={setCartLineRef}
                 {...(updateLineNote ? { onUpdateNote: updateLineNote } : {})}
-                {...(isManager ? {
+                // A permission gate, not a role gate, when the host can answer:
+                // the backend checks `sales:override_price` (cart.rs:345) and a
+                // custom role may hold it without being "manager" — or lack it
+                // while being one. Absent means fall back to `isManager`.
+                {...((canOverridePrice ?? isManager) ? {
                   onOverride: (l: CartLine) => {
                     setOverrideTarget(l);
                     ensureCart(l.unit_price.currency);
@@ -855,6 +948,7 @@ export function CartPanel({
           >
             <CartActionBar
               activeShift={activeShift}
+              shiftUnavailable={shiftUnavailable}
               handlePay={handlePay}
               addToast={addToast}
               setShowOpenBillInput={setShowOpenBillInput}
@@ -867,6 +961,7 @@ export function CartPanel({
               customerName={customerName}
               activeOpenBillId={activeOpenBillId}
               handleOpenBill={handleOpenBill}
+              saveTabEnabled={saveTabEnabled}
             />
           </CartFooterTotals>
         )}

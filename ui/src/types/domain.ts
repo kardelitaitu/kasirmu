@@ -313,6 +313,9 @@ export const formatMoney = (
   locale: string = 'id-ID',
   decimalSep?: 'dot' | 'comma' | 'none',
 ): string => {
+  if (!m || typeof m !== 'object' || typeof m.currency !== 'string') {
+    return 'Rp 0';
+  }
   const sep = decimalSep ?? getDecimalSep();
   const hideDecimals = sep === 'none';
   const exp = minorUnitExponent(m.currency);

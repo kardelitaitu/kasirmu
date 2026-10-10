@@ -2,7 +2,7 @@
 //!
 //! Migrated 2026-10-06 from `features/settings/FeatureToggleScreen.tsx`, per the
 //! provenance this scaffold named while it was still blank. Composition, not a
-//! re-export: the route, the scaffold shell and its migrating note stay on this
+//! re-export: the route and the scaffold shell stay on this
 //! screen while the feature-flag screen keeps its own component and stylesheet.
 //!
 //! `embedded` suppresses the composed screen's own <h1> ("Feature Toggles"),
@@ -26,11 +26,6 @@ export function FeaturesModulesScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-features-modules">Features &amp; Modules</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <FeatureToggleBody embedded />
     </section>
   );

@@ -58,6 +58,7 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
         <button
           type="button"
           className="restaurant-empty-retry"
+          data-testid="restaurant-menu-retry-btn"
           onClick={onRetry}
         >
           <Localized id="restaurant-menu-retry">
@@ -82,6 +83,7 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
           <button
             type="button"
             className="restaurant-empty-retry"
+            data-testid="restaurant-menu-clear-filter-btn"
             onClick={onClearFilter}
           >
             <Localized id="restaurant-menu-clear-search">

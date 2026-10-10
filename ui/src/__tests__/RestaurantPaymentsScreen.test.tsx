@@ -16,6 +16,8 @@
  * settings.ftl + products.ftl, mounted as the real bundles.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -257,6 +259,63 @@ describe('RestaurantPaymentsScreen — rails list & toggles', () => {
     // Toggle back on
     await user.click(cashToggle);
     expect(cashToggle).toBeChecked();
+  });
+  // ── The core rails the screen FORGETS (F17) ──────────────────────
+  //
+  // `CORE_RAIL_CODES` (paymentRailsLogic.ts:11) names FIVE rails that always exist
+  // and cannot be removed: cash, card, qris, open_bill, credit. The screen renders
+  // dedicated cards only for cash / qris / card / midtrans / stripe, and it EXCLUDES
+  // open_bill and credit from the Other-Rails list:
+  //
+  //     const internalHiddenCodes = ['open_bill', 'credit'];   (:839)
+  //     !internalHiddenCodes.includes(d.rail_code.toLowerCase()),   (:844)
+  //
+  // So those two render NOWHERE — no card and no other-rails row. The operator
+  // cannot see the rail, cannot toggle it, and gets no hint it exists. That is
+  // worse than a toggle that does nothing (F16): at least a dead toggle is visible.
+  //
+  // It matters more since round 52, because the charge modal now HONOURS the
+  // open_bill flag: `coreRailWithheld` reads `is_enabled`, and the rail row is
+  // seeded `is_enabled: true`. So open_bill shows at checkout with no way to turn
+  // it off from this screen — the operator's only recourse is the checkout itself.
+  it('offers a toggle for EVERY core rail, including open_bill and credit', async () => {
+    // The fixture seeds only card + gopay, so open_bill/credit resolve from the
+    // screen's own CORE_DEFAULTS merge. They must still be visible: a core rail is
+    // non-removable, not non-renderable.
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    // Labels come from `CORE_DEFAULTS` (paymentRailsLogic.ts:37-42), except `card`,
+    // which the fixture seeds with a shorter label of its own.
+    for (const label of ['Cash', 'Card', 'QRIS', 'Open Bill (Table Tab)', 'Customer Credit']) {
+      expect(
+        screen.queryByRole('switch', { name: label }),
+        `core rail "${label}" has no toggle on this screen`,
+      ).not.toBeNull();
+    }
+  });
+
+  it('lets the operator switch open_bill OFF, which the charge modal now honours', async () => {
+    // The end-to-end point of the gate: a rail the modal reads must be reachable.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('Cash');
+
+    const openBill = screen.getByRole('switch', { name: 'Open Bill (Table Tab)' });
+    expect(openBill).toBeChecked();
+    await user.click(openBill);
+    expect(openBill).not.toBeChecked();
+  });
+
+  it('does NOT require a rail toggle for midtrans or stripe (gateway cards, not rails)', async () => {
+    // The guard against over-correcting: those two are operator-configured
+    // GATEWAYS with their own cards and their own enable switch, and they are not
+    // in CORE_RAIL_CODES. A "fix" that demanded a rail switch for them would
+    // duplicate the gateway's own control.
+    await renderScreen();
+    await screen.findByText('Cash');
+    expect(screen.queryByRole('switch', { name: 'Midtrans' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Stripe' })).toBeNull();
   });
 });
 
@@ -797,4 +856,356 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
   });
 });
 
+// ── F4 on THIS screen: a failed gateway read must not look clean ────────
+//
+// The drafts baseline is seeded at `:377`, BEFORE the two gateway reads at
+// `:453-456`. Those reads used to `.catch(() => null)` independently, and the
+// setters are behind `if (midtransGw)` / `if (stripeGw)`. So a failed read left
+// the screen looking CLEAN while showing empty fields — and saving then wrote
+// those blanks over the stored credentials.
+//
+// ⚠️ The assertion shape matters. "Save is disabled after a failure" passes
+// against the BUG too, because on the buggy path `dirty` is already false, so
+// Save is disabled either way. The discriminating property is the EDIT: on the
+// bug, editing afterwards sets `dirty` true and RE-ENABLES Save over defaults
+// that were never read. That is the round-4 lesson from the plan, applied here.
+describe('RestaurantPaymentsScreen — a failed gateway read is not silent (F4)', () => {
+  it('flags the failure, blocks Save, and refuses to claim the settings are saved', async () => {
+    mocks.getGateway.mockRejectedValue(new Error('gateway read failed'));
 
+    await renderScreen();
+
+    // 1. The operator is told.
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+
+    // 2. The header does NOT claim success over values it never read.
+    expect(screen.queryByText('All changes saved')).not.toBeInTheDocument();
+
+    // 3. The discriminating half: make an EDIT, which is what re-enables Save
+    //    on the buggy path.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const toggle = await screen.findByTestId('payment-card-toggle-cash');
+    await user.click(toggle);
+
+    // 4. Save stays disabled despite `dirty` now being true.
+    const save = screen.getByTestId('restaurant-payments-save-btn');
+    expect(save).toBeDisabled();
+  });
+
+  it('offers a Retry, and Retry CLEARS the flag so Save can return', async () => {
+    // A flag that disables a control is a one-way latch without this path —
+    // round 8 of the F4 campaign shipped four Save-gates and no recovery.
+    mocks.getGateway.mockRejectedValueOnce(new Error('first read fails'));
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // The retry succeeds.
+    mocks.getGateway.mockResolvedValue(null);
+    await user.click(screen.getByTestId('restaurant-payments-load-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-payments-load-error')).not.toBeInTheDocument();
+    });
+  });
+
+  it('a successful read shows NO failure banner (the flag is not always-on)', async () => {
+    // Guards the guard: if the banner rendered unconditionally, both cases above
+    // would pass while telling the operator nothing true.
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('GoPay')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('restaurant-payments-load-error')).not.toBeInTheDocument();
+  });
+});
+
+// ── P6 i18n sweep, third screen ─────────────────────────────────────────
+//
+// This screen hardcoded 24 user-visible strings — 14 `resto-compact-label` /
+// `resto-compact-block-title` text nodes, 10 `aria-label`s, and 3 English
+// placeholders. They now read from `products.ftl` / `products.id.ftl` as
+// `restaurant-payment-*`.
+//
+// These cases assert the BUNDLE VALUES render, not merely that something
+// appeared. A regression to a hardcoded literal would show the SAME visible
+// text, so a weaker assertion would pass on it — the round-15 lesson from the
+// plan, where an "is it there" check survived the bug it was written for.
+describe('RestaurantPaymentsScreen — P6 i18n sweep (no hardcoded English)', () => {
+  // The keys this screen must own. Each was a literal before the sweep.
+  const SWEPT = [
+    'restaurant-payment-display-label',
+    'restaurant-payment-auto-cash-drawer',
+    'restaurant-payment-cash-presets',
+    'restaurant-payment-drawer-verification',
+    'restaurant-payment-mode',
+    'restaurant-payment-print-pay-at-table',
+    'restaurant-payment-card-networks',
+    'restaurant-payment-require-approval',
+    'restaurant-payment-environment',
+    'restaurant-payment-payment-channels',
+    'restaurant-payment-instant-webhook',
+    'restaurant-payment-connection',
+    'restaurant-payment-qr-mode',
+    'restaurant-payment-qr-payload',
+    'restaurant-payment-midtrans-env',
+    'restaurant-payment-stripe-mode',
+    'restaurant-payment-custom-code-example',
+    'restaurant-payment-custom-label-example',
+    'restaurant-payment-cash-placeholder',
+  ];
+
+  /** products.ftl as shipped, read from disk so the test cannot agree with a literal. */
+  function readProductsBundle(): string {
+    return fs.readFileSync(
+      path.resolve(process.cwd(), '../shared-ui/locales/products.ftl'),
+      'utf-8',
+    );
+  }
+
+  /** The bundle's value for a key, looked up rather than retyped. */
+  function bundleValue(bundle: string, key: string): string {
+    return (bundle.match(new RegExp('^' + key + ' = (.*)$', 'm')) ?? [])[1] ?? '';
+  }
+
+  it('every swept key exists in the English bundle', () => {
+    const bundle = readProductsBundle();
+    for (const key of SWEPT) {
+      expect(
+        bundle,
+        `${key} is missing from products.ftl — if this screen went back to a ` +
+          'hardcoded literal, that is the regression this case exists for',
+      ).toMatch(new RegExp('^' + key + ' = ', 'm'));
+    }
+  });
+
+  it('renders those values from the bundle', async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('GoPay')).toBeInTheDocument();
+    });
+    const bundle = readProductsBundle();
+    // Looked up by KEY, so this cannot drift into agreeing with a literal.
+    //
+    // These three are on the DEFAULT-rendered panel. `restaurant-payment-connection`
+    // deliberately is NOT in this list: it lives inside the collapsed Stripe/EDC
+    // cards at :1534/:1689, so asserting it here would fail on layout rather than
+    // on i18n. The key's presence is covered by the case above.
+    for (const key of [
+      'restaurant-payment-display-label',
+      'restaurant-payment-cash-presets',
+      'restaurant-payment-auto-cash-drawer',
+    ]) {
+      expect(screen.getByText(bundleValue(bundle, key))).toBeInTheDocument();
+    }
+  });
+
+  it('leaves no hardcoded English label, aria-label or placeholder in the source', () => {
+    // The source-level half: a literal can render the right words and still BE a
+    // literal. Only reading the file catches that.
+    const src = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/features/restaurant/screens/RestaurantPaymentsScreen.tsx',
+      ),
+      'utf-8',
+    );
+    const offenders = src
+      .split('\n')
+      .map((line, i) => ({ n: i + 1, line }))
+      .filter(({ line }) =>
+        /aria-label="[A-Z]/.test(line) ||
+        /<span className="resto-compact-(label|block-title)">[A-Z]/.test(line) ||
+        /placeholder="(Cash|e\.g\.)/.test(line));
+    expect(
+      offenders.map((o) => `${o.n}: ${o.line.trim().slice(0, 70)}`),
+      'these lines hardcode user-visible English again — route them through l10n.getString',
+    ).toEqual([]);
+  });
+});
+
+// ── The device's condition: NO persisted rails (F40) ────────────────────
+//
+// ⚠️ WHAT THESE CASES DO AND DO NOT PROVE — read before trusting them.
+//
+// THEY DO distinguish the two branches of `mergeCoreRails` — the `match` branch
+// (a persisted row) from the `else` branch (`CORE_DEFAULTS`). The pre-existing
+// case for this property supplies `card` as a persisted row, so the DEFAULTED
+// branch had no test at all.
+//
+// THEY DO NOT reproduce the device bug. These pass against the real component,
+// while the tablet — with the same condition, an empty rail table — leaves the
+// screen clean and Save disabled. jsdom and the device disagree here, so the cause
+// is NOT in this component's dirty logic as exercised by these mocks, and a fix
+// aimed at this file alone would be aimed at the wrong thing.
+//
+// The open question this leaves, recorded rather than guessed at: what differs
+// between the mocked load and the real IPC one. Candidates checked so far — the
+// load effect is NOT re-running on render (a re-run would emit its failure toast),
+// and `drafts` IS updated by the toggle (the card's `isExpanded` side effect
+// fires). See the F40 note in `todo-restaurant-pos-reliability.md` for the device
+// evidence and the reproduction steps.
+//
+// `mergeCoreRails` fills every core rail from `CORE_DEFAULTS` when the store has
+// no matching row (`paymentRailsLogic.ts:70-77`). The tablet's store database
+// holds ZERO rail rows, so that is the branch it takes — and on that branch,
+// toggling a core rail did NOT mark the screen dirty: the header stayed on
+// "All changes saved" and Save stayed disabled, so the operator's change could
+// not be persisted at all.
+//
+// The existing case (`toggling a rail onto a dirty screen enables Save`) passes
+// because its fixture supplies `card` as a PERSISTED row, taking the `match`
+// branch at `:62-69` instead. Both branches were therefore never distinguished:
+// one had a test and the other, the one the real device is on, did not.
+//
+// This case supplies an EMPTY rail list, which is what the tablet actually
+// returns, and asserts the same property.
+describe('RestaurantPaymentsScreen — dirty tracking with NO persisted rails (F40)', () => {
+  it('toggling a DEFAULTED core rail marks the screen dirty and enables Save', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // The device's condition: the store has no rail rows at all.
+    mocks.getMethods.mockResolvedValue([]);
+
+    await renderScreen();
+    // The core set is synthesised from CORE_DEFAULTS, so the cards render.
+    const cashToggle = await screen.findByTestId('payment-card-toggle-cash');
+    const saveBtn = screen.getByTestId('restaurant-payments-save-btn');
+    expect(cashToggle).toBeChecked();
+    expect(saveBtn).toBeDisabled();
+
+    await user.click(cashToggle);
+    expect(cashToggle).not.toBeChecked();
+
+    // The property under test: a real change on a defaulted rail is DIRTY.
+    // On the defect this stays disabled, because the baseline was seeded from
+    // the same defaulted array and the toggle never diverges from it.
+    expect(
+      saveBtn,
+      'a toggled core rail left the screen CLEAN, so the change cannot be saved — ' +
+        'this is the state the tablet is in when its store holds no rail rows',
+    ).toBeEnabled();
+  });
+
+  it('the dirty header agrees with the Save button on a defaulted rail', async () => {
+    // The header is the operator-facing half of the same computation; a screen
+    // that forbids Save while saying "All changes saved" is worse than one that
+    // merely disables it.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    mocks.getMethods.mockResolvedValue([]);
+    await renderScreen();
+
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+    await user.click(await screen.findByTestId('payment-card-toggle-cash'));
+    expect(
+      screen.getByText('Unsaved changes'),
+      'the header still claims everything is saved after an unsaved edit',
+    ).toBeInTheDocument();
+  });
+
+  it('a persisted rail still marks dirty (guards the case above)', async () => {
+    // Confirms the two branches are genuinely different, so a fix for the
+    // defaulted case cannot silently regress the persisted one.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    const card = await screen.findByTestId('payment-card-toggle-card');
+    expect(card).not.toBeChecked();
+    await user.click(card);
+    expect(screen.getByTestId('restaurant-payments-save-btn')).toBeEnabled();
+  });
+});
+
+// ── F40: the baseline must be seeded even when there is no primary location ──
+//
+// The tablet's observed state: rails RENDER, but toggling one leaves the header on
+// "All changes saved" and Save disabled, and the store's `local_payment_methods`
+// table keeps ZERO rows — so the change cannot be persisted at all.
+//
+// Cause: `originalsRef` starts as `{ drafts: [] }` and was filled only inside
+// `if (primary)`. With a falsy `primary` the screen still renders rails (they come
+// from the `useState` initializer), but the `dirty` memo hits `length === 0` and
+// returns false for ever.
+describe('RestaurantPaymentsScreen — no primary location still tracks dirty (F40)', () => {
+  it('a rail toggle is dirty when the location lookup returns nothing', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // The device's condition: no primary location, so the load's seeding block
+    // (:377-395) never runs.
+    mocks.getPrimary.mockResolvedValue(null);
+
+    await renderScreen();
+
+    const cashToggle = await screen.findByTestId('payment-card-toggle-cash');
+    const saveBtn = screen.getByTestId('restaurant-payments-save-btn');
+    expect(cashToggle).toBeChecked();
+    expect(saveBtn).toBeDisabled();
+
+    await user.click(cashToggle);
+    expect(cashToggle).not.toBeChecked();
+
+    expect(
+      saveBtn,
+      'with no primary location the rail toggle cannot be saved at all — the ' +
+        'baseline stayed empty, so `dirty` was pinned false. This is the tablet state.',
+    ).toBeEnabled();
+  });
+
+  it('the header agrees once an edit is made without a primary location', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    mocks.getPrimary.mockResolvedValue(null);
+    await renderScreen();
+
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+    await user.click(await screen.findByTestId('payment-card-toggle-cash'));
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+});
+
+// ── F40 follow-up: a Retry must leave the baseline consistent ─────────────
+//
+// The F40 fix seeds the dirty baseline in the load's `finally` when it is still
+// empty — the only path that reaches it is one where the loaded-path seeding at
+// `:407` never ran. This case exercises the sequence that would expose an
+// inconsistency: the first load FAILS, then Retry SUCCEEDS, and the screen must
+// come back CLEAN with Save disabled.
+//
+// It guards the conditional `length === 0` guard: if that guard re-seeded on the
+// retry while the loaded path also seeded, the baseline could disagree with the
+// drafts the screen is showing, and the screen would report "Unsaved changes" the
+// moment it loaded.
+describe('RestaurantPaymentsScreen — a Retry after a failure loads clean (F40)', () => {
+  it('comes back clean and disables Save once the retry succeeds', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    // First read fails outright.
+    mocks.getMethods.mockRejectedValueOnce(new Error('rail read failed'));
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+
+    // Retry succeeds with the normal fixture (a primary location and rails).
+    mocks.getMethods.mockResolvedValue(RAILS.map((r) => ({ ...r })));
+    await user.click(screen.getByTestId('restaurant-payments-load-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-payments-load-error')).not.toBeInTheDocument();
+    });
+
+    // The loaded values and the baseline must agree, so the screen is clean.
+    expect(
+      screen.getByTestId('restaurant-payments-save-btn'),
+      'the screen reports dirty immediately after a successful load — the baseline ' +
+        'and the rendered drafts disagree, so Save is enabled with nothing to save',
+    ).toBeDisabled();
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+
+    // And a real edit afterwards must still be dirty — the fix must not have
+    // traded a stuck-clean screen for a stuck-dirty one.
+    await user.click(await screen.findByTestId('payment-card-toggle-card'));
+    expect(screen.getByTestId('restaurant-payments-save-btn')).toBeEnabled();
+  });
+});

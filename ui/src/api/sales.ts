@@ -118,9 +118,27 @@ export interface SetCartDiscountArgs {
   userId: string;
 }
 
+interface RawStartSale {
+  cartId?: CartId;
+  cart_id?: CartId;
+  deductionLocationId?: string;
+  deduction_location_id?: string;
+}
+
 /** ADR #7: Start a new sale in the store resolved from a session token. */
-export const startSaleScoped = (sessionToken: string, args: StartSaleArgs): Promise<StartSaleResult> =>
-  loggedInvoke<StartSaleResult>('start_sale_scoped', { sessionToken, args });
+export const startSaleScoped = async (
+  sessionToken: string,
+  args: StartSaleArgs,
+): Promise<StartSaleResult> => {
+  const raw = await loggedInvoke<RawStartSale>('start_sale_scoped', { sessionToken, args });
+  const cartId = (raw.cartId ?? raw.cart_id ?? '') as CartId;
+  const locId = raw.deductionLocationId ?? raw.deduction_location_id;
+  const result: StartSaleResult = { cartId };
+  if (locId) {
+    result.deductionLocationId = locId;
+  }
+  return result;
+};
 
 /** ADR-19: Info about the deduction location locked on a cart. */
 export interface DeductionLocationInfo {
@@ -205,8 +223,31 @@ export interface CompleteSaleScopedArgs {
   documentKind?: 'receipt' | 'invoice';
 }
 
-export const completeSaleScoped = (sessionToken: string, args: CompleteSaleScopedArgs): Promise<CompleteSaleResult> =>
-  loggedInvoke<CompleteSaleResult>('complete_sale_scoped', { sessionToken, args });
+interface RawCompleteSale {
+  saleId?: string;
+  sale_id?: string;
+  total?: Money | null;
+  lineCount?: number;
+  line_count?: number;
+  receiptNumber?: string | null;
+  receipt_number?: string | null;
+  statutoryNumber?: string | null;
+  statutory_number?: string | null;
+}
+
+export const completeSaleScoped = async (
+  sessionToken: string,
+  args: CompleteSaleScopedArgs,
+): Promise<CompleteSaleResult> => {
+  const raw = await loggedInvoke<RawCompleteSale>('complete_sale_scoped', { sessionToken, args });
+  return {
+    saleId: raw.saleId ?? raw.sale_id ?? '',
+    total: raw.total ?? null,
+    lineCount: raw.lineCount ?? raw.line_count ?? 0,
+    receiptNumber: raw.receiptNumber ?? raw.receipt_number ?? null,
+    statutoryNumber: raw.statutoryNumber ?? raw.statutory_number ?? null,
+  };
+};
 
 /** PROMO-3: one promotion's discount in the checkout preview. */
 export interface PromotionDiscountPreview {
@@ -535,9 +576,41 @@ export interface SaleListResponse {
   salesHistoryCapped: boolean;
 }
 
+interface RawSaleListItem extends SaleListItem {
+  line_count?: number;
+  payment_method?: string | null;
+  user_id?: string | null;
+  created_at?: string;
+  display_code?: string | null;
+  faktur_pajak?: string | null;
+}
+
+const normalizeSaleListResponse = (res: SaleListResponse): SaleListResponse => {
+  if (res && Array.isArray(res.sales)) {
+    return {
+      ...res,
+      sales: res.sales.map((item: SaleListItem) => {
+        const s = item as RawSaleListItem;
+        return {
+          ...s,
+          lineCount: s.lineCount ?? s.line_count ?? 0,
+          paymentMethod: s.paymentMethod ?? s.payment_method ?? null,
+          userId: s.userId ?? s.user_id ?? null,
+          createdAt: s.createdAt ?? s.created_at ?? '',
+          displayCode: s.displayCode ?? s.display_code ?? null,
+          fakturPajak: s.fakturPajak ?? s.faktur_pajak ?? null,
+        };
+      }),
+    };
+  }
+  return res;
+};
+
 /** List all completed sales. */
-export const listSales = (): Promise<SaleListResponse> =>
-  loggedInvoke<SaleListResponse>('list_sales');
+export const listSales = async (): Promise<SaleListResponse> => {
+  const res = await loggedInvoke<SaleListResponse>('list_sales');
+  return normalizeSaleListResponse(res);
+};
 
 /**
  * ADR #7: List sales scoped to the store resolved from a session token.
@@ -546,12 +619,14 @@ export const listSales = (): Promise<SaleListResponse> =>
  * optional and additive — omitted, the whole tier-capped list comes back
  * exactly as before, which is what every existing caller relies on.
  */
-export const listSalesScoped = (
+export const listSalesScoped = async (
   sessionToken: string,
   limit?: number,
   offset?: number,
-): Promise<SaleListResponse> =>
-  loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken, limit, offset });
+): Promise<SaleListResponse> => {
+  const res = await loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken, limit, offset });
+  return normalizeSaleListResponse(res);
+};
 
 /** Fetch a single sale by its identifier. */
 export const getSale = (id: string): Promise<SaleDetail | null> =>
@@ -606,6 +681,24 @@ export const voidSaleScoped = (sessionToken: string, saleId: string, reason: str
 
 // ── Hold Order ────────────────────────────────────────────────────
 
+/**
+ * The bill type a parked cart carries.
+ *
+ * `hold` is the serde default (`crates/kasirmu-bridge/src/pos/hold_orders.rs:75`),
+ * and `open_bill` is `BILL_TYPE_OPEN_BILL` (`:25`) — the value the bridge compares
+ * with `==` to decide whether the workspace may park an open bill
+ * (`apps/mobile-tauri/src/commands/pos.rs:897`).
+ *
+ * Typed as a union rather than `string` because NEITHER end checks it: the
+ * `held_carts.bill_type` column is `TEXT NOT NULL DEFAULT 'hold'` with no CHECK
+ * constraint (`migrations/20260813_init.sql:166`), and the comparison above is a
+ * plain string `==`. A typo therefore compiled clean, stored clean, and quietly
+ * stopped matching — the `open_bill` path would fall through to a plain hold with
+ * no error anywhere. Two UI sites write it: `PaymentModal.tsx:1028` and
+ * `hooks/usePosHeldCarts.ts:188`.
+ */
+export type BillType = 'hold' | 'open_bill' | 'credit' | 'pay_later' | 'other';
+
 /** Arguments for holding (parking) a cart for later retrieval. */
 export interface HoldCartArgs {
   label: string;
@@ -613,7 +706,7 @@ export interface HoldCartArgs {
   item_count: number;
   total_minor: number;
   currency: string;
-  bill_type?: string;
+  bill_type?: BillType;
   customer_name?: string;
   /** ADR-19 §6.3: deduction location UUID locked at cart-start time. */
   deduction_location_id?: string;
@@ -627,7 +720,7 @@ export interface HeldCartRow {
   total_minor: number;
   currency: string;
   created_at: string;
-  bill_type: string;
+  bill_type: BillType;
   customer_name: string | null;
 }
 
@@ -640,7 +733,7 @@ export interface HeldCartFull {
   total_minor: number;
   currency: string;
   created_at: string;
-  bill_type: string;
+  bill_type: BillType;
   customer_name: string | null;
   /** ADR-19 §6.3: deduction location UUID locked at cart-start time. */
   deduction_location_id: string | null;

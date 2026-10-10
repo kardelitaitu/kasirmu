@@ -12,6 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/components/Toast';
 import { WorkspaceKdsSettings } from '@/features/settings/workspace-cards/WorkspaceKdsSettings';
+import { DEFAULT_SETTINGS as KDS_DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 
 const testL10n = {
@@ -97,6 +98,27 @@ function renderCard(overrides: Record<string, unknown> = {}) {
 beforeEach(() => { mocks.fontSmoothing = 'antialiased'; });
 
 describe('WorkspaceKdsSettings', () => {
+  it('takes its unset-key fallbacks from the model the KDS board reads', async () => {
+    // These five defaults were a SECOND hand-written copy of
+    // `kdsSettingsModel.DEFAULT_SETTINGS`. The card falls back to them when a key has
+    // never been written (`:105`, `:109`, `:114`), and the board falls back to its own
+    // copy for the SAME case — so changing one without the other would make Settings
+    // display a density the board does not use. Pinned against the model, not against
+    // the literals, so a model change flows through instead of failing here.
+    renderCard();
+
+    await waitFor(() => expect(screen.getByTestId('kds-density')).toBeInTheDocument());
+    expect((screen.getByTestId('kds-density') as HTMLSelectElement).value).toBe(
+      String(KDS_DEFAULT_SETTINGS.density),
+    );
+    expect((document.getElementById('kds-auto-ack') as HTMLInputElement).checked).toBe(
+      KDS_DEFAULT_SETTINGS.autoAcknowledge,
+    );
+    expect((document.getElementById('kds-sound') as HTMLInputElement).checked).toBe(
+      KDS_DEFAULT_SETTINGS.soundEnabled,
+    );
+  });
+
   it('renders SLA Escalation heading', () => {
     renderCard();
     expect(screen.getByText('SLA Escalation')).toBeInTheDocument();
@@ -246,6 +268,30 @@ describe('WorkspaceKdsSettings', () => {
 
     // The user's auto-ack toggle must NOT have been reverted by the load.
     expect(toggle.checked).toBe(true);
+  });
+
+  it('keeps Save disabled after a FAILED settings read, even once the user edits (F4)', async () => {
+    // The discriminating property is the EDIT: on the buggy path the catch seeded
+    // originalsRef from DEFAULT_KDS, so a toggle made afterwards sets dirty=true
+    // and Save ENABLES over values the card never read. Asserting only "disabled"
+    // before any edit passes on both the bug and the fix, which is what the first
+    // version of this test did.
+    vi.mocked(getSettingScoped).mockRejectedValue(new Error('ipc down'));
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+    });
+
+    // Now edit. On the bug this is what re-enables Save.
+    fireEvent.click(document.getElementById('kds-auto-ack') as HTMLInputElement);
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    // Retry must exist: without it `loadFailed` is a one-way latch and the card
+    // could never save again this session.
+    expect(screen.getByTestId('kds-settings-load-retry-btn')).toBeInTheDocument();
   });
 
   it('hides Save button in inspector-drawer variant', () => {

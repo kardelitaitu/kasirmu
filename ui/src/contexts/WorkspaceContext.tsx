@@ -470,8 +470,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   // A rejected create_session has to reach the operator, not just the console.
   // The toast is the immediate surface; `sessionError` is the durable one, read
-  // by the desktop shell's `bootBadges` element. The tablet shell has no
-  // bootBadges slot, so it renders neither — and stays silent after the toast.
+  // by the shell's `bootBadges` element.
+  //
+  // CORRECTED 2026-10-09: this used to end "The tablet shell has no bootBadges
+  // slot, so it renders neither — and stays silent after the toast." That was
+  // true when written and stopped being true in `a22003c9b` (2026-09-17), which
+  // gave AppShell the `bootBadges` element — it renders at twelve sites there
+  // (:600, :613, :624, :647, :684, :712, :727, :753, :771, :797, :813, :827),
+  // and `AppShell.tsx:484` passes `onRetry: retrySessionToken`. The
+  // restaurant tablet reaches it through RestaurantMenu.tsx:647, which calls
+  // `retrySessionToken?.()` when `sessionError` is set.
+  //
+  // Measured on the tablet while chasing a missing receipt preview: a sale
+  // logged `WorkspaceContext: failed to create session token` and the operator
+  // DID get the error surface with a working retry. The failure was my own
+  // automation replaying an aged picker ticket — `create_session` verifies the
+  // ticket against the device clock (auth.rs:579-592), so a stale ticket is
+  // refused by design. The stale comment is what made me suspect a silent
+  // failure for several rounds.
   const reportSessionTokenFailure = useCallback((err: unknown) => {
     const message = requiredLocalized(
       l10nRef.current,
@@ -615,14 +631,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const deviceId = await getDeviceId().catch(() => "");
       if (cancelled) return;
 
+      // Read the ticket through the REF, not the `pickerTicket` state this
+      // effect used to depend on. The refresh below WRITES that state, so a
+      // state read here made the effect re-fire over the instance it had just
+      // minted for: the second run issued a second createSession whose result
+      // the first run's cleanup then discarded — an orphaned server-side
+      // session — and the `setSessionToken(null)` it performed in between was
+      // long enough on the tablet to paint the restaurant menu's loading
+      // skeleton (the flash on opening the POS).
+      let ticket = pickerTicketRef.current ?? "";
+      const prevToken = sessionTokenRef.current;
       // ADR #6 re-entry: if a previous session exists (user pressed
-      // Back from KDS), refresh the picker ticket BEFORE destroying
+      // Back from KDS), refresh the picker ticket BEFORE retiring
       // the old session. The ticket has a 5-minute TTL; if the user
       // spent longer than that at the workspace picker, the original
       // ticket from login is stale. The refresh re-mints a fresh
       // ticket using the still-valid session token.
-      let ticket = pickerTicket ?? "";
-      const prevToken = sessionTokenRef.current;
       if (prevToken) {
         try {
           const refreshed = await refreshPickerTicket(prevToken);
@@ -636,14 +660,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       if (cancelled) return;
 
-      // Destroy any previous token before creating a new one.
-      if (prevToken) {
-        destroySession(prevToken).catch((err) =>
-          reportTeardownFailure("token re-mint", err),
-        );
-        setSessionToken(null);
-      }
-
+      // There is deliberately no `setSessionToken(null)` before the mint: the
+      // gap between dropping the old token and holding the new one is a full
+      // IPC round trip on the tablet, and every consumer that reads
+      // `sessionToken` — the restaurant menu's catalog load among them — saw
+      // null across it and unmounted into its loading skeleton. The superseded
+      // token is retired once its replacement is in hand; see the `.then`.
       createSession({
         user_id: session.user_id,
         role_id: session.role_id,
@@ -655,17 +677,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         ...(pendingOrgIdRef.current ? { org_id: pendingOrgIdRef.current } : {}),
       })
         .then((result) => {
-          if (!cancelled) {
-            setSessionToken(result.session_token);
-            setOrgLabel(result.context.orgLabel ?? null);
-            setPendingOrgId(null);
-            setSessionError(null);
+          if (cancelled) return;
+          // Retire the superseded token only now that its replacement is
+          // held, so no render observes sessionToken === null between the
+          // two. The teardown is still fire-and-forget and still not
+          // awaited, so this does not widen the window in which both
+          // sessions are live: before this change the destroy was issued and
+          // the mint started in the same tick anyway.
+          if (prevToken) {
+            destroySession(prevToken).catch((err) =>
+              reportTeardownFailure("token re-mint", err),
+            );
           }
+          setSessionToken(result.session_token);
+          setOrgLabel(result.context.orgLabel ?? null);
+          setPendingOrgId(null);
+          setSessionError(null);
         })
         .catch((err) => {
-          if (!cancelled) {
-            reportSessionTokenFailure(err);
+          if (cancelled) return;
+          // The mint failed, so the superseded token is still the one the
+          // server holds — and it is scoped to the PREVIOUS workspace, so it
+          // must not survive into a UI that is now showing this one. This is
+          // the one path that still clears the token before reporting.
+          if (prevToken) {
+            destroySession(prevToken).catch((e) =>
+              reportTeardownFailure("token re-mint", e),
+            );
+            setSessionToken(null);
           }
+          reportSessionTokenFailure(err);
         });
     })();
 
@@ -675,7 +716,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // tokenAttemptNonce is the retry lever: bumping it re-runs this effect over
   // the same instance, which is exactly what a retry must do (re-resolve the
   // device id, refresh the picker ticket, destroy the stale token, re-mint).
-  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn, tokenAttemptNonce, reportSessionTokenFailure]);
+  // `pickerTicket` is deliberately NOT a dep: the ticket is read through
+  // `pickerTicketRef` above, and the body writes that state via
+  // `updatePickerTicketFn` — a dep the body writes is a self-trigger, which
+  // re-minted over the instance it had just minted for.
+  }, [activeInstance, session, availableWorkspaces, updatePickerTicketFn, tokenAttemptNonce, reportSessionTokenFailure]);
 
   // Retry lever for a failed create_session. Bumping the nonce re-fires the
   // effect above; the remembered instance is what makes the replay targeted,

@@ -494,3 +494,31 @@ describe('LicenseSettings — ID', () => {
     expect(buttons.length).toBeGreaterThan(0);
   });
 });
+
+// ── "Invalid Date" on a licence with no expiry (2026-10-09) ─────────────────
+//
+// MEASURED on the tablet: Settings → License & Subscription rendered
+// "Expires: Invalid Date" and "Grace Period Until: Invalid Date", because a
+// Free/local licence carries null dates and `toLocaleDateString` returns the
+// literal string "Invalid Date" for an Invalid Date — it does not throw, so
+// the old try/catch was dead code. Both rows now show an em dash.
+
+import { formatDate } from '@/features/settings/LicenseSettings';
+
+describe('LicenseSettings.formatDate', () => {
+  it('renders an em dash for a licence with no expiry', () => {
+    expect(formatDate(null, 'en-US')).toBe('\u2014');
+    expect(formatDate(undefined, 'en-US')).toBe('\u2014');
+    expect(formatDate('', 'en-US')).toBe('\u2014');
+  });
+
+  it('renders an em dash for an unparsable date', () => {
+    expect(formatDate('not-a-date', 'en-US')).toBe('\u2014');
+  });
+
+  it('renders a real date in the active locale', () => {
+    const out = formatDate('2026-12-24T00:00:00.000Z', 'en-US');
+    expect(out).not.toBe('\u2014');
+    expect(out).toMatch(/2026/);
+  });
+});

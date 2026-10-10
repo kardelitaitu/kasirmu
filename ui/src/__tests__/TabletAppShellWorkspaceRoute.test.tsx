@@ -104,6 +104,8 @@ function sessionManager() {
     pickerTicket: null,
     isManager: true,
     isOwner: false,
+    // Mirrors AuthContext.hasPermission: the grant list decides when present.
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   });
 }
 

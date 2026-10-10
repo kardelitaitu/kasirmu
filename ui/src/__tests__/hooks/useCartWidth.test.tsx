@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type React from 'react';
 import { useCartWidth } from '@/features/sales/posScreenHooks';
+import { CART_WIDTH_MIN, CART_WIDTH_MAX_CAP } from '@/features/sales/utils/cartCalculations';
 
 describe('useCartWidth', () => {
   const mockRef = { current: null as HTMLDivElement | null };
@@ -34,7 +35,12 @@ describe('useCartWidth', () => {
   it('clamps saved value to minimum', () => {
     localStorage.setItem('pos-cart-width', '100');
     const { result } = renderHook(() => useCartWidth(mockRef));
-    expect(result.current.cartWidth).toBe(320);
+    // Asserted against the CONSTANT, never a literal. This read `toBe(320)` and
+    // kept passing after the floor moved to 400, because the hook carried its own
+    // private copy of the bounds: the test and the code agreed with each other
+    // and neither agreed with the shipped value. The number is a measurement
+    // (see the sweep in cartCalculations.ts), so a literal here recreates the trap.
+    expect(result.current.cartWidth).toBe(CART_WIDTH_MIN);
   });
 
   it('clamps saved value to maximum', () => {
@@ -49,8 +55,8 @@ describe('useCartWidth', () => {
     // In test environment, window.innerWidth may be different
     const { result } = renderHook(() => useCartWidth(mockRef));
     // Should be at least minimum
-    expect(result.current.cartWidth).toBeGreaterThanOrEqual(320);
-    expect(result.current.cartWidth).toBeLessThanOrEqual(1200);
+    expect(result.current.cartWidth).toBeGreaterThanOrEqual(CART_WIDTH_MIN);
+    expect(result.current.cartWidth).toBeLessThanOrEqual(CART_WIDTH_MAX_CAP);
   });
 
   it('startResize sets isResizing and updates cursor styles', () => {
@@ -85,8 +91,8 @@ describe('useCartWidth', () => {
 
     // Should have updated and persisted
     expect(localStorage.getItem('pos-cart-width')).toBeTruthy();
-    expect(result.current.cartWidth).toBeGreaterThanOrEqual(320);
-    expect(result.current.cartWidth).toBeLessThanOrEqual(1200);
+    expect(result.current.cartWidth).toBeGreaterThanOrEqual(CART_WIDTH_MIN);
+    expect(result.current.cartWidth).toBeLessThanOrEqual(CART_WIDTH_MAX_CAP);
   });
 
   it('cleans up on mouseup', () => {

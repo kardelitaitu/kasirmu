@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # .githooks/pre-commit — content gates that run before every commit.
-# (Rust formatting is NOT enforced here: it lives in pre-push/CI/check.sh.
-# A commit-time auto-fmt rewrote other agents' in-flight .rs files in the
-# shared working tree — see AGENTS.md Quick Setup for the rationale.)
+# (Rust formatting is NOT AUTO-FIXED here: an auto-fmt rewrote other agents'
+# in-flight .rs files in the shared working tree — see AGENTS.md Quick Setup
+# for the rationale. The eighth step is CHECK-ONLY (`rustfmt --check`, never
+# `-w`): it refuses a commit for drift in the files IT stages and rewrites
+# nothing.)
 set -e
 
 # Locate Python portably. Git Bash on Windows ships `python` (not
@@ -258,5 +260,47 @@ if [ -f scripts/verify-ftl-orphans.py ]; then
             echo "error: FTL orphan lint failed — a key was added with no reference, or the last reference to a key was removed. See message above." >&2
             exit 1
         fi
+    fi
+fi
+
+
+# ── Rust format: staged files only ──────────────────────────────────────────
+# `rustfmt --check` (NEVER `-w`) over the .rs files this commit stages.
+#
+# CHECK-ONLY is the point. What was removed on 2026-09-13 was an AUTO-format
+# step: `cargo fmt` rewrote other agents' in-flight .rs files. This step
+# writes nothing and touches no file it was not asked about; it only refuses
+# the commit.
+#
+# The scope is the STAGED .rs files — the ones this committer owns. The
+# workspace-wide check (`cargo fmt --all -- --check`) is red at HEAD almost
+# every day from other lanes' hunks, so enforcing it at PRE-PUSH failed every
+# Rust-touching push for drift it did not introduce (measured 2026-10-08:
+# 8 hunks / 6 files that day, 10 / 6 on 2026-10-04, different files each
+# time). Catching drift where it is written is what stops it accumulating;
+# the pre-push copy is now advisory and CI is the backstop.
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs' || true)
+if [ -n "$STAGED_RS" ]; then
+    RUSTFMT=""
+    if command -v rustfmt >/dev/null 2>&1; then
+        RUSTFMT="rustfmt"
+    elif [ -x "$HOME/.cargo/bin/rustfmt" ]; then
+        RUSTFMT="$HOME/.cargo/bin/rustfmt"
+    elif [ -x "$HOME/.cargo/bin/rustfmt.exe" ]; then
+        RUSTFMT="$HOME/.cargo/bin/rustfmt.exe"
+    fi
+    if [ -z "$RUSTFMT" ]; then
+        echo "error: rustfmt not found — 'rustup component add rustfmt', or add ~/.cargo/bin to PATH. Aborting commit." >&2
+        exit 1
+    fi
+    # Not chunked: a commit stages a handful of .rs files, and one invocation
+    # keeps the failure in a single block. (The pre-push copy chunks at 25
+    # because a push can carry the whole branch.)
+    if ! $RUSTFMT --check --edition 2024 $STAGED_RS; then
+        echo "" >&2
+        echo "error: rustfmt --check failed for .rs files staged in this commit." >&2
+        echo "  fix: rustfmt --edition 2024 <the files named above>" >&2
+        echo "  (this step never reformats for you — see the comment above)" >&2
+        exit 1
     fi
 fi

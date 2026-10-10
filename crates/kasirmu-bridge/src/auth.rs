@@ -694,6 +694,44 @@ pub async fn create_session(
                 "Authenticated user no longer exists".into(),
             ));
         }
+
+        // F14a: the same seam, for the starter CATALOG.
+        //
+        // `provision_device` seeds five sample products into the GLOBAL
+        // identity DB, but the restaurant POS reads the STORE DB, and nothing
+        // copied `products` between them. Measured on the tablet 2026-10-09:
+        // global held 5 rows and the store held 0, so a freshly provisioned
+        // restaurant terminal rendered an empty menu it could not fill — with
+        // no error and no Retry, because an empty catalog is indistinguishable
+        // from a legitimately empty one.
+        //
+        // The seeding CANNOT live in `provision_device`: at that moment the
+        // store DB does not exist and its id is not known, because `open_store`
+        // (two lines above) is what creates the file. This is therefore the
+        // earliest point the store DB exists, which is also why the user
+        // replication above lives here.
+        //
+        // Non-fatal on purpose: a catalogue seed is a convenience for a fresh
+        // terminal, and a failure must not cost the operator their session.
+        // `ensure_starter_catalog_in_store` is a no-op unless the store is
+        // completely empty, so a store whose catalog was ever used is never
+        // refilled.
+        match platform_core::database::starter_catalog::ensure_starter_catalog_in_store(
+            &global,
+            &store_guard,
+        ) {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(
+                store_id = %args.store_id,
+                rows = n,
+                "seeded the starter catalog into a fresh store"
+            ),
+            Err(e) => tracing::warn!(
+                store_id = %args.store_id,
+                error = %e,
+                "failed to seed the starter catalog; the store will render an empty menu"
+            ),
+        }
     }
 
     // ADR #5: the tenant subscription gates which workspace types a session

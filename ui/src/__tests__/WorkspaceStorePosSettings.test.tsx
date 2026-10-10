@@ -94,6 +94,7 @@ const mocks = vi.hoisted(() => ({
   // Hoisted save control for the "save while saving" test
   _saveHang: null as (() => void) | null,
   hwError: null as string | null,
+  hasPartialError: false,
 }));
 
 // Stable profile object — prevents useEffect([hw.profile]) from
@@ -121,7 +122,9 @@ vi.mock('@/contexts/SettingsContext', () => ({
     },
     loading: false,
     error: null,
-    hasPartialError: false,
+    // Controllable: the F4 case flips this to prove a partial context load
+    // disables Save instead of seeding the baseline from defaults.
+    hasPartialError: mocks.hasPartialError,
     refetch: vi.fn(),
     lastChangedKeys: [],
     markSettingsUpdated: vi.fn(),
@@ -224,6 +227,7 @@ beforeEach(() => {
   });
   mocks._saveHang = null;
   mocks.hwError = null;
+  mocks.hasPartialError = false;
 });
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -435,6 +439,29 @@ describe('WorkspaceStorePosSettings', () => {
   });
 
   // ── Error display ────────────────────────────────────────────
+
+  it('disables Save and reports a partial context load (F4)', () => {
+    // A partial load leaves `settings.receipt` at DEFAULTS, which this card uses
+    // to seed its dirty baseline — so a failed load used to look clean and Save
+    // would write those defaults over the real values.
+    //
+    // The discriminating property is the EDIT: on the buggy path `dirty` is false
+    // so Save is disabled either way, and the banner renders from `hasPartialError`
+    // independently. Asserting only "disabled" before an edit passes on the bug —
+    // which is exactly what the first version of this test did.
+    mocks.hasPartialError = true;
+
+    renderCard();
+
+    expect(screen.getByTestId('resto-storepos-partial-error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+
+    // Now edit the footer. On the bug this sets dirty=true and re-enables Save.
+    const footer = document.getElementById('pos-footer') as HTMLInputElement | null;
+    if (footer) fireEvent.change(footer, { target: { value: 'Changed' } });
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
 
   it('displays error message when hw.error is set', () => {
     mocks.hwError = 'Printer connection failed';

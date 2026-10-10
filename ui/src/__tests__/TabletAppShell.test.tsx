@@ -188,6 +188,8 @@ const mockAuthSession: Mock<() => AuthContextValue> = vi.fn(() => ({
   pickerTicket: null,
   isManager: true,
   isOwner: true,
+  // Mirrors AuthContext.hasPermission: the grant list decides when present.
+  hasPermission: (_perm: string, fallback: boolean) => fallback,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -247,6 +249,8 @@ function mockOwnerSession() {
   pickerTicket: null,
     isManager: true,
     isOwner: true,
+    // Mirrors AuthContext.hasPermission: the grant list decides when present.
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   });
 }
 
@@ -268,6 +272,8 @@ function mockCashierSession() {
   pickerTicket: null,
     isManager: false,
     isOwner: false,
+    // Mirrors AuthContext.hasPermission: the grant list decides when present.
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   });
 }
 
@@ -283,6 +289,8 @@ function mockNoSession() {
   pickerTicket: null,
     isManager: false,
     isOwner: false,
+    // Mirrors AuthContext.hasPermission: the grant list decides when present.
+    hasPermission: (_perm: string, fallback: boolean) => fallback,
   });
 }
 

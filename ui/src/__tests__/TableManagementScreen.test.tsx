@@ -7,13 +7,23 @@ import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import type { Table } from '@/api/tables';
+import type * as SalesApi from '@/api/sales';
 
-const { mockListTables, mockListSections, mockUpdateTableStatus, mockReleaseTable } = vi.hoisted(() => ({
+const { mockListTables, mockListSections, mockUpdateTableStatus, mockReleaseTable, mockListOpenBills } = vi.hoisted(() => ({
   mockListTables: vi.fn(),
   mockListSections: vi.fn(),
   mockUpdateTableStatus: vi.fn(),
   mockReleaseTable: vi.fn(),
+  mockListOpenBills: vi.fn(),
 }));
+
+vi.mock('@/api/sales', async (importOriginal) => {
+  const actual = await importOriginal<typeof SalesApi>();
+  return {
+    ...actual,
+    listOpenBillsScoped: (_token: string) => mockListOpenBills(),
+  };
+});
 
 vi.mock('@/api/tables', () => ({
   listTables: (section?: string) => mockListTables(section),
@@ -77,8 +87,10 @@ describe('TableManagementScreen', () => {
     mockListSections.mockReset();
     mockUpdateTableStatus.mockReset();
     mockReleaseTable.mockReset();
+    mockListOpenBills.mockReset();
     mockListTables.mockResolvedValue([]);
     mockListSections.mockResolvedValue([]);
+    mockListOpenBills.mockResolvedValue([]);
     mockUpdateTableStatus.mockImplementation((_token: string, id: string, status: string) =>
       Promise.resolve(makeTable({ id, status })),
     );
@@ -469,5 +481,41 @@ describe('TableManagementScreen', () => {
     await userEvent.click(screen.getByTestId('tables-assign-to-order-btn'));
     expect(onSelectTable).toHaveBeenCalledWith('VIP 2');
     await waitFor(() => expect(document.querySelector('.tables-detail')).toBeNull());
+  });
+
+  it('identifies held cart for Table 2 (Bapak Budi) and renders active tab with Resume Tab / Order', async () => {
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 2 (Bapak Budi)',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-09T14:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: 'Bapak Budi',
+      },
+    ]);
+    mockListTables.mockResolvedValue([makeTable({ id: 'tbl-2', name: 'Table 2' })]);
+    const onSelectTable = vi.fn();
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onSelectTable={onSelectTable} />
+      </LocalizationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Table 2')).toBeDefined());
+    // Table button shows item count badge
+    expect(screen.getByText('2 items')).toBeDefined();
+
+    // Click to open detail dialog
+    await userEvent.click(screen.getByText('Table 2').closest('button')!);
+    await waitFor(() => expect(screen.getByText(/Active Tab: Table 2 \(Bapak Budi\)/)).toBeDefined());
+    expect(screen.getByText(/2 items ·/)).toBeDefined();
+    const resumeBtn = screen.getByRole('button', { name: 'Resume Tab / Order' });
+    expect(resumeBtn).toBeDefined();
+
+    await userEvent.click(resumeBtn);
+    expect(onSelectTable).toHaveBeenCalledWith('Table 2');
   });
 });

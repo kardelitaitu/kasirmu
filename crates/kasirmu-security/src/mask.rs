@@ -130,12 +130,16 @@ pub fn is_valid_pan(pan: &str) -> bool {
 pub fn mask_name(name: &str) -> String {
     name.split_whitespace()
         .map(|part| {
-            if part.len() <= 2 {
+            // CHARACTERS, not bytes. A name is text, and measuring it in bytes let a
+            // 4-byte single-character emoji skip this short-part guard and reach the
+            // masking branch, where the byte-based length then produced MORE characters
+            // than the input and repeated its only character at both ends.
+            if part.chars().count() <= 2 {
                 part.to_string()
             } else {
                 let first = part.chars().next().unwrap_or('*');
                 let last = part.chars().last().unwrap_or('*');
-                let masked_len = part.len().saturating_sub(2);
+                let masked_len = part.chars().count().saturating_sub(2);
                 let masked = "*".repeat(masked_len);
                 format!("{first}{masked}{last}")
             }

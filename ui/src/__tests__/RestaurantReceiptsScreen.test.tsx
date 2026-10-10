@@ -169,26 +169,54 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     expect(screen.getByText('Rp 93000')).toBeInTheDocument();
   });
 
-  it('toggles show-thousands-sep and formats prices with thousands separator', async () => {
+  it('PINNED DIVERGENCE: the grouping toggle makes the preview differ from the paper', async () => {
+    // ⚠️ This case pins a KNOWN divergence, it does not bless it.
+    //
+    // The case above states the intent: "The preview mirrors the printed receipt, which
+    // renders the major part verbatim (no thousands grouping)". The printer agrees with
+    // that — `format_money` (kasirmu-hal/src/drivers/receipt.rs:251) delegates to
+    // `foundation::format_minor`, and the printer's own cases assert the ungrouped
+    // string (`receipt_tests.rs`: IDR 4_450_000 -> "4450000" under every separator).
+    //
+    // `ReceiptConfig` (:98-117) has NO grouping field, so this toggle cannot reach the
+    // printer — grouping is a preview-only effect, i.e. a control that makes the preview
+    // LESS faithful to the paper. `currency.thousands_separator` exists
+    // (platform/core/src/settings/keys.rs:71) but no formatter reads it.
+    //
+    // Pinned rather than changed because removing a merchant-visible effect is a product
+    // call (the same open question as the three dead toggles, round 27). What this case
+    // guarantees is that the divergence cannot disappear SILENTLY: changing the toggle's
+    // behaviour fails here and forces the comment above to be revisited.
     const user = userEvent.setup();
     await renderScreen();
 
     expect(screen.getByText('93000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
     expect(screen.getByText('93.000')).toBeInTheDocument();
+    // The paper would print this, whatever the toggle says:
+    expect(screen.queryByText('93000')).toBeNull();
   });
 
-  it('toggles show-decimals and appends fractional units', async () => {
+  it('does NOT append fractional units for IDR, whatever Show Decimals says', async () => {
+    // IDR is an exp-0 currency: the printer's `format_money`
+    // (kasirmu-hal/src/drivers/receipt.rs:251) uses the currency's canonical exponent, so
+    // the paper never prints a fraction for Rupiah. The preview used to append `,00`
+    // here, claiming a precision the printer cannot produce — and `ReceiptConfig`
+    // (:98-117) has no `showDecimals` field, so the toggle could not reach it either way.
+    //
+    // This case previously asserted `93000,00`. It now asserts the printer-agreeing
+    // truth: for IDR the decimals toggle is inert, and only grouping changes.
     const user = userEvent.setup();
     await renderScreen();
 
     expect(screen.getByText('93000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Decimals/i));
-    expect(screen.getByText('93000,00')).toBeInTheDocument();
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.queryByText('93000,00')).toBeNull();
 
-    // Enabling both thousands separator and decimals
+    // Grouping still applies (a separate, recorded preview/print divergence).
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
-    expect(screen.getByText('93.000,00')).toBeInTheDocument();
+    expect(screen.getByText('93.000')).toBeInTheDocument();
   });
 
   it('adjusts the tax rate input (clamped) and reflects it in the preview', async () => {
@@ -239,6 +267,26 @@ describe('RestaurantReceiptsScreen — logo', () => {
 
     await user.click(screen.getByRole('button', { name: /Remove Logo/i }));
     expect(logoInput).not.toHaveValue('Custom uploaded image');
+  });
+
+  it('gives the receipt logo an alt from the bundle, not a literal (F10)', async () => {
+    // The alt was the hardcoded literal 'Business logo' while the bundle key
+    // `restaurant-logo-preview-alt` already existed and was used elsewhere in this
+    // same screen. Asserting the bundle VALUE (not the old literal) is what makes a
+    // regression to a literal fail: the test bundle resolves the key to its own text.
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/l.png');
+
+    const imgs = document.querySelectorAll('.resto-receipt-logo');
+    expect(imgs.length).toBeGreaterThan(0);
+    for (const img of Array.from(imgs)) {
+      expect(img.getAttribute('alt')).not.toBe('Business logo');
+      expect(img.getAttribute('alt')).toBeTruthy();
+    }
   });
 
   it('cycles logo position top -> left -> right', async () => {
@@ -518,6 +566,8 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
       expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
       const saveBtn = screen.getByRole('button', { name: /Save/i });
       expect(saveBtn).toBeDisabled();
+      expect(localStorage.getItem('resto_rcpt_header_title')).toBe('REMOTE RESTO');
+      expect(localStorage.getItem('resto_rcpt_tax_rate')).toBe('12');
     });
   });
 
@@ -688,6 +738,69 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
       const saveBtn = screen.getByRole('button', { name: /Save/i });
       expect(saveBtn).toBeDisabled();
     });
+  });
+
+  it('refuses to look saved when the user-preferences read FAILS (F4)', async () => {
+    // The screen seeds from localStorage/context before the prefs read resolves,
+    // so a rejected read used to leave dirty false and Save enabled over
+    // unconfirmed values.
+    const { getUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(getUserPreferencesScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-receipts-load-error')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('restaurant-receipts-save-btn')).toBeDisabled();
+    expect(screen.queryByText(/All changes saved/i)).toBeNull();
+    expect(screen.getByTestId('restaurant-receipts-retry-btn')).toBeInTheDocument();
+  });
+
+  it('re-reads the preferences when Retry is pressed after a failure', async () => {
+    const { getUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(getUserPreferencesScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-receipts-load-error')).toBeInTheDocument();
+    });
+
+    vi.mocked(getUserPreferencesScoped).mockResolvedValue({});
+    await userEvent.click(screen.getByTestId('restaurant-receipts-retry-btn'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-receipts-load-error')).toBeNull();
+    });
+  });
+
+  it('does not write the localStorage cache when the save is rejected (F5)', async () => {
+    // The cache is what a fresh mount renders from, so writing it before the
+    // writes resolve would show an un-persisted edit as if it had saved.
+    const { setUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(setUserPreferencesScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    localStorage.removeItem('resto_rcpt_header_title');
+    const user = userEvent.setup();
+    await renderScreen();
+
+    // Target the receipt-title field by its own id. Using the FIRST textbox (an
+    // earlier attempt) edited some other control, so the save never carried a
+    // changed value and the case passed for the wrong reason — it survived the
+    // kill-test, which is how that was caught.
+    const input = document.getElementById('resto-header-title') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    await user.clear(input);
+    await user.type(input, 'ChangedTitle');
+
+    const saveBtn = screen.getByTestId('restaurant-receipts-save-btn');
+    await waitFor(() => expect(saveBtn).not.toBeDisabled());
+    await user.click(saveBtn);
+
+    await waitFor(() => expect(setUserPreferencesScoped).toHaveBeenCalled());
+    // The DB write failed, so the cache must not have been advanced. Asserting on
+    // the exact typed value is what makes this discriminating.
+    expect(localStorage.getItem('resto_rcpt_header_title')).not.toBe('ChangedTitle');
   });
 
   it('normalizes pasted SVG snippets to data URLs in logo text input', async () => {

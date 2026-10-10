@@ -871,6 +871,50 @@ async fn owner_can_hold_cart() {
     assert!(result.is_ok(), "owner should hold a cart");
 }
 
+#[test]
+fn hold_cart_args_deserializes_from_both_camel_and_snake_case() {
+    let snake_json = r#"{
+        "label": "T1",
+        "cart_data": "{}",
+        "item_count": 3,
+        "total_minor": 45000,
+        "currency": "IDR",
+        "bill_type": "open_bill",
+        "customer_name": "John",
+        "deduction_location_id": "loc-1"
+    }"#;
+    let snake: HoldCartArgs =
+        serde_json::from_str(snake_json).expect("snake_case should deserialize");
+    assert_eq!(snake.label, "T1");
+    assert_eq!(snake.cart_data, "{}");
+    assert_eq!(snake.item_count, 3);
+    assert_eq!(snake.total_minor, 45000);
+    assert_eq!(snake.currency, "IDR");
+    assert_eq!(snake.bill_type, "open_bill");
+    assert_eq!(snake.customer_name.as_deref(), Some("John"));
+    assert_eq!(snake.deduction_location_id.as_deref(), Some("loc-1"));
+
+    let camel_json = r#"{
+        "label": "T2",
+        "cartData": "{}",
+        "itemCount": 2,
+        "totalMinor": 30000,
+        "currency": "IDR",
+        "billType": "hold",
+        "customerName": null,
+        "deductionLocationId": null
+    }"#;
+    let camel: HoldCartArgs =
+        serde_json::from_str(camel_json).expect("camelCase should deserialize");
+    assert_eq!(camel.label, "T2");
+    assert_eq!(camel.cart_data, "{}");
+    assert_eq!(camel.item_count, 2);
+    assert_eq!(camel.total_minor, 30000);
+    assert_eq!(camel.bill_type, "hold");
+    assert_eq!(camel.customer_name, None);
+    assert_eq!(camel.deduction_location_id, None);
+}
+
 #[tokio::test]
 async fn owner_can_list_held_carts() {
     let conn = crate::testing::temp_conn();

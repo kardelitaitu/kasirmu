@@ -94,6 +94,45 @@ export function applyScopedAliases(): void {
   }
 }
 
+/**
+ * Failure injection for the dev-mock — browser/E2E only.
+ *
+ * Some states the UI must survive cannot be reached through the mock's DATA:
+ * `shiftUnavailable` (usePosShifts.ts:44-55) is set when
+ * `get_active_shift_scoped` REJECTS, and the mock answers that command from a
+ * hardcoded object (`handlers/shifts.ts:124`), so no seed and no fixture can
+ * make it fail. Without a way to force a rejection, the guard that keeps the
+ * till selling while the shift service is down is unreachable from a browser
+ * test — it can only ever be covered by a unit test, which is exactly the
+ * coverage gap this hook exists to close.
+ *
+ * Usage from a Playwright spec, before navigating:
+ *
+ *   await page.addInitScript(() => {
+ *     window.__MOCK_FAIL = ['get_active_shift_scoped'];
+ *   });
+ *
+ * The list is re-read on every `invoke`, so a spec may set or clear it at
+ * runtime too. It is deliberately a plain array of command NAMES: every caller
+ * that cares about a rejection discards the message (usePosShifts.ts:167-168
+ * catches and ignores it), so a richer shape would be surface nothing asserts.
+ *
+ * Dev-only by construction, not by a runtime check: this module is aliased in
+ * place of `@tauri-apps/api/core` only under `command === 'serve'`
+ * (vite.config.ts:35-49), so a packaged build never contains it.
+ */
+export const MOCK_FAIL_KEY = '__MOCK_FAIL';
+
+/** The error an injected failure throws, or null when `cmd` is not listed. */
+function injectedFailure(cmd: string): Error | null {
+  if (typeof window === 'undefined') return null;
+  const list = (window as unknown as { [MOCK_FAIL_KEY]?: unknown })[MOCK_FAIL_KEY];
+  if (!Array.isArray(list) || !list.includes(cmd)) return null;
+  return new Error(
+    `[TAURI MOCK] injected failure for '${cmd}' (window.${MOCK_FAIL_KEY})`,
+  );
+}
+
 /** Mock Tauri invoke — delegates to real IPC in a webview, else mock data. */
 export async function invoke<T>(
   cmd: string,
@@ -109,6 +148,14 @@ export async function invoke<T>(
   }
 
   console.log('[TAURI MOCK] invoke:', cmd, args);
+
+  // Checked BEFORE the handler so an injected failure beats the mock's data,
+  // and before the simulated latency so a failing command stays fast.
+  const injected = injectedFailure(cmd);
+  if (injected) {
+    console.warn('[TAURI MOCK] injected failure:', cmd);
+    throw injected;
+  }
 
   // Small delay to simulate async IPC
   await new Promise((r) => setTimeout(r, 50));

@@ -74,6 +74,83 @@ pub enum DecimalSeparator {
     None,
 }
 
+/// Digit-grouping style for the integer part of an amount.
+///
+/// D6: the renderer had **no grouping at all**, so an Indonesian receipt printed
+/// `Rp15000` while the on-screen preview — which groups through
+/// `Intl.NumberFormat('id-ID')` — showed `Rp 15.000`. In the primary market that
+/// is the receipt handed to every customer, and the grouping is the whole reason
+/// separators exist: `Rp15000` is hard to read at a glance.
+///
+/// `None` is the DEFAULT so that introducing this cannot silently restyle the
+/// receipts of every store that never asked for grouping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThousandSeparator {
+    /// No grouping: `1500000` — the pre-existing behaviour.
+    None,
+    /// Period between groups: `1.500.000` (Indonesian).
+    Dot,
+    /// Comma between groups: `1,500,000` (English).
+    Comma,
+    /// Space between groups: `1 500 000` (SI / French).
+    Space,
+}
+
+impl ThousandSeparator {
+    /// Parse the stored `currency.thousands_separator` vocabulary.
+    ///
+    /// The setting's own values are `"comma"` | `"dot"` | `"space"` | `"none"`
+    /// (`platform/core/src/settings/typed.rs:656`). Anything unrecognised is
+    /// treated as `None` rather than guessed at, so a hand-edited value can only
+    /// ever lose grouping — never invent it.
+    #[must_use]
+    pub fn from_setting(value: &str) -> Self {
+        match value {
+            "dot" => Self::Dot,
+            "comma" => Self::Comma,
+            "space" => Self::Space,
+            _ => Self::None,
+        }
+    }
+
+    /// The character inserted between groups, or `None` for no grouping.
+    fn separator(self) -> Option<char> {
+        match self {
+            Self::None => None,
+            Self::Dot => Some('.'),
+            Self::Comma => Some(','),
+            Self::Space => Some(' '),
+        }
+    }
+}
+
+/// Group the integer part of `digits` in threes from the right.
+///
+/// `digits` is the MAJOR part only — the caller splits at the decimal point
+/// first, so the fraction is never touched. A part of three digits or fewer comes
+/// back unchanged, which is what keeps `800` printing as `800` and not `0.800`.
+fn group_thousands(digits: &str, separator: char) -> String {
+    let len = digits.len();
+    if len <= 3 {
+        return digits.to_owned();
+    }
+    // Reserve for the separators so the final allocation happens once.
+    let groups = len.div_ceil(3);
+    let mut out = String::with_capacity(len + groups.saturating_sub(1));
+    let first = len % 3;
+    // A length that is an exact multiple of three has no short leading group:
+    // 123456 -> "123,456", not ",123456".
+    let head = if first == 0 { 3 } else { first };
+    out.push_str(&digits[..head]);
+    let mut i = head;
+    while i < len {
+        out.push(separator);
+        out.push_str(&digits[i..i + 3]);
+        i += 3;
+    }
+    out
+}
+
 impl DecimalSeparator {
     /// Which exponent to use when formatting. `None` means truncate
     /// fractional digits entirely.
@@ -110,6 +187,10 @@ pub struct ReceiptConfig {
     pub show_table_number: bool,
     /// Whether to print a barcode (receipt number) at the bottom.
     pub barcode_enabled: bool,
+    /// Digit grouping for the integer part of every amount. Defaults to
+    /// `ThousandSeparator::None` — the ungrouped behaviour every receipt had
+    /// before D6 was closed, so no store is restyled by this field's arrival.
+    pub grouping: ThousandSeparator,
     /// Optional payment link template. If set, a QR code is printed
     /// below the barcode. Use `{receipt}` and `{amount}` as placeholders.
     /// Example: `"https://pay.example.com/{receipt}"`
@@ -126,6 +207,7 @@ impl Default for ReceiptConfig {
             footer: None,
             show_table_number: false,
             barcode_enabled: false,
+            grouping: ThousandSeparator::None,
             payment_link_template: None,
         }
     }
@@ -264,6 +346,15 @@ fn format_money(m: &Money, config: &ReceiptConfig) -> String {
         currency_symbol(&m.currency)
     } else {
         ""
+    };
+
+    // D6: group the MAJOR part before the decimal is attached, so the fraction can
+    // never be split by a separator. Ungrouped (`None`) is the default and
+    // returns `major` untouched, which is why this cannot restyle an existing
+    // store's receipts.
+    let major = match config.grouping.separator() {
+        Some(sep) => group_thousands(major, sep),
+        None => major.to_owned(),
     };
 
     match (config.decimal_separator, frac) {

@@ -394,7 +394,11 @@ const CSS_FILES = [
   'components/GatewayStatusBadge.css',
   'components/MachineIdStatus.css',
   'components/ConnectionStatus.css',
-  'components/UpdateBanner.css',
+  // 'components/UpdateBanner.css' left this list with the dead twin (2026-10-09).
+  // `components/UpdateBanner.tsx` was reachable from NOTHING: three greps confirmed
+  // it was not exported from `components/index.ts`, its only importer was its own
+  // test, and the shipped banner is `app/UpdateBanner.tsx` (AppLayout.tsx:5). Its
+  // retirement is the slice docs/records/journal/JOURNAL-part-8.md:341-345 scoped.
   'theme/components.css',
 ];
 

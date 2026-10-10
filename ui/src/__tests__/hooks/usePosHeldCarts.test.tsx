@@ -41,10 +41,24 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
   const addToast = vi.fn();
   const noop = vi.fn();
 
+  /**
+   * A stub l10n whose `getString` ECHOES the id.
+   *
+   * The shift refusal is a toast that used to be a hardcoded English literal
+   * while `retail-toast-open-shift-first` already existed in both bundles. This
+   * stub makes the KEY observable in the toast message, so the case below can
+   * assert that the localized path is taken — a real bundle would render English
+   * in en and pass whether or not the literal had been removed.
+   */
+  const l10nRef = {
+    current: { getString: (id: string) => `«${id}»` },
+  } as unknown as UsePosHeldCartsParams['l10nRef'];
+
   function params(overrides: Partial<UsePosHeldCartsParams> = {}): UsePosHeldCartsParams {
     return {
       sessionToken: 'tok',
       addToast: addToast as unknown as UsePosHeldCartsParams['addToast'],
+      l10nRef,
       activeShift: null,
       lines: [],
       subtotal: null,
@@ -220,7 +234,24 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     const { getHeldCartScoped } = await import('@/api/sales');
     const setLines = vi.fn();
     const setTableNumber = vi.fn();
+    // ⚠️ This spy exists to assert a NON-call. `handleResumeOpenBill` strips the
+    // table prefix from `customer_name` and refuses the result when it still reads
+    // `Table …` (`usePosHeldCarts.ts:259-260`), so a bill whose customer field holds
+    // a table name must NOT populate the cart's customer. Removing that guard left
+    // this suite GREEN until 2026-10-09 — the input was set up and the outcome never
+    // checked, which is coverage that looks like coverage and is not.
+    const setCustomerName = vi.fn();
 
+    // ⚠️ The customer field is `'Table 5 (Table 7)'`, NOT a plain table name, and
+    // the difference is the whole point. `handleResumeOpenBill` strips a leading
+    // `Table <word>` from `customer_name` (`usePosHeldCarts.ts:259`) and then
+    // refuses a result that STILL reads `Table …` (`:260`).
+    //
+    // For a plain `'Table T4'` the regex alone leaves `''`, so `if (cust)` already
+    // rejects it and `:260` is unreachable — a test built on that input passes with
+    // the guard deleted. For `'Table 5 (Table 7)'` the regex leaves `'Table 7'`, and
+    // ONLY the `startsWith` guard stops a table name becoming the customer. Both
+    // probes were run against the real code; this is the one that discriminates.
     vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
       id: 'held-1',
       label: 'Table T4',
@@ -229,7 +260,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       currency: 'IDR',
       created_at: '2026-10-01T00:00:00Z',
       bill_type: 'open_bill',
-      customer_name: 'Table T4',
+      customer_name: 'Table 5 (Table 7)',
       deduction_location_id: null,
       cart_data: JSON.stringify({
         lines: [
@@ -259,6 +290,7 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
         params({
           setLines,
           setTableNumber,
+          setCustomerName,
         }),
       ),
     );
@@ -268,6 +300,12 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     });
 
     expect(setTableNumber).toHaveBeenCalledWith('T4');
+    // The discriminating assertion: a TABLE NAME must not become the customer.
+    expect(
+      setCustomerName,
+      'a customer-name field holding a table name was accepted as the customer — the ' +
+        'guard at usePosHeldCarts.ts:260 is gone or no longer effective',
+    ).not.toHaveBeenCalled();
     expect(setLines).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
@@ -413,5 +451,90 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     );
     expect(result.current.activeOpenBillId).toBeNull();
   });
-});
 
+  it('does NOT report a tab as updated when deleting the previous record FAILS', async () => {
+    // `deleteHeldCartScoped(...).catch(() => {})` swallowed the failure, then the
+    // code went on to holdCartScoped() and toast 'Tab for X updated'. Two problems,
+    // both money-adjacent on the restaurant POS:
+    //   1. the DELETE is what prevents a duplicate open bill for the same table,
+    //      so swallowing it produces exactly the duplicate the comment claims to
+    //      prevent;
+    //   2. the toast tells the cashier the tab was UPDATED when a second tab was
+    //      created.
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped, deleteHeldCartScoped, getHeldCartScoped } = await import('@/api/sales');
+    vi.mocked(deleteHeldCartScoped).mockRejectedValueOnce(new Error('database is locked'));
+
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'existing-bill-1',
+      label: 'Table 5',
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-01T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: 'Table 5',
+      deduction_location_id: null,
+      cart_data: JSON.stringify({ lines: [], tableNumber: '5', customerName: 'Budi' }),
+    });
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '5',
+          customerName: 'Budi',
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 2,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 50000, currency: 'IDR' },
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('existing-bill-1');
+    });
+    addToast.mockClear();
+
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+
+    // It must NOT create a duplicate record over a tab it failed to remove.
+    expect(holdCartScoped).not.toHaveBeenCalled();
+    // And it must not claim success.
+    expect(addToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/updated/i), type: 'success' }),
+    );
+    expect(addToast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'error' }),
+    );
+  });
+
+  it('refuses to open a bill without a shift, using the localised message', async () => {
+    // The toast used to be a hardcoded English literal while
+    // `retail-toast-open-shift-first` already existed in BOTH bundles
+    // (`sales.ftl:846`, `sales.id.ftl:778`) and retail already used it — so an
+    // Indonesian operator read English here and Indonesian there.
+    //
+    // The `l10nRef` stub above echoes the ID, so `«retail-toast-open-shift-first»`
+    // appearing in the toast proves the localized path was taken. Asserting the
+    // English text would pass either way, because the en bundle renders exactly
+    // the words the literal had.
+    const { result } = renderHook(() => usePosHeldCarts(params()));
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+    expect(addToast).toHaveBeenCalledWith({
+      message: '«retail-toast-open-shift-first»',
+      type: 'warning',
+    });
+  });
+});

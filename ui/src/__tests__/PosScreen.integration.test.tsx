@@ -26,11 +26,27 @@
 //     when Charge button clicked" (a real click + dialog assertion);
 //     PaymentModal.test.tsx, PaymentModalSaleFlow.test.tsx.
 //
-// KNOWN REMAINING GAP (not faked away by deleting these): nothing asserts
-// PosScreen's own wiring into PriceOverrideModal — i.e. that it renders when
-// `overrideTarget` is set and forwards `lineDescription` / `currentPrice`
-// (PosScreen.tsx:668-672). Opening it needs the manager override path, which
-// this harness does not exercise. Prefer a real test there over a new stub.
+// KNOWN REMAINING GAP — **CLOSED 2026-10-09 (round 82).** This note used to read:
+//
+//   "nothing asserts PosScreen's own wiring into PriceOverrideModal — i.e. that it
+//    renders when `overrideTarget` is set and forwards `lineDescription` /
+//    `currentPrice` (PosScreen.tsx:668-672). Opening it needs the manager override
+//    path, which this harness does not exercise. Prefer a real test there over a
+//    new stub."
+//
+// That advice was followed rather than the gap being re-noted:
+// `PosScreenDeductionLocation.test.tsx` already knew how to open the override —
+// it clicks the per-line Override button — so the case was added THERE, where the
+// harness exists, instead of duplicating a manager-override setup here.
+//
+// It kill-tested as a real gap first: replacing the `lineDescription` argument with
+// a literal left the suite GREEN while the modal rendered the literal in place of
+// the item name and price, so the operator's only confirmation of WHICH line they
+// were overriding would have been wrong. Two cases now fail on that revert — the
+// behavioural one, and a source-level guard that the forwarded value still carries
+// both the item and its price.
+//
+// The line reference in the old note had also drifted (`:668-672` -> `:1386-1392`).
 //
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -1236,7 +1252,9 @@ describe('PosScreen — Open bills (hold/resume)', () => {
   // trigger for the list overlay (setShowOpenBills has one caller: that
   // onClick). So these cases seed a held bill; with none there is no button
   // to click and the list cannot be opened at all.
-  const HELD_BILL = {
+  // Annotated with the API type so `bill_type: 'open_bill'` is checked against
+  // the `BillType` union rather than widening to `string`.
+  const HELD_BILL: salesApi.HeldCartRow = {
     id: 'held-1',
     label: 'Meja 4',
     item_count: 1,

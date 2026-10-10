@@ -542,6 +542,7 @@ impl Store<'_> {
         if !payment_splits.is_empty() {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
+                let method_norm = split.method.to_ascii_lowercase();
                 // COR-7: persist the split's idempotency key exactly as the
                 // main checkout path does (sales_checkout.rs) — without it,
                 // a shortfall-retry that commits but loses its response is
@@ -556,7 +557,7 @@ impl Store<'_> {
                     rusqlite::params![
                         payment_id,
                         sale.id,
-                        split.method,
+                        method_norm,
                         split.amount_minor,
                         cur_str,
                         split.gateway_reference,

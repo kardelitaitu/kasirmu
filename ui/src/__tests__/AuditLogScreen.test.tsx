@@ -55,6 +55,9 @@ vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
   };
 });
 
+// Mutable so a case can model the AUDITOR preset: a read-only role that is NOT a
+// manager (`isManager` excludes it) but DOES hold `audit:view`.
+const mockAuth = vi.hoisted(() => ({ isManager: true, permissions: undefined as string[] | undefined }));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     session: { user_id: 'user-1', username: 'admin', role_name: 'admin', token: 'tok', role_id: 'r1', display_name: 'Admin' },
@@ -64,8 +67,16 @@ vi.mock('@/contexts/AuthContext', () => ({
     logout: vi.fn(),
     clearError: vi.fn(),
     swapSession: vi.fn(),
-    isManager: true,
+    isManager: mockAuth.isManager,
     isOwner: true,
+    // Mirrors AuthContext.hasPermission: the grant list decides when present
+    // (wildcards included), else the caller's role fallback.
+    hasPermission: (perm: string, fallback: boolean) => {
+      const granted = mockAuth.permissions;
+      if (granted === undefined) return fallback;
+      const domain = perm.includes(':') ? perm.split(':')[0]! : perm;
+      return granted.some((k) => k === perm || k === '*' || k === `${domain}:*`);
+    },
   }),
 }));
 
@@ -762,5 +773,48 @@ describe('AuditLogScreen', () => {
       if (!idRaw.getMessage(id)) missing.push(`${id} (id)`);
     }
     expect(missing).toEqual([]);
+  });
+  // ── The three gates need TWO different permissions ────────────────
+  //
+  //   Mark Reviewed      -> `audit:view`   (kasirmu-bridge/src/audit.rs:376)
+  //   Export CSV         -> `audit:export` (AUD-09)
+  //   Security export    -> `audit:export` (mobile-tauri/src/commands/audit.rs:203-208)
+  //
+  // All three were gated on `isManager`, which excludes the AUDITOR preset — the one
+  // role whose whole purpose is reviewing this log, and the one holding `audit:view`
+  // without `audit:export` (rbac_presets.rs:285-305). So Mark Reviewed was hidden from
+  // its intended user. This is the direction round 48 found on the pengganti button:
+  // not an enabled control that errors, but a working action made unreachable.
+
+  it('lets an AUDITOR mark reviewed but not export', async () => {
+    mockAuth.isManager = false; // the Auditor is NOT a manager
+    mockAuth.permissions = ['audit:view']; // view only
+    // Mark Reviewed renders only when there is something to review.
+    mockGetAuditReviewStatusScoped.mockResolvedValue({ checkpoint: null, unreviewed_count: 5 });
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    await renderScreen();
+
+    // `audit:view` is what mark_audit_reviewed_scoped requires, and the Auditor holds it.
+    await waitFor(() => expect(screen.getByText('Mark Reviewed')).toBeDefined());
+
+    // Both exports need `audit:export`, which the Auditor legitimately lacks — the
+    // backend doc says so outright ("Auditor has no export permission").
+    expect(screen.queryByText('Export CSV')).toBeNull();
+    expect(document.querySelector('.audit-log-security-export')).toBeNull();
+  });
+
+  it('lets a non-manager CUSTOM role export when the grant is explicit', async () => {
+    // The mirror case, and the reason the gate cannot be the role: `CUSTOM` is
+    // "fully flexible — Admin selects every permission manually" (rbac_presets.rs:306-310),
+    // so `audit:export` can be held by someone `isManager` excludes.
+    mockAuth.isManager = false;
+    mockAuth.permissions = ['audit:export'];
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    await renderScreen();
+
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeDefined());
+    expect(document.querySelector('.audit-log-security-export')).not.toBeNull();
+    // ...and NOT Mark Reviewed, whose permission this role does not hold.
+    expect(screen.queryByText('Mark Reviewed')).toBeNull();
   });
 });

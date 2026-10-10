@@ -135,7 +135,10 @@ export function usePosCartActions({
       // are informational, and blocking here would gate the till on a
       // reporting feature the shell does not ship.
       if (!activeShiftRef.current && !shiftUnavailableRef.current) {
-        addToast({ message: 'Open a shift first', type: 'warning' });
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'retail-toast-open-shift-first'),
+          type: 'warning',
+        });
         return;
       }
       // ADR-19 §5.1: reject add_line when cart exists but has no deduction location

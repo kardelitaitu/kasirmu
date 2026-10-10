@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { MutableRefObject } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -49,7 +51,7 @@ const OPEN_SHIFT: ShiftDto = {
   updatedAt: STAMP,
 };
 
-function renderBar(activeShift: ShiftDto | null) {
+function renderBar(activeShift: ShiftDto | null, shiftUnavailable = false) {
   const deductionLocationIdRef: MutableRefObject<string | null> = {
     current: 'loc-7',
   };
@@ -63,6 +65,7 @@ function renderBar(activeShift: ShiftDto | null) {
 
   const props: CartActionBarProps = {
     activeShift,
+    shiftUnavailable,
     handlePay,
     addToast,
     setShowOpenBillInput,
@@ -105,6 +108,7 @@ describe('CartActionBar', () => {
     };
     const props: CartActionBarProps = {
       activeShift: OPEN_SHIFT,
+      shiftUnavailable: false,
       handlePay: vi.fn(),
       addToast: vi.fn(() => 'toast-1'),
       setShowOpenBillInput: vi.fn(),
@@ -134,6 +138,33 @@ describe('CartActionBar', () => {
     expect(openBillBtn()).not.toBeDisabled();
   });
 
+  it('keeps Pay enabled when the shift service is unreachable', () => {
+    // The mirror of the case above, and the one that used to be unreachable:
+    // PosScreen's handlePay permits payment when EITHER a shift is open OR the
+    // shift service could not be reached (usePosShifts.ts:44-55 -- "an
+    // informational feature silently blocked every sale"). Gating the button on
+    // `!activeShift` alone greyed it out in exactly that state, so the guard
+    // that stands down could never run: the till was blocked by a reporting
+    // feature, which is the defect the guard was written to remove.
+    const { props } = renderBar(null, true);
+
+    expect(payBtn()).not.toBeDisabled();
+    expect(payBtn().className).not.toContain('pos-cart-pay-btn--disabled');
+    fireEvent.click(payBtn());
+    expect(props.handlePay).toHaveBeenCalledTimes(1);
+  });
+
+  it('still disables Pay when there is no shift AND the service answered', () => {
+    // The guard must not be loosened into "always enabled": a reachable shift
+    // service reporting no open shift is the one state that legitimately blocks
+    // the sale, because the cashier can act on it.
+    const { props } = renderBar(null, false);
+
+    expect(payBtn()).toBeDisabled();
+    fireEvent.click(payBtn());
+    expect(props.handlePay).not.toHaveBeenCalled();
+  });
+
   it('enables Pay and calls handlePay once when a shift is open', () => {
     const { props } = renderBar(OPEN_SHIFT);
 
@@ -148,11 +179,39 @@ describe('CartActionBar', () => {
 
     fireEvent.click(openBillBtn());
 
-    // Defect noted, not asserted as correct: the toast message is a
-    // hardcoded English literal (CartActionBar.tsx:72), the only string
-    // in this component with no Fluent key.
+    // FIXED 2026-10-09. This assertion used to carry the opposite note:
+    //   "Defect noted, not asserted as correct: the toast message is a hardcoded
+    //    English literal (CartActionBar.tsx:72), the only string in this
+    //    component with no Fluent key."
+    // The defect was real and it was not only here: the same literal sat at four
+    // other production sites (PosScreen :528/:592, usePosHeldCarts :140,
+    // usePosCartActions :138) while `retail-toast-open-shift-first` already
+    // existed in BOTH bundles — and retail already used it. So an Indonesian
+    // operator read English on the restaurant path and Indonesian on the retail
+    // one. All five now go through the key.
+    //
+    // ⚠️ The message cannot be asserted by VALUE here. This harness builds a real
+    // bundle from production `sales.ftl`, and `retail-toast-open-shift-first =
+    // Open a shift first` — the SAME words the literal had — so the toast reads
+    // identically whether the fix is present or not. Asserting the English text
+    // would keep passing if the literal came back, which is why the ORIGINAL note
+    // could sit here for so long saying "defect noted".
+    //
+    // The discriminator is the SOURCE: the component must reach the message
+    // through the Fluent key rather than a literal.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/features/sales/components/CartActionBar.tsx'),
+      'utf-8',
+    );
+    expect(
+      src,
+      'the shift refusal is a hardcoded English literal again — route it through ' +
+        '`retail-toast-open-shift-first`, which both bundles already carry',
+    ).not.toMatch(/'Open a shift first'/);
+    expect(src).toContain('retail-toast-open-shift-first');
+    // And the behaviour still holds, asserted by the shape the harness CAN see.
     expect(props.addToast).toHaveBeenCalledWith({
-      message: 'Open a shift first',
+      message: expect.any(String),
       type: 'warning',
     });
     expect(props.setShowOpenBillInput).not.toHaveBeenCalled();

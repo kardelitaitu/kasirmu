@@ -93,6 +93,235 @@ Recorded because each one is still live in some document a worker might read, an
 
 ---
 
+## 2026-10-08: a duplicated-constant census, and `MAX_TOKEN_HOURS` is duplicated ON PURPOSE. Documented in `9fb24c142`.
+
+**Censused the pattern R190 found, rather than hunting another instance.** Parsing every `pub const NAME: T = V;` in production and grouping by name gave **354 constants, 18 names defined in more than one file**. Most are legitimately per-domain (`MODULE_ID` x4, `DEBT_CEILING` x2 across the two shells' ledgers, `DEFAULT_BAUD` x5 all agreeing at 9600). One stood out as a genuine cross-crate duplicate of a SECURITY bound.
+
+**`MAX_TOKEN_HOURS` is defined twice — `kasirmu-api::auth` (`8_760`) and `kasirmu-local-api` (`8760`)** — the same number spelled differently, in two crates where one already depends on the other. **I nearly reported it as an unguarded duplicate, and two measurements stopped me.**
+
+**Measurement 1 disproved my grep.** I searched for a test referencing `kasirmu_api::auth::MAX_TOKEN_HOURS` from the local-api side, found none, and concluded "no cross-check". **Then mutating the api copy to 24 FAILED `mint_token_roundtrip_and_clamp`** — so the coupling is real and my search had simply looked for the wrong spelling: the test drives `kasirmu_api::auth::validate_token_with_secret` and asserts the minted lifetime equals the local-api constant. R166's lesson, for the fourth time this campaign.
+
+**Measurement 2 showed the duplication is deliberate.** Reading the two clamps side by side: `create_token_full` is documented as *"the single funnel both mint doors pass through"* and applies `.min(MAX_TOKEN_HOURS)` — a CEILING ONLY, and it says why a floor there "would break the legitimate use of this primitive to mint an ALREADY-EXPIRED token". `mint_token` applies `.clamp(1, MAX_TOKEN_HOURS)` — a floor AND a ceiling, because the operator door must refuse a zero-length token. **Neither copy can become the other**, and `mint_token` delegates to the api funnel so the effective bound is the `min` of the two. Both directions move the test.
+
+**So the honest gap was a MISSING NOTE, not a defect**, and that is what I wrote: why the number appears twice, which copy is authoritative, which job each clamp does, and that the coupling is by delegation rather than by a constant reference. **I did not refactor the bound** — collapsing a security constant across two crates is a decision for the lanes that own them, and the behaviour is already correct and fenced.
+
+**Running tally: 37 guards examined, 21 sound, 20 with defects found and fixed.**
+
+## 2026-10-08: three copies of `MAX_BARCODE_LEN`, and one said "chars" where all three measure bytes. Fixed in `9b4a0d7d0`.
+
+**Went to the HAL drivers for a surface with physical consequences, and found a documentation defect rather than a behavioural one — recorded as such.**
+
+**The finding.** `MAX_BARCODE_LEN = 1024` is defined **independently in three driver modules** (`usb_scanner`, `bt_scanner`, `serial_scanner`) with no shared source. Their VALUES agree, but their prose did not: `usb_scanner` said *"1024 **chars**"* while the other two said *"1024 **bytes**"*. **All three bounds are byte lengths** — `bt_scanner` and `serial_scanner` cap a `Vec<u8>` directly, and `usb_scanner` caps a `String` whose `.len()` is documented as a byte length in Rust.
+
+**I measured whether it could bite before judging severity, and it cannot today.** `usb_scanner` builds its string only from `hid_report_to_char`, and I checked every entry of `HID_KEY_TABLE`: **95 quoted characters, 0 non-ASCII**. So chars == bytes on that path, and the wrong word changed no behaviour. **But the doc is what a reader trusts, and a single non-ASCII key added to that table would make the two counts diverge under a comment denying it** — which is the same latent shape as R181's `mask_name`, just caught before it mattered rather than after.
+
+**The guard pins the three docs against EACH OTHER, not against a computed value** (the R163 pattern): a SOURCE assertion that each copy's doc says "bytes" and not "chars", plus that each still defines the constant as 1024 — so a change to one copy's number or unit cannot pass unnoticed. It is a source assertion because the behaviour cannot observe a wrong unit while the inputs happen to be ASCII. **KILL-TESTED: restoring "chars" FAILS it** with a message naming the file and the reason. 366/366 green; clippy Finished.
+
+**Also probed and cleared on the same driver:** the scanner's barcode assembly terminates on \`\\n\`, on a between-keys timeout with buffered data, and at the cap — three separate completion conditions, each returning the buffered code, so a scanner without a terminator is handled rather than hanging; and `decrypt`-style fail-open patterns do not exist here because the driver returns `HalError` rather than a defaulted value.
+
+**Running tally: 36 guards examined, 19 sound, 20 with defects found and fixed.**
+
+## 2026-10-08: the profile-seal read/write split is SOUND in BOTH directions. Three probes, no defect.
+
+**Probed the at-rest PII path in `kasirmu-core/src/db/profile.rs`, which I had not examined, by looking for the two ways it could fail: leaking ciphertext on the read, and erasing it on the write.**
+
+**Probe 1 — the fail-closed read.** `decrypt_sensitive` collapses three column states for display and returns `None` on a decrypt failure. **MEASURED: mutating that `None` into `Some(stored.clone())` — the fail-OPEN direction, returning raw ciphertext — FAILED 4 tests.**
+
+**Probe 2 — the preserve rule on write.** `StoredCipher` is a three-state enum whose own comment states the invariant: *"A read failure is never evidence that a field is empty; the only safe verdict for a present-but-unopenable seal."* **MEASURED: folding `Unreadable` into `Absent` — so a write would null out ciphertext a later key restore could still read — FAILED 4 tests.**
+
+**Both directions of the same hazard are pinned, which is the unusual part.** A reviewer can be satisfied by either half alone: a read that does not leak looks safe, and a write that does not erase looks safe, but only the pair is the contract. The design gets there by *deliberately* keeping the read path and the write path on different types — `decrypt_sensitive` returns `Option<String>` and collapses absent/empty/unreadable for a renderer, while `StoredCipher` keeps all three apart because *"only one of them may be overwritten with a null"* — and the doc says exactly why the distinction cannot be shared.
+
+**Also checked and cleared:** `stored_sensitive_columns`'s `row.unwrap_or_default()` looked like a fail-open default, but it fires only when the `users` row does not exist, where `StoredCipher::Absent` is the correct verdict rather than a fallback; and `user_profile_has_unreadable_seal` is documented as *"a diagnostic, not a gate — it does not itself deny any read"*, so its boolean cannot be mistaken for an authorisation decision. `decrypt_sensitive` also logs the failure at warn rather than returning `None` silently (COR-24), so an undecryptable PII column no longer reads as "this staff member has no national id". 96/96 green; production restored byte-for-byte.
+
+**Running tally: 35 guards examined, 19 sound, 19 with defects found and fixed.**
+
+## 2026-10-08: the crypto crate's H1 invariant is SOUND, and the byte/char sweep came up empty. Nothing changed.
+
+**Two investigations, neither producing a defect, and one of them closes the sweep R186 began.**
+
+**The byte/char sweep finished clean.** Sweeping every remaining `.len()` bound in production and checking each `> N` / `< N` site: the survivors are all correct, and for a structural reason rather than luck. `escpos::barcode`'s `&data[..255]` is BYTES by design (a byte protocol whose length byte counts bytes); `is_safe_sql_identifier` (255) and `is_safe_gcp_project_id` (63) both require ASCII-only charsets, so byte count equals character count for those inputs; `terminal_id` and `tenant` in the file R187 fixed are ASCII-enforced for the same reason. **No site needed a change.** The rule that emerged across R185-R187 holds: a byte bound is correct exactly when the charset is constrained, and wrong when the field is free text.
+
+**The crypto crate: hazard H1 is guarded, and I measured it rather than reading it.** `candidate_keys`'s doc states the invariant as *"the install branch lands in the SAME slice as the `portable_key` arm (hazard H1): a writer that used a derivation no reader tries would brick the install immediately, on its own rows."* **MEASURED: removing the install branch from the READER side FAILED 5 tests** — so the writer/reader agreement is pinned, and a write under a derivation no reader tries cannot ship.
+
+**The other half of H1 is enforced by a SIGNATURE, which is stronger than a check.** The doc warns that a write must never use the previous key ("if the old key could win a write, a rekey that died half way would leave the surviving rows split across two writers"), and `portable_key_from` takes `install`, `master` and `legacy` — **no `previous` parameter exists**, so the wrong behaviour is not merely asserted against, it is unrepresentable. Worth recording as the strongest form of the guard this campaign has found.
+
+**Also checked and cleared:** the twelve `*_DOMAIN` prefixes are all unique (a collision would let one credential family's ciphertext decrypt under another's domain), and `PAYMENT_GATEWAY_AT_REST_DOMAIN`'s different prefix namespace (`kasirmu.` where the other eleven use `oz-pos.`) is harmless — a domain separator only needs to be unique and STABLE, and changing it to match would break decryption of every row already written under it.
+
+**Running tally: 34 guards examined, 17 sound, 19 with defects found and fixed.**
+
+## 2026-10-08: the terminal label — and the test that covered the INPUT but not the UNIT. Fixed in `11fe8c8a1`.
+
+**Completed R186's sweep by looking for the limits that had NOT been converted, and found one with an instructive near-miss in its own test.**
+
+**The target.** `routes/terminals.rs` bounds three fields on registration. **Two of them are correct and one is not, in the same function:**
+- `terminal_id.len() > 64` — **right**, because the charset check beside it forces `[A-Za-z0-9_-]`, so bytes equal characters
+- `tenant.len() > 64` — **right**, same ASCII-only rule
+- `label.len() > 128` — **wrong**: `label` is free text with no charset restriction, stored in an unbounded `TEXT` column and rendered back in the terminal list
+
+So a 128-character accented label (256 bytes) was refused with **"terminal label too long (max 128)"** — a message naming a limit the input did not exceed. **MEASURED: swapping the label guard to `chars().count()` left all 15 tests in the file GREEN.**
+
+**The part worth recording: an existing test covered this INPUT and still missed it.** `register_terminal_rejects_overlong_label` exists and uses `"l".repeat(129)` — where **129 ASCII characters and 129 bytes agree**, so a byte guard and a character guard both reject it and the test passes either way. That is R180's "neighbouring property" shape for the third time this campaign, and it is why the new test asserts the fixture is genuinely multi-byte (`chars() == 128`, `len() == 256`) before using it.
+
+**The new test pins both halves of the distinction**, deliberately: the 128-character label must be ACCEPTED, and the id fields stay byte-bounded — pinning that keeps a future edit from "fixing" them into an inconsistency, since for an ASCII-only charset the two counts are the same number by construction. **KILL-TESTED: reverting the label to `.len()` FAILS it** with the assertion message naming the reason. 16/16 green; clippy Finished.
+
+**Running tally: 33 guards examined, 15 sound, 19 with defects found and fixed.**
+
+## 2026-10-08: the byte/char length-limit defect is a FAMILY — 15 guards across 6 files. Fixed in `d22c23ec6`.
+
+**R185 fixed one instance; this round censused the class and found fifteen more.** Grepping for validation messages that name CHARACTERS and pairing each with the guard above it produced eleven more sites, all byte-based:
+
+| file | guards | fields |
+|---|---|---|
+| `kasirmu-core/db/products_crud.rs` | 3 | sku (50), name (255) x2 |
+| `kasirmu-core/db/suppliers.rs` | 4 | name (255) x2, code (50) x2 |
+| `kasirmu-core/db/customers.rs` | 2 | name (255) x2 |
+| `kasirmu-core/db/products_stock_query.rs` | 2 | sku (50), name (255) |
+| `kasirmu-api/pg/products.rs` | 2 | sku (50), name (255) |
+| `kasirmu-api/pg/users.rs` | 2 | username (100), display_name (255) |
+
+**Converted BOTH halves at every site** — the guard and the number it reports — because the reported count was half the defect: a message claiming "50 characters, got 102" is self-contradicting. 15 guards and 15 message arguments, verified afterwards that a grep for a byte-based `.len()` beside a "must not exceed" message returns nothing.
+
+**The decisive evidence that these are STRAGGLERS, not a deliberate choice:** the same repo already counts characters correctly in `edc_terminals.rs` (name 120, address 255), `payment_gateways.rs` (name 64) and `receipt_formats.rs` (footer/note 500). Two conventions coexisted, and the tables above were the minority.
+
+**MEASURED before touching anything.** Swapping both product guards and both message arguments to `chars().count()` left all **174 tests** in the products module GREEN — the unit was never pinned there either, so the same mutation test that found R185's defect found this one. **Kill-tested after the fix: reverting `products_crud.rs` to bytes FAILS the new test** (`product_sku_and_name_limits_count_characters_not_bytes`, which asserts the multi-byte fixture is genuinely multi-byte, accepts 50 characters AT the limit, and requires the 51-character refusal to report 51 rather than 102). Suites green: products 175, customers 34, suppliers 23, staff 98; clippy Finished on both crates.
+
+**Why the family matters more than the instance.** Each site rejects valid input for any non-ASCII name — Indonesian, accented, or CJK product and customer names are the normal case for this product's market, and each did so while reporting a number that could not be reconciled with its own stated limit. R185's fix was correct but local; leaving fifteen identical sites would have made it a coincidence rather than a rule.
+
+**Running tally: 32 guards examined, 15 sound, 18 with defects found and fixed.**
+
+## 2026-10-08: the staff username/display-name limits counted BYTES while naming CHARACTERS. Fixed in `3555c2d66`.
+
+**R184's method -- mutate what looks cosmetic -- applied to the login path, and it found a user-visible defect with a self-contradicting error message.**
+
+**The target.** `create_user_in_tx` (`crates/kasirmu-core/src/db/staff.rs:526`) normalises a username with `trim().to_lowercase()` and then bounds it. The bound read `if username.len() > 100` and its refusal said, in as many words, **"username must not exceed 100 characters, got {}"** — with `username.len()` again. `str::len()` counts UTF-8 **bytes**, so the check and the number it reported were both byte counts dressed as character counts. `display_name` had the identical shape at 255.
+
+**MEASURED, twice, before touching anything.** First: swapping the check to `chars().count()` left all **96 tests** in `staff_tests.rs` GREEN, so the unit was never pinned. Then I computed the visible consequence rather than asserting one: a **100-character accented username is 200 bytes**, so it was REFUSED with the nonsensical "must not exceed 100 characters, got 200" — the message contradicting itself in the same sentence.
+
+**The fix measures once and reuses the number**, so the check and the report cannot drift apart again: `let username_chars = username.chars().count();` then both the comparison and the `format!` read it. Same for `display_name`.
+
+**Two tests, both sides of the boundary.** `create_user_measures_the_username_in_characters_not_bytes` asserts the multi-byte fixture is genuinely multi-byte (`len() == 200`, `chars() == 100`) before using it, accepts 100 characters AT the limit, and requires the 101-character refusal to report **101** rather than the byte count 202 — a message assertion, not just a variant check, because the reported number was half the defect. `create_user_measures_the_display_name_in_characters_not_bytes` does the same at 255. **KILL-TESTED: reverting both to the original byte-based code FAILS both.** 98/98 green; clippy Finished.
+
+**Why this one was worth the round:** unlike R181's `mask_name`, this function is on a live path — staff creation — and the defect rejected valid input while telling the operator a number that could not be true. The class is the same byte/char mistake, but the blast radius is real users rather than a dormant helper.
+
+**Running tally: 31 guards examined, 15 sound, 17 with defects found and fixed.** This is the second defect of the byte/char family in four rounds, and both were found by mutation rather than reading — including this one, where the misleading part was the message text, which reading alone had already passed over twice.
+
+## 2026-10-08: `decode_stored_key`'s `trim()` was load-bearing and unguarded. Fixed in `279139276`.
+
+**Four probes on `install_key.rs`, one real gap — and the gap was the last one, found by mutating the part that looked cosmetic.**
+
+**The three that held.** `decode_stored_key` (`:150`) has two refusals: non-hex input, and a decoded length that is not 32 bytes. **Mutating the 32-byte `try_into` into a zero-padded copy FAILED 1 test**; **mutating the hex refusal into `vec![0u8; 32]` FAILED 2 tests.** Both correct-by-design behaviours are pinned, including the hard refusal to regenerate — the orphaning hazard the doc names. All 17 pre-existing tests in `install_key_tests.rs` are genuinely about this code.
+
+**The gap: `hex::decode(stored.trim())`.** **MEASURED: deleting `.trim()` left all 17 tests GREEN.** It is load-bearing rather than cosmetic, and the reason is the interaction of two decisions: `hex::decode` rejects ANY non-hex character including `\n`, and the refusal path is a deliberate HARD STOP ("a key that cannot be parsed may still decrypt existing rows... replacing it would orphan them"). So a stored value carrying a trailing newline — which keychain CLIs routinely add — would make the store refuse to boot, with rows the operator cannot re-enter for two of the six at-rest families. **The `trim()` is what keeps that a non-event, and nothing was watching it.**
+
+**What I added, and why it pairs with the existing test.** `accepts_a_stored_key_with_surrounding_whitespace` covers three paddings (`\n`, spaces, `\t...\r\n`), asserts the decoded value equals the padded key, asserts the source is `Loaded` rather than `Generated`, and asserts the entry is left byte-identical — the same no-rewrite rule the neighbouring test enforces. **It sits beside `refuses_a_malformed_entry_and_never_regenerates_it` on purpose**: the same function must be tolerant of formatting and intolerant of corruption, and a suite that tested only the refusals would pass just as happily if the trim were removed. **KILL-TESTED: removing `.trim()` FAILS it.** 18/18 green; clippy Finished; production restored byte-for-byte.
+
+**A note on how I nearly missed the file's coverage.** My first grep searched for the error STRINGS (`"not valid hex"`) and the function name in `*_tests.rs`, returned nothing for the strings, and I briefly read that as "untested" — the same instrument error as R166's grep and R178's census. The tests were there and thorough; they simply assert via `matches!(...)` on the variant rather than by matching the message text. **Mutation settled it in one run.**
+
+**Running tally: 30 guards examined, 15 sound, 16 with defects found and fixed.**
+
+## 2026-10-08: a repo-wide byte/char sweep and the Money surface — both SOUND. Nothing changed.
+
+**R182 noted the recent hits were concentrating in one function family, so this round widened to a census instead of a third one-off.**
+
+**Byte/char, swept repo-wide.** Narrowing 468 raw `.len()` comparison sites to the HAL-1 shape — a length feeding a TRUNCATE, PAD or SLICE — left **six** production sites, and every one uses `chars()` correctly: `audit::truncate_details`, `profile::mask_last4`, `export::email_sender`, `hal::receipt::truncate`, `hal::serial_display::write_line`, `security::mask_token`. The freshest of those is `profile::mask_last4`, a national-ID masker (ADR #35 D6) where getting this wrong would leak the middle of an identity number — it reads `value.chars().count()` once and derives every bound from it.
+
+**I followed the appending-marker hazard rather than assuming it away.** `truncate_details` caps at `MAX_DETAIL_LEN` = 4000 chars and then appends `"…[truncated]"`, so the RESULT can exceed the cap — a "cap" that does not cap. I checked whether anything depends on 4000 being the true ceiling: the `details` column is unbounded `TEXT DEFAULT '{}'` with no length CHECK, and `sales_checkout_tests.rs:186-193` documents that the truncation branch IS the sanitize-path proof on the checkout door. **The marker is deliberate, so this is intended behaviour rather than a defect.**
+
+**Money arithmetic.** `foundation::money` exposes `checked_add/sub/mul/div/negate/abs` and call sites in `products_stock_adjust`, `payables`, `loyalty` use the checked forms. I read a currency-guard asymmetry into `checked_mul`/`checked_div` and then **disproved it on myself**: only `checked_add` and `checked_sub` take another `Money`; the rest take a scalar or `self`, so there is no second currency to compare and the guard is structurally unnecessary. (My scan had also mis-listed `min` as unguarded — it takes `&self`, a regex artefact, not a finding.) The two PANICKING variants, `negate` and `abs`, both carry a warning naming the exact condition (`i64::MIN`, panics in release, wraps in dev) and a pointer to the checked alternative — and **neither has a production caller**, confirmed by grep.
+
+**Running tally: 29 guards examined, 15 sound, 15 with defects found and fixed.** The last three rounds have found one fix and two clean sweeps, and this one covered a wider surface than either. **One method note worth carrying: the asymmetry I "found" was a false positive that reading the signatures disproved — the same shape as R166's grep and R173's heuristic, and the third time this campaign that inspecting my own instrument mattered as much as inspecting the subject.**
+
+## 2026-10-08: the HAL-1 byte/char surface is SOUND — three probes, no defect. Nothing changed.
+
+**I went looking for R181's pattern specifically: code that measures TEXT in BYTES, and tests that pin the resulting hazard as a caveat.** Two of the three leads were tests already doing the right thing, and one was a real surface that is properly guarded.
+
+**Lead 1 — the caveat-naming tests, both clean.** `credential_deltas_tests.rs:581` guards that a NOTICE names the pragma and the copy command (about operator text, not a bug), and `kds_tests.rs:2480-2495` states a limitation honestly and says why it cannot be pinned: the cutoff's `%.3f` renders byte-identically to `%3f` and a one-second margin swamps the spelling difference, so the test pins the RETENTION BOUNDARY instead and says so. **That is the opposite of R181's defect** — a limitation recorded as a limitation rather than encoded as an expected value.
+
+**Lead 2 — `escpos.rs`, where HAL-1 was a real historical bug.** The module documents that `str::len()` counts bytes while `{:<width$}` counts characters, so mixing them "silently steals padding" and shifted every price column on EUR/GBP/JPY/PHP/THB/KRW receipts. The fix is `cell_width(s) = s.chars().count()`. **MEASURED: reverting it to `s.len()` FAILED 6 tests.** I also checked every call site — all padding and centring in `receipt.rs` and `kds_chit.rs` goes through `cell_width`, and a grep for raw `.len()`-derived padding in the crate found none, so there is no mixed call site left to reintroduce the bug.
+
+**Also checked and cleared, with the reason:** `escpos::barcode` slices `&data[..255]` — BYTES by design, because ESC/POS is a byte protocol and the length byte counts bytes; `truncate` takes `max - 1` CHARACTERS rather than slicing, which the file notes is "inherently UTF-8 boundary-safe", and its `max <= 1` branch is covered; `right_pad` compares `cell_width` and then formats, with `right_pad_pads_to_cells_not_bytes` pinning the multibyte case. **No change made.**
+
+**Running tally: 28 guards examined, 13 sound, 15 with defects found and fixed.** Two rounds, one real fix (R181's `mask_name`) and one clean sweep. The pattern I set out to find did not recur here, which is worth recording rather than passing over: after finding five defects in six rounds, the last two rounds' hits have been concentrated in ONE function family rather than spread.
+
+## 2026-10-08: `mask_name` measured names in BYTES and produced MORE characters than it masked. A real fix, in `72bc2d670`.
+
+**Found by applying R180's lens to the sibling function.** R180 showed that a test can exercise an input and still guard a NEIGHBOURING property. `mask_name` has a test named `mask_name_byte_vs_char_caveat` — and reading it is what found the defect, because **the test pinned the bug as the expected behaviour**: it asserted `mask_name('😊') == '😊**😊'`.
+
+**The defect: a name is text, but `mask_name` measured it in bytes.**
+- The short-part guard used `part.len() <= 2` (BYTES), so a 4-byte single-character emoji **skipped** it and entered the masking branch.
+- `masked_len` was also byte-derived, so it produced characters *in addition* to the two kept ones.
+
+Consequences, all verified: `mask_name('😊')` returned **`'😊**😊'`** — the one-character input, longer than itself, with its only character at both ends. `mask_name('ééé')` (3 chars, 6 bytes) returned **`'é****é'`** — six characters from three. **The masked string could be longer than the secret it was hiding**, which is the opposite of masking.
+
+**Fixing it took TWO edits, and my own new test caught the second one.** Changing `masked_len` to `chars().count()` was the obvious half; the guard at `:133` was the half I missed, and the test I had just written failed immediately with `"😊" (1 chars) became "😊😊" (2 chars)`. **That is the value of asserting an INVARIANT rather than a case** — a per-case expectation would have been satisfied by fixing either half alone. Then a **partial revert** (guard restored to `len()`, `masked_len` left fixed) was KILLED by the same test, so both halves are independently pinned. 42/42 green; clippy Finished.
+
+**Context for severity, stated honestly: `mask_name` is INERT.** The module's own wiring note says only `mask_token` has callers, and grep confirms zero production call sites for `mask_name`. So this fixed no live leak — but the function is documented as "kept ready for a card-present or keyed-entry surface", which is exactly the situation where an unexercised byte/char bug ships.
+
+**What I replaced the caveat test with, and why the old one was worse than absent.** The old assertion would have FAILED against the fix, so it had to be rewritten rather than deleted — but its real fault was encoding a bug as a contract. The replacement asserts the invariant (`masked.chars().count() <= name.chars().count()`) over five multibyte names, plus the concrete `'ééé' -> 'é*é'` case and the ASCII control.
+
+**Running tally: 27 guards examined, 12 sound, 15 with defects found and fixed.**
+
+## 2026-10-08: `mask_pan`'s `.max(4)` floor was unguarded — and an EXISTING test checked a neighbouring property. Fixed in `c4f016c68`.
+
+**First round on a crate I had never probed.** With the bridge validators exhausted and two sound rounds behind me, I moved to `kasirmu-security`, whose `mask.rs` implements the PCI-DSS 3.3 display rules. The target: the `digits.len() <= 10` branch, which computes `masked_len = len - 4` and then floors it with `.max(4)`.
+
+**MEASURED: deleting `.max(4)` left every mask test GREEN.** For lengths 8, 9 and 10 the raw subtraction already yields 4, 5 and 6, so the floor only bites at **7 digits** — where it emits THREE stars: `***4567`, which is the input with one character replaced. **For a 7-digit value the function returns the value, and the mask disappears.**
+
+**The instructive part: an existing test covered this input and still did not catch it.** `mask_pan_7_digits_does_not_leak_more_than_4` exists, uses exactly `"1234567"`, and passes under the mutation. It counts **visible digits** (`split('*')`, concat, assert `<= 4`) — and the mutated `***4567` **also shows exactly 4 digits**, so the count is unchanged. Two genuinely different properties: the existing test guards the PCI-DSS "at most first-6 + last-4 visible" rule, while nothing guarded that the value is **masked at all** rather than echoed. A 7-digit code rendering as `***4567` satisfies the digit-count rule while being visually indistinguishable from an unmasked short code. **My four tests fail on the mutation where the existing one passes**, which is the only evidence that they add anything.
+
+**What I added:** the 7-digit exact-string case (`****4567`, plus `assert_ne!` against the input, which names the failure directly); the 8- and 9-digit boundaries as literals; the 11-digit boundary where the general branch sees its thinnest masking (one star), with the 10-digit case beside it since the branches meet there; and a **property** over 7..=10 asserting at least four masked characters, the last-four suffix preserved, and the result never SHORTER than the input — a shorter result would mean a digit was dropped rather than replaced. 42 tests green (was 38); clippy Finished; production restored byte-for-byte.
+
+**A measurement error I made and corrected, worth recording.** My first mutation run printed "38 passed" and I read "ALL OK" as a clean result. The subsequent run showed **42** tests — the number had moved because a parallel session's commits were landing, and my earlier count was taken against a different tree state. Re-running the mutation with my tests in place showed **2 FAILED**, which is the number that matters. **The lesson is the same one R176 taught from the other direction: on a shared checkout, a count printed once is a snapshot of a moving tree, so a mutation result must be re-taken after any edit and never inferred from an earlier run.**
+
+**Running tally: 26 guards examined, 12 sound, 14 with defects found and fixed.**
+
+## 2026-10-08: the corrected census finds NO uncovered validator, and two hard probes agree. Nothing changed by design.
+
+**Rebuilt the census module-aware, which is what R178's correction required.** Searching every `*_tests.rs` in the crate rather than assuming a sibling filename: **24 validators, ZERO with no test mention.** The R177 backlog is closed as an artefact — but "mentioned" is not "covered", so I probed the two thinnest by mutation rather than trusting the count.
+
+**Probe 1 — `map_topology_error` field identities (`semantics.rs:44`).** Its only "test mention" turned out to be a COMMENT, so I tested the thing that actually matters in a field-for-field shim: **swapping `node_id` and `wire_id` in the mapping**. A test that only asserted the error VARIANT would sail past that. **Result: FAILED, 6 tests caught it.** The wire-shape rebuild is covered down to the field level, which is what the module doc claims it does.
+
+**Probe 2 — the ten `map_gate_error` copies.** A census of `fn map_*` found `map_gate_error` duplicated across **ten** modules (categories, ctx, customers, inventory, inventory_counts, loyalty, regional, staff, stock_transfers, tax) — an ADR-49 cluster, and the same shape as R174's timing-mask twin. I verified all ten are **byte-identical after whitespace normalisation**, then degraded the security-relevant arm in every copy at once: `CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message)` removed, so a permission refusal falls through to the generic conversion. **Result: FAILED, 78 tests caught it.** The refusal stays visible to callers that branch on it, and the tree demonstrates that in 78 places.
+
+**Both probes restored byte-for-byte; `git status` clean; all ten `PermissionDenied` arms confirmed back by grep.** This round changed no code, and that is the finding: after three rounds of real defects found by mutation, the two hardest targets I could construct both held.
+
+**Running tally: 25 guards examined, 12 sound, 13 with defects found and fixed.** Two sound targets in a row, found by choosing probes for what WOULD break the subject rather than by reading it.
+
+## 2026-10-08: the R177 census was WRONG for the topology module; `validate_load_shape` was the one real gap. Fixed in `fb448ca54`.
+
+**First, a correction to my own census.** R177 counted test mentions by assuming the test file is the sibling `*_tests.rs`. **The topology module does not work that way** — its tests are mounted from `model.rs:333,337` as module-level files (`topology_tests.rs`, `topology_command_tests.rs`, and five others). Re-run against every test file in the module, the backlog I named collapses:
+
+| function | R177 said | actually |
+|---|---|---|
+| `validate_semantic_json` | 0 | 1 test (`topology_tests.rs`) |
+| `validate_topology_envelope` | 0 | 4 tests (`topology_command_tests.rs`) |
+| `validate_semantic_ownership` | 0 | 4 tests |
+| `validate_semantic_ownership_in` | 0 | 2 tests |
+| `validate_warehouse_capacity` | 0 | 4 tests |
+| **`validate_load_shape`** | 0 | **0 — the one real gap** |
+
+**Six of the seven "zero-coverage" names I recorded were an artefact of my own search, not a fact about the tree.** That is R166's lesson again — a search that cannot find a test is not evidence the test is absent — and it is worth stating plainly because I published those names as a backlog last round.
+
+**The real gap, and it is a load-path gate.** `validate_load_shape` (`semantics.rs:265`) is the ONLY shape check on the editor's load path: `commands.rs:223` runs it after `validate_topology_envelope` and deliberately skips both the structural and semantic-ownership gates there. **MEASURED: gutting its helper `require_load_id` left all 318 tests in the module GREEN.** A stored node or wire that lost its `id` would load, and the editor keys every node and wire by id.
+
+**Two tests, and the second is the one that protects the design.** The first pins five unusable ids (absent, null, non-string, empty, whitespace-only) **in BOTH the node and wire positions**, so it cannot pass if only one loop is checked — plus a positive case. The second pins what the gate must **NOT** require: the function's own doc argues at length that demanding `name`/`x`/`y`, endpoints or ports would "brick a whole topology over one legacy row", so an endpoint-less wire, a bare-id node and unknown/extra fields must all still load. **A refusal-only test would pass just as happily if someone later added those requirements** — that is the failure mode this half exists to catch. **KILL-TESTED: 1 passed / 1 FAILED**, the refusal test catching it and the tolerance test correctly staying green.
+
+**Clippy caught a real defect in my own test, and the fix is recorded because the mistake is easy to repeat.** My first version called `node.clone()` to pass the same value into both assertions; `-D warnings` rejected it as "unnecessary use of clone to create a slice from a reference". Rewritten to `std::slice::from_ref(&value)`, which says what was meant — the SAME value refused in both positions. Re-verified after the fix that the kill-test still holds. 2/2 green, clippy Finished.
+
+**Running tally: 23 guards examined, 10 sound, 13 with defects found and fixed.**
+
+## 2026-10-08: `validate_location` + `validate_terminal` had zero coverage over four call sites. Fixed in `98dab1b26`.
+
+**Turned the hunt into a CENSUS instead of a probe.** Rather than reading one function at a time, I enumerated every `validate_`/`sanitize_`/`ensure_`/`check_` function in the bridge crate and counted its mentions in the sibling test file. That produced a ranked list where **eight functions had ZERO test mentions** -- which is how this round's target surfaced, and the same list is the backlog for the rounds after it.
+
+**The target: `validate_location` (`stock_transfers.rs:87`) and `validate_terminal` (`:112`), four call sites between them (`:158-161`).** Both answer one question -- is this client-supplied id ACTIVE IN THIS STORE -- by an `EXISTS` query against `inventory_locations`/`terminals`. **MEASURED: replacing BOTH bodies with `Ok(())` left all 12 tests in `stock_transfers_tests.rs` GREEN.** The existing tests covered permission denial, token rejection, listing and the args structs' serde, but never a bad location or terminal. A transfer could name a location or terminal belonging to another store, or an inactive one, and the record would carry a reference the store's own inventory ledger cannot resolve.
+
+**Three tests, and the middle one is the point.** (1) A foreign source location and the SAME id made INACTIVE -- because the SQL is `is_active = 1`, presence alone is not the contract, and an inactive location is a different failure from an absent one. (2) **A POSITIVE case** asserting an active location and terminal are accepted and land on the record. That one is deliberate: every refusal above would pass under a validator that rejected everything, so the positive case is what proves the check is a lookup. (3) The terminal side, foreign and inactive, on both fields. **KILL-TESTED: 13 passed / 2 FAILED** -- exactly the two refusal tests, with the positive case correctly still green. Production restored byte-for-byte; 15/15 green; clippy Finished.
+
+**Running tally: 22 guards examined, 10 sound, 12 with defects found and fixed.** Three consecutive rounds where mutation found gaps that reading did not, and this round the census made the target selection mechanical rather than a matter of guessing which function to read.
+
+**Backlog this census created, named for the next rounds:** `validate_semantic_ownership`, `validate_semantic_ownership_in`, `validate_warehouse_capacity` (`topology/persistence.rs`); `validate_semantic_json`, `validate_topology_envelope`, `validate_load_shape` (`topology/semantics.rs`). Each shows zero test mentions by the same count.
+
 ## 2026-10-08: `validate_customer_fields` had zero coverage over FOUR call sites. Fixed in `e1daf96ac`.
 
 **Applied R175's method to the rest of R166's unprobed list, and the results split cleanly: one target was excellent, the other had R175's exact defect.**

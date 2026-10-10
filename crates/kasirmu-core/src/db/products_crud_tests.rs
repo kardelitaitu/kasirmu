@@ -220,3 +220,54 @@ fn update_product_moves_price_updated_at_only_when_the_price_moves() {
         "a price change must restamp price_updated_at"
     );
 }
+
+/// Product SKU and name limits count CHARACTERS, not UTF-8 bytes.
+///
+/// WHY THIS EXISTS. Both guards read `sku.len()` / `name.len()` -- BYTE counts -- while
+/// their messages say "must not exceed 50/255 characters, got {}" and pass the same byte
+/// count as the reported number. MEASURED: swapping both guards AND both message
+/// arguments to `chars().count()` left all 174 tests in this module GREEN, so the unit was
+/// never pinned. The visible failure is a 50-character non-ASCII SKU rejected at roughly
+/// 25 characters, with a message reporting a count that cannot be reconciled with its own
+/// stated limit.
+///
+/// The repo already contains the correct convention next door -- `edc_terminals`,
+/// `payment_gateways` and `receipt_formats` all count characters -- so this is a fix
+/// toward the established rule rather than a new one.
+#[test]
+fn product_sku_and_name_limits_count_characters_not_bytes() {
+    let conn = fresh();
+    seed(&conn);
+    let s = Store::new(&conn);
+
+    // 50 multi-byte characters is AT the SKU limit: 100 bytes, 50 chars.
+    let sku_at_limit = "\u{00E9}".repeat(50);
+    assert_eq!(sku_at_limit.len(), 100, "the fixture must be multi-byte");
+    assert!(
+        s.create_product(&sku_at_limit, "Coffee", price(350), None, None, 0, None)
+            .is_ok(),
+        "50 characters is within the SKU limit whatever its byte width"
+    );
+
+    // 51 characters is over it, and the refusal must report 51, not the byte count 102.
+    let sku_over = "\u{00E9}".repeat(51);
+    match s.create_product(&sku_over, "Coffee", price(350), None, None, 0, None) {
+        Err(CoreError::Validation { field, message }) => {
+            assert_eq!(field, "sku");
+            assert!(
+                message.contains("51") && !message.contains("102"),
+                "the refusal must report the CHARACTER count (51), not 102; got: {message}"
+            );
+        }
+        other => panic!("expected a sku validation error, got {other:?}"),
+    }
+
+    // The name limit behaves the same way at 255 characters / 510 bytes.
+    let name_at_limit = "\u{00E9}".repeat(255);
+    assert_eq!(name_at_limit.len(), 510, "multi-byte fixture");
+    assert!(
+        s.create_product("SKU-CAFE", &name_at_limit, price(350), None, None, 0, None)
+            .is_ok(),
+        "255 characters is within the name limit"
+    );
+}

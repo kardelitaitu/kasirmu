@@ -32,11 +32,11 @@ export function WorkspaceStorePosSettings({
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
-  const { settings, markSettingsUpdated } = useSettings();
+  const { settings, markSettingsUpdated, hasPartialError, refetch } = useSettings();
   const { sessionToken } = useWorkspace();
   const { l10n } = useLocalization();
   const { addToast } = useToast();
-  const hw = useTerminalHardware(terminalId ?? '', settings.store.currency);
+  const hw = useTerminalHardware(terminalId ?? '', settings?.store?.currency);
 
   // ── Draft state ──────────────────────────────────────────────
 
@@ -80,6 +80,11 @@ export function WorkspaceStorePosSettings({
       };
       setOriginalsLoaded(true);
     }
+    // F4: `settings.receipt` carries DEFAULTS when the context load only partly
+    // succeeded, and this card seeds its dirty baseline from them — so a partial
+    // failure would look clean and Save would write the defaults over the real
+    // values. `hasPartialError` is the context's own signal for that; the card
+    // consumed `settings` and ignored it.
   }, [settings.receipt, originalsLoaded]);
 
   // ── Save ─────────────────────────────────────────────────────
@@ -135,7 +140,7 @@ export function WorkspaceStorePosSettings({
     }
     setTestingPrint(true);
     try {
-      const currency = settings.store.currency || 'IDR';
+      const currency = settings?.store?.currency || 'IDR';
       const res = await printSalesReceipt(sessionToken, {
         receiptNumber: 'TEST-0001',
         date: new Date().toLocaleDateString(),
@@ -154,7 +159,7 @@ export function WorkspaceStorePosSettings({
     } finally {
       setTestingPrint(false);
     }
-  }, [sessionToken, settings.store.currency, addToast, l10n]);
+  }, [sessionToken, settings?.store?.currency, addToast, l10n]);
 
   const handleTestDrawer = useCallback(async () => {
     if (!sessionToken) {
@@ -457,7 +462,7 @@ export function WorkspaceStorePosSettings({
 
   const saveButton = variant !== 'inspector-drawer' ? (
     <div className="settings-actions">
-      <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+      <Button variant="primary" onClick={handleSave} disabled={!dirty || saving || hasPartialError || hw.loadFailed}>
         <Localized id="save">Save</Localized>
       </Button>
     </div>
@@ -468,6 +473,24 @@ export function WorkspaceStorePosSettings({
       {receiptSection}
       {printerSection}
       {scannerSection}
+      {(hasPartialError || hw.loadFailed) && (
+        <div className="settings-error-banner" role="alert" data-testid="resto-storepos-partial-error">
+          <span>
+            <Localized id="settings-load-failed">
+              <span>Failed to load settings</span>
+            </Localized>
+          </span>
+          {/* Without this the flags are a one-way latch and Save never returns. */}
+          <Button
+            variant="secondary"
+            data-testid="resto-storepos-retry-btn"
+            onClick={() => { void refetch(); hw.reload(); }}
+          >
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
+      )}
+
       {hw.error && (
         <div className="settings-error-banner" role="alert">
           {hw.error}

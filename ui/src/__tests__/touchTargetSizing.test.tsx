@@ -444,6 +444,22 @@ const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
   { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn::min-height: 34px', why: "KDS routing action button; 34px floor." },
   { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
   { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
+  // The former `.pos-cart-order-type-btn::min-height: 2rem` entry is GONE, and the
+  // history is the reason to leave it that way rather than re-add it:
+  //
+  //  - `ec1c50336` added the slider at 2rem (32px) and an exemption naming 2rem.
+  //  - `35bcca837` then changed the height to 2.125rem WITHOUT updating the
+  //    exemption, so the entry no longer matched any real declaration. The ratchet
+  //    compares keys to what the CSS actually declares, so the stale entry stopped
+  //    covering anything and the control reported as a NEW violation.
+  //  - The fix is not a re-pinned exemption. The control is a real tablet tap
+  //    target, so CartPanel.css now floors it at --touch-target-min inside its own
+  //    @media (pointer: coarse) block — the state this guard grades as compliant
+  //    (see the "raised to >=44px by its own @media (pointer: coarse) override"
+  //    case). No debt to record.
+  //
+  // A literal-keyed exemption goes stale the moment the value it names changes,
+  // and a stale exemption reads as a fresh regression. Prefer fixing the control.
 ];
 
 function isSkipSelector(selectors: string): boolean {
@@ -819,6 +835,15 @@ describe('Touch target sizing compliance', () => {
     //   * features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-section-btn
     //     — the sheet gained a (pointer: coarse) override at :483.
     // The sibling .kds-routing-btn entry is NOT fixed and stays.
+    // 13 -> 14 on 2026-10-09: the order-type slider's segment button
+    // (`ec1c50336`) is a new below-floor control, added with its reason rather
+    // than fixed, for the same slice-fence reason as its siblings.
+    // 14 -> 13 later on 2026-10-09: that entry is deleted because the control is
+    // FIXED, not waived. Its key named 2rem while `35bcca837` had already moved
+    // the declaration to 2.125rem, so the exemption matched nothing and the
+    // control surfaced as a NEW violation. CartPanel.css now floors it at
+    // --touch-target-min inside its own @media (pointer: coarse) block, which is
+    // the state this guard grades as compliant, so there is no debt to record.
     expect(KNOWN_VIOLATIONS.length).toBe(13);
   });
 

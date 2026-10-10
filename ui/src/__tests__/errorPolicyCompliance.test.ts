@@ -82,13 +82,19 @@ const WHITELISTED_RAW_PARSE: Array<{ file: string; anchor: RegExp; context: RegE
     anchor: /errObj\?\.\['message'\] as string/,
     context: /classifyRetry\(err\) === 'retryable'/,
   },
-  {
-    // complete() catch: reads err.message to JSON-detect PartialStockResult;
-    // never displayed. Non-stock errors are classified for display below.
-    file: path.join(SRC, 'features/sales/PaymentModal.tsx'),
-    anchor: /err instanceof Error \? err\.message : String\(err\)/,
-    context: /tryParsePartialStockResult/,
-  },
+  // The PaymentModal `complete()` entry that used to live here is GONE, and its
+  // removal is the fix rather than a loss of coverage. It whitelisted the raw read
+  // `err instanceof Error ? err.message : String(err)` feeding
+  // `tryParsePartialStockResult`. Commit `a8c726fe9` moved that read into the
+  // SHARED normalizer `rejectionText()` (utils/app-error.ts:205-213), so
+  // PaymentModal no longer touches `.message` at all — `rejectionText(err)` does,
+  // and it is the allowed normalizer. `SCAN_DIRS` (:42) deliberately omits
+  // `utils`, so the helper is not a scan target.
+  //
+  // Leaving the entry in place broke BOTH compliance cases at HEAD: the anchor no
+  // longer matched anything in PaymentModal, so the sanity case that requires every
+  // entry to fire failed, and it kept a stale line number in the map the leak case
+  // consults. `a8c726fe9` did not carry this file.
   {
     // ErrorBoundary.componentDidCatch -> reportClientCrash: a TELEMETRY payload,
     // not display text. The message and stack go to the crash reporter so a

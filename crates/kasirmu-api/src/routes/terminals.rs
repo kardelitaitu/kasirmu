@@ -132,7 +132,14 @@ pub async fn register_terminal_handler(
             .into_response();
     }
     let label = body.label.unwrap_or_default();
-    if label.len() > 128 {
+    // CHARACTERS, not bytes -- and the difference from the two limits above is the point.
+    // `terminal_id` and `tenant` are both forced to `[A-Za-z0-9_-]` by the charset check
+    // beside them, so for those fields a byte count IS a character count and `.len()` is
+    // right. `label` is free text with no charset rule, stored in an unbounded `TEXT`
+    // column and rendered back in the terminal list, so measuring it in bytes refused a
+    // 128-character accented label whose bytes are 256 -- with a message naming a max of
+    // 128 that the input did not actually exceed.
+    if label.chars().count() > 128 {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "terminal label too long (max 128)"})),

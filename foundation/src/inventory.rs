@@ -129,9 +129,14 @@ impl ProductType {
         }
     }
 
-    /// Whether this product type consumes inventory stock.
+    /// Whether this product type consumes finished-goods inventory stock.
+    ///
+    /// `Retail` and `Both` products track physical warehouse stock directly.
+    /// `Restaurant` items are prepared to order in the kitchen and consume stock
+    /// through their BOM recipes (ingredients) rather than pre-stocked finished
+    /// goods. `Service` items do not track physical stock.
     pub fn tracks_inventory(&self) -> bool {
-        matches!(self, Self::Retail | Self::Restaurant | Self::Both)
+        matches!(self, Self::Retail | Self::Both)
     }
 }
 

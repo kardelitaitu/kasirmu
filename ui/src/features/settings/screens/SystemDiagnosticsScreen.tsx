@@ -5,11 +5,18 @@
 //! info) as its body, per the migration provenance named here when it was still a
 //! placeholder. Composition, not a re-export — the route, the section heading, and
 //! the scaffold shell all stay on this screen while the section keeps its own
-//! ledger entry and stylesheet. The remaining scaffolds in this folder still
-//! render "This page is being rebuilt" until their own content is wired in.
+//! ledger entry and stylesheet.
 //!
-//! Copy is Fluent-only: `settings-nav-*` for the title, plus the shared placeholder
-//! notes. Both keys exist in `settings.ftl` and `settings.id.ftl`.
+//! This header used to add that "the remaining scaffolds in this folder still
+//! render 'This page is being rebuilt' until their own content is wired in". That
+//! was true when written and is not now: every settings section has been migrated
+//! (the round-43 removal of the shared `settings-screen-migrating` note could only
+//! be done across all 14 because none is a scaffold any more). No screen in this
+//! folder renders a rebuild line, so the claim was removed rather than left to
+//! mislead the next reader.
+//!
+//! Copy is Fluent-only: `settings-nav-*` for the title. Both keys exist in
+//! `settings.ftl` and `settings.id.ftl`.
 
 import { Localized } from '@fluent/react';
 import DiagnosticsSection from '../sections/DiagnosticsSection';
@@ -25,14 +32,6 @@ export function SystemDiagnosticsScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-system-diagnostics">System Diagnostics</Localized>
       </h1>
-      {/* The migration note stays (SettingsPage.test.tsx asserts it on every
-          screen, migrated ones included); the one-off placeholder line goes away
-          once the body below is real content. */}
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       <DiagnosticsSection />
       <DiagnosticExportCard />
       {/* The in-app self-updater is Android-only by design: it downloads an APK

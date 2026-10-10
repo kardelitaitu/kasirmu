@@ -29,19 +29,19 @@ pub async fn create_user(
     if username.is_empty() {
         return Err(PgError::Validation("username must not be empty".into()));
     }
-    if username.len() > 100 {
+    if username.chars().count() > 100 {
         return Err(PgError::Validation(format!(
             "username must not exceed 100 characters, got {}",
-            username.len()
+            username.chars().count()
         )));
     }
     if display_name.trim().is_empty() {
         return Err(PgError::Validation("display name must not be empty".into()));
     }
-    if display_name.len() > 255 {
+    if display_name.chars().count() > 255 {
         return Err(PgError::Validation(format!(
             "display name must not exceed 255 characters, got {}",
-            display_name.len()
+            display_name.chars().count()
         )));
     }
 

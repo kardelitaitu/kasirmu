@@ -7,6 +7,14 @@
  * Design-token values only - no raw colours, no px font sizes, no invented
  * spacing. src/theme/tokens.css is the source of truth and
  * themeTokenCompliance.test.ts enforces it over every file under features/.
+ *
+ * `.settings-screen-placeholder-note` was REMOVED (round 43). It styled the
+ * `settings-screen-migrating` line ("Existing settings content will move here
+ * selectively."), which every screen rendered - migrated ones included - because
+ * `SettingsPage.test.tsx` used to assert it on all 14. That assertion now
+ * requires the note be ABSENT on a migrated screen, the note is gone from all of
+ * them, and this rule had no remaining user (screenExtraction's dead-class check
+ * is what caught it).
  */
 
 .settings-screen-placeholder {
@@ -20,10 +28,5 @@
   color: var(--color-fg);
   font-size: var(--text-lg);
   margin-bottom: var(--space-3);
-}
-
-.settings-screen-placeholder-note {
-  color: var(--color-fg-muted);
-  font-size: var(--text-sm);
 }
 

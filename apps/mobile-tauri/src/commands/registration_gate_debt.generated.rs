@@ -63,27 +63,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("health::record_crash_report", "no_session_resolution"),
     ("health::notify_memory_pressure", "no_session_resolution"),
     ("health::get_build_fingerprint", "no_session_resolution"),
-    (
-        "pos::add_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "pos::complete_sale_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "pos::complete_sale_with_resolved_shortfalls_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "pos::override_cart_deduction_location_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("pos::get_cart_deduction_location", "no_session_resolution"),
-    (
-        "pos::get_cart_deduction_location_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("history::list_sales", "no_session_resolution"),
     ("history::get_sale", "no_session_resolution"),
     ("history::export_daily_summary", "no_session_resolution"),
@@ -290,7 +270,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 23-09-26: 342, with the floor raised to it in the same pass that absorbed the
 /// three `desktop_link` email sign-in commands — 92 debt rows, up from 89. The floor, this
 /// total and `DEBT_CEILING` all move together; the generator writes only this number.
-pub const REGISTERED_TOTAL: usize = 421;
+pub const REGISTERED_TOTAL: usize = 422;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///

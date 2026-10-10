@@ -31,11 +31,88 @@ export interface LocalPaymentRails {
 /**
  * Is `railCode` offered given the effective rails? Fail-open on null or
  * empty (see the module contract); a populated list is authoritative.
+ *
+ * ⚠️ The comparison is CASE-INSENSITIVE, and that is a correctness fix rather
+ * than a convenience. `rail_code` is a free-form string the operator can create
+ * (RestaurantPaymentsScreen's "add a custom rail" form), nothing normalises it on
+ * write — the bridge passes it straight through
+ * (crates/kasirmu-bridge/src/local_payment.rs:95) and the column carries no CHECK
+ * constraint — and the SETTINGS screen normalises with `.toLowerCase()` at every
+ * one of its lookups. A raw `===` here therefore disagreed with the surface that
+ * configured the rail: one saved as `QRIS` was switchable ON in settings and then
+ * not matched here, falling through to `is_enabled: false` and HIDING the tender
+ * the operator had just enabled. Same failure shape as the `midtrans isActive`
+ * disagreement between that screen and the charge modal.
  */
 export function railOffered(rails: LocalPaymentRail[] | null, railCode: string): boolean {
   if (rails === null || rails.length === 0) return true;
-  const rail = rails.find((r) => r.rail_code === railCode);
+  const wanted = railCode.toLowerCase();
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
   return rail ? rail.is_enabled : false;
+}
+
+/**
+ * Is a CORE rail withheld by an EXPLICIT `is_enabled: false`?
+ *
+ * Deliberately NOT `railOffered`, and the difference is the whole point. A core
+ * rail (`paymentRailsLogic.ts:11` `CORE_RAIL_CODES` — cash, card, qris, open_bill,
+ * credit) always exists as a setting with its own toggle, so there are three states,
+ * not two:
+ *
+ *  · no row for it in a populated list → the feature predates the row; show it
+ *  · a row with `is_enabled: true`     → the operator left it on; show it
+ *  · a row with `is_enabled: false`    → the operator switched it OFF; hide it
+ *
+ * `railOffered` collapses the first two into `false` — correct for `qris`, an opt-in
+ * rail a store may genuinely not have, and wrong here: it would remove the open-bill
+ * tender from every store whose rail list was written before that row existed, which
+ * is a silent withdrawal of a capability nobody turned off.
+ *
+ * Case-insensitive for the same reason `railOffered` is: `rail_code` is free-form and
+ * the settings screen lowercases every lookup.
+ */
+export function coreRailWithheld(
+  rails: LocalPaymentRail[] | null,
+  railCode: string,
+): boolean {
+  if (rails === null || rails.length === 0) return false;
+  const wanted = railCode.toLowerCase();
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
+  return rail ? !rail.is_enabled : false;
+}
+
+/**
+ * The boolean an operator SET on a rail's `parameters` bag, or `fallback` when the
+ * bag or the key says nothing.
+ *
+ * `parameters` is a free-form JSON string the settings screen writes through
+ * `updateRailParams` (`RestaurantPaymentsScreen.tsx:1006`, `:1057`), so every read has
+ * to tolerate: no rail row, no `parameters`, unparseable JSON, and a missing key.
+ * Each of those means "the operator never expressed a preference" and must return the
+ * caller's `fallback` — not `false`. Defaulting a preference to `false` would silently
+ * turn off behaviour for every store that predates the toggle, which is precisely the
+ * direction that goes unnoticed.
+ */
+export function railParam(
+  rails: LocalPaymentRail[] | null,
+  railCode: string,
+  key: string,
+  fallback: boolean,
+): boolean {
+  if (rails === null || rails.length === 0) return fallback;
+  const wanted = railCode.toLowerCase();
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
+  if (!rail?.parameters) return fallback;
+  try {
+    const bag = JSON.parse(rail.parameters) as unknown;
+    if (bag === null || typeof bag !== 'object') return fallback;
+    const value = (bag as Record<string, unknown>)[key];
+    return typeof value === 'boolean' ? value : fallback;
+  } catch {
+    // A malformed bag is the operator's saved state being unreadable, not a
+    // preference: fall back rather than guess.
+    return fallback;
+  }
 }
 
 /** A tender tab the checkout offers, in the order the modal lists them. */
@@ -110,7 +187,9 @@ export function resolveTenderDisplayName(
   fallback: string,
 ): string {
   if (method === 'qris' || method.toLowerCase() === 'qris') {
-    const rail = rails?.find((r) => r.rail_code === 'qris');
+    // Case-insensitive for the same reason `railOffered` is: the settings screen
+    // lowercases every lookup and nothing normalises the stored code.
+    const rail = rails?.find((r) => r.rail_code.toLowerCase() === 'qris');
     if (rail?.label && rail.label.trim().length > 0) {
       return rail.label.trim();
     }
@@ -132,7 +211,10 @@ export function resolveTenderDisplayName(
  * the wire model (`api/local-payment`); this is the checkout's view.
  */
 export function staticQrisPayload(rails: LocalPaymentRail[] | null): string | null {
-  const rail = rails?.find((r) => r.rail_code === 'qris');
+  // Case-insensitive: a merchant whose rail is stored as `QRIS` used to get null
+  // here, so the static QR payload never reached the display even though the
+  // settings screen showed the rail as configured and enabled.
+  const rail = rails?.find((r) => r.rail_code.toLowerCase() === 'qris');
   return rail ? readStaticQrPayload(rail.parameters) : null;
 }
 

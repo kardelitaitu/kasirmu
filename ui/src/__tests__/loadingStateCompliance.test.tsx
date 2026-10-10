@@ -119,6 +119,8 @@ describe('loading-state compliance — error ≠ empty with Retry (LOAD-02/08)',
         login: vi.fn(),
         logout: vi.fn(),
         clearError: vi.fn(),
+        // No `permissions` on this session, so the real hook falls back to the role.
+        hasPermission: (_perm: string, fallback: boolean) => fallback,
       }),
     }));
     const { default: SalesHistoryScreen } = await import('@/features/sales/SalesHistoryScreen');

@@ -134,7 +134,7 @@ fn product_type_parse_str_unknown_returns_none() {
 #[test]
 fn product_type_tracks_inventory_for_physical_types() {
     assert!(ProductType::Retail.tracks_inventory());
-    assert!(ProductType::Restaurant.tracks_inventory());
+    assert!(!ProductType::Restaurant.tracks_inventory());
     assert!(ProductType::Both.tracks_inventory());
     assert!(!ProductType::Service.tracks_inventory());
 }

@@ -12,7 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/components/Toast';
 import { WorkspaceRestaurantPosSettings } from '@/features/settings/workspace-cards/WorkspaceRestaurantPosSettings';
-import { setReceiptSettingsScoped, setSettingsScoped } from '@/api/settings';
+import { getSettingScoped, setReceiptSettingsScoped, setSettingsScoped } from '@/api/settings';
 
 // ── Fluent test l10n ───────────────────────────────────────────────
 
@@ -41,6 +41,8 @@ const testL10n = {
 // ── Mock state ──────────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => ({
+  // Hoisted so cases can assert on the refetch broadcast.
+  markSettingsUpdated: vi.fn(),
   receiptSettings: { showTableNumber: false, showCurrency: false, showTax: true, showTableNumber_alias: false,
     footer: '', paperWidth: 'standard' as const, decimalSeparator: 'dot' as const,
     marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 },
@@ -67,7 +69,7 @@ vi.mock('@/contexts/SettingsContext', () => ({
   useSettings: () => ({
     settings: { receipt: mocks.receiptSettings, store: mocks.storeSettings },
     loading: false, error: null, hasPartialError: false,
-    refetch: vi.fn(), lastChangedKeys: [], markSettingsUpdated: vi.fn(),
+    refetch: vi.fn(), lastChangedKeys: [], markSettingsUpdated: mocks.markSettingsUpdated,
   }),
 }));
 
@@ -131,6 +133,7 @@ beforeEach(() => {
     decimalSeparator: 'dot', marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 });
   Object.assign(mocks.storeSettings, { name: '', address: '', taxId: '', currency: 'USD', branch: '' });
   mocks.hwError = null;
+  mocks.markSettingsUpdated.mockClear();
 });
 
 describe('WorkspaceRestaurantPosSettings', () => {
@@ -243,6 +246,78 @@ describe('WorkspaceRestaurantPosSettings', () => {
     const [receiptToken, receiptDto] = vi.mocked(setReceiptSettingsScoped).mock.calls[0]!;
     expect(receiptToken).toBe('test-session-token');
     expect(receiptDto.showTableNumber).toBe(true);
+  });
+
+
+  it('announces EVERY receipt key it saves, not just the table-number one', async () => {
+    // The save writes ten keys via `setReceiptSettingsScoped`, but `markSettingsUpdated`
+    // announced only `receipt.showTableNumber`. That call is the refetch broadcast
+    // (SettingsContext.tsx:185-196), so the other nine — showCurrency, decimalSeparator,
+    // showTax, footer, paperWidth, and the four margins — were persisted while every other
+    // mounted surface kept its stale copy.
+    //
+    // The sibling writer `RestaurantReceiptsScreen` saves the SAME receipt keys and
+    // announces all ten (RestaurantReceiptsScreen.tsx:1085-1096), which is what makes this
+    // a drift rather than an alternative convention.
+    renderCard();
+    await waitFor(() => expect(document.getElementById('resto-table-mgmt')).not.toBeNull());
+    fireEvent.click(document.getElementById('resto-table-mgmt') as HTMLInputElement);
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
+    mocks.markSettingsUpdated.mockClear();
+    vi.mocked(setReceiptSettingsScoped).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.markSettingsUpdated).toHaveBeenCalled());
+    const dto = vi.mocked(setReceiptSettingsScoped).mock.calls[0]![1] as unknown as Record<
+      string,
+      unknown
+    >;
+
+    const announced: string[] = mocks.markSettingsUpdated.mock.calls.at(-1)?.[0] ?? [];
+    expect(announced.length, 'markSettingsUpdated was never called').toBeGreaterThan(0);
+
+    // Every receipt key in the write payload must appear in the announcement.
+    const missing = Object.keys(dto)
+      .map((k) => `receipt.${k}`)
+      .filter((k) => !announced.includes(k));
+    expect(
+      missing,
+      'these keys were PERSISTED but not announced, so every other mounted surface keeps ' +
+        'its stale value until an unrelated refetch. Announce the same set the write sends.',
+    ).toEqual([]);
+  });
+
+  // ── The failed-load guard (F4) ────────────────────────────────
+  //
+  // The sibling of RestaurantSettingsScreen's guard, and the same defect: the
+  // catch used to seed `courseFiring: false` into originalsRef, so a failed read
+  // looked clean and the next Save wrote that false over the merchant's setting.
+
+  it('disables Save and reports the failure when the course-firing read rejects', async () => {
+    vi.mocked(getSettingScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resto-card-load-error')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
+
+  it('keeps Save disabled after a failed read even once the user toggles a control', async () => {
+    // The important half: the user CAN still move a toggle, but the card must not
+    // let them commit a screen whose other value it never read.
+    vi.mocked(getSettingScoped).mockRejectedValueOnce(new Error('ipc down'));
+
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId('resto-card-load-error')).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.getElementById('resto-table-mgmt') as HTMLInputElement);
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
   });
 
   it('hides Save button in inspector-drawer variant', () => {

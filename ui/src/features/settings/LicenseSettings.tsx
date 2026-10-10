@@ -25,10 +25,24 @@ interface LicensePayload {
   issued_at: string;
 }
 
-/** Format an RFC 3339 date string for display in the active locale. */
-function formatDate(rfc3339: string, locale: string): string {
+/**
+ * Format an RFC 3339 date string for display in the active locale.
+ *
+ * A Free/local licence carries NO expiry, and `new Date(null)` is an Invalid
+ * Date — `toLocaleDateString` then renders the literal string "Invalid Date"
+ * instead of throwing, so the old `try/catch` never fired. Measured on the
+ * tablet 2026-10-09: the licence screen read "Expires: Invalid Date" and
+ * "Grace Period Until: Invalid Date". Absent or unparsable input now renders
+ * an em dash, which is what the screen already uses for "no value".
+ */
+export function formatDate(
+  rfc3339: string | null | undefined,
+  locale: string,
+): string {
+  if (!rfc3339) return '\u2014';
+  const d = new Date(rfc3339);
+  if (Number.isNaN(d.getTime())) return '\u2014';
   try {
-    const d = new Date(rfc3339);
     return d.toLocaleDateString(locale, {
       year: 'numeric',
       month: 'long',

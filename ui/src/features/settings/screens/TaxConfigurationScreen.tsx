@@ -2,7 +2,7 @@
 //!
 //! Migrated 2026-10-06 from `features/tax/TaxConfigurationScreen.tsx` (matching
 //! the ExchangeRatesScreen / DataManagementScreen shape). Composition, not a
-//! re-export: the route, the scaffold shell and its migrating note stay on this
+//! re-export: the route and the scaffold shell stay on this
 //! screen while the tax feature keeps its own screen and stylesheet.
 //!
 //! `embedded` is REQUIRED, not cosmetic. The composed screen renders its own
@@ -34,11 +34,6 @@ export function TaxConfigurationScreen() {
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-tax-configuration">Tax Configuration</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
       {/* `embedded` suppresses the body's duplicate <h1>. See the file header. */}
       <TaxConfigurationBody embedded />
     </section>

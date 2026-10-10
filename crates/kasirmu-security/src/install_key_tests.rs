@@ -496,3 +496,53 @@ fn resume_refuses_a_malformed_parked_key() {
         "the malformed value is left exactly as it was"
     );
 }
+
+/// A stored key carrying surrounding WHITESPACE is still usable.
+///
+/// WHY THIS EXISTS. `decode_stored_key` decodes `stored.trim()`, and that trim is
+/// load-bearing rather than cosmetic: `hex::decode` rejects ANY non-hex character, so a
+/// value written with a trailing newline -- which keychain CLIs routinely add -- would
+/// otherwise be refused. The refusal is a hard stop by design (a key that cannot be
+/// parsed may still decrypt existing rows, so it is never regenerated), so losing the
+/// trim would turn a one-character formatting difference into an unbootable store with
+/// rows the operator cannot re-enter. MEASURED: deleting `.trim()` from the decode left
+/// all 17 tests in this file GREEN, so nothing was watching it.
+///
+/// This is the TOLERANT direction of the same function that refuses malformed input --
+/// both halves matter, which is why the refusal test above and this one sit together.
+#[test]
+fn accepts_a_stored_key_with_surrounding_whitespace() {
+    let hex_key = "ab".repeat(32);
+
+    for padded in [
+        format!("{hex_key}\n"),
+        format!(" {hex_key} "),
+        format!("\t{hex_key}\r\n"),
+    ] {
+        let keyring = DurableStubKeyring::new();
+        keyring.seed(INSTALL_KEY_ENTRY, &padded);
+
+        let resolved = resolve_install_key(&keyring)
+            .unwrap_or_else(|e| panic!("a whitespace-padded key must still resolve: {e:?}"));
+        match resolved {
+            InstallKeyResolution::Ready { secret, source } => {
+                assert_eq!(
+                    secret, [0xabu8; 32],
+                    "the decoded key must be the padded one"
+                );
+                assert!(
+                    matches!(source, InstallKeySource::Loaded),
+                    "a present entry is Loaded, never Generated"
+                );
+            }
+            other => panic!("expected Ready, got {other:?}"),
+        }
+
+        // And the stored value is left exactly as it was found -- resolving must not
+        // rewrite the entry (the same no-rewrite rule as loads_an_existing_key).
+        assert_eq!(
+            keyring.peek(INSTALL_KEY_ENTRY).as_deref(),
+            Some(padded.as_str())
+        );
+    }
+}

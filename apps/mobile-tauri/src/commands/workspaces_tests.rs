@@ -296,6 +296,18 @@ async fn list_workspace_screens_requires_valid_ticket() {
 }
 
 #[tokio::test]
+async fn list_all_workspaces_scoped_rejects_invalid_session() {
+    let (state, _dir) = picker_state();
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = list_all_workspaces_scoped("invalid-session".into(), app.state()).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
 async fn resolve_boot_store_returns_primary_store() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);

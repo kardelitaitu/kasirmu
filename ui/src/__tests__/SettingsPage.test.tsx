@@ -558,9 +558,23 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
           expect(within(sectionRoot()).getAllByText(placeholder)).toHaveLength(1);
         });
       }
-      await waitFor(() => {
-        expect(within(sectionRoot()).getByText(migrating)).toBeInTheDocument();
-      });
+      // The migration note belongs to the SCAFFOLD, not to a finished screen.
+      //
+      // This assertion used to require it on EVERY screen, migrated ones included —
+      // which is why 11 built screens still told users "Existing settings content will
+      // move here selectively" (SecurityAccountScreen carried a comment citing this
+      // very line as the reason). The rule now matches the registry: an un-migrated
+      // screen shows the note, a migrated one must NOT.
+      if (markers) {
+        expect(
+          within(sectionRoot()).queryByText(migrating),
+          item.key + ' is migrated onto real content but still shows the "will move here" note',
+        ).toBeNull();
+      } else {
+        await waitFor(() => {
+          expect(within(sectionRoot()).getByText(migrating)).toBeInTheDocument();
+        });
+      }
     }
   });
 

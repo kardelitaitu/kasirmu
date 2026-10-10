@@ -280,7 +280,7 @@ impl Store<'_> {
             let has_recipe = !recipe.is_empty();
 
             if !tracks_inventory && !has_recipe {
-                // Skip checking stock for service products that do not have a recipe.
+                // Skip checking stock for non-inventory products (service and restaurant items) that do not have a recipe.
                 continue;
             }
 
@@ -622,6 +622,7 @@ impl Store<'_> {
         if !payment_splits.is_empty() {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
+                let method_norm = split.method.to_ascii_lowercase();
                 tx.execute(
                     "INSERT INTO payments (id, sale_id, method, amount_minor, currency,
                                            gateway_reference, gateway_status, gateway_response,
@@ -630,7 +631,7 @@ impl Store<'_> {
                     rusqlite::params![
                         payment_id,
                         sale.id,
-                        split.method,
+                        method_norm,
                         split.amount_minor,
                         cur_str,
                         split.gateway_reference,

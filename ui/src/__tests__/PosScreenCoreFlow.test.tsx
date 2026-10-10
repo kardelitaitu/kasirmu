@@ -166,6 +166,19 @@ vi.mock('@/utils/interaction', () => ({
   triggerInteraction: vi.fn(),
 }));
 
+// F21: the order-sent chime. The real hook synthesises a Web Audio tone, which jsdom
+// has no AudioContext for — it swallows the throw, so a test against the real hook
+// could not tell "played" from "failed silently". Hoisted spies make it observable.
+const soundSpies = vi.hoisted(() => ({ playSuccess: vi.fn(), playBeep: vi.fn() }));
+vi.mock('@/components/useSound', () => ({
+  useSound: () => ({
+    playSuccess: soundSpies.playSuccess,
+    playBeep: soundSpies.playBeep,
+    playError: vi.fn(),
+    setSoundEnabled: vi.fn(),
+  }),
+}));
+
 vi.mock('@/contexts/AuthContext', async () => {
   const { createAuthContextMock } = await import('@/__tests__/test-utils/mocks/contexts');
   return {
@@ -629,6 +642,71 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     expect(screen.queryByText('payment-toast-kds-failed')).toBeNull();
   });
 
+
+  // ── Order Sound Notifications (F21) ──────────────────────────────
+  //
+  // `restaurant.sound_chime` promises "Play an audible confirmation chime when orders
+  // are sent or updated" and defaults to TRUE, but lived ONLY in the settings screen
+  // until this round — the app never played the chime it advertised. The pieces were
+  // present (a shared `useSound` hook, and the retail POS already chiming on
+  // completion at RetailPosScreen.tsx:1576); the restaurant path simply never called it.
+  //
+  // Drives the real checkout and asserts the SPY, so it fails if the call is removed.
+  const completeCashSaleAndReturn = async () => {
+    await renderPosScreenWithShift();
+    await waitFor(() => expect(screen.getByText('0m')).toBeInTheDocument());
+
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    });
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+
+    const payButtons = await screen.findAllByRole('button', { name: /charge/i });
+    await userEvent.click(payButtons[payButtons.length - 1]!);
+    await waitFor(() => expect(screen.getByText('Complete Order')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10.00');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    // The receipt preview is the last step before the cart resets — reaching it is
+    // what makes this a COMPLETED sale rather than an abandoned one.
+    await waitFor(() => expect(screen.getByText('Skip')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /skip/i }));
+    await waitFor(() => expect(screen.getByText('Cart is empty')).toBeInTheDocument(), {
+      timeout: 5000,
+    });
+  };
+
+  it('plays the order chime on a completed sale when sound_chime is unset', async () => {
+    // Unset = never written = the model's default (chime). The settings mock resolves
+    // null for an unconfigured key, which is exactly the unset case.
+    soundSpies.playSuccess.mockClear();
+    await completeCashSaleAndReturn();
+    await waitFor(() => expect(soundSpies.playSuccess).toHaveBeenCalled());
+  });
+
+  it('does NOT play the chime when the merchant switched sound_chime off', async () => {
+    // The direction that makes the setting real rather than decorative.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation((_t, key) =>
+      Promise.resolve(key === 'restaurant.sound_chime' ? 'false' : null),
+    );
+    soundSpies.playSuccess.mockClear();
+    await completeCashSaleAndReturn();
+    expect(
+      soundSpies.playSuccess,
+      'sound notifications were OFF but the chime played anyway',
+    ).not.toHaveBeenCalled();
+  });
   it('adds multiple products, shows correct subtotal, opens payment', async () => {
     await renderPosScreenWithShift();
 
