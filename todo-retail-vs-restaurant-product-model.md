@@ -1,16 +1,8 @@
 # todo — separate the restaurant MENU from the retail PRODUCT
 
-> **Created 2026-10-10 · status: RULED, not started — no code changed.**
+> **Created 2026-10-10 · updated 2026-10-11 · status: DONE — Steps 0, 1, 2, 3 implemented and verified (c49fa1dbf, 66eea4443, c07279f02, 26d790335). Step 4 deferred per todo-restaurant-recipe-authoring.md.**
 >
-> **RULING (§5a): do Option A, then Option B. Option C is REFUSED.** The deciding fact is that
-> `both` is **dead code** — no UI can produce it, no Rust path branches on it, and its two
-> consumers contradict each other. C's entire justification rested on preserving that variant.
-> It is refused for three further reasons: **it does not fix the reported symptom** (the shortfall
-> comes from the checkout reading the stock ledger, which a table split leaves untouched); it
-> re-points **29 FKs** and breaks `sku` as a global join key across sync and the PG replica;
-> and this repo's own policy puts a change that size behind an ADR, not a bug report.
->
-> **Still open:** Phase 0's data check (§6) and question 5 (is `both` wanted, or deleted).
+> **RULING (§5a) EXECUTED:** Option A (discriminator CHECK constraint, write-side zero-stock initialization, unified in_stock rule) and Option B (typed domain views `RetailProduct`, `RestaurantMenuItem`, `ServiceItem` across Rust and UI) are implemented and verified. Option C remains REFUSED. Dead variant `both` has been removed.
 >
 > **Why this file exists.** A restaurant POS could not finish a sale: the checkout raised
 > *"Insufficient Stock"* against `MUFFIN-B` / `LATTE` / `CAPPU` (screenshot, 2026-10-10). The
