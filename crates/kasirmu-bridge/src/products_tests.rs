@@ -786,3 +786,56 @@ fn product_dto_into_catalog_item_domain_views() {
         _ => panic!("expected service"),
     }
 }
+
+#[test]
+fn recipe_dto_serialization_roundtrip() {
+    let item = RecipeItemDto {
+        id: "r1".into(),
+        parent_product_id: "parent-1".into(),
+        ingredient_product_id: "ing-1".into(),
+        ingredient_sku: "ING-1".into(),
+        ingredient_name: "Sugar".into(),
+        quantity_required: 10,
+        unit: "g".into(),
+        cost_minor: 50,
+    };
+    let json = serde_json::to_string(&item).unwrap();
+    let deser: RecipeItemDto = serde_json::from_str(&json).unwrap();
+    assert_eq!(deser, item);
+
+    let input = RecipeIngredientInputDto {
+        ingredient_product_id: "ing-1".into(),
+        quantity_required: 10,
+        unit: "g".into(),
+    };
+    let json_input = serde_json::to_string(&input).unwrap();
+    let deser_input: RecipeIngredientInputDto = serde_json::from_str(&json_input).unwrap();
+    assert_eq!(deser_input, input);
+
+    let set_args = SetRecipeScopedArgs {
+        parent_product_id: "parent-1".into(),
+        ingredients: vec![input],
+    };
+    let json_args = serde_json::to_string(&set_args).unwrap();
+    let deser_args: SetRecipeScopedArgs = serde_json::from_str(&json_args).unwrap();
+    assert_eq!(deser_args, set_args);
+}
+
+#[tokio::test]
+async fn recipe_scoped_commands_reject_invalid_token() {
+    let bridge = TestBridge::new();
+    let ctx = bridge.ctx();
+
+    let get_res = get_recipe_scoped(&ctx, "invalid-token", "prod-1").await;
+    assert!(matches!(get_res, Err(BridgeError::InvalidSession)));
+
+    let set_args = SetRecipeScopedArgs {
+        parent_product_id: "prod-1".into(),
+        ingredients: vec![],
+    };
+    let set_res = set_recipe_scoped(&ctx, "invalid-token", &set_args).await;
+    assert!(matches!(set_res, Err(BridgeError::InvalidSession)));
+
+    let del_res = delete_recipe_scoped(&ctx, "invalid-token", "prod-1").await;
+    assert!(matches!(del_res, Err(BridgeError::InvalidSession)));
+}
