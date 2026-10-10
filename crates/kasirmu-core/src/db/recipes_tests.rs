@@ -340,3 +340,186 @@ fn get_recipe_ingredients_order_by_id_asc() {
     assert_eq!(ingredients[1].id, "r_b");
     assert_eq!(ingredients[2].id, "r_c");
 }
+
+// ── set_recipe / delete_recipe / get_recipe_details ────────────
+
+#[test]
+fn set_recipe_creates_and_returns_details() {
+    let conn = fresh();
+    seed_products(&conn);
+
+    let store = Store::new(&conn);
+    let items = vec![
+        RecipeIngredientInput {
+            ingredient_product_id: "bun".into(),
+            quantity_required: 1,
+            unit: "pcs".into(),
+        },
+        RecipeIngredientInput {
+            ingredient_product_id: "patty".into(),
+            quantity_required: 2,
+            unit: "pcs".into(),
+        },
+    ];
+
+    let details = store.set_recipe("burger", &items).unwrap();
+    assert_eq!(details.len(), 2);
+    assert_eq!(details[0].ingredient_product_id, "bun");
+    assert_eq!(details[0].ingredient_sku, "BUN");
+    assert_eq!(details[0].ingredient_name, "Burger Bun");
+    assert_eq!(details[0].quantity_required, 1);
+    assert_eq!(details[0].unit, "pcs");
+
+    assert_eq!(details[1].ingredient_product_id, "patty");
+    assert_eq!(details[1].ingredient_sku, "PATTY");
+    assert_eq!(details[1].quantity_required, 2);
+
+    // Read back independently via get_recipe_details
+    let fetched = store.get_recipe_details("burger").unwrap();
+    assert_eq!(fetched, details);
+}
+
+#[test]
+fn set_recipe_replaces_existing_ingredients() {
+    let conn = fresh();
+    seed_products(&conn);
+    seed_recipe(&conn); // burger has bun, patty, cheese
+
+    let store = Store::new(&conn);
+    // Replace with just cheese
+    let items = vec![RecipeIngredientInput {
+        ingredient_product_id: "cheese".into(),
+        quantity_required: 4,
+        unit: "slice".into(),
+    }];
+
+    let details = store.set_recipe("burger", &items).unwrap();
+    assert_eq!(details.len(), 1);
+    assert_eq!(details[0].ingredient_product_id, "cheese");
+    assert_eq!(details[0].quantity_required, 4);
+    assert_eq!(details[0].unit, "slice");
+
+    let raw = store.get_recipe_ingredients("burger").unwrap();
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0].ingredient_product_id, "cheese");
+}
+
+#[test]
+fn set_recipe_clears_when_empty() {
+    let conn = fresh();
+    seed_products(&conn);
+    seed_recipe(&conn);
+
+    let store = Store::new(&conn);
+    let details = store.set_recipe("burger", &[]).unwrap();
+    assert!(details.is_empty());
+
+    let raw = store.get_recipe_ingredients("burger").unwrap();
+    assert!(raw.is_empty());
+}
+
+#[test]
+fn set_recipe_rejects_self_reference() {
+    let conn = fresh();
+    seed_products(&conn);
+
+    let store = Store::new(&conn);
+    let items = vec![RecipeIngredientInput {
+        ingredient_product_id: "burger".into(),
+        quantity_required: 1,
+        unit: "pcs".into(),
+    }];
+
+    let err = store.set_recipe("burger", &items).unwrap_err();
+    assert!(matches!(err, CoreError::Validation { .. }));
+    assert!(
+        err.to_string()
+            .contains("cannot be an ingredient of itself")
+    );
+}
+
+#[test]
+fn set_recipe_rejects_duplicate_ingredients() {
+    let conn = fresh();
+    seed_products(&conn);
+
+    let store = Store::new(&conn);
+    let items = vec![
+        RecipeIngredientInput {
+            ingredient_product_id: "bun".into(),
+            quantity_required: 1,
+            unit: "pcs".into(),
+        },
+        RecipeIngredientInput {
+            ingredient_product_id: "bun".into(),
+            quantity_required: 2,
+            unit: "pcs".into(),
+        },
+    ];
+
+    let err = store.set_recipe("burger", &items).unwrap_err();
+    assert!(matches!(err, CoreError::Validation { .. }));
+    assert!(err.to_string().contains("duplicate ingredient"));
+}
+
+#[test]
+fn set_recipe_rejects_invalid_quantity() {
+    let conn = fresh();
+    seed_products(&conn);
+
+    let store = Store::new(&conn);
+    let items = vec![RecipeIngredientInput {
+        ingredient_product_id: "bun".into(),
+        quantity_required: 0,
+        unit: "pcs".into(),
+    }];
+
+    let err = store.set_recipe("burger", &items).unwrap_err();
+    assert!(matches!(err, CoreError::Validation { .. }));
+}
+
+#[test]
+fn set_recipe_rejects_nonexistent_parent() {
+    let conn = fresh();
+    seed_products(&conn);
+
+    let store = Store::new(&conn);
+    let items = vec![RecipeIngredientInput {
+        ingredient_product_id: "bun".into(),
+        quantity_required: 1,
+        unit: "pcs".into(),
+    }];
+
+    let err = store.set_recipe("ghost", &items).unwrap_err();
+    assert!(matches!(err, CoreError::NotFound { .. }));
+}
+
+#[test]
+fn set_recipe_rejects_nonexistent_ingredient() {
+    let conn = fresh();
+    seed_products(&conn);
+
+    let store = Store::new(&conn);
+    let items = vec![RecipeIngredientInput {
+        ingredient_product_id: "phantom_patty".into(),
+        quantity_required: 1,
+        unit: "pcs".into(),
+    }];
+
+    let err = store.set_recipe("burger", &items).unwrap_err();
+    assert!(matches!(err, CoreError::NotFound { .. }));
+}
+
+#[test]
+fn delete_recipe_removes_all_rows() {
+    let conn = fresh();
+    seed_products(&conn);
+    seed_recipe(&conn);
+
+    let store = Store::new(&conn);
+    let deleted = store.delete_recipe("burger").unwrap();
+    assert_eq!(deleted, 3);
+
+    let ingredients = store.get_recipe_ingredients("burger").unwrap();
+    assert!(ingredients.is_empty());
+}
