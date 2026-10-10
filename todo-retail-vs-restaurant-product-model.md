@@ -5,8 +5,8 @@
 > **RULING (§5a): do Option A, then Option B. Option C is REFUSED.** The deciding fact is that
 > `both` is **dead code** — no UI can produce it, no Rust path branches on it, and its two
 > consumers contradict each other. C's entire justification rested on preserving that variant.
-> It is refused for three further reasons: **it does not fix the reported bug** (the shortfall
-> comes from two layers applying two stock rules, which a table split leaves untouched); it
+> It is refused for three further reasons: **it does not fix the reported symptom** (the shortfall
+> comes from the checkout reading the stock ledger, which a table split leaves untouched); it
 > re-points **29 FKs** and breaks `sku` as a global join key across sync and the PG replica;
 > and this repo's own policy puts a change that size behind an ADR, not a bug report.
 >
@@ -99,8 +99,8 @@ and blocks the sale.
 
 | | Reads | Triggered by | Fixed by A? |
 |---|---|---|---|
-| Grey tile | `stock_summary` **or** `inventory` | rendering the menu | **yes** |
-| Insufficient Stock | `stock_summary` **only** | pressing Complete | **NO** |
+| Grey tile | `stock_summary` **or** `inventory` | rendering the menu | **yes**, for restaurant items — see 10.5 for the case it does NOT fix |
+| Insufficient Stock | `stock_summary` **only** | pressing Complete | **NO** unless the row genuinely has no ledger entries |
 
 **The consequence for the ruling, stated plainly:** Option A fixes the **grey tile** for
 restaurant items. It does **NOT** by itself stop the Insufficient Stock dialog. The original
@@ -174,8 +174,8 @@ in *both* menus today. Two tables must either join or duplicate a row to preserv
 
 **Right, and measured:**
 
-- The aggregate **is** ambiguous: one free-text discriminator, no constraint, a fallback that
-  silently invents `retail`, and two layers answering "needs stock?" differently.
+- The aggregate **is** ambiguous: one free-text discriminator, no constraint, and a fallback
+  that silently invents `retail`.
 - The **`in_stock` rule is genuinely duplicated** 4×, and `product_type != 'service'` twice
   (`products_crud.rs:119,148`). Those are real copy-paste costs.
 
@@ -186,8 +186,9 @@ shared core with capability differences — not two implementations. The duplica
 concentrated in a handful of rules like `in_stock`, not spread through the app.
 
 **What is NOT yet established:** that a *table* split is necessary to fix anything. The
-reported bug is explained entirely by §2.2 (two layers, two rules) and §2.1 (unconstrained
-discriminator) — both fixable without touching a single FK.
+reported symptom is most likely a **type/data** problem (§2.3), and the underlying listing defect
+(§10.5) is generic to every product created with blank stock — both fixable without touching a
+single FK.
 
 ---
 
@@ -212,15 +213,16 @@ Introduce `RestaurantMenuItem` / `RetailProduct` as **typed views** enforced at 
 IPC boundary, on top of Option A:
 
 ```
-product_type ∈ {restaurant, both} → RestaurantMenuItem  (menu, courses, kitchen, recipes)
-product_type ∈ {retail, both}     → RetailProduct       (stock, barcode, rack, EAN)
+product_type = restaurant → RestaurantMenuItem  (menu, courses, kitchen, recipes)
+product_type = retail     → RetailProduct       (stock, barcode, rack, EAN)
+product_type = service    → ServiceItem         (no stock, no menu tile)
 ```
 
 | | |
 |---|---|
 | **Gives** | The readable separation and cross-contamination guard the user asked for |
 | **FKs touched** | **0** — same table, same `sku` identity, same sync payload |
-| **Risk** | Medium — touches the DTO/API surface, but no data moves and `Both` still works |
+| **Risk** | Medium — touches the DTO/API surface, but no data moves. Assumes `Both` is removed (§8 q5); if kept, its semantics must be defined first |
 | **Requires** | Option A first (the discriminator must be trustworthy before it can discriminate) |
 
 ### Option C — full table/aggregate split
@@ -267,7 +269,8 @@ Removing the `Both` objection makes C *cheaper*, not *sensible*. Three independe
    The Insufficient Stock dialog comes from `stock_at_locations()` reading `stock_summary`
    only (§2.2). A table split leaves that query untouched, so you would spend a 29-FK migration
    and still be refused at the till. **A fix that does not fix the symptom is not a fix**, and
-   this applies to both A and C. §6.2 now carries the change that DOES address it.
+   this applies to both A and C. The change that DOES address it is identified in §10.5 — and it
+   is a listing/write-side defect, not the checkout.
 2. **`sku` is a global join key.** 29 FKs reference `products` by `id` *and* by `sku` (`:62`,
    `:389`, `:419`, `:427`). A split re-points every one *and* breaks `sku` as an identity, and it
    reaches `platform/sync` (upsert-by-SKU) and the SQLite to PG replica. That is a sync-protocol
@@ -289,9 +292,14 @@ a table split would also give, at roughly 20x the cost.
 
 ### Correction: this ruling corrects my OWN earlier claim
 
-I first said the divergence was **desktop vs mobile**. It is not — both shells share
-`run_list_products` and `MenuItemTile`. The real split is **checkout vs listing**. Recorded in
-section 9 so the wrong model is not inherited.
+This ruling corrects **two** of my own earlier claims, and both are recorded in section 9 so
+the wrong models are not inherited.
+
+1. I first said the divergence was **desktop vs mobile**. It is not — both shells share
+   `run_list_products` and `MenuItemTile`, and there is **no shell divergence at all**.
+2. I then said it was **checkout vs listing** "disagreeing about the same question". **That is
+   also wrong.** They read different tables and are triggered by different actions; they are
+   independent mechanisms, not two answers to one question (§2.2).
 
 ### The ruling's own risk, stated
 
@@ -321,29 +329,19 @@ fallback, a real code defect). A non-zero ingredient count → case 3 (by design
 
 ---
 
-### 6.2 The change that actually addresses the reported symptom (NEW — added by the audit)
+### 6.2 ~~The change that actually addresses the reported symptom~~ — WITHDRAWN, see §6.4
 
-The audit found that neither A nor C stops the Insufficient Stock dialog, because
-`stock_at_locations()` reads **`stock_summary` only** (`sales_checkout.rs:25-31`). So the
-checkout fix is a **third** change, and it is now part of the ruling:
-
-**A2 — make the checkout read the same stock the listing does.**
-
-`stock_at_locations()` currently does `COALESCE(qty, 0)` against `stock_summary`, so an item
-whose stock lives in the legacy `inventory` table (or nowhere) reports `Available: 0` and
-blocks the sale. The listing, by contrast, falls back to `inventory.qty`
-(`products_crud.rs:56`). **Two queries, two sources, one product.**
-
-| | |
-|---|---|
-| **Change** | widen `stock_at_locations()` to the same `COALESCE(stock_summary, inventory)` the listing uses, OR — better — decide which table is authoritative and read that in both |
-| **Decides** | which table is the source of truth for stock. That is **ADR territory** (`docs/decisions/2026-07-18-multi-location-inventory.md`) and the ADR may already answer it |
-| **Risk** | Medium — it changes what the till refuses |
-| **Do NOT guess** | `stock_summary` is the ADR-19 ledger; `inventory` is the legacy table. Choosing wrongly would make the POS oversell |
-
-**This is the one change that closes the reported bug**, and it is why Phase 0 must be answered
-first: if those three rows are `retail`, then the *whole* bug is a **data** problem and A2 is
-not needed at all.
+> **⚠️ THIS SECTION'S RECOMMENDATION WAS WRONG AND IS WITHDRAWN. It is kept only so a reader who
+> finds a reference to "A2" knows what happened to it. Do not implement it.**
+>
+> The original text argued for widening `stock_at_locations()` to fall back to the legacy
+> `inventory` table, on the reasoning that "the listing and the checkout should read the same
+> thing". **§6.4's ADR check showed the direction is backwards:** `stock_summary` is the
+> authoritative ADR-19 ledger, so teaching the checkout to honour `inventory` would make the till
+> accept stock the ledger model deliberately superseded — **a regression, not a fix.**
+>
+> **There is no "A2".** The stock-source question was already answered by the ADRs; what remains
+> is §10.5's listing/write-side defect, which is a different thing entirely.
 
 ### 6.3 Audit — what this file verified, and what it got wrong
 
@@ -363,8 +361,8 @@ Every claim was re-checked against the code. Recorded because the first draft co
 
 ### 6.4 The stock-source question is ALREADY ANSWERED by the ADRs (audit finding)
 
-A2 above said `"do NOT guess" which table is authoritative. The audit found the answer is
-already recorded, so A2 is **re-scoped from "decide" to "align"**:
+6.2 (since withdrawn) asked which table is authoritative. The audit found the answer is
+**already recorded**, which is what killed that section:
 
 - **`stock_summary` is the authoritative ledger.** ADR-19 established its composite PRIMARY
   KEY `(item_id, location_id)` (migration 089), and ADR `2026-07-18-multi-location-inventory.md`
