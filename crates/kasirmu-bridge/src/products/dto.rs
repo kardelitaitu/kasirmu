@@ -97,6 +97,7 @@ pub struct SerialTrackRow {
 /// A typed retail product view for inventory tracking, barcode scanning, and shelf placement.
 #[derive(Debug, Serialize)]
 pub struct RetailProductDto {
+    /// Underlying product details.
     #[serde(flatten)]
     pub product: ProductDto,
 }
@@ -104,6 +105,7 @@ pub struct RetailProductDto {
 /// A typed restaurant menu item view for menu display, coursing, and kitchen prep.
 #[derive(Debug, Serialize)]
 pub struct RestaurantMenuItemDto {
+    /// Underlying product details.
     #[serde(flatten)]
     pub product: ProductDto,
 }
@@ -111,6 +113,7 @@ pub struct RestaurantMenuItemDto {
 /// A typed service item view (non-physical goods with unlimited availability).
 #[derive(Debug, Serialize)]
 pub struct ServiceItemDto {
+    /// Underlying product details.
     #[serde(flatten)]
     pub product: ProductDto,
 }
@@ -119,8 +122,11 @@ pub struct ServiceItemDto {
 #[derive(Debug, Serialize)]
 #[serde(tag = "catalog_kind", rename_all = "snake_case")]
 pub enum CatalogItemDto {
+    /// A physical retail item with stock tracking.
     Retail(RetailProductDto),
+    /// A restaurant dish or drink with kitchen prep.
     Restaurant(RestaurantMenuItemDto),
+    /// A non-physical service item.
     Service(ServiceItemDto),
 }
 
