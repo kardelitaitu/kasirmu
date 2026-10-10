@@ -309,7 +309,26 @@ Phase 0 check comes back `retail` on those SKUs, then A shrinks to "fix the data
 the whole of the work.
 
 ---
-## 6. Phase 0 — the measurement that unblocks everything
+## 6. Phase 0 — RESOLVED by the demo-fixture finding (see `todo-demo-fixtures-sellable.md`)
+
+> **UPDATE 2026-10-10 (later the same day): Phase 0 is no longer a database query, because the
+> SKUs do not need looking up — they are DEMO FIXTURES, not rows.**
+>
+> `MUFFIN-B` appears in exactly one place in the repo: `ui/src/features/products/useProducts.ts:19`,
+> in `SAMPLE_PRODUCTS`. With `isDemoMode()` true (which it is in **every dev build**, no flag
+> needed) **and an empty store database**, `useProducts` substitutes that fixture catalogue
+> (`useProducts.ts:175-188`). The menu then shows mythical SKUs marked `inStock: true`, and the
+> checkout validates them against the **real, empty** DB — where they do not exist — so
+> `sales_checkout.rs:257-268` shortfalls every line at `Available: 0`.
+>
+> **So the reported symptom was a FIXTURE/REALITY MISMATCH, not a stock-model or type problem.**
+> This also dissolves §2.3's deduction: the guard at `:282` did not fire because **the rows were
+> never in the database at all** — a third possibility that §1's table of three did not contain.
+>
+> **The SQL below is retained for the case where the reporter was NOT on a demo build** — if a real
+> store DB genuinely holds those SKUs, these queries still answer §1's three cases.
+
+### 6.1 The original queries (valid if those SKUs ARE real rows)
 
 **No code until this is answered.** Against the desktop app's store database:
 
