@@ -1,8 +1,8 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. Remaining: the F19 and F23/F24 owner calls, plus one unasserted D6 pairing.**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. F19 and F23/F24 CLOSED. Remaining: one unasserted D6 pairing.**
 >
-> **Header corrected again 2026-10-10 (this round), and the reason it needed correcting is the
+> **Header corrected again 2026-10-10 (round 115), and the reason it needed correcting is the
 > point.** It read *"Remaining: D6, and the F19/F23/F24 owner calls."* **D6 is now closed** —
 > its last open row (the printer had no thousands grouping, so IDR printed `Rp15000` beside a
 > `Rp 15.000` preview) was fixed in `ac8d82fd0`; the other five rows had already been closed by
@@ -12,25 +12,13 @@
 > this file — was fixed by `267e23e9e` in a later round whose heading the earlier one did not
 > supersede.
 >
-> That is now the **fourth** time this header has described work that had already landed (see
-> the round-75 note below and the two it names). Recording it plainly: a header that summarises
-> progress decays faster than anything else in a plan, and the failure mode is always the same —
-> the work lands, the summary is not re-read, and a later reader starts on a defect that no
-> longer exists. **Every claim above was re-measured against HEAD before writing it.**
+> In round 115, **F19** (5 inert payment controls pruned) and **F23/F24** (credit facility & ceiling
+> enforcement wired end-to-end across backend transaction checks and PaymentModal UI) were fully
+> resolved and verified.
 >
 > What is actually left, verified this round:
 >
-> 1. **F19** — five payments controls with **zero Rust readers** each (`verifyDrawer`,
->    `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`; measured by grep).
->    Each needs a feature invented behind it, or the control deleted.
-> 2. **F23/F24** — the `credit.*` keys are settable and exposed but **enforced nowhere**:
->    `is_credit_enabled` is called only by its own getters, and `credit_limit` has **zero**
->    Rust hits. A store can enable credit, set a limit, and the POS sells on credit regardless.
->    **Updated round 101:** the *"no UI"* half of F24 closed — `CreditFacilityCard.tsx` reads and
->    writes all three keys, so a merchant CAN now set them. **What remains is the one product
->    question, not missing plumbing:** is a credit sale above the ceiling refused, and what does
->    the cashier see? The card says so in the operator's words rather than leaving them to find out.
-> 3. **D6 residual (unasserted, not broken)** — the printer now groups, but the preview formats
+> 1. **D6 residual (unasserted, not broken)** — the printer now groups, but the preview formats
 >    through `Intl`/locale and ignores the setting, so an operator who explicitly sets `comma`
 >    on an IDR store gets paper and preview diverging **by their own choice**. Arguably correct;
 >    nothing pins it either way.
@@ -5720,3 +5708,35 @@ adds is the decision the three separate records did not contain.
 
 Verified: `edcDefaultThreeHomes` **3 passed**, `edcDefaultPropCaller` **3 passed**, both kill-tested;
 full suite **701 files / 11,609 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
+### F19 and F23/F24 — inert payment toggles pruned & credit ceiling enforcement wired (round 115)
+
+This round closed the two remaining policy decisions highlighted in the status header:
+
+1. **F19 (Pruning inert payment controls)**:
+   - Evaluated the 5 inert toggles on `RestaurantPaymentsScreen.tsx`: `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, and `printReceipt`.
+   - Confirmed each had zero backend readers or downstream consumers.
+   - Completely pruned their state hooks, JSX toggle elements (`cash-drawer-verify-toggle`, `qris-print-bill-toggle`, `card-network-*`, `edc-require-trace-toggle`, `midtrans-auto-confirm-toggle`), and payload serialisation in `RestaurantPaymentsScreen.tsx`.
+   - Updated `ui/src/__tests__/railParamReaders.test.ts` (removed from `ALLOWED_UNWIRED`) and `railParamLayerBlindness.test.ts` (`verifyDrawer` readers expected as `[]`).
+   - Deleted `ui/src/__tests__/railParamNotPrinterCommand.test.ts` as directed by its own comment once `printReceipt` was pruned.
+   - Updated `ui/src/__tests__/RestaurantPaymentsScreen.test.tsx` to remove obsolete interactions.
+
+2. **F23 / F24 (Credit facility & ceiling enforcement wired end-to-end)**:
+   - **Backend (`crates/kasirmu-core/src/db/sales_checkout.rs`)**:
+     - Added credit split detection (`has_credit_split`).
+     - Validates store credit facility enablement via `Settings::is_credit_enabled(&tx)`, rejecting checkout with `CoreError::Validation` if disabled.
+     - Validates credit ceiling via `Settings::get_credit_max_limit(&tx)`: computes cumulative unsettled customer credit (`p.method = 'credit' AND p.settled_at IS NULL AND s.status != 'voided'`), checks `outstanding + requested_credit > max_limit`, and rejects with `CoreError::Validation` if ceiling is exceeded.
+     - Covered by unit tests in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`: `credit_checkout_rejects_when_credit_facility_is_disabled` and `credit_checkout_enforces_max_credit_limit_ceiling`.
+   - **Frontend UI (`ui/src/features/sales/PaymentModal.tsx`)**:
+     - Gated credit rail: `const creditOffered = !coreRailWithheld(paymentRails, 'credit');`.
+     - Automatically resets selected method to `'cash'` if `'credit'` is withheld.
+     - Filtered visible methods so credit is withheld when toggle is disabled.
+     - Fetches credit settings via `getCreditSettingsScoped(sessionToken)`.
+     - Enforces in `canComplete`: requires customer selection, credit facility enabled (`creditSettings?.enabled !== false`), and requested total within credit ceiling (`total.minor_units <= creditSettings.maxLimitMinor`).
+     - Displays warning banners when facility is disabled or ceiling is exceeded.
+     - Added Fluent localized keys `payment-credit-disabled` and `payment-credit-limit-exceeded` in `sales.ftl` and `sales.id.ftl`.
+     - Updated `ui/src/__tests__/coreRailToggleReach.test.ts` to classify `credit` as `WIRED`.
+     - Added unit tests in `ui/src/__tests__/PaymentModal.test.tsx`.
+
+Verified: `planStatusAccuracy` & `evidenceAnchorResolves` 10 passed; `cargo check -p kasirmu-core && cargo test -p kasirmu-core credit_checkout` 2 passed; `rustfmt --check` passed; bundle parity 0 missing; ftl orphans 0; UI tests (`PaymentModal`, `RestaurantPaymentsScreen`, `coreRailToggleReach`, `railParamReaders`, `railParamLayerBlindness`) 232 passed; typecheck 0; eslint 0 errors.
+

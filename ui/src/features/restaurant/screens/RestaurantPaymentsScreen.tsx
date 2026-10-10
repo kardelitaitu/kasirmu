@@ -268,7 +268,6 @@ export function RestaurantPaymentsScreen({
   // ── UI States for Expanded Payment Cards ──────────────────────────
   // Cash
   const [cashDrawerAutoKick, setCashDrawerAutoKick] = useState(true);
-  const [cashDrawerVerify, setCashDrawerVerify] = useState(false);
   const [cashCustomLabel, setCashCustomLabel] = useState('Cash');
   const [activeCashPresets, setActiveCashPresets] = useState<string[]>([
     'exact',
@@ -285,12 +284,8 @@ export function RestaurantPaymentsScreen({
   const [qrisMode, setQrisMode] = useState<'static' | 'dynamic'>('static');
   const [qrisNmid, setQrisNmid] = useState('ID1020030040050');
   const [qrisSurcharge, setQrisSurcharge] = useState('0.7');
-  const [qrisPrintReceipt, setQrisPrintReceipt] = useState(true);
 
-  // EDC
-  const [requireEdcTraceCode, setRequireEdcTraceCode] = useState(true);
-  const [acceptedCards, setAcceptedCards] = useState<string[]>(['gpn', 'visa', 'mastercard', 'bca']);
-
+  // EDC — terminal selection handled by edcDefaultTerminalId
   // Midtrans Gateway
   const [midtransLocalEnabled, setMidtransLocalEnabled] = useState(false);
   const [midtransEnv, setMidtransEnv] = useState<'sandbox' | 'production'>('sandbox');
@@ -305,7 +300,6 @@ export function RestaurantPaymentsScreen({
     bni_va: false,
     bri_va: false,
   });
-  const [midtransAutoConfirm, setMidtransAutoConfirm] = useState(true);
 
   // Stripe Processing
   const [stripeLocalEnabled, setStripeLocalEnabled] = useState(false);
@@ -414,7 +408,6 @@ export function RestaurantPaymentsScreen({
             try {
               const p = JSON.parse(cash.parameters);
               if (typeof p.autoKick === 'boolean') setCashDrawerAutoKick(p.autoKick);
-              if (typeof p.verifyDrawer === 'boolean') setCashDrawerVerify(p.verifyDrawer);
               if (Array.isArray(p.presets) && p.presets.length > 0) setActiveCashPresets(p.presets);
             } catch {
               // Ignore parse error, keep defaults
@@ -429,7 +422,6 @@ export function RestaurantPaymentsScreen({
               if (p.mode === 'static' || p.mode === 'dynamic') setQrisMode(p.mode);
               if (p.nmid) setQrisNmid(p.nmid);
               if (p.surcharge) setQrisSurcharge(p.surcharge);
-              if (typeof p.printReceipt === 'boolean') setQrisPrintReceipt(p.printReceipt);
             } catch {
               // Ignore parse error, keep defaults
             }
@@ -438,13 +430,6 @@ export function RestaurantPaymentsScreen({
           const card = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'card');
           if (card) {
             setCardLocalEnabled(card.is_enabled);
-            try {
-              const p = JSON.parse(card.parameters);
-              if (typeof p.requireTrace === 'boolean') setRequireEdcTraceCode(p.requireTrace);
-              if (Array.isArray(p.acceptedCards) && p.acceptedCards.length > 0) setAcceptedCards(p.acceptedCards);
-            } catch {
-              // Ignore parse error, keep defaults
-            }
           }
 
           const midtrans = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'midtrans');
@@ -457,7 +442,6 @@ export function RestaurantPaymentsScreen({
               if (p.clientKey) setMidtransClientKey(p.clientKey);
               if (p.serverKey) setMidtransServerKey(p.serverKey);
               if (p.channels && typeof p.channels === 'object') setMidtransChannels(p.channels);
-              if (typeof p.autoConfirm === 'boolean') setMidtransAutoConfirm(p.autoConfirm);
             } catch {
               // Ignore parse error, keep defaults
             }
@@ -765,7 +749,6 @@ export function RestaurantPaymentsScreen({
         if (lower === 'midtrans') {
           const clean: Record<string, unknown> = {};
           if (paramsObj['channels']) clean['channels'] = paramsObj['channels'];
-          if (typeof paramsObj['autoConfirm'] === 'boolean') clean['autoConfirm'] = paramsObj['autoConfirm'];
           return {
             rail_code: d.rail_code,
             label: d.label,
@@ -1133,29 +1116,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-drawer-verification')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="cash-drawer-verify">
-                        <input
-                          id="cash-drawer-verify"
-                          type="checkbox"
-                          role="switch"
-                          checked={cashDrawerVerify}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setCashDrawerVerify(val);
-                            updateRailParams('cash', { verifyDrawer: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-drawer-verification')}
-                          data-testid="cash-drawer-verify-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
+
               </div>
             </PaymentMethodCard>
 
@@ -1265,29 +1226,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-print-pay-at-table')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="qris-print-bill">
-                        <input
-                          id="qris-print-bill"
-                          type="checkbox"
-                          role="switch"
-                          checked={qrisPrintReceipt}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setQrisPrintReceipt(val);
-                            updateRailParams('qris', { printReceipt: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-print-pay-at-table')}
-                          data-testid="qris-print-bill-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
+
               </div>
             </PaymentMethodCard>
 
@@ -1341,63 +1280,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-block">
-                  <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-card-networks')}</span>
-                  <div className="resto-compact-chips">
-                    {[
-                      { id: 'gpn', label: 'Debit GPN' },
-                      { id: 'visa', label: 'Visa' },
-                      { id: 'mastercard', label: 'Mastercard' },
-                      { id: 'bca', label: 'BCA Card' },
-                      { id: 'jcb', label: 'JCB' },
-                      { id: 'amex', label: 'American Express' },
-                    ].map((network) => {
-                      const active = acceptedCards.includes(network.id);
-                      return (
-                        <button
-                          key={network.id}
-                          type="button"
-                          className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
-                          onClick={() => {
-                            const next = active
-                              ? acceptedCards.filter((id) => id !== network.id)
-                              : [...acceptedCards, network.id];
-                            setAcceptedCards(next);
-                            updateRailParams('card', { acceptedCards: next });
-                          }}
-                          aria-pressed={active}
-                          data-testid={`card-network-${network.id}`}
-                        >
-                          {network.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-require-approval')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="edc-require-trace">
-                        <input
-                          id="edc-require-trace"
-                          type="checkbox"
-                          role="switch"
-                          checked={requireEdcTraceCode}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setRequireEdcTraceCode(val);
-                            updateRailParams('card', { requireTrace: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-require-approval')}
-                          data-testid="edc-require-trace-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
               </div>
             </PaymentMethodCard>
 
@@ -1540,29 +1423,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-instant-webhook')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="midtrans-auto-confirm">
-                        <input
-                          id="midtrans-auto-confirm"
-                          type="checkbox"
-                          role="switch"
-                          checked={midtransAutoConfirm}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setMidtransAutoConfirm(val);
-                            updateRailParams('midtrans', { autoConfirm: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-instant-webhook')}
-                          data-testid="midtrans-auto-confirm-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
+
 
                 <div className="resto-compact-row">
                   <span className="resto-compact-label">{l10n.getString('restaurant-payment-connection')}</span>

@@ -234,6 +234,71 @@ impl Store<'_> {
         // IMMEDIATE contends at BEGIN where the 5000 ms busy_timeout applies.
         let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
+        // ── Credit facility & ceiling enforcement (F23/F24) ─────────────
+        let has_credit_split = payment_splits
+            .iter()
+            .any(|s| s.method.eq_ignore_ascii_case("credit"))
+            || sale
+                .payment_method
+                .as_deref()
+                .is_some_and(|m| m.eq_ignore_ascii_case("credit"));
+
+        if has_credit_split {
+            if !crate::Settings::is_credit_enabled(&tx)? {
+                return Err(CoreError::Validation {
+                    field: "payment_method",
+                    message: "store credit facility is not enabled in settings".to_string(),
+                });
+            }
+
+            let max_limit_minor = crate::Settings::get_credit_max_limit(&tx)?;
+            if max_limit_minor > 0 {
+                let credit_requested: i64 = if !payment_splits.is_empty() {
+                    payment_splits
+                        .iter()
+                        .filter(|s| s.method.eq_ignore_ascii_case("credit"))
+                        .map(|s| s.amount_minor)
+                        .sum()
+                } else {
+                    sale.total.minor_units
+                };
+
+                let cust_id = sale.customer_id.as_deref().unwrap_or("");
+                let cust_name = payment_splits
+                    .iter()
+                    .find(|s| s.method.eq_ignore_ascii_case("credit"))
+                    .and_then(|s| s.gateway_reference.as_deref())
+                    .unwrap_or("");
+
+                // Compute existing unsettled credit for this customer
+                let outstanding_minor: i64 = tx.query_row(
+                    "SELECT COALESCE(SUM(p.amount_minor), 0)
+                     FROM payments p
+                     JOIN sales s ON p.sale_id = s.id
+                     WHERE p.method = 'credit'
+                       AND p.settled_at IS NULL
+                       AND s.status != 'voided'
+                       AND (
+                         (?1 != '' AND s.customer_id = ?1)
+                         OR (?2 != '' AND p.gateway_reference = ?2)
+                       )",
+                    rusqlite::params![cust_id, cust_name],
+                    |row| row.get(0),
+                )?;
+
+                let total_credit = outstanding_minor.saturating_add(credit_requested);
+                if total_credit > max_limit_minor {
+                    return Err(CoreError::Validation {
+                        field: "credit_limit",
+                        message: format!(
+                            "credit limit exceeded: outstanding balance {} + attempted credit {} exceeds ceiling {}",
+                            outstanding_minor, credit_requested, max_limit_minor
+                        ),
+                    });
+                }
+            }
+        }
+
         // ── Resolve topology route order ──────────────────────────
         let default_location = crate::location_resolver::get_default_location_id();
         let stock_locations = if stock_locations.is_empty() {

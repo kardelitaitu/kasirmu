@@ -16,6 +16,7 @@ import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 // currency/rate loaders and the fixed-point converter moved to useMultiCurrency.
 import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
+import { getCreditSettingsScoped, type CreditSettingsDto } from '@/api/settings';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { coreRailWithheld, railOffered, railParam, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
@@ -150,6 +151,8 @@ export default function PaymentModal({
   // written before that row existed — a silent withdrawal nobody asked for, caught by
   // this file's own PINNED tender-list case.) Three states, documented on the helper.
   const openBillOffered = !coreRailWithheld(paymentRails, 'open_bill');
+  const creditOffered = !coreRailWithheld(paymentRails, 'credit');
+  const [creditSettings, setCreditSettings] = useState<CreditSettingsDto | null>(null);
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
   const manualQrString = staticQrisPayload(paymentRails);
@@ -345,6 +348,27 @@ export default function PaymentModal({
     // hidden surface. Same recovery shape as the QRIS reset above.
     if ((!isRestaurantPos || !openBillOffered) && method === 'open_bill') setMethod('cash');
   }, [isRestaurantPos, openBillOffered, method]);
+
+  useEffect(() => {
+    if (!sessionToken || !open) return;
+    let cancelled = false;
+    getCreditSettingsScoped(sessionToken)
+      .then((settings) => {
+        if (!cancelled) setCreditSettings(settings);
+      })
+      .catch((err) => {
+        console.warn('Failed to load credit settings', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, open]);
+
+  useEffect(() => {
+    if (!creditOffered && method === 'credit') {
+      setMethod('cash');
+    }
+  }, [creditOffered, method]);
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
@@ -1063,11 +1087,19 @@ retryCurrencyLoad,
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
     if (method === 'open_bill') return customerName.trim().length > 0 || (tableNumber != null && tableNumber.trim().length > 0);
-    if (method === 'credit') return customerName.trim().length > 0;
+    if (method === 'credit') {
+      if (!customerName.trim().length) return false;
+      if (!creditOffered) return false;
+      if (creditSettings?.enabled === false) return false;
+      if (creditSettings && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor) {
+        return false;
+      }
+      return true;
+    }
     if (method === 'cash') return sufficient;
     if (method === 'qris') return qrReference.length > 0;
     return true;
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference, creditOffered, creditSettings, total.minor_units]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
@@ -2101,7 +2133,9 @@ retryCurrencyLoad,
                         <legend className="payment-section-title">Payment Method</legend>
                       </Localized>
                       <div className="payment-method-options">
-                        {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
+                        {visibleMethods(paymentRails, activeMarketProfile)
+                          .filter((m) => m !== 'credit' || creditOffered)
+                          .map((m) => (
                           <label
                             key={m}
                             className={`payment-method-label payment-method-label--${m}${method === m ? ' payment-method-label--active' : ''}`}
@@ -2202,6 +2236,20 @@ retryCurrencyLoad,
                           </Localized>
                       </label>
                     </>
+                    {method === 'credit' && creditSettings?.enabled === false && (
+                      <p className="payment-credit-warning" style={{ color: 'var(--color-danger, #ef4444)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                        <Localized id="payment-credit-disabled">
+                          <span>Store credit facility is currently disabled in Settings.</span>
+                        </Localized>
+                      </p>
+                    )}
+                    {method === 'credit' && creditSettings && creditSettings.enabled && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor && (
+                      <p className="payment-credit-warning" style={{ color: 'var(--color-danger, #ef4444)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                        <Localized id="payment-credit-limit-exceeded">
+                          <span>Sale total exceeds maximum credit ceiling.</span>
+                        </Localized>
+                      </p>
+                    )}
                   </div>
                 )}
 

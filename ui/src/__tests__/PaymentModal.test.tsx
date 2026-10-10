@@ -53,7 +53,10 @@ const lineItem = (overrides: Partial<CartLine> = {}): CartLine => ({
   ...overrides,
 });
 
-const { invokeMock } = vi.hoisted(() => {
+const { invokeMock, mockCreditSettings } = vi.hoisted(() => {
+  const creditSettingsRef = {
+    current: { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 10000000 },
+  };
   const mock = vi.fn((...callArgs: unknown[]) => {
     const cmd = callArgs[0] as string;
     switch (cmd) {
@@ -79,11 +82,13 @@ const { invokeMock } = vi.hoisted(() => {
         return Promise.resolve();
       case 'create_kds_order_from_sale_scoped':
         return Promise.resolve();
+      case 'get_credit_settings_scoped':
+        return Promise.resolve(creditSettingsRef.current);
       default:
         return Promise.resolve({});
     }
   });
-  return { invokeMock: mock };
+  return { invokeMock: mock, mockCreditSettings: creditSettingsRef };
 });
 
 const {
@@ -182,6 +187,7 @@ vi.mock('@/hooks/useFeatures', () => ({
 }));
 
 beforeEach(() => {
+  mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 10000000 };
   invokeMock.mockClear();
   mockListCurrenciesScoped.mockClear();
   mockListExchangeRates.mockClear();
@@ -661,6 +667,77 @@ describe('PaymentModal — rendering & fast interaction', () => {
 
     expect(screen.getByLabelText(/customer name/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /credit sale/i })).toBeInTheDocument();
+  });
+
+  it('disables Credit Sale button and shows warning when credit facility is disabled in settings', async () => {
+    mockCreditSettings.current = { enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 };
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="test-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const creditRadio = screen.getByLabelText(/Credit/);
+    await userEvent.click(creditRadio);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), 'Walk-in Customer');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /credit sale/i })).toBeDisabled();
+      expect(screen.getByText(/Store credit facility is currently disabled in Settings/i)).toBeInTheDocument();
+    });
+  });
+
+  it('disables Credit Sale button and shows ceiling warning when total exceeds credit ceiling', async () => {
+    mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 500 };
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="test-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const creditRadio = screen.getByLabelText(/Credit/);
+    await userEvent.click(creditRadio);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), 'Walk-in Customer');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /credit sale/i })).toBeDisabled();
+      expect(screen.getByText(/Sale total exceeds maximum credit ceiling/i)).toBeInTheDocument();
+    });
+  });
+
+  it('enables Credit Sale button when customer name provided and within credit ceiling', async () => {
+    mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 1000 };
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="test-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const creditRadio = screen.getByLabelText(/Credit/);
+    await userEvent.click(creditRadio);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), 'Walk-in Customer');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /credit sale/i })).toBeEnabled();
+    });
   });
 
   // ── QRIS ──

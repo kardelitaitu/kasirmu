@@ -660,12 +660,6 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     await user.click(autoKickSwitch);
     expect(autoKickSwitch).not.toBeChecked();
 
-    // Verify drawer switch
-    const verifySwitch = screen.getByTestId('cash-drawer-verify-toggle');
-    expect(verifySwitch).not.toBeChecked();
-    await user.click(verifySwitch);
-    expect(verifySwitch).toBeChecked();
-
     // Preset chips
     const exactChip = screen.getByTestId('cash-preset-exact');
     expect(exactChip).toHaveAttribute('aria-pressed', 'true');
@@ -688,7 +682,7 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     expect(chip100k).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('interacts with QRIS mode buttons, inputs, and receipt print switch via data-testid', async () => {
+  it('interacts with QRIS mode buttons and inputs via data-testid', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
     await screen.findByText('QRIS');
@@ -712,15 +706,9 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     await user.clear(surchargeInput);
     await user.type(surchargeInput, '0.5');
     expect(surchargeInput).toHaveValue('0.5');
-
-    // Print bill toggle
-    const printSwitch = screen.getByTestId('qris-print-bill-toggle');
-    expect(printSwitch).toBeChecked();
-    await user.click(printSwitch);
-    expect(printSwitch).not.toBeChecked();
   });
 
-  it('interacts with EDC card network chips, trace code toggle, and select via data-testid', async () => {
+  it('interacts with EDC select via data-testid', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
     await screen.findByText('Card');
@@ -728,21 +716,6 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     // Expand Card to ensure body is visible
     const cardToggle = screen.getByTestId('payment-card-toggle-card');
     await user.click(cardToggle);
-
-    const traceSwitch = screen.getByTestId('edc-require-trace-toggle');
-    expect(traceSwitch).toBeChecked();
-    await user.click(traceSwitch);
-    expect(traceSwitch).not.toBeChecked();
-
-    const visaChip = screen.getByTestId('card-network-visa');
-    expect(visaChip).toHaveAttribute('aria-pressed', 'true');
-    await user.click(visaChip);
-    expect(visaChip).toHaveAttribute('aria-pressed', 'false');
-
-    const amexChip = screen.getByTestId('card-network-amex');
-    expect(amexChip).toHaveAttribute('aria-pressed', 'false');
-    await user.click(amexChip);
-    expect(amexChip).toHaveAttribute('aria-pressed', 'true');
 
     // Check EDC select trigger data-testid
     const selectTrigger = screen.getByTestId('edc-default-select');
@@ -784,11 +757,6 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     expect(gopayChip).toHaveAttribute('aria-pressed', 'true');
     await user.click(gopayChip);
     expect(gopayChip).toHaveAttribute('aria-pressed', 'false');
-
-    const webhookSwitch = screen.getByTestId('midtrans-auto-confirm-toggle');
-    expect(webhookSwitch).toBeChecked();
-    await user.click(webhookSwitch);
-    expect(webhookSwitch).not.toBeChecked();
 
     const testKeysBtn = screen.getByTestId('midtrans-test-api-btn');
     await user.click(testKeysBtn);

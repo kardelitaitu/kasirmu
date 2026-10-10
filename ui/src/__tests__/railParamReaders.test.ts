@@ -44,20 +44,6 @@ const ALLOWED_UNWIRED: Record<string, string> = {
   nmid: 'duplicate of the encrypted gateway config (screen :1135 region)',
   channels: 'duplicate of the encrypted gateway config (:701 save)',
 
-  // ── Genuinely INERT — the F19 defect ────────────────────────────
-  // No implementation reads these, on the client OR the server (`grep` over
-  // `*.rs`: zero hits). The operator changes a switch and nothing changes.
-  // They stay listed, not fixed, because wiring each one is a product decision:
-  //   · verifyDrawer  — prompts the cashier to verify a drawer? needs UI flow
-  //   · acceptedCards — filter card networks? needs the EDC/terminal path
-  //   · requireTrace  — refuse a sale without an approval code? needs EDC flow
-  //   · autoConfirm   — auto-confirm a gateway charge? needs the gateway path
-  //   · printReceipt  — print on a QRIS tender? needs the receipt path
-  verifyDrawer: 'INERT: no reader client or server — needs a cashier flow',
-  acceptedCards: 'INERT: no reader — needs EDC card-network filtering',
-  requireTrace: 'INERT: no reader — needs the EDC approval-code path',
-  autoConfirm: 'INERT: no reader — needs the gateway auto-confirm path',
-  printReceipt: 'INERT: no reader — needs the QRIS receipt path',
 };
 
 function walk(dir: string, out: string[] = []): string[] {

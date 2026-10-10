@@ -55,13 +55,13 @@ const RAILS_LOGIC = 'ui/src/features/restaurant/screens/paymentRailsLogic.ts';
 const WIRED: Record<string, RegExp> = {
   qris: /railOffered\(\s*paymentRails\s*,\s*'qris'\s*\)/,
   open_bill: /coreRailWithheld\(\s*paymentRails\s*,\s*'open_bill'\s*\)/,
+  credit: /coreRailWithheld\(\s*paymentRails\s*,\s*'credit'\s*\)/,
 };
 
 /** Core rails whose toggle nothing in the modal reads. Recorded, with the reason. */
 const INERT: Record<string, string> = {
   cash: 'TENDER_RAILS treats cash as universal (no rail models it)',
   card: 'TENDER_RAILS treats card as universal; the edc rail gates the terminal button, not the tab',
-  credit: 'parked owner question (todo-payment.md :887) — tender vs facility',
 };
 
 describe('core rail toggles reach the charge modal (F23)', () => {
