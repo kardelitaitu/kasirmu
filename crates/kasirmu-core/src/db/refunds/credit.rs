@@ -160,62 +160,150 @@ impl Store<'_> {
                         refund_line.sale_line_id
                     ),
                 })?;
-            let mut remaining = refund_qty;
+            // 1. Credit recipe ingredients if present
+            if let Some(ingredients) = dl_line["ingredients"].as_array() {
+                for ing in ingredients {
+                    let ing_sku = ing["sku"]
+                        .as_str()
+                        .filter(|s| !s.trim().is_empty())
+                        .ok_or_else(|| CoreError::Validation {
+                            field: "deduction_locations.ingredients.sku",
+                            message: format!(
+                                "deduction_locations for line {} ingredient records no sku",
+                                refund_line.sale_line_id
+                            ),
+                        })?;
+                    let qty_per_unit = ing["qty_per_unit"].as_i64().unwrap_or(1);
+                    if let Some(ing_deductions) = ing["deductions"].as_array() {
+                        let ing_credit_qty =
+                            refund_qty.checked_mul(qty_per_unit).ok_or_else(|| {
+                                CoreError::Validation {
+                                    field: "qty",
+                                    message: "ingredient refund quantity overflow".into(),
+                                }
+                            })?;
 
-            if refund_qty >= total_deducted {
-                // Full refund: iterate forward (oldest deduction first).
-                for d in deductions {
-                    let loc_id =
-                        d["location_id"]
-                            .as_str()
-                            .ok_or_else(|| CoreError::Validation {
-                                field: "location_id",
-                                message: "missing location_id in deductions".into(),
-                            })?;
-                    let qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
-                        field: "qty",
-                        message: "missing qty in deductions".into(),
-                    })?;
-                    self.adjust_stock_at_location_with_reason(
-                        tx,
-                        sku,
-                        qty,
-                        &crate::inventory::LocationId::from(loc_id),
-                        Some("refund"),
-                        None,
-                        None,
-                        None,
-                    )?;
-                }
-            } else {
-                // Partial refund: iterate REVERSE (most recent deduction first).
-                for d in deductions.iter().rev() {
-                    if remaining <= 0 {
-                        break;
+                        if refund_qty >= total_deducted {
+                            // Full refund: restore all ingredient deductions forward
+                            for d in ing_deductions {
+                                let loc_id = d["location_id"].as_str().ok_or_else(|| {
+                                    CoreError::Validation {
+                                        field: "location_id",
+                                        message: "missing location_id in deductions".into(),
+                                    }
+                                })?;
+                                let qty =
+                                    d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                                        field: "qty",
+                                        message: "missing qty in deductions".into(),
+                                    })?;
+                                self.adjust_stock_at_location_with_reason(
+                                    tx,
+                                    ing_sku,
+                                    qty,
+                                    &crate::inventory::LocationId::from(loc_id),
+                                    Some("refund"),
+                                    None,
+                                    None,
+                                    None,
+                                )?;
+                            }
+                        } else {
+                            // Partial refund: iterate reverse
+                            let mut ing_remaining = ing_credit_qty;
+                            for d in ing_deductions.iter().rev() {
+                                if ing_remaining <= 0 {
+                                    break;
+                                }
+                                let loc_id = d["location_id"].as_str().ok_or_else(|| {
+                                    CoreError::Validation {
+                                        field: "location_id",
+                                        message: "missing location_id in deductions".into(),
+                                    }
+                                })?;
+                                let entry_qty =
+                                    d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                                        field: "qty",
+                                        message: "missing qty in deductions".into(),
+                                    })?;
+                                let credit = entry_qty.min(ing_remaining);
+                                self.adjust_stock_at_location_with_reason(
+                                    tx,
+                                    ing_sku,
+                                    credit,
+                                    &crate::inventory::LocationId::from(loc_id),
+                                    Some("refund"),
+                                    None,
+                                    None,
+                                    None,
+                                )?;
+                                ing_remaining -= credit;
+                            }
+                        }
                     }
-                    let loc_id =
-                        d["location_id"]
-                            .as_str()
-                            .ok_or_else(|| CoreError::Validation {
-                                field: "location_id",
-                                message: "missing location_id in deductions".into(),
-                            })?;
-                    let entry_qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
-                        field: "qty",
-                        message: "missing qty in deductions".into(),
-                    })?;
-                    let credit = entry_qty.min(remaining);
-                    self.adjust_stock_at_location_with_reason(
-                        tx,
-                        sku,
-                        credit,
-                        &crate::inventory::LocationId::from(loc_id),
-                        Some("refund"),
-                        None,
-                        None,
-                        None,
-                    )?;
-                    remaining -= credit;
+                }
+            }
+
+            // 2. Credit the dish itself ONLY IF tracks_inventory is true
+            let tracks_inv = dl_line["tracks_inventory"].as_bool().unwrap_or(true);
+            if tracks_inv {
+                let mut remaining = refund_qty;
+
+                if refund_qty >= total_deducted {
+                    // Full refund: iterate forward (oldest deduction first).
+                    for d in deductions {
+                        let loc_id =
+                            d["location_id"]
+                                .as_str()
+                                .ok_or_else(|| CoreError::Validation {
+                                    field: "location_id",
+                                    message: "missing location_id in deductions".into(),
+                                })?;
+                        let qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                            field: "qty",
+                            message: "missing qty in deductions".into(),
+                        })?;
+                        self.adjust_stock_at_location_with_reason(
+                            tx,
+                            sku,
+                            qty,
+                            &crate::inventory::LocationId::from(loc_id),
+                            Some("refund"),
+                            None,
+                            None,
+                            None,
+                        )?;
+                    }
+                } else {
+                    // Partial refund: iterate REVERSE (most recent deduction first).
+                    for d in deductions.iter().rev() {
+                        if remaining <= 0 {
+                            break;
+                        }
+                        let loc_id =
+                            d["location_id"]
+                                .as_str()
+                                .ok_or_else(|| CoreError::Validation {
+                                    field: "location_id",
+                                    message: "missing location_id in deductions".into(),
+                                })?;
+                        let entry_qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                            field: "qty",
+                            message: "missing qty in deductions".into(),
+                        })?;
+                        let credit = entry_qty.min(remaining);
+                        self.adjust_stock_at_location_with_reason(
+                            tx,
+                            sku,
+                            credit,
+                            &crate::inventory::LocationId::from(loc_id),
+                            Some("refund"),
+                            None,
+                            None,
+                            None,
+                        )?;
+                        remaining -= credit;
+                    }
                 }
             }
         }

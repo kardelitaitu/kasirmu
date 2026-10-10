@@ -3364,6 +3364,100 @@ fn void_sale_credits_back_to_original_deduction_source() {
     assert_eq!(loaded.status, SaleStatus::Voided);
 }
 
+#[test]
+fn void_pending_sale_with_recipe_restores_ingredient_stock() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "ING-VOID-RECIPE";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Raw Material', 500, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+
+    let default_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 20)",
+        rusqlite::params![ing_id, default_loc],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-VOID-RECIPE";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Prepared Meal', 2000, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    // 1 dish requires 3 units of raw material
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 3,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .unwrap();
+
+    // Sell 2 dishes -> deducts 6 raw material
+    let sale = make_single_line_sale(dish_sku, 2, 2000);
+    s.complete_sale_deduction_with_locations(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from(default_loc)],
+        &tender(4000),
+        "cashier-1",
+        None,
+        &[],
+    )
+    .unwrap();
+
+    // Confirm ingredient stock was deducted: 20 - 6 = 14
+    let ing_stock_before: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, default_loc],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(ing_stock_before, 14, "20 - (2 * 3) = 14");
+
+    // Void the pending sale
+    s.void_pending_sale(&sale.id).unwrap();
+
+    // Confirm ingredient stock was RESTORED back to 20
+    let ing_stock_after: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, default_loc],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        ing_stock_after, 20,
+        "ingredient stock must be restored to original 20 on void"
+    );
+
+    // Confirm restaurant dish itself has no phantom stock summary rows
+    let dish_stock_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1",
+            rusqlite::params![dish_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        dish_stock_rows, 0,
+        "non-inventory restaurant dish must have no stock rows created"
+    );
+}
+
 /// Two threads attempting complete_sale_deduction on the same SKU: one
 /// succeeds, the other fails — and *how* it fails is what separates the two
 /// transaction modes (ADR-19 §5.2).

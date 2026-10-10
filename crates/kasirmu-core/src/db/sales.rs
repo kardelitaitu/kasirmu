@@ -222,6 +222,25 @@ fn insert_sale_line(tx: &rusqlite::Transaction<'_>, line: &SaleLine) -> Result<(
         Err(rusqlite::Error::QueryReturnedNoRows) => (None, None, None, None),
         Err(e) => return Err(CoreError::Db(e)),
     };
+    // Q5: If dish cost_minor is unset, compute and snapshot BOM ingredient cost
+    // from product_recipes to freeze historical profit margins.
+    let cost_minor = if let Some(c) = cost_minor {
+        Some(c)
+    } else if let Some(ref pid) = product_id {
+        let bom_cost: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(pr.quantity_required * p.cost_minor), 0) \
+                 FROM product_recipes pr \
+                 JOIN products p ON p.id = pr.ingredient_product_id \
+                 WHERE pr.parent_product_id = ?1",
+                params![pid],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if bom_cost > 0 { Some(bom_cost) } else { None }
+    } else {
+        None
+    };
     tx.execute(
         "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position,
                                  tax_minor, tax_rate_id, tax_breakdown_json,

@@ -1,7 +1,25 @@
 use super::*;
 use crate::migrations;
-use crate::{Refund, RefundLine};
+use crate::{Cart, CartLine, Refund, RefundLine, Sale, Sku};
 use rusqlite::Connection;
+
+fn tender(amount_minor: i64) -> Vec<crate::PaymentSplitArg> {
+    vec![crate::PaymentSplitArg {
+        method: "cash".into(),
+        amount_minor,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }]
+}
+
+fn make_single_line_sale(sku: &str, qty: i64, unit_minor: i64) -> Sale {
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new(sku), qty, price(unit_minor)))
+        .unwrap();
+    Sale::from_cart(&cart).unwrap()
+}
 
 fn fresh() -> Connection {
     migrations::fresh_db()
@@ -2371,4 +2389,218 @@ fn base_currency_refund_conversion_rounds_half_up_per_refund() {
 
     // A single FULL refund is exact, because the ratio is 1:1.
     assert_eq!(convert(charged), base);
+}
+
+#[test]
+fn refund_recipe_sale_restores_ingredient_stock() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "ING-REF-RECIPE-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Flour', 200, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+
+    let default_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 50)",
+        rusqlite::params![ing_id, default_loc],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-REF-RECIPE-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Pizza', 1500, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 5,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale(dish_sku, 2, 1500);
+    s.complete_sale_deduction_with_locations(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from(default_loc)],
+        &tender(3000),
+        "cashier-1",
+        None,
+        &[],
+    )
+    .unwrap();
+
+    // Finalize/complete the sale so it can be refunded
+    conn.execute(
+        "UPDATE sales SET status = 'completed' WHERE id = ?1",
+        rusqlite::params![sale.id],
+    )
+    .unwrap();
+
+    // Check ingredient stock deducted: 50 - (2 * 5) = 40
+    let ing_stock_before: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, default_loc],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(ing_stock_before, 40);
+
+    // Refund the full 2 dishes
+    let sl_id = &sale.lines[0].id;
+    let refund = Refund::new(
+        &sale.id,
+        price(3000),
+        "customer return",
+        "",
+        "cashier-1",
+        vec![RefundLine::new(
+            sl_id,
+            dish_sku,
+            2,
+            price(1500),
+            price(3000),
+        )],
+    );
+    s.create_refund(&refund).expect("refund must succeed");
+
+    // Verify ingredient stock restored to 50
+    let ing_stock_after: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, default_loc],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        ing_stock_after, 50,
+        "all 10 ingredient units must be restored on full refund"
+    );
+
+    // Verify restaurant dish itself has no stock movements or summary rows
+    let dish_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1",
+            rusqlite::params![dish_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(dish_rows, 0, "restaurant dish should not track stock");
+}
+
+#[test]
+fn partial_refund_recipe_sale_restores_proportional_ingredient_stock() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "ING-PARTIAL-REF-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Cheese', 300, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+
+    let default_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 100)",
+        rusqlite::params![ing_id, default_loc],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-PARTIAL-REF-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Pasta', 2000, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    // 1 dish consumes 10 units of cheese
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 10,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .unwrap();
+
+    // Sell 3 dishes -> deducts 30 units
+    let sale = make_single_line_sale(dish_sku, 3, 2000);
+    s.complete_sale_deduction_with_locations(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from(default_loc)],
+        &tender(6000),
+        "cashier-1",
+        None,
+        &[],
+    )
+    .unwrap();
+
+    conn.execute(
+        "UPDATE sales SET status = 'completed' WHERE id = ?1",
+        rusqlite::params![sale.id],
+    )
+    .unwrap();
+
+    // Ingredient stock: 100 - 30 = 70
+    let ing_stock_before: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, default_loc],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(ing_stock_before, 70);
+
+    // Partial refund of 1 of the 3 dishes -> restores 10 units
+    let sl_id = &sale.lines[0].id;
+    let refund = Refund::new(
+        &sale.id,
+        price(2000),
+        "partial return",
+        "",
+        "cashier-1",
+        vec![RefundLine::new(
+            sl_id,
+            dish_sku,
+            1,
+            price(2000),
+            price(2000),
+        )],
+    );
+    s.create_refund(&refund)
+        .expect("partial refund must succeed");
+
+    // Ingredient stock: 70 + 10 = 80
+    let ing_stock_after: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, default_loc],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        ing_stock_after, 80,
+        "partial refund of 1 dish must restore exactly 10 ingredient units"
+    );
 }

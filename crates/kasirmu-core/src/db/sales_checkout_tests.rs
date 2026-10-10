@@ -619,3 +619,75 @@ fn checkout_restaurant_product_with_recipe_shortfalls_on_ingredient() {
         other => panic!("expected stock Validation error, got {other:?}"),
     }
 }
+
+#[test]
+fn checkout_snapshots_bom_cost_for_recipe_product() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "ING-BOM-COST-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, cost_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Ingredient Cost', 1000, 750, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 100)",
+        rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-BOM-COST-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, cost_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Dish Cost', 3000, 0, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    // Dish requires 2 units of the 750-cost ingredient (total BOM cost = 1500)
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 2,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .expect("set_recipe must succeed");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new(dish_sku), 1, price(3000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[],
+        &tender(3000),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .expect("checkout must succeed");
+
+    // Verify sale_lines snapshot has BOM cost = 1500
+    let cost: Option<i64> = conn
+        .query_row(
+            "SELECT cost_minor FROM sale_lines WHERE sale_id = ?1 AND sku = ?2",
+            rusqlite::params![sale.id, dish_sku],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(
+        cost,
+        Some(1500),
+        "sale line cost_minor must snapshot the BOM recipe cost of 1500"
+    );
+}

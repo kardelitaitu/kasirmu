@@ -45,6 +45,13 @@ fn stock_at_locations(
         .collect()
 }
 
+#[derive(Debug, Clone)]
+struct RecipeIngredientAllocation {
+    sku: String,
+    qty_per_unit: i64,
+    allocations: Vec<crate::sale_deduction::LocationAllocation>,
+}
+
 impl Store<'_> {
     /// Complete a sale with location-aware stock deduction (ADR-19 §6).
     ///
@@ -312,6 +319,9 @@ impl Store<'_> {
         let mut deductions: Vec<StockDeduction> = Vec::with_capacity(sale.lines.len());
         let mut line_deductions: HashMap<String, Vec<crate::sale_deduction::LocationAllocation>> =
             HashMap::new();
+        let mut recipe_line_deductions: HashMap<String, Vec<RecipeIngredientAllocation>> =
+            HashMap::new();
+        let mut line_tracks_inventory: HashMap<String, bool> = HashMap::new();
         let mut shortfalls: Vec<Shortfall> = Vec::new();
 
         // Batch-lookup all SKUs in a single query (avoids N+1 per-line SELECT).
@@ -341,6 +351,7 @@ impl Store<'_> {
                 "Store::complete_sale_deduction_with_locations_and_estimate:sale_line",
             );
             let tracks_inventory = ptype.tracks_inventory();
+            line_tracks_inventory.insert(line.id.clone(), tracks_inventory);
             let recipe = self.get_recipe_ingredients(pid)?;
             let has_recipe = !recipe.is_empty();
 
@@ -448,6 +459,14 @@ impl Store<'_> {
                                         delta: -allocation.qty,
                                     }
                                 }));
+                                recipe_line_deductions
+                                    .entry(line.id.clone())
+                                    .or_default()
+                                    .push(RecipeIngredientAllocation {
+                                        sku: ing_sku,
+                                        qty_per_unit: ingredient.quantity_required,
+                                        allocations,
+                                    });
                             } else {
                                 let available = availability
                                     .first()
@@ -529,6 +548,7 @@ impl Store<'_> {
         let deduction_json = serde_json::json!({
             "version": 1,
             "lines": sale.lines.iter().map(|line| {
+                let tracks_inv = line_tracks_inventory.get(&line.id).copied().unwrap_or(true);
                 let deductions = line_deductions
                     .get(&line.id.clone()).map_or_else(|| vec![serde_json::json!({
                         "location_id": primary_location.as_str(),
@@ -544,11 +564,29 @@ impl Store<'_> {
                             }))
                             .collect::<Vec<_>>()
                     });
-                serde_json::json!({
+                let mut line_obj = serde_json::json!({
                     "sale_line_id": line.id,
                     "sku": line.sku,
+                    "tracks_inventory": tracks_inv,
                     "deductions": deductions,
-                })
+                });
+                if let Some(ing_allocs) = recipe_line_deductions.get(&line.id) {
+                    let ingredients: Vec<serde_json::Value> = ing_allocs.iter().map(|ing| {
+                        serde_json::json!({
+                            "sku": ing.sku,
+                            "qty_per_unit": ing.qty_per_unit,
+                            "deductions": ing.allocations.iter().map(|alloc| {
+                                serde_json::json!({
+                                    "location_id": alloc.location_id.as_str(),
+                                    "qty": alloc.qty,
+                                    "sold_at": now,
+                                })
+                            }).collect::<Vec<_>>(),
+                        })
+                    }).collect();
+                    line_obj["ingredients"] = serde_json::Value::Array(ingredients);
+                }
+                line_obj
             }).collect::<Vec<_>>()
         })
         .to_string();
