@@ -1,6 +1,6 @@
 # todo — recipe authoring for the restaurant menu
 
-> **Created 2026-10-10 · updated 2026-10-11 · status: DONE — all 4 acceptance criteria implemented and verified.**
+> **Created 2026-10-10 · updated 2026-10-11 · status: DONE — all 6 acceptance criteria implemented and verified.**
 >
 > **Landed Commits:**
 > - `daa86e7ac`: `feat(core): implement set_recipe, delete_recipe, and recipe item details in Store`
@@ -8,6 +8,7 @@
 > - `7c00c1281`: `feat(ipc): expose recipe scoped commands in desktop, mobile, and ui api`
 > - `a1739a2aa`: `feat(ui): implement restaurant recipe authoring modal and menu editor integration`
 > - `57b2a6e79`: `test(core): add recipe ingredient deduction and shortfall checkout tests`
+> - `9159ce80a`: `feat(core): reverse recipe ingredients on void and refund, snapshot BOM cost at checkout`
 
 ---
 
@@ -125,7 +126,7 @@ has **no substitution concept** — this is a data model change, not a UI option
 `product_variants` exists. Does "Large Nasi Goreng" need its own recipe, or a multiplier on the
 base? This is a parent/child relationship the table does not currently express.
 
-### Q5 — ⚠️ Retroactivity & Historical Integrity (the architectural prerequisite)
+### Q5 — ⚠️ Retroactivity & Historical Integrity (the architectural prerequisite) — ✅ RESOLVED
 
 If a recipe changes today, what happens to **already-completed sales**?
 
@@ -135,9 +136,10 @@ If a recipe changes today, what happens to **already-completed sales**?
 - **Historical Costing / COGS (the retroactivity trap):**
   `crates/kasirmu-reporting/src/margin.rs:93` computes margins from `COALESCE(sl.cost_minor, p.cost_minor, 0)`.
   If recipe costing is introduced dynamically, editing a recipe would silently restate past margins.
-  **The clean solution:** Snapshot at sale time. `sale_lines` ALREADY has a `cost_minor INTEGER` column
-  (`migrations/20260813_init.sql:595`). Stamping the computed recipe cost snapshot onto `sale_lines.cost_minor`
-  at checkout freezes historical margins forever without complex multi-table historical recipe joins.
+  **The clean solution (IMPLEMENTED):** Snapshot at sale time. `sale_lines` has `cost_minor INTEGER`.
+  In `sales.rs:insert_sale_line`, if the parent dish's `cost_minor == 0`, kasirmu calculates the recipe's
+  BOM cost `SUM(pr.quantity_required * p.cost_minor)` and snapshots it into `sale_lines.cost_minor` at checkout.
+  Verified by `checkout_snapshots_bom_cost_for_recipe_product` in `sales_checkout_tests.rs`.
 
 ### Q6 — Unit of Measure (UoM) & Precision Scaling
 
@@ -155,20 +157,15 @@ An integer `quantity_required` with no conversion engine forces one of two archi
 This must be settled before opening a Recipe Editor in the UI, or merchants will be unable to author
 recipes for liquids, spices, and bulk grains.
 
-### Q7 — ⚠️ Reverse Stock on Voids and Refunds (The `credit.rs` gap)
+### Q7 — ⚠️ Reverse Stock on Voids and Refunds (The `credit.rs` gap) — ✅ RESOLVED
 
-Verified in the code:
-- In `sales_checkout.rs:363` vs `:444`, ingredient allocations are sent to `adjust_stock_batch`,
-  but **never mapped into `line_deductions`**.
-- As a result, `deduction_locations` JSON on `sales` records the *dish* SKU, not the *ingredient* SKUs.
-- When a sale is refunded or voided (`crates/kasirmu-core/src/db/refunds/credit.rs`), it reads `deduction_locations`
-  and attempts to credit stock back to `line.sku` (the dish, which has no inventory tracking), dropping the
-  ingredient stock restoration entirely.
-
-**Architectural requirement before recipe authoring ships:**
-1. `sales_checkout.rs` must record ingredient allocations into `line_deductions` under the dish's line item.
-2. `deduction_locations` JSON must preserve the actual ingredient SKUs and quantities deducted.
-3. `credit_refund_from_deduction_locations` in `credit.rs` must restore inventory to the recorded ingredient SKUs.
+Verified and closed:
+- In `sales_checkout.rs` and `sales_lifecycle.rs`, ingredient allocations are preserved into `line_deductions`
+  under the line's `"ingredients"` array alongside `"tracks_inventory"`.
+- `deduction_locations` JSON on `sales` records both `"tracks_inventory": tracks_inv` and `"ingredients": [{"sku": ing_sku, "qty_per_unit": ..., "deductions": [...]}]`.
+- On void (`void_pending_sale` in `sales_lifecycle.rs`), ingredient allocations are restored to their deducted inventory sources; non-inventory dishes are skipped.
+- On refund (`credit_refund_from_deduction_locations` in `refunds/credit.rs`), ingredient allocations are credited back (forward FIFO on full refund, proportional reverse on partial refund); non-inventory dishes are skipped.
+- Verified by `void_pending_sale_with_recipe_restores_ingredient_stock` in `sales_tests.rs`, and `refund_recipe_sale_restores_ingredient_stock` and `partial_refund_recipe_sale_restores_proportional_ingredient_stock` in `refunds_tests.rs`.
 
 ---
 
@@ -210,3 +207,9 @@ the unconstrained-discriminator problem that plan is fixing.
 
 4. **§4-Q5: an already-completed sale's recorded figures do not change when its recipe is edited.**
    - ✅ **PASSED.** Verified by `checkout_restaurant_product_with_recipe_deducts_ingredients` in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`: updating recipe requirements from 2 to 5 after checkout leaves historical stock and sale records intact.
+
+5. **§4-Q5: BOM cost is snapshotted to `sale_lines.cost_minor` at checkout time if dish cost is unset.**
+   - ✅ **PASSED.** Verified by `checkout_snapshots_bom_cost_for_recipe_product` in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`.
+
+6. **§4-Q7: Void and refund of a recipe-backed sale restores ingredient stock proportionally.**
+   - ✅ **PASSED.** Verified by `void_pending_sale_with_recipe_restores_ingredient_stock` in `crates/kasirmu-core/src/db/sales_tests.rs`, and `refund_recipe_sale_restores_ingredient_stock` & `partial_refund_recipe_sale_restores_proportional_ingredient_stock` in `crates/kasirmu-core/src/db/refunds_tests.rs`.
