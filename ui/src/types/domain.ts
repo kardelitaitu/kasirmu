@@ -199,6 +199,25 @@ export function isServiceItem(p: Product): p is ServiceItem {
   return p.productType === 'service';
 }
 
+/** A single recipe ingredient item for a composite dish or drink. */
+export interface RecipeItem {
+  readonly id: string;
+  readonly parentProductId: string;
+  readonly ingredientProductId: string;
+  readonly ingredientSku: string;
+  readonly ingredientName: string;
+  readonly quantityRequired: number;
+  readonly unit: string;
+  readonly costMinor: number;
+}
+
+/** Input row for editing or creating an ingredient in a recipe. */
+export interface RecipeIngredientInput {
+  ingredientProductId: string;
+  quantityRequired: number;
+  unit: string;
+}
+
 /** Extract configured modifier groups from a product or its serialized metadata. */
 export function getProductModifierGroups(product: Product): ModifierGroup[] {
   if (product.modifierGroups && product.modifierGroups.length > 0) {

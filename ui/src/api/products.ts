@@ -334,3 +334,66 @@ export const productsListImagesScoped = (
   productId: string,
 ): Promise<ProductImageDto[]> =>
   loggedInvoke<ProductImageDto[]>('products_list_images_scoped', { sessionToken, productId });
+
+// ── Recipe / BOM (ingredient deduction & authoring) ──────────────────
+
+/** A recipe ingredient row returned by the backend. */
+export interface RecipeItemDto {
+  /** Recipe row primary key. */
+  id: string;
+  /** Composite/parent product ID. */
+  parentProductId: string;
+  /** Ingredient product ID. */
+  ingredientProductId: string;
+  /** Ingredient SKU. */
+  ingredientSku: string;
+  /** Ingredient display name. */
+  ingredientName: string;
+  /** Quantity required per unit of parent product. */
+  quantityRequired: number;
+  /** Unit of measurement (e.g. "pcs", "g", "ml"). */
+  unit: string;
+  /** Unit cost of the ingredient in minor units. */
+  costMinor: number;
+}
+
+/** Input for defining an ingredient row in a recipe. */
+export interface RecipeIngredientInputDto {
+  ingredientProductId: string;
+  quantityRequired: number;
+  unit: string;
+}
+
+/** Request payload for `setRecipeScoped`. */
+export interface SetRecipeScopedArgs {
+  parentProductId: string;
+  ingredients: RecipeIngredientInputDto[];
+}
+
+/**
+ * Fetch recipe ingredients for a parent product, store-scoped.
+ */
+export const getRecipeScoped = (
+  sessionToken: string,
+  parentProductId: string,
+): Promise<RecipeItemDto[]> =>
+  loggedInvoke<RecipeItemDto[]>('get_recipe_scoped', { sessionToken, parentProductId });
+
+/**
+ * Set or replace the recipe ingredients for a parent product, store-scoped.
+ */
+export const setRecipeScoped = (
+  sessionToken: string,
+  args: SetRecipeScopedArgs,
+): Promise<RecipeItemDto[]> =>
+  loggedInvoke<RecipeItemDto[]>('set_recipe_scoped', { sessionToken, args });
+
+/**
+ * Delete all recipe ingredients for a parent product, store-scoped.
+ */
+export const deleteRecipeScoped = (
+  sessionToken: string,
+  parentProductId: string,
+): Promise<number> =>
+  loggedInvoke<number>('delete_recipe_scoped', { sessionToken, parentProductId });
+

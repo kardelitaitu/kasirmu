@@ -614,5 +614,78 @@ export function createCatalogHandlers(deps: CatalogDeps): Record<string, MockHan
     'create_tax_rate_scoped': (args) => createMockTaxRate(deps.unwrapArgs, args),
     'update_tax_rate_scoped': (args) => updateMockTaxRate(deps.unwrapArgs, args),
     'delete_tax_rate_scoped': (args) => deleteMockTaxRate(deps.unwrapArgs, args),
+    'get_recipe_scoped': (raw) => {
+      const { parentProductId } = (raw as { parentProductId?: string }) ?? {};
+      if (!parentProductId) return [];
+      return MOCK_RECIPES
+        .filter((r) => r.parentProductId === parentProductId)
+        .map((r) => {
+          const ing = MOCK_PRODUCTS.find((p) => p.sku === r.ingredientProductId || (p as { id?: string }).id === r.ingredientProductId);
+          return {
+            id: r.id,
+            parentProductId: r.parentProductId,
+            ingredientProductId: r.ingredientProductId,
+            ingredientSku: ing?.sku ?? r.ingredientProductId,
+            ingredientName: ing?.name ?? 'Unknown Ingredient',
+            quantityRequired: r.quantityRequired,
+            unit: r.unit,
+            costMinor: ing?.cost_minor ?? 0,
+          };
+        });
+    },
+    'set_recipe_scoped': (raw) => {
+      const args = deps.unwrapArgs<{ parentProductId: string; ingredients: Array<{ ingredientProductId: string; quantityRequired: number; unit: string }> }>(raw);
+      const { parentProductId, ingredients } = args;
+      for (let i = MOCK_RECIPES.length - 1; i >= 0; i--) {
+        if (MOCK_RECIPES[i].parentProductId === parentProductId) {
+          MOCK_RECIPES.splice(i, 1);
+        }
+      }
+      const created = (ingredients ?? []).map((ing, idx) => {
+        const row = {
+          id: `mock-rec-${Date.now()}-${idx}`,
+          parentProductId,
+          ingredientProductId: ing.ingredientProductId,
+          quantityRequired: ing.quantityRequired,
+          unit: ing.unit || 'pcs',
+        };
+        MOCK_RECIPES.push(row);
+        return row;
+      });
+      return created.map((r) => {
+        const ing = MOCK_PRODUCTS.find((p) => p.sku === r.ingredientProductId || (p as { id?: string }).id === r.ingredientProductId);
+        return {
+          id: r.id,
+          parentProductId: r.parentProductId,
+          ingredientProductId: r.ingredientProductId,
+          ingredientSku: ing?.sku ?? r.ingredientProductId,
+          ingredientName: ing?.name ?? 'Unknown Ingredient',
+          quantityRequired: r.quantityRequired,
+          unit: r.unit,
+          costMinor: ing?.cost_minor ?? 0,
+        };
+      });
+    },
+    'delete_recipe_scoped': (raw) => {
+      const { parentProductId } = (raw as { parentProductId?: string }) ?? {};
+      let count = 0;
+      for (let i = MOCK_RECIPES.length - 1; i >= 0; i--) {
+        if (MOCK_RECIPES[i].parentProductId === parentProductId) {
+          MOCK_RECIPES.splice(i, 1);
+          count++;
+        }
+      }
+      return count;
+    },
   };
 }
+
+interface MockRecipeItem {
+  id: string;
+  parentProductId: string;
+  ingredientProductId: string;
+  quantityRequired: number;
+  unit: string;
+}
+
+const MOCK_RECIPES: MockRecipeItem[] = [];

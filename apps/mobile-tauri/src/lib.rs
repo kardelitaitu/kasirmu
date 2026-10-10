@@ -1354,6 +1354,9 @@ pub fn run() {
                 commands::products::lookup_product_by_sku_scoped,
                 commands::products::record_product_search_scoped,
                 commands::products::update_product_scoped,
+                commands::products::get_recipe_scoped,
+                commands::products::set_recipe_scoped,
+                commands::products::delete_recipe_scoped,
                 // Product image writes (b-full Phase 3): EditProductModal calls
                 // both and the tablet mounts it. Without them the Phase-2 picker
                 // succeeds and then the write fails as "command not found".

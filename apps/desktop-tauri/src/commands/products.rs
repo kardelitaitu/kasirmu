@@ -31,8 +31,9 @@ use crate::state::AppState;
 
 pub use kasirmu_bridge::products::{
     AdjustStockArgs, CreateProductArgs, CreateProductResult, CreateProductScopedArgs,
-    DeleteProductArgs, DeleteProductScopedArgs, MoneyDto, ProductDto, SerialTrackRow,
-    UpdateProductArgs, UpdateProductResult, UpdateProductScopedArgs,
+    DeleteProductArgs, DeleteProductScopedArgs, MoneyDto, ProductDto, RecipeIngredientInputDto,
+    RecipeItemDto, SerialTrackRow, SetRecipeScopedArgs, UpdateProductArgs, UpdateProductResult,
+    UpdateProductScopedArgs,
 };
 
 // ── Adjust stock ────────────────────────────────────────────────────
@@ -273,6 +274,47 @@ pub async fn delete_product_scoped(
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::products::delete_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
+}
+
+// ── Recipe / BOM commands ───────────────────────────────────────────
+
+/// Look up recipe ingredients for a composite product, store-scoped.
+#[tauri::command]
+pub async fn get_recipe_scoped(
+    session_token: String,
+    parent_product_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RecipeItemDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::products::get_recipe_scoped(&ctx, &session_token, &parent_product_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Set or update the recipe for a composite product, store-scoped.
+#[tauri::command]
+pub async fn set_recipe_scoped(
+    session_token: String,
+    args: SetRecipeScopedArgs,
+    state: State<'_, AppState>,
+) -> Result<Vec<RecipeItemDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::products::set_recipe_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Delete the recipe for a composite product, store-scoped.
+#[tauri::command]
+pub async fn delete_recipe_scoped(
+    session_token: String,
+    parent_product_id: String,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::products::delete_recipe_scoped(&ctx, &session_token, &parent_product_id)
         .await
         .map_err(Into::into)
 }
