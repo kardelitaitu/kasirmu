@@ -65,22 +65,71 @@ The codebase already admits this — `migrations/20260901_product_images.sql:17`
 comment calls it *"ambiguous between a legitimate `retail` and a failed read"*
 (`foundation/src/inventory.rs:100-102`).
 
-### 2.2 Two layers disagree about the same question
+### 2.2 CORRECTED — the two mechanisms are INDEPENDENT, not two rules for one thing
 
-This is the fault that produces the visible symptom. **The same question — "does this item
-need stock?" — is answered two different ways by two different layers:**
+> **This section was WRONG in the first draft of this file, and the correction matters
+> because it changed what Option A can claim. The original text said the checkout and the
+> listing `"disagree about the same question"` and that fixing `in_stock` would close the
+> reported bug. Both statements are false. They read DIFFERENT TABLES and are triggered by
+> different user actions. Re-verified 2026-10-10 against the code.**
 
-| Layer | Rule | Restaurant dish |
+**Mechanism 1 — the greyed tile (listing).**
+
+```
+ProductDto.in_stock = stock_qty > 0        (kasirmu-bridge/src/products.rs:80,164)
+stock_qty = COALESCE(SUM(stock_summary.qty), inventory.qty)   (products_crud.rs:56 etc.)
+```
+
+Falls back to the legacy `inventory` table, so a row in EITHER table makes it sellable. Read by
+`MenuItemTile` (`!product.inStock` disables the card, `:191`, `:199`) — presentation only.
+
+**Mechanism 2 — the Insufficient Stock dialog (checkout).**
+
+```
+stock_at_locations()  ->  SELECT COALESCE(qty, 0) FROM stock_summary
+                          WHERE item_id = ?1 AND location_id = ?2      (sales_checkout.rs:25-31)
+```
+
+**This reads `stock_summary` ONLY.** It never touches `inventory` and it never reads
+`ProductDto.in_stock`. A missing row becomes `0` via `.unwrap_or(0)` — so an item whose stock
+lives only in the legacy `inventory` table, or in no table at all, reports **`Available: 0`**
+and blocks the sale.
+
+**Therefore the two are independent:**
+
+| | Reads | Triggered by | Fixed by A? |
+|---|---|---|---|
+| Grey tile | `stock_summary` **or** `inventory` | rendering the menu | **yes** |
+| Insufficient Stock | `stock_summary` **only** | pressing Complete | **NO** |
+
+**The consequence for the ruling, stated plainly:** Option A fixes the **grey tile** for
+restaurant items. It does **NOT** by itself stop the Insufficient Stock dialog. The original
+claim that A `"closes your reported bug"` was false and is withdrawn.
+
+### 2.3 Why the reported dialog happened AT ALL — deduced, and testable
+
+`sales_checkout.rs:282` skips the stock check entirely when
+`!tracks_inventory && !has_recipe`. For the sale to have shortfalled, that guard must **not**
+have fired. That leaves exactly two possibilities:
+
+| # | Condition | What it means |
 |---|---|---|
-| **Checkout** (`db/sales_checkout.rs:278`) | `ptype.tracks_inventory()` | ✅ correct — stock check skipped |
-| **Listing** (`kasirmu-bridge/src/products.rs:80,164`) | `stock_qty > 0` | ❌ wrong — ignores type entirely |
-| **Mobile listing** (`apps/mobile-tauri/.../products.rs:169,241`) | `stock_qty > 0` | ❌ same rule, second copy |
+| A | `tracks_inventory() == true` | the row is `retail`, `both`, **or unmapped** (which falls back to `Retail`) |
+| B | `has_recipe == true` | the item has BOM ingredient rows |
 
-So a restaurant dish tints **Unavailable** on the menu tile (the listing's crude rule) and
-is **also** refused at checkout when the crude rule happens to feed the shortfall path. The
-model to fix this **already exists** — `tracks_inventory()` — and one layer already honours it.
+**And (B) is very unlikely for those SKUs:** `provisioning.rs` seeds **no recipes at all**
+(zero `recipe` hits in that file), and the seeded restaurant SKUs are `SMPL-REST-01..05` — the
+screenshot names `MUFFIN-B`, `LATTE`, `CAPPU`, which are the **dev fixtures** in
+`useProducts.ts:12-29`, not seeded rows. Those fixtures carry `inStock: true` and
+`stockQty: 50` — but a **fixture is not a database row**, so whatever the real rows are, the
+guard did not skip them.
 
-### 2.3 The rule is written FOUR times
+**So the leading hypothesis is (A): those rows are not `restaurant`.** Either written as
+`retail`, or holding an unmapped value that `parse_stored_or_default` downgraded to `Retail`
+— which is exactly the silent path `foundation/src/inventory.rs:100-102` warns about.
+**Phase 0's SQL decides it, and it is still the blocking fact.**
+
+### 2.4 The rule is written FOUR times
 
 `in_stock: pwd.stock_qty.is_some_and(|q| q > 0)` appears at **4 sites** (2 bridge, 2 mobile).
 There is no single home, so the copies can and eventually will drift. This is the
@@ -151,7 +200,7 @@ three different-sized problems, and the choice is the user's.
 
 | | |
 |---|---|
-| **Fixes** | The reported bug, the silent-downgrade path, the 4-duplicate rule |
+| **Fixes** | The silent-downgrade path, the 4-duplicate rule, and the GREY TILE for restaurant items. **NOT the reported dialog** — see 2.2 and 6.2 |
 | **Touches** | 1 migration (+PG regen), `ProductType` consumers, 4 `in_stock` sites |
 | **FKs touched** | **0** |
 | **Risk** | Low — small, reversible, no schema re-shape |
@@ -185,8 +234,6 @@ product_type ∈ {retail, both}     → RetailProduct       (stock, barcode, rac
 
 ---
 
----
-
 ## 5a. THE RULING (2026-10-10) — Option A + B; C is REFUSED
 
 The user delegated the call. This is it, with the evidence that decided it. **A ruling without
@@ -216,10 +263,11 @@ strongest argument for keeping one table ("two tables must join or duplicate to 
 
 Removing the `Both` objection makes C *cheaper*, not *sensible*. Three independent reasons:
 
-1. **C does not fix the reported bug.** The shortfall is caused by two layers applying two
-   different stock rules (2.2). Splitting the table leaves both rules in place — you would spend
-   a 29-FK migration and still have restaurant sales blocked. **A fix that does not fix the
-   symptom is not a fix.**
+1. **C does not fix the reported symptom**, and — corrected — **neither, on its own, does A.**
+   The Insufficient Stock dialog comes from `stock_at_locations()` reading `stock_summary`
+   only (§2.2). A table split leaves that query untouched, so you would spend a 29-FK migration
+   and still be refused at the till. **A fix that does not fix the symptom is not a fix**, and
+   this applies to both A and C. §6.2 now carries the change that DOES address it.
 2. **`sku` is a global join key.** 29 FKs reference `products` by `id` *and* by `sku` (`:62`,
    `:389`, `:419`, `:427`). A split re-points every one *and* breaks `sku` as an identity, and it
    reaches `platform/sync` (upsert-by-SKU) and the SQLite to PG replica. That is a sync-protocol
@@ -273,6 +321,86 @@ fallback, a real code defect). A non-zero ingredient count → case 3 (by design
 
 ---
 
+### 6.2 The change that actually addresses the reported symptom (NEW — added by the audit)
+
+The audit found that neither A nor C stops the Insufficient Stock dialog, because
+`stock_at_locations()` reads **`stock_summary` only** (`sales_checkout.rs:25-31`). So the
+checkout fix is a **third** change, and it is now part of the ruling:
+
+**A2 — make the checkout read the same stock the listing does.**
+
+`stock_at_locations()` currently does `COALESCE(qty, 0)` against `stock_summary`, so an item
+whose stock lives in the legacy `inventory` table (or nowhere) reports `Available: 0` and
+blocks the sale. The listing, by contrast, falls back to `inventory.qty`
+(`products_crud.rs:56`). **Two queries, two sources, one product.**
+
+| | |
+|---|---|
+| **Change** | widen `stock_at_locations()` to the same `COALESCE(stock_summary, inventory)` the listing uses, OR — better — decide which table is authoritative and read that in both |
+| **Decides** | which table is the source of truth for stock. That is **ADR territory** (`docs/decisions/2026-07-18-multi-location-inventory.md`) and the ADR may already answer it |
+| **Risk** | Medium — it changes what the till refuses |
+| **Do NOT guess** | `stock_summary` is the ADR-19 ledger; `inventory` is the legacy table. Choosing wrongly would make the POS oversell |
+
+**This is the one change that closes the reported bug**, and it is why Phase 0 must be answered
+first: if those three rows are `retail`, then the *whole* bug is a **data** problem and A2 is
+not needed at all.
+
+### 6.3 Audit — what this file verified, and what it got wrong
+
+Every claim was re-checked against the code. Recorded because the first draft contained a
+**material error** that changed the ruling.
+
+| Claim | Verdict | Evidence |
+|---|---|---|
+| Checkout exempts non-stock types | **TRUE** | `sales_checkout.rs:282` — `if !tracks_inventory && !has_recipe { continue; }` |
+| `tracks_inventory()` is false for restaurant | **TRUE** | `foundation/src/inventory.rs:138-140` — `matches!(self, Retail \| Both)` |
+| Both shells use that same guard | **TRUE** | both call `complete_sale_deduction_with_locations_and_estimate` |
+| `product_type` is a parsed enum where I propose to use it | **TRUE** | `row_to_product:607` → `.as_str()` at `products.rs:84` |
+| No stock row → `stock_qty` NULL → `in_stock` false | **TRUE** | `COALESCE(SUM(..), i.qty)` with LEFT JOIN; both NULL |
+| `both` is unproducible | **TRUE** | selector `:679-681`; no UI writes it; KDS/menu consumers contradict |
+| **"Checkout and listing disagree about the same question"** | **FALSE — CORRECTED** | different tables, different triggers (§2.2) |
+| **"A closes the reported bug"** | **FALSE — WITHDRAWN** | the dialog reads `stock_summary` via `stock_at_locations`, never `in_stock` |
+
+### 6.4 The stock-source question is ALREADY ANSWERED by the ADRs (audit finding)
+
+A2 above said `"do NOT guess" which table is authoritative. The audit found the answer is
+already recorded, so A2 is **re-scoped from "decide" to "align"**:
+
+- **`stock_summary` is the authoritative ledger.** ADR-19 established its composite PRIMARY
+  KEY `(item_id, location_id)` (migration 089), and ADR `2026-07-18-multi-location-inventory.md`
+  is *"the origin of the stock-location model that ADR-19 ... build[s] on"*. Its symbols —
+  `adjust_stock_at_location_with_reason`, `rebuild_stock_summary`, `stock_movements.location_id`
+  — are all live.
+- **`inventory` is the LEGACY table.** It survives as the `COALESCE` fallback in the listing
+  query (`products_crud.rs:56`, *"falling back to the legacy `inventory.qty` when no ledger
+  rows exist (ADR #36)"*).
+
+**So the DIAGNOSIS inverts, and this is the most useful finding of the audit:**
+
+> The **checkout is reading the right table**. It is the **listing's fallback to the legacy
+> `inventory` table that is the loose one** — it makes an item look sellable on a table the
+> checkout does not consult.
+
+That means A2 is **not** "widen the checkout to read `inventory`". Doing that would be a
+**regression**: it would make the till honour a table the ledger model deliberately superseded.
+The correct alignment runs the **other way**:
+
+| Change | Direction | Note |
+|---|---|---|
+| Listing `in_stock` | use `tracks_inventory()` (restaurant never stock-gated) | Option A — still correct |
+| Listing `stock_qty` fallback to `inventory` | **question the fallback**, do not propagate it | new — needs care for rows that have NO ledger entries |
+| Checkout `stock_at_locations()` | **leave alone** — it reads the authoritative table | A2 withdrawn |
+
+**And the legacy fallback cannot simply be deleted:** for a product with no ledger rows at all,
+`stock_summary` is empty and the `inventory` fallback is the only thing reporting stock. So this
+is a **migration question** (backfill `stock_summary` from `inventory`, then drop the fallback),
+which belongs with the ADR — not a one-line change.
+
+**Net effect on the ruling:** the reported symptom is now most likely **data or type**
+(`product_type` not `restaurant`, §2.3), **not** the stock-source mismatch. Phase 0 remains the
+gate. This is the third time in this file that measurement corrected the plan, and it is why
+§6.3 records each claim's verdict separately.
+
 ## 7. Out of scope for this file
 
 - **Option C (the table split) is NOT approved and NOT planned here.** If it is wanted, it
@@ -320,9 +448,19 @@ is not a feature — it is a trap. But it is a product statement and the call is
 
 ## 9. Claims that have rotted — do not quote these
 
-- **"Restaurant and mobile differ on `in_stock`."** Measured and **false**: both shells call
-  the same `run_list_products` and the same `MenuItemTile`. The divergence is between the
-  **checkout** and the **listing** layers (§2.2), not between shells.
+- **"Restaurant and mobile differ on `in_stock`."** Measured and **false**. Both shells call the
+  same `run_list_products` and the same `MenuItemTile`; there is **no shell divergence at all**.
+- **"The checkout and the listing disagree about the same question."** **False.** They read
+  **different tables** — the listing `COALESCE(stock_summary, inventory)`, the checkout
+  `stock_summary` only — and are triggered by different actions (rendering vs Complete). The
+  corrected account is §2.2.
+- **"Option A closes the reported Insufficient Stock dialog."** **Withdrawn.** The dialog comes
+  from `stock_at_locations()` (`sales_checkout.rs:25-31`), which never reads `ProductDto.in_stock`.
+  A fixes the grey tile; whether it touches the dialog depends on the unknown in §2.3.
+- **"The checkout reads the wrong stock table."** **False, and the reverse is closer to true.**
+  `stock_summary` is the ADR-19 ledger and the authoritative source (§6.4); the listing's
+  fallback to the legacy `inventory` table is the loose end. Widening the CHECKOUT to read
+  `inventory` would be a regression.
 - **"Mobile has its own product behaviour."** Mostly false: mobile is a **subset** of the
   desktop command surface (422 vs 499 handlers, 403 shared). The genuine duplication is the
   4 `in_stock` copies and the 2 `product_type != 'service'` copies.
