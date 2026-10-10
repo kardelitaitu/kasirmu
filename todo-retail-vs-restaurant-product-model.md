@@ -464,3 +464,130 @@ is not a feature — it is a trap. But it is a product statement and the call is
 - **"Mobile has its own product behaviour."** Mostly false: mobile is a **subset** of the
   desktop command surface (422 vs 499 handlers, 403 shared). The genuine duplication is the
   4 `in_stock` copies and the 2 `product_type != 'service'` copies.
+
+---
+
+## 10. RECOMMENDATION (2026-10-10, revised after the recipe finding)
+
+> **The user's steer:** *"restaurant menu later will reduce kitchen inventory (via menu recipe)"*.
+>
+> **This does not weaken the ruling — it STRENGTHENS it, and it kills one claim this file was still
+> carrying.** The recipe mechanism the user describes **already exists and already works**, so
+> almost none of the work is in the checkout.
+
+### 10.1 The recipe mechanism is REAL and COMPLETE — verified end to end
+
+`sales_checkout.rs:288-410` already does exactly what was described:
+
+| Step | Where | What it does |
+|---|---|---|
+| Read the recipe | `:279` | `get_recipe_ingredients(pid)` |
+| Guard on type | `:282` | skips items that neither track stock nor have a recipe |
+| Ingest type check | `:355` | `if ing_ptype.tracks_inventory()` — only deductible ingredients |
+| Overflow guard | `:361-367` | `checked_mul` on `qty x quantity_required`, with MONEY-03/TAX-04 rationale |
+| **Deduct ingredient stock** | `:379-385` | `StockDeduction { sku: ing_sku, delta: -allocation.qty }` |
+| Shortfall **on the ingredient** | `:386-410` | allocates or reports the deficit against the ingredient |
+
+**So the model in this file is now complete, and it explains everything:**
+
+> **A dish is never stock-gated on itself. It is stock-gated on its INGREDIENTS — and only if it
+> has a recipe.** `tracks_inventory()` returning false for `Restaurant` is not a gap; it is the
+> first half of a two-part rule, and the second half (`has_recipe`) is already implemented.
+
+That is *why* the guard at `:282` reads `!tracks_inventory && !has_recipe` — it is not a sloppy
+condition, it is the exact statement of "restaurant dishes have no own stock, but their
+ingredients do".
+
+### 10.2 ⚠️ THE REAL GAP — there is NO WAY TO CREATE A RECIPE
+
+This is the finding that matters, and it is not in the checkout:
+
+| Layer | State |
+|---|---|
+| Core deduction logic | ✅ complete (`:288-410`) |
+| `product_recipes` table | ✅ exists (`init.sql:407`) |
+| **Any `set_recipe` / `add_recipe_ingredient` in `crates/`** | ❌ **ZERO hits** |
+| **Recipe in `crates/kasirmu-bridge/src/products.rs`** | ❌ **ZERO hits** |
+| **Recipe IPC registered in either shell's `lib.rs`** | ❌ **ZERO hits** |
+| **`ui/src/api` recipe module** | ❌ **none** |
+| Recipe in any `ui/src/features/` file | ❌ only 4 **CSS** files match the substring |
+
+**The only `INSERT INTO product_recipes` in the repo is in `recipes_tests.rs`.** So today a
+recipe can be created **only by a test**. An operator cannot.
+
+**Therefore the user's stated plan — "reduce kitchen inventory via menu recipe" — cannot be
+executed at all today**, on any shell, for any product. The engine is built; there is no steering
+wheel. This is the same shape as F24 earlier in this campaign: *a complete chain with no surface.*
+
+### 10.3 REVISED RECOMMENDATION
+
+**Do these, in this order. The order matters because each one unblocks the next.**
+
+| # | Change | Why, and what it closes |
+|---|---|---|
+| **0** | **Run Phase 0** (§6) | Still the only blocker. Decides whether the reported dialog is data or code. |
+| **1** | **Remove `both`** (open question 5) | Unproducible, unreachable, two contradictory consumers. Pure debt removal; makes `product_type` a clean 3-way discriminator. |
+| **2** | **A: constrain the discriminator + honour `tracks_inventory()` in the listing** | Kills the silent `RETAIL` downgrade and the grey tile for restaurant items. **Unifies 4 copies into the one rule the checkout already uses.** |
+| **3** | **B: `RestaurantMenuItem` / `RetailProduct` types** | The readable separation. Now *well-motivated*: the two domains genuinely differ — one is stock-gated on itself, the other on ingredients. |
+| **4** | **RECIPE AUTHORING — the actual product gap** | Bridge `set_recipe`/`get_recipe` + IPC in both shells + a Recipe editor on the product screen. **Without this, "reduce kitchen inventory via recipe" is unreachable.** |
+| **C** | **Still REFUSED** | §5a's reasoning is unchanged and, with the recipe mechanism in hand, *stronger*: the two domains share `sku`, recipes, images, tax and sales lines. Table split buys nothing here. |
+
+**Recommendation: 0 → 1 → 2 → 3, then 4 as its own piece of work.** Item 4 is a **feature build**
+(IPC + UI), not a reliability repair — so by this repo's own rule it should not ride in on the
+bug fix. It deserves its own plan file.
+
+### 10.4 What this changes in the ruling — and one claim WITHDRAWN
+
+- **Open question 4 is ANSWERED by the user's steer.** *"Should a dish with a recipe be
+  stock-checked?"* — **Yes, on its ingredients.** That is the intent, and the code already does
+  it. So question 4 is closed, not open.
+- **WITHDRAWN: "Option A closes the reported bug."** Already withdrawn in §6.3; now doubly so.
+  If those SKUs have **no recipe** (and provisioning writes none), they are not stock-gated at
+  all *once their type is correct* — so the dialog was most likely a **type** problem, and item 2
+  is what fixes it. Consistent with §2.3, not a new hypothesis.
+
+### 10.5 ⚠️ The sharpest defect in this plan, confirmed on the code
+
+**The listing defect is wider than recipes, and it is the single most important thing below.**
+Verified at `products_crud.rs:411`:
+
+```rust
+// Service products never get inventory rows — they have unlimited stock.
+if initial_stock > 0 && product_type != "service" {
+    tx.execute("INSERT INTO inventory (product_id, qty, updated_at) ...")?;
+```
+
+**An inventory row is created ONLY when `initial_stock > 0`.** And the Add-Product form
+**defaults `initialStock: '0'`** (`ProductManagementScreen.tsx:61,229`).
+
+So for **any** product created through the UI without typing a stock figure:
+
+| | |
+|---|---|
+| inventory row | **not created** |
+| `stock_qty` | `COALESCE(NULL, NULL)` = **NULL** |
+| `in_stock` | `NULL.is_some_and(> 0)` = **false** |
+| tile | **"Unavailable" — permanently** |
+
+**This is not a restaurant-specific bug. It affects every product type, on both shells, and it
+is reachable by anyone who adds a product and skips the stock field.** The reported restaurant
+symptom is one visible instance of it; my F14a seeding fix earlier in this campaign
+(`938d72f9f`) masked it on one device by writing inventory rows for the samples.
+
+**Consequences for the plan:**
+
+1. **Item 2 (A) must define what `in_stock` means when there is NO stock row at all.** The
+   current expression cannot distinguish *"tracked, genuinely zero"* from *"untracked, never
+   had stock"*. That distinction is the whole of this defect, and a recipe-bearing dish is one
+   case of it — not the only one.
+2. **`tracks_inventory()` alone is NOT sufficient for item 2.** It correctly exempts
+   `Restaurant`/`Service`, but a `Retail` product created with blank stock still lands
+   Unavailable. The rule needs a third state, or `create_product` must always write a row.
+3. **The cheapest correct fix may be at the write side:** always insert an inventory row
+   (including `0`) for any type that tracks inventory, so absence stops meaning unavailable.
+   **That is a one-line change** and it should be evaluated before touching the read side.
+
+**This is the fourth time in this file that measurement changed the plan. It is also the first
+time the finding is broader than the original report — the user's restaurant symptom was a
+symptom, and the defect is generic.**
+
