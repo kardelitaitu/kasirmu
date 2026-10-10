@@ -8,7 +8,7 @@ import { type Product, type Sku } from '@/types/domain';
 
 // ── Sample product fallback ─────────────────────────────────────────
 
-const SAMPLE_PRODUCTS: Product[] = [
+export const SAMPLE_PRODUCTS: Product[] = [
   { sku: 'LATTE' as Sku, name: 'Caffè Latte', category: 'Hot Drinks', price: { minor_units: 450, currency: 'USD' }, barcode: '4901234567890', inStock: true, stockQty: 50, productType: 'restaurant' },
   { sku: 'CAPPU' as Sku, name: 'Cappuccino', category: 'Hot Drinks', price: { minor_units: 420, currency: 'USD' }, barcode: '4901234567891', inStock: true, stockQty: 40, productType: 'restaurant' },
   { sku: 'ESPR' as Sku, name: 'Espresso Shot', category: 'Hot Drinks', price: { minor_units: 280, currency: 'USD' }, barcode: '4901234567892', inStock: true, stockQty: 60, productType: 'restaurant' },
@@ -35,7 +35,7 @@ const SAMPLE_PRODUCTS: Product[] = [
 // so the restaurant-menu pills render with full styling in dev / demo
 // mode without needing a live Tauri backend.
 
-const SAMPLE_CATEGORY_META: CategoryDto[] = [
+export const SAMPLE_CATEGORY_META: CategoryDto[] = [
   { id: 'cat-food',        name: 'Food',        colour: '#f97316', icon: 'food' },
   { id: 'cat-snacks',      name: 'Snacks',      colour: '#eab308', icon: 'snack' },
   { id: 'cat-hot-drinks',  name: 'Hot Drinks',  colour: '#ef4444', icon: 'hot-drink' },
@@ -128,17 +128,13 @@ export function useProducts(sessionToken?: string): UseProductsResult {
   useEffect(() => {
     let cancelled = false;
 
-    // Shared by both unavailable paths below: a catalog that could not be read is sample data in
-    // a demo build and an empty catalog in a real one, which is what the `catch` already did.
+    // DATA-01: SQLite is the single source of truth. An unavailable catalog returns empty products
+    // in all builds (dev/demo and production) so phantom products never reach the POS cart.
+    // In dev/demo mode, sample category metadata can still be surfaced for preview styling.
     const applyUnavailableCatalog = () => {
-      if (isDemoMode()) {
-        setProducts(SAMPLE_PRODUCTS);
-        setCategoryMeta(SAMPLE_CATEGORY_META);
-        setUsingFallback(true);
-      } else {
-        setProducts([]);
-        setUsingFallback(false);
-      }
+      setProducts([]);
+      setCategoryMeta(isDemoMode() ? SAMPLE_CATEGORY_META : []);
+      setUsingFallback(false);
     };
 
     (async () => {
@@ -176,18 +172,15 @@ export function useProducts(sessionToken?: string): UseProductsResult {
           const uncategorisedLabel = l10nRef.current.getString('product-lookup-uncategorised');
           setProducts(productDtos.map(dto => dtoToProduct(dto, uncategorisedLabel)));
           setUsingFallback(false);
-        } else if (isDemoMode()) {
-          // Empty DB in dev/demo — sample catalog for preview purposes.
-          setProducts(SAMPLE_PRODUCTS);
-          setCategoryMeta(SAMPLE_CATEGORY_META);
-          setUsingFallback(true);
         } else {
-          // Empty DB in production is a legitimate empty catalog.
+          // Empty DB is a legitimate empty catalog in all builds (dev/demo and production).
+          // We never substitute sample products into the live catalog (DATA-01).
           setProducts([]);
+          setCategoryMeta(categories.length > 0 ? categories : (isDemoMode() ? SAMPLE_CATEGORY_META : []));
           setUsingFallback(false);
         }
       } catch (err) {
-        // IPC unavailable — fall back to sample data only in dev/demo.
+        // IPC unavailable — surfaces error; never substitutes phantom products.
         if (cancelled) return;
         setError(l10nErrorMessage(err, l10nRef.current, 'product-lookup-error-load'));
         applyUnavailableCatalog();

@@ -193,7 +193,7 @@ the unconstrained-discriminator problem that plan is fixing.
 ## 6. Out of scope
 
 - **The stock model / `in_stock` / `product_type` CHECK** — `todo-retail-vs-restaurant-product-model.md`.
-- **The demo-fixture defect** — `todo-demo-fixtures-sellable.md`. Worth noting they interact:
+- **The demo-fixture defect** — `done-todo-demo-fixtures-sellable.md`. Worth noting they interact:
   a recipe-bearing dish created in a demo build inherits the fixture problem.
 - **Purchasing / supplier costing** — ingredient `cost_minor` is referenced by Q1 but owned elsewhere.
 

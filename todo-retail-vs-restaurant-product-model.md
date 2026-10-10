@@ -317,7 +317,7 @@ Phase 0 check comes back `retail` on those SKUs, then A shrinks to "fix the data
 the whole of the work.
 
 ---
-## 6. Phase 0 — RESOLVED by the demo-fixture finding (see `todo-demo-fixtures-sellable.md`)
+## 6. Phase 0 — RESOLVED by the demo-fixture finding (see `done-todo-demo-fixtures-sellable.md`)
 
 > **UPDATE 2026-10-10 (later the same day): Phase 0 is no longer a database query, because the
 > SKUs do not need looking up — they are DEMO FIXTURES, not rows.**
@@ -441,7 +441,7 @@ gate. This is the third time in this file that measurement corrected the plan, a
 ## 8. Questions — RESOLVED (decisions and evidence recorded)
 
 1. **Phase 0's result (RESOLVED):** The reported SKUs were in-memory dev fixtures in
-   `useProducts.ts:19-21`, not database rows at all. See `todo-demo-fixtures-sellable.md`.
+   `useProducts.ts:19-21`, not database rows at all. See `done-todo-demo-fixtures-sellable.md`.
 2. **Scope (RULED, §5a):** Option A, then Option B. Option C (table split) is REFUSED.
 3. **The `Both` case / Q5 (RESOLVED):** `both` is unproducible dead code with contradictory
    consumers (`RestaurantMenu` excludes it; `KdsProductPickerModal` includes it). Decision:
@@ -532,7 +532,7 @@ wheel. This is the same shape as F24 earlier in this campaign: *a complete chain
 
 | # | Change | Why, and what it closes |
 |---|---|---|
-| **0** | **Fix demo fixtures sellable** (`todo-demo-fixtures-sellable.md`) | **Phase 0 closed.** The reported SKUs were in-memory fixtures in `useProducts.ts`. Return `[]` to eliminate phantom sales by construction. |
+| **0** | **Fix demo fixtures sellable** (`done-todo-demo-fixtures-sellable.md`) | **Phase 0 closed.** The reported SKUs were in-memory fixtures in `useProducts.ts`. Return `[]` to eliminate phantom sales by construction. |
 | **1** | **Remove `both`** (open question 5) | Unproducible, unreachable, two contradictory consumers. Pure debt removal; makes `product_type` a clean 3-way discriminator. |
 | **2** | **A: constrain discriminator + fix `products_crud.rs:411` stock row creation** | Adds CHECK constraint on `product_type`. Fixes §10.5 write-side defect so products created with 0 initial stock get inventory rows. Unifies 4 `in_stock` copies. |
 | **3** | **B: `RestaurantMenuItem` / `RetailProduct` types** | The readable separation. Now *well-motivated*: the two domains genuinely differ — one is stock-gated on itself, the other on ingredients. |

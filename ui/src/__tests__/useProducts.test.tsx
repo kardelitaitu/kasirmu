@@ -154,15 +154,15 @@ describe('useProducts', () => {
     });
   });
 
-  describe('fallback when API fails', () => {
-    it('falls back to sample products when listProducts throws', async () => {
+  describe('fallback when API fails (DATA-01)', () => {
+    it('returns empty products when listProducts throws', async () => {
       mocks.listProducts.mockRejectedValue(new Error('IPC unavailable'));
 
       const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
-        expect(result.current.usingFallback).toBe(true);
-        expect(result.current.products.length).toBeGreaterThan(0);
+        expect(result.current.usingFallback).toBe(false);
+        expect(result.current.products).toEqual([]);
       });
     });
 
@@ -176,18 +176,19 @@ describe('useProducts', () => {
 
       await waitFor(() => {
         expect(result.current.error).toBe('Failed to load products');
-        expect(result.current.usingFallback).toBe(true);
+        expect(result.current.usingFallback).toBe(false);
+        expect(result.current.products).toEqual([]);
       });
     });
 
-    it('falls back to sample products when API returns empty list', async () => {
+    it('returns empty products when API returns empty list', async () => {
       mocks.listProducts.mockResolvedValue([]);
 
       const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
-        expect(result.current.usingFallback).toBe(true);
-        expect(result.current.products.length).toBeGreaterThan(0);
+        expect(result.current.usingFallback).toBe(false);
+        expect(result.current.products).toEqual([]);
       });
     });
   });
@@ -272,7 +273,8 @@ describe('useProducts', () => {
 
       await waitFor(() => expect(result.current.loading).toBe(false));
       expect(result.current.error).not.toBeNull();
-      expect(result.current.usingFallback).toBe(true);
+      expect(result.current.usingFallback).toBe(false);
+      expect(result.current.products).toEqual([]);
 
       rerender({ token: TOKEN });
 

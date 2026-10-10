@@ -1,6 +1,6 @@
 # todo — demo fixtures are sellable on the restaurant POS
 
-> **Created 2026-10-10 · status: OPEN — root cause identified and verified, no code changed.**
+> **Created 2026-10-10 · status: DONE — Option 2 implemented across useProducts.ts and RetailPosScreen.tsx; verified by npm run test -- src/__tests__/useProducts.test.tsx.**
 >
 > **Found while investigating** `todo-retail-vs-restaurant-product-model.md`, and it appears to be
 > **the actual cause of that file's reported symptom.** A restaurant sale was refused with an

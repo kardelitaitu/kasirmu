@@ -63,10 +63,9 @@ function toProduct(p: ProductDto): Product {
 }
 
 // ── Retail sample product fallback (dev/demo builds only — LOAD-03) ──
-// These catalogs may NEVER surface in a production build, even when the
-// live IPC catalog request fails: a cashier could otherwise see and select
-// products that are not in the store. `isDemoMode()` gates them.
-const RETAIL_SAMPLE_PRODUCTS: ProductDto[] = [
+// These catalogs may NEVER surface in a live cart: a cashier could otherwise
+// see and select products that are not in the store (DATA-01).
+export const RETAIL_SAMPLE_PRODUCTS: ProductDto[] = [
   { sku: 'CPU-R7-7800X3D', name: 'AMD Ryzen 7 7800X3D 8-Core',  category: 'cat-cpu',       price: { minor_units: 6250000, currency: 'IDR' }, barcode: '730143314930', in_stock: true,  stock_qty: 15, product_type: 'retail', tax_rate_ids: [], created_at: '', price_updated_at: '' },
   { sku: 'CPU-I7-14700K',  name: 'Intel Core i7-14700K 20-Core', category: 'cat-cpu',       price: { minor_units: 6450000, currency: 'IDR' }, barcode: '503203727850', in_stock: true,  stock_qty: 10, product_type: 'retail', tax_rate_ids: [], created_at: '', price_updated_at: '' },
   { sku: 'CPU-R5-7600',    name: 'AMD Ryzen 5 7600 6-Core',     category: 'cat-cpu',       price: { minor_units: 3150000, currency: 'IDR' }, barcode: '730143314503', in_stock: true,  stock_qty: 25, product_type: 'retail', tax_rate_ids: [], created_at: '', price_updated_at: '' },
@@ -493,17 +492,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        // LOAD-03: demo catalog only in dev/demo builds; production keeps
-        // the real (empty) state and shows the unavailable banner + Retry.
-        if (isDemoMode()) {
-          setProducts(RETAIL_SAMPLE_PRODUCTS);
-          setCategories(RETAIL_SAMPLE_CATEGORIES);
-          setLoadError(requiredLocalized(l10nRef.current, 'retail-load-error'));
-        } else {
-          setProducts([]);
-          setCategories([]);
-          setLoadError(requiredLocalized(l10nRef.current, 'retail-load-error-unavailable'));
-        }
+        // DATA-01: SQLite is single source of truth. Failed catalog load keeps products empty
+        // in all builds so phantom items never reach the cart. Demo category metadata is preserved.
+        setProducts([]);
+        setCategories(isDemoMode() ? RETAIL_SAMPLE_CATEGORIES : []);
+        setLoadError(requiredLocalized(l10nRef.current, isDemoMode() ? 'retail-load-error' : 'retail-load-error-unavailable'));
       })
       .finally(() => {
         if (!controller.signal.aborted) {
