@@ -206,7 +206,12 @@ function SalesHistoryCapTeaser({ onUpgrade }: { onUpgrade: () => void }) {
   );
 }
 
-export default function SalesHistoryScreen() {
+export interface SalesHistoryScreenProps {
+  /** Optional back button callback when hosted as an embedded sub-screen. */
+  onBack?: () => void;
+}
+
+export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps = {}) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   // C1.2 upgrade link needs the active locale for the pricing URL; tests
@@ -322,6 +327,16 @@ export default function SalesHistoryScreen() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [cashierFilter, setCashierFilter] = useState('');
+
+  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' || dateFrom !== '' || dateTo !== '' || cashierFilter !== '';
+
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setStatusFilter('All');
+    setDateFrom('');
+    setDateTo('');
+    setCashierFilter('');
+  }, []);
 
   // ── Pagination ────────────────────────────────────────────────────
   const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -898,6 +913,20 @@ export default function SalesHistoryScreen() {
       )}
       <div className="sales-history-header">
         <div className="sales-history-header-left">
+          {onBack && (
+            <button
+              type="button"
+              className="sales-history-back-btn"
+              onClick={onBack}
+              aria-label={l10n.getString('back') || 'Back'}
+              data-testid="sales-history-back-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+          )}
           <Localized id="sales-history-title">
             <h1 className="sales-history-title">Sales History</h1>
           </Localized>
@@ -917,132 +946,195 @@ export default function SalesHistoryScreen() {
           )}
         </div>
         <div className="sales-history-header-actions">
-          <Localized id="sales-history-export-csv">
-            <button type="button" className="sales-history-export-btn" onClick={handleExportCsv} disabled={csvExporting}>
-              {csvExporting ? (
-                <Localized id="sales-history-exporting"><span>Exporting…</span></Localized>
-              ) : (
-                <span>Export CSV</span>
-              )}
-            </button>
-          </Localized>
+          <Button
+            variant="primary"
+            size="sm"
+            className="sales-history-export-btn"
+            onClick={handleExportCsv}
+            disabled={csvExporting}
+            aria-label={l10n.getString('sales-history-export-csv')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {csvExporting ? (
+              <Localized id="sales-history-exporting"><span>Exporting…</span></Localized>
+            ) : (
+              <Localized id="sales-history-export-csv"><span>Export CSV</span></Localized>
+            )}
+          </Button>
         </div>
       </div>
 
       {/* ── Filter bar ──────────────────────────────────────────── */}
       <Localized id="sales-history-filter-aria" attrs={{ 'aria-label': true }}>
         <div className="sales-history-filters" role="search" aria-label={l10n.getString('filter-sales-aria')}>
-        {/* Search */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-search-label">
-            <label className="sales-history-filter-label" htmlFor="sh-search"><span>Search</span></label>
-          </Localized>
-          <Localized id="sales-history-search-placeholder" attrs={{ placeholder: true }}>
-            <Localized id="sales-history-search-aria" attrs={{ 'aria-label': true }}>
+          {/* Search */}
+          <div className="sales-history-filter-group sales-history-filter-group--search">
+            <Localized id="sales-history-search-label">
+              <label className="sales-history-filter-label" htmlFor="sh-search"><span>Search</span></label>
+            </Localized>
+            <div className="sales-history-search-wrap">
+              <svg
+                className="sales-history-search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="15"
+                height="15"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <Localized id="sales-history-search-placeholder" attrs={{ placeholder: true }}>
+                <Localized id="sales-history-search-aria" attrs={{ 'aria-label': true }}>
+                  <input
+                    id="sh-search"
+                    type="text"
+                    className="sales-history-filter-input"
+                    placeholder="Search sale ID, payment, cashier…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label={l10n.getString('search-aria')}
+                  />
+                </Localized>
+              </Localized>
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="sales-history-search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  aria-label={l10n.getString('retail-search-clear-aria') || 'Clear search'}
+                  data-testid="sales-history-search-clear-btn"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Status filter */}
+          <div className="sales-history-filter-group sales-history-filter-group--status">
+            <Localized id="sales-history-status-label">
+              <span className="sales-history-filter-label"><span>Status</span></span>
+            </Localized>
+            <Localized id="sales-history-status-filter-aria" attrs={{ 'aria-label': true }}>
+              <div className="sales-history-filter-chips" role="radiogroup" aria-label={l10n.getString('filter-status-aria')}>
+                {STATUS_OPTIONS.map((opt) => {
+                  const statusIds: Record<string, string> = {
+                    'All': 'sales-history-status-all',
+                    'Completed': 'sales-history-status-completed',
+                    'Pending': 'sales-history-status-pending',
+                    'Voided': 'sales-history-status-voided',
+                  };
+                  return (
+                    <Localized id={statusIds[opt] ?? opt} key={opt}>
+                      <button
+                        type="button"
+                        role="radio"
+                        className={`sales-history-chip ${statusFilter === opt ? 'sales-history-chip--active' : ''}`}
+                        onClick={() => setStatusFilter(opt)}
+                        aria-checked={statusFilter === opt}
+                      >
+                        <span>{opt}</span>
+                      </button>
+                    </Localized>
+                  );
+                })}
+              </div>
+            </Localized>
+          </div>
+
+          {/* Date range */}
+          <div className="sales-history-filter-group sales-history-filter-group--date">
+            <Localized id="sales-history-from-label">
+              <label className="sales-history-filter-label" htmlFor="sh-date-from"><span>From</span></label>
+            </Localized>
+            <Localized id="sales-history-date-from-aria" attrs={{ 'aria-label': true }}>
               <input
-                id="sh-search"
-                type="text"
-                className="sales-history-filter-input"
-                placeholder="Search sale ID, payment, cashier…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label={l10n.getString('search-aria')}
+                id="sh-date-from"
+                type="date"
+                className="sales-history-filter-date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                aria-label={l10n.getString('from-date-aria')}
               />
             </Localized>
-          </Localized>
-        </div>
-
-        {/* Status filter */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-status-label">
-            <span className="sales-history-filter-label"><span>Status</span></span>
-          </Localized>
-          <Localized id="sales-history-status-filter-aria" attrs={{ 'aria-label': true }}>
-            <div className="sales-history-filter-chips" role="radiogroup" aria-label={l10n.getString('filter-status-aria')}>
-              {STATUS_OPTIONS.map((opt) => {
-                const statusIds: Record<string, string> = {
-                  'All': 'sales-history-status-all',
-                  'Completed': 'sales-history-status-completed',
-                  'Pending': 'sales-history-status-pending',
-                  'Voided': 'sales-history-status-voided',
-                };
-                return (
-                  <Localized id={statusIds[opt] ?? opt} key={opt}>
-                    <button
-                      type="button"
-                      role="radio"
-                      className={`sales-history-chip ${statusFilter === opt ? 'sales-history-chip--active' : ''}`}
-                      onClick={() => setStatusFilter(opt)}
-                      aria-checked={statusFilter === opt}
-                    >
-                      <span>{opt}</span>
-                    </button>
-                  </Localized>
-                );
-              })}
-            </div>
-          </Localized>
-        </div>
-
-        {/* Date range */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-from-label">
-            <label className="sales-history-filter-label" htmlFor="sh-date-from"><span>From</span></label>
-          </Localized>
-          <Localized id="sales-history-date-from-aria" attrs={{ 'aria-label': true }}>
-            <input
-              id="sh-date-from"
-              type="date"
-              className="sales-history-filter-date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              aria-label={l10n.getString('from-date-aria')}
-            />
-          </Localized>
-        </div>
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-to-label">
-            <label className="sales-history-filter-label" htmlFor="sh-date-to"><span>To</span></label>
-          </Localized>
-          <Localized id="sales-history-date-to-aria" attrs={{ 'aria-label': true }}>
-            <input
-              id="sh-date-to"
-              type="date"
-              className="sales-history-filter-date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              aria-label={l10n.getString('to-date-aria')}
-            />
-          </Localized>
-        </div>
-
-        {/* Cashier filter */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-cashier-label">
-            <label className="sales-history-filter-label" htmlFor="sh-cashier"><span>Cashier</span></label>
-          </Localized>
-          <Localized id="sales-history-cashier-aria" attrs={{ 'aria-label': true }}>
-            <select
-              id="sh-cashier"
-              className="sales-history-filter-select"
-              value={cashierFilter}
-              onChange={(e) => setCashierFilter(e.target.value)}
-              aria-label={l10n.getString('filter-cashier-aria')}
-            >
-            <Localized id="sales-history-cashier-all">
-              <option value=""><span>All Cashiers</span></option>
+          </div>
+          <div className="sales-history-filter-group sales-history-filter-group--date">
+            <Localized id="sales-history-to-label">
+              <label className="sales-history-filter-label" htmlFor="sh-date-to"><span>To</span></label>
             </Localized>
-            {/* No `staffUnknown` guard here, and deliberately: the map is already
-                empty when the read failed, so a guard would be a dead condition. The
-                alert below the filters is the load-bearing part -- an option list of
-                only 'All Cashiers' is the claim being made wrong. */}
-            {staff.map((m) => (
-              <option key={m.id} value={m.id}>{m.display_name}</option>
-            ))}
-          </select>
-          </Localized>
+            <Localized id="sales-history-date-to-aria" attrs={{ 'aria-label': true }}>
+              <input
+                id="sh-date-to"
+                type="date"
+                className="sales-history-filter-date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                aria-label={l10n.getString('to-date-aria')}
+              />
+            </Localized>
+          </div>
+
+          {/* Cashier filter */}
+          <div className="sales-history-filter-group sales-history-filter-group--cashier">
+            <Localized id="sales-history-cashier-label">
+              <label className="sales-history-filter-label" htmlFor="sh-cashier"><span>Cashier</span></label>
+            </Localized>
+            <Localized id="sales-history-cashier-aria" attrs={{ 'aria-label': true }}>
+              <div className="sales-history-select-wrap">
+                <select
+                  id="sh-cashier"
+                  className="sales-history-filter-select"
+                  value={cashierFilter}
+                  onChange={(e) => setCashierFilter(e.target.value)}
+                  aria-label={l10n.getString('filter-cashier-aria')}
+                >
+                  <Localized id="sales-history-cashier-all">
+                    <option value=""><span>All Cashiers</span></option>
+                  </Localized>
+                  {staff.map((m) => (
+                    <option key={m.id} value={m.id}>{m.display_name}</option>
+                  ))}
+                </select>
+                <svg className="sales-history-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
+            </Localized>
+          </div>
+
+          {/* Clear filters button */}
+          {hasActiveFilters && (
+            <div className="sales-history-filter-actions">
+              <button
+                type="button"
+                className="sales-history-clear-filters-btn"
+                onClick={handleClearFilters}
+                aria-label={l10n.getString('sales-history-clear-filters') || 'Clear filters'}
+                data-testid="sales-history-clear-filters-btn"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                <Localized id="sales-history-clear-filters">
+                  <span>Clear filters</span>
+                </Localized>
+              </button>
+            </div>
+          )}
         </div>
-      </div>
       </Localized>
 
       {/* ── The roster read that did not answer ────────────── */}
@@ -1147,7 +1239,7 @@ export default function SalesHistoryScreen() {
                   title={requiredLocalized(l10n, 'sales-history-empty-filtered')}
                   action={{
                     label: requiredLocalized(l10n, 'sales-history-clear-filters'),
-                    onClick: () => { setSearchQuery(''); setStatusFilter('All'); setDateFrom(''); setDateTo(''); setCashierFilter(''); },
+                    onClick: handleClearFilters,
                   }}
                 />
               )}

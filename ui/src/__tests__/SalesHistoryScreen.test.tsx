@@ -952,4 +952,82 @@ describe('SalesHistoryScreen', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
   });
+
+  it('renders standard back button when onBack prop is provided and triggers callback', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    const onBack = vi.fn();
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen onBack={onBack} />, salesFtl, sharedFtl);
+
+    const backBtn = await screen.findByTestId('sales-history-back-btn');
+    expect(backBtn).toBeInTheDocument();
+    expect(backBtn).toHaveAttribute('aria-label', 'Back');
+
+    await user.click(backBtn);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits back button when onBack prop is not provided', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('sales-history-back-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders search clear button when search query is entered and clears input on click', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search sale ID, payment, cashier…');
+    expect(screen.queryByTestId('sales-history-search-clear-btn')).not.toBeInTheDocument();
+
+    await user.type(searchInput, 'sale-001');
+    expect(searchInput).toHaveValue('sale-001');
+
+    const clearSearchBtn = screen.getByTestId('sales-history-search-clear-btn');
+    expect(clearSearchBtn).toBeInTheDocument();
+
+    await user.click(clearSearchBtn);
+    expect(searchInput).toHaveValue('');
+    expect(screen.queryByTestId('sales-history-search-clear-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders clear filters button when filter is active and resets all filters on click', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('sales-history-clear-filters-btn')).not.toBeInTheDocument();
+
+    // Activate a status filter
+    const voidedChip = screen.getByRole('radio', { name: 'Voided' });
+    await user.click(voidedChip);
+
+    // Only sale-003 is voided
+    expect(screen.getByText('sale-003…')).toBeInTheDocument();
+    expect(screen.queryByText('sale-001…')).not.toBeInTheDocument();
+
+    // Clear filters button should now be visible
+    const clearFiltersBtn = screen.getByTestId('sales-history-clear-filters-btn');
+    expect(clearFiltersBtn).toBeInTheDocument();
+
+    await user.click(clearFiltersBtn);
+
+    // All sales visible again, status reset to All, button hidden
+    expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    expect(screen.getByText('sale-003…')).toBeInTheDocument();
+    expect(screen.queryByTestId('sales-history-clear-filters-btn')).not.toBeInTheDocument();
+  });
 });

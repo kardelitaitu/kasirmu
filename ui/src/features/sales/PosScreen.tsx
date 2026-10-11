@@ -1058,25 +1058,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   if (showSalesHistory) {
     return (
       <div className="pos-screen" style={{ flexDirection: 'column' }}>
-        <header className="restaurant-subscreen-top-bar">
-          <button
-            type="button"
-            className="restaurant-subscreen-back-btn"
-            onClick={() => setShowSalesHistory(false)}
-            aria-label={l10n.getString('back') || 'Back'}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-            <span>{l10n.getString('back') || 'Back'}</span>
-          </button>
-          <span className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</span>
-        </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
           {/* Crash isolation (F9) — see the Table Management note above. */}
           <LocalizedErrorBoundary onReset={() => setShowSalesHistory(false)}>
-            <SalesHistoryScreen />
+            <SalesHistoryScreen onBack={() => setShowSalesHistory(false)} />
           </LocalizedErrorBoundary>
         </div>
       </div>
