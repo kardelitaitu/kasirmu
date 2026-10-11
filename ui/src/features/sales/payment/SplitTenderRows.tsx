@@ -164,13 +164,21 @@ export default function SplitTenderRows({
                           </label>
                         ))}
                         <div className="payment-split-radio-label">
-                          <input
-                            type="radio"
-                            name={`split-method-${s.id}`}
-                            value="other"
-                            checked={s.method === 'other'}
-                            onChange={() => onUpdateSplit(s.id, { method: 'other' })}
-                          />
+                          {/* The radio needs its OWN accessible name: it is not
+                              wrapped in a <label> like the cash/card pair above
+                              (the sibling text input is), so without this it
+                              announced as a bare "radio button" and a screen
+                              reader could not tell it from the other two. The
+                              key already carries the wording. */}
+                          <Localized id="payment-split-other-placeholder" attrs={{ 'aria-label': true }}>
+                            <input
+                              type="radio"
+                              name={`split-method-${s.id}`}
+                              value="other"
+                              checked={s.method === 'other'}
+                              onChange={() => onUpdateSplit(s.id, { method: 'other' })}
+                            />
+                          </Localized>
                             <Localized id="payment-split-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
                             <input
                               type="text"
