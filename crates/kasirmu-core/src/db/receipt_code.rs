@@ -260,6 +260,43 @@ pub fn assemble_receipt_code(
 }
 
 impl crate::db::Store<'_> {
+    /// Ensure `receipt_number_counters` table has the `tenant_id` column and
+    /// composite primary key `(tenant_id, terminal_idx, fiscal_year)`.
+    ///
+    /// Rebuilds the table if a pre-existing local database ran an early
+    /// draft of 20261006_receipt_hierarchy_code.sql before `tenant_id` was added.
+    pub fn ensure_receipt_counters_table(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+    ) -> Result<(), CoreError> {
+        let has_tenant_id: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('receipt_number_counters') WHERE name = 'tenant_id'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if !has_tenant_id {
+            tx.execute_batch(
+                "CREATE TABLE IF NOT EXISTS receipt_number_counters_new (
+                     tenant_id     TEXT NOT NULL DEFAULT 'default',
+                     terminal_idx  TEXT NOT NULL,
+                     fiscal_year   TEXT NOT NULL,
+                     counter       INTEGER NOT NULL DEFAULT 0,
+                     updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                     PRIMARY KEY (tenant_id, terminal_idx, fiscal_year)
+                 );
+                 INSERT OR IGNORE INTO receipt_number_counters_new (tenant_id, terminal_idx, fiscal_year, counter, updated_at)
+                     SELECT 'default', terminal_idx, fiscal_year, counter, updated_at FROM receipt_number_counters;
+                 DROP TABLE receipt_number_counters;
+                 ALTER TABLE receipt_number_counters_new RENAME TO receipt_number_counters;",
+            )?;
+        }
+        Ok(())
+    }
+
     /// Claim the next continuous receipt sequence for `(tenant_id, terminal_idx,
     /// fiscal_year)`.
     ///
@@ -281,6 +318,8 @@ impl crate::db::Store<'_> {
         terminal_idx: &str,
         fiscal_year: &str,
     ) -> Result<i64, CoreError> {
+        self.ensure_receipt_counters_table(tx)?;
+
         let claimed: i64 = tx.query_row(
         "INSERT INTO receipt_number_counters (tenant_id, terminal_idx, fiscal_year, counter, updated_at)
          VALUES (?1, ?2, ?3, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
