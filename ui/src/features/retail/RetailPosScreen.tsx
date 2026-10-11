@@ -32,7 +32,7 @@ import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { recordMark } from '@/utils/perf-metrics';
-import { DEFAULT_LOW_STOCK_THRESHOLD, minorUnitExponent, parseMinorUnits, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
+import { DEFAULT_LOW_STOCK_THRESHOLD, parseMoneyInput, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/components/useSound';
 import { useOptionalTheme } from '@/app/ThemeProvider';
 import RetailFnBar from './RetailFnBar';
@@ -990,7 +990,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // MONEY-02: exact decimal parse; MONEY-05: scale by the STORE
     // currency's exponent — the drawer holds store currency, and the
     // old hardcoded ×100 inflated IDR (exponent 0) 100x.
-    const val = parseMinorUnits(openingBalance, minorUnitExponent(storeSettings.currency));
+    const val = parseMoneyInput(openingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
     setOpeningShift(true);
     try {
@@ -1008,7 +1008,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const handleCloseShift = useCallback(async () => {
     if (!activeShift) return;
     // MONEY-02 + MONEY-05: exact parse at the store currency exponent.
-    const val = parseMinorUnits(closingBalance, minorUnitExponent(storeSettings.currency));
+    const val = parseMoneyInput(closingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
     setClosingShift(true);
     setCloseShiftError(null);
@@ -1091,8 +1091,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // MONEY-04: scale by the CART currency's minor-unit exponent — the
     // old hardcoded ×100 inflated IDR (exponent 0) ratios 100x, so any
     // Rp discount ≥ 1% of the subtotal clamped to 100% off. Exact
-    // decimal parse via parseMinorUnits (MONEY-02) replaces parseFloat.
-    const rpMinor = parseMinorUnits(discountRpInput, minorUnitExponent(subtotal?.currency ?? 'IDR'));
+    // decimal parse via parseMoneyInput replaces parseFloat.
+    const rpMinor = parseMoneyInput(discountRpInput, subtotal?.currency ?? 'IDR');
     if (rpMinor === null || rpMinor <= 0 || !subtotal || subtotal.minor_units === 0) return;
     const capped = Math.min(subtotal.minor_units, rpMinor);
     // MONEY-05: project the typed AMOUNT to a percent WITHOUT rounding the

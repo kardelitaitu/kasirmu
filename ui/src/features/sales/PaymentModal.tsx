@@ -11,7 +11,7 @@ import { openCashDrawerScoped } from '@/api/hardware';
 import { assignTableOrderScoped, listTablesScoped } from '@/api/tables';
 import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
-import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseMoneyInput, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 // W5-a: only the reciprocal helper is still read here (tenderSnapshot); the
 // currency/rate loaders and the fixed-point converter moved to useMultiCurrency.
@@ -1230,10 +1230,9 @@ retryCurrencyLoad,
       let paymentSplits: PaymentSplitArg[] | undefined;
 
       if (splitMode) {
-        const exp = minorUnitExponent(cartCurrency);
         paymentSplits = splits.map((s) => ({
           method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
-          amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
+          amountMinor: parseMoneyInput(s.amountMinor || '0', cartCurrency) ?? 0,
         }));
       }
 
@@ -1560,10 +1559,9 @@ retryCurrencyLoad,
   // Reconstruct payment splits from the current split state (for shortfall retry)
   const paymentSplitsFromState = useCallback((): PaymentSplitArg[] | undefined => {
     if (!splitMode) return undefined;
-    const exp = minorUnitExponent(total.currency);
     return splits.map((s) => ({
       method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
-      amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
+      amountMinor: parseMoneyInput(s.amountMinor || '0', total.currency) ?? 0,
     }));
   }, [splitMode, splits, total.currency]);
 

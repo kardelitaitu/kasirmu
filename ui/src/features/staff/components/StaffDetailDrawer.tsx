@@ -55,7 +55,7 @@ import { openUpgradePricing as openUpgradePricingPage } from '@/utils/upgrade';
 import { Button } from '@/components/Button';
 import { SettingsPopup, requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
-import { parseMinorUnits } from '@/types/domain';
+import { parseMoneyInput } from '@/types/domain';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { RoleAssignmentMatrix } from './RoleAssignmentMatrix';
 import { Badge } from '@/components/Badge';
@@ -302,7 +302,7 @@ function profileArgsFromForm(form: FormData, includePayroll: boolean): ProfileAr
   // (the old parseFloat path stored NaN).
   const payMinor =
     includePayroll && form.monthlyTakeHome.trim()
-      ? parseMinorUnits(form.monthlyTakeHome, 2) ?? undefined
+      ? parseMoneyInput(form.monthlyTakeHome, 'IDR') ?? undefined
       : undefined;
   const profile: ProfileArgs = {};
   const set = (key: keyof ProfileArgs, value: string | number | undefined) => {
@@ -388,8 +388,11 @@ function validateProfileForm(
     }
   }
   const pay = form.monthlyTakeHome.trim();
-  if (pay && (!/^\d+(\.\d{1,2})?$/.test(pay) || parseFloat(pay) <= 0)) {
-    errors['monthlyTakeHome'] = l10n.getString('staff-error-pay-invalid');
+  if (pay) {
+    const parsedPay = parseMoneyInput(pay, 'IDR');
+    if (parsedPay === null || parsedPay <= 0) {
+      errors['monthlyTakeHome'] = l10n.getString('staff-error-pay-invalid');
+    }
   }
   const dob = form.dateOfBirth.trim();
   if (dob && !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {

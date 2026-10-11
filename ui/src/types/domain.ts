@@ -327,31 +327,121 @@ export function parseMinorUnits(input: string, scaleExponent: number): number | 
 }
 
 /**
+ * Render integer minor units as the plain decimal literal an editable amount
+ * `<input>` needs — 350 with exp 2 → "3.50", 10000 with exp 0 → "10000" — so the
+ * value round-trips back through `parseMinorUnits` / `parseMoneyInput` unchanged.
+ *
+ * Integer-only arithmetic, no floating-point rounding.
+ */
+export function minorUnitsToInputString(minor: number, exp: number): string {
+  if (!Number.isFinite(minor)) return '';
+  const digits = String(Math.trunc(Math.abs(minor))).padStart(exp + 1, '0');
+  const body = exp > 0
+    ? `${digits.slice(0, digits.length - exp)}.${digits.slice(digits.length - exp)}`
+    : digits;
+  return minor < 0 ? `-${body}` : body;
+}
+
+/**
+ * Format integer minor units for editable input fields according to currency rules.
+ * For exponent-0 currencies (IDR, JPY, KRW): integer digits only ("5000", "0").
+ * For decimal currencies (USD, EUR, GBP): trimmed decimals ("50", "50.50", "0.05", "0").
+ */
+export function formatMoneyInput(minor: number, currency: string = 'IDR'): string {
+  if (!Number.isFinite(minor) || minor < 0) return '';
+  const exp = minorUnitExponent(currency);
+  if (exp === 0) {
+    return String(Math.trunc(minor));
+  }
+  const factor = 10 ** exp;
+  const whole = Math.trunc(minor / factor);
+  const frac = Math.abs(minor % factor);
+  return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(exp, '0')}`;
+}
+
+/**
+ * Parse operator input (major units, as typed) into integer minor units across any currency.
+ *
+ * Handles grouping dots/commas safely:
+ * - Currencies with exponent 0 (IDR, JPY, KRW, VND):
+ *   "5000" -> 5000, "5.000" -> 5000, "50.000" -> 50000, "50,000" -> 50000, "1.234.567" -> 1234567.
+ *   Rejects fractional decimals ("50.5") that the currency cannot represent.
+ * - Currencies with exponent > 0 (USD, EUR, SGD):
+ *   "50" -> 5000, "50.50" -> 5050, "50,50" -> 5050, "1,234.50" -> 123450, "1.234,50" -> 123450.
+ *   Rejects over-precision ("50.123" for USD).
+ *
+ * Returns integer minor units, or null if input is non-numeric, negative, or invalid.
+ */
+export function parseMoneyInput(input: string, currency: string = 'IDR'): number | null {
+  const raw = input.trim();
+  if (raw === '') return null;
+
+  // Strip spaces and underscores
+  const normalised = raw.replace(/[ _]/g, '');
+
+  const exp = minorUnitExponent(currency);
+
+  let degrouped = normalised;
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(normalised)) {
+    // Dot grouping followed by comma decimal (e.g. 1.234,50): strip dots, comma becomes dot
+    degrouped = normalised.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(normalised)) {
+    // Comma grouping followed by dot decimal (e.g. 1,234.50): strip commas
+    degrouped = normalised.replace(/,/g, '');
+  } else {
+    // Single separator type or no decimals:
+    const threePlaceDotGroups = /^\d{1,3}(\.\d{3})+$/.test(normalised);
+    const multiDotGroup = threePlaceDotGroups && (normalised.match(/\./g) ?? []).length > 1;
+    const looksDotGrouped =
+      !normalised.includes(',') && threePlaceDotGroups && (exp === 0 || multiDotGroup);
+
+    const threePlaceCommaGroups = /^\d{1,3}(,\d{3})+$/.test(normalised);
+    const multiCommaGroup = threePlaceCommaGroups && (normalised.match(/,/g) ?? []).length > 1;
+    const looksCommaGrouped =
+      !normalised.includes('.') && threePlaceCommaGroups && (exp === 0 || multiCommaGroup);
+
+    if (looksDotGrouped) {
+      degrouped = normalised.replace(/\./g, '');
+    } else if (looksCommaGrouped) {
+      degrouped = normalised.replace(/,/g, '');
+    } else {
+      // If a comma is present and no dot, treat comma as potential decimal point
+      degrouped = normalised.includes('.') ? normalised : normalised.replace(',', '.');
+    }
+  }
+
+  if (!/^\d+(\.\d*)?$/.test(degrouped)) return null;
+
+  const [whole = '0', frac = ''] = degrouped.split('.');
+
+  if (exp === 0) {
+    // Currencies with exponent 0 (IDR, JPY, KRW, VND) have no circulating minor units.
+    if (frac !== '' && !/^0+$/.test(frac)) {
+      return null;
+    }
+    const minor = Number(whole);
+    return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+  }
+
+  // Reject input with more decimal places than currency exponent
+  if (frac.length > exp) return null;
+
+  const padded = frac.padEnd(exp, '0');
+  const minor = Number(whole) * 10 ** exp + Number(padded);
+  return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+}
+
+/**
  * Parse a user-entered balance or money amount in major units
- * (e.g. "100" for USD $100.00 -> 10000 minor units; "100000" for IDR Rp 100.000 -> 100000 minor units)
+ * (e.g. "100" for USD $100.00 -> 10000 minor units; "100000" or "100.000" for IDR -> 100000 minor units)
  * scaled to the currency's minor units.
  *
- * For currencies with 0 exponent (e.g. IDR), rejects fractional input (contains decimal point).
- * For currencies with exponent > 0 (e.g. USD), rejects fractional input that has more decimal
- * places than the exponent.
- *
- * Returns null if input is invalid or negative.
+ * Returns null if input is invalid or negative; empty string parses to 0.
  */
 export function parseBalanceInput(input: string, currency: string): number | null {
   const trimmed = input.trim();
   if (trimmed === '') return 0;
-  const exp = minorUnitExponent(currency);
-  if (exp === 0 && trimmed.includes('.')) {
-    return null;
-  }
-  const parts = trimmed.split('.');
-  const frac = parts[1];
-  if (frac !== undefined && frac.length > exp) {
-    return null;
-  }
-  const val = parseMinorUnits(trimmed, exp);
-  if (val === null || val < 0) return null;
-  return val;
+  return parseMoneyInput(trimmed, currency);
 }
 
 /** Render a fixed-point millionths value (LOYALTY-01 tier multipliers)

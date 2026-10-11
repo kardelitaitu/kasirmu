@@ -39,7 +39,7 @@
  * is a bigint. No float arithmetic was introduced, removed or reordered.
  */
 import { useCallback, useMemo } from 'react';
-import { minorUnitExponent, parseMinorUnits, type CartLine, type Money } from '@/types/domain';
+import { parseMoneyInput, type CartLine, type Money } from '@/types/domain';
 import type { PreviewPromotedTotalResult } from '@/api/sales';
 
 /** Structural twin of useSplitTenderState's SplitRow (:63) - only the three fields the math reads. */
@@ -103,8 +103,8 @@ export function useTenderMath({
   }), [effectiveTotal, total.currency]);
 
   const tenderedMinor = useMemo(() => {
-    // MONEY-02: exact decimal parse (parseFloat mis-rounded "1.005").
-    const parsed = parseMinorUnits(tendered, minorUnitExponent(total.currency));
+    // MONEY-02: exact decimal parse via parseMoneyInput.
+    const parsed = parseMoneyInput(tendered, total.currency);
     if (parsed === null || parsed < 0) return 0n;
     return BigInt(parsed);
   }, [tendered, total.currency]);
@@ -149,7 +149,7 @@ export function useTenderMath({
   const tenderedMinorInCartCurrency = useMemo(() => {
     if (cartCurrency === total.currency) return Number(tenderedMinor);
     // MONEY-02: exact decimal parse at the charge currency's exponent.
-    const parsed = parseMinorUnits(tendered, minorUnitExponent(cartCurrency));
+    const parsed = parseMoneyInput(tendered, cartCurrency);
     if (parsed === null || parsed < 0) return 0;
     return parsed;
   }, [tendered, cartCurrency, tenderedMinor, total.currency]);
@@ -166,8 +166,8 @@ export function useTenderMath({
 
   // Parse split amounts using cart currency exponent
   const parseSplitMinor = useCallback((val: string): bigint => {
-    // MONEY-02: exact decimal parse (parseFloat mis-rounded "1.005").
-    const parsed = parseMinorUnits(val, minorUnitExponent(cartCurrency));
+    // MONEY-02: exact decimal parse via parseMoneyInput.
+    const parsed = parseMoneyInput(val, cartCurrency);
     if (parsed === null || parsed < 0) return 0n;
     return BigInt(parsed);
   }, [cartCurrency]);
