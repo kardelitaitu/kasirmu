@@ -238,7 +238,7 @@ sales-history-count = { $count } sale{ $count ->
   *[other] s
 }
 sales-history-page-info = Page { $current } of { $total }
-sales-history-col-id = Sale ID
+sales-history-col-receipt = Receipt
 sales-history-col-date = Date
 sales-history-col-total = Total
 sales-history-col-items = Items
@@ -291,13 +291,17 @@ sales-history-detail-title = Sale Detail
 sales-history-detail-close = Close
 sales-history-detail-print = Reprint Receipt
 sales-history-detail-id = ID
+sales-history-detail-receipt = Receipt
 sales-history-detail-date = Date
 sales-history-detail-status = Status
 sales-history-detail-payment = Payment
 sales-history-detail-cashier = Cashier
 sales-history-detail-subtotal = Subtotal
+sales-history-detail-discount = Discount:
 sales-history-detail-tax = Tax
 sales-history-detail-total = Total
+sales-history-detail-tendered = Tendered:
+sales-history-detail-change = Change:
 sales-history-lines-title = Line Items
 sales-history-line-sku = SKU
 sales-history-line-name = Name

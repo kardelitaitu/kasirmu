@@ -529,6 +529,8 @@ export interface SaleLineDto {
   total_minor: number;
   tax_amount: Money | null;
   tax_rate_id: string | null;
+  course?: string | null;
+  modifiers_json?: string | null;
 }
 
 /** Full detail of a completed sale, including line items. */

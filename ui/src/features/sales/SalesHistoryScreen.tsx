@@ -111,15 +111,39 @@ function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: Swipe
     onSwipeRight: () => setRevealed(false),
   });
 
+  const handleRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, select')) return;
+    onView(sale.id);
+  };
+
+  const handleRowKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const target = e.target as HTMLElement;
+      if (target.closest('button, a, input, select')) return;
+      e.preventDefault();
+      onView(sale.id);
+    }
+  };
+
   return (
     <tr
       className="sales-history-row-wrap"
       data-revealed={revealed ? 'true' : undefined}
+      onClick={handleRowClick}
+      onKeyDown={handleRowKeyDown}
+      tabIndex={0}
       {...swipe}
     >
-      <td className="sales-history-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
       <td className="sales-history-cell-receipt">
-        <div>{sale.displayCode ?? '\u2014'}</div>
+        <div className="sales-history-receipt-code">
+          {sale.displayCode ?? `${sale.id.slice(0, 8)}\u2026`}
+        </div>
+        {sale.displayCode && (
+          <div className="sales-history-cell-subid">
+            ID: {sale.id.slice(0, 8)}&hellip;
+          </div>
+        )}
         {sale.fakturPajak && (
           // The native `title=` that used to sit on this span was a real a11y
           // defect, not just a lint hit: a browser tooltip is mouse-only, so the
@@ -140,7 +164,6 @@ function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: Swipe
       <td>{new Date(sale.createdAt).toLocaleString()}</td>
       <td className="sales-history-cell-total">{formatMoney(sale.total)}</td>
       <td>{sale.lineCount}</td>
-      { }
       <td>
         <Badge variant={statusBadgeVariant(sale.status)}>
           <Localized id={statusFluentId(sale.status)}>
@@ -1197,14 +1220,13 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
             <table className="sales-history-table" aria-hidden="true">
               <thead>
                 <tr>
-                  {['Sale ID', 'Receipt', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
+                  {['Receipt', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
                     <th key={i}><Skeleton width="4rem" height="0.75rem" /></th>
                   ))}
                 </tr>
               </thead>
               <tbody>{Array.from({ length: 5 }, (_, r) => (
                   <tr key={r}>
-                    <td><Skeleton width="5rem" height="0.875rem" /></td>
                     <td><Skeleton width="6rem" height="0.875rem" /></td>
                     <td><Skeleton width="7rem" height="0.875rem" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
@@ -1267,17 +1289,14 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
             <table className="sales-history-table" aria-label={l10n.getString('sales-history-aria')}>
             <thead>
               <tr>
-                <Localized id="sales-history-col-id">
+                <Localized id="sales-history-col-receipt">
                   <th className="sales-history-th" aria-sort={sortKey === 'id' ? (sortAsc ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" className="sales-history-sort-btn" onClick={() => toggleSort('id')}>
-                      Sale ID
+                      Receipt
                       {sortKey === 'id' && <span className="sales-history-sort-arrow" aria-hidden="true">{sortAsc ? ' \u25B2' : ' \u25BC'}</span>}
                     </button>
                   </th>
                 </Localized>
-                {/* Phase 4: frozen receipt hierarchy code column (no sort —
-                    the code is not a useful sort key). */}
-                <th><span>Receipt</span></th>
                 <Localized id="sales-history-col-date">
                   <th className="sales-history-th" aria-sort={sortKey === 'createdAt' ? (sortAsc ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" className="sales-history-sort-btn" onClick={() => toggleSort('createdAt')}>
@@ -1495,7 +1514,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
       {showStampModal && (
         <div className="sales-history-overlay" role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
-          <div className="sales-history-modal sales-history-stamp-modal" style={{ maxWidth: '460px' }}>
+          <div className="sales-history-modal sales-history-stamp-modal">
             <div className="sales-history-modal-header">
               <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
               <button
@@ -1508,19 +1527,19 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               </button>
             </div>
             <div className="sales-history-modal-body">
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted, #64748b)', marginBottom: '1rem' }}>
+              <p className="sales-history-stamp-desc">
                 Masukkan 13-digit Nomor Seri Faktur Pajak (NSFP) yang diterbitkan oleh DJP Coretax untuk transaksi ini.
               </p>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label htmlFor="stamp-kode-transaksi" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              <div className="sales-history-stamp-field">
+                <label htmlFor="stamp-kode-transaksi" className="sales-history-stamp-label">
                   Kode Transaksi (PER-11/PJ/2025)
                 </label>
                 <select
                   id="stamp-kode-transaksi"
+                  className="sales-history-stamp-select"
                   value={stampKodeTransaksi}
                   onChange={(e) => setStampKodeTransaksi(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)' }}
                 >
                   <option value="01">01 - Penyerahan BKP/JKP kepada selain Pemungut PPN</option>
                   <option value="02">02 - Penyerahan BKP/JKP kepada Pemungut Bendaharawan Pemerintah</option>
@@ -1535,8 +1554,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                 </select>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label htmlFor="stamp-nsfp" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              <div className="sales-history-stamp-field">
+                <label htmlFor="stamp-nsfp" className="sales-history-stamp-label">
                   13-Digit NSFP
                 </label>
                 <input
@@ -1544,17 +1563,17 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   type="text"
                   maxLength={13}
                   placeholder="e.g. 2600000000123"
+                  className="sales-history-stamp-input"
                   value={stampNsfp}
                   onChange={(e) => setStampNsfp(e.target.value.replace(/\D/g, ''))}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)', fontFamily: 'monospace' }}
                 />
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
-                  Format Faktur Pajak: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
+                <div className="sales-history-stamp-preview">
+                  Format Faktur Pajak: <span className="sales-history-stamp-preview-code">{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
                 </div>
               </div>
 
               {stampError && (
-                <div className="sales-history-void-error" role="alert" style={{ marginBottom: '1rem' }}>
+                <div className="sales-history-void-error" role="alert">
                   {stampError}
                 </div>
               )}
@@ -1632,16 +1651,16 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               <div className="sales-history-modal-body">
                 <div className="sales-history-detail-meta">
                   <div>
+                    <Localized id="sales-history-detail-receipt">
+                      <strong><span>Receipt:</span></strong>
+                    </Localized>
+                    {' '}{detail.displayCode ?? detail.id}
+                  </div>
+                  <div>
                     <Localized id="sales-history-detail-id">
                       <strong><span>ID:</span></strong>
                     </Localized>
                     {' '}{detail.id}
-                  </div>
-                  {/* Phase 4: show the frozen receipt hierarchy code (the
-                      statutory nomor faktur), never the raw sale UUID. */}
-                  <div>
-                    <strong><span>Receipt:</span></strong>
-                    {' '}{detail.displayCode ?? detail.id}
                   </div>
                   <div>
                     <Localized id="sales-history-detail-date">
@@ -1678,6 +1697,24 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                     </Localized>
                     {' '}{formatMoney(detail.subtotal ?? detail.total)}
                   </div>
+                  {/* Financial breakdown: Discounts, Service Charge, Tips, Taxes */}
+                  {(() => {
+                    const subtotalMinor = detail.subtotal?.minor_units ?? detail.total.minor_units;
+                    const taxMinor = detail.taxTotal?.minor_units ?? 0;
+                    const totalMinor = detail.total.minor_units;
+                    const calculatedDiscountMinor = Math.max(0, subtotalMinor + taxMinor - totalMinor);
+                    if (calculatedDiscountMinor > 0) {
+                      return (
+                        <div className="sales-history-detail-discount">
+                          <Localized id="sales-history-detail-discount">
+                            <strong><span>Discount:</span></strong>
+                          </Localized>
+                          {' '}-{formatMoney({ minor_units: calculatedDiscountMinor, currency: detail.total.currency })}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   {(detail.taxTotal?.minor_units ?? 0) > 0 && (
                     <div>
                       <Localized id="sales-history-detail-tax">
@@ -1685,11 +1722,13 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                       </Localized>
                       {' '}{detail.taxTotal ? formatMoney(detail.taxTotal) : '\u2014'}
                       {isTaxEstimated(detail.taxEstimateNote) && (
-                        <Badge variant="warning" style={{ marginLeft: 8 }}>
-                          <Localized id="sales-history-tax-estimated-badge">
-                            <span>Estimated</span>
-                          </Localized>
-                        </Badge>
+                        <span className="sales-history-badge-spacing">
+                          <Badge variant="warning">
+                            <Localized id="sales-history-tax-estimated-badge">
+                              <span>Estimated</span>
+                            </Localized>
+                          </Badge>
+                        </span>
                       )}
                     </div>
                   )}
@@ -1702,41 +1741,50 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                         the list, so `refunds.length > 0` is already false. The flag is
                         not repeated here. */}
                     {refunds.length > 0 && (
-                      <Badge variant="warning" style={{ marginLeft: 8 }}>
-                        <Localized id="refund-status-refunded">
-                          <span>Refunded</span>
-                        </Localized>
-                      </Badge>
+                      <span className="sales-history-badge-spacing">
+                        <Badge variant="warning">
+                          <Localized id="refund-status-refunded">
+                            <span>Refunded</span>
+                          </Localized>
+                        </Badge>
+                      </span>
                     )}
                   </div>
+                  {detail.tenderedMinor !== null && detail.tenderedMinor > 0 && (
+                    <>
+                      <div>
+                        <Localized id="sales-history-detail-tendered">
+                          <strong><span>Tendered:</span></strong>
+                        </Localized>
+                        {' '}{formatMoney({ minor_units: detail.tenderedMinor, currency: detail.total.currency })}
+                      </div>
+                      <div>
+                        <Localized id="sales-history-detail-change">
+                          <strong><span>Change:</span></strong>
+                        </Localized>
+                        {' '}{formatMoney({ minor_units: Math.max(0, detail.tenderedMinor - detail.total.minor_units), currency: detail.total.currency })}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* ── e-Faktur Section (DJP Coretax / PER-11/PJ/2025) ── */}
-                <div
-                  className="sales-history-efaktur-section"
-                  style={{
-                    margin: '1rem 0',
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-subtle, #f8f9fa)',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color, #e2e8f0)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="sales-history-efaktur-section">
+                  <div className="sales-history-efaktur-header">
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>e-Faktur (DJP Coretax)</div>
+                      <div className="sales-history-efaktur-title">e-Faktur (DJP Coretax)</div>
                       {detail.fakturPajak ? (
-                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.fakturPajak.formatted}</span>
+                        <div className="sales-history-efaktur-content">
+                          <span className="sales-history-efaktur-code">{detail.fakturPajak.formatted}</span>
                           <Badge variant="success">
                             {detail.fakturPajak.status === '00' ? 'Normal' : `Pengganti (${detail.fakturPajak.status})`}
                           </Badge>
-                          <span style={{ color: 'var(--text-muted, #64748b)' }}>
+                          <span className="sales-history-efaktur-meta">
                             NSFP: {detail.fakturPajak.nsfp} | Kode: {detail.fakturPajak.kodeTransaksi}
                           </span>
                         </div>
                       ) : (
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                        <div className="sales-history-efaktur-empty">
                           Belum ada e-Faktur (Unstamped)
                         </div>
                       )}
@@ -1767,26 +1815,17 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                 </div>
 
                 {/* ── Statutory Tax Invoice Section (Cross-border B2B Invoicing) ── */}
-                <div
-                  className="sales-history-statutory-invoice-section"
-                  style={{
-                    margin: '1rem 0',
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-subtle, #f8f9fa)',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color, #e2e8f0)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="sales-history-statutory-invoice-section">
+                  <div className="sales-history-statutory-invoice-header">
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Statutory Tax Invoice</div>
+                      <div className="sales-history-statutory-invoice-title">Statutory Tax Invoice</div>
                       {detail.statutoryNumber ? (
-                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.statutoryNumber}</span>
+                        <div className="sales-history-statutory-invoice-content">
+                          <span className="sales-history-statutory-invoice-code">{detail.statutoryNumber}</span>
                           <Badge variant="success">Issued</Badge>
                         </div>
                       ) : (
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                        <div className="sales-history-statutory-invoice-empty">
                           No statutory tax invoice issued
                         </div>
                       )}
@@ -1816,12 +1855,6 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                       <Localized id="sales-history-line-qty"><th><span>Qty</span></th></Localized>
                       <Localized id="sales-history-line-unit-price"><th><span>Unit Price</span></th></Localized>
                       <Localized id="sales-history-line-total"><th><span>Total</span></th></Localized>
-                      {/* No `!marginsUnknown` guard on the two column gates, and
-                          deliberately: a failed read already clears `lineMargins`, so
-                          `lineMargins.length > 0` is false on its own. Mutations that
-                          added the flag to either gate passed every test, so it was a dead
-                          condition. The load-bearing gate is the alert below, which is
-                          what makes the absence visible. */}
                       {lineMargins.length > 0 && (
                         <>
                           <Localized id="sales-history-line-cost"><th><span>Cost</span></th></Localized>
@@ -1836,8 +1869,33 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   </thead>
                   <tbody>{detail.lines.map((line) => (
                       <tr key={line.id}>
-                        <td>{line.sku}</td>
-                        <td>{line.name || line.sku}</td>
+                        <td className="sales-history-cell-mono">{line.sku}</td>
+                        <td>
+                          <div className="sales-history-line-name">
+                            {line.name || line.sku}
+                            {line.course && (
+                              <span className="sales-history-line-course">{line.course}</span>
+                            )}
+                          </div>
+                          {(() => {
+                            if (!line.modifiers_json) return null;
+                            try {
+                              const mods = JSON.parse(line.modifiers_json);
+                              if (Array.isArray(mods) && mods.length > 0) {
+                                return (
+                                  <div className="sales-history-line-modifiers">
+                                    {mods.map((m: { name?: string; choice?: string }, idx: number) => (
+                                      <span key={idx} className="sales-history-line-modifier-pill">
+                                        {m.choice || m.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                            } catch { /* ignore invalid json */ }
+                            return null;
+                          })()}
+                        </td>
                         <td>{line.qty}</td>
                         <td>{line.unit_price ? formatMoney(line.unit_price) : '\u2014'}</td>
                         <td>{formatMoney({ minor_units: line.total_minor ?? (line as { line_total?: { minor_units: number } }).line_total?.minor_units ?? ((line.unit_price?.minor_units ?? 0) * (line.qty || 1)), currency: line.unit_price?.currency ?? detail.total?.currency ?? 'IDR' })}</td>

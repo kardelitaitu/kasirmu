@@ -307,6 +307,65 @@ describe('SalesHistoryScreen', () => {
     });
   });
 
+  it('opens detail modal when row is tapped directly (touch-first ergonomics)', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      const rows = container.querySelectorAll('.sales-history-row-wrap');
+      expect(rows.length).toBeGreaterThan(0);
+    });
+
+    const firstRow = container.querySelector('.sales-history-row-wrap')!;
+    await user.click(firstRow);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sale Detail')).toBeInTheDocument();
+      expect(screen.getByText('Line Items')).toBeInTheDocument();
+    });
+  });
+
+  it('renders line items with course and modifier choices in detail modal', async () => {
+    const user = userEvent.setup();
+    const detailWithModifiers = {
+      ...sampleDetail,
+      lines: [
+        {
+          id: 'line-m1',
+          sku: 'STEAK-01',
+          name: 'Sirloin Steak',
+          qty: 1,
+          unit_price: { minor_units: 120000, currency: 'IDR' },
+          total_minor: 120000,
+          tax_amount: null,
+          course: 'main',
+          modifiers_json: JSON.stringify([
+            { name: 'Doneness', choice: 'Medium Rare' },
+            { name: 'Sauce', choice: 'Mushroom' },
+          ]),
+        },
+      ],
+    };
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(detailWithModifiers);
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => expect(screen.getAllByText('View').length).toBeGreaterThan(0));
+    await user.click(screen.getAllByText('View')[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sirloin Steak')).toBeInTheDocument();
+      expect(screen.getByText('main')).toBeInTheDocument();
+      expect(screen.getByText('Medium Rare')).toBeInTheDocument();
+      expect(screen.getByText('Mushroom')).toBeInTheDocument();
+    });
+  });
+
   it('shows line items in detail modal', async () => {
     const user = userEvent.setup();
     mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
