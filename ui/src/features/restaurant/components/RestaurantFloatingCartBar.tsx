@@ -31,9 +31,10 @@ export function RestaurantFloatingCartBar({
     [lines],
   );
 
+  const cartCurrency = total?.currency ?? lines[0]?.unit_price?.currency ?? 'IDR';
   const formattedTotal = total
     ? formatMoney(total)
-    : formatMoney({ minor_units: 0, currency: 'IDR' });
+    : formatMoney({ minor_units: 0, currency: cartCurrency });
 
   return (
     <aside

@@ -9,6 +9,7 @@ import {
   deleteCategoryScoped,
   type CategoryDto,
 } from '@/api/products';
+import { invalidateCatalog } from '@/utils/catalog-cache';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -205,6 +206,7 @@ export default function CategoryManagementScreen() {
     try {
       const id = colourToId(trimmed);
       await createCategoryScoped(sessionToken, { id, name: trimmed, colour: newColour, icon: newIcon });
+      invalidateCatalog(sessionToken);
       setShowModal(false);
       await load();
     } catch (err) {
@@ -245,6 +247,7 @@ export default function CategoryManagementScreen() {
 
     try {
       await updateCategoryScoped(sessionToken, { id: editTarget.id, name: trimmed, colour: editColour, icon: editIcon });
+      invalidateCatalog(sessionToken);
       setEditTarget(null);
       await load();
     } catch (err) {
@@ -271,6 +274,7 @@ export default function CategoryManagementScreen() {
           type: 'success',
         });
       }
+      invalidateCatalog(sessionToken);
       await load();
     } catch (err) {
       addToast({

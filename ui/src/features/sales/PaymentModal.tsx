@@ -1496,12 +1496,12 @@ retryCurrencyLoad,
   }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits]);
 
   useEffect(() => {
-    if (!done) return;
+    if (!done || receiptArgs) return;
     const timer = setTimeout(() => {
       animateLeave(onCompleteRef.current);
     }, changeDue ? 3000 : 1500);
     return () => clearTimeout(timer);
-  }, [done, changeDue, animateLeave]); // onComplete via ref — stable deps
+  }, [done, changeDue, animateLeave, receiptArgs]); // onComplete via ref — stable deps
 
   // Auto-dismiss after leave animation completes
   useEffect(() => {

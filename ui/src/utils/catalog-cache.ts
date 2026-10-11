@@ -73,4 +73,7 @@ export function invalidateCatalog(token?: string): void {
     cache.clear();
     inflight.clear();
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('catalog-invalidated', { detail: { token } }));
+  }
 }

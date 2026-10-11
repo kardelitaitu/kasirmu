@@ -467,7 +467,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             >
               <span className="tables-table-name">{t.name}</span>
               <span className="tables-table-status">
-                {bill ? `${bill.item_count} items` : statusLabel(t.status)}
+                {bill ? l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`) : statusLabel(t.status)}
               </span>
             </Button>
           );
@@ -489,7 +489,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   Active Tab: {activeBill.label}
                 </div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)', marginTop: '4px' }}>
-                  {activeBill.item_count} items · {formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })}
+                  {l10n.getString('retail-cart-items', { count: activeBill.item_count }, `${activeBill.item_count} items`)} · {formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })}
                 </div>
               </div>
             )}

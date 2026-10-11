@@ -547,6 +547,32 @@ describe('PaymentModal — sale flow', () => {
     }, { timeout: 5000 });
   });
 
+  it('does NOT auto-dismiss while ReceiptPreview is displayed', async () => {
+    const onComplete = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={onComplete}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    expect(await screen.findByRole('button', { name: /Print Receipt/i })).toBeInTheDocument();
+
+    // Wait 3500ms — exceeding both the 1500ms normal and 3000ms change-due dismiss timers
+    await new Promise((r) => setTimeout(r, 3500));
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Print Receipt/i })).toBeInTheDocument();
+  });
+
   it('warns instead of reporting success when the receipt cannot print', async () => {
     // The Android shape: nothing in kasirmu-hal targets Android and the tablet's
     // registry is empty, so print_sales_receipt_scoped rejects with "no receipt
@@ -647,6 +673,8 @@ describe('PaymentModal — sale flow', () => {
     await userEvent.click(screen.getByTestId('settle-button'));
 
     expect(await screen.findByText(/loyalty points were NOT deducted/i)).toBeInTheDocument();
+    const skipBtn = await screen.findByRole('button', { name: /Skip/i });
+    await userEvent.click(skipBtn);
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
   });
 

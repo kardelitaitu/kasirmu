@@ -205,6 +205,18 @@ export function useProducts(sessionToken?: string): UseProductsResult {
     // worse than none because it reads as a swept tree when it was never checked.
   }, [reloadKey, sessionToken]);
 
+  // Reload when the catalog is invalidated anywhere in the client
+  useEffect(() => {
+    const handleInvalidated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ token?: string }>;
+      if (!customEvent.detail?.token || customEvent.detail.token === sessionToken) {
+        reload();
+      }
+    };
+    window.addEventListener('catalog-invalidated', handleInvalidated);
+    return () => window.removeEventListener('catalog-invalidated', handleInvalidated);
+  }, [reload, sessionToken]);
+
   // Derive categories from products (memoized).
   const categories = useMemo(() => {
     if (!products) return [];

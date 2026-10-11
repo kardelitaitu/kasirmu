@@ -360,16 +360,28 @@ export default function RestaurantMenuEditorScreen({
 
   /** Resolve category name to id for backend calls. */
   const categoryIdFor = useCallback(
-    (name: string): string | null => categories.find((c) => c.name === name)?.id ?? null,
+    (name: string): string | null => {
+      const trimmed = name.trim().toLowerCase();
+      if (!trimmed || trimmed === 'all') return null;
+      return (
+        categories.find((c) => c.name.trim().toLowerCase() === trimmed)?.id ??
+        categories.find((c) => c.id.toLowerCase() === trimmed)?.id ??
+        null
+      );
+    },
     [categories],
   );
 
   // ── Item Actions ──────────────────────────────────────────────────
 
   const beginCreate = useCallback(() => {
+    const defaultCat =
+      selectedCategoryName && selectedCategoryName !== 'all'
+        ? selectedCategoryName
+        : (categories[0]?.name || '');
     setDraft({
       ...EMPTY_DRAFT,
-      categoryName: selectedCategoryName || categories[0]?.name || '',
+      categoryName: defaultCat,
       notes: '',
       modifierGroups: [],
     });
