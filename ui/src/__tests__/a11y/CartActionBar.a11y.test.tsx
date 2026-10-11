@@ -15,7 +15,7 @@ import { withFluent } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { checkA11y } from './axe-helper';
 import { CartActionBar, type CartActionBarProps } from '@/features/sales/components/CartActionBar';
-import { OpenBillInput } from '@/features/sales/components/OpenBillModals';
+import { OpenBillInput, OpenBillsPanel } from '@/features/sales/components/OpenBillModals';
 import type { ShiftDto } from '@/api/shifts';
 import type { MutableRefObject } from 'react';
 
@@ -90,5 +90,37 @@ describe('cart action bar & open-bill modals a11y', () => {
     const field = container.querySelector('.pos-hold-input') as HTMLInputElement | null;
     expect(field, 'the open-bill name input did not mount').toBeTruthy();
     expect(container.querySelector('.pos-hold-overlay')).toBeTruthy();
+  });
+
+  it('OpenBillsPanel has no axe violations with a held cart listed', async () => {
+    // The panel's empty state is deliberately unreachable (R21), so the only
+    // honest render is with at least one held cart.
+    await renderInAct(
+      withFluent(
+        <OpenBillsPanel
+          openBillsExit={{ shouldRender: true, exiting: false } as never}
+          openBills={[
+            {
+              id: 'hold-1',
+              label: 'Table 7',
+              customer_name: '',
+              item_count: 3,
+              total_minor: 125000,
+              currency: 'IDR',
+              created_at: '2026-09-14T01:00:00.000Z',
+            } as never,
+          ]}
+          handleResumeOpenBill={vi.fn(async () => {})}
+        />,
+        salesFtl,
+      ),
+    );
+    const container = document.body;
+    await checkA11y(container);
+
+    // Vacuity guard: the row and its per-row resume action mounted.
+    expect(container.querySelector('.pos-held-item')).toBeTruthy();
+    expect(container.querySelector('.pos-held-item-resume')).toBeTruthy();
+    expect(container.querySelector('.pos-held-list-close')).toBeTruthy();
   });
 });
