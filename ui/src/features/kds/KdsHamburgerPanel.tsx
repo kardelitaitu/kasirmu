@@ -315,9 +315,9 @@ export function KdsHamburgerPanel({
                 <div className="kds-setting-row">
                   <span className="kds-setting-label"><Localized id="kds-settings-density">Column</Localized></span>
                   <div className="kds-zoom-row">
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'down'))} disabled={isDensityAtMin(settings.density)} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'down'))} disabled={isDensityAtMin(settings.density)} aria-label={requiredLocalized(l10n, 'kds-density-decrease-aria')} data-testid="kds-settings-density-out">−</button>
                     <span className="kds-zoom-value" data-testid="kds-settings-density-value">{settings.density}</span>
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'up'))} disabled={isDensityAtMax(settings.density)} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'up'))} disabled={isDensityAtMax(settings.density)} aria-label={requiredLocalized(l10n, 'kds-density-increase-aria')} data-testid="kds-settings-density-in">+</button>
                   </div>
                 </div>
 

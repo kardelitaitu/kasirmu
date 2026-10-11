@@ -292,6 +292,8 @@ kds-cols-increase-aria = More columns
 kds-cols-reset-title = Reset to auto
 kds-cols-reset-aria = Reset columns to auto
 kds-cols-auto = Auto
+kds-density-decrease-aria = Decrease columns
+kds-density-increase-aria = Increase columns
 # Accessible name for a colour row's native picker: the localized row label
 # plus this suffix. The previous code interpolated the raw key id, so a screen
 # reader announced "kds-settings-color-dinein colour picker".
