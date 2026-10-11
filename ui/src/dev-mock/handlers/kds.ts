@@ -514,6 +514,19 @@ const KDS_MOCK_ROUTING_RULES: KdsRoutingRule[] = [
 
 /** Push a new KDS order derived from cart lines into the mock queue. */
 
+/**
+ * The KDS orders a completed sale created (see pushKdsOrderFromCart, which mints
+ * the `kds-order-e2e-*` id). Returned newest-first so a caller mirroring the
+ * real command's ordering sees the most recent sale's ticket first.
+ *
+ * Reading by id prefix is deliberate: the auto-generated queue
+ * (`kds-order-auto-*`) shares this array, and handing those back as "the
+ * orders from your sale" would be worse than answering nothing.
+ */
+function saleDerivedKdsOrders(): Record<string, unknown>[] {
+  return mockKdsOrders.filter((o) => String(o['id'] ?? '').startsWith('kds-order-e2e-')).reverse();
+}
+
 export const kdsHandlers: Record<string, MockHandler> = {
 
 
@@ -572,8 +585,18 @@ export const kdsHandlers: Record<string, MockHandler> = {
     }
     return order ?? null;
   },
-  'create_kds_order_from_sale': () => [],
-  'create_kds_order_from_sale_scoped': () => [],
+  // The sale's KDS orders are created as a SIDE EFFECT of complete_sale
+  // (tauri-api.ts:88 pushKdsOrderFromCart, which mints a kds-order-e2e-* id).
+  // The client then calls this command to COLLECT them, and the real bridge
+  // returns the orders it created. These handlers used to answer `[]`, which
+  // told the caller "no orders" about a sale the board was already showing —
+  // measured live, and now pinned by __tests__/dev-mock-sale-kds-link.test.ts.
+  //
+  // The e2e id prefix is the only marker that distinguishes a sale-derived
+  // order from the auto-generated kds-order-auto-* ones, so it is what this
+  // reads. Newest first, matching the real command's ordering by creation.
+  'create_kds_order_from_sale': () => saleDerivedKdsOrders(),
+  'create_kds_order_from_sale_scoped': () => saleDerivedKdsOrders(),
   // Restaurant coursing: fire-and-forget publish at checkout — the mock
   // answers success so E2E checkout never blocks on the event.
   'publish_course_fired_scoped': () => undefined,
