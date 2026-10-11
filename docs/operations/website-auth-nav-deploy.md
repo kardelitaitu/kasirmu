@@ -21,6 +21,16 @@ why they are mandatory rather than advisory.
 
 ## Before you start
 
+**Read the `Node` line the script now prints before anything else.** The
+deploy banner reports the Node it is actually about to build with, because
+`node` inside a build can differ from the one the calling shell reports —
+most often because the deploy is run from Ubuntu/WSL (whose `node` is apt's
+v18.19.1) while the version check was run in a Windows shell (nvm's
+v22.23.2). Measured 2026-10-12: `node --version` printed v22.23.2 in the
+Windows window while the build ran under v18.19.1, and nothing in the output
+said so. Expected: `v22.23.2` or `v24.x`. Anything starting `v18` means you
+are in the wrong shell and the build will fail at the prebuild guard.
+
 **Do not run `npm run build` in the agent sandbox.** `prebuild` →
 `scripts/prebuild.mjs` phase 3 spawns a **vitest pool**, and spawning node
 children fails there with EBUSY. Run the deploy where that works. The sandbox

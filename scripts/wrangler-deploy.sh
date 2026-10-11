@@ -80,6 +80,15 @@ echo "🚀  kasir.mu Website Deploy"
 echo "    Message : ${DEPLOY_MESSAGE}"
 [[ -n "$DEPLOY_TAG" ]] && echo "    Tag     : ${DEPLOY_TAG}"
 echo "    Account : ${CLOUDFLARE_ACCOUNT_ID}"
+# Announce the toolchain. `node` inside a build can differ from the one the
+# calling shell reports -- most often because the deploy is run from WSL
+# while the version check was run in a Windows shell. Measured 2026-10-12:
+# `node --version` reported v22.23.2 in the Windows window while the build
+# itself ran under WSL's apt node v18.19.1, and nothing in the output said so.
+# The website needs >= 22.6 (see root .nvmrc), so this line is the first
+# place to look when prebuild complains about `--experimental-strip-types`.
+echo "    Node    : $(node --version 2>/dev/null || echo 'not on PATH') ($(command -v node 2>/dev/null || echo '?'))"
+echo "    npm     : $(npm --version 2>/dev/null || echo 'not on PATH')"
 echo ""
 
 # ── Build ─────────────────────────────────────────────────────────────
