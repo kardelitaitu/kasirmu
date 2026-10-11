@@ -67,10 +67,58 @@ becoming `2`. That is the whole-non-negative-number guard in
 Cancelling the form left no discount applied, and clearing removed both the row
 and the clear control.
 
+## Completed sale — verified live
+
+The sale was settled end to end: Charge → tender → Complete → receipt → Skip.
+
+Tendering used the panel's own **Exact** button, which filled the field with
+`2000000` — the payable in minor units. The receipt the POS then rendered was
+correct in every particular:
+
+```
+kasir.mu Store          Oct 12, 2026
+01-01-26 1011-01-000002
+────────────────────────────────
+Item            Qty  Price      Total
+Pisang Goreng     1  Rp 500.000 Rp 500.000
+No onions please
+Tax: Rp 0
+Pisang Goreng     3  Rp 500.000 Rp 1.500.000
+Tax: Rp 0
+────────────────────────────────
+SUBTOTAL:              Rp 2.000.000
+────────────────────────────────
+TOTAL:                 Rp 2.000.000
+CASH                   Rp 2.000.000
+CHANGE:                Rp 0
+Thank you for your purchase!
+```
+
+Two things the receipt proves that a unit test could not:
+
+1. The **line note survived the whole way** — "No onions please" printed against
+   the correct line, so the note is carried through `complete_sale`, not just
+   held in cart state.
+2. The arithmetic is **exact integer minor units**: 1×500.000 + 3×500.000 =
+   Rp 2.000.000, tendered exactly, change Rp 0.
+
+Dismissing the receipt with **Skip** closed the dialog and **reset the cart to
+zero lines**, showing "Cart is empty / Tap a menu item to start the order".
+
+### Driving note
+
+The payment modal exposes three receipt actions — Skip, Issue Tax Invoice, Print
+Receipt — and the Skip button responded to a **trusted CDP mouse event**
+(`Input.dispatchMouseEvent`), not a dispatched DOM click. For a control that
+settles money, use the real input path; a synthetic `.click()` is not the same
+interaction and can silently do nothing while appearing to succeed. That is
+exactly what made the first attempt look like a failure: the sale HAD completed,
+and the "dialog still open" reading was the *receipt* modal, which also carries
+`role="dialog"`.
+
 ## Not covered here
 
-- A completed sale through the payment modal (the modal was opened and its
-  controls enumerated, but the sale was not settled — no receipt was produced).
 - The tip segments and service-charge toggle were enumerated but not exercised
   end to end against a settled total.
 - KDS ticket lifecycle (accept → ready → served) on a live ticket.
+- Void / refund of a settled sale.
