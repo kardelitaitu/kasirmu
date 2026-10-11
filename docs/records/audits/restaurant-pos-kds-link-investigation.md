@@ -1,9 +1,37 @@
 # Restaurant POS ↔ KDS link: found broken in the dev-mock (2026-10-12)
 
-## Status: OPEN — reproduced, cause not yet isolated
+## Status: FIXED in `0e2ddc7ac` — and this file's first conclusion was WRONG
 
-Do not "fix" this by guessing. The symptom is reproducible and the evidence below
-narrows it, but the root cause has not been proven.
+**Read this section before the rest.** The original investigation below blamed a
+"module-instance or registration-order problem" and left the item open rather
+than guess. That diagnosis was **not correct**, and the way it went wrong is the
+useful part:
+
+The probe used `sessionToken: "mock-session-token"`. That string is a
+**test-only constant** (`ui/src/test-utils.tsx:12`), not the running app's
+session. The call therefore rejected with `{"kind":"invalidSession"}` — a shape
+the dev-mock never produces; it comes from the **real Rust bridge**. The probe
+was invalid, and I read its failure as evidence about the mock.
+
+Re-tested with a jsdom harness that routes `invoke` through the mock properly
+(`ui/src/__tests__/dev-mock-sale-kds-link.test.ts`), the real fault was found in
+minutes and is deterministic:
+
+- **The side effect worked all along.** `complete_sale` / `complete_sale_scoped`
+  call `pushKdsOrderFromCart`, which mints a `kds-order-e2e-*` order AND its
+  line items. Two of the three new tests assert exactly that, and both PASSED
+  before any fix.
+- **The command was the stub.** `kdsHandlers` answered
+  `create_kds_order_from_sale_scoped` with `() => []`. Because
+  `registerHandlers` is `Object.assign` and `kdsHandlers` is registered after
+  `createSalesHandlers`, that empty stub is what the client received — so the
+  POS was told "no orders" about a sale the board was already displaying.
+
+Fix: the handlers now return the sale-derived orders
+(`saleDerivedKdsOrders()`, matched on the `kds-order-e2e-` id prefix, newest
+first), which is what the real bridge does.
+
+## The original investigation (kept: its evidence was real, its conclusion was not)
 
 ## Symptom
 
