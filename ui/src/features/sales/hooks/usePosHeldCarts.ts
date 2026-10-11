@@ -50,6 +50,13 @@ export interface UsePosHeldCartsParams {
   setTableNumber: (table: string) => void;
   customerName?: string;
   setCustomerName?: (name: string) => void;
+  guestCount?: string;
+  setGuestCount?: (count: string) => void;
+  tipPercent?: number;
+  setTipPercent?: (tip: number) => void;
+  serviceChargeEnabled?: boolean;
+  serviceChargePercent?: number;
+  setServiceCharge?: (enabled: boolean, percent: number) => void;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
   setOrderType?: (orderType: 'dine_in' | 'takeaway' | 'delivery') => void;
 }
@@ -81,6 +88,13 @@ export function usePosHeldCarts({
   setTableNumber,
   customerName = '',
   setCustomerName,
+  guestCount = '',
+  setGuestCount,
+  tipPercent = 0,
+  setTipPercent,
+  serviceChargeEnabled = false,
+  serviceChargePercent = 0,
+  setServiceCharge,
   orderType = 'dine_in',
   setOrderType,
 }: UsePosHeldCartsParams) {
@@ -164,6 +178,7 @@ export function usePosHeldCarts({
     try {
       const trimmedTable = (tableNumber ?? '').trim();
       const trimmedName = (customerName || openBillName || '').trim();
+      const trimmedGuest = (guestCount ?? '').trim();
       const cartData = JSON.stringify({
         lines: lines.map((l) => ({
           sku: l.sku,
@@ -181,6 +196,10 @@ export function usePosHeldCarts({
         discountLabel,
         ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
         ...(trimmedName ? { customerName: trimmedName } : {}),
+        ...(trimmedGuest ? { guestCount: trimmedGuest } : {}),
+        ...(typeof tipPercent === 'number' && tipPercent > 0 ? { tipPercent } : {}),
+        ...(typeof serviceChargeEnabled === 'boolean' ? { serviceChargeEnabled } : {}),
+        ...(typeof serviceChargePercent === 'number' && serviceChargePercent > 0 ? { serviceChargePercent } : {}),
         ...(orderType ? { orderType } : {}),
       });
       // `heldCartLabel`, not a hand-built ternary: the stored table names already
@@ -216,6 +235,7 @@ export function usePosHeldCarts({
       resetCart();
       setTableNumber('');
       setCustomerName?.('');
+      setGuestCount?.('');
       setActiveOpenBillId(null);
       setAppliedPromotions([]);
       openBillInputExit.requestClose();
@@ -230,7 +250,7 @@ export function usePosHeldCarts({
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {
@@ -269,6 +289,15 @@ export function usePosHeldCarts({
       if (typeof data.tableNumber === 'string') {
         setTableNumber(data.tableNumber);
       }
+      if (typeof data.guestCount === 'string') {
+        setGuestCount?.(data.guestCount);
+      }
+      if (typeof data.tipPercent === 'number') {
+        setTipPercent?.(data.tipPercent);
+      }
+      if (typeof data.serviceChargeEnabled === 'boolean' || typeof data.serviceChargePercent === 'number') {
+        setServiceCharge?.(Boolean(data.serviceChargeEnabled), Number(data.serviceChargePercent || 0));
+      }
       if (data.orderType && (data.orderType === 'dine_in' || data.orderType === 'takeaway' || data.orderType === 'delivery')) {
         setOrderType?.(data.orderType);
       }
@@ -285,7 +314,7 @@ export function usePosHeldCarts({
     } catch {
       addToast({ message: 'Failed to resume open bill', type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, setOrderType, addToast, openBillsExit, sessionToken]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken]);
 
   return {
     activeOpenBillId,

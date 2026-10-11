@@ -39,7 +39,7 @@ import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
-import { listTablesScoped, updateTableStatusScoped } from '@/api/tables';
+import { listTablesScoped, updateTableStatusScoped, releaseTableScoped } from '@/api/tables';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
@@ -646,6 +646,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setTableNumber,
     customerName,
     setCustomerName,
+    guestCount,
+    setGuestCount,
+    tipPercent,
+    setTipPercent,
+    serviceChargeEnabled,
+    serviceChargePercent,
+    setServiceCharge,
     orderType,
     setOrderType,
   });
@@ -702,6 +709,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     try {
       localStorage.removeItem(ACTIVE_DRAFT_KEY);
     } catch { /* ignore */ }
+    // Release table if the completed order/bill had one
+    if (tableNumber && sessionToken) {
+      void listTablesScoped(sessionToken)
+        .then((tables) => {
+          const match = tables.find(
+            (t) => t.name === tableNumber || t.id === tableNumber,
+          );
+          if (match && (match.status === 'occupied' || match.status === 'reserved')) {
+            return releaseTableScoped(sessionToken, match.id);
+          }
+        })
+        .catch(() => {});
+    }
     setTableNumber('');
     setCustomerName('');
     setGuestCount('');
@@ -712,7 +732,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // fire for a sale that failed. `null` means never written, which the setting's own
     // default (true) says should chime.
     if (soundChime !== false) playSuccess();
-  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
+  }, [resetCart, tableNumber, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -996,8 +1016,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             const match = tables.find(
               (t) => t.name === tableName || t.id === tableName,
             );
-            if (match && match.status !== 'occupied') {
-              return updateTableStatusScoped(sessionToken, match.id, 'occupied');
+            if (match && match.status === 'available') {
+              return updateTableStatusScoped(sessionToken, match.id, 'reserved');
             }
           })
           .catch(() => {});

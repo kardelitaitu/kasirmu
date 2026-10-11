@@ -223,11 +223,24 @@ export function getProductModifierGroups(product: Product): ModifierGroup[] {
   if (product.modifierGroups && product.modifierGroups.length > 0) {
     return product.modifierGroups;
   }
-  if (product.notes && product.notes.startsWith('[')) {
+    if (product.notes && product.notes.startsWith('[')) {
     try {
       const parsed = JSON.parse(product.notes);
       if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
         return parsed as ModifierGroup[];
+      }
+    } catch { /* malformed notes */ }
+  }
+  if (product.notes && product.notes.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(product.notes);
+      if (parsed && typeof parsed === 'object') {
+        const groups =
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifierGroups ||
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifiers;
+        if (Array.isArray(groups) && groups.length > 0 && groups[0].modifiers) {
+          return groups as ModifierGroup[];
+        }
       }
     } catch { /* malformed notes */ }
   }

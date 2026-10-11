@@ -12,7 +12,7 @@
 // - All mutations scoped to active session token.
 // ─────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { SettingsPopup } from '@/components/SettingsPopup';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -42,7 +42,7 @@ const COMMON_UNITS = ['pcs', 'g', 'ml', 'kg', 'l', 'cup', 'tbsp', 'tsp'];
 export interface RecipeEditorModalProps {
   open: boolean;
   onClose: () => void;
-  productId?: string;
+  productId?: string | undefined;
   productSku: string;
   productName: string;
   sessionToken: string;
@@ -89,6 +89,9 @@ export function RecipeEditorModal({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
+
   // Effective parent product ID (UUID or fallback to SKU)
   const resolvedParentId = useMemo(() => {
     if (productId) return productId;
@@ -104,21 +107,33 @@ export function RecipeEditorModal({
     setLoading(true);
     setError(null);
 
-    Promise.allSettled([
-      getRecipeScoped(sessionToken, resolvedParentId),
-      listProductsScoped(sessionToken),
-    ]).then(([recipeRes, catalogRes]) => {
-      if (cancelled) return;
-      setLoading(false);
+    async function loadData() {
+      try {
+        let parentId = productId;
+        let productsList = catalogRef.current;
 
-      if (catalogRes.status === 'fulfilled') {
-        setCatalog(asArray<ProductDto>(catalogRes.value));
-      } else {
-        setError(l10nErrorMessage(catalogRes.reason, l10n, 'restaurant-menu-editor-error-load'));
-      }
+        // If catalog is not loaded yet, fetch it first
+        if (productsList.length === 0) {
+          try {
+            const fetchedProds = await listProductsScoped(sessionToken);
+            if (cancelled) return;
+            productsList = asArray<ProductDto>(fetchedProds);
+            setCatalog(productsList);
+          } catch (catalogErr) {
+            if (cancelled) return;
+            setError(l10nErrorMessage(catalogErr, l10n, 'restaurant-menu-editor-error-load'));
+          }
+        }
 
-      if (recipeRes.status === 'fulfilled') {
-        const items = asArray(recipeRes.value);
+        // If productId wasn't provided, find it from the loaded catalog
+        if (!parentId) {
+          const match = productsList.find((p) => p.sku === productSku);
+          parentId = match?.id || productSku;
+        }
+
+        const recipeRes = await getRecipeScoped(sessionToken, parentId);
+        if (cancelled) return;
+        const items = asArray(recipeRes);
         if (items.length > 0) {
           setRows(
             items.map((it, idx) => ({
@@ -131,16 +146,19 @@ export function RecipeEditorModal({
         } else {
           setRows([]);
         }
-      } else {
-        // If getting recipe fails, start empty
-        setRows([]);
+      } catch {
+        if (!cancelled) setRows([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    });
+    }
+
+    void loadData();
 
     return () => {
       cancelled = true;
     };
-  }, [open, sessionToken, resolvedParentId, productSku, l10n]);
+  }, [open, sessionToken, productId, productSku, l10n]);
 
   // Map of products for fast lookup (excluding parent dish)
   const availableIngredients = useMemo(

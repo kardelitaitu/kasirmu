@@ -192,14 +192,13 @@ export function createDuplicateDraft<
   notes: string;
   modifierGroups: DraftModifierGroup[];
 } {
-  const isJsonNotes = Boolean(item.notes?.startsWith('['));
   return {
     sku: null,
     name: `${item.name}${copySuffix}`,
     categoryName: item.category ?? '',
     priceMinor: item.price.minor_units,
     isActive: item.is_active !== false,
-    notes: isJsonNotes ? '' : (item.notes ?? ''),
+    notes: parseDraftNotes(item.notes),
     modifierGroups: parseDraftModifierGroups(item.notes),
   };
 }
@@ -219,33 +218,74 @@ export interface DraftModifierGroup {
 }
 
 /**
- * Parse modifier groups from dish notes when encoded as JSON.
+ * Extract human-readable dish notes/description when encoded as plain text or JSON metadata.
+ */
+export function parseDraftNotes(notes: string | null | undefined): string {
+  if (!notes) return '';
+  if (notes.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(notes);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        typeof (parsed as { description?: unknown }).description === 'string'
+      ) {
+        return (parsed as { description: string }).description;
+      }
+    } catch {
+      return '';
+    }
+  }
+  if (notes.startsWith('[')) return '';
+  return notes;
+}
+
+/**
+ * Parse modifier groups from dish notes when encoded as JSON array or object.
  */
 export function parseDraftModifierGroups(notes: string | null | undefined): DraftModifierGroup[] {
-  if (!notes || !notes.startsWith('[')) return [];
-  try {
-    const parsed: unknown = JSON.parse(notes);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
-      .map((g, gIdx) => ({
-        id: typeof g['id'] === 'string' ? g['id'] : `mg-${gIdx}`,
-        name: typeof g['name'] === 'string' ? g['name'] : '',
-        minSelections: typeof g['minSelections'] === 'number' ? g['minSelections'] : 0,
-        maxSelections: typeof g['maxSelections'] === 'number' ? g['maxSelections'] : 1,
-        options: Array.isArray(g['modifiers'])
-          ? g['modifiers']
-              .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
-              .map((m, mIdx) => ({
-                id: typeof m['id'] === 'string' ? m['id'] : `opt-${mIdx}`,
-                name: typeof m['name'] === 'string' ? m['name'] : '',
-                priceMinor: typeof m['priceMinor'] === 'number' ? m['priceMinor'] : 0,
-              }))
-          : [],
-      }));
-  } catch {
+  if (!notes) return [];
+  let rawArray: unknown[] = [];
+  if (notes.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(notes);
+      if (Array.isArray(parsed)) rawArray = parsed;
+    } catch {
+      return [];
+    }
+  } else if (notes.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(notes);
+      if (parsed && typeof parsed === 'object') {
+        const candidate =
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifierGroups ||
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifiers;
+        if (Array.isArray(candidate)) rawArray = candidate;
+      }
+    } catch {
+      return [];
+    }
+  } else {
     return [];
   }
+
+  return rawArray
+    .filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
+    .map((g, gIdx) => ({
+      id: typeof g['id'] === 'string' ? g['id'] : `mg-${gIdx}`,
+      name: typeof g['name'] === 'string' ? g['name'] : '',
+      minSelections: typeof g['minSelections'] === 'number' ? g['minSelections'] : 0,
+      maxSelections: typeof g['maxSelections'] === 'number' ? g['maxSelections'] : 1,
+      options: Array.isArray(g['modifiers'])
+        ? g['modifiers']
+            .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
+            .map((m, mIdx) => ({
+              id: typeof m['id'] === 'string' ? m['id'] : `opt-${mIdx}`,
+              name: typeof m['name'] === 'string' ? m['name'] : '',
+              priceMinor: typeof m['priceMinor'] === 'number' ? m['priceMinor'] : 0,
+            }))
+        : [],
+    }));
 }
 
 /**
@@ -274,4 +314,47 @@ export function serializeDraftModifierGroups(groups: DraftModifierGroup[]): stri
 
   if (cleanGroups.length === 0) return null;
   return JSON.stringify(cleanGroups);
+}
+
+/**
+ * Serialize dish description notes and modifier groups together, preserving both without data loss.
+ */
+export function serializeDraftMenuNotes(
+  notes: string,
+  groups: DraftModifierGroup[],
+): string | null {
+  const cleanGroups = groups
+    .filter((g) => g.name.trim() !== '')
+    .map((g, gIdx) => ({
+      id: g.id || `mg-${Date.now().toString(36)}-${gIdx}`,
+      name: g.name.trim(),
+      minSelections: Math.max(0, g.minSelections),
+      maxSelections: Math.max(1, g.maxSelections),
+      sortOrder: gIdx,
+      modifiers: g.options
+        .filter((o) => o.name.trim() !== '')
+        .map((o, oIdx) => ({
+          id: o.id || `opt-${Date.now().toString(36)}-${oIdx}`,
+          name: o.name.trim(),
+          priceMinor: Math.max(0, o.priceMinor),
+          sortOrder: oIdx,
+          isDefault: oIdx === 0 && g.minSelections > 0,
+        })),
+    }))
+    .filter((g) => g.modifiers.length > 0);
+
+  const trimmedDesc = notes.trim();
+
+  if (cleanGroups.length > 0 && trimmedDesc) {
+    return JSON.stringify({
+      description: trimmedDesc,
+      modifierGroups: cleanGroups,
+    });
+  }
+
+  if (cleanGroups.length > 0) {
+    return JSON.stringify(cleanGroups);
+  }
+
+  return trimmedDesc || null;
 }

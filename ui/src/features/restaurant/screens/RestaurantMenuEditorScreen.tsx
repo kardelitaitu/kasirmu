@@ -62,8 +62,9 @@ import {
   filterMenuItems,
   sortMenuItems,
   createDuplicateDraft,
+  parseDraftNotes,
   parseDraftModifierGroups,
-  serializeDraftModifierGroups,
+  serializeDraftMenuNotes,
   type MenuItemStatusFilter,
   type MenuItemSortOption,
   type DraftModifierGroup,
@@ -271,7 +272,7 @@ export default function RestaurantMenuEditorScreen({
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [categoryModal, setCategoryModal] = useState<CategoryModalState | null>(null);
-  const [recipeModalTarget, setRecipeModalTarget] = useState<{ sku: string; name: string } | null>(null);
+  const [recipeModalTarget, setRecipeModalTarget] = useState<{ id?: string | undefined; sku: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
@@ -378,14 +379,13 @@ export default function RestaurantMenuEditorScreen({
   }, [selectedCategoryName, categories]);
 
   const beginEdit = useCallback((p: ProductDto) => {
-    const isJsonNotes = Boolean(p.notes?.startsWith('['));
     setDraft({
       sku: p.sku,
       name: p.name,
       categoryName: p.category ?? '',
       priceMinor: p.price.minor_units,
       isActive: p.is_active !== false,
-      notes: isJsonNotes ? '' : (p.notes ?? ''),
+      notes: parseDraftNotes(p.notes),
       modifierGroups: parseDraftModifierGroups(p.notes),
     });
     setDirty(true);
@@ -609,9 +609,7 @@ export default function RestaurantMenuEditorScreen({
   const handleSaveDraft = useCallback(async () => {
     if (!draft || !sessionToken || !draft.name.trim()) return;
     setSaving(true);
-    const serializedModifiers = serializeDraftModifierGroups(draft.modifierGroups);
-    const trimmedNotes = draft.notes.trim() || null;
-    const finalNotes = serializedModifiers ?? trimmedNotes;
+    const finalNotes = serializeDraftMenuNotes(draft.notes, draft.modifierGroups);
     try {
       if (draft.sku) {
         await updateProductScoped(sessionToken, {
@@ -1524,7 +1522,10 @@ export default function RestaurantMenuEditorScreen({
                         <button
                           type="button"
                           className="btn btn--secondary btn--sm"
-                          onClick={() => setRecipeModalTarget({ sku: draft.sku!, name: draft.name })}
+                          onClick={() => {
+                            const matched = items.find((it) => it.sku === draft.sku);
+                            setRecipeModalTarget({ id: matched?.id, sku: draft.sku!, name: draft.name });
+                          }}
                           data-testid="restaurant-menu-editor-manage-recipe-btn"
                         >
                           <RecipeGlyph />
@@ -1606,10 +1607,10 @@ export default function RestaurantMenuEditorScreen({
                               <span className="restaurant-menu-editor-badge-sku">{p.sku}</span>
                             </div>
 
-                            {p.notes && !p.notes.startsWith('[') && (
+                            {parseDraftNotes(p.notes) && (
                               <div className="restaurant-menu-editor-card-notes">
                                 <NoteGlyph />
-                                <span>{p.notes}</span>
+                                <span>{parseDraftNotes(p.notes)}</span>
                               </div>
                             )}
                           </button>
@@ -1637,7 +1638,7 @@ export default function RestaurantMenuEditorScreen({
                               <button
                                 type="button"
                                 className="restaurant-menu-editor-card-btn"
-                                onClick={() => setRecipeModalTarget({ sku: p.sku, name: p.name })}
+                                onClick={() => setRecipeModalTarget({ id: p.id, sku: p.sku, name: p.name })}
                                 aria-label={l10n.getString('recipe-editor-manage-recipe-aria', { name: p.name })}
                                 data-testid={`restaurant-menu-editor-recipe-${p.sku}`}
                               >
@@ -1872,6 +1873,7 @@ export default function RestaurantMenuEditorScreen({
         <RecipeEditorModal
           open={Boolean(recipeModalTarget)}
           onClose={() => setRecipeModalTarget(null)}
+          productId={recipeModalTarget.id}
           productSku={recipeModalTarget.sku}
           productName={recipeModalTarget.name}
           sessionToken={sessionToken}

@@ -6,8 +6,10 @@ import {
   filterMenuItems,
   sortMenuItems,
   createDuplicateDraft,
+  parseDraftNotes,
   parseDraftModifierGroups,
   serializeDraftModifierGroups,
+  serializeDraftMenuNotes,
 } from '../features/restaurant/screens/menuEditorLogic';
 
 // The price field is the one place a menu edit can silently corrupt an invoice,
@@ -489,5 +491,72 @@ describe('modifier groups serialization & parsing', () => {
         { id: '1', name: 'Empty Opts', minSelections: 0, maxSelections: 1, options: [{ id: '2', name: '  ', priceMinor: 0 }] },
       ]),
     ).toBeNull();
+  });
+
+  it('parses modifier groups and description from compound JSON object notes', () => {
+    const compoundJson = JSON.stringify({
+      description: 'Aromatic basmati rice with slow-cooked lamb and spices.',
+      modifierGroups: [
+        {
+          id: 'mg-spice',
+          name: 'Spice Level',
+          minSelections: 1,
+          maxSelections: 1,
+          modifiers: [
+            { id: 'opt-med', name: 'Medium', priceMinor: 0 },
+            { id: 'opt-spicy', name: 'Extra Spicy', priceMinor: 5000 },
+          ],
+        },
+      ],
+    });
+
+    const parsedGroups = parseDraftModifierGroups(compoundJson);
+    expect(parsedGroups).toHaveLength(1);
+    expect(parsedGroups[0]?.name).toBe('Spice Level');
+    expect(parsedGroups[0]?.options).toHaveLength(2);
+
+    const parsedDesc = parseDraftNotes(compoundJson);
+    expect(parsedDesc).toBe('Aromatic basmati rice with slow-cooked lamb and spices.');
+  });
+
+  it('extracts plain text notes from non-JSON strings', () => {
+    expect(parseDraftNotes('Freshly brewed Arabica beans with oat milk')).toBe(
+      'Freshly brewed Arabica beans with oat milk',
+    );
+    expect(parseDraftNotes(null)).toBe('');
+    expect(parseDraftNotes('')).toBe('');
+    expect(parseDraftNotes('[]')).toBe('');
+  });
+
+  it('serializes description and modifier groups together without data loss', () => {
+    const draftGroups = [
+      {
+        id: 'mg-1',
+        name: 'Sweetness',
+        minSelections: 1,
+        maxSelections: 1,
+        options: [
+          { id: 'opt-less', name: 'Less Sweet', priceMinor: 0 },
+        ],
+      },
+    ];
+
+    // Both description and modifiers present
+    const both = serializeDraftMenuNotes('Fresh hand-pressed iced tea', draftGroups);
+    expect(both).not.toBeNull();
+    const decodedBoth = JSON.parse(both!);
+    expect(decodedBoth.description).toBe('Fresh hand-pressed iced tea');
+    expect(decodedBoth.modifierGroups).toHaveLength(1);
+
+    // Only modifiers present (backward compatible JSON array)
+    const onlyMods = serializeDraftMenuNotes('   ', draftGroups);
+    expect(onlyMods?.startsWith('[')).toBe(true);
+
+    // Only description present (plain text string)
+    const onlyDesc = serializeDraftMenuNotes('Contains crustacean shellfish', []);
+    expect(onlyDesc).toBe('Contains crustacean shellfish');
+
+    // Neither present
+    expect(serializeDraftMenuNotes('   ', [])).toBeNull();
   });
 });

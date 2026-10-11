@@ -496,7 +496,8 @@
 
 /* ── Kitchen notes / Special instructions ───────────────── */
 
-.pos-cart-line-note-btn {
+.pos-cart-line-note-btn,
+.pos-cart-line-modifier-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -512,20 +513,23 @@
   transition: all var(--duration-100) var(--ease-out);
 }
 
-.pos-cart-line-note-btn:hover {
+.pos-cart-line-note-btn:hover,
+.pos-cart-line-modifier-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-accent-subtle);
 }
 
-.pos-cart-line-note-btn--active {
+.pos-cart-line-note-btn--active,
+.pos-cart-line-modifier-btn--active {
   border-style: solid;
   border-color: var(--color-accent);
   background: var(--color-accent-subtle);
   color: var(--color-accent);
 }
 
-.pos-cart-line-note-btn:focus-visible {
+.pos-cart-line-note-btn:focus-visible,
+.pos-cart-line-modifier-btn:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 1px;
 }
@@ -631,7 +635,8 @@
    transitions but no press state. */
 .pos-cart-qty-btn:not(:disabled):active,
 .pos-cart-line-override:not(:disabled):active,
-.pos-cart-line-note-btn:not(:disabled):active {
+.pos-cart-line-note-btn:not(:disabled):active,
+.pos-cart-line-modifier-btn:not(:disabled):active {
   transform: scale(0.94);
 }
 
@@ -647,7 +652,8 @@
   .pos-cart-line-remove,
   .pos-cart-course-chip,
   .pos-cart-course-option,
-  .pos-cart-line-note-btn {
+  .pos-cart-line-note-btn,
+  .pos-cart-line-modifier-btn {
     min-height: var(--touch-target-min);
   }
 
@@ -659,7 +665,8 @@
 @media (prefers-reduced-motion: reduce) {
   .pos-cart-qty-btn:not(:disabled):active,
   .pos-cart-line-override:not(:disabled):active,
-  .pos-cart-line-note-btn:not(:disabled):active {
+  .pos-cart-line-note-btn:not(:disabled):active,
+  .pos-cart-line-modifier-btn:not(:disabled):active {
     transform: none;
     opacity: 0.75;
   }
