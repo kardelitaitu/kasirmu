@@ -107,9 +107,20 @@ export function KdsHeaderRight({
               }
             }}
             data-testid="kds-topbar-shift"
+            // Both labels live in the DOM and are toggled by OPACITY
+            // (KdsScreen.css:337), and an opacity:0 element is still in the
+            // accessibility tree — measured in the running app, Chrome computed
+            // this button's name as "Start Shift End Shift". The aria-label
+            // states the CURRENT action; the inactive span is also hidden from
+            // assistive tech so the visible label and the name cannot disagree.
+            aria-label={requiredLocalized(l10n, inShift ? 'kds-shift-end' : 'kds-shift-start')}
           >
-            <span className={!inShift ? 'visible' : ''}><Localized id="kds-shift-start">Start Shift</Localized></span>
-            <span className={inShift ? 'visible' : ''}><Localized id="kds-shift-end">End Shift</Localized></span>
+            <span className={!inShift ? 'visible' : ''} aria-hidden={inShift}>
+              <Localized id="kds-shift-start">Start Shift</Localized>
+            </span>
+            <span className={inShift ? 'visible' : ''} aria-hidden={!inShift}>
+              <Localized id="kds-shift-end">End Shift</Localized>
+            </span>
           </button>
           {/* Device status indicator */}
           <KdsDeviceStatusIndicator sessionToken={sessionToken} onEnrollDevice={() => setShowEnrollment(true)} />
