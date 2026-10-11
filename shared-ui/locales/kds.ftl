@@ -298,6 +298,10 @@ kds-density-increase-aria = Increase columns
 # plus this suffix. The previous code interpolated the raw key id, so a screen
 # reader announced "kds-settings-color-dinein colour picker".
 kds-color-picker-aria = { $name } colour picker
+# Accessible name for the hex TEXT field beside the picker. It had none, so six
+# inputs in the panel were unnamed to assistive tech (axe "label"); the sibling
+# picker was named while the field an operator actually types in was not.
+kds-color-hex-aria = { $name } colour hex value
 
 # ── Expo (Expediter) screen — todo-kds-agents-3 ──
 nav-kds-expo = Expo

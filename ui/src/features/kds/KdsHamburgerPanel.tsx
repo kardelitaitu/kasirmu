@@ -446,6 +446,10 @@ export function KdsHamburgerPanel({
                         onBlur={() => {
                           if (hexDraft?.key === key) setHexDraft(null);
                         }}
+                        // The sibling picker is named; this field had no name at
+                        // all, leaving six unnamed text inputs in the panel. Same
+                        // localized row label, different suffix.
+                        aria-label={requiredLocalized(l10n, 'kds-color-hex-aria', { name: requiredLocalized(l10n, labelId) })}
                         maxLength={7}
                         aria-invalid={hexDraft?.key === key && hexDraft.value && !/^#[0-9a-f]{6}$/i.test(hexDraft.value) ? 'true' : undefined}
                         data-testid={`kds-settings-colors-hex-${key}`}
