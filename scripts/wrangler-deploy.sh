@@ -9,7 +9,8 @@
 # "Coding Agent — <git sha> (<branch>)" so every deploy is traceable
 # without logging into GitHub.
 #
-# Required env vars (can be set in .env or exported before calling):
+# Required env vars (read from the repo-root .env when not already in the
+# environment, or export them before calling):
 #   CLOUDFLARE_API_TOKEN   — Workers Scripts:Edit token
 #   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account id
 #
@@ -26,6 +27,30 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WEBSITE_DIR="$REPO_ROOT/website"
+
+# ── Read the repo-root .env ───────────────────────────────────────────
+# The header and the error message below have always said "can be set in
+# .env", but nothing here ever read the file: a perfectly correct .env
+# produced the "must be set" exit and the message blamed the caller.
+# Measured 2026-10-12 with credentials present and correct in ./.env.
+#
+# Deliberately NOT `source .env`: that executes the file, and one malformed
+# line anywhere in it (an unquoted space, a stray backtick) would kill the
+# deploy under `set -e` with an error naming neither the var nor the line.
+# This extracts only the two names this script needs and never evaluates
+# the rest. A real environment variable always wins — the .env is a
+# fallback, so `CLOUDFLARE_API_TOKEN=x bash …` still overrides it.
+dotenv_get() { # dotenv_get <KEY> — print the value, or nothing
+  local key="$1"
+  [ -f "$REPO_ROOT/.env" ] || return 0
+  sed -n "s/^[[:space:]]*\(export[[:space:]]\+\)\?${key}[[:space:]]*=[[:space:]]*//p" \
+    "$REPO_ROOT/.env" | head -1 \
+    | sed -e 's/[[:space:]]*$//' -e 's/\r$//' \
+          -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+: "${CLOUDFLARE_API_TOKEN:=$(dotenv_get CLOUDFLARE_API_TOKEN)}"
+: "${CLOUDFLARE_ACCOUNT_ID:=$(dotenv_get CLOUDFLARE_ACCOUNT_ID)}"
 
 # ── Parse optional CLI flags ─────────────────────────────────────────
 EXTRA_ARGS=()
