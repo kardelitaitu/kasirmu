@@ -97,7 +97,16 @@ vi.mock('@/api/sales', async (importOriginal) => {
   };
 });
 
+vi.mock('@/api/kds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/kds')>();
+  return {
+    ...actual,
+    printKdsChitScoped: vi.fn().mockResolvedValue(true),
+  };
+});
+
 import { printSalesReceipt } from '@/api/sales';
+import { printKdsChitScoped } from '@/api/kds';
 import { TEST_PRINT_CODES } from '@/features/restaurant/screens/receiptLogic';
 
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -545,6 +554,47 @@ describe('RestaurantReceiptsScreen — printer hardware', () => {
     expect(screen.getByText(/Pro Plan or KDS Required/i)).toBeInTheDocument();
     expect(document.querySelector('.resto-kitchen-printer--disabled')).toBeInTheDocument();
   });
+
+  it('dispatches printKdsChitScoped and shows success toast when kitchen test chit button is clicked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printKdsChitScoped).mockResolvedValueOnce(true);
+    await renderScreen();
+
+    const kitchenSel = document.querySelector('#resto-hw-kitchen-conn') as HTMLSelectElement;
+    await user.selectOptions(kitchenSel, 'network');
+
+    const hostInput = screen.getByLabelText(/Kitchen Printer IP \/ Device Path/i) as HTMLInputElement;
+    await user.clear(hostInput);
+    await user.type(hostInput, '192.168.1.200:9100');
+
+    const chitBtn = screen.getByTestId('restaurant-kitchen-test-chit-btn');
+    expect(chitBtn).toBeInTheDocument();
+    await user.click(chitBtn);
+
+    await waitFor(() => {
+      expect(printKdsChitScoped).toHaveBeenCalledWith('mock-session-token', 'test-order-chit');
+    });
+  });
+
+  it('shows error toast when kitchen test chit fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printKdsChitScoped).mockRejectedValueOnce(new Error('Connection refused to kitchen printer'));
+    await renderScreen();
+
+    const kitchenSel = document.querySelector('#resto-hw-kitchen-conn') as HTMLSelectElement;
+    await user.selectOptions(kitchenSel, 'network');
+
+    const hostInput = screen.getByLabelText(/Kitchen Printer IP \/ Device Path/i) as HTMLInputElement;
+    await user.clear(hostInput);
+    await user.type(hostInput, '192.168.1.200:9100');
+
+    const chitBtn = screen.getByTestId('restaurant-kitchen-test-chit-btn');
+    await user.click(chitBtn);
+
+    await waitFor(() => {
+      expect(printKdsChitScoped).toHaveBeenCalledWith('mock-session-token', 'test-order-chit');
+    });
+  });
 });
 
 describe('RestaurantReceiptsScreen — back nav & save', () => {
@@ -988,6 +1038,10 @@ describe('RestaurantReceiptsScreen — printer-hardware i18n sweep (no hardcoded
     'restaurant-kitchen-printer-net-placeholder',
     'restaurant-kitchen-printer-bt-placeholder',
     'restaurant-kitchen-printer-serial-placeholder',
+    'restaurant-test-kitchen-chit',
+    'restaurant-test-kitchen-chit-desc',
+    'restaurant-test-kitchen-chit-success-title',
+    'restaurant-test-kitchen-chit-success',
     'restaurant-receipt-logo-too-large',
     'restaurant-test-print-unsaved-title',
     'restaurant-test-print-unsaved-message',

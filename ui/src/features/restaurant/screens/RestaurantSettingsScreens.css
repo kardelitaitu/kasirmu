@@ -494,6 +494,11 @@
   margin: 4px 0;
 }
 
+.resto-receipt-tender-row {
+  font-size: var(--rcpt-size-meta, var(--text-xs));
+  color: var(--color-fg-muted);
+}
+
 .resto-receipt-footer-text {
   text-align: center;
   font-style: italic;

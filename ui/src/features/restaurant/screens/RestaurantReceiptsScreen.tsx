@@ -15,6 +15,7 @@ import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesS
 import { getReceiptFormatScoped, setReceiptLayoutScoped } from '@/api/receipt-format';
 import { getPrimaryLocationScoped } from '@/api/locations';
 import { printSalesReceipt } from '@/api/sales';
+import { printKdsChitScoped } from '@/api/kds';
 import { openCashDrawerScoped } from '@/api/hardware';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { tierSatisfies } from '@/utils/tierLevel';
@@ -174,6 +175,7 @@ export default function RestaurantReceiptsScreen({
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [testingPrint, setTestingPrint] = useState(false);
   const [testingDrawer, setTestingDrawer] = useState(false);
+  const [testingKitchenChit, setTestingKitchenChit] = useState(false);
   const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
 
   /**
@@ -988,6 +990,88 @@ export default function RestaurantReceiptsScreen({
     }
   }, [sessionToken, addToast, l10n]);
 
+  // ── Test Kitchen Chit ────────────────────────────────────────
+  const handleTestKitchenChit = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({
+        title: l10n.getString('restaurant-drawer-auth-title'),
+        message: l10n.getString('restaurant-drawer-auth-message'),
+        type: 'error',
+      });
+      return;
+    }
+
+    if (kitchenConnection === 'disabled') {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_PRINTER_DISABLED);
+      addToast({
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
+        type: 'error',
+      });
+      return;
+    }
+
+    if (kitchenConnection === 'network' && !kitchenDevicePath.trim()) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_HOST);
+      addToast({
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
+        type: 'error',
+      });
+      return;
+    }
+
+    if ((kitchenConnection === 'usb' || kitchenConnection === 'serial' || kitchenConnection === 'bluetooth') && !kitchenDevicePath.trim()) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_PORT);
+      addToast({
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: kitchenConnection === 'bluetooth'
+          ? l10n.getString('restaurant-test-print-bt-mac-required')
+          : testPrintMessage(res),
+        type: 'error',
+      });
+      return;
+    }
+
+    setTestingKitchenChit(true);
+    const start = Date.now();
+    try {
+      const res = await printKdsChitScoped(sessionToken, 'test-order-chit');
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
+      if (res !== false) {
+        addToast({
+          title: l10n.getString('restaurant-test-kitchen-chit-success-title'),
+          message: l10n.getString('restaurant-test-kitchen-chit-success'),
+          type: 'success',
+        });
+      } else {
+        const errRes = formatTestPrintResult(TEST_PRINT_CODES.ERR_UNCONFIRMED);
+        addToast({
+          title: `[${errRes.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+          message: testPrintMessage(errRes),
+          type: 'warning',
+        });
+      }
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
+      const classified = classifyTestPrintError(err);
+      const errRes = formatTestPrintResult(classified.code, classified.detail);
+      addToast({
+        title: `[${errRes.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(errRes),
+        type: 'error',
+      });
+    } finally {
+      setTestingKitchenChit(false);
+    }
+  }, [sessionToken, kitchenConnection, kitchenDevicePath, addToast, l10n, testPrintMessage]);
+
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -1553,11 +1637,11 @@ export default function RestaurantReceiptsScreen({
                       <span>TOTAL</span>
                       <span>{formatPrice(sampleTotal)}</span>
                     </div>
-                    <div className="resto-receipt-total-row" style={{ fontSize: '10px', color: '#4b5563' }}>
+                    <div className="resto-receipt-total-row resto-receipt-tender-row">
                       <span>Cash</span>
                       <span>{formatPrice(sampleCash)}</span>
                     </div>
-                    <div className="resto-receipt-total-row" style={{ fontSize: '10px', color: '#4b5563' }}>
+                    <div className="resto-receipt-total-row resto-receipt-tender-row">
                       <span>Change</span>
                       <span>{formatPrice(sampleChange)}</span>
                     </div>
@@ -2640,6 +2724,19 @@ export default function RestaurantReceiptsScreen({
                         value={kitchenDevicePath}
                         onChange={(e) => handleKitchenDevicePathChange(e.target.value)}
                       />
+                      <div style={{ marginTop: 'var(--space-3)' }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          data-testid="restaurant-kitchen-test-chit-btn"
+                          state={testingKitchenChit ? 'processing' : 'ready'}
+                          onClick={handleTestKitchenChit}
+                        >
+                          <Localized id="restaurant-test-kitchen-chit">
+                            <span>Print Test Chit</span>
+                          </Localized>
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
