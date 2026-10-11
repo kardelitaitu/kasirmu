@@ -95,22 +95,22 @@ export function useKdsShortcuts({
         if (idx < filteredOrders.length) {
           setSelectedOrderId(filteredOrders[idx]!.id);
         }
-      } else if (e.key === 'ArrowDown') {
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
         e.preventDefault();
         setSelectedOrderId((prev) => {
           const currentIdx = prev ? filteredOrders.findIndex((o) => o.id === prev) : -1;
           const nextIdx = Math.min(currentIdx + 1, filteredOrders.length - 1);
           return nextIdx >= 0 ? filteredOrders[nextIdx]!.id : null;
         });
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
         e.preventDefault();
         setSelectedOrderId((prev) => {
           const currentIdx = prev ? filteredOrders.findIndex((o) => o.id === prev) : filteredOrders.length;
           const nextIdx = Math.max(currentIdx - 1, 0);
           return filteredOrders.length > 0 ? filteredOrders[nextIdx]!.id : null;
         });
-      } else if (e.key === ' ' && selectedRef.current) {
-        // Skip if a ticket button already has focus (its onClick will handle advance).
+      } else if ((e.key === ' ' || e.key === 'Enter') && selectedRef.current) {
+        // Skip if a ticket button or interactive button already has focus (its onClick will handle advance).
         //
         // The `instanceof` half is load-bearing, not defensive dressing. The
         // listener is on `document`, so when nothing is focused the target IS the
@@ -123,7 +123,7 @@ export function useKdsShortcuts({
         // Measured 2026-10-07: dispatching Space on `document` advanced nothing,
         // while the same event on `body` worked.
         const target = e.target;
-        if (target instanceof Element && target.closest('.kds-ticket')) return;
+        if (target instanceof Element && (target.closest('.kds-ticket') || target.closest('button'))) return;
         e.preventDefault();
         const selected = filteredOrders.find((o) => o.id === selectedRef.current);
         if (selected) {

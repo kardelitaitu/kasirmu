@@ -109,29 +109,53 @@ describe('useKdsShortcuts — arrows', () => {
     const down = setSelectedOrderId.mock.calls[0]![0] as (p: string | null) => string | null;
     expect(down(null)).toBeNull();
   });
+
+  it('ArrowRight navigates forward matching ArrowDown', () => {
+    const { setSelectedOrderId } = setup();
+    act(() => { document.dispatchEvent(key('ArrowRight')); });
+    const updater = setSelectedOrderId.mock.calls[0]![0] as (p: string | null) => string | null;
+    expect(updater(null)).toBe('a');
+    expect(updater('a')).toBe('b');
+  });
+
+  it('ArrowLeft navigates backward matching ArrowUp', () => {
+    const { setSelectedOrderId } = setup();
+    act(() => { document.dispatchEvent(key('ArrowLeft')); });
+    const updater = setSelectedOrderId.mock.calls[0]![0] as (p: string | null) => string | null;
+    expect(updater('c')).toBe('b');
+    expect(updater('a')).toBe('a');
+  });
 });
 
-describe('useKdsShortcuts — Space and Escape', () => {
+describe('useKdsShortcuts — Space, Enter and Escape', () => {
   it('Space advances the currently selected order', () => {
     const { advanceStatus } = setup({ selected: 'b' });
     act(() => { document.dispatchEvent(key(' ')); });
     expect(advanceStatus).toHaveBeenCalledWith(ORDERS[1]);
   });
 
-  it('Space does nothing when no order is selected', () => {
+  it('Enter advances the currently selected order (bump bar support)', () => {
+    const { advanceStatus } = setup({ selected: 'b' });
+    act(() => { document.dispatchEvent(key('Enter')); });
+    expect(advanceStatus).toHaveBeenCalledWith(ORDERS[1]);
+  });
+
+  it('Space and Enter do nothing when no order is selected', () => {
     const { advanceStatus } = setup({ selected: null });
     act(() => { document.dispatchEvent(key(' ')); });
+    act(() => { document.dispatchEvent(key('Enter')); });
     expect(advanceStatus).not.toHaveBeenCalled();
   });
 
   // A focused ticket button handles Space itself; the document handler must
   // stand down or the status would advance twice.
-  it('Space stands down when the event came from inside a ticket', () => {
+  it('Space and Enter stand down when the event came from inside a ticket or button', () => {
     const { advanceStatus } = setup({ selected: 'b' });
     const ticket = document.createElement('button');
     ticket.className = 'kds-ticket';
     document.body.appendChild(ticket);
     act(() => { ticket.dispatchEvent(key(' ')); });
+    act(() => { ticket.dispatchEvent(key('Enter')); });
     expect(advanceStatus).not.toHaveBeenCalled();
   });
 
