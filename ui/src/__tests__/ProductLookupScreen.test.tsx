@@ -344,6 +344,21 @@ describe('ProductLookupScreen', () => {
       expect(barcodeInput).toHaveValue('');
     });
   });
+
+  it('renders internal subscreen header with onBack button and invokes onBack when clicked', async () => {
+    const handleBack = vi.fn();
+    await renderWithFluent(
+      <ToastProvider>
+        <ProductLookupScreen onBack={handleBack} title="Stock Inquiry" />
+      </ToastProvider>,
+      productsFtl,
+    );
+    const backBtn = screen.getByTestId('product-lookup-back-btn');
+    expect(backBtn).toBeInTheDocument();
+    expect(screen.getByText('Stock Inquiry')).toBeInTheDocument();
+    fireEvent.click(backBtn);
+    expect(handleBack).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ── Indonesian locale ────────────────────────────────────────────

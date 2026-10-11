@@ -763,59 +763,17 @@
 /* Settings sub-screen (tablet) — removed in Phase 6, ADR #22 */
 /* (CSS classes pos-settings-tab, pos-settings-tab--active removed) */
 
-/* ── Unified Sub-screen Header Bar ─────────────────── */
-.restaurant-subscreen-top-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3, 12px);
-  padding: var(--space-3, 12px) var(--space-4, 16px);
-  background: var(--color-bg-surface);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.restaurant-subscreen-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px var(--space-3, 12px);
-  border-radius: var(--radius-md, 6px);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-fg);
-  font-size: var(--text-sm, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.restaurant-subscreen-back-btn:hover {
-  background: var(--color-bg-subtle);
-  border-color: var(--color-border-hover);
-}
-
-.restaurant-subscreen-top-title {
-  margin: 0;
-  font-size: var(--text-lg, 18px);
-  font-weight: 600;
-  color: var(--color-fg);
-}
-
 /* ── Touch ergonomics and press feedback (tablet) ─────────────────────
    A tablet has no hover state, so a control whose only feedback is `:hover`
    reads as inert under a finger. Each interactive control below already had a
    `transition`, which is the tell that it was designed to animate — but nothing
    ever triggered it on touch. `:active` is the press state the finger actually
    produces, and it is what the rest of the tablet surfaces (ProvisioningFlow,
-   StaffManagementScreen, SettingsPage) already do.
-
-   `.restaurant-subscreen-back-btn` is included because it is the only route out
-   of a sub-screen on the tablet, and it carried `:hover` only. */
+   StaffManagementScreen, SettingsPage) already do. */
 .pos-shift-close-btn:not(:disabled):active,
 .pos-hold-confirm-btn:not(:disabled):active,
 .pos-held-item-resume:not(:disabled):active,
-.pos-close-shift-dismiss-btn:not(:disabled):active,
-.restaurant-subscreen-back-btn:not(:disabled):active {
+.pos-close-shift-dismiss-btn:not(:disabled):active {
   transform: scale(0.97);
 }
 
@@ -837,8 +795,7 @@
   .pos-shift-error-dismiss,
   .pos-hold-confirm-btn,
   .pos-held-list-close,
-  .pos-held-item-resume,
-  .restaurant-subscreen-back-btn {
+  .pos-held-item-resume {
     min-height: var(--touch-target-min);
   }
 }
@@ -850,8 +807,7 @@
   .pos-shift-close-btn:not(:disabled):active,
   .pos-hold-confirm-btn:not(:disabled):active,
   .pos-held-item-resume:not(:disabled):active,
-  .pos-close-shift-dismiss-btn:not(:disabled):active,
-  .restaurant-subscreen-back-btn:not(:disabled):active {
+  .pos-close-shift-dismiss-btn:not(:disabled):active {
     transform: none;
     opacity: 0.75;
   }

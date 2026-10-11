@@ -24,6 +24,7 @@ tables-empty-desc = Add tables to build your floor plan.
 tables-empty-filtered = No tables in this section.
 tables-assign-to-order = Select for Order
 tables-resume-tab = Resume Tab / Order
+tables-active-tab-label = Active Tab: { $label }
 tables-add-table = Add Table
 tables-edit-table = Edit Table
 tables-delete-table = Delete Table

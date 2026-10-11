@@ -18,11 +18,9 @@
 
 .tables-title {
   margin: 0;
-  padding: var(--space-4) var(--space-6);
   font-size: var(--text-xl);
   font-weight: var(--font-weight-bold);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-surface);
+  color: var(--color-fg);
 }
 
 .tables-sections {
@@ -183,7 +181,11 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-6);
+  min-height: var(--topbar-height);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 
 .tables-header-lead {
@@ -230,24 +232,71 @@
   outline-offset: 2px;
 }
 
-/* The active-tab summary in the detail panel. Same story as .tables-header: an
-   inline style block on a class with no rule. 10px/12px/8px/12px are all on the
-   spacing scale (--space-2_5 does not exist, so 10px stays a literal — it is a
-   sub-token value the theme checker exempts at <=10px). */
+.tables-back-text {
+  display: none;
+}
+
+/* The active-tab summary in the detail panel. */
 .tables-active-bill-info {
-  /* No fallback tail: --color-bg-subtle is declared in every theme block, so the
-     literal could never render. */
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
-  padding: 10px var(--space-3);
+  padding: var(--space-2_5) var(--space-3);
   border-radius: var(--radius-md);
   margin: var(--space-3) 0;
 }
 
+.tables-active-bill-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+}
+
+.tables-active-bill-meta {
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+  margin-top: var(--space-0_5);
+}
+
 /* A table that currently has an open bill. Belongs to the --status family
-   defined below, and was genuinely missing from it. */
+   defined below, with active billing glow ring. */
 .tables-table--has-bill {
   box-shadow: inset 0 0 0 3px var(--color-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tables-table--has-bill {
+    animation: table-billing-pulse var(--duration-2000) infinite var(--ease-in-out);
+  }
+
+  @keyframes table-billing-pulse {
+    0% {
+      box-shadow:
+        0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent),
+        inset 0 0 0 3px var(--color-accent);
+    }
+    50% {
+      box-shadow:
+        0 0 0 6px color-mix(in srgb, var(--color-accent) 0%, transparent),
+        inset 0 0 0 3px var(--color-accent);
+    }
+    100% {
+      box-shadow:
+        0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent),
+        inset 0 0 0 3px var(--color-accent);
+    }
+  }
+}
+
+.tables-table-bill-tag {
+  display: inline-block;
+  padding: var(--space-0_5) var(--space-1_5);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border: 1px solid var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 /* Base table style */
@@ -556,7 +605,7 @@
 .tables-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--color-bg-overlay);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -674,7 +723,7 @@
 }
 
 .tables-modal-chip.active {
-  background: var(--color-accent-subtle, rgba(59, 130, 246, 0.15));
+  background: var(--color-accent-subtle);
   border-color: var(--color-accent);
   color: var(--color-accent);
 }

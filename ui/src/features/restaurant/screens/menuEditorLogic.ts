@@ -149,6 +149,7 @@ export function createDuplicateDraft<
   name: string;
   categoryName: string;
   priceMinor: number;
+  priceInput?: string;
   isActive: boolean;
   notes: string;
   modifierGroups: DraftModifierGroup[];
@@ -168,6 +169,7 @@ export interface DraftModifierOption {
   id: string;
   name: string;
   priceMinor: number;
+  priceInput?: string;
 }
 
 export interface DraftModifierGroup {

@@ -538,7 +538,7 @@ describe('TableManagementScreen', () => {
 
     // Click to open detail dialog
     await userEvent.click(screen.getByText('Table 2').closest('button')!);
-    await waitFor(() => expect(screen.getByText(/Active Tab: Table 2 \(Bapak Budi\)/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/Active Tab:.*Table 2 \(Bapak Budi\)/)).toBeDefined());
     expect(screen.getByText(/2 items ·/)).toBeDefined();
     const resumeBtn = screen.getByRole('button', { name: 'Resume Tab / Order' });
     expect(resumeBtn).toBeDefined();
@@ -608,5 +608,41 @@ describe('TableManagementScreen', () => {
     await userEvent.click(deleteBtn);
 
     await waitFor(() => expect(mockDeleteTable).toHaveBeenCalledWith('t-1'));
+  });
+
+  it('invokes onBack when back button is clicked', async () => {
+    const handleBack = vi.fn();
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onBack={handleBack} />
+      </LocalizationProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('tables-back-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-back-btn'));
+    expect(handleBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders active bill indicators and tag for occupied table with open tab', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1 - Order #101',
+        table_name: 'Table 1',
+        item_count: 3,
+        total_minor: 125000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    expect(tableBtn).toHaveClass('tables-table--has-bill');
+
+    // Open detail
+    await userEvent.click(tableBtn!);
+    await waitFor(() => expect(screen.getByText(/Active Tab:.*Table 1 - Order #101/)).toBeDefined());
+    expect(screen.getAllByText(/3 items/)).toHaveLength(2);
   });
 });

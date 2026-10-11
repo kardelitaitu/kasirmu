@@ -448,10 +448,6 @@
   letter-spacing: 0.05em;
 }
 
-.sales-history-cell-id {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}
 
 /* The primary receipt code cell. Monospace like the sale id, bold receipt code,
    and nowrap so a long code cannot wrap and stagger the row height. */

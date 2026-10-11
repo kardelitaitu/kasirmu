@@ -83,6 +83,7 @@ interface MenuDraft {
   name: string;
   categoryName: string;
   priceMinor: number;
+  priceInput?: string;
   isActive: boolean;
   notes: string;
   modifierGroups: DraftModifierGroup[];
@@ -244,6 +245,7 @@ const EMPTY_DRAFT: MenuDraft = {
   name: '',
   categoryName: '',
   priceMinor: 0,
+  priceInput: '',
   isActive: true,
   notes: '',
   modifierGroups: [],
@@ -397,6 +399,7 @@ export default function RestaurantMenuEditorScreen({
       name: p.name,
       categoryName: p.category ?? '',
       priceMinor: p.price.minor_units,
+      priceInput: formatMinorForInput(p.price.minor_units, currency),
       isActive: p.is_active !== false,
       notes: parseDraftNotes(p.notes),
       modifierGroups: parseDraftModifierGroups(p.notes),
@@ -405,16 +408,19 @@ export default function RestaurantMenuEditorScreen({
     setTimeout(() => {
       formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }, 50);
-  }, []);
+  }, [currency]);
 
   const handleDuplicateItem = useCallback((p: ProductDto) => {
     const dup = createDuplicateDraft(p);
-    setDraft(dup);
+    setDraft({
+      ...dup,
+      priceInput: formatMinorForInput(p.price.minor_units, currency),
+    });
     setDirty(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }, 50);
-  }, []);
+  }, [currency]);
 
   const cancelDraft = useCallback(() => {
     setDraft(null);
@@ -624,13 +630,29 @@ export default function RestaurantMenuEditorScreen({
   const handleSaveDraft = useCallback(async () => {
     if (!draft || !sessionToken || !draft.name.trim()) return;
     setSaving(true);
-    const finalNotes = serializeDraftMenuNotes(draft.notes, draft.modifierGroups);
+    const resolvedPriceMinor =
+      draft.priceInput !== undefined
+        ? (parsePriceToMinor(draft.priceInput, currency) ?? draft.priceMinor)
+        : draft.priceMinor;
+
+    const resolvedModifierGroups = draft.modifierGroups.map((g) => ({
+      ...g,
+      options: g.options.map((opt) => ({
+        ...opt,
+        priceMinor:
+          opt.priceInput !== undefined
+            ? (parsePriceToMinor(opt.priceInput, currency) ?? opt.priceMinor)
+            : opt.priceMinor,
+      })),
+    }));
+
+    const finalNotes = serializeDraftMenuNotes(draft.notes, resolvedModifierGroups);
     try {
       if (draft.sku) {
         await updateProductScoped(sessionToken, {
           sku: draft.sku,
           name: draft.name.trim(),
-          priceMinor: draft.priceMinor,
+          priceMinor: resolvedPriceMinor,
           currency,
           categoryId: categoryIdFor(draft.categoryName),
           productType: 'restaurant',
@@ -643,7 +665,7 @@ export default function RestaurantMenuEditorScreen({
         await createProductScoped(sessionToken, {
           sku,
           name: draft.name.trim(),
-          priceMinor: draft.priceMinor,
+          priceMinor: resolvedPriceMinor,
           currency,
           categoryId: categoryIdFor(draft.categoryName),
           productType: 'restaurant',
@@ -1211,10 +1233,25 @@ export default function RestaurantMenuEditorScreen({
                           id="restaurant-menu-editor-price"
                           type="text"
                           inputMode="decimal"
-                          value={formatMinorForInput(draft.priceMinor, currency)}
+                          value={draft.priceInput !== undefined ? draft.priceInput : formatMinorForInput(draft.priceMinor, currency)}
+                          placeholder="0"
                           onChange={(e) => {
-                            const minor = parsePriceToMinor(e.target.value, currency);
-                            setDraft({ ...draft, priceMinor: minor ?? 0 });
+                            const text = e.target.value;
+                            const minor = parsePriceToMinor(text, currency);
+                            setDraft({
+                              ...draft,
+                              priceInput: text,
+                              priceMinor: minor ?? (text.trim() === '' ? 0 : draft.priceMinor),
+                            });
+                          }}
+                          onBlur={() => {
+                            const minor = parsePriceToMinor(draft.priceInput ?? '', currency);
+                            const resolved = minor ?? 0;
+                            setDraft({
+                              ...draft,
+                              priceInput: draft.priceInput?.trim() === '' ? '' : formatMinorForInput(resolved, currency),
+                              priceMinor: resolved,
+                            });
                           }}
                           data-testid="restaurant-menu-editor-price"
                         />
@@ -1430,12 +1467,31 @@ export default function RestaurantMenuEditorScreen({
                                         type="text"
                                         inputMode="decimal"
                                         className="restaurant-menu-editor-option-price-input"
-                                        value={formatMinorForInput(opt.priceMinor, currency)}
+                                        value={
+                                          opt.priceInput !== undefined
+                                            ? opt.priceInput
+                                            : opt.priceMinor === 0
+                                              ? ''
+                                              : formatMinorForInput(opt.priceMinor, currency)
+                                        }
                                         placeholder="0"
                                         onChange={(e) => {
-                                          const minor = parsePriceToMinor(e.target.value, currency);
+                                          const text = e.target.value;
+                                          const minor = parsePriceToMinor(text, currency);
                                           handleUpdateModifierOption(group.id, opt.id, {
-                                            priceMinor: minor ?? 0,
+                                            priceInput: text,
+                                            priceMinor: minor ?? (text.trim() === '' ? 0 : opt.priceMinor),
+                                          });
+                                        }}
+                                        onBlur={() => {
+                                          const minor = parsePriceToMinor(opt.priceInput ?? '', currency);
+                                          const resolved = minor ?? 0;
+                                          handleUpdateModifierOption(group.id, opt.id, {
+                                            priceInput:
+                                              opt.priceInput?.trim() === ''
+                                                ? ''
+                                                : formatMinorForInput(resolved, currency),
+                                            priceMinor: resolved,
                                           });
                                         }}
                                         data-testid={`modifier-option-price-${gIdx}-${oIdx}`}

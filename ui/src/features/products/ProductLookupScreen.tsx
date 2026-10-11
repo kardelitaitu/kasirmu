@@ -17,6 +17,10 @@ import './ProductLookupScreen.css';
 export interface ProductLookupScreenProps {
   /** Called when the user clicks "Add to cart" on a product. */
   onAddProduct?: (product: Product) => void;
+  /** Optional callback to navigate back when used as a subscreen (Stock Inquiry). */
+  onBack?: () => void;
+  /** Optional title to display in subscreen header. */
+  title?: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -83,7 +87,7 @@ function PackageIcon() {
  * <ProductLookupScreen onAddProduct={(p) => console.log('add', p.sku)} />
  * ```
  */
-export default function ProductLookupScreen({ onAddProduct }: ProductLookupScreenProps) {
+export default function ProductLookupScreen({ onAddProduct, onBack, title }: ProductLookupScreenProps) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const { sessionToken: rawToken } = useWorkspace();
@@ -238,7 +242,36 @@ export default function ProductLookupScreen({ onAddProduct }: ProductLookupScree
 
   return (
     <DevProfiler id="ProductLookupScreen">
-    <div className="product-lookup">
+    <div className={`product-lookup${onBack ? ' product-lookup--subscreen' : ''}`}>
+      {onBack && (
+        <header className="product-lookup-header">
+          <div className="product-lookup-header-lead">
+            <button
+              type="button"
+              className="product-lookup-back-btn"
+              onClick={onBack}
+              aria-label={l10n.getString('back') || 'Back'}
+              data-testid="product-lookup-back-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="product-lookup-back-text">{l10n.getString('back') || 'Back'}</span>
+            </button>
+            <h1 className="product-lookup-title">
+              {title ? (
+                title
+              ) : (
+                <Localized id="nav-inventory">
+                  <span>Stock Inquiry</span>
+                </Localized>
+              )}
+            </h1>
+          </div>
+        </header>
+      )}
+      <div className={onBack ? 'product-lookup-body' : undefined}>
       {/* ── Toolbar: Search + Barcode ────────────── */}
       <div className="product-toolbar">
         <div className="product-search-wrapper">
@@ -417,6 +450,7 @@ export default function ProductLookupScreen({ onAddProduct }: ProductLookupScree
           </Localized>
         </div>
       )}
+      </div>
     </div>
     </DevProfiler>
   );

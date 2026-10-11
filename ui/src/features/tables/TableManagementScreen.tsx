@@ -368,6 +368,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12 19 5 12 12 5" />
               </svg>
+              <span className="tables-back-text">{l10n.getString('back') || 'Back'}</span>
             </button>
           )}
           <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
@@ -474,7 +475,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             >
               <span className="tables-table-name">{t.name}</span>
               <span className="tables-table-status">
-                {bill ? l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`) : statusLabel(t.status)}
+                {bill ? (
+                  <span className="tables-table-bill-tag">
+                    {l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`)}
+                  </span>
+                ) : (
+                  statusLabel(t.status)
+                )}
               </span>
             </Button>
             </div>
@@ -493,10 +500,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
             {activeBill && (
               <div className="tables-active-bill-info">
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-fg)' }}>
-                  Active Tab: {activeBill.label}
+                <div className="tables-active-bill-title">
+                  <Localized id="tables-active-tab-label" vars={{ label: activeBill.label }}>
+                    <span>Active Tab: {activeBill.label}</span>
+                  </Localized>
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)', marginTop: '4px' }}>
+                <div className="tables-active-bill-meta">
                   {l10n.getString('retail-cart-items', { count: activeBill.item_count }, `${activeBill.item_count} items`)} · {formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })}
                 </div>
               </div>

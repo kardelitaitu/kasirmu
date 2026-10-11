@@ -22,6 +22,7 @@ tables-empty-desc = Tambahkan meja untuk membuat denah Anda.
 tables-empty-filtered = Tidak ada meja di bagian ini.
 tables-assign-to-order = Pilih untuk Pesanan
 tables-resume-tab = Lanjutkan Tagihan / Pesanan
+tables-active-tab-label = Tagihan Aktif: { $label }
 tables-add-table = Tambah Meja
 tables-edit-table = Ubah Meja
 tables-delete-table = Hapus Meja

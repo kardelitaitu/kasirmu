@@ -1050,7 +1050,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               <input
                 id="sh-date-from"
                 type="date"
-                className="sales-history-filter-date sales-history-filter-date--from"
+                className="sales-history-filter-date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
                 aria-label={l10n.getString('from-date-aria')}
@@ -1064,7 +1064,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               <input
                 id="sh-date-to"
                 type="date"
-                className="sales-history-filter-date sales-history-filter-date--to"
+                className="sales-history-filter-date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 aria-label={l10n.getString('to-date-aria')}
@@ -1197,11 +1197,11 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
             <Skeleton variant="block" width="7rem" height="2rem" />
           </div>
           <div className="sales-history-filters">
-            <div className="sales-history-filter-group">
+            <div>
               <Skeleton width="3rem" height="0.75rem" />
               <Skeleton variant="block" width="12.5rem" height="2.125rem" style={{ borderRadius: 'var(--radius-md)' }} />
             </div>
-            <div className="sales-history-filter-group">
+            <div>
               <Skeleton width="3rem" height="0.75rem" />
               <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                 {[0, 1, 2, 3].map((i) => (
@@ -1210,7 +1210,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               </div>
             </div>
             {[0, 1, 2].map((g) => (
-              <div key={g} className="sales-history-filter-group">
+              <div key={g}>
                 <Skeleton width="2.5rem" height="0.75rem" />
                 <Skeleton variant="block" width="7rem" height="2.125rem" style={{ borderRadius: 'var(--radius-md)' }} />
               </div>
