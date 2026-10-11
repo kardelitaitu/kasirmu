@@ -69,4 +69,24 @@ describe('RestaurantFloatingCartBar', () => {
     // Should not render table pill
     expect(screen.queryByTestId('restaurant-floating-cart-table')).toBeNull();
   });
+
+  it('normalizes Table/Meja prefix to prevent Table Table doubling', () => {
+    const onOpenCart = vi.fn();
+    render(
+      withFluent(
+        <RestaurantFloatingCartBar
+          lines={[makeLine(1)]}
+          total={IDR}
+          tableNumber="Table 12"
+          onOpenCart={onOpenCart}
+        />,
+        productsFtl,
+      ),
+    );
+
+    const tableChip = screen.getByTestId('restaurant-floating-cart-table');
+    // Fluent produces "Table 12", not "Table Table 12"
+    expect(tableChip.textContent?.trim()).toBe('Table 12');
+  });
 });
+

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
+import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import './RestaurantCartSheet.css';
 
 export interface RestaurantCartSheetProps {
@@ -75,7 +76,7 @@ export function RestaurantCartSheet({
                 className="restaurant-cart-sheet-table-chip"
                 data-testid="restaurant-cart-sheet-table-chip"
               >
-                {l10n.getString('restaurant-cart-table-badge', { table: tableNumber })}
+                {l10n.getString('restaurant-cart-table-badge', { table: bareTableNumber(tableNumber) })}
               </span>
             )}
           </div>

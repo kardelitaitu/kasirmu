@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useLocalization } from '@fluent/react';
 import { formatMoney, type CartLine, type Money } from '@/types/domain';
+import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import './RestaurantFloatingCartBar.css';
 
 export interface RestaurantFloatingCartBarProps {
@@ -80,7 +81,7 @@ export function RestaurantFloatingCartBar({
                 className="restaurant-floating-cart-table-pill"
                 data-testid="restaurant-floating-cart-table"
               >
-                {l10n.getString('restaurant-cart-table-badge', { table: tableNumber })}
+                {l10n.getString('restaurant-cart-table-badge', { table: bareTableNumber(tableNumber) })}
               </span>
             )}
           </div>

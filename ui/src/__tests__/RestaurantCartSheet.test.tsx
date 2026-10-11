@@ -68,4 +68,22 @@ describe('RestaurantCartSheet', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByTestId('cart-contents')).toBeNull();
   });
+
+  it('normalizes Table/Meja prefix to prevent Table Table doubling', () => {
+    const onClose = vi.fn();
+
+    render(
+      withFluent(
+        <RestaurantCartSheet open={true} onClose={onClose} tableNumber="Table 12">
+          <div data-testid="cart-contents">Cart</div>
+        </RestaurantCartSheet>,
+        productsFtl,
+      ),
+    );
+
+    const tableChip = screen.getByTestId('restaurant-cart-sheet-table-chip');
+    // Fluent produces "Table 12", not "Table Table 12"
+    expect(tableChip.textContent?.trim()).toBe('Table 12');
+  });
 });
+

@@ -106,3 +106,36 @@ export function matchesTableBill(
   return false;
 }
 
+/**
+ * Extract an attached customer name from a stored open bill customer_name string.
+ *
+ * Stored customer names on held tabs can be:
+ *   "Table 2 (Budi)" -> "Budi"
+ *   "Meja 2 (Budi)"  -> "Budi"
+ *   "Table 2 - Budi" -> "Budi"
+ *   "Table 2"        -> null (table identifier only, no customer)
+ *   "Meja 2"         -> null
+ *   "Budi"           -> "Budi"
+ */
+export function extractCustomerNameFromTableBill(raw?: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Table-only labels like "Table 2", "Meja 12", "Table", "Meja" carry no customer name.
+  if (/^(?:table|meja)\b(?:\s+\w+)?$/i.test(trimmed)) {
+    return null;
+  }
+
+  // Extract name from tab labels like "Table 2 (Budi)", "Meja 2 (Budi)", "Table 2 - Budi"
+  const stripped = trimmed
+    .replace(/^(?:table|meja)\s+\w+\s*[-–(]?\s*/i, '')
+    .replace(/\)$/, '')
+    .trim();
+
+  if (!stripped || /^(?:table|meja)\b/i.test(stripped)) {
+    return null;
+  }
+  return stripped;
+}
+

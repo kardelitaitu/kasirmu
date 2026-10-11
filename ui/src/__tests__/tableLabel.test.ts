@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bareTableNumber, heldCartLabel, matchesTableBill } from '@/features/sales/utils/tableLabel';
+import { bareTableNumber, heldCartLabel, matchesTableBill, extractCustomerNameFromTableBill } from '@/features/sales/utils/tableLabel';
 
 /**
  * The regression these guard: the product stores table names that ALREADY read
@@ -108,4 +108,39 @@ describe('matchesTableBill', () => {
     expect(matchesTableBill({}, 'Table 2')).toBe(false);
   });
 });
+
+describe('extractCustomerNameFromTableBill', () => {
+  it('extracts customer name from Table-prefixed bills', () => {
+    expect(extractCustomerNameFromTableBill('Table 2 (Budi)')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Table 2 - Budi')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Table 12 (Siti Aminah)')).toBe('Siti Aminah');
+  });
+
+  it('extracts customer name from Meja-prefixed bills', () => {
+    expect(extractCustomerNameFromTableBill('Meja 2 (Budi)')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Meja 5 - Pak Joko')).toBe('Pak Joko');
+    expect(extractCustomerNameFromTableBill('meja 10 (Dewi)')).toBe('Dewi');
+  });
+
+  it('returns null for table-only strings with no customer name', () => {
+    expect(extractCustomerNameFromTableBill('Table 2')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Table 12')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Meja 5')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Table')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Meja')).toBeNull();
+  });
+
+  it('returns plain customer name when no table prefix is present', () => {
+    expect(extractCustomerNameFromTableBill('Budi')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Ibu Ratna')).toBe('Ibu Ratna');
+  });
+
+  it('returns null for empty, whitespace, or null inputs', () => {
+    expect(extractCustomerNameFromTableBill(null)).toBeNull();
+    expect(extractCustomerNameFromTableBill(undefined)).toBeNull();
+    expect(extractCustomerNameFromTableBill('')).toBeNull();
+    expect(extractCustomerNameFromTableBill('   ')).toBeNull();
+  });
+});
+
 

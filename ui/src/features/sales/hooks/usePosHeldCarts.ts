@@ -17,7 +17,7 @@ import {
 import type { Promotion } from '@/api/promotions';
 import type { ShiftDto } from '@/api/shifts';
 import type { CartLine, LineId, Money, Sku } from '@/types/domain';
-import { bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
+import { bareTableNumber, heldCartLabel, extractCustomerNameFromTableBill } from '@/features/sales/utils/tableLabel';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
@@ -304,8 +304,8 @@ export function usePosHeldCarts({
       if (typeof data.customerName === 'string') {
         setCustomerName?.(data.customerName);
       } else if (full.customer_name) {
-        const cust = full.customer_name.replace(/^Table\s+\w+\s*[-–(]?\s*/i, '').replace(/\)$/, '');
-        if (cust && !cust.startsWith('Table ')) {
+        const cust = extractCustomerNameFromTableBill(full.customer_name);
+        if (cust) {
           setCustomerName?.(cust);
         }
       }
