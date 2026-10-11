@@ -93,6 +93,12 @@ const lineItem = (overrides: Partial<CartLine> = {}): CartLine => ({
   ...overrides,
 });
 
+// NOTE: this file mounts the REAL sales bundle through `withFluent` below
+// rather than the axe-helper's minimal one, because the modal names most of its
+// controls with `<Localized ... attrs={{ 'aria-label': true }}>`. With only the
+// minimal bundle those attributes are never set, and axe would report labels
+// production actually has — a violation found that way is not evidence about
+// the shipped app.
 async function renderModal(ui: React.ReactElement) {
   await renderInAct(withFluent(<ToastProvider>{ui}</ToastProvider>, salesFtl));
 }
