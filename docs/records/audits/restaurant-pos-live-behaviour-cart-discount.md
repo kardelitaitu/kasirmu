@@ -46,11 +46,31 @@ subscribed for the whole pass).
   `pos-cart-discount-clear`. A probe that reuses the first selector after
   applying will find nothing — which is what happened on the first attempt.
 
+## Discount Apply boundaries — verified live
+
+Clearing the applied discount reopens the form blank, which allowed the guards to
+be walked directly. Each row is a real keystroke through the native setter:
+
+| Field value | Apply button | Field after |
+|---|---|---|
+| (empty) | DISABLED | — |
+| `0` | DISABLED | `"0"` |
+| `101` | DISABLED | `"101"` |
+| `10` | ENABLED | `"10"` |
+| `2.5` | (unchanged) | `"10"` |
+
+The last row is the interesting one: the fractional keystroke is **rejected, not
+truncated** — the field stays at the previous valid value rather than silently
+becoming `2`. That is the whole-non-negative-number guard in
+`CartFooterTotals`, and it behaves correctly against the real component.
+
+Cancelling the form left no discount applied, and clearing removed both the row
+and the clear control.
+
 ## Not covered here
 
 - A completed sale through the payment modal (the modal was opened and its
   controls enumerated, but the sale was not settled — no receipt was produced).
-- The discount Apply button's disabled boundaries (empty / 0 / 101 / 2.5). The
-  unit suite covers these; the live probe needs the form in its *blank* state,
-  which requires clearing an applied discount first. Worth doing next.
+- The tip segments and service-charge toggle were enumerated but not exercised
+  end to end against a settled total.
 - KDS ticket lifecycle (accept → ready → served) on a live ticket.
