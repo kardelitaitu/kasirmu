@@ -32,7 +32,7 @@ sales-report-weekly = Weekly
 sales-report-monthly = Monthly
 sales-report-export-csv = Export CSV
 sales-report-revenue-chart = Revenue
-sales-report-revenue-label = Revenue (minor units)
+sales-report-revenue-label = Revenue
 sales-report-total-revenue = Total
 sales-report-total-orders = Orders
 sales-report-total-gross-profit = Gross Profit
@@ -584,12 +584,12 @@ describe('SalesReportScreen', () => {
     });
   });
 
-  it('bar chart has Revenue (minor units) aria label', async () => {
+  it('bar chart has Revenue aria label', async () => {
     resolveDefaultData();
     renderScreen();
     await waitFor(() => {
       const bar = screen.getByTestId('bar');
-      expect(bar.getAttribute('aria-label')).toBe('Revenue (minor units)');
+      expect(bar.getAttribute('aria-label')).toBe('Revenue');
     });
   });
 

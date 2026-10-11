@@ -119,7 +119,7 @@ const mockPromotion = (p: Partial<MockPromotion> & { id: string; name: string })
 const MOCK_PROMOTIONS: MockPromotion[] = [
   mockPromotion({ id: 'promo-1', name: 'Buy 1 Get 1', description: 'Free croissant with any latte', promo_type: 'buy_x_get_y', trigger_sku: 'LATTE', reward_sku: 'CROISS', min_qty: 1, reward_qty: 1 }),
   mockPromotion({ id: 'promo-2', name: 'Happy Hour 15%', description: '15% off the whole order', promo_type: 'percentage', value_minor: 15 }),
-  mockPromotion({ id: 'promo-3', name: 'VIP 5000 Off', description: '5000 minor units off', promo_type: 'fixed_amount', value_minor: 5000, min_order_minor: 20000 }),
+  mockPromotion({ id: 'promo-3', name: 'VIP 5000 Off', description: '5000 off', promo_type: 'fixed_amount', value_minor: 5000, min_order_minor: 20000 }),
 ];
 
 /**

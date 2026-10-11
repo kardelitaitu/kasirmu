@@ -113,7 +113,7 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
 
           <div className="gift-cards-modal-field">
             <Localized id="gift-cards-issue-amount-label">
-              <div className="gift-cards-modal-label">Initial Amount (minor units)</div>
+              <div className="gift-cards-modal-label">Initial Amount</div>
             </Localized>
             <input
               type="number"

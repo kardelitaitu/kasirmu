@@ -237,7 +237,7 @@ describe('PriceOverrideModal — keyboard and edge cases', () => {
       withFluent(<PriceOverrideModal {...defaultProps} open={true} onClose={onClose} />, salesFtl),
     );
 
-    const input = screen.getByLabelText('Enter new price in minor units') as HTMLInputElement;
+    const input = screen.getByLabelText('Enter new price') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '75000' } });
 
     await waitFor(() => {
@@ -253,7 +253,7 @@ describe('PriceOverrideModal — keyboard and edge cases', () => {
     render(withFluent(<PriceOverrideModal {...defaultProps} open={true} onClose={onClose} />, salesFtl));
 
     await waitFor(() => {
-      const newInput = screen.getByLabelText('Enter new price in minor units') as HTMLInputElement;
+      const newInput = screen.getByLabelText('Enter new price') as HTMLInputElement;
       expect(newInput.value).toBe('50000');
     });
   });
