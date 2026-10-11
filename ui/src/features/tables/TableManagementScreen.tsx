@@ -451,7 +451,14 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           const h = Math.max(t.height, 2);
           const bill = getTableBill(t.name);
           return (
-            <Button variant="ghost" size="sm" key={t.id} className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}`}
+            // The floor plan is a role="list" (aria-label above), so each table
+            // must be wrapped in a list item. It cannot be put ON the button:
+            // role="listitem" is not permitted on <button> (axe
+            // aria-allowed-role), so the wrapper carries it instead. Without the
+            // wrapper the container advertised a list whose only children were
+            // buttons, and a screen reader announced an empty list.
+            <div key={t.id} role="listitem">
+            <Button variant="ghost" size="sm" className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}`}
               onClick={() => openDetail(t)}
               // TBL-05: the context-menu shortcut opens the accessible detail
               // panel (the visible, keyboard-operable actions menu) instead of
@@ -470,6 +477,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 {bill ? l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`) : statusLabel(t.status)}
               </span>
             </Button>
+            </div>
           );
         })}
       </div>
