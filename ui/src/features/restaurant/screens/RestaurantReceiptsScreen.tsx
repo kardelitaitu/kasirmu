@@ -766,7 +766,7 @@ export default function RestaurantReceiptsScreen({
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       addToast({
-        message: 'Logo file too large (maximum 2MB)',
+        message: l10n.getString('restaurant-receipt-logo-too-large'),
         type: 'error',
       });
       return;
@@ -824,7 +824,9 @@ export default function RestaurantReceiptsScreen({
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
         title: `[${res.code}] Print Error`,
-        message: printerConnection === 'bluetooth' ? 'Bluetooth MAC address is required' : res.message,
+        message: printerConnection === 'bluetooth'
+          ? l10n.getString('restaurant-test-print-bt-mac-required')
+          : res.message,
         type: 'error',
       });
       return;
@@ -832,8 +834,8 @@ export default function RestaurantReceiptsScreen({
 
     if (dirty) {
       addToast({
-        title: 'Unsaved Changes',
-        message: 'Test print uses last saved settings. Save changes to apply your draft layout.',
+        title: l10n.getString('restaurant-test-print-unsaved-title'),
+        message: l10n.getString('restaurant-test-print-unsaved-message'),
         type: 'warning',
       });
     }
@@ -925,14 +927,15 @@ export default function RestaurantReceiptsScreen({
     showItemNotes,
     addToast,
     dirty,
+    l10n,
   ]);
 
   // ── Test Cash Drawer ─────────────────────────────────────────
   const handleTestDrawer = useCallback(async () => {
     if (!sessionToken) {
       addToast({
-        title: 'Authentication Required',
-        message: 'Authentication session required to open cash drawer',
+        title: l10n.getString('restaurant-drawer-auth-title'),
+        message: l10n.getString('restaurant-drawer-auth-message'),
         type: 'error',
       });
       return;
@@ -943,20 +946,20 @@ export default function RestaurantReceiptsScreen({
       const res = await openCashDrawerScoped(sessionToken);
       if (res && res.opened !== false) {
         addToast({
-          title: 'Drawer Signal Sent',
-          message: 'Cash drawer kick pulse sent to default printer',
+          title: l10n.getString('restaurant-drawer-sent-title'),
+          message: l10n.getString('restaurant-drawer-sent-message'),
           type: 'success',
         });
       } else {
         addToast({
-          title: 'Drawer Kick Unconfirmed',
-          message: 'Device did not confirm drawer open',
+          title: l10n.getString('restaurant-drawer-unconfirmed-title'),
+          message: l10n.getString('restaurant-drawer-unconfirmed-message'),
           type: 'warning',
         });
       }
     } catch (err) {
       addToast({
-        title: 'Drawer Kick Failed',
+        title: l10n.getString('restaurant-drawer-failed-title'),
         // ERR-05: the drawer-kick failure text is backend hardware detail; render
         // the screen's own localized copy instead of surfacing it verbatim.
         message: l10nErrorMessage(err, l10n, 'receipts-drawer-kick-failed'),
@@ -2454,12 +2457,12 @@ export default function RestaurantReceiptsScreen({
                     value={printerConnection}
                     onChange={handlePrinterConnectionChange}
                     options={[
-                      { value: 'auto', label: 'Auto Detect' },
-                      { value: 'bluetooth', label: 'Bluetooth SPP (Wireless)' },
-                      { value: 'network', label: 'Network / Ethernet' },
-                      { value: 'usb', label: 'USB' },
-                      { value: 'serial', label: 'Serial / COM' },
-                      { value: 'disabled', label: 'Disabled' },
+                      { value: 'auto', label: l10n.getString('restaurant-printer-conn-auto') },
+                      { value: 'bluetooth', label: l10n.getString('restaurant-printer-conn-bluetooth') },
+                      { value: 'network', label: l10n.getString('restaurant-printer-conn-network') },
+                      { value: 'usb', label: l10n.getString('restaurant-printer-conn-usb') },
+                      { value: 'serial', label: l10n.getString('restaurant-printer-conn-serial') },
+                      { value: 'disabled', label: l10n.getString('restaurant-printer-conn-disabled') },
                     ]}
                   />
                 </div>
@@ -2468,7 +2471,7 @@ export default function RestaurantReceiptsScreen({
                   <div style={{ marginBottom: 'var(--space-3)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                       <label htmlFor="resto-hw-printer-path" className="resto-toggle-title">
-                        Bluetooth MAC Address
+                        {l10n.getString('restaurant-printer-bt-mac-label')}
                       </label>
                       {btPermissionsGranted === false && (
                         <button
@@ -2482,7 +2485,7 @@ export default function RestaurantReceiptsScreen({
                             win.__kasirmuNative?.requestBluetoothPermissions?.();
                           }}
                         >
-                          Grant Bluetooth Permission
+                          {l10n.getString('restaurant-printer-bt-grant')}
                         </button>
                       )}
                     </div>
@@ -2496,7 +2499,7 @@ export default function RestaurantReceiptsScreen({
                             if (e.target.value) handlePrinterDevicePathChange(e.target.value);
                           }}
                         >
-                          <option value="">-- Select Paired Bluetooth Device --</option>
+                          <option value="">{l10n.getString('restaurant-printer-bt-paired-placeholder')}</option>
                           {pairedBtDevices.map((d) => (
                             <option key={d.address} value={d.address}>
                               {d.name} ({d.address})
@@ -2509,7 +2512,7 @@ export default function RestaurantReceiptsScreen({
                       id="resto-hw-printer-path"
                       type="text"
                       className="resto-text-input"
-                      placeholder="66:12:34:AB:CD:EF (MAC Address)"
+                      placeholder={l10n.getString('restaurant-printer-bt-mac-placeholder')}
                       value={printerDevicePath}
                       onChange={(e) => handlePrinterDevicePathChange(e.target.value)}
                     />
@@ -2519,13 +2522,17 @@ export default function RestaurantReceiptsScreen({
                 {(printerConnection === 'network' || printerConnection === 'serial' || printerConnection === 'usb') && (
                   <div style={{ marginBottom: 'var(--space-3)' }}>
                     <label htmlFor="resto-hw-printer-path" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
-                      {printerConnection === 'network' ? 'Printer IP / Host' : 'Device Port / Path'}
+                      {printerConnection === 'network'
+                        ? l10n.getString('restaurant-printer-ip-label')
+                        : l10n.getString('restaurant-printer-port-label')}
                     </label>
                     <input
                       id="resto-hw-printer-path"
                       type="text"
                       className="resto-text-input"
-                      placeholder={printerConnection === 'network' ? '192.168.1.100:9100' : 'COM3 or /dev/ttyUSB0'}
+                      placeholder={printerConnection === 'network'
+                        ? l10n.getString('restaurant-printer-ip-placeholder')
+                        : l10n.getString('restaurant-printer-port-placeholder')}
                       value={printerDevicePath}
                       onChange={(e) => handlePrinterDevicePathChange(e.target.value)}
                     />
@@ -2580,11 +2587,11 @@ export default function RestaurantReceiptsScreen({
                       onChange={handleKitchenConnectionChange}
                       disabled={!hasKdsFeature}
                       options={[
-                        { value: 'disabled', label: 'Disabled' },
-                        { value: 'bluetooth', label: 'Bluetooth SPP (Wireless)' },
-                        { value: 'network', label: 'Network / Ethernet' },
-                        { value: 'usb', label: 'USB' },
-                        { value: 'serial', label: 'Serial / COM' },
+                        { value: 'disabled', label: l10n.getString('restaurant-printer-conn-disabled') },
+                        { value: 'bluetooth', label: l10n.getString('restaurant-printer-conn-bluetooth') },
+                        { value: 'network', label: l10n.getString('restaurant-printer-conn-network') },
+                        { value: 'usb', label: l10n.getString('restaurant-printer-conn-usb') },
+                        { value: 'serial', label: l10n.getString('restaurant-printer-conn-serial') },
                       ]}
                     />
                   </div>
@@ -2592,13 +2599,17 @@ export default function RestaurantReceiptsScreen({
                   {hasKdsFeature && kitchenConnection !== 'disabled' && (
                     <div>
                       <label htmlFor="resto-hw-kitchen-path" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
-                        Kitchen Printer IP / Device Path
+                        {l10n.getString('restaurant-kitchen-printer-path-label')}
                       </label>
                       <input
                         id="resto-hw-kitchen-path"
                         type="text"
                         className="resto-text-input"
-                        placeholder={kitchenConnection === 'network' ? '192.168.1.101:9100' : kitchenConnection === 'bluetooth' ? '66:12:34:AB:CD:EF' : 'COM4'}
+                        placeholder={kitchenConnection === 'network'
+                          ? l10n.getString('restaurant-kitchen-printer-net-placeholder')
+                          : kitchenConnection === 'bluetooth'
+                            ? l10n.getString('restaurant-kitchen-printer-bt-placeholder')
+                            : l10n.getString('restaurant-kitchen-printer-serial-placeholder')}
                         value={kitchenDevicePath}
                         onChange={(e) => handleKitchenDevicePathChange(e.target.value)}
                       />

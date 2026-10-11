@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import userEvent from '@testing-library/user-event';
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -813,6 +815,94 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
 
     expect(logoInput.value).toContain('data:image/svg+xml;utf8,');
     expect(screen.getByText(/Logo Position/i)).toBeInTheDocument();
+  });
+});
+
+
+// ── The printer-hardware controls must not hardcode English (F10) ──────────
+//
+// §6.3 requires every user-visible string to route through @fluent/react. This
+// screen's Printer card was the last cluster on it that did not: the connection
+// dropdown, the Bluetooth MAC label/placeholder/grant button, the paired-device
+// option, the network/serial path labels and the kitchen-printer path labels
+// were plain literals, so an Indonesian operator saw English there.
+//
+// The payments screen was swept the same way in `883dd842e`; this is the sibling
+// half. Two cases, because each catches a different regression:
+//   1. the KEYS resolve in both bundles (a deleted translation is a defect even
+//      if the call site is correct);
+//   2. the SOURCE contains no literal again — a literal can render the right
+//      words and still be a literal, and only reading the file catches that.
+describe('RestaurantReceiptsScreen — printer-hardware i18n sweep (no hardcoded English)', () => {
+  const SWEPT = [
+    'restaurant-printer-conn-auto',
+    'restaurant-printer-conn-bluetooth',
+    'restaurant-printer-conn-network',
+    'restaurant-printer-conn-usb',
+    'restaurant-printer-conn-serial',
+    'restaurant-printer-conn-disabled',
+    'restaurant-printer-bt-mac-label',
+    'restaurant-printer-bt-mac-placeholder',
+    'restaurant-printer-bt-grant',
+    'restaurant-printer-bt-paired-placeholder',
+    'restaurant-printer-ip-label',
+    'restaurant-printer-ip-placeholder',
+    'restaurant-printer-port-label',
+    'restaurant-printer-port-placeholder',
+    'restaurant-kitchen-printer-path-label',
+    'restaurant-kitchen-printer-net-placeholder',
+    'restaurant-kitchen-printer-bt-placeholder',
+    'restaurant-kitchen-printer-serial-placeholder',
+    'restaurant-receipt-logo-too-large',
+    'restaurant-test-print-unsaved-title',
+    'restaurant-test-print-unsaved-message',
+    'restaurant-test-print-bt-mac-required',
+    'restaurant-drawer-auth-title',
+    'restaurant-drawer-auth-message',
+    'restaurant-drawer-sent-title',
+    'restaurant-drawer-sent-message',
+    'restaurant-drawer-unconfirmed-title',
+    'restaurant-drawer-unconfirmed-message',
+    'restaurant-drawer-failed-title',
+  ];
+
+  function bundle(rel: string): string {
+    return fs.readFileSync(path.resolve(process.cwd(), rel), 'utf-8');
+  }
+
+  it('every swept key exists in BOTH bundles', () => {
+    for (const [locale, rel] of [
+      ['en', '../shared-ui/locales/products.ftl'],
+      ['id', '../shared-ui/locales/products.id.ftl'],
+    ] as const) {
+      const src = bundle(rel);
+      for (const key of SWEPT) {
+        expect(
+          src,
+          `${key} is missing from the ${locale} bundle — if this screen went back ` +
+            'to a hardcoded literal, that is the regression this case exists for',
+        ).toMatch(new RegExp('^' + key + ' = ', 'm'));
+      }
+    }
+  });
+
+  it('leaves no hardcoded English label, placeholder or toast in the source', () => {
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/features/restaurant/screens/RestaurantReceiptsScreen.tsx'),
+      'utf-8',
+    );
+    const offenders = src
+      .split('\n')
+      .map((line, i) => ({ n: i + 1, line }))
+      .filter(({ line }) =>
+        /placeholder="[A-Za-z0-9]/.test(line) ||
+        /label: '[A-Z]/.test(line) ||
+        /(title|message): '[A-Z]/.test(line) ||
+        /^\s*(Bluetooth MAC Address|Grant Bluetooth Permission|Kitchen Printer IP)/.test(line));
+    expect(
+      offenders.map((o) => `${o.n}: ${o.line.trim().slice(0, 70)}`),
+      'these lines hardcode user-visible English again — route them through l10n.getString',
+    ).toEqual([]);
   });
 });
 
