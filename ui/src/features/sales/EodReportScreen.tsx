@@ -4,13 +4,15 @@ import {
   exportEodReportScoped,
   type EodReport,
 } from '@/api/sales';
-import { listShiftsScoped, type ShiftDto } from '@/api/shifts';
+import { closeShiftScoped, listShiftsScoped, type ShiftDto } from '@/api/shifts';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FALLBACK_STORE_TZ, storeOffsetMs } from '@/features/analytics/analytics-data';
 import { useStoreTimezone } from '@/hooks/useStoreTimezone';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseBalanceInput } from '@/types/domain';
 import { buildCsv, downloadCsv } from '../reports/csv';
+import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
+import { Modal } from '@/components/Modal';
 import { Skeleton } from '@/components/Skeleton';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
@@ -103,9 +105,10 @@ interface ShiftSummaryProps {
   currency: string;
   /** The store's UTC offset; see closedShiftsOnStoreDay for why this is needed. */
   storeTz: string | null;
+  onCloseShift?: (shift: ShiftDto) => void;
 }
 
-function ShiftSummarySection({ shifts, currency, storeTz }: ShiftSummaryProps) {
+function ShiftSummarySection({ shifts, currency, storeTz, onCloseShift }: ShiftSummaryProps) {
   const { l10n } = useLocalization();
   // Times follow the active Fluent locale (not the browser default).
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
@@ -167,6 +170,21 @@ function ShiftSummarySection({ shifts, currency, storeTz }: ShiftSummaryProps) {
               {fmt(activeShift.totalSalesMinor)}
             </span>
           </div>
+          {onCloseShift && (
+            <div className="eod-report-active-shift-actions">
+              <button
+                type="button"
+                className="eod-report-close-shift-btn"
+                onClick={() => onCloseShift(activeShift)}
+                aria-label={l10n.getString('eod-close-shift-aria') ?? undefined}
+                data-testid="eod-close-shift-btn"
+              >
+                <Localized id="eod-close-shift-btn">
+                  <span>Close Shift</span>
+                </Localized>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -325,6 +343,7 @@ function ShiftSummarySection({ shifts, currency, storeTz }: ShiftSummaryProps) {
 /** End-of-day report screen — payment summary, cashier shift reconciliation, totals by method, and printable receipt. */
 export default function EodReportScreen() {
   const { l10n } = useLocalization();
+  const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
   // REP-03: the shift reconciliation below is compared against the STORE's
@@ -339,6 +358,15 @@ export default function EodReportScreen() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [printing, setPrinting] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
+
+  // Close active shift modal state
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeShiftTarget, setCloseShiftTarget] = useState<ShiftDto | null>(null);
+  const [closingBalance, setClosingBalance] = useState('');
+  const [shiftNotes, setShiftNotes] = useState('');
+  const [closingShift, setClosingShift] = useState(false);
+  const [closeShiftError, setCloseShiftError] = useState<string | null>(null);
+
   const reportRef = useRef(report);
   const shiftsRef = useRef(shifts);
 
@@ -361,7 +389,7 @@ export default function EodReportScreen() {
 
       // Header.
       body += line('    END-OF-DAY REPORT');
-      body += line(`    ${lastRefresh.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`);
+      body += line(`    ${lastRefresh.toLocaleDateString(numLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`);
       body += sep;
 
       // Revenue KPIs.
@@ -430,6 +458,10 @@ export default function EodReportScreen() {
       body += line('');
 
       await printReceiptScoped(sessionToken, { body });
+      addToast({
+        message: requiredLocalized(l10n, 'eod-print-success'),
+        type: 'success',
+      });
     } catch (printErr) {
       // Was `catch {}` — "Printing error — silently handled". A print button that
       // prints nothing and says nothing is indistinguishable from one that worked,
@@ -443,12 +475,7 @@ export default function EodReportScreen() {
     } finally {
       setPrinting(false);
     }
-    // sessionToken is read at :343 and derived from useWorkspace() at :247. Because the catch
-    // above deliberately swallows everything, this is another silent failure: after a hot-swap
-    // the end-of-day report print presents a destroyed session, rejects, and the button simply
-    // does nothing -- on the one screen an operator expects to produce a signed record. deps
-    // listed only lastRefresh, which the refresh button changes and a session switch does not.
-  }, [lastRefresh, sessionToken, l10n, addToast, storeTz]);
+  }, [lastRefresh, sessionToken, l10n, addToast, storeTz, numLocale]);
 
   const exportCsv = useCallback(() => {
     const r = reportRef.current;
@@ -510,6 +537,45 @@ export default function EodReportScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  const handleInitiateCloseShift = useCallback((shift: ShiftDto) => {
+    setCloseShiftTarget(shift);
+    setClosingBalance('');
+    setShiftNotes('');
+    setCloseShiftError(null);
+    setShowCloseModal(true);
+  }, []);
+
+  const handleConfirmCloseShift = useCallback(async () => {
+    if (!closeShiftTarget) return;
+    const cur = report?.currency ?? 'USD';
+    const balance = parseBalanceInput(closingBalance, cur);
+    if (balance === null || balance < 0) {
+      setCloseShiftError(requiredLocalized(l10n, 'shift-invalid-balance'));
+      return;
+    }
+    setClosingShift(true);
+    setCloseShiftError(null);
+    try {
+      await closeShiftScoped(
+        sessionToken,
+        closeShiftTarget.id,
+        balance,
+        shiftNotes.trim() || null,
+      );
+      setShowCloseModal(false);
+      setCloseShiftTarget(null);
+      addToast({
+        message: requiredLocalized(l10n, 'eod-shift-closed-success'),
+        type: 'success',
+      });
+      await load();
+    } catch (err) {
+      setCloseShiftError(l10nErrorMessage(err, l10n, 'pos-close-shift-failed'));
+    } finally {
+      setClosingShift(false);
+    }
+  }, [closeShiftTarget, report?.currency, closingBalance, sessionToken, shiftNotes, l10n, addToast, load]);
+
   const currency = report?.currency ?? 'USD';
   const money = (minor: number) => formatMoney({ minor_units: minor, currency });
 
@@ -526,7 +592,7 @@ export default function EodReportScreen() {
         </Localized>
         <div className="eod-report-header-right">
           <span className="eod-report-date">
-            {lastRefresh.toLocaleDateString('en-US', {
+            {lastRefresh.toLocaleDateString(numLocale, {
               weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
             })}
           </span>
@@ -576,7 +642,12 @@ export default function EodReportScreen() {
 
       {/* ── Shift Summary Section ────────────────── */}
       {!loading && !error && report && (
-        <ShiftSummarySection shifts={shifts} currency={currency} storeTz={storeTz} />
+        <ShiftSummarySection
+          shifts={shifts}
+          currency={currency}
+          storeTz={storeTz}
+          onCloseShift={handleInitiateCloseShift}
+        />
       )}
 
       {loading && !report ? (
@@ -881,6 +952,110 @@ export default function EodReportScreen() {
           )}
         </>
       )}
+
+      {/* ── Close Shift Modal ─────────────────────── */}
+      <Modal
+        open={showCloseModal}
+        onClose={() => {
+          if (!closingShift) {
+            setShowCloseModal(false);
+            setCloseShiftError(null);
+          }
+        }}
+        title={l10n.getString('eod-close-modal-title') ?? 'Close Active Shift'}
+      >
+        {closeShiftTarget && (
+          <div>
+            {closeShiftError && (
+              <div className="eod-close-shift-error" role="alert">
+                {closeShiftError}
+              </div>
+            )}
+
+            <div className="eod-close-shift-info">
+              <div className="eod-close-shift-info-row">
+                <Localized id="pos-close-shift-opened">
+                  <span>Opened</span>
+                </Localized>
+                <span>{new Date(closeShiftTarget.openedAt).toLocaleString(numLocale)}</span>
+              </div>
+              <div className="eod-close-shift-info-row">
+                <Localized id="pos-close-shift-opening-balance">
+                  <span>Opening balance</span>
+                </Localized>
+                <span>{money(closeShiftTarget.openingBalanceMinor)}</span>
+              </div>
+            </div>
+
+            <div className="eod-close-shift-field">
+              <Localized id="eod-close-counted-label">
+                <label htmlFor="eod-closing-balance" className="eod-close-shift-label">
+                  Counted cash in drawer
+                </label>
+              </Localized>
+              <Localized id="eod-close-counted-placeholder" attrs={{ placeholder: true }}>
+                <input
+                  id="eod-closing-balance"
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="eod-close-shift-input"
+                  placeholder={minorUnitExponent(currency) > 0 ? 'e.g. 150.00' : 'e.g. 150000'}
+                  value={closingBalance}
+                  onChange={(e) => setClosingBalance(e.target.value)}
+                  disabled={closingShift}
+                />
+              </Localized>
+            </div>
+
+            <div className="eod-close-shift-field">
+              <Localized id="eod-close-notes-label">
+                <label htmlFor="eod-shift-notes" className="eod-close-shift-label">
+                  Notes (optional)
+                </label>
+              </Localized>
+              <Localized id="eod-close-notes-placeholder" attrs={{ placeholder: true }}>
+                <textarea
+                  id="eod-shift-notes"
+                  rows={3}
+                  className="eod-close-shift-textarea"
+                  placeholder="Any notes about this shift…"
+                  value={shiftNotes}
+                  onChange={(e) => setShiftNotes(e.target.value)}
+                  disabled={closingShift}
+                />
+              </Localized>
+            </div>
+
+            <div className="eod-close-shift-footer">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowCloseModal(false);
+                  setCloseShiftError(null);
+                }}
+                disabled={closingShift}
+              >
+                <Localized id="cancel">Cancel</Localized>
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleConfirmCloseShift}
+                disabled={
+                  closingShift ||
+                  !closingBalance.trim() ||
+                  parseBalanceInput(closingBalance, currency) === null ||
+                  (parseBalanceInput(closingBalance, currency) ?? -1) < 0
+                }
+              >
+                <Localized id={closingShift ? 'eod-close-closing' : 'eod-close-confirm'}>
+                  <span>{closingShift ? 'Closing…' : 'Close Shift'}</span>
+                </Localized>
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

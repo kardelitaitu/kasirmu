@@ -16,6 +16,7 @@ const mockEodReport = vi.fn();
 const mockEodReportScoped = vi.fn();
 const mockListShifts = vi.fn();
 const mockPrintReceipt = vi.fn();
+const mockCloseShift = vi.fn();
 
 vi.mock('@/api/sales', () => ({
   exportEodReport: (...args: unknown[]) => mockEodReport(...args),
@@ -28,6 +29,7 @@ vi.mock('@/api/sales', () => ({
 vi.mock('@/api/shifts', () => ({
   listShifts: (...args: unknown[]) => mockListShifts(...args),
   listShiftsScoped: (...args: unknown[]) => mockListShifts(...args),
+  closeShiftScoped: (...args: unknown[]) => mockCloseShift(...args),
 }));
 
 vi.mock('@/api/hardware', () => ({
@@ -127,6 +129,8 @@ describe('EodReportScreen', () => {
     mockEodReportScoped.mockReset();
     mockListShifts.mockReset();
     mockPrintReceipt.mockReset();
+    mockCloseShift.mockReset();
+    mockCloseShift.mockResolvedValue(makeShift());
     mockDownloadCsv.mockReset();
     // Pinned in beforeEach, not at module scope: mockReset() above would clear
     // a module-scope implementation and leave the fetch returning undefined,
@@ -320,6 +324,103 @@ describe('EodReportScreen', () => {
     await waitFor(() => {
       expect(mockPrintReceipt).toHaveBeenCalled();
     }, { timeout: 2000 });
+
+    expect(await screen.findByText('EOD report sent to printer')).toBeInTheDocument();
+  });
+
+  // ── Shift close functionality from EOD screen ──
+  it('opens shift close modal and calls closeShiftScoped upon confirmation', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([
+      makeShift({
+        id: 'shift-active-1',
+        status: 'open',
+        closedAt: null,
+        closingBalanceMinor: null,
+        openedAt: `${today}T08:00:00.000Z`,
+        openingBalanceMinor: 100000,
+      }),
+    ]);
+    mockCloseShift.mockResolvedValue(
+      makeShift({
+        id: 'shift-active-1',
+        status: 'closed',
+        closedAt: `${today}T18:00:00.000Z`,
+      }),
+    );
+
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-close-shift-btn')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('eod-close-shift-btn'));
+
+    // Modal is open
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Close Active Shift')).toBeInTheDocument();
+
+    // Type counted cash
+    const input = screen.getByLabelText('Counted cash in drawer');
+    await user.type(input, '150000');
+
+    // Type notes
+    const notes = screen.getByLabelText('Notes (optional)');
+    await user.type(notes, 'Reconciled smoothly');
+
+    // Click confirm Close Shift inside modal
+    const confirmButtons = screen.getAllByRole('button', { name: /Close Shift/i });
+    const confirmBtn = confirmButtons[confirmButtons.length - 1]!;
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockCloseShift).toHaveBeenCalledWith(
+        expect.any(String),
+        'shift-active-1',
+        150000,
+        'Reconciled smoothly',
+      );
+    });
+
+    expect(await screen.findByText('Shift closed successfully')).toBeInTheDocument();
+  });
+
+  it('allows cancelling shift close without calling closeShiftScoped', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([
+      makeShift({
+        id: 'shift-active-2',
+        status: 'open',
+        closedAt: null,
+        closingBalanceMinor: null,
+        openedAt: `${today}T08:00:00.000Z`,
+        openingBalanceMinor: 100000,
+      }),
+    ]);
+
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-close-shift-btn')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('eod-close-shift-btn'));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    // Click Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    expect(mockCloseShift).not.toHaveBeenCalled();
   });
 
   // ── CSV Export functionality ──
