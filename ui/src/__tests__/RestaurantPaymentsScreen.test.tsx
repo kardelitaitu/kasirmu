@@ -989,7 +989,18 @@ describe('RestaurantPaymentsScreen — P6 i18n sweep (no hardcoded English)', ()
       .filter(({ line }) =>
         /aria-label="[A-Z]/.test(line) ||
         /<span className="resto-compact-(label|block-title)">[A-Z]/.test(line) ||
-        /placeholder="(Cash|e\.g\.)/.test(line));
+        /placeholder="(Cash|e\.g\.)/.test(line) ||
+        // The card copy swept in the sibling round: the five PaymentMethodCard
+        // descriptions/badges, the option labels on every SettingsSelect, and
+        // the EDC "None" row were literals until then.
+        /(description|badge)="[A-Z]/.test(line) ||
+        // A SettingsSelect option label, but NOT a `DraftRail` seed row: the two
+        // seed rows (midtrans/stripe) carry a persisted `rail_code` and their
+        // label is STORED, so localizing it would write a locale-dependent value
+        // into the merchant's database. Display copy is what this guard owns.
+        (/label: '[A-Z]/.test(line) && !/rail_code:/.test(line)) ||
+        /^\s*(Currency|Verify Keys)$/.test(line) ||
+        /(title|message): '[A-Z]/.test(line));
     expect(
       offenders.map((o) => `${o.n}: ${o.line.trim().slice(0, 70)}`),
       'these lines hardcode user-visible English again — route them through l10n.getString',

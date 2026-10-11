@@ -690,7 +690,7 @@ export function RestaurantPaymentsScreen({
     const label = newRailLabel.trim() || sanitized.toUpperCase();
     if (drafts.some((d) => d.rail_code.toLowerCase() === sanitized)) {
       addToast({
-        message: 'A payment method with this code already exists',
+        message: l10n.getString('restaurant-payment-duplicate-code'),
         type: 'warning',
       });
       return;
@@ -1036,8 +1036,8 @@ export function RestaurantPaymentsScreen({
               id="cash"
               code="cash"
               title={cashDraft?.label || 'Cash'}
-              description="Accept physical cash currency with automatic change calculation and drawer kick"
-              badge="Core Method"
+              description={l10n.getString('restaurant-payment-cash-desc')}
+              badge={l10n.getString('restaurant-payment-badge-core')}
               badgeVariant="primary"
               icon={<CashIcon />}
               enabled={cashDraft ? cashDraft.is_enabled : cashLocalEnabled}
@@ -1125,8 +1125,8 @@ export function RestaurantPaymentsScreen({
               id="qris"
               code="qris"
               title={qrisDraft?.label || 'QRIS'}
-              description="Universal Indonesian QR payment standard (BCA, GoPay, OVO, Dana, ShopeePay, Mobile Banking)"
-              badge="National QR"
+              description={l10n.getString('restaurant-payment-qris-desc')}
+              badge={l10n.getString('restaurant-payment-badge-national-qr')}
               badgeVariant="success"
               icon={<QrisIcon />}
               enabled={qrisDraft ? qrisDraft.is_enabled : qrisLocalEnabled}
@@ -1235,8 +1235,8 @@ export function RestaurantPaymentsScreen({
               id="card"
               code="card"
               title={cardDraft?.label || 'Card / EDC Terminal'}
-              description="Physical card payment terminal for Debit and Credit transactions (Visa, Mastercard, GPN)"
-              badge="Hardware Terminal"
+              description={l10n.getString('restaurant-payment-card-desc')}
+              badge={l10n.getString('restaurant-payment-badge-hardware')}
               badgeVariant="primary"
               icon={<EdcIcon />}
               enabled={cardDraft ? cardDraft.is_enabled : cardLocalEnabled}
@@ -1259,7 +1259,7 @@ export function RestaurantPaymentsScreen({
                         updateRailParams('card', { defaultTerminalId: v });
                       }}
                       options={[
-                        { value: '', label: 'None (Manual Card Entry)' },
+                        { value: '', label: l10n.getString('restaurant-payment-edc-none') },
                         ...edcTerminals.map((t) => ({
                           value: t.id,
                           label: `${t.name} (${t.transport} - ${t.address})`,
@@ -1289,8 +1289,8 @@ export function RestaurantPaymentsScreen({
               id="midtrans"
               code="midtrans"
               title={midtransDraft?.label || 'Midtrans Gateway'}
-              description="Automated Indonesian payment gateway for QRIS, Virtual Accounts, and E-Wallets with instant webhook verification"
-              badge="Cloud Gateway"
+              description={l10n.getString('restaurant-payment-midtrans-desc')}
+              badge={l10n.getString('restaurant-payment-badge-cloud')}
               badgeVariant="warning"
               icon={<MidtransIcon />}
               enabled={midtransDraft ? midtransDraft.is_enabled : midtransLocalEnabled}
@@ -1395,12 +1395,12 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-payment-channels')}</span>
                   <div className="resto-compact-chips">
                     {[
-                      { key: 'gopay', label: 'GoPay / QRIS' },
-                      { key: 'shopeepay', label: 'ShopeePay' },
-                      { key: 'bca_va', label: 'BCA VA' },
-                      { key: 'mandiri_va', label: 'Mandiri' },
-                      { key: 'bni_va', label: 'BNI VA' },
-                      { key: 'bri_va', label: 'BRI VA' },
+                      { key: 'gopay', label: l10n.getString('restaurant-payment-midtrans-channel-gopay') },
+                      { key: 'shopeepay', label: l10n.getString('restaurant-payment-midtrans-channel-shopeepay') },
+                      { key: 'bca_va', label: l10n.getString('restaurant-payment-midtrans-channel-bca') },
+                      { key: 'mandiri_va', label: l10n.getString('restaurant-payment-midtrans-channel-mandiri') },
+                      { key: 'bni_va', label: l10n.getString('restaurant-payment-midtrans-channel-bni') },
+                      { key: 'bri_va', label: l10n.getString('restaurant-payment-midtrans-channel-bri') },
                     ].map((ch) => {
                       const active = Boolean(midtransChannels[ch.key]);
                       return (
@@ -1454,8 +1454,8 @@ export function RestaurantPaymentsScreen({
               id="stripe"
               code="stripe"
               title={stripeDraft?.label || 'Stripe Processing'}
-              description="International credit and debit card processing with support for Stripe Terminal smart card readers"
-              badge="Global Provider"
+              description={l10n.getString('restaurant-payment-stripe-desc')}
+              badge={l10n.getString('restaurant-payment-badge-global')}
               badgeVariant="default"
               icon={<StripeIcon />}
               enabled={stripeDraft ? stripeDraft.is_enabled : stripeLocalEnabled}
@@ -1549,9 +1549,9 @@ export function RestaurantPaymentsScreen({
                         updateRailParams('stripe', { reader: v });
                       }}
                       options={[
-                        { value: 'wisepos_e', label: 'BBPOS WisePOS E (Wi-Fi)' },
-                        { value: 'reader_s700', label: 'Stripe Reader S700' },
-                        { value: 'tap_to_pay', label: 'Tap to Pay (NFC)' },
+                        { value: 'wisepos_e', label: l10n.getString('restaurant-payment-reader-wisepos') },
+                        { value: 'reader_s700', label: l10n.getString('restaurant-payment-reader-s700') },
+                        { value: 'tap_to_pay', label: l10n.getString('restaurant-payment-reader-tap-to-pay') },
                       ]}
                     />
                   </div>
@@ -1559,7 +1559,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-currency" className="resto-compact-label">
-                    Currency
+                    {l10n.getString('restaurant-payment-currency-label')}
                   </label>
                   <div className="resto-compact-control">
                     <SettingsSelect
@@ -1571,10 +1571,10 @@ export function RestaurantPaymentsScreen({
                         updateRailParams('stripe', { currency: v });
                       }}
                       options={[
-                        { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
-                        { value: 'USD', label: 'USD - US Dollar' },
-                        { value: 'SGD', label: 'SGD - Singapore Dollar' },
-                        { value: 'EUR', label: 'EUR - Euro' },
+                        { value: 'IDR', label: l10n.getString('restaurant-payment-currency-idr') },
+                        { value: 'USD', label: l10n.getString('restaurant-payment-currency-usd') },
+                        { value: 'SGD', label: l10n.getString('restaurant-payment-currency-sgd') },
+                        { value: 'EUR', label: l10n.getString('restaurant-payment-currency-eur') },
                       ]}
                     />
                   </div>
@@ -1590,14 +1590,14 @@ export function RestaurantPaymentsScreen({
                         const isConfigured = Boolean(stripePublishableKey && stripeSecretKey);
                         addToast({
                           message: isConfigured
-                            ? `Stripe keys format valid (${stripeMode.toUpperCase()})`
-                            : 'Please enter Publishable Key and Secret Key',
+                            ? l10n.getString('restaurant-payment-stripe-keys-valid', { mode: stripeMode.toUpperCase() })
+                            : l10n.getString('restaurant-payment-stripe-keys-missing'),
                           type: isConfigured ? 'success' : 'warning',
                         });
                       }}
                       data-testid="stripe-verify-keys-btn"
                     >
-                      Verify Keys
+                      {l10n.getString('restaurant-payment-verify-keys')}
                     </button>
                   </div>
                 </div>
@@ -1614,8 +1614,8 @@ export function RestaurantPaymentsScreen({
                   id={rail.rail_code}
                   code={rail.rail_code}
                   title={rail.label}
-                  description={`Configured payment option for ${rail.label}`}
-                  badge={isCore ? 'Core Method' : 'Custom Method'}
+                  description={l10n.getString('restaurant-payment-configured-desc', { name: rail.label })}
+                  badge={isCore ? l10n.getString('restaurant-payment-badge-core') : l10n.getString('restaurant-payment-badge-custom')}
                   badgeVariant={isCore ? 'default' : 'warning'}
                   icon={<GenericRailIcon />}
                   enabled={rail.is_enabled}
