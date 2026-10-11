@@ -627,6 +627,10 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         statutoryNumber: detail.statutoryNumber ?? null,
         isInvoice: Boolean(detail.statutoryNumber),
       });
+      addToast({
+        message: l10n.getString('sales-history-reprint-success') || 'Receipt reprinted successfully',
+        type: 'success',
+      });
     } catch (printErr) {
       // Was `catch { /* Ignore print errors. */ }` — the quietest failure on this
       // screen: the reprint button stopped doing anything and said nothing. On the
@@ -660,6 +664,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     setShowStampModal(false);
     setStampError(null);
   }, []);
+
+  const stampExit = useExitAnimation(showStampModal, handleCloseStamp);
 
   const handleConfirmStamp = useCallback(async () => {
     if (!detail || !sessionToken) return;
@@ -907,8 +913,10 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   // ── Focus trap refs ───────────────────────────────
   const voidPanelRef = useRef<HTMLDivElement>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
+  const stampPanelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(voidPanelRef, voidExit.shouldRender && !voidExit.exiting, voidExit.requestClose);
   useFocusTrap(detailPanelRef, detailExit.shouldRender && !detailExit.exiting, detailExit.requestClose);
+  useFocusTrap(stampPanelRef, stampExit.shouldRender && !stampExit.exiting, stampExit.requestClose);
 
   return (
     <div className="sales-history" {...pullRefreshProps}>
@@ -1199,20 +1207,20 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
           <div className="sales-history-filters">
             <div>
               <Skeleton width="3rem" height="0.75rem" />
-              <Skeleton variant="block" width="12.5rem" height="2.125rem" style={{ borderRadius: 'var(--radius-md)' }} />
+              <Skeleton variant="block" width="12.5rem" height="2.125rem" className="sales-history-skeleton-round" />
             </div>
             <div>
               <Skeleton width="3rem" height="0.75rem" />
-              <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+              <div className="sales-history-skeleton-chips">
                 {[0, 1, 2, 3].map((i) => (
-                  <Skeleton key={i} variant="block" width="4rem" height="1.75rem" style={{ borderRadius: 'var(--radius-full)' }} />
+                  <Skeleton key={i} variant="block" width="4rem" height="1.75rem" className="sales-history-skeleton-pill" />
                 ))}
               </div>
             </div>
             {[0, 1, 2].map((g) => (
               <div key={g}>
                 <Skeleton width="2.5rem" height="0.75rem" />
-                <Skeleton variant="block" width="7rem" height="2.125rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                <Skeleton variant="block" width="7rem" height="2.125rem" className="sales-history-skeleton-round" />
               </div>
             ))}
           </div>
@@ -1231,11 +1239,11 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                     <td><Skeleton width="7rem" height="0.875rem" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
                     <td><Skeleton width="2rem" height="0.875rem" /></td>
-                    <td><Skeleton variant="block" width="4.5rem" height="1.125rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
+                    <td><Skeleton variant="block" width="4.5rem" height="1.125rem" className="sales-history-skeleton-pill" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
                     <td><Skeleton width="5rem" height="0.875rem" /></td>
                     <td className="sales-history-cell-actions">
-                      <Skeleton variant="block" width="3rem" height="1.375rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                      <Skeleton variant="block" width="3rem" height="1.375rem" className="sales-history-skeleton-round" />
                     </td>
                   </tr>
                 ))}
@@ -1512,15 +1520,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       )}
 
       {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
-      {showStampModal && (
-        <div className="sales-history-overlay" role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
-          <div className="sales-history-modal sales-history-stamp-modal">
+      {stampExit.shouldRender && (
+        <div className={`sales-history-overlay${stampExit.exiting ? ' sales-history-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
+          <div ref={stampPanelRef} className={`sales-history-modal sales-history-stamp-modal${stampExit.exiting ? ' sales-history-modal--exiting' : ''}`}>
             <div className="sales-history-modal-header">
               <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
               <button
                 type="button"
                 className="sales-history-modal-close"
-                onClick={handleCloseStamp}
+                onClick={stampExit.requestClose}
                 aria-label="Close"
               >
                 &times;
@@ -1579,7 +1587,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               )}
 
               <div className="sales-history-modal-actions">
-                <Button variant="ghost" onClick={handleCloseStamp} disabled={stamping}>
+                <Button variant="ghost" onClick={stampExit.requestClose} disabled={stamping}>
                   Cancel
                 </Button>
                 <Button
@@ -1621,9 +1629,9 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               <div className="sales-history-detail-skeleton" aria-hidden="true">
                 <div className="sales-history-detail-meta">
                   {Array.from({ length: 6 }, (_, i) => (
-                    <div key={i}>
+                    <div key={i} className="sales-history-detail-skeleton-item">
                       <Skeleton width="3rem" height="0.75rem" />
-                      <Skeleton width="70%" height="0.875rem" style={{ marginTop: '0.25rem' }} />
+                      <Skeleton width="70%" height="0.875rem" className="sales-history-detail-skeleton-val" />
                     </div>
                   ))}
                 </div>
@@ -1701,20 +1709,44 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   {(() => {
                     const subtotalMinor = detail.subtotal?.minor_units ?? detail.total.minor_units;
                     const taxMinor = detail.taxTotal?.minor_units ?? 0;
+                    const serviceChargeMinor = detail.serviceChargeMinor ?? 0;
+                    const tipMinor = detail.tipMinor ?? 0;
                     const totalMinor = detail.total.minor_units;
-                    const calculatedDiscountMinor = Math.max(0, subtotalMinor + taxMinor - totalMinor);
+                    const calculatedDiscountMinor = Math.max(0, subtotalMinor + taxMinor + serviceChargeMinor + tipMinor - totalMinor);
                     if (calculatedDiscountMinor > 0) {
                       return (
                         <div className="sales-history-detail-discount">
                           <Localized id="sales-history-detail-discount">
                             <strong><span>Discount:</span></strong>
                           </Localized>
-                          {' '}-{formatMoney({ minor_units: calculatedDiscountMinor, currency: detail.total.currency })}
+                          {' '}
+                          {detail.discountLabel ? (
+                            <span className="sales-history-detail-discount-label">({detail.discountLabel}) </span>
+                          ) : detail.discountPercent ? (
+                            <span className="sales-history-detail-discount-label">({detail.discountPercent}%) </span>
+                          ) : null}
+                          -{formatMoney({ minor_units: calculatedDiscountMinor, currency: detail.total.currency })}
                         </div>
                       );
                     }
                     return null;
                   })()}
+                  {(detail.serviceChargeMinor ?? 0) > 0 && (
+                    <div className="sales-history-detail-service-charge">
+                      <Localized id="sales-history-detail-service-charge">
+                        <strong><span>Service Charge:</span></strong>
+                      </Localized>
+                      {' '}+{formatMoney({ minor_units: detail.serviceChargeMinor!, currency: detail.total.currency })}
+                    </div>
+                  )}
+                  {(detail.tipMinor ?? 0) > 0 && (
+                    <div className="sales-history-detail-tip">
+                      <Localized id="sales-history-detail-tip">
+                        <strong><span>Tip:</span></strong>
+                      </Localized>
+                      {' '}+{formatMoney({ minor_units: detail.tipMinor!, currency: detail.total.currency })}
+                    </div>
+                  )}
                   {(detail.taxTotal?.minor_units ?? 0) > 0 && (
                     <div>
                       <Localized id="sales-history-detail-tax">
@@ -1790,7 +1822,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                       )}
                     </div>
                     {session && canCreatePengganti && (
-                      <div>
+                      <div className="sales-history-efaktur-actions">
                         {detail.fakturPajak ? (
                           <Button
                             variant="secondary"
@@ -1831,14 +1863,16 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                       )}
                     </div>
                     {session && detail.status === 'Completed' && !detail.statutoryNumber && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleIssueTaxInvoice}
-                        loading={issuingInvoice}
-                      >
-                        Issue Tax Invoice
-                      </Button>
+                      <div className="sales-history-statutory-invoice-actions">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleIssueTaxInvoice}
+                          loading={issuingInvoice}
+                        >
+                          Issue Tax Invoice
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>

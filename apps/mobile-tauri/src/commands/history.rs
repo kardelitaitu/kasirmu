@@ -130,6 +130,10 @@ pub async fn get_sale(
         tax_estimate_note,
         faktur_pajak,
         statutory_number,
+        discount_percent: s.discount_percent,
+        discount_label: s.discount_label,
+        tip_minor: s.tip_minor,
+        service_charge_minor: s.service_charge_minor,
     }))
 }
 

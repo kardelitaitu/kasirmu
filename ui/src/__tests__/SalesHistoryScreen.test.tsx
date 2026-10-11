@@ -1089,4 +1089,65 @@ describe('SalesHistoryScreen', () => {
     expect(screen.getByText('sale-003…')).toBeInTheDocument();
     expect(screen.queryByTestId('sales-history-clear-filters-btn')).not.toBeInTheDocument();
   });
+
+  it('opens sale detail when the entire table row is clicked', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    // Click the receipt cell itself rather than the View button
+    const receiptCell = screen.getByText('sale-001…');
+    await user.click(receiptCell);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    expect(mockGetSaleScoped).toHaveBeenCalledWith('session-1', sampleSales[0]!.id);
+  });
+
+  it('renders complete financial breakdown in detail dialog including discount, service charge, and tip', async () => {
+    const breakdownDetail = {
+      ...sampleDetail,
+      subtotal: { minor_units: 100000, currency: 'IDR' },
+      total: { minor_units: 115000, currency: 'IDR' },
+      taxTotal: { minor_units: 10000, currency: 'IDR' },
+      discountLabel: 'VIP Promo',
+      discountPercent: 10,
+      serviceChargeMinor: 10000,
+      tipMinor: 5000,
+      tenderedMinor: 120000,
+    };
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(breakdownDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    const receiptCell = screen.getByText('sale-001…');
+    await user.click(receiptCell);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/subtotal/i)).toBeInTheDocument();
+    expect(screen.getByText(/discount/i)).toBeInTheDocument();
+    expect(screen.getByText('(VIP Promo)')).toBeInTheDocument();
+    expect(screen.getByText(/service charge/i)).toBeInTheDocument();
+    expect(screen.getByText(/tip/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/tax/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/total/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/tendered/i)).toBeInTheDocument();
+    expect(screen.getByText(/change/i)).toBeInTheDocument();
+  });
 });

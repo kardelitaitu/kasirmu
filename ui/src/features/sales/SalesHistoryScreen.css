@@ -417,6 +417,28 @@
   border-bottom: none;
 }
 
+.sales-history-skeleton-chips {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.sales-history-skeleton-round {
+  border-radius: var(--radius-md);
+}
+
+.sales-history-skeleton-pill {
+  border-radius: var(--radius-full);
+}
+
+.sales-history-detail-skeleton-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.sales-history-detail-skeleton-val {
+  margin-top: var(--space-1);
+}
+
 .sales-history-empty {
   text-align: center;
   padding: var(--space-12) var(--space-4);
@@ -738,6 +760,13 @@
   margin-top: var(--space-1);
 }
 
+.sales-history-efaktur-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .sales-history-modal-header {
   display: flex;
   align-items: center;
@@ -1007,6 +1036,10 @@
   background: var(--color-bg-hover);
 }
 
+.sales-history-row-wrap:active td {
+  background: var(--color-bg-hover);
+}
+
 .sales-history-row-wrap:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: -2px;
@@ -1268,6 +1301,13 @@
   margin-top: var(--space-1);
 }
 
+.sales-history-statutory-invoice-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 /* Badge spacing */
 .sales-history-badge-spacing {
   display: inline-block;
@@ -1275,6 +1315,19 @@
 }
 
 .sales-history-detail-discount {
+  color: var(--color-accent);
+}
+
+.sales-history-detail-discount-label {
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.sales-history-detail-service-charge {
+  color: var(--color-fg-primary);
+}
+
+.sales-history-detail-tip {
   color: var(--color-accent);
 }
 
@@ -1339,6 +1392,11 @@
   .sales-history-chip,
   .sales-history-modal-close {
     min-height: var(--touch-target-min);
+  }
+
+  .sales-history-table td {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
   }
 }
 

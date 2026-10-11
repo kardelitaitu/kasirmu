@@ -565,6 +565,14 @@ export interface SaleDetail {
   tenderRateMillionths?: number | null;
   /** Statutory document number (e.g. Tax Invoice number) stamped on the sale. */
   statutoryNumber?: string | null;
+  /** Discount percentage applied (0-100). */
+  discountPercent?: number;
+  /** Human-readable discount label (e.g. "Senior 10%"). */
+  discountLabel?: string | null;
+  /** Tip amount in minor units collected at checkout (default 0). */
+  tipMinor?: number;
+  /** Service-charge amount in minor units collected at checkout (default 0). */
+  serviceChargeMinor?: number;
 }
 
 /**
