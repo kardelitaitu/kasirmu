@@ -5,6 +5,11 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
+import salesIdFtl from '@/locales/sales.id.ftl?raw';
+import tablesIdFtl from '@/locales/tables.id.ftl?raw';
+import kdsIdFtl from '@/locales/kds.id.ftl?raw';
+import settingsIdFtl from '@/locales/settings.id.ftl?raw';
+import { withFluentLocale } from '@/i18n/test-utils';
 import {
   CartPanel,
   type CartPanelProps,
@@ -115,6 +120,22 @@ function renderPanel(overrides: Partial<CartPanelProps> = {}) {
     withFluent(<CartPanel {...props} />, salesFtl, tablesFtl, kdsFtl, settingsFtl),
   );
   return { ...result, props, panel: screen.getByRole('region', { name: 'Cart' }) };
+}
+
+/**
+ * Render the panel under INDONESIAN.
+ *
+ * Needed because the English bundle resolves the order-type keys to the same
+ * words the source used to hardcode ("Dine In"), so an English assertion cannot
+ * tell a localized label from a literal. Indonesian differs, so a regression
+ * fails here. Same technique as the receipt-logo sentinel case.
+ */
+function renderPanelId(overrides: Partial<CartPanelProps> = {}) {
+  const props = makeCartPanelProps(overrides);
+  const result = render(
+    withFluentLocale('id', <CartPanel {...props} />, salesIdFtl, tablesIdFtl, kdsIdFtl, settingsIdFtl),
+  );
+  return { ...result, props };
 }
 
 describe('CartPanel (smoke)', () => {
@@ -411,5 +432,40 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     asManager.unmount();
     renderPanel({ lines: [makeLine('Kopi')], isManager: false });
     expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
+  });
+
+  // ── Order-type labels come from the bundle, not literals (F10) ──────
+  //
+  // The three labels were hardcoded in the ORDER_TYPES array, so the restaurant
+  // POS — which renders this shared panel — showed "Dine In / Takeaway /
+  // Delivery" in every locale. The Indonesian render is the discriminating one:
+  // English resolves the keys to the same words, so only a non-English bundle
+  // can tell a localized label from a literal.
+  it('renders the order-type labels from the bundle under a NON-English locale (F10)', () => {
+    renderPanelId({ orderTypePromptEnabled: true, setOrderType: noop, orderType: 'dine_in' });
+
+    // Read the LABEL span, not the button: the button also carries its icon,
+    // which is decorative and locale-independent.
+    const ids = ['dine_in', 'takeaway', 'delivery'];
+    const labels = ids.map((id) => {
+      const btn = screen.getByTestId('pos-order-type-' + id);
+      return btn.querySelector('.pos-cart-order-type-label')?.textContent ?? '';
+    });
+    expect(labels).toEqual(['Makan di Tempat', 'Bawa Pulang', 'Antar']);
+    // And explicitly NOT the English literals that used to be hardcoded.
+    for (const english of ['Dine In', 'Takeaway', 'Delivery']) {
+      expect(screen.queryByText(english)).toBeNull();
+    }
+  });
+
+  it('renders the guest-count placeholder from the bundle, not a literal', () => {
+    // The placeholder was hardcoded 'Pax' while the aria-label already read the
+    // bundle's `pos-cart-guest-count-label` ("Guests") — two names for one field,
+    // and the visible one ignored the locale entirely.
+    renderPanelId({ ...withFields(), guestCountEnabled: true });
+
+    const guest = screen.getByTestId('pos-cart-guest-input') as HTMLInputElement;
+    expect(guest.placeholder).toBe('Tamu');
+    expect(guest.placeholder).not.toBe('Pax');
   });
 });

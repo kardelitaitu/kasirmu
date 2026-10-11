@@ -1080,5 +1080,9 @@ pos-cart-customer-aria = Nama pelanggan (opsional)
 pos-cart-new-tab = Tagihan Baru
 pos-cart-new-tab-title = Bersihkan keranjang untuk memulai tagihan baru
 pos-cart-guest-count-label = Tamu
+pos-cart-order-type-dine-in = Makan di Tempat
+pos-cart-order-type-takeaway = Bawa Pulang
+pos-cart-order-type-delivery = Antar
+pos-cart-guest-placeholder = Tamu
 edit-modifiers = Ubah
 

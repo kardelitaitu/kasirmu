@@ -21,10 +21,13 @@ import { CourseSelectorBar } from './CourseSelectorBar';
 import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
 
+// Each option carries its Fluent KEY rather than a label: the restaurant POS
+// renders these on the shared cart panel, so hardcoding them left the order-type
+// selector in English under every other locale. Resolved at render, below.
 const ORDER_TYPES = [
-  { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
-  { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
-  { id: 'delivery', label: 'Delivery', icon: '🛵' },
+  { id: 'dine_in', labelKey: 'pos-cart-order-type-dine-in', icon: '🍽️' },
+  { id: 'takeaway', labelKey: 'pos-cart-order-type-takeaway', icon: '🛍️' },
+  { id: 'delivery', labelKey: 'pos-cart-order-type-delivery', icon: '🛵' },
 ] as const;
 
 /**
@@ -721,7 +724,7 @@ export function CartPanel({
                     data-testid={`pos-order-type-${opt.id}`}
                   >
                     <span className="pos-cart-order-type-icon" aria-hidden="true">{opt.icon}</span>
-                    <span className="pos-cart-order-type-label">{opt.label}</span>
+                    <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
                   </button>
                 );
               })}
@@ -787,8 +790,8 @@ export function CartPanel({
                   className="pos-cart-customer-input"
                   value={guestCount ?? ''}
                   onChange={(e) => setGuestCount(e.target.value)}
-                  aria-label={l10n.getString('pos-cart-guest-count-label') || 'Pax'}
-                  placeholder="Pax"
+                  aria-label={l10n.getString('pos-cart-guest-count-label')}
+                  placeholder={l10n.getString('pos-cart-guest-placeholder')}
                   data-testid="pos-cart-guest-input"
                 />
               </div>
