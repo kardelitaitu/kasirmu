@@ -94,5 +94,28 @@ describe('RestaurantMenuEditorScreen a11y', () => {
     expect(container.querySelector('[data-testid="modifier-group-name-0"]')).toBeTruthy();
     expect(container.querySelector('[data-testid="modifier-option-name-0-0"]')).toBeTruthy();
   });
+
+  it('has no axe violations in the category modal (icon + colour pickers)', async () => {
+    // The two pickers are the last interactive block of this screen without
+    // coverage: an icon radiogroup and a row of colour swatches named only by
+    // their hex value. Whether the hex name is an acceptable accessible name is
+    // exactly the question axe answers here.
+    const { container } = renderWithProviders(<RestaurantMenuEditorScreen />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="restaurant-menu-editor-btn-add-cat"]')).toBeTruthy();
+    });
+
+    fireEvent.click(container.querySelector('[data-testid="restaurant-menu-editor-btn-add-cat"]')!);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="restaurant-menu-editor-cat-input-name"]')).toBeTruthy();
+    });
+
+    await checkA11y(container);
+
+    // Vacuity guard: the radiogroup, its options and the swatch row mounted.
+    expect(container.querySelector('.restaurant-menu-editor-icon-picker')).toBeTruthy();
+    expect(container.querySelectorAll('.restaurant-menu-editor-icon-btn').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.restaurant-menu-editor-color-swatch').length).toBeGreaterThan(0);
+  });
 });
 
