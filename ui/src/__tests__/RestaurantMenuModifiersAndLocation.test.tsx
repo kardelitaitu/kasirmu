@@ -260,7 +260,7 @@ describe('RestaurantMenu — Modifiers & Location-Aware 86 state', () => {
 
     const card = screen.getByText('Mineral Water').closest('.restaurant-card') as HTMLElement;
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark unavailable' }));
+    await userEvent.click(screen.getByText('Mark unavailable'));
 
     await waitFor(() => {
       expect(mockSetSettingScoped).toHaveBeenCalledWith(
@@ -290,7 +290,7 @@ describe('RestaurantMenu — Modifiers & Location-Aware 86 state', () => {
     // Now change `unavailable` the way a waiter would: 86 the mineral water.
     const card = screen.getByText('Mineral Water').closest('.restaurant-card') as HTMLElement;
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark unavailable' }));
+    await userEvent.click(screen.getByText('Mark unavailable'));
 
     await waitFor(() => {
       const disabled = screen.getByText('Mineral Water').closest('.restaurant-card');
