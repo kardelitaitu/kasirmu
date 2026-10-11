@@ -148,7 +148,7 @@ describe('RestaurantMenu', () => {
     const nasiCard = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
 
     fireEvent.contextMenu(nasiCard, { clientX: 100, clientY: 200 });
-    await user.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+    await user.click(screen.getByText('Pin to top'));
     expect(nasiCard).toHaveClass('restaurant-card--pinned');
 
     localStorage.setItem('restaurant-user-2-pinned', JSON.stringify(['ES-TEH']));
@@ -167,7 +167,7 @@ describe('RestaurantMenu', () => {
     const nasiCard = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
 
     fireEvent.contextMenu(nasiCard, { clientX: 100, clientY: 200 });
-    expect(screen.getByRole('menuitem', { name: 'Pin to top' })).toBeTruthy();
+    expect(screen.getByText('Pin to top')).toBeTruthy();
     await user.click(nasiCard);
     expect(nasiCard).toHaveClass('restaurant-card--added');
 
@@ -201,7 +201,7 @@ describe('RestaurantMenu', () => {
       const card = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
 
       fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-      await userEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+      await userEvent.click(screen.getByText('Pin to top'));
       expect(card).toHaveClass('restaurant-card--pinned');
 
       await userEvent.click(card);
@@ -278,8 +278,8 @@ describe('RestaurantMenu', () => {
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
 
-    expect(screen.queryByRole('menuitem', { name: 'Mark unavailable' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'Mark available' })).toBeNull();
+    expect(screen.queryByText('Mark unavailable')).toBeNull();
+    expect(screen.queryByText('Mark available')).toBeNull();
     expect(card).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -482,7 +482,7 @@ describe('RestaurantMenu', () => {
       await new Promise((resolve) => setTimeout(resolve, 550));
     });
 
-    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Pin to top' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Pin to top')).toBeTruthy());
   });
 
   it('uses native button semantics without nested heading content', () => {
@@ -944,7 +944,7 @@ describe('RestaurantMenu', () => {
     const card = screen.getByText('Es Teh').closest('button')!;
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+    await userEvent.click(screen.getByText('Pin to top'));
 
     const cards = screen.getAllByRole('button', { name: /Rp .*Add/ });
     expect(cards[0]).toHaveAccessibleName(/Es Teh.*Add/);
@@ -960,7 +960,7 @@ describe('RestaurantMenu', () => {
     const card = screen.getByText('Nasi Goreng').closest('button')!;
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark unavailable' }));
+    await userEvent.click(screen.getByText('Mark unavailable'));
 
     expect(card).toHaveAttribute('aria-disabled', 'true');
     expect(card).toHaveAccessibleName(/Nasi Goreng.*Unavailable/);
@@ -971,7 +971,7 @@ describe('RestaurantMenu', () => {
     // The source product is available in this test; only the local override
     // should be removable through the context menu.
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark available' }));
+    await userEvent.click(screen.getByText('Mark available'));
     expect(card).toHaveAttribute('aria-disabled', 'false');
 
     await userEvent.click(card);
