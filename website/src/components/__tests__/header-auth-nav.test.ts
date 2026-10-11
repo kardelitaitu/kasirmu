@@ -80,10 +80,19 @@ describe('Header source structure', () => {
     expect(NAV_SRC).toContain('data-locale');
   });
 
-  it('registers astro:page-load, astro:after-swap and storage listeners', () => {
-    expect(NAV_SRC).toContain('astro:page-load');
+  it('registers astro:after-swap and storage listeners', () => {
     expect(NAV_SRC).toContain('astro:after-swap');
     expect(NAV_SRC).toContain("window.addEventListener('storage'");
+  });
+
+  it('does NOT listen on astro:page-load — it would double every probe', () => {
+    // initHeaderNav()'s own call covers the first view and astro:after-swap
+    // covers every navigation, so a page-load listener is a second
+    // updateAuthNav() for the same view. Measured 2026-10-12: 2 probes on
+    // first load and 1-or-2 per navigation with it, a deterministic 1 without.
+    // Asserted against the registration, not the bare string: the docstring
+    // above names the event to explain why it is absent.
+    expect(NAV_SRC).not.toContain("addEventListener('astro:page-load'");
   });
 
   it('resolves session state through the shared cookie-first helper', () => {
@@ -356,6 +365,25 @@ describe('Header auth nav — pre-paint swap', () => {
     await flush();
     expect(fresh.textContent).toBe('Sign in');
     expect(fresh.getAttribute('href')).toBe('/en/login');
+  });
+
+  it('probes exactly once per swap, and not at all on astro:page-load', async () => {
+    const probe = vi.mocked(fetch);
+    initHeaderNav();
+    await flush();
+    probe.mockClear();
+
+    document.dispatchEvent(new Event('astro:page-load'));
+    await flush();
+    // No listener: a page-load handler here would be a second probe for a
+    // view that already resolved.
+    expect(probe).not.toHaveBeenCalled();
+
+    document.dispatchEvent(new Event('astro:after-swap'));
+    await flush();
+    // Concurrent handlers collapse through the dedupe in session.ts, so the
+    // swap costs one request however many listeners exist.
+    expect(probe.mock.calls.length).toBe(1);
   });
 });
 

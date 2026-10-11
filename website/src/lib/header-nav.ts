@@ -240,18 +240,23 @@ export function initMobileMenuDismissal(): void {
 }
 
 /**
- * Wire the header once per page: initial resolve, SPA swap/page-load re-resolve,
+ * Wire the header once per page: initial resolve, re-resolve on every SPA swap,
  * cross-tab storage sync, close the mobile menu when a link inside it is
  * clicked, and (re)bind the Solutions disclosure for the swapped-in header.
+ *
+ * There is deliberately NO `astro:page-load` listener. `initHeaderNav()` itself
+ * covers the first page view (the script runs at execution, so an initial-load
+ * listener is a second call for the same page), and `astro:after-swap` covers
+ * every navigation. Listening to both fired `updateAuthNav()` twice per view:
+ * measured 2026-10-12, a fast `/__oz/session` cost 2 probes on first load and
+ * 1-or-2 per navigation, because the dedupe in `session.ts` only collapses
+ * CONCURRENT probes. Dropping it makes the cost a deterministic 1 without
+ * introducing any staleness window, which a short-lived cache would have.
  */
 export function initHeaderNav(): void {
   void updateAuthNav();
   initSolutionsDisclosure();
   initMobileMenuDismissal();
-  document.addEventListener('astro:page-load', () => {
-    void updateAuthNav();
-    initSolutionsDisclosure();
-  });
   document.addEventListener('astro:after-swap', () => {
     // Order matters and must not change: paint the known answer first, in this
     // handler's own synchronous turn, then revalidate. Awaiting before the

@@ -90,6 +90,31 @@ const JSON_HEADERS = { 'Content-Type': 'application/json', 'Cache-Control': 'no-
 const COOKIE_NAME = 'kasirmu_session';
 const LEGACY_COOKIE_NAME = 'oz_session';
 
+/**
+ * JS-readable counterpart of the session cookie: a bare "is signed in" flag.
+ *
+ * The session cookie is httpOnly, so nothing on the page can read it — which
+ * is why the header ships the signed-out label and corrects itself a round
+ * trip later (measured 2026-10-11: ~150-200ms of "Masuk" on the first view of
+ * a session). This cookie carries no token, only the boolean, so an inline
+ * script can put the right label on screen before the first paint.
+ *
+ * It is a HINT, never an authority: anything that needs to be correct reads
+ * /__oz/session. If this flag and the real session ever disagree, the async
+ * revalidate in src/lib/header-nav.ts wins, so the worst case is the old
+ * behaviour. Spelled in worker.ts and in Header.astro's inline script;
+ * worker.test.ts pins the two together.
+ */
+const SIGNED_IN_COOKIE = 'oz_signed_in';
+
+/** Set-Cookie for the hint: `1` when signed in, an expiry when not. */
+function signedInHintHeader(domain: string, signedIn: boolean): string {
+  const value = signedIn ? '1' : '';
+  // Max-Age 0 expires it. Deliberately NOT HttpOnly — that is the whole point;
+  // SameSite=Lax and Secure still apply.
+  return `${SIGNED_IN_COOKIE}=${value}; Domain=${domain}; Path=/; Secure; SameSite=Lax; Max-Age=${signedIn ? 30 * 24 * 3600 : 0}`;
+}
+
 /** Subdomains that require authentication (admin-only). */
 const DASHBOARD_HOSTS = new Set(['admin.kasir.mu']);
 
@@ -879,16 +904,17 @@ export default {
         if (res.status === 200) {
           const body = await res.json() as { token?: string };
           if (body.token) {
-            return new Response(null, {
-              status: 302,
-              headers: {
-                Location: cleanUrl,
-                'Set-Cookie': setCookieHeader(body.token, 30 * 24 * 3600, hostname),
-                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                'Referrer-Policy': 'no-referrer',
-                'Pragma': 'no-cache',
-              },
+            const headers = new Headers({
+              Location: cleanUrl,
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+              'Referrer-Policy': 'no-referrer',
+              'Pragma': 'no-cache',
             });
+            headers.append('Set-Cookie', setCookieHeader(body.token, 30 * 24 * 3600, hostname));
+            // Same hint the /__oz/session route maintains, set here so the
+            // very first view after logging in already paints "Account".
+            headers.append('Set-Cookie', signedInHintHeader(hostname, true));
+            return new Response(null, { status: 302, headers });
           }
         }
       } catch {
@@ -909,25 +935,31 @@ export default {
       const sessionCookie = getCookieWithLegacy(request.headers, COOKIE_NAME, LEGACY_COOKIE_NAME);
       // 200 {token:null} when signed out — see the dashboard-host note above:
       // a 401 here would be a console error on every page of the site.
-      return new Response(JSON.stringify({ token: sessionCookie ?? null }), {
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-      });
+      //
+      // This is also where the signed-in HINT gets refreshed: every page view
+      // asks, so a session that already existed when this shipped picks the
+      // flag up on its next view without a re-login. Setting it on the static
+      // document response instead would put a Set-Cookie on cacheable HTML.
+      const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      headers.append('Set-Cookie', signedInHintHeader(hostname, Boolean(sessionCookie)));
+      return new Response(JSON.stringify({ token: sessionCookie ?? null }), { headers });
     }
 
     // /__oz/logout — clear the httpOnly cookie and redirect to login. The
     // cookie is HttpOnly so page JS cannot delete it; the Worker must
     // expire it here (Max-Age=0).
     if (url.pathname === LOGOUT_PATH) {
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: `https://${MARKETING_HOST}/en/login`,
-          'Set-Cookie': `${COOKIE_NAME}=; Domain=${hostname}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          'Referrer-Policy': 'no-referrer',
-          'Pragma': 'no-cache',
-        },
+      const headers = new Headers({
+        Location: `https://${MARKETING_HOST}/en/login`,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Referrer-Policy': 'no-referrer',
+        'Pragma': 'no-cache',
       });
+      headers.append('Set-Cookie', `${COOKIE_NAME}=; Domain=${hostname}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+      // The hint must go with it, or the next view would paint "Account"
+      // for a visitor who just signed out.
+      headers.append('Set-Cookie', signedInHintHeader(hostname, false));
+      return new Response(null, { status: 302, headers });
     }
 
     // Serve the runtime config. no-store: the value can change (a var edit)

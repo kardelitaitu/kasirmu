@@ -468,6 +468,33 @@ const login = getRelativeLocaleUrl(locale, 'login');
 </header>
 
 <!--
+  Pre-paint auth label. Mirrors applyAuthNav() in src/lib/header-nav.ts, which
+  cannot do this job: it is a bundled module script (deferred) and it awaits
+  /__oz/session, so the browser paints before either can run — the ~150-200ms
+  of "Masuk" measured on the first view of a session.
+
+  This is `is:inline` and sits directly after the header on purpose: it runs
+  the moment the parser has the header in the DOM, which is before the first
+  paint. It can only read the JS-readable hint cookie the Worker sets
+  (worker.ts, SIGNED_IN_COOKIE) — the session cookie is httpOnly by design.
+
+  It is a paint hint, not an authority: header-nav.ts revalidates on load and
+  on every swap and wins whenever the two disagree. The duplication is the
+  price of running before the bundle; worker.test.ts pins the cookie name on
+  both sides so they cannot drift.
+-->
+<script is:inline>
+  (() => {
+    if (!/(?:^|;\s*)oz_signed_in=1(?:\s*;|$)/.test(document.cookie || '')) return;
+    document.querySelectorAll('[data-auth-nav]').forEach(function (link) {
+      var loc = link.getAttribute('data-locale') || 'en';
+      link.setAttribute('href', '/' + loc + '/account');
+      link.textContent = link.getAttribute('data-account-text') || 'Account';
+    });
+  })();
+</script>
+
+<!--
   The auth-nav logic lives in src/lib/header-nav.ts and resolves session state
   cookie-first through src/lib/session.ts (the single owner). It is imported
   rather than inlined so a call site cannot read sessionStorage directly and
