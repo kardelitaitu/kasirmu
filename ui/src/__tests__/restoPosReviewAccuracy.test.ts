@@ -100,11 +100,23 @@ describe('the resto-pos review status block matches the tree (F30)', () => {
     // string-vs-structure flaw the round-71 kill-test caught one case over.
     expect(menu, 'the re-poll helper lost its declaration — F5 has regressed')
       .toMatch(/const refetchUnavailable = useCallback\(\(\) => \{/);
+    // Structural, not whitespace-exact. The previous assertion was
+    // /visibilityState === 'visible'\\)\\s*refetchUnavailable\\(\\)/ — written against
+    // the ONE-LINE form this handler had when it landed (a1c67b4b0). Commit
+    // c323bfd31 wrapped the body in braces to add the catalog reload(), and
+    // from then on the regex could never match: the guard was red on a correct
+    // tree, and its protection was gone. Read the branch, not its formatting —
+    // and assert BOTH calls, since the refocus reload is now part of the contract.
+    const visibleBranch = menu.match(/visibilityState === 'visible'\)[\s\S]{0,200}?\n\s*\}/);
     expect(
-      menu,
+      visibleBranch,
       'the visibility listener that makes this CROSS-TERMINAL is gone — the backend\n' +
         'read alone only syncs on mount, which is what F5 reported as the gap',
-    ).toMatch(/visibilityState === 'visible'\)\s*refetchUnavailable\(\)/);
+    ).not.toBeNull();
+    expect(
+      visibleBranch?.[0],
+      'the visible branch no longer re-polls the 86 list (F5) or reloads the catalog',
+    ).toMatch(/refetchUnavailable\(\)[\s\S]*reload\(\)/);
   });
 
   it('F2 claims CLOSED and the SHARED cart panel carries both props', () => {
