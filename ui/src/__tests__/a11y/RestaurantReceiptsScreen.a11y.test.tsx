@@ -110,5 +110,32 @@ describe('RestaurantReceiptsScreen a11y', () => {
     expect(container.querySelector('#resto-hw-printer-conn')).toBeTruthy();
     // And that the load-error branch did NOT take over.
     expect(container.querySelector('[data-testid="restaurant-receipts-load-error"]')).toBeNull();
+
+  });
+
+  it('names the logo URL field with an aria-label, not only a placeholder', async () => {
+    // The field mounts only once a logo exists, so the default render above
+    // never covers it. A placeholder is not an accessible name — it disappears
+    // on the first keystroke — which is exactly why this case sets one.
+    const { container } = renderWithProviders(<RestaurantReceiptsScreen />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="restaurant-receipts-save-btn"]')).toBeTruthy();
+    });
+
+    // The field is present in the default render (the logo card always shows
+    // it), so assert directly rather than behind an escape hatch — a conditional
+    // assertion here would pass on the very regression it exists for.
+    //
+    // Selected by the logo section, not by placeholder TEXT: this suite mounts
+    // the helper's minimal bundle, so an unlisted key renders as its own id and
+    // a text match would be brittle against the bundle rather than the contract.
+    const section = container.querySelector('.resto-logo-section');
+    expect(section, 'the logo section did not mount').toBeTruthy();
+    const field = section!.querySelector('input[type="text"]') as HTMLInputElement | null;
+    expect(field, 'the logo URL field did not mount').toBeTruthy();
+    expect(
+      field!.getAttribute('aria-label'),
+      'the logo URL field is named only by its placeholder again',
+    ).toBeTruthy();
   });
 });

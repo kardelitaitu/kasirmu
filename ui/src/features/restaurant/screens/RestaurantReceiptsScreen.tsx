@@ -2226,6 +2226,11 @@ export default function RestaurantReceiptsScreen({
                       <input
                         type="text"
                         className="resto-text-input"
+                        // A placeholder is not an accessible name — it vanishes
+                        // on the first keystroke, and a screen reader may not
+                        // announce it at all. The same bundle string serves as
+                        // the label.
+                        aria-label={l10n.getString('restaurant-logo-url-placeholder')}
                         placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
                         value={
                           businessLogo.startsWith('data:') && !businessLogo.startsWith('data:image/svg+xml;utf8,')
