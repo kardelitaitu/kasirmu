@@ -48,6 +48,23 @@ Credentials, from `.env` or the environment:
 
 ## Deploy
 
+**On Windows, prefer `deploy-website.bat`** (repo root) over calling the shell
+script directly:
+
+```
+deploy-website.bat --dry-run     # prove the toolchain, build and deploy nothing
+deploy-website.bat
+```
+
+`bash` in a Windows shell is usually **not** Git Bash — `C:\Windows\System32\bash.exe`
+(the WSL launcher) sits earlier on PATH, so `bash scripts/wrangler-deploy.sh`
+starts Ubuntu, whose `node` is apt's v18.19.1. The calling shell reports
+v22.23.2 and the build fails on `--experimental-strip-types`. The batch file
+pins a modern Node onto PATH (via `KASIRMU_NODEDIR`, `NVM_SYMLINK`, or
+`C:\nvm4w\nodejs`), gates on the 22.6 floor, and runs the script through Git
+Bash found by absolute path. On Linux/WSL and macOS just call the script
+directly:
+
 ```
 bash scripts/wrangler-deploy.sh --message "auth-nav: pre-paint signed-in hint" --tag v0.0.42
 ```
