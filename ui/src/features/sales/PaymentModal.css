@@ -495,6 +495,18 @@
   color: var(--color-accent-fg);
 }
 
+.payment-quick-btn--exact {
+  font-weight: var(--font-weight-bold);
+  border-width: 2px;
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.payment-quick-btn--exact:hover {
+  background: var(--color-accent-active);
+  color: var(--color-accent-fg);
+}
+
 .payment-quick-btn:focus-visible {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
@@ -522,6 +534,10 @@
   font-size: var(--text-xl);
   font-weight: var(--font-weight-bold);
   color: var(--color-fg);
+}
+
+.payment-change-amount--sufficient {
+  color: var(--color-success);
 }
 
 .payment-change-insufficient {
@@ -630,6 +646,7 @@
 .payment-split-method-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   flex: 1;
   min-width: 0;

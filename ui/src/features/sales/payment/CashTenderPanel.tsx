@@ -129,7 +129,7 @@ export default function CashTenderPanel({
         <Localized id="payment-tender-exact-aria" attrs={{ 'aria-label': true }}>
         <button
           type="button"
-          className="payment-quick-btn"
+          className="payment-quick-btn payment-quick-btn--exact"
           onClick={() => {
             // Exact tender: the total itself, rendered as the input's
             // decimal literal by integer digit placement, not float division.
@@ -149,10 +149,11 @@ export default function CashTenderPanel({
             <span className="payment-change-label">Change</span>
           </Localized>
           <span
-            className={`payment-change-amount ${!sufficient ? 'payment-change-insufficient' : ''}`}
+            className={`payment-change-amount ${!sufficient ? 'payment-change-insufficient' : 'payment-change-amount--sufficient'}`}
+            data-testid="payment-change-amount"
           >
             {sufficient && change
-              ? formatMoney(change)
+              ? formatMoney(change, locale)
               : l10n.getString('payment-insufficient')}
           </span>
         </div>

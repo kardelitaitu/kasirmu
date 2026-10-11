@@ -71,4 +71,30 @@ describe('CashTenderPanel quick-tender shortcuts', () => {
     const labels = presetLabels();
     expect(labels).toEqual([formatMoney(idr(10_000), 'id-ID'), formatMoney(idr(20_000), 'id-ID')]);
   });
+
+  it('renders Exact button with payment-quick-btn--exact class', () => {
+    renderPanel(idr(50_000));
+    const exactBtn = document.querySelector('.payment-quick-btn--exact');
+    expect(exactBtn).not.toBeNull();
+    expect(exactBtn?.textContent).toContain('Exact');
+  });
+
+  it('renders sufficient change with payment-change-amount--sufficient and locale formatting', () => {
+    renderWithFluentSync(
+      <CashTenderPanel
+        tendered="100000"
+        onTenderedChange={noop}
+        total={idr(75_000)}
+        sufficient={true}
+        change={idr(25_000)}
+        locale="id-ID"
+        tenderPresets={undefined}
+      />,
+      salesFtl,
+    );
+    const changeEl = document.querySelector('.payment-change-amount--sufficient');
+    expect(changeEl).not.toBeNull();
+    expect(changeEl?.textContent).toBe(formatMoney(idr(25_000), 'id-ID'));
+  });
 });
+
