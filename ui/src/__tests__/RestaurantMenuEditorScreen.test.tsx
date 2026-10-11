@@ -185,6 +185,23 @@ describe('RestaurantMenuEditorScreen', () => {
     });
   });
 
+  it('labels the add-category action so it reads as a create button', async () => {
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    // The control used to be a bare "+" glyph beside the "Categories" heading,
+    // which matched "Add item" only in intent, not in appearance. Pin the
+    // accessible name to the bundle string so a revert to an unlabelled glyph
+    // fails here rather than silently regressing the affordance.
+    const addCat = screen.getByTestId('restaurant-menu-editor-btn-add-cat');
+    const addItem = screen.getByTestId('restaurant-menu-editor-new-item');
+    expect(addCat).toHaveAccessibleName(l10nOf('restaurant-menu-editor-add-category'));
+    expect(addItem).toHaveAccessibleName('Add item');
+  });
+
   it('opens category modal to create a new category', async () => {
     const user = userEvent.setup();
     renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);

@@ -977,16 +977,17 @@ export default function RestaurantMenuEditorScreen({
               <Localized id="restaurant-menu-editor-categories">
                 <span>Categories</span>
               </Localized>
-              <button
-                type="button"
-                className="restaurant-menu-editor-btn-add-cat"
-                onClick={beginCreateCategory}
-                aria-label={l10n.getString('restaurant-menu-editor-create-category')}
-                data-testid="restaurant-menu-editor-btn-add-cat"
-              >
-                +
-              </button>
             </div>
+
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm restaurant-menu-editor-btn-add-cat"
+              onClick={beginCreateCategory}
+              data-testid="restaurant-menu-editor-btn-add-cat"
+            >
+              <span aria-hidden="true">+</span>{' '}
+              <Localized id="restaurant-menu-editor-add-category">Add</Localized>
+            </button>
 
             <ul className="restaurant-menu-editor-category-list">
               {/* All Items Option */}
@@ -1100,7 +1101,8 @@ export default function RestaurantMenuEditorScreen({
                       onClick={beginCreate}
                       data-testid="restaurant-menu-editor-new-item"
                     >
-                      + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
+                      <span aria-hidden="true">+</span>{' '}
+                      <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
                     </button>
                   )}
                 </div>
