@@ -182,8 +182,13 @@ export default function KioskScreen() {
 
       <div className="kiosk-grid" role="list" aria-label={l10n.getString('kiosk-section-products')}>
         {filtered.map((p) => (
+          // The grid is a role="list", so each card must be wrapped in a list
+          // item: the card root is a <button>, and role="listitem" is not
+          // allowed on a button. Third occurrence of this exact shape in the
+          // codebase (TableManagementScreen, MenuItemGrid) — the container
+          // otherwise advertises a list a screen reader reads as empty.
+          <div key={p.sku} role="listitem">
           <button type="button"
-            key={p.sku}
             className="kiosk-product-card"
             onClick={() => addToCart(p)}
             aria-label={l10n.getString('kiosk-product-label', { name: p.name, price: formatMoney({ minor_units: p.price.minor_units, currency }) })}
@@ -195,6 +200,7 @@ export default function KioskScreen() {
               <span className="kiosk-stock-badge"><Localized id="kiosk-stock-left" vars={{ count: p.stock_qty }}><span>{p.stock_qty} left</span></Localized></span>
             )}
           </button>
+          </div>
         ))}
       </div>
 
