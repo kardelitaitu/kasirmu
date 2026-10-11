@@ -9,12 +9,24 @@ import tablesFtl from '@/locales/tables.ftl?raw';
 import type { Table } from '@/api/tables';
 import type * as SalesApi from '@/api/sales';
 
-const { mockListTables, mockListSections, mockUpdateTableStatus, mockReleaseTable, mockListOpenBills } = vi.hoisted(() => ({
+const {
+  mockListTables,
+  mockListSections,
+  mockUpdateTableStatus,
+  mockReleaseTable,
+  mockListOpenBills,
+  mockCreateTable,
+  mockUpdateTable,
+  mockDeleteTable,
+} = vi.hoisted(() => ({
   mockListTables: vi.fn(),
   mockListSections: vi.fn(),
   mockUpdateTableStatus: vi.fn(),
   mockReleaseTable: vi.fn(),
   mockListOpenBills: vi.fn(),
+  mockCreateTable: vi.fn(),
+  mockUpdateTable: vi.fn(),
+  mockDeleteTable: vi.fn(),
 }));
 
 vi.mock('@/api/sales', async (importOriginal) => {
@@ -36,6 +48,12 @@ vi.mock('@/api/tables', () => ({
     mockUpdateTableStatus(_token, id, status),
   releaseTable: (userId: string, id: string) => mockReleaseTable(userId, id),
   releaseTableScoped: (_token: string, id: string) => mockReleaseTable(_token, id),
+  createTable: (_token: string, table: Table) => mockCreateTable(table),
+  createTableScoped: (_token: string, table: Table) => mockCreateTable(table),
+  updateTable: (_token: string, table: Table) => mockUpdateTable(table),
+  updateTableScoped: (_token: string, table: Table) => mockUpdateTable(table),
+  deleteTable: (_token: string, id: string) => mockDeleteTable(id),
+  deleteTableScoped: (_token: string, id: string) => mockDeleteTable(id),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -88,6 +106,9 @@ describe('TableManagementScreen', () => {
     mockUpdateTableStatus.mockReset();
     mockReleaseTable.mockReset();
     mockListOpenBills.mockReset();
+    mockCreateTable.mockReset();
+    mockUpdateTable.mockReset();
+    mockDeleteTable.mockReset();
     mockListTables.mockResolvedValue([]);
     mockListSections.mockResolvedValue([]);
     mockListOpenBills.mockResolvedValue([]);
@@ -97,6 +118,13 @@ describe('TableManagementScreen', () => {
     mockReleaseTable.mockImplementation((_token: string, id: string) =>
       Promise.resolve(makeTable({ id, status: 'cleaning' })),
     );
+    mockCreateTable.mockImplementation((table: Table) =>
+      Promise.resolve(makeTable({ ...table, id: 't-new' })),
+    );
+    mockUpdateTable.mockImplementation((table: Table) =>
+      Promise.resolve(table),
+    );
+    mockDeleteTable.mockResolvedValue(undefined);
   });
 
   it('renders the title', async () => {
@@ -517,5 +545,68 @@ describe('TableManagementScreen', () => {
 
     await userEvent.click(resumeBtn);
     expect(onSelectTable).toHaveBeenCalledWith('Table 2');
+  });
+
+  it('opens Add Table modal when + Add Table button is clicked and creates table', async () => {
+    mockListTables.mockResolvedValue([]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-add-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-add-table-btn'));
+    await waitFor(() => expect(screen.getByLabelText('Table Name')).toBeDefined());
+
+    await userEvent.type(screen.getByLabelText('Table Name'), 'Table 99');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Table' }));
+
+    await waitFor(() => expect(mockCreateTable).toHaveBeenCalled());
+    expect(mockCreateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Table 99',
+        capacity: 4,
+        shape: 'circle',
+      }),
+    );
+  });
+
+  it('opens Edit Table modal from detail panel and updates table', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1' })]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-edit-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-edit-table-btn'));
+    await waitFor(() => expect(screen.getByLabelText('Table Name')).toBeDefined());
+
+    const nameInput = screen.getByLabelText('Table Name');
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'Table 1 Edited');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Table' }));
+
+    await waitFor(() => expect(mockUpdateTable).toHaveBeenCalled());
+    expect(mockUpdateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't-1',
+        name: 'Table 1 Edited',
+      }),
+    );
+  });
+
+  it('deletes table after confirmation in detail panel', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'available' })]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-delete-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-delete-table-btn'));
+    await waitFor(() => expect(screen.getByText(/Are you sure you want to delete table/)).toBeDefined());
+
+    const deleteBtn = screen.getByRole('button', { name: 'Delete' });
+    await userEvent.click(deleteBtn);
+
+    await waitFor(() => expect(mockDeleteTable).toHaveBeenCalledWith('t-1'));
   });
 });

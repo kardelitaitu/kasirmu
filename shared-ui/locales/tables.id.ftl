@@ -18,9 +18,21 @@ tables-status-unknown = Status tidak dikenal
 tables-table-label = { $name }, { $status }
 tables-load-error = Gagal memuat denah.
 tables-empty = Belum ada meja yang dikonfigurasi.
-tables-empty-desc = Tambahkan meja dari layar pengaturan untuk membuat denah Anda.
+tables-empty-desc = Tambahkan meja untuk membuat denah Anda.
 tables-empty-filtered = Tidak ada meja di bagian ini.
 tables-assign-to-order = Pilih untuk Pesanan
 tables-resume-tab = Lanjutkan Tagihan / Pesanan
+tables-add-table = Tambah Meja
+tables-edit-table = Ubah Meja
+tables-delete-table = Hapus Meja
+tables-delete-confirm = Yakin ingin menghapus meja { $name }?
+tables-name-label = Nama Meja
+tables-capacity-input-label = Kapasitas (Kursi)
+tables-section-input-label = Bagian / Area
+tables-shape-label = Bentuk
+tables-shape-circle = Lingkaran
+tables-shape-square = Kotak
+tables-shape-rectangle = Persegi Panjang
+tables-save-table = Simpan Meja
 
 # ── Tax Configuration ──

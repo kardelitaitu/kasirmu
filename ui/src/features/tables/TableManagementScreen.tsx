@@ -12,11 +12,22 @@ import {
   listSectionsScoped,
   updateTableStatusScoped,
   releaseTableScoped,
+  createTableScoped,
+  updateTableScoped,
+  deleteTableScoped,
   type Table,
 } from '@/api/tables';
 import { listen } from '@/api/tauri';
 import { matchesTableBill } from '@/features/sales/utils/tableLabel';
 import './TableManagementScreen.css';
+
+export interface TableModalState {
+  id?: string;
+  name: string;
+  capacity: number;
+  section: string;
+  shape: string;
+}
 
 /** Vector Grid icon for empty floor plan state */
 function GridIcon() {
@@ -66,6 +77,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   // TBL-03: localized error surfaced inside the open detail panel.
   const [actionError, setActionError] = useState<string | null>(null);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [tableModal, setTableModal] = useState<TableModalState | null>(null);
+  const [tableModalSaving, setTableModalSaving] = useState(false);
+  const [tableModalError, setTableModalError] = useState<string | null>(null);
   // Request-generation guard (TBL-02): a stale response from an earlier
   // section/token/refresh can never overwrite a fresher result.
   const loadSeqRef = useRef(0);
@@ -183,6 +198,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     triggerRef.current = document.activeElement as HTMLElement | null;
     setActionError(null);
     setShowReleaseConfirm(false);
+    setShowDeleteConfirm(false);
     setSelected(t);
   }, []);
 
@@ -190,10 +206,110 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     setSelected(null);
     setActionError(null);
     setShowReleaseConfirm(false);
+    setShowDeleteConfirm(false);
     triggerRef.current?.focus();
   }, []);
 
   useFocusTrap(detailRef, selected !== null, closeDetail);
+
+  const openAddTableModal = useCallback(() => {
+    setTableModal({
+      name: '',
+      capacity: 4,
+      section: section || (sections[0] ?? 'Main'),
+      shape: 'circle',
+    });
+    setTableModalError(null);
+  }, [section, sections]);
+
+  const openEditTableModal = useCallback((t: Table) => {
+    setTableModal({
+      id: t.id,
+      name: t.name,
+      capacity: t.capacity,
+      section: t.section || 'Main',
+      shape: t.shape || 'circle',
+    });
+    setTableModalError(null);
+  }, []);
+
+  const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tableModal || !sessionToken || !tableModal.name.trim()) return;
+    setTableModalSaving(true);
+    setTableModalError(null);
+    try {
+      const trimmedName = tableModal.name.trim();
+      const trimmedSection = tableModal.section.trim() || 'Main';
+      const capacity = Number(tableModal.capacity) || 4;
+      const shape = tableModal.shape || 'circle';
+
+      if (tableModal.id) {
+        const existing = tables.find((t) => t.id === tableModal.id);
+        if (!existing) return;
+        const width = shape === 'rectangle' && existing.shape !== 'rectangle' ? Math.max(existing.width, 18) : existing.width;
+        const updated = await updateTableScoped(sessionToken, {
+          ...existing,
+          name: trimmedName,
+          section: trimmedSection,
+          capacity,
+          shape,
+          width,
+        });
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected((curr) => (curr && curr.id === updated.id ? updated : curr));
+      } else {
+        const count = tables.length;
+        const pos_x = Math.min(80, 10 + (count % 4) * 22);
+        const pos_y = Math.min(80, 10 + Math.floor(count / 4) * 20);
+        const width = shape === 'rectangle' ? 18 : 12;
+        const height = 12;
+
+        const created = await createTableScoped(sessionToken, {
+          id: '',
+          name: trimmedName,
+          capacity,
+          pos_x,
+          pos_y,
+          shape,
+          width,
+          height,
+          status: 'available',
+          active_sale_id: null,
+          section: trimmedSection,
+          active: true,
+          sort_order: count + 1,
+        });
+        setTables((prev) => [...prev, created]);
+      }
+
+      if (trimmedSection && !sections.includes(trimmedSection)) {
+        setSections((prev) => [...prev, trimmedSection]);
+      }
+      setTableModal(null);
+    } catch (err) {
+      setTableModalError(l10nErrorMessage(err, l10n, 'tables-action-error'));
+    } finally {
+      setTableModalSaving(false);
+    }
+  }, [tableModal, sessionToken, tables, sections, l10n]);
+
+  const handleDeleteTable = useCallback(async (tableId: string) => {
+    if (!sessionToken || pendingRef.current) return;
+    pendingRef.current = tableId;
+    setPendingId(tableId);
+    try {
+      await deleteTableScoped(sessionToken, tableId);
+      setTables((prev) => prev.filter((t) => t.id !== tableId));
+      setSelected(null);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      setActionError(l10nErrorMessage(err, l10n, 'tables-action-error'));
+    } finally {
+      pendingRef.current = null;
+      setPendingId(null);
+    }
+  }, [sessionToken, l10n]);
 
   // TBL-03: async, pending-guarded, error-aware status mutation. The affected
   // table is disabled while persisting; the panel stays open with a localized
@@ -239,21 +355,35 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   return (
     <div className="tables" role="region" aria-label={l10n.getString('tables-management-label')}>
       <div className="tables-header">
-        {onBack && (
-          <button
-            type="button"
-            className="tables-back-btn"
-            onClick={onBack}
-            aria-label={l10n.getString('back') || 'Back'}
-            data-testid="tables-back-btn"
+        <div className="tables-header-lead">
+          {onBack && (
+            <button
+              type="button"
+              className="tables-back-btn"
+              onClick={onBack}
+              aria-label={l10n.getString('back') || 'Back'}
+              data-testid="tables-back-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+          )}
+          <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
+        </div>
+        <div className="tables-header-actions">
+          <Button
+            variant="primary"
+            size="sm"
+            data-testid="tables-add-table-btn"
+            onClick={openAddTableModal}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
-        )}
-        <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
+            <Localized id="tables-add-table">
+              <span>+ Add Table</span>
+            </Localized>
+          </Button>
+        </div>
       </div>
       <div className="tables-sections">
         <Button variant="ghost" size="sm" className={`tables-section-btn ${section === null ? 'active' : ''}`}
@@ -288,7 +418,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           <div className="tables-empty">
             <span className="tables-empty-icon" aria-hidden="true"><GridIcon /></span>
             <p className="tables-empty-title"><Localized id="tables-empty">No tables configured yet.</Localized></p>
-            <p className="tables-empty-desc"><Localized id="tables-empty-desc">Add tables from the settings screen to build your floor plan.</Localized></p>
+            <p className="tables-empty-desc"><Localized id="tables-empty-desc">Add tables to build your floor plan.</Localized></p>
+            <Button
+              variant="primary"
+              size="sm"
+              style={{ marginTop: '12px' }}
+              data-testid="tables-empty-add-table-btn"
+              onClick={openAddTableModal}
+            >
+              <Localized id="tables-add-table">
+                <span>+ Add Table</span>
+              </Localized>
+            </Button>
           </div>
         )}
 
@@ -397,6 +538,39 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               </div>
             )}
 
+            {showDeleteConfirm && (
+              <div
+                style={{
+                  background: 'var(--color-danger-subtle, rgba(239, 68, 68, 0.1))',
+                  border: '1px solid var(--color-danger, #ef4444)',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  margin: '12px 0',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-fg)',
+                }}
+              >
+                <div style={{ fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: '4px' }}>
+                  <Localized id="tables-delete-confirm" vars={{ name: selected.name }}>
+                    <span>Are you sure you want to delete table {selected.name}?</span>
+                  </Localized>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    state={pendingId === selected.id ? 'processing' : 'ready'}
+                    onClick={() => void handleDeleteTable(selected.id)}
+                  >
+                    <Localized id="delete"><span>Delete</span></Localized>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
+                    <Localized id="cancel"><span>Cancel</span></Localized>
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="tables-detail-actions">
               {onSelectTable && (
                 <Button
@@ -413,23 +587,48 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   </Localized>
                 </Button>
               )}
-              {!showReleaseConfirm && (
-                <Button
-                  variant={selected.status === 'occupied' ? 'danger' : 'primary'}
-                  size="sm"
-                  state={pendingId === selected.id ? 'processing' : 'ready'}
-                  onClick={() => {
-                    if (selected.status === 'occupied' && activeBill) {
-                      setShowReleaseConfirm(true);
-                    } else {
-                      void statusAction(selected);
-                    }
-                  }}
-                >
-                  <Localized id={selected.status === 'occupied' ? 'tables-release' : selected.status === 'available' ? 'tables-mark-reserved' : 'tables-mark-available'}>
-                    {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
-                  </Localized>
-                </Button>
+              {!showReleaseConfirm && !showDeleteConfirm && (
+                <>
+                  <Button
+                    variant={selected.status === 'occupied' ? 'danger' : 'primary'}
+                    size="sm"
+                    state={pendingId === selected.id ? 'processing' : 'ready'}
+                    onClick={() => {
+                      if (selected.status === 'occupied' && activeBill) {
+                        setShowReleaseConfirm(true);
+                      } else {
+                        void statusAction(selected);
+                      }
+                    }}
+                  >
+                    <Localized id={selected.status === 'occupied' ? 'tables-release' : selected.status === 'available' ? 'tables-mark-reserved' : 'tables-mark-available'}>
+                      {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
+                    </Localized>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="tables-edit-table-btn"
+                    onClick={() => {
+                      openEditTableModal(selected);
+                    }}
+                  >
+                    <Localized id="tables-edit-table">
+                      <span>Edit Table</span>
+                    </Localized>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="tables-delete-table-btn"
+                    disabled={Boolean(activeBill || selected.status === 'occupied')}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    <Localized id="tables-delete-table">
+                      <span>Delete Table</span>
+                    </Localized>
+                  </Button>
+                </>
               )}
               <Button variant="ghost" size="sm" onClick={closeDetail}>
                 <Localized id="close">Close</Localized>
@@ -438,6 +637,129 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           </div>
         );
       })()}
+
+      {tableModal && (
+        <div
+          className="tables-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tables-modal-title"
+        >
+          <div className="tables-modal-dialog">
+            <div className="tables-modal-header">
+              <h2 id="tables-modal-title">
+                <Localized id={tableModal.id ? 'tables-edit-table' : 'tables-add-table'}>
+                  <span>{tableModal.id ? 'Edit Table' : 'Add Table'}</span>
+                </Localized>
+              </h2>
+              <button
+                type="button"
+                className="tables-modal-close-btn"
+                onClick={() => setTableModal(null)}
+                aria-label={l10n.getString('close') || 'Close'}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSaveTableModal} className="tables-modal-form">
+              <div className="tables-modal-field">
+                <label htmlFor="table-modal-name">
+                  {l10n.getString('tables-name-label')}
+                  <input
+                    id="table-modal-name"
+                    type="text"
+                    required
+                    value={tableModal.name}
+                    onChange={(e) => setTableModal({ ...tableModal, name: e.target.value })}
+                    placeholder="e.g. Table 1, T12, VIP 1"
+                  />
+                </label>
+              </div>
+
+              <div className="tables-modal-field">
+                <label htmlFor="table-modal-section">
+                  {l10n.getString('tables-section-input-label')}
+                  <input
+                    id="table-modal-section"
+                    type="text"
+                    value={tableModal.section}
+                    onChange={(e) => setTableModal({ ...tableModal, section: e.target.value })}
+                    placeholder="e.g. Main, Patio, Bar"
+                  />
+                </label>
+                {sections.length > 0 && (
+                  <div className="tables-modal-section-chips">
+                    {sections.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`tables-modal-chip ${tableModal.section === s ? 'active' : ''}`}
+                        onClick={() => setTableModal({ ...tableModal, section: s })}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="tables-modal-row">
+                <div className="tables-modal-field" style={{ flex: 1 }}>
+                  <label htmlFor="table-modal-capacity">
+                    {l10n.getString('tables-capacity-input-label')}
+                    <input
+                      id="table-modal-capacity"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={tableModal.capacity}
+                      onChange={(e) => setTableModal({ ...tableModal, capacity: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                    />
+                  </label>
+                </div>
+
+                <div className="tables-modal-field" style={{ flex: 1 }}>
+                  <label htmlFor="table-modal-shape">
+                    {l10n.getString('tables-shape-label')}
+                    <select
+                      id="table-modal-shape"
+                      value={tableModal.shape}
+                      onChange={(e) => setTableModal({ ...tableModal, shape: e.target.value })}
+                    >
+                      <option value="circle">{l10n.getString('tables-shape-circle')}</option>
+                      <option value="square">{l10n.getString('tables-shape-square')}</option>
+                      <option value="rectangle">{l10n.getString('tables-shape-rectangle')}</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              {tableModalError && (
+                <div className="tables-action-error" role="alert">
+                  <span className="tables-action-error-detail">{tableModalError}</span>
+                </div>
+              )}
+
+              <div className="tables-modal-footer">
+                <Button
+                  variant="primary"
+                  type="submit"
+                  state={tableModalSaving ? 'processing' : 'ready'}
+                >
+                  <Localized id="tables-save-table"><span>Save Table</span></Localized>
+                </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => setTableModal(null)}
+                >
+                  <Localized id="cancel"><span>Cancel</span></Localized>
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
