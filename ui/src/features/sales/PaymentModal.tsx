@@ -2237,14 +2237,14 @@ retryCurrencyLoad,
                       </label>
                     </>
                     {method === 'credit' && creditSettings?.enabled === false && (
-                      <p className="payment-credit-warning" style={{ color: 'var(--color-danger, #ef4444)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                      <p className="payment-credit-warning">
                         <Localized id="payment-credit-disabled">
                           <span>Store credit facility is currently disabled in Settings.</span>
                         </Localized>
                       </p>
                     )}
                     {method === 'credit' && creditSettings && creditSettings.enabled && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor && (
-                      <p className="payment-credit-warning" style={{ color: 'var(--color-danger, #ef4444)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                      <p className="payment-credit-warning">
                         <Localized id="payment-credit-limit-exceeded">
                           <span>Sale total exceeds maximum credit ceiling.</span>
                         </Localized>

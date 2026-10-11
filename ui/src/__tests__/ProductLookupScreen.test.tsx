@@ -14,19 +14,40 @@ import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import type { Product } from '@/types/domain';
 import type * as productsModule from '@/api/products';
 
-// ── Mock: make the scoped catalogue reads reject so useProducts
-//    falls back to its own SAMPLE_PRODUCTS (coffee-shop items) instead
-//    of the dev-mock's PC hardware catalog. All other exports (e.g.
-//    lookupProductBySkuScoped) remain the real implementations.
+const TEST_CATEGORIES = [
+  { id: 'cat-food', name: 'Food', colour: '#f97316', icon: 'food' },
+  { id: 'cat-snacks', name: 'Snacks', colour: '#eab308', icon: 'snack' },
+  { id: 'cat-hot-drinks', name: 'Hot Drinks', colour: '#ef4444', icon: 'hot-drink' },
+  { id: 'cat-cold-drinks', name: 'Cold Drinks', colour: '#06b6d4', icon: 'cold-drink' },
+];
+
+const TEST_PRODUCTS = [
+  { sku: 'LATTE', name: 'Caffè Latte', category: 'Hot Drinks', price: { minor_units: 450, currency: 'USD' }, barcode: '4901234567890', in_stock: true, stock_qty: 50, product_type: 'restaurant', is_active: true },
+  { sku: 'CAPPU', name: 'Cappuccino', category: 'Hot Drinks', price: { minor_units: 420, currency: 'USD' }, barcode: '4901234567891', in_stock: true, stock_qty: 40, product_type: 'restaurant', is_active: true },
+  { sku: 'ESPR', name: 'Espresso Shot', category: 'Hot Drinks', price: { minor_units: 280, currency: 'USD' }, barcode: '4901234567892', in_stock: true, stock_qty: 60, product_type: 'restaurant', is_active: true },
+  { sku: 'MATCHA', name: 'Matcha Latte', category: 'Hot Drinks', price: { minor_units: 520, currency: 'USD' }, barcode: null, in_stock: true, stock_qty: 30, product_type: 'restaurant', is_active: true },
+  { sku: 'BAGEL', name: 'Plain Bagel', category: 'Food', price: { minor_units: 250, currency: 'USD' }, barcode: '4901234567894', in_stock: true, stock_qty: 100, product_type: 'restaurant', is_active: true },
+  { sku: 'BAGEL-S', name: 'Sesame Bagel', category: 'Food', price: { minor_units: 275, currency: 'USD' }, barcode: '4901234567895', in_stock: true, stock_qty: 75, product_type: 'restaurant', is_active: true },
+  { sku: 'CROISS', name: 'Butter Croissant', category: 'Food', price: { minor_units: 350, currency: 'USD' }, barcode: '4901234567896', in_stock: true, stock_qty: 45, product_type: 'restaurant', is_active: true },
+  { sku: 'MUFFIN-B', name: 'Blueberry Muffin', category: 'Snacks', price: { minor_units: 320, currency: 'USD' }, barcode: '4901234567897', in_stock: true, stock_qty: 20, product_type: 'restaurant', is_active: true },
+  { sku: 'MUFFIN-C', name: 'Chocolate Muffin', category: 'Snacks', price: { minor_units: 340, currency: 'USD' }, barcode: null, in_stock: false, stock_qty: 0, product_type: 'restaurant', is_active: true },
+  { sku: 'SANDW-C', name: 'Chicken Sandwich', category: 'Food', price: { minor_units: 750, currency: 'USD' }, barcode: '4901234567899', in_stock: true, stock_qty: 15, product_type: 'restaurant', is_active: true },
+  { sku: 'SANDW-V', name: 'Veggie Sandwich', category: 'Food', price: { minor_units: 680, currency: 'USD' }, barcode: '4901234567900', in_stock: true, stock_qty: 10, product_type: 'restaurant', is_active: true },
+  { sku: 'COOKIE', name: 'Chocolate Chip Cookie', category: 'Snacks', price: { minor_units: 195, currency: 'USD' }, barcode: '4901234567901', in_stock: true, stock_qty: 200, product_type: 'restaurant', is_active: true },
+  { sku: 'TEA-G', name: 'Green Tea', category: 'Hot Drinks', price: { minor_units: 250, currency: 'USD' }, barcode: '4901234567902', in_stock: true, stock_qty: 80, product_type: 'restaurant', is_active: true },
+  { sku: 'TEA-C', name: 'Chai Tea', category: 'Hot Drinks', price: { minor_units: 320, currency: 'USD' }, barcode: null, in_stock: true, stock_qty: 35, product_type: 'restaurant', is_active: true },
+  { sku: 'JUICE-O', name: 'Orange Juice', category: 'Cold Drinks', price: { minor_units: 380, currency: 'USD' }, barcode: '4901234567904', in_stock: true, stock_qty: 25, product_type: 'restaurant', is_active: true },
+  { sku: 'WATER-S', name: 'Sparkling Water', category: 'Cold Drinks', price: { minor_units: 180, currency: 'USD' }, barcode: '4901234567905', in_stock: true, stock_qty: 150, product_type: 'restaurant', is_active: true },
+  { sku: 'BROWNIE', name: 'Fudge Brownie', category: 'Snacks', price: { minor_units: 295, currency: 'USD' }, barcode: '4901234567906', in_stock: false, stock_qty: 0, product_type: 'restaurant', is_active: true },
+  { sku: 'MUFFIN-BA', name: 'Banana Muffin', category: 'Snacks', price: { minor_units: 310, currency: 'USD' }, barcode: null, in_stock: true, stock_qty: 12, product_type: 'restaurant', is_active: true },
+];
+
 vi.mock('@/api/products', async (importOriginal) => {
   const actual = await importOriginal<typeof productsModule>();
   return {
     ...actual,
-    // T21: the unscoped listProducts / listCategories doors were deleted from the module, so
-    // overriding them configured nothing and the real scoped reads ran instead — the fallback
-    // this file is about never happened. Reject the doors the hook actually calls.
-    listProductsScoped: vi.fn(() => Promise.reject(new Error('IPC unavailable'))),
-    listCategoriesScoped: vi.fn(() => Promise.reject(new Error('IPC unavailable'))),
+    listProductsScoped: vi.fn(() => Promise.resolve(TEST_PRODUCTS)),
+    listCategoriesScoped: vi.fn(() => Promise.resolve(TEST_CATEGORIES)),
   };
 });
 

@@ -1639,7 +1639,6 @@ export default function RestaurantMenuEditorScreen({
                                 className="restaurant-menu-editor-card-btn"
                                 onClick={() => setRecipeModalTarget({ sku: p.sku, name: p.name })}
                                 aria-label={l10n.getString('recipe-editor-manage-recipe-aria', { name: p.name })}
-                                title={l10n.getString('recipe-editor-manage-recipe')}
                                 data-testid={`restaurant-menu-editor-recipe-${p.sku}`}
                               >
                                 <RecipeGlyph />

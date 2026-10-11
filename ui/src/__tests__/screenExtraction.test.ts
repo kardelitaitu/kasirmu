@@ -270,6 +270,12 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'products/BundleManagementScreen.tsx',
     css: ['products/BundleManagementScreen.css'],
   },
+  {
+    name: 'RecipeEditorModal',
+    tsx: 'products/RecipeEditorModal.tsx',
+    css: ['products/RecipeEditorModal.css'],
+    parentCss: ['../theme/components.css'],
+  },
 
   // ── Staff ─────────────────────────────────────────────
   {

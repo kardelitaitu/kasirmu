@@ -453,7 +453,7 @@ export function RecipeEditorModal({
                   {rows.length > 0 && (
                     <button
                       type="button"
-                      className="btn btn--outline-danger btn--sm"
+                      className="btn btn--danger btn--sm"
                       onClick={() => setShowClearConfirm(true)}
                       data-testid="recipe-clear-btn"
                     >
