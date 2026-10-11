@@ -140,7 +140,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const { session, logout, isManager, hasPermission } = useAuth();
   const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
-  const { products } = useProducts(sessionToken || undefined);
+  const { products, reload: reloadPosProducts } = useProducts(sessionToken || undefined);
+  const [menuRevision, setMenuRevision] = useState(0);
   const { isEnabled } = useFeatures();
   // F21: the shared chime hook. Not KDS-specific — a plain Web Audio tone, and the
   // retail POS already uses it for the same order-complete confirmation.
@@ -1090,9 +1091,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         <div style={{ flex: 1, overflow: 'auto' }}>
           {/* Crash isolation (F9): a throw in a settings sub-screen must not take
               the POS screen with it. `onReset` returns to the sale. */}
-          <LocalizedErrorBoundary onReset={() => setShowMenuEditor(false)}>
+          <LocalizedErrorBoundary onReset={() => { setShowMenuEditor(false); setMenuRevision((r) => r + 1); reloadPosProducts(); }}>
             <RestaurantMenuEditorScreen
-              onBack={() => setShowMenuEditor(false)}
+              onBack={() => {
+                setShowMenuEditor(false);
+                setMenuRevision((r) => r + 1);
+                reloadPosProducts();
+              }}
               sessionToken={sessionToken}
             />
           </LocalizedErrorBoundary>
@@ -1292,8 +1297,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             took the POS screen down. The children's boundaries only cover what
             renders INSIDE them. */}
         {activeWorkspace === 'restaurant-pos' ? (
-          <LocalizedErrorBoundary resetKeys={[activeWorkspace]}>
+          <LocalizedErrorBoundary resetKeys={[activeWorkspace, menuRevision]}>
           <RestaurantMenu
+            key={menuRevision}
             onAddProduct={handleAddProduct}
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}

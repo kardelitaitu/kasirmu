@@ -518,22 +518,36 @@ export default function RestaurantMenu({
     setContextMenu({ sku, x, y, isPinned: pinned.has(sku), isUnavailable: unavailable.has(sku), sourceInStock, currentColor: colors[sku], fromKeyboard });
   }, [pinned, colors, unavailable]);
 
-  // Restaurant and retail are separate workspaces. Category tabs must be
-  // derived from restaurant products rather than the shared catalog category
-  // list, otherwise a retail-only category can leak into this menu.
+  // Restaurant and retail are separate workspaces. Products tagged for restaurant
+  // that are active are shown on the selling grid.
   const restaurantProducts = useMemo(
     () => products.filter((p) => p.productType === 'restaurant' && p.isActive !== false),
     [products],
   );
 
-  const categoryOptions = useMemo<Category[]>(
-    () => ['All', ...new Set(restaurantProducts.map((p) => p.category))].sort((a, b) => {
+  // Category tabs are derived from active restaurant products, plus any category
+  // defined in the store catalog (categoryMeta) that is not exclusive to retail/non-restaurant
+  // products. This ensures newly created categories or categories whose dishes are currently
+  // 86'd appear as tabs, while preventing retail-only categories from leaking in.
+  const categoryOptions = useMemo<Category[]>(() => {
+    const cats = new Set<string>();
+    for (const p of restaurantProducts) {
+      if (p.category) cats.add(p.category);
+    }
+    for (const cm of categoryMeta) {
+      const hasNonRestaurant = products.some(
+        (p) => p.category === cm.name && p.productType !== 'restaurant',
+      );
+      if (!hasNonRestaurant) {
+        cats.add(cm.name);
+      }
+    }
+    return ['All', ...Array.from(cats)].sort((a, b) => {
       if (a === 'All') return -1;
       if (b === 'All') return 1;
       return a.localeCompare(b);
-    }),
-    [restaurantProducts],
-  );
+    });
+  }, [restaurantProducts, categoryMeta, products]);
 
   // Keep the selection valid when products are refreshed or removed. The
   // derived value prevents a transient empty result while the state catches

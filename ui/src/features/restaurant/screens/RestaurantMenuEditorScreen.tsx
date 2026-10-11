@@ -662,7 +662,7 @@ export default function RestaurantMenuEditorScreen({
             category: draft.categoryName || null,
             price: { minor_units: draft.priceMinor, currency },
             barcode: null,
-            in_stock: false,
+            in_stock: true,
             stock_qty: 0,
             tax_rate_ids: [],
             created_at: new Date().toISOString(),

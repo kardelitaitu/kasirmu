@@ -1048,4 +1048,23 @@ describe('RestaurantMenu', () => {
     expect(screen.getByText('Nasi Goreng')).toBeInTheDocument();
     expect(screen.queryByText('Ayam Bakar (86)')).not.toBeInTheDocument();
   });
+
+  it('includes empty or newly created restaurant categories from categoryMeta in category tabs', () => {
+    mockUseProducts.mockReturnValue({
+      products: mockProducts,
+      categories: ['Makanan', 'Minuman'],
+      categoryMeta: [
+        { id: 'cat-1', name: 'Makanan', colour: '#f97316', icon: 'food' },
+        { id: 'cat-2', name: 'Minuman', colour: '#06b6d4', icon: 'cold-drink' },
+        { id: 'cat-3', name: 'Dessert Baru', colour: '#eab308', icon: 'snack' },
+      ],
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    });
+
+    renderMenu();
+
+    expect(screen.getByRole('tab', { name: /Dessert Baru/i })).toBeInTheDocument();
+  });
 });
