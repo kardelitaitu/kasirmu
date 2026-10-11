@@ -41,8 +41,17 @@ import { ToastProvider } from '@/components/Toast';
 // importers -- verified by the log line disappearing across the suite rather than
 // assumed.
 vi.mock('@/api/currency', () => ({
-  getDefaultCurrency: vi.fn(() => Promise.resolve({ code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp', decimal_places: 2 })),
-  getDefaultCurrencyScoped: vi.fn(() => Promise.resolve({ code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp', decimal_places: 2 })),
+  // ⚠️ These return a CURRENCY CODE (a string), which is what the real API
+  // returns (api/currency.ts:33 -> Promise<string | null>). They used to return
+  // a CurrencyDto OBJECT, and nothing noticed while no a11y test rendered the
+  // value: CurrencyContext stores it verbatim (CurrencyContext.tsx:52) and every
+  // consumer treats it as a code, so the object only surfaced when a screen
+  // printed {currency} as a React child (RestaurantMenuEditorScreen) — React
+  // then threw "Objects are not valid as a React child". A stub whose shape
+  // disagrees with the function it replaces lets a test pass on behaviour
+  // production cannot produce; this one now matches.
+  getDefaultCurrency: vi.fn(() => Promise.resolve('IDR')),
+  getDefaultCurrencyScoped: vi.fn(() => Promise.resolve('IDR')),
   listCurrenciesScoped: vi.fn(() => Promise.resolve([])),
 }));
 

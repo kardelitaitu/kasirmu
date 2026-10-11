@@ -8,7 +8,7 @@
 //! error state.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { waitFor } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders, checkA11y } from './axe-helper';
 import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import * as productsApi from '@/api/products';
@@ -68,4 +68,31 @@ describe('RestaurantMenuEditorScreen a11y', () => {
     expect(container.querySelector('[data-testid="restaurant-menu-editor-new-item"]')).toBeTruthy();
     expect(container.querySelector('[data-testid="menu-item-card-MN001"]')).toBeTruthy();
   });
+
+  it('has no axe violations with the Add Item form and a modifier group open', async () => {
+    // The scan flagged the modifier group's name/max inputs and the option
+    // name/price inputs as having no id/label association. Only axe can say
+    // whether that is a real defect or a false positive of the heuristic.
+    const { container } = renderWithProviders(<RestaurantMenuEditorScreen />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="restaurant-menu-editor-new-item"]')).toBeTruthy();
+    });
+
+    fireEvent.click(container.querySelector('[data-testid="restaurant-menu-editor-new-item"]')!);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="restaurant-menu-editor-form"]')).toBeTruthy();
+    });
+
+    fireEvent.click(container.querySelector('[data-testid="restaurant-menu-editor-add-group-btn"]')!);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="modifier-group-0"]')).toBeTruthy();
+    });
+
+    await checkA11y(container);
+
+    // Vacuity guard: the group's inputs are what this case is about.
+    expect(container.querySelector('[data-testid="modifier-group-name-0"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="modifier-option-name-0-0"]')).toBeTruthy();
+  });
 });
+
