@@ -11,6 +11,8 @@ import { renderWithProviders, checkA11y } from './axe-helper';
 import CashTenderPanel from '@/features/sales/payment/CashTenderPanel';
 import QrisTenderPanel from '@/features/sales/payment/QrisTenderPanel';
 import CardTenderPanel from '@/features/sales/payment/CardTenderPanel';
+import LoyaltyTenderPanel from '@/features/sales/payment/LoyaltyTenderPanel';
+import SplitTenderRows, { type SplitTenderRow } from '@/features/sales/payment/SplitTenderRows';
 import type { Money } from '@/types/domain';
 import salesFtl from '@/locales/sales.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -75,5 +77,52 @@ describe('tender panels a11y', () => {
     await checkA11y(container);
 
     expect(container.querySelectorAll('button').length).toBeGreaterThan(0);
+  });
+
+  it('LoyaltyTenderPanel has no axe violations with a balance to redeem', async () => {
+    const { container } = renderWithProviders(
+      <LoyaltyTenderPanel
+        loyaltyOffered
+        points={1200}
+        pointsWorthMinor={6000}
+        currency="IDR"
+        redeemPoints
+        pointsToRedeem={500}
+        loyaltyDiscount={2500n}
+        onRedeemStart={vi.fn()}
+        onPointsChange={vi.fn()}
+        onRedeemCancel={vi.fn()}
+      />,
+      ...FTL,
+    );
+    await checkA11y(container);
+
+    // Vacuity guard: the redeem input and its action mounted. The panel shows
+    // ONE button in this state (the cancel/apply pair is a different branch).
+    expect(container.querySelector('.payment-loyalty-input')).toBeTruthy();
+    expect(container.querySelectorAll('button').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('SplitTenderRows has no axe violations with the split section open', async () => {
+    const row: SplitTenderRow = { id: 1, method: 'cash', otherLabel: '', amountMinor: '5.00' };
+    const { container } = renderWithProviders(
+      <SplitTenderRows
+        splitMode
+        splits={[row]}
+        currency="IDR"
+        remainingMinor={0n}
+        onSplitModeChange={vi.fn()}
+        onAddSplit={vi.fn()}
+        onRemoveSplit={vi.fn()}
+        onUpdateSplit={vi.fn()}
+        onAutoSplitEvenly={vi.fn()}
+      />,
+      ...FTL,
+    );
+    await checkA11y(container);
+
+    // Vacuity guard: a row's amount input and the "other" method radio mounted.
+    expect(container.querySelectorAll('.payment-split-amount-input').length).toBeGreaterThan(0);
+    expect(container.querySelector('.payment-split-other-input')).toBeTruthy();
   });
 });
