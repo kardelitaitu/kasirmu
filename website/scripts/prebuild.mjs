@@ -67,6 +67,31 @@ async function serial(label, task) {
 
 const total = Date.now();
 
+// ── Node version floor ────────────────────────────────────────────────────────
+// Three scripts in this build pass `--experimental-strip-types`
+// (check-ui-strings.mjs, check-password-policy.mjs here, check-seo.mjs in
+// `check:seo`), which Node rejects outright before 22.6. Without this guard the
+// failure arrives as two stray `node: bad option` lines from npm's children
+// plus a stack trace pointing at this file's run() helper — naming neither the
+// flag nor the version, so the obvious conclusion is that the build is broken.
+// Measured 2026-10-12 on v18.19.1 (Ubuntu/WSL's apt node). CI pins Node 24; the
+// floor below is what the code actually needs, not what CI happens to run.
+const NODE_FLOOR = [22, 6];
+{
+  const parts = process.versions.node.split('.').map(Number);
+  const tooOld = parts[0] < NODE_FLOOR[0] ||
+    (parts[0] === NODE_FLOOR[0] && parts[1] < NODE_FLOOR[1]);
+  if (tooOld) {
+    process.stderr.write(
+      `[prebuild] ✗ Node >= ${NODE_FLOOR.join('.')} is required; this is ${process.versions.node}.\n` +
+      `            Install a newer Node (CI uses 24 — see the root .nvmrc) and re-run.\n` +
+      `            The scripts that fail first are check-ui-strings.mjs and\n` +
+      `            check-password-policy.mjs, which need --experimental-strip-types.\n`
+    );
+    process.exit(1);
+  }
+}
+
 // Phase 1: independent static checks — run in parallel
 await parallel('static checks', [
   run('node', ['scripts/sync-dev-files.mjs'], { cwd: ROOT }),

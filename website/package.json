@@ -45,5 +45,8 @@
     "typescript": "^5.9.0",
     "vitest": "4.1.10",
     "wrangler": "^4.60.0"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }
