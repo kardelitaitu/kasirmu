@@ -196,6 +196,7 @@ restaurant-logo-desc = Upload a square PNG or SVG logo for the receipt header
 restaurant-logo-upload-btn = Choose Logo
 restaurant-logo-remove-btn = Remove Logo
 restaurant-logo-url-placeholder = Or paste Image URL / SVG code
+restaurant-logo-custom-uploaded = Custom uploaded image
 restaurant-logo-position-heading = Logo Position
 restaurant-logo-no-logo = No logo
 restaurant-logo-preview-alt = Logo preview

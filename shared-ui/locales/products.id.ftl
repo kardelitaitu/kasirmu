@@ -193,6 +193,7 @@ restaurant-logo-desc = Unggah logo persegi PNG atau SVG untuk header struk
 restaurant-logo-upload-btn = Pilih Logo
 restaurant-logo-remove-btn = Hapus Logo
 restaurant-logo-url-placeholder = Atau tempel URL gambar / kode SVG
+restaurant-logo-custom-uploaded = Gambar yang diunggah khusus
 restaurant-logo-position-heading = Posisi Logo
 restaurant-logo-no-logo = Tanpa logo
 restaurant-logo-preview-alt = Pratinjau logo

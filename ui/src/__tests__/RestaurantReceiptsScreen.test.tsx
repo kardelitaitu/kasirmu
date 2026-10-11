@@ -2,8 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import userEvent from '@testing-library/user-event';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { ThemeProvider } from '@/app/ThemeProvider';
+import { ZoomProvider } from '@/contexts/ZoomContext';
+import { ToastProvider } from '@/components/Toast';
+import { BrandProvider } from '@/contexts/BrandContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 
@@ -100,11 +104,46 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
+import productsIdFtl from '@/locales/products.id.ftl?raw';
+import salesIdFtl from '@/locales/sales.id.ftl?raw';
+import inventoryIdFtl from '@/locales/inventory.id.ftl?raw';
+import settingsIdFtl from '@/locales/settings.id.ftl?raw';
+import { withFluentLocale } from '@/i18n/test-utils';
+import { renderInAct } from '@/test-utils/renderInAct';
 
 const FTL = [salesFtl, productsFtl, inventoryFtl, settingsFtl];
 
 const renderScreen = (props: { tablesEnabled?: boolean; terminalId?: string; onBack?: () => void; onSaved?: () => void } = {}) =>
   renderWithProviders(<RestaurantReceiptsScreen {...props} />, ...FTL);
+
+/**
+ * Render the screen under INDONESIAN.
+ *
+ * Why the F10 sentinel guard needs this: under the English bundle the key
+ * `restaurant-logo-custom-uploaded` resolves to the SAME words as the literal
+ * it replaced, so an assertion on the rendered text cannot tell a localized
+ * value from a hardcoded one — the kill-test proved exactly that. Indonesian
+ * resolves the key to different text, so a literal regression fails here.
+ */
+const renderScreenId = (props: { tablesEnabled?: boolean; terminalId?: string; onBack?: () => void; onSaved?: () => void } = {}) =>
+  renderInAct(
+    withFluentLocale(
+      'id',
+      <BrandProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <ZoomProvider>
+              <RestaurantReceiptsScreen {...props} />
+            </ZoomProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </BrandProvider>,
+      salesIdFtl,
+      productsIdFtl,
+      inventoryIdFtl,
+      settingsIdFtl,
+    ),
+  );
 
 describe('RestaurantReceiptsScreen — margins & geometry', () => {
   it('clamps margin inputs to their valid ranges', async () => {
@@ -256,6 +295,22 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
   });
 });
 
+/**
+ * The English bundle's value for a key, read from disk. Asserting a bundle VALUE
+ * rather than the old literal is what makes a regression to a literal fail: the
+ * test bundle resolves the key to its own text, so the two cannot agree by accident.
+ */
+function bundleValue(key: string): string {
+  const ftl = fs.readFileSync(path.resolve(process.cwd(), '../shared-ui/locales/products.ftl'), 'utf-8');
+  return (ftl.match(new RegExp('^' + key + ' = (.*)$', 'm')) ?? [])[1]?.trim() ?? '';
+}
+
+/** The Indonesian bundle's value for a key. See the non-English sentinel case. */
+function idBundleValue(key: string): string {
+  const ftl = fs.readFileSync(path.resolve(process.cwd(), '../shared-ui/locales/products.id.ftl'), 'utf-8');
+  return (ftl.match(new RegExp('^' + key + ' = (.*)$', 'm')) ?? [])[1]?.trim() ?? '';
+}
+
 describe('RestaurantReceiptsScreen — logo', () => {
   it('removes the logo via the Remove Logo button', async () => {
     const user = userEvent.setup();
@@ -264,11 +319,72 @@ describe('RestaurantReceiptsScreen — logo', () => {
     const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i) as HTMLInputElement;
     await user.clear(logoInput);
     await user.type(logoInput, 'data:image/png;base64,abc');
-    // A data: logo makes the input show the literal placeholder string as its value.
-    expect(logoInput).toHaveValue('Custom uploaded image');
+    // A binary data: logo has no readable text form, so the field shows a LABEL.
+    // Assert the BUNDLE value, not the old literal 'Custom uploaded image' (F10):
+    // the key resolves to its own text here, so a regression to a literal fails,
+    // and a locale that translates the key is proven to reach this field.
+    const sentinel = bundleValue('restaurant-logo-custom-uploaded');
+    expect(sentinel, 'the sentinel key vanished from the bundle').not.toBe('');
+    expect(logoInput).toHaveValue(sentinel);
 
     await user.click(screen.getByRole('button', { name: /Remove Logo/i }));
+    expect(logoInput).not.toHaveValue(sentinel);
+  });
+
+  it('renders the upload sentinel from the bundle under a NON-English locale (F10)', async () => {
+    // The discriminating half. Under English the key resolves to the same words
+    // as the old literal, so the case above cannot tell them apart — a planted
+    // literal PASSED it. Indonesian resolves the key to different text, so this
+    // is the assertion that actually fails on a hardcoded sentinel.
+    const user = userEvent.setup();
+    await renderScreenId();
+
+    const logoInput = screen.getByPlaceholderText(/tempel URL gambar/i) as HTMLInputElement;
+    await user.clear(logoInput);
+    await user.type(logoInput, 'data:image/png;base64,abc');
+
+    const idSentinel = idBundleValue('restaurant-logo-custom-uploaded');
+    expect(idSentinel, 'the sentinel key vanished from the Indonesian bundle').not.toBe('');
+    expect(idSentinel).not.toBe('Custom uploaded image');
+    expect(logoInput).toHaveValue(idSentinel);
     expect(logoInput).not.toHaveValue('Custom uploaded image');
+  });
+
+  it('does not store the localized sentinel back as the logo when it is edited', async () => {
+    // The onChange guard must compare against the SAME localized string the value
+    // renders. While it was hardcoded to 'Custom uploaded', the Indonesian field
+    // treated its own translated label as a real URL and STORED it: the receipt
+    // logo became the words "Gambar yang diunggah khusus" instead of the upload.
+    //
+    // The observable is the STORED value, not the input's own text: the field is
+    // controlled, so it renders the sentinel before and after the edit either way.
+    // The preview <img src> is what reveals whether the logo survived.
+    await renderScreenId();
+
+    const logoInput = screen.getByPlaceholderText(/tempel URL gambar/i) as HTMLInputElement;
+    // A data URL arrives as ONE change (paste, or the file picker's FileReader),
+    // never one keystroke at a time — typing it char-by-char re-renders the
+    // sentinel after 'data:' and can never reach the full value.
+    fireEvent.change(logoInput, { target: { value: 'data:image/png;base64,abc' } });
+    const idSentinel = idBundleValue('restaurant-logo-custom-uploaded');
+    expect(logoInput).toHaveValue(idSentinel);
+
+    const srcBefore = document.querySelector('.resto-receipt-logo')?.getAttribute('src');
+    expect(srcBefore).toBe('data:image/png;base64,abc');
+
+    // The edit: the field is showing the sentinel and the user touches it. The
+    // value must DIFFER from what React last rendered or the framework's value
+    // tracker suppresses onChange — so append a character, which is the real
+    // "user edits the label" path.
+    fireEvent.change(logoInput, { target: { value: idSentinel + 'x' } });
+
+    // The guard's contract is `startsWith(sentinel)`, so an edit that still begins
+    // with the label must NOT be stored as the logo. With the old hardcoded
+    // 'Custom uploaded' check the Indonesian label failed that test and REPLACED
+    // the uploaded image with the words of the label.
+    const srcAfter = document.querySelector('.resto-receipt-logo')?.getAttribute('src');
+    expect(srcAfter, 'the localized sentinel was stored as the logo').toBe('data:image/png;base64,abc');
+    expect(srcAfter).not.toBe(idSentinel);
   });
 
   it('gives the receipt logo an alt from the bundle, not a literal (F10)', async () => {

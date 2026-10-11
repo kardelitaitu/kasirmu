@@ -2211,7 +2211,7 @@ export default function RestaurantReceiptsScreen({
                         placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
                         value={
                           businessLogo.startsWith('data:') && !businessLogo.startsWith('data:image/svg+xml;utf8,')
-                            ? 'Custom uploaded image'
+                            ? l10n.getString('restaurant-logo-custom-uploaded')
                             : businessLogo
                         }
                         onFocus={(e) => {
@@ -2221,7 +2221,11 @@ export default function RestaurantReceiptsScreen({
                         }}
                         onChange={(e) => {
                           const val = e.target.value;
-                          if (val === '' || !val.startsWith('Custom uploaded')) {
+                          // The guard must read the SAME localized sentinel the value
+                          // above renders. A hardcoded 'Custom uploaded' check left the
+                          // Indonesian label writable as if it were a URL: editing the
+                          // field stored the translated placeholder as the logo.
+                          if (val === '' || !val.startsWith(l10n.getString('restaurant-logo-custom-uploaded'))) {
                             setBusinessLogo(normalizeLogoInput(val));
                           }
                         }}
