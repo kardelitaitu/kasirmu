@@ -493,8 +493,15 @@
   background: var(--color-accent-subtle);
 }
 
-.pos-cart-line-note-btn--active,
-.pos-cart-line-modifier-btn--active {
+/* Only the NOTE variant has an active state: it lights up when the line already
+   carries a note (CartLineItem.tsx applies the modifier when `line.note` is set).
+   The former `.pos-cart-line-modifier-btn--active` half of this rule was applied
+   by NO element in the tree — the sliders button and the "$" price-override icon
+   that reuse the base class are both stateless — so it was dead CSS, and
+   screenExtraction's dead-class gate read it as such. Deleting the selector is the
+   fix rather than inventing a state: CartLine carries no "price was overridden"
+   field, so an active override chip could not be computed even if wanted. */
+.pos-cart-line-note-btn--active {
   border-style: solid;
   border-color: var(--color-accent);
   background: var(--color-accent-subtle);
