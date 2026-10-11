@@ -104,17 +104,27 @@ const DISABLED_RULES = {
   region: { enabled: false },
 };
 
-/// Build a minimal Fluent localization instance for a11y testing.
-function buildL10n(): ReactLocalization {
+/// Build a Fluent localization instance for a11y testing.
+///
+/// `extraFtl` is appended to the minimal bundle. Pass a real bundle (e.g.
+/// `sales.ftl?raw`) when the component under test supplies accessible names
+/// THROUGH Fluent — `<Localized id="…" attrs={{ 'aria-label': true }}>` — because
+/// the minimal bundle does not carry those keys, so the attribute is never set
+/// and axe reports a missing label that production does not have. A violation
+/// found without the real bundle is not evidence about the shipped app.
+function buildL10n(extraFtl: string[] = []): ReactLocalization {
   const bundle = new FluentBundle('en-US');
-  bundle.addResource(new FluentResource(MINIMAL_FTL));
+  bundle.addResource(new FluentResource([MINIMAL_FTL, ...extraFtl].join('\n')));
   return new ReactLocalization([bundle]);
 }
 
 /// Render a component wrapped in the minimum providers needed for
 /// accessibility testing (Fluent i18n, Brand, Toast).
-export function renderWithProviders(children: ReactElement): RenderResult {
-  const l10n = buildL10n();
+///
+/// `extraFtl` — see `buildL10n`. Omit it for components whose names come from
+/// literal props; pass the real bundle when they come from Fluent.
+export function renderWithProviders(children: ReactElement, ...extraFtl: string[]): RenderResult {
+  const l10n = buildL10n(extraFtl);
 
   return render(
     <BrandProvider>
