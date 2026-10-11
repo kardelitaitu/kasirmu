@@ -671,7 +671,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     required
                     value={tableModal.name}
                     onChange={(e) => setTableModal({ ...tableModal, name: e.target.value })}
-                    placeholder="e.g. Table 1, T12, VIP 1"
+                    placeholder={l10n.getString('tables-name-placeholder')}
                   />
                 </label>
               </div>
@@ -684,7 +684,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     type="text"
                     value={tableModal.section}
                     onChange={(e) => setTableModal({ ...tableModal, section: e.target.value })}
-                    placeholder="e.g. Main, Patio, Bar"
+                    placeholder={l10n.getString('tables-section-placeholder')}
                   />
                 </label>
                 {sections.length > 0 && (
