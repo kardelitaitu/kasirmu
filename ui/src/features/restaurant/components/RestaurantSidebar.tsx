@@ -564,6 +564,7 @@ export function RestaurantSidebar({
             disabled={!effectiveIsManager}
             onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('restaurant-sidebar-receipts')}
+            data-testid="restaurant-sidebar-receipts"
             onClick={() => {
               // The button is disabled for non-managers, so a non-manager
               // click can never reach here; no guard is needed.
@@ -590,6 +591,7 @@ export function RestaurantSidebar({
             disabled={!effectiveIsManager}
             onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('restaurant-sidebar-payments')}
+            data-testid="restaurant-sidebar-payments"
             onClick={() => {
               // The button is disabled for non-managers, so a non-manager
               // click can never reach here; no guard is needed.

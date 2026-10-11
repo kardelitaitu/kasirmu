@@ -426,8 +426,12 @@ describe('RestaurantPosSidebar', () => {
     const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
     await user.click(toggleBtn);
 
-    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
-    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+    // Addressed by testid, not by bundle copy: commit cf3e064fb moved the sibling
+    // rows onto testids precisely so a translation edit cannot break them, and
+    // these two were missed. A /Receipts/i name match also collides with any
+    // future row that mentions the word.
+    const receiptsBtn = screen.getByTestId('restaurant-sidebar-receipts');
+    const paymentsBtn = screen.getByTestId('restaurant-sidebar-payments');
 
     expect(receiptsBtn).toBeDisabled();
     expect(receiptsBtn).toHaveClass('restaurant-sidebar-item--disabled');
@@ -446,7 +450,7 @@ describe('RestaurantPosSidebar', () => {
     const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
     await user.click(toggleBtn);
 
-    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
+    const receiptsBtn = screen.getByTestId('restaurant-sidebar-receipts');
     expect(receiptsBtn).not.toBeDisabled();
     expect(receiptsBtn).not.toHaveClass('restaurant-sidebar-item--disabled');
     expect(within(receiptsBtn).queryByText('Manager+')).toBeNull();
@@ -463,7 +467,7 @@ describe('RestaurantPosSidebar', () => {
 
     // Open sidebar again and test Payments sub-screen
     await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
-    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+    const paymentsBtn = screen.getByTestId('restaurant-sidebar-payments');
     expect(paymentsBtn).not.toBeDisabled();
     await user.click(paymentsBtn);
     expect(screen.getByText('Payment Settings')).toBeInTheDocument();
