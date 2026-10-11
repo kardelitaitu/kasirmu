@@ -11,11 +11,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProviders, checkA11y } from './axe-helper';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import { KdsTicketCard } from '@/features/kds/components/KdsTicketCard';
+import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
+import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal';
 import type { KdsOrder } from '@/api/kds';
+import kdsFtl from '@/locales/kds.ftl?raw';
+import sharedFtl from '@/locales/shared.ftl?raw';
 
 const mockList = vi.fn();
 const mockGetKdsOrderLines = vi.fn().mockResolvedValue([]);
 const mockPlayAlert = vi.fn();
+const mockListProductsScoped = vi.fn().mockResolvedValue([]);
 
 vi.mock('@/api/kds', () => ({
   listKdsOrdersScoped: (_token: string, _status?: string) => mockList(),
@@ -24,6 +29,14 @@ vi.mock('@/api/kds', () => ({
 
 vi.mock('@/api/locations', () => ({
   getPrimaryLocationScoped: () => Promise.resolve({ timezone: 'UTC' }),
+}));
+
+vi.mock('@/api/products', () => ({
+  listProductsScoped: (token: string) => mockListProductsScoped(token),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -91,5 +104,67 @@ describe('KDS a11y', () => {
     await checkA11y(container);
     // Vacuity guard: the ticket's status controls mounted.
     expect(container.querySelectorAll('.kds-status-btn').length).toBeGreaterThan(0);
+  });
+
+  it('KdsProductPickerModal has no axe violations with a product on screen', async () => {
+    // The picker resolves its copy from the KDS + shared bundles, so mount both.
+    mockListProductsScoped.mockResolvedValue([
+      {
+        sku: 'ESPR',
+        name: 'Espresso Shot',
+        category: 'Hot Drinks',
+        price: { minor_units: 15000, currency: 'IDR' },
+        barcode: '8990000000001',
+        in_stock: true,
+        stock_qty: 10,
+        tax_rate_ids: [],
+        created_at: '',
+        price_updated_at: '',
+        product_type: 'restaurant',
+      },
+    ]);
+
+    const { container } = renderWithProviders(
+      <KdsProductPickerModal
+        orderId="order-1"
+        sessionToken="test-token"
+        isOpen
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+      sharedFtl,
+      kdsFtl,
+    );
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.kds-picker-search') ?? container.querySelector('input')).toBeTruthy();
+    });
+    await checkA11y(container);
+
+    // Vacuity guard: the search field and the product row mounted.
+    expect(container.querySelector('.kds-picker-search')).toBeTruthy();
+    expect(container.textContent).toContain('Espresso Shot');
+  });
+
+  it('KdsEnrollmentModal has no axe violations on the device form', async () => {
+    const { container } = renderWithProviders(
+      <KdsEnrollmentModal
+        sessionToken="test-token"
+        restaurantPosId="resto-1"
+        isOpen
+        onEnrolled={vi.fn()}
+        onClose={vi.fn()}
+      />,
+      kdsFtl,
+    );
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-testid="kds-enrollment-close"]')).toBeTruthy();
+    });
+    await checkA11y(container);
+
+    // Vacuity guard: the dialog, its name field and the station entry mounted.
+    expect(container.querySelector('.kds-enrollment-input')).toBeTruthy();
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
   });
 });
