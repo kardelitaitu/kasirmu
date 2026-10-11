@@ -645,4 +645,77 @@ describe('TableManagementScreen', () => {
     await waitFor(() => expect(screen.getByText(/Active Tab:.*Table 1 - Order #101/)).toBeDefined());
     expect(screen.getAllByText(/3 items/)).toHaveLength(2);
   });
+
+  it('prompts release confirmation when releasing occupied table with active tab', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1 - Order #101',
+        table_name: 'Table 1',
+        item_count: 2,
+        total_minor: 85000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    await userEvent.click(tableBtn!);
+
+    await waitFor(() => expect(screen.getByText('Release')).toBeDefined());
+    await userEvent.click(screen.getByText('Release').closest('button')!);
+
+    // Warning banner is displayed
+    await waitFor(() =>
+      expect(screen.getByText(/Table has an active tab/)).toBeDefined(),
+    );
+    expect(screen.getByText('Confirm Release')).toBeDefined();
+
+    // Cancel dismisses banner without calling mockReleaseTable
+    await userEvent.click(screen.getByText('Cancel').closest('button')!);
+    await waitFor(() =>
+      expect(screen.queryByText(/Table has an active tab/)).toBeNull(),
+    );
+    expect(mockReleaseTable).not.toHaveBeenCalled();
+
+    // Click Release again and confirm
+    await userEvent.click(screen.getByText('Release').closest('button')!);
+    await waitFor(() => expect(screen.getByText('Confirm Release')).toBeDefined());
+    await userEvent.click(screen.getByText('Confirm Release').closest('button')!);
+
+    await waitFor(() =>
+      expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1'),
+    );
+  });
+
+  it('calls onSelectTable when Resume Tab / Order is clicked for active bill table', async () => {
+    const handleSelectTable = vi.fn();
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1 - Order #101',
+        table_name: 'Table 1',
+        item_count: 2,
+        total_minor: 85000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onSelectTable={handleSelectTable} />
+      </LocalizationProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    await userEvent.click(tableBtn!);
+
+    await waitFor(() => expect(screen.getByText('Resume Tab / Order')).toBeDefined());
+    await userEvent.click(screen.getByText('Resume Tab / Order').closest('button')!);
+
+    expect(handleSelectTable).toHaveBeenCalledWith('Table 1');
+  });
 });

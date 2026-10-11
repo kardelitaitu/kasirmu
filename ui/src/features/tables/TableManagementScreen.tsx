@@ -368,7 +368,6 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12 19 5 12 12 5" />
               </svg>
-              <span className="tables-back-text">{l10n.getString('back') || 'Back'}</span>
             </button>
           )}
           <h1 className="tables-title"><Localized id="tables-title">Table Management</Localized></h1>
@@ -519,24 +518,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             )}
 
             {showReleaseConfirm && activeBill && (
-              <div
-                style={{
-                  background: 'var(--color-danger-subtle, rgba(239, 68, 68, 0.1))',
-                  border: '1px solid var(--color-danger, #ef4444)',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  margin: '12px 0',
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-fg)',
-                }}
-              >
-                <div style={{ fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: '4px' }}>
-                  ⚠️ Table has an active tab ({formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })})
+              <div className="tables-warning-banner">
+                <div className="tables-warning-title">
+                  <Localized id="tables-release-confirm-title" vars={{ amount: formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency }) }}>
+                    <span>Table has an active tab ({formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })})</span>
+                  </Localized>
                 </div>
-                <div>
-                  Releasing will mark the table as available without closing or settling this unpaid bill. Are you sure?
+                <div className="tables-warning-desc">
+                  <Localized id="tables-release-confirm-desc">
+                    <span>Releasing will mark the table as available without closing or settling this unpaid bill. Are you sure?</span>
+                  </Localized>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <div className="tables-warning-actions">
                   <Button
                     variant="danger"
                     size="sm"
@@ -546,33 +539,27 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       void statusAction(selected);
                     }}
                   >
-                    Confirm Release
+                    <Localized id="tables-confirm-release">
+                      <span>Confirm Release</span>
+                    </Localized>
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setShowReleaseConfirm(false)}>
-                    Cancel
+                    <Localized id="cancel">
+                      <span>Cancel</span>
+                    </Localized>
                   </Button>
                 </div>
               </div>
             )}
 
             {showDeleteConfirm && (
-              <div
-                style={{
-                  background: 'var(--color-danger-subtle, rgba(239, 68, 68, 0.1))',
-                  border: '1px solid var(--color-danger, #ef4444)',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  margin: '12px 0',
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-fg)',
-                }}
-              >
-                <div style={{ fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: '4px' }}>
+              <div className="tables-warning-banner">
+                <div className="tables-warning-title">
                   <Localized id="tables-delete-confirm" vars={{ name: selected.name }}>
                     <span>Are you sure you want to delete table {selected.name}?</span>
                   </Localized>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <div className="tables-warning-actions">
                   <Button
                     variant="danger"
                     size="sm"

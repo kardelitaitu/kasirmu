@@ -39,3 +39,6 @@ tables-shape-circle = Circle
 tables-shape-square = Square
 tables-shape-rectangle = Rectangle
 tables-save-table = Save Table
+tables-release-confirm-title = Table has an active tab ({ $amount })
+tables-release-confirm-desc = Releasing will mark the table as available without closing or settling this unpaid bill. Are you sure?
+tables-confirm-release = Confirm Release
