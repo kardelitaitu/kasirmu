@@ -393,6 +393,38 @@
   color: var(--color-accent-fg);
 }
 
+/* Fired course: visual indicator that line was dispatched to kitchen */
+.pos-cart-course-chip--fired {
+  border-style: solid;
+  border-color: var(--color-success-dim);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+/* Held course: line is waiting for server to fire */
+.pos-cart-course-chip--hold {
+  border-style: dashed;
+  border-color: var(--color-warning-dim);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.pos-cart-course-status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
+  margin-left: var(--space-0_5);
+}
+
+.pos-cart-course-status-badge--fired {
+  color: var(--color-success);
+}
+
+.pos-cart-course-status-badge--hold {
+  color: var(--color-warning);
+}
+
 .pos-cart-course-chip:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;

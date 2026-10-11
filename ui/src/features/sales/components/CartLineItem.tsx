@@ -222,7 +222,7 @@ export function CartLineItem({
               <span className="pos-cart-line-course">
                 <button
                   type="button"
-                  className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}`}
+                  className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}${line.coursingStatus === 'fired' ? ' pos-cart-course-chip--fired' : line.coursingStatus === 'hold' ? ' pos-cart-course-chip--hold' : ''}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCourseMenuLineChange?.(courseOpen ? null : line.id);
@@ -231,7 +231,29 @@ export function CartLineItem({
                   aria-expanded={courseOpen}
                   data-testid="cart-line-course-chip"
                 >
-                  {line.courseId ? `${courseEmoji(line.courseId)} ${courseLabel(line.courseId)}` : 'Course'}
+                  {line.courseId ? (
+                    <>
+                      <span>{courseEmoji(line.courseId)} {courseLabel(line.courseId)}</span>
+                      {line.coursingStatus === 'fired' && (
+                        <span
+                          className="pos-cart-course-status-badge pos-cart-course-status-badge--fired"
+                          data-testid="cart-line-course-status-fired"
+                        >
+                          ✓
+                        </span>
+                      )}
+                      {line.coursingStatus === 'hold' && (
+                        <span
+                          className="pos-cart-course-status-badge pos-cart-course-status-badge--hold"
+                          data-testid="cart-line-course-status-hold"
+                        >
+                          ⏸
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    'Course'
+                  )}
                 </button>
                 {courseOpen && (
                   <span

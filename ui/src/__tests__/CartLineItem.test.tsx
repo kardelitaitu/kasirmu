@@ -364,6 +364,24 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     expect(chip.textContent).toContain('Main Course');
   });
 
+  it('renders coursingStatus badges for hold and fired lines', () => {
+    const holdLine = { ...makeLine(), courseId: 'main' as CourseId, coursingStatus: 'hold' as const };
+    const { unmount } = renderItem({ line: holdLine, onAssignCourse: vi.fn() });
+
+    const holdChip = screen.getByTestId('cart-line-course-chip');
+    expect(holdChip.className).toContain('pos-cart-course-chip--hold');
+    expect(screen.getByTestId('cart-line-course-status-hold').textContent).toBe('⏸');
+
+    unmount();
+
+    const firedLine = { ...makeLine(), courseId: 'main' as CourseId, coursingStatus: 'fired' as const };
+    renderItem({ line: firedLine, onAssignCourse: vi.fn() });
+
+    const firedChip = screen.getByTestId('cart-line-course-chip');
+    expect(firedChip.className).toContain('pos-cart-course-chip--fired');
+    expect(screen.getByTestId('cart-line-course-status-fired').textContent).toBe('✓');
+  });
+
   it('renders modifier tags with prices when modifiers are attached to the line', () => {
     const line: CartLine = {
       ...makeLine({ name: 'Iced Coffee' }),
