@@ -537,6 +537,9 @@ categories-icon-snack = Camilan
 categories-icon-hot-drink = Minuman panas
 categories-icon-cold-drink = Minuman dingin
 categories-icon-generic = Generik
+categories-icon-generic-1 = Generik ·
+categories-icon-generic-2 = Generik ··
+categories-icon-generic-3 = Generik ···
 category-mgmt-edit-aria = Edit kategori { $name }
 
 # Product type labels

@@ -543,6 +543,11 @@ categories-icon-snack = Snack
 categories-icon-hot-drink = Hot drink
 categories-icon-cold-drink = Cold drink
 categories-icon-generic = Generic
+# The three generic dots are separate options, so each needs its own accessible
+# name: three icon-only radios all reading "Generic" are indistinguishable.
+categories-icon-generic-1 = Generic ·
+categories-icon-generic-2 = Generic ··
+categories-icon-generic-3 = Generic ···
 category-mgmt-edit-aria = Edit category { $name }
 
 # Product type labels

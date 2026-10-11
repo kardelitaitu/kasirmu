@@ -46,11 +46,20 @@ describe('categoryIconLabelId', () => {
     expect(categoryIconLabelId('cold-drink')).toBe('categories-icon-cold-drink');
   });
 
+  it('gives every selectable icon a DISTINCT accessible-name id', () => {
+    // The picker buttons are icon-only, so this id IS their accessible name.
+    // Three dots options collapsing to one id meant three radios all announced
+    // as "Generic" — indistinguishable to a screen reader. Measured live in the
+    // running app before this case existed. The assertion is over the OPTIONS,
+    // not a hand-written list, so a fourth generic icon is covered for free.
+    const ids = CATEGORY_ICON_OPTIONS.map((o) => categoryIconLabelId(o.id));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('falls back to the generic label rather than returning empty', () => {
     // A category may carry an icon id this build does not know (written by a
     // newer build, or hand-edited). The picker button is icon-only, so an empty
     // label would leave it unnamed to assistive tech.
-    expect(categoryIconLabelId('dots-1')).toBe('categories-icon-generic');
     expect(categoryIconLabelId('unknown-icon')).toBe('categories-icon-generic');
     expect(categoryIconLabelId('')).toBe('categories-icon-generic');
   });
