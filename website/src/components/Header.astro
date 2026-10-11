@@ -327,13 +327,20 @@ const login = getRelativeLocaleUrl(locale, 'login');
       }
       <ThemeToggle locale={locale} />
       <LocaleSwitcher locale={locale} alternatePaths={alternatePaths} />
+      {/* min-w + text-center reserve one box for BOTH labels. The swap rewrites
+          this link's text from the login label to the account label, and the two
+          are not the same width (measured on the live site 2026-10-11, Inter
+          14px: "Masuk" 77px / "Akun" 67px, "Sign in" 78px / "Account" 89px).
+          Without the reservation the pill shrinks mid-navigation and drags the
+          whole right-hand cluster — theme toggle and locale switcher — 10px to
+          the left and back. 6rem covers the widest of the four. */}
       <a
         href={login}
         data-auth-nav
         data-locale={locale}
         data-login-text={t(locale, 'nav.login')}
         data-account-text={t(locale, 'nav.account')}
-        class="hidden rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition hover:bg-primary-hover sm:inline-block"
+        class="hidden min-w-[6rem] rounded-md bg-primary px-4 py-2 text-center text-sm font-semibold text-on-primary transition hover:bg-primary-hover sm:inline-block"
       >
         {t(locale, 'nav.login')}
       </a>

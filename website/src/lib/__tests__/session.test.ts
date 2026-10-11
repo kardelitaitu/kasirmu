@@ -2,7 +2,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { EMAIL_STORAGE_KEY, getSessionToken, hasSession, SESSION_STORAGE_KEY } from '../session';
+import {
+  EMAIL_STORAGE_KEY,
+  getCachedHasSession,
+  getSessionToken,
+  hasSession,
+  invalidateSessionCache,
+  SESSION_STORAGE_KEY,
+} from '../session';
 
 /**
  * R1 httpOnly-cookie session helper tests: getSessionToken must prefer the
@@ -226,5 +233,71 @@ describe('the session storage key has exactly one owner', () => {
         expect(source, `${file} must not spell the key itself`).not.toMatch(/['"]oz_email['"]/);
       }
     });
+  });
+});
+
+/**
+ * The signed-in state cache that lets the header paint the correct label in a
+ * client-router swap's own frame instead of a round trip later.
+ *
+ * It is a paint hint only — every navigation revalidates through
+ * `hasSession()` — so what matters is that it is null until something
+ * resolves, tracks the last resolve, and can be dropped on demand.
+ */
+describe('hasSession — cached signed-in state', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    invalidateSessionCache();
+  });
+
+  it('is null before anything has resolved', () => {
+    expect(getCachedHasSession()).toBeNull();
+  });
+
+  it('is true after a session resolves', async () => {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'stored.token');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+
+    expect(await hasSession()).toBe(true);
+    expect(getCachedHasSession()).toBe(true);
+  });
+
+  it('is false after a resolve that finds no session', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+
+    expect(await hasSession()).toBe(false);
+    expect(getCachedHasSession()).toBe(false);
+  });
+
+  it('follows the session when it changes', async () => {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'stored.token');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+    await hasSession();
+    expect(getCachedHasSession()).toBe(true);
+
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    await hasSession();
+    expect(getCachedHasSession()).toBe(false);
+  });
+
+  it('is dropped by invalidateSessionCache, so the next read re-probes', async () => {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'stored.token');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+    await hasSession();
+    expect(getCachedHasSession()).toBe(true);
+
+    invalidateSessionCache();
+    expect(getCachedHasSession()).toBeNull();
+  });
+
+  it('is readable synchronously — getCachedHasSession returns, it does not await', async () => {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'stored.token');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+    await hasSession();
+
+    // A caller inside an astro:after-swap handler cannot await: it has to
+    // paint in this turn or the browser paints without it.
+    expect(getCachedHasSession()).not.toBeNull();
   });
 });

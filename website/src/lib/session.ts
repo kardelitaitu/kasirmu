@@ -72,6 +72,33 @@ async function probeSessionToken(): Promise<string | null> {
 }
 
 /**
+ * The last signed-in state `hasSession()` resolved to, or `null` before the
+ * first resolve completes.
+ *
+ * Module scope is deliberate: a client-router navigation keeps the same JS
+ * realm, so this survives the swap that replaces the header DOM. The header
+ * reads it through `getCachedHasSession()` to paint the signed-in label in the
+ * SAME frame the new page swaps in, instead of waiting out a second
+ * `/__oz/session` round trip (measured on the live site 2026-10-11: the
+ * swapped-in header showed "Masuk" for 156-169ms before correcting itself).
+ *
+ * It is a paint hint, never an answer: every navigation still revalidates
+ * through `hasSession()`, so a stale value self-corrects one round trip later.
+ * A wrong hint costs one frame of the previous label — the same thing that
+ * happened on every navigation before this cache existed.
+ */
+let cachedHasSession: boolean | null = null;
+
+/**
+ * The last resolved signed-in state, or `null` if none has resolved yet.
+ * Synchronous by design, so a caller inside an `astro:after-swap` handler can
+ * update the DOM before the browser paints.
+ */
+export function getCachedHasSession(): boolean | null {
+  return cachedHasSession;
+}
+
+/**
  * Whether the user is signed in, cookie-first. Async because the httpOnly
  * cookie is not readable from JS — the Worker's /__oz/session endpoint is the
  * only way to see it. Callers must not substitute a synchronous
@@ -81,7 +108,21 @@ async function probeSessionToken(): Promise<string | null> {
 export async function hasSession(): Promise<boolean> {
   // Boolean(), not `!== null`: an empty-string sessionStorage token is not a
   // session (matches the old synchronous `Boolean(sessionStorage.get(...))`).
-  return Boolean(await getSessionToken());
+  const value = Boolean(await getSessionToken());
+  cachedHasSession = value;
+  return value;
+}
+
+/**
+ * Forget the cached signed-in state, so the next `getCachedHasSession()` is
+ * `null` and the next `hasSession()` is guaranteed to re-probe.
+ *
+ * Call this when something changes the session out from under us — sign-in,
+ * sign-out — so the paint hint cannot contradict the new state for even one
+ * navigation. Only exported for that; nothing in the render path calls it.
+ */
+export function invalidateSessionCache(): void {
+  cachedHasSession = null;
 }
 
 /**
