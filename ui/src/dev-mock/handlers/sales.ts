@@ -340,8 +340,91 @@ function loadMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
 const mockSalesStore = loadMockSalesStore();
 const completedSales: MockCompletedSale[] = mockSalesStore.sales;
 const saleDetails: Record<string, MockSaleDetails> = mockSalesStore.details;
+// `refunds` postdates the other two keys, so a store persisted by an older
+// build has no such property. `?? []` keeps those stores loading rather than
+// handing back undefined for every refund read.
+const mockRefunds: MockRefund[] =
+  (mockSalesStore as { refunds?: MockRefund[] }).refunds ?? [];
 function saveMockSales(): void {
-  writeSlice(MOCK_SALES_KEY, { sales: completedSales, details: saleDetails });
+  writeSlice(MOCK_SALES_KEY, { sales: completedSales, details: saleDetails, refunds: mockRefunds });
+}
+
+// ── Refunds (persisted so a refund is listable after it is processed) ──
+//
+// process_refund used to mint a refundId and DISCARD it, while list_refunds
+// answered `[]` unconditionally — so a refund appeared to succeed and then
+// vanished, and Sales History showed no refunds for any sale. Same defect shape
+// as the KDS create stub fixed in 0e2ddc7ac: a stateful command whose read-back
+// lied about what the command did.
+//
+// Kept in the sales store rather than a new key: a refund belongs to a sale and
+// is read back per sale, so colocating keeps one write path (saveMockSales) and
+// one load path for both.
+type MockRefundLine = {
+  id: string;
+  refundId: string;
+  saleLineId: string;
+  sku: string;
+  qty: number;
+  unitPrice: { minor_units: number; currency: string };
+  lineTotal: { minor_units: number; currency: string };
+};
+type MockRefund = {
+  id: string;
+  saleId: string;
+  total: { minor_units: number; currency: string };
+  reason: string;
+  note: string;
+  processedBy: string;
+  createdAt: string;
+  lines: MockRefundLine[];
+};
+
+/** Record a refund and return the id/total the command contract promises. */
+function recordMockRefund(a: {
+  saleId?: string;
+  reason?: string;
+  note?: string | null;
+  userId?: string;
+  lines?: Array<{ sku?: string; qty?: number; lineTotalMinor?: number; currency?: string }>;
+}): { refundId: string; totalMinor: number } {
+  const lines = a.lines ?? [];
+  const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
+  const refundId = `refund-${Date.now()}`;
+  const currency = lines[0]?.currency ?? 'IDR';
+  const now = new Date().toISOString();
+  mockRefunds.push({
+    id: refundId,
+    saleId: a.saleId ?? '',
+    total: { minor_units: totalMinor, currency },
+    reason: a.reason ?? '',
+    note: a.note ?? '',
+    processedBy: a.userId ?? 'admin-1',
+    createdAt: now,
+    lines: lines.map((l, i) => ({
+      id: `${refundId}-line-${i}`,
+      refundId,
+      saleLineId: '',
+      sku: l.sku ?? '',
+      qty: l.qty ?? 1,
+      unitPrice: { minor_units: l.lineTotalMinor ?? 0, currency: l.currency ?? currency },
+      lineTotal: { minor_units: l.lineTotalMinor ?? 0, currency: l.currency ?? currency },
+    })),
+  });
+  saveMockSales();
+  return { refundId, totalMinor };
+}
+
+/**
+ * List a sale's persisted refunds. `saleId` arrives the way the other scoped
+ * list handlers read theirs (flat, or inside an `args` envelope); an absent
+ * saleId returns every refund rather than none, so a no-arg call is a listing
+ * rather than a silent empty answer.
+ */
+function listMockRefunds(args: unknown): MockRefund[] {
+  const raw = (args as { args?: { saleId?: string } })?.args ?? (args as { saleId?: string });
+  const saleId = raw?.saleId;
+  return saleId ? mockRefunds.filter((r) => r.saleId === saleId) : mockRefunds.slice();
 }
 // ═══════════════════════════════════════════════════════════════════
 // HANDLER MAP
@@ -643,23 +726,33 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     // args?.['args'] ?? args, so the envelope is already unwrapped here. The
     // helper's own '?? {}' tail preserves the old third fallback exactly, so a
     // no-argument call still yields an empty object rather than undefined.
-    const a = mockHandlerPayload<{ lines?: Array<{ lineTotalMinor: number }> }>(args);
-    const lines = a.lines ?? [];
-    const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
-    return { refundId: `refund-${Date.now()}`, totalMinor };
+    const a = mockHandlerPayload<{
+      saleId?: string;
+      reason?: string;
+      note?: string | null;
+      userId?: string;
+      lines?: Array<{ sku?: string; qty?: number; lineTotalMinor?: number; currency?: string }>;
+    }>(args);
+    return recordMockRefund(a);
   },
   'process_refund_scoped': (args) => {
-    // mockHandlerPayload rather than a nested read: invoke() hands a handler
-    // args?.['args'] ?? args, so the envelope is already unwrapped here. The
-    // helper's own '?? {}' tail preserves the old third fallback exactly, so a
-    // no-argument call still yields an empty object rather than undefined.
-    const a = mockHandlerPayload<{ lines?: Array<{ lineTotalMinor: number }> }>(args);
-    const lines = a.lines ?? [];
-    const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
-    return { refundId: `refund-${Date.now()}`, totalMinor };
+    // Same handler body as the unscoped twin: the scoped command reads the
+    // userId from the session rather than from args, so the only difference is
+    // which key the caller used.
+    const a = mockHandlerPayload<{
+      saleId?: string;
+      reason?: string;
+      note?: string | null;
+      userId?: string;
+      lines?: Array<{ sku?: string; qty?: number; lineTotalMinor?: number; currency?: string }>;
+    }>(args);
+    return recordMockRefund(a);
   },
-  'list_refunds': () => [],
-  'list_refunds_scoped': () => [],
+  // `saleId` is part of the real command's arguments (api/sales.ts:838), and the
+  // screen passes it — a sale's refunds, not every refund in the store. Read it
+  // the same way the other scoped list handlers read theirs.
+  'list_refunds': (args) => listMockRefunds(args),
+  'list_refunds_scoped': (args) => listMockRefunds(args),
 
   'finalize_sale': () => null,
   'void_pending_sale': () => null,
