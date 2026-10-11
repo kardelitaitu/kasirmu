@@ -62,6 +62,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
   const [tables, setTables] = useState<Table[]>([]);
+  const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
   const [selected, setSelected] = useState<Table | null>(null);
@@ -135,7 +136,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       ]);
       if (seq !== loadSeqRef.current) return;
       // asArray: see utils/ipc-payload — the render maps/finds these.
-      setTables(asArray<typeof tableData[number]>(tableData));
+      const loadedTables = asArray<typeof tableData[number]>(tableData);
+      setTables(loadedTables);
+      if (section === null) {
+        setTablePool(loadedTables);
+      }
       setOpenBills(asArray<typeof billData[number]>(billData));
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
@@ -160,6 +165,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const updated = event.payload;
       if (updated && updated.id) {
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setSelected((curr) => (curr && curr.id === updated.id ? updated : curr));
       }
     })
@@ -173,6 +179,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const { id } = event.payload;
       if (id) {
         setTables((prev) => prev.filter((t) => t.id !== id));
+        setTablePool((prev) => prev.filter((t) => t.id !== id));
         setSelected((curr) => (curr && curr.id === id ? null : curr));
       }
     })
@@ -257,6 +264,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           width,
         });
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setSelected((curr) => (curr && curr.id === updated.id ? updated : curr));
       } else {
         const count = tables.length;
@@ -281,6 +289,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           sort_order: count + 1,
         });
         setTables((prev) => [...prev, created]);
+        setTablePool((prev) => [...prev, created]);
       }
 
       if (trimmedSection && !sections.includes(trimmedSection)) {
@@ -301,6 +310,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     try {
       await deleteTableScoped(sessionToken, tableId);
       setTables((prev) => prev.filter((t) => t.id !== tableId));
+      setTablePool((prev) => prev.filter((t) => t.id !== tableId));
       setSelected(null);
       setShowDeleteConfirm(false);
     } catch (err) {
@@ -340,6 +350,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         // mutation never changes `section`, so the table stays in the right
         // filtered list.
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       } catch (err) {
         setActionError(l10nErrorMessage(err, l10n, 'app-error-generic'));
       } finally {
@@ -351,6 +362,23 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   );
 
   const showEmpty = !loading && !error && tables.length === 0;
+
+  const activeTableList = tablePool.length > 0 ? tablePool : tables;
+  const allTotal = activeTableList.length;
+  const allOccupied = activeTableList.filter((t) => t.status === 'occupied').length;
+
+  const getSectionCounts = useCallback(
+    (secName: string) => {
+      const inSection = activeTableList.filter((t) => (t.section || 'Main') === secName);
+      return {
+        total: inSection.length,
+        occupied: inSection.filter((t) => t.status === 'occupied').length,
+      };
+    },
+    [activeTableList],
+  );
+
+  const [showLegend, setShowLegend] = useState(false);
 
   return (
     <div className="tables" role="region" aria-label={l10n.getString('tables-management-label')}>
@@ -374,6 +402,15 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         </div>
         <div className="tables-header-actions">
           <Button
+            variant="ghost"
+            size="sm"
+            className={`tables-legend-toggle ${showLegend ? 'active' : ''}`}
+            data-testid="tables-legend-toggle-btn"
+            onClick={() => setShowLegend((v) => !v)}
+          >
+            <span>Legend</span>
+          </Button>
+          <Button
             variant="primary"
             size="sm"
             data-testid="tables-add-table-btn"
@@ -386,13 +423,72 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         </div>
       </div>
       <div className="tables-sections">
-        <Button variant="ghost" size="sm" className={`tables-section-btn ${section === null ? 'active' : ''}`}
-          onClick={() => setSection(null)}><Localized id="tables-all">All</Localized></Button>
-        {sections.map(s => (
-          <Button variant="ghost" size="sm" key={s} className={`tables-section-btn ${section === s ? 'active' : ''}`}
-            onClick={() => setSection(s)}>{s}</Button>
-        ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`tables-section-btn ${section === null ? 'active' : ''}`}
+          onClick={() => setSection(null)}
+        >
+          <span className="tables-section-label">
+            <Localized id="tables-all">All</Localized>
+          </span>
+          {allTotal > 0 && (
+            <span
+              className={`tables-section-badge${allOccupied > 0 ? ' tables-section-badge--occupied' : ''}`}
+              data-testid="tables-section-badge-all"
+            >
+              {allOccupied > 0 ? `${allOccupied}/${allTotal}` : allTotal}
+            </span>
+          )}
+        </Button>
+        {sections.map((s) => {
+          const counts = getSectionCounts(s);
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              key={s}
+              className={`tables-section-btn ${section === s ? 'active' : ''}`}
+              onClick={() => setSection(s)}
+            >
+              <span className="tables-section-label">{s}</span>
+              {counts.total > 0 && (
+                <span
+                  className={`tables-section-badge${counts.occupied > 0 ? ' tables-section-badge--occupied' : ''}`}
+                  data-testid={`tables-section-badge-${s}`}
+                >
+                  {counts.occupied > 0 ? `${counts.occupied}/${counts.total}` : counts.total}
+                </span>
+              )}
+            </Button>
+          );
+        })}
       </div>
+
+      {showLegend && (
+        <div className="tables-legend" aria-hidden="true" data-testid="tables-legend-bar">
+          <div className="tables-legend-item">
+            <span className="tables-legend-dot tables-legend-dot--available" />
+            <span className="tables-legend-text">{statusLabel('available')}</span>
+          </div>
+          <div className="tables-legend-item">
+            <span className="tables-legend-dot tables-legend-dot--occupied" />
+            <span className="tables-legend-text">{statusLabel('occupied')}</span>
+          </div>
+          <div className="tables-legend-item">
+            <span className="tables-legend-dot tables-legend-dot--has-bill" />
+            <span className="tables-legend-text"><Localized id="tables-active-tab-short">Open Tab</Localized></span>
+          </div>
+          <div className="tables-legend-item">
+            <span className="tables-legend-dot tables-legend-dot--reserved" />
+            <span className="tables-legend-text">{statusLabel('reserved')}</span>
+          </div>
+          <div className="tables-legend-item">
+            <span className="tables-legend-dot tables-legend-dot--cleaning" />
+            <span className="tables-legend-text">{statusLabel('cleaning')}</span>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="tables-error" role="alert">
@@ -472,11 +568,23 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               }}
               aria-label={l10n.getString('tables-table-label', { name: t.name, status: statusLabel(t.status) })}
             >
+              {t.capacity > 0 && (
+                <span className="tables-table-capacity" aria-hidden="true" title={`${t.capacity} seats`}>
+                  {t.capacity}p
+                </span>
+              )}
               <span className="tables-table-name">{t.name}</span>
               <span className="tables-table-status">
                 {bill ? (
                   <span className="tables-table-bill-tag">
-                    {l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`)}
+                    <span className="tables-table-bill-items">
+                      {l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`)}
+                    </span>
+                    {bill.total_minor > 0 && (
+                      <span className="tables-table-bill-amount">
+                        {formatMoney({ minor_units: bill.total_minor, currency: bill.currency })}
+                      </span>
+                    )}
                   </span>
                 ) : (
                   statusLabel(t.status)

@@ -718,4 +718,62 @@ describe('TableManagementScreen', () => {
 
     expect(handleSelectTable).toHaveBeenCalledWith('Table 1');
   });
+
+  it('renders section badges with total and occupied counts', async () => {
+    mockListSections.mockResolvedValue(['Main', 'Outdoor']);
+    mockListTables.mockResolvedValue([
+      makeTable({ id: 't-1', name: 'Table 1', section: 'Main', status: 'occupied' }),
+      makeTable({ id: 't-2', name: 'Table 2', section: 'Main', status: 'available' }),
+      makeTable({ id: 't-3', name: 'Table 3', section: 'Outdoor', status: 'available' }),
+    ]);
+    renderScreen();
+
+    await waitFor(() => {
+      const allBadge = screen.getByTestId('tables-section-badge-all');
+      expect(allBadge.textContent).toBe('1/3');
+      expect(allBadge).toHaveClass('tables-section-badge--occupied');
+
+      const mainBadge = screen.getByTestId('tables-section-badge-Main');
+      expect(mainBadge.textContent).toBe('1/2');
+
+      const outdoorBadge = screen.getByTestId('tables-section-badge-Outdoor');
+      expect(outdoorBadge.textContent).toBe('1');
+    });
+  });
+
+  it('toggles the floorplan semantic status legend', async () => {
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-legend-toggle-btn')).toBeDefined());
+
+    expect(screen.queryByTestId('tables-legend-bar')).toBeNull();
+
+    await userEvent.click(screen.getByTestId('tables-legend-toggle-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-legend-bar')).toBeDefined());
+    expect(screen.getByText('Open Tab')).toBeDefined();
+
+    await userEvent.click(screen.getByTestId('tables-legend-toggle-btn'));
+    await waitFor(() => expect(screen.queryByTestId('tables-legend-bar')).toBeNull());
+  });
+
+  it('renders table capacity and active held bill amount on table card', async () => {
+    mockListTables.mockResolvedValue([
+      makeTable({ id: 't-1', name: 'Table 1', capacity: 6, status: 'occupied' }),
+    ]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        table_name: 'Table 1',
+        item_count: 4,
+        total_minor: 150000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    expect(screen.getByText('6p')).toBeDefined();
+    expect(screen.getByText(/150\.000/)).toBeDefined();
+  });
 });

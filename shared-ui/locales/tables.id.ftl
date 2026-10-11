@@ -40,5 +40,6 @@ tables-save-table = Simpan Meja
 tables-release-confirm-title = Meja memiliki tagihan aktif ({ $amount })
 tables-release-confirm-desc = Melepas meja akan menandainya sebagai tersedia tanpa menutup atau melunasi tagihan yang belum dibayar ini. Anda yakin?
 tables-confirm-release = Konfirmasi Pelepasan
+tables-active-tab-short = Tagihan Aktif
 
 # ── Tax Configuration ──
