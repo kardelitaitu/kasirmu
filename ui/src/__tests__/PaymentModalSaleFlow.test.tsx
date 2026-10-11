@@ -454,6 +454,43 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('assigns table order before creating KDS order when tableNumber is provided', async () => {
+    kdsOrderImpl();
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tables_scoped') {
+        return Promise.resolve([
+          { id: 'tbl-12', name: 'Table 12', status: 'available' },
+        ]);
+      }
+      if (cmd === 'assign_table_order_scoped') {
+        return Promise.resolve({ id: 'tbl-12', status: 'occupied', active_sale_id: 'sale-1' });
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        tableNumber="12"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'assign_table_order_scoped',
+        expect.objectContaining({ tableId: 'tbl-12', saleId: 'sale-1' }),
+      );
+    });
+  });
+
   it('calls onComplete after sale done', async () => {
     const onComplete = vi.fn();
     await renderWithFluent(

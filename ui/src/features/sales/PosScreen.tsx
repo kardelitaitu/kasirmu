@@ -59,7 +59,7 @@ import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
-import { matchesTableBill } from './utils/tableLabel';
+import { matchesTableBill, bareTableNumber } from './utils/tableLabel';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
@@ -713,8 +713,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     if (tableNumber && sessionToken) {
       void listTablesScoped(sessionToken)
         .then((tables) => {
+          const bareInput = bareTableNumber(tableNumber);
           const match = tables.find(
-            (t) => t.name === tableNumber || t.id === tableNumber,
+            (t) =>
+              t.name === tableNumber ||
+              t.id === tableNumber ||
+              (bareTableNumber(t.name) === bareInput && bareInput !== ''),
           );
           if (match && (match.status === 'occupied' || match.status === 'reserved')) {
             return releaseTableScoped(sessionToken, match.id);
@@ -1013,8 +1017,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (sessionToken) {
         void listTablesScoped(sessionToken)
           .then((tables) => {
+            const bareInput = bareTableNumber(tableName);
             const match = tables.find(
-              (t) => t.name === tableName || t.id === tableName,
+              (t) =>
+                t.name === tableName ||
+                t.id === tableName ||
+                (bareTableNumber(t.name) === bareInput && bareInput !== ''),
             );
             if (match && match.status === 'available') {
               return updateTableStatusScoped(sessionToken, match.id, 'reserved');

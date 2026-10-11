@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import type { CartLine, CourseId, LineId, ModifierSelection, Money, Product } from '@/types/domain';
+import type { CartLine, CourseId, CoursingStatus, LineId, ModifierSelection, Money, Product } from '@/types/domain';
 import { triggerInteraction } from '@/utils/interaction';
 
 let nextLineId = 0;
@@ -72,7 +72,7 @@ export function usePosState() {
    * @returns `true` if the product was added, `false` if rejected
    *   (currency mismatch).
    */
-  const addProduct = useCallback((product: Product, qty: number = 1, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[]; note?: string }): boolean => {
+  const addProduct = useCallback((product: Product, qty: number = 1, meta?: { courseId?: CourseId; coursingStatus?: CoursingStatus; modifiers?: ModifierSelection[]; note?: string }): boolean => {
     // MONEY-AUDIT-F1: reject mixed-currency carts at the source. The backend
     // `Cart::add_line` enforces single-currency carts, so the front-end
     // preview must not silently sum amounts in different currencies.
@@ -93,15 +93,17 @@ export function usePosState() {
     setLines((prev) => {
       const existing = prev.find((l) => {
         if (l.sku !== product.sku) return false;
+        if (l.courseId && meta?.courseId && l.courseId !== meta.courseId) return false;
+        if ((l.coursingStatus ?? 'hold') !== (meta?.coursingStatus ?? 'hold')) return false;
         if ((l.note ?? '') !== (meta?.note ?? '')) return false;
         const lMods = (l.modifiers ?? []).map((m) => m.modifierId).sort().join(',');
         const newMods = (meta?.modifiers ?? []).map((m) => m.modifierId).sort().join(',');
         return lMods === newMods;
       });
       const metaSpread =
-        meta?.courseId !== undefined || (meta?.modifiers && meta.modifiers.length > 0) || (meta?.note && meta.note.trim())
+        meta?.courseId !== undefined || meta?.coursingStatus !== undefined || (meta?.modifiers && meta.modifiers.length > 0) || (meta?.note && meta.note.trim())
           ? {
-              ...(meta?.courseId !== undefined ? { courseId: meta.courseId, coursingStatus: 'hold' as const } : {}),
+              ...(meta?.courseId !== undefined ? { courseId: meta.courseId, coursingStatus: meta?.coursingStatus ?? ('hold' as const) } : (meta?.coursingStatus !== undefined ? { coursingStatus: meta.coursingStatus } : {})),
               ...(meta?.modifiers && meta.modifiers.length > 0 ? { modifiers: meta.modifiers } : {}),
               ...(meta?.note && meta.note.trim() ? { note: meta.note.trim() } : {}),
             }

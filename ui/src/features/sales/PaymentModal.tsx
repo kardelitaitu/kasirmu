@@ -8,6 +8,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
+import { assignTableOrderScoped, listTablesScoped } from '@/api/tables';
 import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
@@ -905,6 +906,23 @@ retryCurrencyLoad,
       }
 
       try {
+        if (sessionToken && tableNumber) {
+          try {
+            const tbls = await listTablesScoped(sessionToken);
+            const bareInput = bareTableNumber(tableNumber);
+            const match = tbls.find(
+              (t) =>
+                t.id === tableNumber ||
+                t.name === tableNumber ||
+                (bareTableNumber(t.name) === bareInput && bareInput !== ''),
+            );
+            if (match) {
+              await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
+            }
+          } catch (tableErr) {
+            console.warn('assignTableOrderScoped failed', tableErr);
+          }
+        }
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
@@ -1376,6 +1394,23 @@ retryCurrencyLoad,
       }
 
       try {
+        if (sessionToken && tableNumber) {
+          try {
+            const tbls = await listTablesScoped(sessionToken);
+            const bareInput = bareTableNumber(tableNumber);
+            const match = tbls.find(
+              (t) =>
+                t.id === tableNumber ||
+                t.name === tableNumber ||
+                (bareTableNumber(t.name) === bareInput && bareInput !== ''),
+            );
+            if (match) {
+              await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
+            }
+          } catch (tableErr) {
+            console.warn('assignTableOrderScoped failed', tableErr);
+          }
+        }
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
