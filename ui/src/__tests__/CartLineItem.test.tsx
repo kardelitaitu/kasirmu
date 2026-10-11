@@ -265,10 +265,12 @@ describe('CartLineItem', () => {
     expect(c2.querySelector('.pos-cart-line-thumb')?.getAttribute('style')).toContain(
       '--thumb-hue',
     );
-    // The override button is the fourth accessible control, named per line.
+    // The override control is the fourth accessible control, named per line.
+    // It renders as a "$" ICON (not the word "Override") so it sits inline
+    // with the modifier chips instead of costing a text row per cart line.
     expect(screen.getAllByRole('button')).toHaveLength(4);
     const override = screen.getByRole('button', { name: 'Override price for Espresso' });
-    expect(override.textContent).toBe('Override');
+    expect(override.textContent).toBe('$');
     fireEvent.click(override);
     expect(onOverride).toHaveBeenCalledTimes(1);
     expect(onOverride).toHaveBeenCalledWith(full.line);
@@ -387,6 +389,44 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     expect(tagsContainer).toBeDefined();
     expect(tagsContainer.textContent).toContain('Less Sugar');
     expect(tagsContainer.textContent).toContain('Boba');
+  });
+
+  it('places the override "$" icon AFTER the modifier chips', () => {
+    // The placement is the request: the icon must follow the modifiers it
+    // adjusts. It is the LAST child of the row, after every tag and the Edit
+    // link, so a reordering that put it first would fail here.
+    const line: CartLine = {
+      ...makeLine({ name: 'Iced Coffee' }),
+      modifiers: [
+        {
+          groupId: 'grp-sugar',
+          groupName: 'Sugar',
+          modifierId: 'mod-less',
+          modifierName: 'Less Sugar',
+          priceMinor: 0,
+        },
+      ],
+    };
+    const onOverride = vi.fn();
+    renderItem({ line, onOverride });
+
+    const row = screen.getByTestId('cart-line-modifiers');
+    const override = screen.getByTestId('cart-line-override-btn');
+    expect(row.contains(override)).toBe(true);
+    expect(row.lastElementChild).toBe(override);
+    fireEvent.click(override);
+    expect(onOverride).toHaveBeenCalledTimes(1);
+  });
+
+  it('still offers the override when the line has NO modifiers', () => {
+    // Guarding the widened row condition: gating the row on modifiers alone
+    // would silently remove the override from every plain item.
+    const onOverride = vi.fn();
+    renderItem({ line: makeLine({ name: 'Plain Tea' }), onOverride });
+
+    const override = screen.getByTestId('cart-line-override-btn');
+    expect(override).toBeInTheDocument();
+    expect(screen.getByTestId('cart-line-modifiers').contains(override)).toBe(true);
   });
 });
 

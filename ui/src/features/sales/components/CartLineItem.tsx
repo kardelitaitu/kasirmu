@@ -278,9 +278,9 @@ export function CartLineItem({
               </span>
             )}
           </div>
-          {line.modifiers && line.modifiers.length > 0 && (
+          {((line.modifiers && line.modifiers.length > 0) || onOverride) ? (
             <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
-              {line.modifiers.map((m) => (
+              {line.modifiers?.map((m) => (
                 <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
                   {m.modifierName}
                   {m.priceMinor > 0 && (
@@ -290,7 +290,7 @@ export function CartLineItem({
                   )}
                 </span>
               ))}
-              {onEditModifiers && (
+              {onEditModifiers && (line.modifiers?.length ?? 0) > 0 && (
                 <button
                   type="button"
                   className="pos-cart-line-edit-modifiers-btn"
@@ -304,8 +304,20 @@ export function CartLineItem({
                   Edit
                 </button>
               )}
+              {onOverride && (
+                <button
+                  type="button"
+                  className="pos-cart-line-override"
+                  onClick={() => onOverride(line)}
+                  aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
+                  title={l10n.getString('pos-cart-line-override', undefined, 'Override')}
+                  data-testid="cart-line-override-btn"
+                >
+                  <span aria-hidden="true">$</span>
+                </button>
+              )}
             </div>
-          )}
+          ) : null}
           {line.note && (
             <div
               className="pos-cart-line-note-badge"
@@ -331,16 +343,6 @@ export function CartLineItem({
           <div className="pos-cart-line-price">
             <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
           </div>
-          {onOverride && (
-            <button
-              type="button"
-              className="pos-cart-line-override"
-              onClick={() => onOverride(line)}
-              aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
-            >
-              <Localized id="pos-cart-line-override">Override</Localized>
-            </button>
-          )}
         </div>
 
         {/* 3 — Qty controls */}

@@ -390,7 +390,7 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
       isManager: true, // the role says manager...
       canOverridePrice: false, // ...the grant says no
     });
-    expect(screen.queryByText('Override')).toBeNull();
+    expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
   });
 
   it('shows the override for a non-manager role that HOLDS the grant', () => {
@@ -401,15 +401,15 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
       isManager: false,
       canOverridePrice: true,
     });
-    expect(screen.getByText('Override')).toBeInTheDocument();
+    expect(screen.getByTestId('cart-line-override-btn')).toBeInTheDocument();
   });
 
   it('falls back to isManager when the host supplies no permission answer', () => {
     // `canOverridePrice` is optional precisely so this stays true.
     const asManager = renderPanel({ lines: [makeLine('Kopi')], isManager: true });
-    expect(within(asManager.panel).getByText('Override')).toBeInTheDocument();
+    expect(within(asManager.panel).getByTestId('cart-line-override-btn')).toBeInTheDocument();
     asManager.unmount();
     renderPanel({ lines: [makeLine('Kopi')], isManager: false });
-    expect(screen.queryByText('Override')).toBeNull();
+    expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
   });
 });
