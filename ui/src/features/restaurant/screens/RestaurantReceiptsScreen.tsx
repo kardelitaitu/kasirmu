@@ -175,6 +175,23 @@ export default function RestaurantReceiptsScreen({
   const [testingPrint, setTestingPrint] = useState(false);
   const [testingDrawer, setTestingDrawer] = useState(false);
   const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
+
+  /**
+   * Resolve a test-print result's Fluent key to display text.
+   *
+   * `formatTestPrintResult` is pure and returns a KEY (not a sentence), so this
+   * screen is the single place that renders it — for the status card and every
+   * toast. `detail` is only present on the two `-detail` variants, so passing it
+   * to the others is harmless but pointless; passing it always keeps the call one
+   * shape.
+   */
+  const testPrintMessage = useCallback(
+    (res: { messageId: string; detail?: string }) =>
+      res.detail !== undefined
+        ? l10n.getString(res.messageId, { detail: res.detail })
+        : l10n.getString(res.messageId),
+    [l10n],
+  );
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
   // The workspace (primary-location) scope id used for the scoped
@@ -787,8 +804,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_AUTH_REQUIRED);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -799,8 +816,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_PRINTER_DISABLED);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -811,8 +828,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_HOST);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -823,10 +840,10 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_PORT);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
         message: printerConnection === 'bluetooth'
           ? l10n.getString('restaurant-test-print-bt-mac-required')
-          : res.message,
+          : testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -885,16 +902,16 @@ export default function RestaurantReceiptsScreen({
         const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_UNCONFIRMED);
         setTestPrintResult({ ...res, timestamp: Date.now() });
         addToast({
-          title: `[${res.code}] Print Error`,
-          message: res.message,
+          title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+          message: testPrintMessage(res),
           type: 'error',
         });
       } else {
         const res = formatTestPrintResult(TEST_PRINT_CODES.SUCCESS);
         setTestPrintResult({ ...res, timestamp: Date.now() });
         addToast({
-          title: `[${res.code}] Print Success`,
-          message: res.message,
+          title: `[${res.code}] ${l10n.getString('restaurant-test-print-success-title')}`,
+          message: testPrintMessage(res),
           type: 'success',
         });
       }
@@ -908,8 +925,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(classified.code, classified.detail);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
     } finally {
@@ -928,6 +945,7 @@ export default function RestaurantReceiptsScreen({
     addToast,
     dirty,
     l10n,
+    testPrintMessage,
   ]);
 
   // ── Test Cash Drawer ─────────────────────────────────────────
@@ -1658,7 +1676,7 @@ export default function RestaurantReceiptsScreen({
                   </span>
                 </div>
                 <p className="resto-test-print-status__msg">
-                  {testPrintResult.message}
+                  {testPrintMessage(testPrintResult)}
                 </p>
               </div>
             )}

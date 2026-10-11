@@ -740,7 +740,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--success');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.SUCCESS)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Test receipt was sent to the printer successfully/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-success'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_DISABLED when printer connection is set to disabled', async () => {
@@ -757,7 +757,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PRINTER_DISABLED)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Receipt printer is currently disabled/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-printer-disabled'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_MISSING_HOST when network printer has empty host', async () => {
@@ -791,7 +791,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PRINTER_NOT_FOUND)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/No receipt printer is registered or detected/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-printer-not-found'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_PAPER_FAULT when printer is out of paper or cover open', async () => {
@@ -806,7 +806,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PAPER_FAULT)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Printer fault: check paper roll supply, cover latch, or paper jam/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-paper-fault'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_TIMEOUT when connection times out', async () => {
@@ -821,9 +821,28 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_TIMEOUT)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Printer communication timed out/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-timeout'))).toBeInTheDocument();
   });
 
+  it('renders the test-print message from the bundle under a NON-English locale (F10)', async () => {
+    // The discriminating half. Under English the message keys resolve to the
+    // same sentences the literals used, so the cases above cannot tell a
+    // localized string from a hardcoded one — a planted literal PASSED them.
+    // Indonesian differs, so this fails on a regression to a literal.
+    const user = userEvent.setup();
+    vi.mocked(printSalesReceipt).mockRejectedValueOnce(new Error('no receipt printer registered'));
+    await renderScreenId();
+
+    await user.click(screen.getByTestId('restaurant-receipts-test-print-btn'));
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    const idMessage = idBundleValue('restaurant-test-print-msg-printer-not-found');
+    expect(idMessage, 'the message key vanished from the Indonesian bundle').not.toBe('');
+    expect(idMessage).not.toBe('No receipt printer is registered or detected on this device.');
+    expect(within(statusEl).getByText(idMessage)).toBeInTheDocument();
+    // And explicitly NOT the English sentence that used to be hardcoded.
+    expect(within(statusEl).queryByText(/No receipt printer is registered/i)).toBeNull();
+  });
   it('remains clean when scoped receipt format resolves with non-default values', async () => {
     const { getReceiptFormatScoped } = await import('@/api/receipt-format');
     vi.mocked(getReceiptFormatScoped).mockResolvedValueOnce({
@@ -980,6 +999,26 @@ describe('RestaurantReceiptsScreen — printer-hardware i18n sweep (no hardcoded
     'restaurant-drawer-unconfirmed-title',
     'restaurant-drawer-unconfirmed-message',
     'restaurant-drawer-failed-title',
+    // Test-print result messages. These were English literals RETURNED FROM
+    // receiptLogic.ts (a pure function), so the status card and every toast
+    // rendered English under every locale. They now travel as Fluent keys.
+    'restaurant-test-print-msg-success',
+    'restaurant-test-print-msg-auth-required',
+    'restaurant-test-print-msg-printer-disabled',
+    'restaurant-test-print-msg-missing-host',
+    'restaurant-test-print-msg-missing-port',
+    'restaurant-test-print-msg-printer-not-found',
+    'restaurant-test-print-msg-paper-fault',
+    'restaurant-test-print-msg-timeout',
+    'restaurant-test-print-msg-busy',
+    'restaurant-test-print-msg-permission-denied',
+    'restaurant-test-print-msg-communication',
+    'restaurant-test-print-msg-communication-detail',
+    'restaurant-test-print-msg-unconfirmed',
+    'restaurant-test-print-msg-general',
+    'restaurant-test-print-msg-general-detail',
+    'restaurant-test-print-error-title',
+    'restaurant-test-print-success-title',
   ];
 
   function bundle(rel: string): string {
@@ -1003,10 +1042,15 @@ describe('RestaurantReceiptsScreen — printer-hardware i18n sweep (no hardcoded
   });
 
   it('leaves no hardcoded English label, placeholder or toast in the source', () => {
-    const src = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/features/restaurant/screens/RestaurantReceiptsScreen.tsx'),
-      'utf-8',
-    );
+    // TWO files: the screen renders the strings, and receiptLogic.ts used to
+    // RETURN them. A guard that read only the screen would have missed the
+    // twelve literals in the pure function entirely.
+    const src = [
+      'src/features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+      'src/features/restaurant/screens/receiptLogic.ts',
+    ]
+      .map((rel) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf-8'))
+      .join('\n');
     const offenders = src
       .split('\n')
       .map((line, i) => ({ n: i + 1, line }))

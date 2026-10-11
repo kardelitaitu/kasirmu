@@ -208,100 +208,65 @@ export type TestPrintCode = (typeof TEST_PRINT_CODES)[keyof typeof TEST_PRINT_CO
 
 export interface TestPrintResult {
   code: TestPrintCode;
-  message: string;
+  /**
+   * Fluent message id for the user-facing text — NOT the text itself.
+   *
+   * The twelve messages below used to be English literals returned from this pure
+   * function, so the status card and every toast rendered in English under every
+   * locale (§6.3). Returning the KEY keeps this function pure and unit-testable
+   * while making the bundle the single source of truth; the screen resolves it
+   * with `l10n.getString(messageId, { detail })`.
+   */
+  messageId: string;
+  /** Interpolated into messages that carry a `{ $detail }` variable. */
+  detail?: string;
   type: 'success' | 'error';
   timestamp: number;
 }
 
-/** Format a canonical test print code with its user-facing message. */
+/**
+ * Map a canonical test print code to its Fluent message id.
+ *
+ * Pure by design: no `l10n` dependency, so the mapping stays cheap to test and
+ * the caller owns rendering. Codes that embed a backend detail pick a
+ * `-detail` variant of the key when one is supplied.
+ */
 export function formatTestPrintResult(
   code: TestPrintCode,
   customDetail?: string,
-): { code: TestPrintCode; message: string; type: 'success' | 'error' } {
+): { code: TestPrintCode; messageId: string; detail?: string; type: 'success' | 'error' } {
   switch (code) {
     case TEST_PRINT_CODES.SUCCESS:
-      return {
-        code,
-        type: 'success',
-        message: 'Test receipt was sent to the printer successfully.',
-      };
+      return { code, type: 'success', messageId: 'restaurant-test-print-msg-success' };
     case TEST_PRINT_CODES.ERR_AUTH_REQUIRED:
-      return {
-        code,
-        type: 'error',
-        message: 'Authentication session token is missing. Please sign in to test print.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-auth-required' };
     case TEST_PRINT_CODES.ERR_PRINTER_DISABLED:
-      return {
-        code,
-        type: 'error',
-        message: 'Receipt printer is currently disabled in settings. Enable a connection (Network, USB, Serial, or Auto) before test printing.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-printer-disabled' };
     case TEST_PRINT_CODES.ERR_MISSING_HOST:
-      return {
-        code,
-        type: 'error',
-        message: 'Network printer IP address or hostname is not specified. Please enter a valid host address.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-missing-host' };
     case TEST_PRINT_CODES.ERR_MISSING_PORT:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer device port or path is not configured. Please enter the port or path.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-missing-port' };
     case TEST_PRINT_CODES.ERR_PRINTER_NOT_FOUND:
-      return {
-        code,
-        type: 'error',
-        message: 'No receipt printer is registered or detected on this device.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-printer-not-found' };
     case TEST_PRINT_CODES.ERR_PAPER_FAULT:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer fault: check paper roll supply, cover latch, or paper jam.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-paper-fault' };
     case TEST_PRINT_CODES.ERR_TIMEOUT:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer communication timed out. Verify network connection, cable, and device power.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-timeout' };
     case TEST_PRINT_CODES.ERR_BUSY:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer or communication port is currently busy with another operation.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-busy' };
     case TEST_PRINT_CODES.ERR_PERMISSION_DENIED:
-      return {
-        code,
-        type: 'error',
-        message: 'Permission denied when accessing printer hardware port.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-permission-denied' };
     case TEST_PRINT_CODES.ERR_COMMUNICATION:
-      return {
-        code,
-        type: 'error',
-        message: customDetail
-          ? `Printer device communication error: ${customDetail}`
-          : 'Communication failed between the system and printer hardware.',
-      };
+      return customDetail
+        ? { code, type: 'error', messageId: 'restaurant-test-print-msg-communication-detail', detail: customDetail }
+        : { code, type: 'error', messageId: 'restaurant-test-print-msg-communication' };
     case TEST_PRINT_CODES.ERR_UNCONFIRMED:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer completed operation without confirming printed receipt output.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-unconfirmed' };
     case TEST_PRINT_CODES.ERR_GENERAL:
     default:
-      return {
-        code: TEST_PRINT_CODES.ERR_GENERAL,
-        type: 'error',
-        message: customDetail
-          ? `Test print failed: ${customDetail}`
-          : 'An unexpected error occurred while sending the test print job.',
-      };
+      return customDetail
+        ? { code: TEST_PRINT_CODES.ERR_GENERAL, type: 'error', messageId: 'restaurant-test-print-msg-general-detail', detail: customDetail }
+        : { code: TEST_PRINT_CODES.ERR_GENERAL, type: 'error', messageId: 'restaurant-test-print-msg-general' };
   }
 }
 
