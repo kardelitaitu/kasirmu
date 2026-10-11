@@ -307,8 +307,11 @@ export function CartLineItem({
               {onOverride && (
                 <button
                   type="button"
-                  className="pos-cart-line-override"
-                  onClick={() => onOverride(line)}
+                  className="pos-cart-line-modifier-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOverride(line);
+                  }}
                   aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
                   title={l10n.getString('pos-cart-line-override', undefined, 'Override')}
                   data-testid="cart-line-override-btn"

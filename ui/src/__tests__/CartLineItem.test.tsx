@@ -249,7 +249,7 @@ describe('CartLineItem', () => {
     // the two optional nodes are simply absent.
     expect(container.querySelector('.pos-cart-line-name')?.textContent).toBe('SKU-1');
     expect(container.querySelector('.pos-cart-line-ribbon')).toBeNull();
-    expect(container.querySelector('.pos-cart-line-override')).toBeNull();
+    expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(3);
     noExtras.unmount();
 
@@ -395,6 +395,8 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     // The placement is the request: the icon must follow the modifiers it
     // adjusts. It is the LAST child of the row, after every tag and the Edit
     // link, so a reordering that put it first would fail here.
+    // It reuses `.pos-cart-line-modifier-btn`, the same inline icon button as
+    // the note and sliders controls, so it reads as one family.
     const line: CartLine = {
       ...makeLine({ name: 'Iced Coffee' }),
       modifiers: [
@@ -414,6 +416,9 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     const override = screen.getByTestId('cart-line-override-btn');
     expect(row.contains(override)).toBe(true);
     expect(row.lastElementChild).toBe(override);
+    // Reuses the shared inline icon-button class, so it matches the note and
+    // sliders controls instead of carrying a bespoke chip style.
+    expect(override.className).toBe('pos-cart-line-modifier-btn');
     fireEvent.click(override);
     expect(onOverride).toHaveBeenCalledTimes(1);
   });

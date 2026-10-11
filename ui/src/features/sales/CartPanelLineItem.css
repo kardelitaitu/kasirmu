@@ -351,43 +351,6 @@
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-/* ── Price override button (inside cart line) ───────────────── */
-
-/* A compact "$" ICON, not a text button. It used to render the word "Override"
-   on its own line under the price; the label cost a row per cart line and read as
-   a sentence rather than a control. It is now the last chip in the modifiers row,
-   so it sits inline with the options it adjusts.
-   Sized in em so it tracks the modifier tags it sits beside; the coarse-pointer
-   block below raises it to the 44px floor for touch. */
-.pos-cart-line-override {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  min-width: 1.5em;
-  min-height: 1.5em;
-  padding: 0 var(--space-1);
-  margin: 0;
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--leading-tight);
-  color: var(--color-accent);
-  background: var(--color-accent-subtle);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--duration-100) var(--ease-out), color var(--duration-100) var(--ease-out);
-}
-
-.pos-cart-line-override:hover {
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-}
-
-.pos-cart-line-override:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
 
 /* ── Course chip + dropdown (restaurant coursing) ─────────────
  * This file's header claimed ownership of `.pos-cart-line-course`
@@ -644,7 +607,6 @@
    the cart. `:active` is the only feedback a finger can produce; these had
    transitions but no press state. */
 .pos-cart-qty-btn:not(:disabled):active,
-.pos-cart-line-override:not(:disabled):active,
 .pos-cart-line-note-btn:not(:disabled):active,
 .pos-cart-line-modifier-btn:not(:disabled):active {
   transform: scale(0.94);
@@ -666,16 +628,10 @@
   .pos-cart-line-modifier-btn {
     min-height: var(--touch-target-min);
   }
-
-  .pos-cart-line-override {
-    min-height: var(--touch-target-min);
-    min-width: var(--touch-target-min);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pos-cart-qty-btn:not(:disabled):active,
-  .pos-cart-line-override:not(:disabled):active,
   .pos-cart-line-note-btn:not(:disabled):active,
   .pos-cart-line-modifier-btn:not(:disabled):active {
     transform: none;
