@@ -1211,7 +1211,7 @@ export default function RestaurantMenuEditorScreen({
                           id="restaurant-menu-editor-price"
                           type="text"
                           inputMode="decimal"
-                          value={formatMinorForInput(draft.priceMinor)}
+                          value={formatMinorForInput(draft.priceMinor, currency)}
                           onChange={(e) => {
                             const minor = parsePriceToMinor(e.target.value, currency);
                             setDraft({ ...draft, priceMinor: minor ?? 0 });
@@ -1430,7 +1430,7 @@ export default function RestaurantMenuEditorScreen({
                                         type="text"
                                         inputMode="decimal"
                                         className="restaurant-menu-editor-option-price-input"
-                                        value={formatMinorForInput(opt.priceMinor)}
+                                        value={formatMinorForInput(opt.priceMinor, currency)}
                                         placeholder="0"
                                         onChange={(e) => {
                                           const minor = parsePriceToMinor(e.target.value, currency);

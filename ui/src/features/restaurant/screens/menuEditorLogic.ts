@@ -10,51 +10,81 @@
 // never by parsing to float and multiplying, which is where the 0.1 + 0.2 class
 // of error enters an invoice.
 
+import { minorUnitExponent } from '@/types/domain';
+
 /**
  * Parse operator input (major units, as typed) into integer minor units.
  *
- * Accepts both conventions because the same field serves IDR and foreign stores:
- * `1.234,50` and `1234.50`. Grouping dots (a dot followed by exactly three
- * digits at a group boundary) are stripped before the decimal mark is decided.
+ * For zero-exponent currencies like IDR, JPY, KRW, VND:
+ * 1 major unit = 1 minor unit. Entering "5000" yields 5000 minor units (Rp 5.000).
+ * Grouping dots ("5.000" or "50.000") and commas ("50,000") are stripped.
+ * Fractional units that cannot be held in the currency are rejected.
+ *
+ * For currencies with decimals (e.g. USD, EUR with exponent 2; KWD with exponent 3):
+ * Scaled by 10^exp (e.g. "50" -> 5000 cents; "50.50" -> 5050 cents).
  *
  * @returns the minor-unit value, or null when the text is not a usable amount
  *   (empty, non-numeric, or more precision than the currency has).
  */
-export function parsePriceToMinor(input: string, currency: string): number | null {
+export function parsePriceToMinor(input: string, currency: string = 'IDR'): number | null {
   const raw = input.trim();
   if (raw === '') return null;
 
   // Drop spaces and underscores first: both are common paste artefacts.
   const normalised = raw.replace(/[ _]/g, '');
 
-  // A dot is a GROUPING mark only when every dot-group is exactly three digits
-  // AND there is no comma acting as the decimal mark. This is what separates
-  // `1.234.567` (1234567) from `50.123` (a decimal with three places, which
-  // IDR cannot hold). Treating any dot-before-three-digits as grouping reads the
-  // second as 50123 -- the exact mis-parse this branch exists to prevent.
-  // `50.123` is ambiguous by syntax alone: it is either the grouped integer
-  // 50123 or a three-decimal amount. The currency breaks the tie. IDR cannot
-  // hold three decimal places, so for IDR the grouped reading is the only one
-  // that yields a valid amount; for a currency that CAN hold three, the decimal
-  // reading is the one the operator meant.
-  const threePlaceGroups = /^\d{1,3}(\.\d{3})+$/.test(normalised);
-  const multiGroup = threePlaceGroups && (normalised.match(/\./g) ?? []).length > 1;
-  const looksGrouped =
-    !normalised.includes(',') && threePlaceGroups && (currency === 'IDR' || multiGroup);
-  const degrouped = looksGrouped ? normalised.replace(/\./g, '') : normalised;
+  const exp = minorUnitExponent(currency);
 
-  // A comma is the decimal mark only when no dot survived.
-  const dotForm = degrouped.includes('.') ? degrouped : degrouped.replace(',', '.');
+  let degrouped = normalised;
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(normalised)) {
+    // Dot grouping followed by comma decimal (e.g. 1.234,50): strip dots, comma becomes dot
+    degrouped = normalised.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(normalised)) {
+    // Comma grouping followed by dot decimal (e.g. 1,234.50): strip commas
+    degrouped = normalised.replace(/,/g, '');
+  } else {
+    // Single separator type or no decimals:
+    const threePlaceDotGroups = /^\d{1,3}(\.\d{3})+$/.test(normalised);
+    const multiDotGroup = threePlaceDotGroups && (normalised.match(/\./g) ?? []).length > 1;
+    const looksDotGrouped =
+      !normalised.includes(',') && threePlaceDotGroups && (exp === 0 || multiDotGroup);
 
-  if (!/^\d+(\.\d*)?$/.test(dotForm)) return null;
+    const threePlaceCommaGroups = /^\d{1,3}(,\d{3})+$/.test(normalised);
+    const multiCommaGroup = threePlaceCommaGroups && (normalised.match(/,/g) ?? []).length > 1;
+    const looksCommaGrouped =
+      !normalised.includes('.') && threePlaceCommaGroups && (exp === 0 || multiCommaGroup);
 
-  const [whole = '0', frac = ''] = dotForm.split('.');
-  // IDR has no sub-unit in practice; more than two decimals is a typo, not a value.
-  if (frac.length > 2 && currency === 'IDR') return null;
+    if (looksDotGrouped) {
+      degrouped = normalised.replace(/\./g, '');
+    } else if (looksCommaGrouped) {
+      degrouped = normalised.replace(/,/g, '');
+    } else {
+      // If a comma is present and no dot, treat comma as potential decimal point
+      degrouped = normalised.includes('.') ? normalised : normalised.replace(',', '.');
+    }
+  }
 
-  const padded = (frac + '00').slice(0, 2);
-  const minor = Number(whole) * 100 + Number(padded);
-  return Number.isFinite(minor) ? minor : null;
+  if (!/^\d+(\.\d*)?$/.test(degrouped)) return null;
+
+  const [whole = '0', frac = ''] = degrouped.split('.');
+
+  if (exp === 0) {
+    // Currencies with exponent 0 (IDR, JPY, KRW, VND) have no circulating minor units.
+    // If a fractional part is provided, it must be only zeros (e.g. "5000.00" -> 5000).
+    // Any non-zero fraction (e.g. "5000.50") cannot be represented in integer minor units.
+    if (frac !== '' && !/^0+$/.test(frac)) {
+      return null;
+    }
+    const minor = Number(whole);
+    return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+  }
+
+  // Reject input with more decimal places than currency exponent
+  if (frac.length > exp) return null;
+
+  const padded = frac.padEnd(exp, '0');
+  const minor = Number(whole) * 10 ** exp + Number(padded);
+  return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
 }
 
 /**
@@ -87,13 +117,20 @@ export function generateMenuSku(seed: number = Date.now()): string {
 
 /**
  * Render integer minor units back into the plain digits the operator edits:
- * no currency symbol, no grouping separators. `5000` -> `"50"`, `5050` -> `"50.50"`.
+ * no currency symbol, no grouping separators.
+ * For IDR: `5000` -> `"5000"`, `0` -> `"0"`.
+ * For USD: `5000` -> `"50"`, `5050` -> `"50.50"`, `5` -> `"0.05"`.
  */
-export function formatMinorForInput(minor: number): string {
+export function formatMinorForInput(minor: number, currency: string = 'IDR'): string {
   if (!Number.isFinite(minor) || minor < 0) return '';
-  const whole = Math.trunc(minor / 100);
-  const frac = Math.abs(minor % 100);
-  return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(2, '0')}`;
+  const exp = minorUnitExponent(currency);
+  if (exp === 0) {
+    return String(Math.trunc(minor));
+  }
+  const factor = 10 ** exp;
+  const whole = Math.trunc(minor / factor);
+  const frac = Math.abs(minor % factor);
+  return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(exp, '0')}`;
 }
 
 export type MenuItemStatusFilter = 'all' | 'available' | 'hidden';

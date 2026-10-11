@@ -181,7 +181,7 @@ describe('RestaurantMenuEditorScreen', () => {
         expect.any(String),
         expect.objectContaining({
           name: 'Sate Ayam',
-          priceMinor: 2500000,
+          priceMinor: 25000,
           notes: 'Bumbu kacang pedas',
           productType: 'restaurant',
           isActive: true,

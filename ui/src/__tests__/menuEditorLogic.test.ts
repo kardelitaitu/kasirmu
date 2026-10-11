@@ -17,45 +17,51 @@ import {
 
 describe('parsePriceToMinor', () => {
   it('accepts a whole number of major units', () => {
-    expect(parsePriceToMinor('50', 'IDR')).toBe(5000);
+    expect(parsePriceToMinor('5000', 'IDR')).toBe(5000);
+    expect(parsePriceToMinor('50', 'USD')).toBe(5000);
   });
 
-  it('accepts two decimals as minor units', () => {
-    expect(parsePriceToMinor('50.50', 'IDR')).toBe(5050);
-    expect(parsePriceToMinor('50,50', 'IDR')).toBe(5050);
+  it('accepts two decimals as minor units for decimal currencies', () => {
+    expect(parsePriceToMinor('50.50', 'USD')).toBe(5050);
+    expect(parsePriceToMinor('50,50', 'USD')).toBe(5050);
   });
 
-  it('pads a single decimal to two minor digits', () => {
-    expect(parsePriceToMinor('50.5', 'IDR')).toBe(5050);
+  it('pads a single decimal to two minor digits for decimal currencies', () => {
+    expect(parsePriceToMinor('50.5', 'USD')).toBe(5050);
   });
 
   it('strips dot grouping before deciding the decimal mark', () => {
-    // 1.234.567 as grouping -> 1234567 major units, not 1.234567.
-    expect(parsePriceToMinor('1.234.567', 'IDR')).toBe(123456700);
+    // 1.234.567 as grouping -> 1234567 major units
+    expect(parsePriceToMinor('1.234.567', 'IDR')).toBe(1234567);
+    expect(parsePriceToMinor('1.234.567', 'USD')).toBe(123456700);
   });
 
   it('reads a three-digit dot-group as IDR grouping, not as three decimals', () => {
     // 50.123 is syntactically ambiguous. For IDR the grouped reading is the one
-    // an operator means: a rupiah price is never written with three decimals,
-    // and 50.123 as a decimal would not be representable in minor units anyway.
-    expect(parsePriceToMinor('50.123', 'IDR')).toBe(5012300);
+    // an operator means: a rupiah price is never written with three decimals.
+    expect(parsePriceToMinor('50.123', 'IDR')).toBe(50123);
   });
 
   it('rejects a genuinely over-precise amount', () => {
     // Four decimals cannot be grouped into threes, so this is unambiguously a
     // decimal that IDR cannot hold.
     expect(parsePriceToMinor('50.1234', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('50.1234', 'USD')).toBeNull();
   });
 
   it('handles zero prices accurately', () => {
     expect(parsePriceToMinor('0', 'IDR')).toBe(0);
     expect(parsePriceToMinor('0.00', 'IDR')).toBe(0);
     expect(parsePriceToMinor('0,00', 'IDR')).toBe(0);
+    expect(parsePriceToMinor('0', 'USD')).toBe(0);
+    expect(parsePriceToMinor('0.00', 'USD')).toBe(0);
   });
 
   it('strips underscores and spaces commonly found in copy-pasted numbers', () => {
-    expect(parsePriceToMinor(' 50_000 ', 'IDR')).toBe(5000000);
-    expect(parsePriceToMinor('1_234_567', 'IDR')).toBe(123456700);
+    expect(parsePriceToMinor(' 50_000 ', 'IDR')).toBe(50000);
+    expect(parsePriceToMinor(' 50_000 ', 'USD')).toBe(5000000);
+    expect(parsePriceToMinor('1_234_567', 'IDR')).toBe(1234567);
+    expect(parsePriceToMinor('1_234_567', 'USD')).toBe(123456700);
   });
 
   it('rejects negative prices and ill-formed numeric strings', () => {
@@ -63,6 +69,11 @@ describe('parsePriceToMinor', () => {
     expect(parsePriceToMinor('-0.50', 'IDR')).toBeNull();
     expect(parsePriceToMinor('50..00', 'IDR')).toBeNull();
     expect(parsePriceToMinor('.50.50', 'IDR')).toBeNull();
+  });
+
+  it('rejects fractional amounts for zero-decimal currencies like IDR', () => {
+    expect(parsePriceToMinor('50.5', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('50.50', 'IDR')).toBeNull();
   });
 
   it('rejects empty and non-numeric input rather than coercing to zero', () => {
@@ -76,22 +87,26 @@ describe('parsePriceToMinor', () => {
 
 describe('formatMinorForInput', () => {
   it('renders whole major units without a decimal part', () => {
-    expect(formatMinorForInput(5000)).toBe('50');
+    expect(formatMinorForInput(5000, 'USD')).toBe('50');
+    expect(formatMinorForInput(5000, 'IDR')).toBe('5000');
+    expect(formatMinorForInput(5000)).toBe('5000');
   });
 
   it('renders zero accurately', () => {
+    expect(formatMinorForInput(0, 'IDR')).toBe('0');
+    expect(formatMinorForInput(0, 'USD')).toBe('0');
     expect(formatMinorForInput(0)).toBe('0');
   });
 
   it('renders a fractional part with two digits', () => {
-    expect(formatMinorForInput(5050)).toBe('50.50');
-    expect(formatMinorForInput(5005)).toBe('50.05');
+    expect(formatMinorForInput(5050, 'USD')).toBe('50.50');
+    expect(formatMinorForInput(5005, 'USD')).toBe('50.05');
   });
 
   it('renders small sub-unit amounts with leading zero', () => {
-    expect(formatMinorForInput(5)).toBe('0.05');
-    expect(formatMinorForInput(50)).toBe('0.50');
-    expect(formatMinorForInput(99)).toBe('0.99');
+    expect(formatMinorForInput(5, 'USD')).toBe('0.05');
+    expect(formatMinorForInput(50, 'USD')).toBe('0.50');
+    expect(formatMinorForInput(99, 'USD')).toBe('0.99');
   });
 
   it('returns empty for values an operator could not have entered', () => {
@@ -138,11 +153,19 @@ describe('generateMenuSku', () => {
 });
 
 describe('round trip', () => {
-  it('survives parse -> format for representative prices', () => {
-    for (const minor of [0, 1, 100, 5050, 123456700]) {
-      const text = formatMinorForInput(minor);
+  it('survives parse -> format for representative prices in IDR', () => {
+    for (const minor of [0, 1, 100, 5000, 35000, 1234567]) {
+      const text = formatMinorForInput(minor, 'IDR');
       if (text === '') continue;
       expect(parsePriceToMinor(text, 'IDR')).toBe(minor);
+    }
+  });
+
+  it('survives parse -> format for representative prices in USD', () => {
+    for (const minor of [0, 5, 100, 5050, 123456700]) {
+      const text = formatMinorForInput(minor, 'USD');
+      if (text === '') continue;
+      expect(parsePriceToMinor(text, 'USD')).toBe(minor);
     }
   });
 });
