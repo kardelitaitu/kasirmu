@@ -45,6 +45,7 @@ import {
   type ProductDto,
   type CategoryDto,
 } from '@/api/products';
+import { invalidateCatalog } from '@/utils/catalog-cache';
 import {
   CATEGORY_ICON_OPTIONS,
   CATEGORY_ICON_IDS,
@@ -428,6 +429,7 @@ export default function RestaurantMenuEditorScreen({
           isActive: nextActive,
           notes: p.notes ?? null,
         });
+        invalidateCatalog(sessionToken);
         addToast({
           message: l10n.getString('restaurant-menu-editor-save-success'),
           type: 'success',
@@ -476,6 +478,7 @@ export default function RestaurantMenuEditorScreen({
             }),
           ),
         );
+        invalidateCatalog(sessionToken);
         addToast({
           message: l10n.getString('restaurant-menu-editor-bulk-updated', {
             count: targetItems.length,
@@ -623,21 +626,6 @@ export default function RestaurantMenuEditorScreen({
           isActive: draft.isActive,
           notes: finalNotes,
         });
-        setItems((prev) =>
-          prev.map((p) =>
-            p.sku === draft.sku
-              ? {
-                  ...p,
-                  name: draft.name.trim(),
-                  category: draft.categoryName || null,
-                  price: { minor_units: draft.priceMinor, currency },
-                  product_type: 'restaurant',
-                  is_active: draft.isActive,
-                  notes: finalNotes,
-                }
-              : p,
-          ),
-        );
       } else {
         const sku = generateMenuSku();
         await createProductScoped(sessionToken, {
@@ -652,25 +640,9 @@ export default function RestaurantMenuEditorScreen({
           isActive: draft.isActive,
           notes: finalNotes,
         });
-        setItems((prev) => [
-          ...prev,
-          {
-            sku,
-            name: draft.name.trim(),
-            category: draft.categoryName || null,
-            price: { minor_units: draft.priceMinor, currency },
-            barcode: null,
-            in_stock: true,
-            stock_qty: 0,
-            tax_rate_ids: [],
-            created_at: new Date().toISOString(),
-            price_updated_at: new Date().toISOString(),
-            product_type: 'restaurant',
-            is_active: draft.isActive,
-            notes: finalNotes,
-          },
-        ]);
       }
+      invalidateCatalog(sessionToken);
+      await reloadData();
       setDraft(null);
       setDirty(false);
       addToast({ message: l10n.getString('restaurant-menu-editor-save-success'), type: 'success' });
@@ -682,14 +654,15 @@ export default function RestaurantMenuEditorScreen({
     } finally {
       setSaving(false);
     }
-  }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency]);
+  }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency, reloadData]);
 
   const handleDeleteItem = useCallback(
     async (sku: string) => {
       if (!sessionToken) return;
       try {
         await deleteProductScoped(sessionToken, sku);
-        setItems((prev) => prev.filter((p) => p.sku !== sku));
+        invalidateCatalog(sessionToken);
+        await reloadData();
         if (draft?.sku === sku) cancelDraft();
         addToast({ message: l10n.getString('restaurant-menu-editor-delete-success'), type: 'success' });
       } catch (err) {
@@ -699,7 +672,7 @@ export default function RestaurantMenuEditorScreen({
         });
       }
     },
-    [sessionToken, draft, cancelDraft, addToast, l10n],
+    [sessionToken, draft, cancelDraft, addToast, l10n, reloadData],
   );
 
   // ── Category Actions ──────────────────────────────────────────────
@@ -752,20 +725,11 @@ export default function RestaurantMenuEditorScreen({
           colour: categoryModal.colour,
           icon: categoryModal.icon,
         });
-
-        setCategories((prev) =>
-          prev.map((c) =>
-            c.id === categoryModal.id
-              ? { ...c, name: trimmedName, colour: categoryModal.colour, icon: categoryModal.icon }
-              : c,
-          ),
-        );
+        invalidateCatalog(sessionToken);
+        await reloadData();
 
         // Rehome products if the category name changed
         if (oldName && oldName !== trimmedName) {
-          setItems((prev) =>
-            prev.map((p) => (p.category === oldName ? { ...p, category: trimmedName } : p)),
-          );
           if (selectedCategoryName === oldName) setSelectedCategoryName(trimmedName);
         }
 
@@ -782,8 +746,8 @@ export default function RestaurantMenuEditorScreen({
           colour: categoryModal.colour,
           icon: categoryModal.icon,
         });
-        const cats = await listCategoriesScoped(sessionToken);
-        setCategories(asArray<CategoryDto>(cats));
+        invalidateCatalog(sessionToken);
+        await reloadData();
         setSelectedCategoryName(trimmedName);
         addToast({
           message: l10n.getString('restaurant-menu-editor-save-success'),
@@ -799,17 +763,15 @@ export default function RestaurantMenuEditorScreen({
     } finally {
       setCategorySaving(false);
     }
-  }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n]);
+  }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n, reloadData]);
 
   const handleDeleteCategory = useCallback(
     async (category: CategoryDto) => {
       if (!sessionToken) return;
       try {
         const res = await deleteCategoryScoped(sessionToken, category.id);
-        const cats = await listCategoriesScoped(sessionToken);
-        const prods = await listProductsScoped(sessionToken);
-        setCategories(asArray<CategoryDto>(cats));
-        setItems(asArray<ProductDto>(prods));
+        invalidateCatalog(sessionToken);
+        await reloadData();
         if (selectedCategoryName === category.name) setSelectedCategoryName('');
         if (res?.affected_products) {
           addToast({
@@ -828,7 +790,7 @@ export default function RestaurantMenuEditorScreen({
         });
       }
     },
-    [sessionToken, selectedCategoryName, addToast, l10n],
+    [sessionToken, selectedCategoryName, addToast, l10n, reloadData],
   );
 
   // ── Back Guard ────────────────────────────────────────────────────

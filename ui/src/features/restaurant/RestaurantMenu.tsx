@@ -342,10 +342,15 @@ export default function RestaurantMenu({
   }, [sessionToken, unavailableSettingKey, userId, locationId]);
 
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') refetchUnavailable(); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refetchUnavailable();
+        reload();
+      }
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refetchUnavailable]);
+  }, [refetchUnavailable, reload]);
   const addCountRef = useRef<Record<string, number>>(loadPop(userId));
   const [popularityCounts, setPopularityCounts] = useState<Record<string, number>>(() => loadPop(userId));
   const [sortMode, setSortMode] = useState<SortMode>(() => {
@@ -520,9 +525,18 @@ export default function RestaurantMenu({
 
   // Restaurant and retail are separate workspaces. Products tagged for restaurant
   // that are active are shown on the selling grid.
+  const isRestaurantProduct = useCallback(
+    (p: Product) =>
+      p.productType === 'restaurant' ||
+      !p.productType ||
+      (p.productType as string) === 'standard' ||
+      (p.productType as string) === 'both',
+    [],
+  );
+
   const restaurantProducts = useMemo(
-    () => products.filter((p) => p.productType === 'restaurant' && p.isActive !== false),
-    [products],
+    () => products.filter((p) => isRestaurantProduct(p) && p.isActive !== false),
+    [products, isRestaurantProduct],
   );
 
   // Category tabs are derived from active restaurant products, plus any category
@@ -535,11 +549,14 @@ export default function RestaurantMenu({
       if (p.category) cats.add(p.category);
     }
     for (const cm of categoryMeta) {
-      const hasNonRestaurant = products.some(
-        (p) => p.category === cm.name && p.productType !== 'restaurant',
-      );
-      if (!hasNonRestaurant) {
+      const prodsInCat = products.filter((p) => p.category === cm.name);
+      if (prodsInCat.length === 0) {
         cats.add(cm.name);
+      } else {
+        const hasRestaurantProd = prodsInCat.some((p) => isRestaurantProduct(p));
+        if (hasRestaurantProd) {
+          cats.add(cm.name);
+        }
       }
     }
     return ['All', ...Array.from(cats)].sort((a, b) => {
@@ -547,7 +564,7 @@ export default function RestaurantMenu({
       if (b === 'All') return 1;
       return a.localeCompare(b);
     });
-  }, [restaurantProducts, categoryMeta, products]);
+  }, [restaurantProducts, categoryMeta, products, isRestaurantProduct]);
 
   // Keep the selection valid when products are refreshed or removed. The
   // derived value prevents a transient empty result while the state catches

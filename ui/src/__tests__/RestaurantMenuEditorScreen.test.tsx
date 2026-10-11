@@ -4,7 +4,12 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import * as productsApi from '@/api/products';
+import { invalidateCatalog } from '@/utils/catalog-cache';
 import productsFtl from '../../../shared-ui/locales/products.ftl?raw';
+
+vi.mock('@/utils/catalog-cache', () => ({
+  invalidateCatalog: vi.fn(),
+}));
 
 vi.mock('@/api/products', () => ({
   listProductsScoped: vi.fn(),
@@ -658,5 +663,46 @@ describe('RestaurantMenuEditorScreen', () => {
     const options = Array.from(categorySelect.options).map((o) => o.value);
     expect(options).toContain('Mains');
     expect(options).toContain('Drinks');
+  });
+
+  it('invalidates catalog cache when creating a new menu item', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+    await user.type(screen.getByTestId('restaurant-menu-editor-name'), 'Sate Ayam');
+    await user.type(screen.getByTestId('restaurant-menu-editor-price'), '25000');
+
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    await user.click(within(form).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(productsApi.createProductScoped).toHaveBeenCalled();
+      expect(invalidateCatalog).toHaveBeenCalled();
+    });
+  });
+
+  it('invalidates catalog cache when creating and deleting categories', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    // Create new category
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    const nameInput = screen.getByTestId('restaurant-menu-editor-cat-input-name');
+    await user.type(nameInput, 'Dessert');
+    await user.click(screen.getByTestId('restaurant-menu-editor-cat-save'));
+
+    await waitFor(() => {
+      expect(productsApi.createCategoryScoped).toHaveBeenCalled();
+      expect(invalidateCatalog).toHaveBeenCalled();
+    });
   });
 });

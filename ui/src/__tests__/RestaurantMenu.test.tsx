@@ -1067,4 +1067,55 @@ describe('RestaurantMenu', () => {
 
     expect(screen.getByRole('tab', { name: /Dessert Baru/i })).toBeInTheDocument();
   });
+
+  it('displays products with standard or untyped productType on restaurant selling grid', () => {
+    const standardProduct = {
+      sku: 'ROTI-BAKAR',
+      name: 'Roti Bakar',
+      category: 'Snack',
+      productType: 'standard',
+      price: { minor_units: 15000, currency: 'IDR' },
+      inStock: true,
+      createdAt: '2026-01-04',
+    } as unknown as Product;
+
+    mockUseProducts.mockReturnValue({
+      products: [...mockProducts, standardProduct],
+      categories: ['Makanan', 'Minuman', 'Snack'],
+      categoryMeta: [
+        { id: 'cat-snack', name: 'Snack', colour: '#eab308', icon: 'snack' },
+      ],
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    });
+
+    renderMenu();
+
+    expect(screen.getByRole('tab', { name: /Snack/i })).toBeInTheDocument();
+    expect(screen.getByText('Roti Bakar')).toBeInTheDocument();
+  });
+
+  it('reloads product catalog and unavailable status on visibility change', () => {
+    const reload = vi.fn();
+    mockUseProducts.mockReturnValue({
+      products: mockProducts,
+      categories: ['Makanan', 'Minuman'],
+      categoryMeta: [],
+      loading: false,
+      error: null,
+      reload,
+    });
+
+    renderMenu();
+
+    // Trigger visibilitychange to visible
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    fireEvent(document, new Event('visibilitychange'));
+
+    expect(reload).toHaveBeenCalled();
+  });
 });
