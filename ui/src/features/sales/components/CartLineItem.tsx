@@ -465,6 +465,10 @@ export function CartLineItem({
               rows={3}
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
+              // The placeholder is not an accessible name: it disappears the
+              // moment the cashier types, and axe flags a control named only by
+              // one. The modal's own title is the honest label.
+              aria-label={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
               placeholder={l10n.getString('pos-cart-line-note-placeholder') || 'e.g. No onion, less ice, allergy...'}
               data-testid="cart-line-note-input"
               maxLength={200}
