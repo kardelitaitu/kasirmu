@@ -491,6 +491,37 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('serializes line note into modifiersJson as Note for kitchen tickets', async () => {
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem({ note: 'Extra spicy, no onion' })]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'add_line_scoped',
+        expect.objectContaining({
+          sessionToken: 'mock-token',
+          args: expect.objectContaining({
+            modifiersJson: JSON.stringify([
+              { name: 'Note', choice: 'Extra spicy, no onion', price_minor: 0 },
+            ]),
+            note: 'Extra spicy, no onion',
+          }),
+        }),
+      );
+    });
+  });
+
   it('calls onComplete after sale done', async () => {
     const onComplete = vi.fn();
     await renderWithFluent(

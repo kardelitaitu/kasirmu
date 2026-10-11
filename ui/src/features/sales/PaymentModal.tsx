@@ -791,15 +791,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
-          ...(line.modifiers && line.modifiers.length > 0
+          ...((line.modifiers && line.modifiers.length > 0) || (line.note && line.note.trim())
             ? {
-                modifiersJson: JSON.stringify(
-                  line.modifiers.map((m) => ({
+                modifiersJson: JSON.stringify([
+                  ...(line.modifiers ?? []).map((m) => ({
                     name: m.groupName,
                     choice: m.modifierName,
                     price_minor: m.priceMinor,
                   })),
-                ),
+                  ...(line.note && line.note.trim()
+                    ? [{ name: 'Note', choice: line.note.trim(), price_minor: 0 }]
+                    : []),
+                ]),
               }
             : {}),
           ...(line.note ? { note: line.note } : {}),
@@ -1205,15 +1208,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
-          ...(line.modifiers && line.modifiers.length > 0
+          ...((line.modifiers && line.modifiers.length > 0) || (line.note && line.note.trim())
             ? {
-                modifiersJson: JSON.stringify(
-                  line.modifiers.map((m) => ({
+                modifiersJson: JSON.stringify([
+                  ...(line.modifiers ?? []).map((m) => ({
                     name: m.groupName,
                     choice: m.modifierName,
                     price_minor: m.priceMinor,
                   })),
-                ),
+                  ...(line.note && line.note.trim()
+                    ? [{ name: 'Note', choice: line.note.trim(), price_minor: 0 }]
+                    : []),
+                ]),
               }
             : {}),
           ...(line.note ? { note: line.note } : {}),

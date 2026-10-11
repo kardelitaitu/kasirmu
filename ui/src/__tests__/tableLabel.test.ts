@@ -9,9 +9,12 @@ import { bareTableNumber, heldCartLabel, matchesTableBill } from '@/features/sal
  *   tbl-12 | Table 12 | 6 | VIP Room
  */
 describe('bareTableNumber', () => {
-  it('strips a leading "Table" word, which is what the stored names carry', () => {
+  it('strips a leading "Table" or "Meja" word, which is what the stored names carry', () => {
     expect(bareTableNumber('Table 12')).toBe('12');
     expect(bareTableNumber('Table 1')).toBe('1');
+    expect(bareTableNumber('Meja 12')).toBe('12');
+    expect(bareTableNumber('meja 5')).toBe('5');
+    expect(bareTableNumber('Meja: 3')).toBe('3');
   });
 
   it('leaves an identifier that never carried the word alone', () => {
@@ -89,6 +92,14 @@ describe('matchesTableBill', () => {
   it('matches custom table names like VIP 1 or Patio 5', () => {
     expect(matchesTableBill({ label: 'Table VIP 1 (Ana)' }, 'VIP 1')).toBe(true);
     expect(matchesTableBill({ label: 'VIP 1' }, 'VIP 1')).toBe(true);
+  });
+
+  it('matches Indonesian table names with Meja prefix or bare numbers', () => {
+    expect(matchesTableBill({ label: 'Meja 2 (Bapak Budi)' }, 'Meja 2')).toBe(true);
+    expect(matchesTableBill({ label: 'Table 2' }, 'Meja 2')).toBe(true);
+    expect(matchesTableBill({ label: 'Meja 2' }, 'Table 2')).toBe(true);
+    expect(matchesTableBill({ label: '2' }, 'Table 2')).toBe(true);
+    expect(matchesTableBill({ label: '2' }, 'Meja 2')).toBe(true);
   });
 
   it('returns false for falsy or empty inputs', () => {

@@ -28,6 +28,7 @@ import {
 } from '@/api/products';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { invalidateCatalog } from '@/utils/catalog-cache';
 import './RecipeEditorModal.css';
 
 export interface RecipeRow {
@@ -215,6 +216,7 @@ export function RecipeEditorModal({
       try {
         setSaving(true);
         await deleteRecipeScoped(sessionToken, resolvedParentId);
+        invalidateCatalog(sessionToken);
         addToast({
           message: l10n.getString('recipe-editor-delete-success'),
           type: 'success',
@@ -273,6 +275,7 @@ export function RecipeEditorModal({
         ingredients,
       });
 
+      invalidateCatalog(sessionToken);
       addToast({
         message: l10n.getString('recipe-editor-save-success'),
         type: 'success',
@@ -291,6 +294,7 @@ export function RecipeEditorModal({
     try {
       setClearing(true);
       await deleteRecipeScoped(sessionToken, resolvedParentId);
+      invalidateCatalog(sessionToken);
       setRows([]);
       setShowClearConfirm(false);
       addToast({
