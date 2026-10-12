@@ -759,7 +759,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             return releaseTableScoped(sessionToken, match.id);
           }
         })
-        .catch(() => {});
+        // ⚠️ NOT an empty catch. The release is deliberately fire-and-forget — a
+        // floor-plan hiccup must never fail the sale that just completed — but a
+        // SILENT one left the table reading "Occupied" on the floor plan with no
+        // sale behind it, and nothing on screen said so. The cashier's next move is
+        // to seat someone at a table the system believes is taken. Warn, do not
+        // block: the sale is already recorded and must stay that way.
+        .catch(() => {
+          addToast({ type: 'warning', message: requiredLocalized(l10n, 'tables-action-error') });
+        });
     }
     setTableNumber('');
     setCustomerName('');
@@ -1301,7 +1309,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
               return updateTableStatusScoped(sessionToken, match.id, 'reserved');
             }
           })
-          .catch(() => {});
+          // Same shape as the release above: the reservation is best-effort so it
+          // cannot block the cashier seating a party, but a silent failure leaves
+          // two terminals disagreeing about whether the table is taken — the exact
+          // state the floor-plan sync exists to prevent.
+          .catch(() => {
+            addToast({ type: 'warning', message: requiredLocalized(l10n, 'tables-action-error') });
+          });
       }
     },
     [openBills, handleResumeOpenBill, sessionToken],
