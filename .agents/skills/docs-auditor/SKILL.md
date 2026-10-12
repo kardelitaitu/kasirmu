@@ -491,6 +491,13 @@ and the sentence describing it is garbled so a reader cannot see what changed. F
 the same path, so the sentence proves nothing. The real move was the old styles-directory token sheet -> 
 `ui/src/theme/tokens.css` (six commits under the old path). **When a stamp quotes a before/after
 pair, check the two are actually different** — and recover the truth from `git log -- <oldpath>`.
+The shape has at least THREE wordings, and a sweep must match all of them: (a) `from X to X`;
+(b) `X … and that directory does not exist — it is X`; (c) `X does not exist anywhere in the tree; the
+<thing> is X`. Measured 2026-10-11: a single 7-file corpus held THREE instances of this class
+(`a11y.md`: the true old path was `ui/src/styles/tokens.css`; `i18n-todo.md`: the pre-move
+locales directory under `ui/src/`; `api-client.md`: the true old name was `OZPosClient`) after one more in batch 23. **Any corpus of
+2026-09-29 stamps is worth scanning with all three patterns** — the sentence is a no-op and a reader
+cannot tell what changed.
 
 **23. Counts of HOOK STEPS and GATE SETS rot the same way ceilings do.** The pre-commit hook gained
 an eighth step on 2026-10-09, and a "steps 2–7 are extension-locked" range (or a "seven steps" count)
