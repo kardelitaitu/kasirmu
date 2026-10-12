@@ -491,6 +491,66 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('does NOT assign a table when the order is takeaway or delivery', async () => {
+    // ⚠️ THE DEFECT THIS PINS (measured live, round 40). The assignment guard
+    // was `if (sessionToken && tableNumber)` — tableNumber truthy ALONE. The
+    // cart panel shows the Table number field for the restaurant POS on EVERY
+    // order type (its comment says table capture "does not depend on a setting"),
+    // so a cashier ringing up a TAKEAWAY who happens to leave a number typed in
+    // fires:
+    //
+    //   assign_table_order_scoped { tableId: 'table-01', saleId: 'mock-sale-…' }
+    //
+    // (captured from the live console) — attaching a takeaway sale to a real
+    // table, and then freeing that table on completion via PosScreen's release
+    // path. That corrupts the floor plan's occupancy for an order that has no
+    // table. Only a DINE-IN order may claim one.
+    for (const orderType of ['takeaway', 'delivery'] as const) {
+      invokeMock.mockClear();
+      kdsOrderImpl();
+      const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'list_tables_scoped') {
+          return Promise.resolve([{ id: 'tbl-12', name: 'Table 12', status: 'occupied' }]);
+        }
+        if (cmd === 'assign_table_order_scoped') {
+          return Promise.resolve({ id: 'tbl-12', status: 'occupied', active_sale_id: 'sale-1' });
+        }
+        return prev(cmd);
+      });
+
+      await renderWithFluent(
+        <PaymentModal
+          open
+          lineItems={[lineItem()]}
+          total={usd(700)}
+          userId="test-user-id"
+          sessionToken="mock-token"
+          tableNumber="12"
+          orderType={orderType}
+          onComplete={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      await completeWithKdsOrder();
+
+      // The sale DID complete; only the table claim must be absent.
+      expect(invokeMock).toHaveBeenCalledWith(
+        'complete_sale_scoped',
+        expect.objectContaining({ sessionToken: 'mock-token' }),
+      );
+      const assigns = (invokeMock.mock.calls as unknown[][]).filter(
+        (c) => c[0] === 'assign_table_order_scoped',
+      );
+      expect(
+        assigns,
+        `a ${orderType} order must not claim a table — a stray number in the \
+         cart's Table field would attach the sale to real table '12' and free it \
+         on completion`,
+      ).toEqual([]);
+    }
+  });
+
   it('serializes line note into modifiersJson as Note for kitchen tickets', async () => {
     kdsOrderImpl();
     await renderWithFluent(

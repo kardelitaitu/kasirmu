@@ -909,7 +909,16 @@ retryCurrencyLoad,
       }
 
       try {
-        if (sessionToken && tableNumber) {
+        // ⚠️ DINE-IN ONLY. The cart panel renders the Table number field for the
+        // restaurant POS on EVERY order type (CartPanel.tsx:735-743 — table capture
+        // "does not depend on a setting"), so ringing up a TAKEAWAY with a number
+        // left in that field used to claim a real table for the sale: measured live
+        // as `assign_table_order_scoped { tableId: 'table-01', … }`, after which
+        // PosScreen's release path frees that table on completion. A takeaway has no
+        // table, so claiming one corrupts the floor plan. Pinned by
+        // PaymentModalSaleFlow's takeaway/delivery case. (The QRIS/terminal path
+        // below carries the same guard.)
+        if (sessionToken && tableNumber && orderType === 'dine_in') {
           try {
             const tbls = await listTablesScoped(sessionToken);
             const bareInput = bareTableNumber(tableNumber);
@@ -984,7 +993,11 @@ retryCurrencyLoad,
 
       setDone(true);
     },
-    [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
+    // orderType is READ in this callback (the dine-in-only table claim) and so must
+    // be listed: without it the callback closes over the value from the render that
+    // created it, and a cashier who switches Dine-In -> Takeaway after mount would
+    // still take the dine-in branch and claim a table.
+    [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, orderType, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
      publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits],
   );
@@ -1418,7 +1431,8 @@ retryCurrencyLoad,
       }
 
       try {
-        if (sessionToken && tableNumber) {
+        // Dine-in only — see the guard comment on the earlier assignment block.
+        if (sessionToken && tableNumber && orderType === 'dine_in') {
           try {
             const tbls = await listTablesScoped(sessionToken);
             const bareInput = bareTableNumber(tableNumber);
