@@ -3,9 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: both helper scripts exist (`.agents/skills/docs-auditor/scripts/check-nav-paths.py`, `check-orphans.py`); all 12 other paths the file cites exist, including `docs/guides/developer/QUICKSTART.md`, `docs/operations/ci-pipeline.md`, `docs/specs/_active/`, `website/src/content/docs/en/user-roles.md`, `ui/src/features/staff/register.tsx` and `crates/kasirmu-hal/src/drivers/mock.rs`. The `oz-*` cross-skill-protocol drift the 18-09-26 audit found at `:260` is confirmed repaired. Left alone deliberately, as the previous pass did: this stamp's predecessor closes with `)>` rather than `-->`, which the file documents in-file as intentional and benign. · NOT re-measured: the audit-classification taxonomy's behaviour against a live document. -->
-
-<!-- Superseded audit stamp: 2026-09-08 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Full audit of the skill that defines this audit; the 2026-09-22 and 2026-09-08 stamps are merged at the bottom as original evidence. · MAJOR: §13's stranded-footer sweep command was WRONG, and wrong in the worst direction — it reported 579 hits across every markdown file in the repo. The awk guard `{n=NR}` was paired with an unguarded `NR>n`, so on a file with NO footer `n` stayed empty, `NR>n` was true for every line, and each file printed as `file:  <line-count>` with a blank line number. A checker that cannot tell "no footer" from "stranded content" is the loudest false positive this file could have shipped, and it is the same family as the placeholder-character-class bug §4 records: a new checker whose first output was never sanity-checked against something known-clean. FIXED by gating both the counter and the print on `n &&`; the corrected command now returns exactly 8 files, all exempt dated records, cross-checked against an independent JS re-measurement. The near-miss is itself recorded in the body, because the next author of a sweep will write this arm. · MINOR: §13's measurement paragraph was STALE IN ITS OWN TEXT — it stated "9 live docs carry real stranded content" when the number is now 0, because the campaign that discovered the class repaired all nine in the same session (`adr53-ui-vocabulary-boundary` 192 lines, `2026-07-20-sync-conflict-resolution-strategy` 224, `0.0.36-backlog` 156, `2026-09-15-frontend-architecture-todo-appraisal` 123, and five smaller). A rule that cites a count is citing a reading, and this one outlived its reading by hours; the paragraph now records both the discovery measurement (29 total / 12 benign / 9 live) and the post-fix measurement (19 / 11 / 0) and names the trap. · VERIFIED AND LEFT ALONE: all 9 scripts this file names exist under `.agents/skills/docs-auditor/scripts/` (check-nav-paths, check-orphans, check-dead-refs, check-api-surface, check-adr-status, check-site-links, check-audit-stamps, check-env-docs, check-ci-claims); `scripts/check-auditor-selftests.sh` and `scripts/check.sh` exist; all 15 doc/code paths resolve; §4b's six exclusion names all appear in the scanner source; the "standalone `scripts/` folder holds no copy of the orphan checker" note is TRUE (`scripts/check-orphans.py` absent); `scripts/verify-agents-mirrors.py` exits 0; `detect.sh --check=audit-format` reports no drift; the footer is the last non-empty line with no trapped footer. The older counts ("332 live docs", "333 docs", "124 stamped files", "116 stamps") are DATE-STAMPED readings and are left as evidence, not corrected — the same rule the file states for ADRs. · NOT re-measured: the taxonomy's behaviour against a live document, the self-test suites' verdicts, and the site-links/API-surface checkers' output (they need their own inputs, not this file). · Prior evidence retained verbatim below: -->
 
 # Skill: docs-auditor
 
@@ -162,7 +160,6 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 > "scan nothing". Prove the check still fires with `--file <a doc you know is bad>`
 > rather than trusting a clean tree run - a scope change is exactly the edit that can
 > silence a gate while leaving it green.
-
 
 ### Usage
 
@@ -386,7 +383,6 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 - If the audit was not completed (blocked or ambiguous with no user answer), do not stamp.
 - If a stamp already exists, compute `git diff <last-date> -- <path>` and mention what changed in the report.
 
-
 ### The footer must be the LAST non-empty line — check it, do not assume it
 
 A `> last audited` line that is not at end-of-file makes everything appended after it
@@ -413,14 +409,36 @@ footer has N non-empty, non-blockquote-continuation lines after it):
 
 ```bash
 git ls-files '*.md' | while read -r f; do
-  awk '/^> last audited /{n=NR} {if(NR>n && $0 !~ /^[[:space:]]*>/ && $0 !~ /^[[:space:]]*$/) c++} END{if(c) print FILENAME ":" n "  " c}' "$f"
+  awk '/^> last audited /{n=NR} {if(n && NR>n && $0 !~ /^[[:space:]]*>/ && $0 !~ /^[[:space:]]*$/) c++} END{if(n && c) print FILENAME ":" n "  " c}' "$f"
 done
 ```
 
-Measured 2026-10-11: 29 tracked `.md` files have *something* after their footer; 12 of those
-are benign (only `>`-continuation lines, i.e. the footer is a multi-line blockquote), and
-**9 live docs** carry real stranded content. Exempt dated records (`.agents/`, `todo-`,
-`done-`, `plan-`) — a plan appending after a footer is a plan. Do not exempt `docs/`.
+> ⚠️ **The `n &&` guard is load-bearing, and its absence shipped for a few hours on
+> 2026-10-11.** The first version of this command omitted it, so on a file with no footer at
+> all `n` stayed empty, `NR>n` was true for every line, and the command reported **579
+> "hits"** — every markdown file in the repo, including the 500-odd with nothing after any
+> footer, each printed as `file:  <line-count>` with a blank line number. A checker that
+> cannot distinguish "no footer" from "stranded content" is the loudest possible false
+> positive, and it is the same family as the placeholder-character-class bug recorded in §4:
+> **the first result of a new checker must be sanity-checked against something you know is
+> clean.** Fixed here; the corpus below is the guard-applied reading.
+
+**Measured 2026-10-11, twice — and the second reading is the one to trust.** On discovery,
+  with the guard applied: **29** tracked `.md` files had *something* after a footer, **12** of
+  those benign (only `>`-continuation lines, i.e. the footer is a multi-line blockquote), and
+  **9 live docs** carried real stranded content — `adr53-ui-vocabulary-boundary` (192 lines),
+  `2026-07-20-sync-conflict-resolution-strategy` (224), `0.0.36-backlog` (156),
+  `2026-09-15-frontend-architecture-todo-appraisal` (123), `2026-07-10-crdt-delta-ledger-offline-sync` (17),
+  `SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS` (10), `admin-guide` (9),
+  `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap` (7), `website/…/id/inventory` (1).
+
+  All nine were then repaired in the same campaign (footers moved, content kept), so the
+  **live count is now 0**. Re-measured after the fix: **19** files have something after a
+  footer, **11** benign, **0 live** — every remaining hit is an exempt dated record
+  (`.agents/`, `todo-`, `done-`, `plan-`): a plan appending after a footer is a plan. Do not
+  exempt `docs/`. **A count in a rule is a reading, not an invariant** — this paragraph said
+  "9 live docs" for hours after there were none, which is the drift this skill exists to catch,
+  in the skill's own text.
 
 ---
 
@@ -447,4 +465,11 @@ are benign (only `>`-continuation lines, i.e. the footer is a multi-line blockqu
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim below as original evidence:
+
+> Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: both helper scripts exist (`.agents/skills/docs-auditor/scripts/check-nav-paths.py`, `check-orphans.py`); all 12 other paths the file cites exist, including `docs/guides/developer/QUICKSTART.md`, `docs/operations/ci-pipeline.md`, `docs/specs/_active/`, `website/src/content/docs/en/user-roles.md`, `ui/src/features/staff/register.tsx` and `crates/kasirmu-hal/src/drivers/mock.rs`. The `oz-*` cross-skill-protocol drift the 18-09-26 audit found at `:260` is confirmed repaired. Left alone deliberately, as the previous pass did: this stamp's predecessor closes with `)>` rather than `-->`, which the file documents in-file as intentional and benign. · NOT re-measured: the audit-classification taxonomy's behaviour against a live document.
+
+> Superseded audit stamp: 2026-09-08 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean.
+-->
+
+> last audited 11-10-26 by docs-auditor

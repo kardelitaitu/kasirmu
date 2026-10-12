@@ -4,7 +4,12 @@ area: architecture
 title: ADR #33: Panic Policy & Production unwrap/expect Enforcement
 status: Implemented (2026-08-03)
 ---
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 major, 1 structural) · Fresh full audit; the 2026-09-29 stamp and the 2026-09-09 DSH marker are merged at the bottom as original evidence. · MAJOR 1 (the enforcement mechanism was INVERTED under this record and the record still described the old one): the §"How scripts/scan-unwrap-panic.py enforces it" bullet and the "upgraded to a hard gate" paragraph both present `--fail-on-recoverable` as the thing that makes the gate red. It is now an INERT NO-OP ALIAS — the scanner's own header (scripts/scan-unwrap-panic.py:29-40) states "STRICT IS THE DEFAULT, NOT A FLAG", a BARE run is fail-closed, and the permissive behaviour is reached only by opting out with `--allow-recoverable N`. That is a present-tense claim about how enforcement works, not a decision, so it is corrected: the new note records the inversion, its reason (the old green was "a property of a command line rather than of the tree" — every invocation that omitted the flag, including this ADR's own `--json` re-measure recipe, printed a clean inventory over undocumented panics), and that `dev-ci.yml:1098`'s bare invocation is now the STRICT form. · MAJOR 2 (a count that is no longer the count): re-measured 2026-10-11, `--json` reports **total 157 / invariant_annotated 157 / recoverable 0**. The record's own figures are 98/98 (2026-08-03) and 130/130 (2026-09-09). The growth is expected and immaterial — only the zero is contractual, as the 09-09 note already argued — and the emitted middle key is `invariant_annotated`, which the 09-09 note shortened to `annotated`, the field-name trap this file has now recorded twice. Both corrected in the note rather than by rewriting dated prose. · STRUCTURAL: the `> last audited` footer sat at line 234 with the 2026-10-04 repair note (20 lines) BELOW it, so `check-audit-stamps.py` and detect.sh Checks 9/10 read this file as a 2026-09-29 document and could not see the newest content. Footer moved to the true end of file; not one line of that note was deleted. · VERIFIED AND LEFT ALONE: the panic/abort release-profile configuration; `INVARIANT_COMMENT_RE` at scripts/scan-unwrap-panic.py:144; both source pins the 2026-10-04 note names exist (`mock_lock_unwraps_carry_the_panic_inventory_marker` at crates/kasirmu-notification/src/mock_tests.rs:116 and crates/kasirmu-payment/src/drivers/mock_tests.rs:109); the marker is genuinely present where that note says (migrations.rs 7 INVARIANT markers, notification mock.rs 14, payment mock.rs 3); `scripts/gates.json` gate `panic-inventory` is `required` with `ci: dev-ci.yml/static-gates`; `scripts/check.sh:385` still passes the now-inert flag, which remains correct. · ALSO RE-CONFIRMED: the 2026-09-29 stamp's observation that the workspace `[workspace.lints.rust]` table carries only `missing_docs` and no `unwrap_used`/`expect_used` — the mechanism is the scanner, not a lint. · NOT re-measured: the runtime panic/abort behaviour of a release binary, and the deferred diff-scoped scanner idea. · Prior evidence retained verbatim below. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE on its stated scope, and this pass found one thing the 2026-09-09 DSH stamp did not record. That stamp annotated three `check-ci-claims.py` findings and is retained below verbatim; this entry adds a manifest-level observation. The ADR's title promises "Panic Policy & Production unwrap/expect Enforcement", and the release profile it depends on is exactly as described -- `Cargo.toml` sets panic and backtrace handling at the workspace level with a comment explaining why lto and panic must be workspace-scoped. BUT the enforcement half is not configured where the title implies. The workspace has a `[workspace.lints.rust]` table at `Cargo.toml:224` and it contains exactly one entry: `missing_docs = "warn"`. There is no `unwrap_used` or `expect_used` deny directive in `Cargo.toml`, in a `clippy.toml`, or anywhere else in the tree. So whatever mechanism the ADR chose to keep `unwrap()`/`expect()` out of production code, it is not a workspace lint today. Recorded as a finding rather than repaired: turning a lint on would change what compiles across the whole workspace, which is a code change and not a documentation one, and the ADR may enforce the rule through review or a test rather than a lint -- in which case the title overstates the mechanism rather than the policy being absent. Flagged for the owner to say which it is. · The panic/abort profile configuration the ADR specifies IS present and matches, so the runtime half of the policy is verifiable and holds. · Status checker reports no drift for this row; the front matter "Implemented (2026-08-03)" is consistent with the index. Prior DSH stamp retained as original evidence; stacked footer collapsed. -->
+-->
+
 # ADR #33: Panic Policy & Production unwrap/expect Enforcement
 <!-- Superseded audit marker (2026-09-09 · DSH, body kept verbatim) · dsh · status: HISTORICAL-RECORD, annotated not rewritten (3 findings from .agents/skills/docs-auditor/scripts/check-ci-claims.py, all in one family: the ADR names the `rust-panic-inventory` CI job twice and `.github/workflows/ci.yml` once, and that workflow was renamed to `.github/workflows/ci.yml.bak` by `23c963303` on 2026-09-02 so GitHub never executes it) · NOTHING HERE WAS REWRITTEN: dated ADR (front-matter `status: Implemented (2026-08-03)`, dated section headers), so the original sentences stand verbatim and each flagged line carries a `ci-claim: ok` pragma pointing at the Currency note added at the end of ## Status, which is where the correction lives · VERIFIED, not recalled: enforcement moved rather than vanished — `.github/workflows/dev-ci.yml:483` runs `python3 scripts/scan-unwrap-panic.py --fail-on-recoverable` as the static-gates step "Panic inventory (ADR #33)" (`dev-ci.yml:482`), and `scripts/gates.json` maps gate `panic-inventory` to dev-ci.yml/static-gates with status `required` · RE-MEASURED: `python3 scripts/scan-unwrap-panic.py --json` → total 130, invariant_annotated 130, recoverable 0, 26 files; `--fail-on-recoverable` exits 0, so the ADR's actual contract still holds while its 98/98 figure is stale-as-of-today · LEFT ALONE: the 2026-08-03 status prose, commit citations (`d82b133d`, `6f7307b3`), and the deferred-ideas paragraph — none is a CI claim this pass is entitled to touch. -->
 
@@ -170,6 +175,24 @@ verifiable.
   is provably zero. New `unwrap`/`expect` in production code fails the gate
   unless it carries a verifiable invariant comment.
 
+  *(2026-10-11 — the mechanism this bullet describes has since been INVERTED, and
+  the inversion made the gate stronger rather than weaker. `--fail-on-recoverable`
+  is now an **inert no-op alias**: the scanner's own header states that strictness
+  "is now the behaviour itself", so a BARE run is fail-closed and exits 1 when the
+  recoverable set is non-zero, and an operator who wants the old permissive
+  behaviour must opt out by name and number with `--allow-recoverable N`. The
+  reason for the change is the exact failure mode this campaign keeps recording: a
+  green that was "a property of a command line rather than of the tree", because
+  every invocation that omitted the flag — including the `--json` re-measure recipe
+  this very ADR names — printed a clean-looking inventory over undocumented panics.
+  `scripts/check.sh:385` passes `--fail-on-recoverable` (a no-op now, still correct);
+  `dev-ci.yml:1098` runs the bare `python3 scripts/scan-unwrap-panic.py`, which is
+  now the STRICT form. Re-measured 2026-10-11: `--json` reports **total 157 /
+  invariant_annotated 157 / recoverable 0** — the count has grown from 98 (and from
+  the 130 the 2026-09-09 note recorded), which is expected and immaterial; only the
+  zero is contractual. The key name is `invariant_annotated`, and the load-bearing
+  form remains `invariant_annotated == total`.)*
+
 ---
 
 ## Status
@@ -213,8 +236,6 @@ tracked baseline JSON to chart inventory history over time.
 > though the 98/98 figure quoted above is a 2026-08-03 measurement that the tree has
 > since grown past. The counts move; only the zero is contractual.
 
-> last audited 29-09-26 by docs-auditor
-
 
 > **Repair (2026-10-04): the marker word is load-bearing, and a prior reword
 > silently dropped it.** `scripts/scan-unwrap-panic.py` accepts a documented
@@ -236,3 +257,5 @@ tracked baseline JSON to chart inventory history over time.
 > immediately preceding line, so a future reword cannot drop it again without a
 > test failure. Re-measured 2026-10-04: `python scripts/scan-unwrap-panic.py`
 > exits 0.
+
+> last audited 11-10-26 by docs-auditor
