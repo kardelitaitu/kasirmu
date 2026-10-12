@@ -46,7 +46,35 @@ this app has completed in these sessions.**
 when the pay button is pressed directly". Kill-tested: restoring the
 `!== undefined` guard fails it.
 
-## Defect 2 — NOT FIXED, and the dangerous one
+## Defect 2 — FIXED in `c2b08004f` (was the dangerous one)
+
+**Fix.** `useEdcTenderPhase` now records a `terminalFailed` flag when a terminal
+attempt fails (pre-flight rejects, terminal not ready, card declined, or the flow
+throws), and `canComplete` refuses `card` while it stands. A retry clears it, a
+successful capture clears it, and leaving the card tender clears it — so the gate
+blocks only the state it exists for.
+
+**Deliberately narrow.** Disabling Complete for `card` outright would have broken
+the MANUAL card tender — a payment taken on another machine — which is an intended
+path (PaymentModalSaleFlow.test.tsx:1825 "keeps manual card"). The gate therefore
+keys on the EVIDENCE of a failed attempt, never on the method alone.
+
+**Verified live:**
+
+| Scenario | Complete |
+|---|---|
+| Manual card, no terminal attempt | enabled (intended path preserved) |
+| After a terminal failure | withheld (`aria-disabled="true"`) |
+| Leaving the method and returning | released |
+
+**Guards**: `useEdcTenderPhase.failureGate.test.ts` (6 tests) plus an assertion
+added to the existing declined-capture test in `PaymentModalSaleFlow.test.tsx`.
+Kill-tested: removing the `canComplete` clause renders the settle button enabled
+after a declined capture and fails that assertion.
+
+## The original finding
+
+### Defect 2 — the dangerous one
 
 Before the fix, that failed card attempt still ended in a **settled sale**:
 
