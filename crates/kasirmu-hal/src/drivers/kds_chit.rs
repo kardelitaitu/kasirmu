@@ -12,6 +12,7 @@ next: none | perf: N/A
 //! thermal paper (~48 characters wide).
 
 use super::escpos;
+use super::receipt::PaperWidth;
 
 /// A formatted kitchen chit ready to send to a thermal printer.
 pub struct KdsChit {
@@ -21,16 +22,10 @@ pub struct KdsChit {
     pub text: String,
 }
 
-/// Format a KDS order into a printable kitchen chit.
+/// Format a KDS order into a printable kitchen chit with explicit paper width.
 ///
-/// The chit includes:
-/// - Header with "KITCHEN ORDER" label
-/// - Order number and table number
-/// - Item summary (what the kitchen needs to cook)
-/// - Notes (allergies, modifications)
-/// - Timestamp of when the order was received
-/// - Separator lines for visual clarity
-pub fn format_kds_chit(
+/// Designed for 58mm (Narrow, 32 cols) and 80mm (Standard, 48 cols) thermal paper.
+pub fn format_kds_chit_with_width(
     display_number: Option<i64>,
     table_number: Option<&str>,
     items_summary: &str,
@@ -38,8 +33,9 @@ pub fn format_kds_chit(
     notes: &str,
     received_at: &str,
     ticket_prefix: &str,
+    paper_width: PaperWidth,
 ) -> KdsChit {
-    let w = 48; // 80mm paper width
+    let w = paper_width.chars();
     let mut lines: Vec<String> = Vec::with_capacity(20);
 
     // Header
@@ -113,6 +109,28 @@ pub fn format_kds_chit(
     buf.extend_from_slice(escpos::CUT_FULL);
 
     KdsChit { data: buf, text }
+}
+
+/// Format a KDS order into a printable kitchen chit (defaults to 80mm / 48 cols).
+pub fn format_kds_chit(
+    display_number: Option<i64>,
+    table_number: Option<&str>,
+    items_summary: &str,
+    item_count: i64,
+    notes: &str,
+    received_at: &str,
+    ticket_prefix: &str,
+) -> KdsChit {
+    format_kds_chit_with_width(
+        display_number,
+        table_number,
+        items_summary,
+        item_count,
+        notes,
+        received_at,
+        ticket_prefix,
+        PaperWidth::Standard,
+    )
 }
 
 /// Center text by padding with spaces to the given width.

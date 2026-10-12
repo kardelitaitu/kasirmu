@@ -201,3 +201,33 @@ fn center_text_leaves_over_width_text_untouched() {
     let wide = center_text("x".repeat(60).as_str(), 48);
     assert_eq!(wide.chars().count(), 60);
 }
+
+#[test]
+fn chit_narrow_58mm_formats_within_32_columns() {
+    let chit = format_kds_chit_with_width(
+        Some(12),
+        Some("T4"),
+        "Nasi Goreng x2, Es Teh x2",
+        4,
+        "Pedas level 3",
+        "2026-10-12T14:30:00Z",
+        "",
+        PaperWidth::Narrow,
+    );
+    assert!(chit.text.contains("#12"));
+    assert!(chit.text.contains("Table: T4"));
+    assert!(chit.text.contains("Pedas level 3"));
+
+    for line in chit.text.lines() {
+        let dashes = line.chars().filter(|&c| c == '─').count();
+        if dashes > 0 {
+            assert_eq!(dashes, 32, "separator must be exactly 32 chars on 58mm");
+        }
+        if line.contains("KITCHEN ORDER") || line.contains("<<< CUT HERE >>>") {
+            assert!(
+                escpos::cell_width(line) <= 32,
+                "header/cut notice exceeds 32 chars: {line:?}"
+            );
+        }
+    }
+}
