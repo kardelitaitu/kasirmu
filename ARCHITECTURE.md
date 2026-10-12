@@ -1,5 +1,6 @@
 # kasir.mu Architecture
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (3 findings) · Supersedes the 2026-10-08 stamp, kept verbatim below. Repaired this pass: (1) the Kasirmu-api § Routes list was a four-line sample presented as the contract — it omitted every route added since (terminals, settings, tax-rates, exchange-rates ×4, /tenants/me/plan, users, memos ×3, sales ×3, images ×4); now labelled a sample and pointed at `crates/kasirmu-api/src/lib.rs:302-393`, where the router is built. (2) the kasirmu-api "30+ integration tests on seeded in-memory databases" line — the crate has no top-level `tests/` directory at all (`Test-Path crates/kasirmu-api/tests` → False); replaced with the measured in-crate attribute count (349). (3) `kasirmu-cli` § Subcommands listed three ("`migrate` working, `backup` stub, `export` stub") where the live `Command` enum has sixteen variants, two of them no longer stubs; regenerated from `crates/kasirmu-cli/src/cli.rs:40`. Minor: the kasirmu-core § Migrations call-site line numbers (`:212`/`:117`/`:134`/`:457`) had drifted with the files they name; re-derived to `state.rs:279`/`state.rs:208`/`db.rs:145`+`:154`/`lib.rs:466` and given the re-derive command. Minor: the kasirmu-core § Migrations line's own history clause said "corrected three times (44 → 59 → 67 → 69)" — four arrows, and the live count is 75 (the reading above it is the 74 it was last measured at); both now say so. Verified and left alone as accurate: the 40-package count (`cargo metadata --no-deps` → 40, matching the parenthetical breakdown exactly); the Core Traits block (re-read against `foundation/src/contracts.rs` — Module/Service/EventHandler/DomainEvent all still there, plus a HandlerType enum the summary does not name but does not contradict); the 14 modules and their names on disk; the 79 ADRs / 2 archived; the `docs/records/releases/` pointer in § Documentation Requirements (already re-based by afca83144); the migration file count (74 as written — the tree is one past it, 75, with `20261020_product_type_check.sql`, and the line already instructs re-derivation and has been corrected four times, so it is left as the dated reading it says it is). · Repaired against branch `0.0.41` at `ea89612c3`. -->
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (3 findings repaired) · Supersedes the 2026-08-09 marker below, kept verbatim. Repaired this pass: ADR count 74 -> **79** (`ls docs/decisions/*.md | grep -v README | grep -v '\.status\.md$' | wc -l` -> 79); migration file count 69 -> **74** (73 SQLite + 1 generated PG, `ls crates/kasirmu-core/migrations/*.sql | wc -l` -> 74); the Platform Core Services tree gained the two files it omitted (`staff.rs`, `error.rs` — verified present in `platform/core/src/`). Verified and left alone as accurate: 40 workspace packages, the Core Traits block (matches `foundation/src/contracts.rs` verbatim), and the AGENTS.md §4 env-var spellings. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (5 structural majors repaired) · FIXED 31-08: Core Traits rewritten verbatim from foundation/src/contracts.rs (Module id/dependencies/on_load/on_start/on_stop->ModuleResult; Service id/start/stop; EventHandler<E> generic; DomainEvent added; invented `trait Integration` removed); Platform Core Services tree trimmed to the 6 real services (auth/rbac/rbac_presets/permission_registry/database/settings/terminal_profile) with a note that logging/audit/cache live elsewhere; permission delimiter domain.action -> domain:action with real keys (sales:process/view/refund); Event Flow invented names (stock.updated/customer.history.updated/points.awarded/report.data.changed) replaced with real handlers (SaleSyncEnqueuer/InventorySyncEnqueuer/AuditLogHandler/LoyaltyEarnHandler) incl. the Rule-2 diagram; ADR #31 -> #43 (react-only); foundation/ -> foundation/src/; HAL/payment/reporting device lists synced; module tree corrected to the 14 active modules (loyalty/purchasing were wrongly marked 'planned', 8 real modules omitted); apps/unified added; foundation contracts list +DomainEvent · REMAINING (minor backlog, not falsehoods): no dedicated HAL/driver-trait section (EdcTerminal detail lives in crates/kasirmu-hal/README.md); manifest example now complete (description+permissions); scoped-IPC (ADR #7) noted at commands/; remaining: PROMO-3/CUR-11/LOY-03/COR-7 not shown in any flow · counts (35 members / 13 crates / 14 modules / 61 ADRs) verified accurate at the time · SUPERSEDED 2026-09-18 by the P7 tree rewrite in this file (39 members / 17 crates / 14 modules / 71 ADRs) -->
 
@@ -544,11 +545,16 @@ All 6 restructuring phases have been completed.
   2026-10-08** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 74, of which
   `ls crates/kasirmu-core/migrations/*.pg.sql | wc -l` → 1 is the generated PG schema), embedded by the
   `include_str!` list in `crates/kasirmu-core/src/migrations.rs`. Re-derive both numbers — this
-  line has now been corrected three times (44 → 59 → 67 → 69) because a migration lands with most slices.
+  line has been corrected repeatedly (44 → 59 → 67 → 69 → 74, and the tree is at **75** on 2026-10-12 with
+  `20261020_product_type_check.sql`) because a migration lands with most slices; the 74 above is the reading
+  it was last checked at, not a current count.
   The 131-file history was squashed into `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
-  `apps/desktop-tauri/src/state.rs:212`, `apps/mobile-tauri/src/state.rs:117`,
-  `apps/cloud-server/src/db.rs:134`, `crates/kasirmu-api/src/lib.rs:457` and `crates/kasirmu-cli`.
+  `apps/desktop-tauri/src/state.rs:279` (`AppState::new`), `apps/mobile-tauri/src/state.rs:208` (`AppState::new`),
+  `apps/cloud-server/src/db.rs:145` and `:154` (file and in-memory), `crates/kasirmu-api/src/lib.rs:466`
+  (`serve()`) and `crates/kasirmu-cli`. The `:212`/`:117`/`:134`/`:457` citations this line carried were
+  correct when written and have drifted with the files they name — re-derive with
+  `git grep -n 'migrations::run' -- apps crates`.
   `platform/startup` does **not** run migrations — it only calls the
   `migrations::fresh_db()` test helper in `event_handlers_tests.rs`.
 - **Rules**: `#![deny(unsafe_code)]` in `lib.rs`; `missing_docs = "warn"` comes from the root `[workspace.lints]` via `[lints] workspace = true` in every member manifest.
@@ -575,15 +581,20 @@ All 6 restructuring phases have been completed.
 - **Server**: Listens on port 3099 (`OZ_API_PORT` env var). `AppState` wraps `Arc<Mutex<Connection>>`.
 - **Auth**: JWT HS256 tokens. `POST /api/v1/tokens` creates them; when `OZ_ADMIN_KEY` is configured the mint requires the matching `X-Admin-Key` header (dev mode stays open when unset). `auth_middleware` guards protected routes.
 - **Sync plan gating** (ADR sync-plan-gating): the sync router runs `plan_middleware` between auth and the handler. With `OZ_ENFORCE_PLANS=1`, tenants on the `free` plan (or with no plan row) get `403 {"error":"plan_required"}`; plans live in the `tenant_plans` table, are set via `PUT /api/v1/tenants/{tenant_id}/plan`, and are upgraded automatically by paid Stripe subscriptions via the webhook.
-- **Routes**:
+- **Routes** (registered in `crates/kasirmu-api/src/lib.rs:302-393`; this is a sample, not the full list):
   - Public: `GET /api/v1/health`
   - Admin (`X-Admin-Key` when `OZ_ADMIN_KEY` is set; open in dev): `POST /api/v1/tokens`, `PUT /api/v1/tenants/{tenant_id}/plan`
-  - Protected (JWT): `GET/POST /api/v1/products`, `GET /api/v1/products/{sku}`, `PATCH /api/v1/products/{sku}/stock`, `GET /api/v1/categories`
-- **Tests**: 30+ integration tests on seeded in-memory databases.
+  - Protected (JWT): `GET/POST /api/v1/products`, `GET /api/v1/products/{sku}`, `PATCH /api/v1/products/{sku}/stock`, `GET /api/v1/categories`,
+    plus terminals, settings, tax-rates, exchange-rates (+ `/latest`, `/latest/{from}/{to}`, `/{id}`), `/tenants/me/plan`, users,
+    memos (`sync`/`active`/`{memo_id}/ack`), sales (+ `/{id}`, `/{id}/status`), and images (+ `:pack`, `:missing`, `/{hash16}`).
+- **Tests**: integration/unit tests live in-crate (349 `#[test]`/`#[tokio::test]` attributes across the crate at 2026-10-12; the crate has no top-level `tests/` directory).
 
 ### kasirmu-cli
 - **Responsibilities**: Command-line administration tool (`oz` binary).
-- **Subcommands** (via clap): `migrate` (working), `backup` (stub), `export` (stub).
+- **Subcommands** (via clap, `crates/kasirmu-cli/src/cli.rs:40`): `migrate`, `init-db`, `product`, `category`,
+  `inventory`, `sale`, `customer`, `user`, `backup`, `restore`, `export`, `import`, `seed-demo`,
+  `credential-deltas`, `stock-variance`, `rekey` — read live from the `Command` enum, not from this page
+  (this line listed three and called two of them stubs long after they were implemented).
 - Uses `anyhow` for error propagation.
 
 ### kasirmu-lua, kasirmu-payment, and kasirmu-reporting (implemented)
@@ -712,7 +723,7 @@ For the full list see the `docs/decisions/` directory.
 not hard deadlines. Every PR should move the codebase closer to the target
 architecture.*
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 
 > status: ACCURATE (5 structural majors repaired 31-08-26) · Core Traits rewritten verbatim from foundation/src/contracts.rs (invented `Integration` removed, `DomainEvent` added); Platform Core Services trimmed to the 6 real services; permission delimiter corrected to `domain:action`; Event Flow invented names replaced with real handlers; ADR #43 and foundation/src/ corrected; counts verified accurate at the time (35 members / 13 crates / 14 modules / 61 ADRs — superseded 2026-09-18: 39 members / 17 crates / 14 modules / 71 ADRs). Minor backlog in the top audit comment (no dedicated HAL section; feature flows not shown).
 

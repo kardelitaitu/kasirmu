@@ -3,7 +3,9 @@ name: hal-drivers
 description: Hardware Abstraction Layer (HAL) conventions for kasir.mu — async_trait device traits, drivers for barcode scanners, receipt printers, cash drawers, customer displays, weight scales, and EDC payment terminals, plus mandatory mock implementations. Use when adding a new device driver or wiring hardware into a feature.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `crates/kasirmu-hal/src/traits/` holds **6** non-test trait files (barcode, printer, cash_drawer, customer_display, weight_scale, edc), matching the documented six. `crates/kasirmu-hal/src/transport/` holds `tcp.rs`, `serial.rs`, `usb.rs`, `bt_android.rs` and `mod.rs` — the `transport/bluetooth.rs` the 18-09-26 audit flagged is confirmed repaired to `transport/tcp.rs` in the layout diagram. `crates/kasirmu-hal/src/drivers/` holds 15 non-test driver files plus the `edc/` subdirectory. All four paths the file cites exist. · NOT re-measured: the driver-by-driver behavioural claims and the `HalError` variant list beyond the existence checks above. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: REPAIRED — 1 major, 1 minor, fixed in place · Audited against branch `0.0.41` at `ea89612c3`. · F1 (MEDIUM, fixed): the `MockBarcodeScanner` sample was a simplified struct that does not match the real one — it omitted the `cancel_calls` counter and the `info: DeviceInfo` field, and its `device_info()` fabricated a `DeviceInfo` inline instead of returning the stored one. Real shape at `crates/kasirmu-hal/src/drivers/mock.rs:36-47` (fields), `:52-66` (`new`/`with_info`, both `#[must_use]`), `device_info` returns `self.info.clone()`. A reader copying the sample would have written a mock that fails to compile against the trait's own example assertions. Corrected the struct, the constructors and `cancel`/`device_info`. · F2 (LOW, fixed): the sample used `#[derive(Default)]`, which the real type does not — it implements `Default` by hand (`mock.rs:84-88`) because the `info` field is not `Default`. Noted. · Verified ACCURATE and left alone: the crate layout tree (all of `traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs`, `error.rs`, `registry.rs`, `transport/{usb,tcp,serial}.rs`, and every `drivers/` entry named — including `bt_printer.rs` as a `SerialReceiptPrinter` alias, `scale.rs` as a stub whose `read_weight` fails with `HalError::Unsupported`, and `edc/` stubs); the `BarcodeScanner` trait signature (`traits/barcode.rs:20-34`); `DriverRegistry` per-category `RwLock` maps and `register_scanner`/`scanner` (`registry.rs:33-75`); `apply_config` + `BootstrapReport{registered,skipped,rejected}` (`bootstrap.rs:236-256`) and `platform_startup::hardware::config_from_profile` (`platform/startup/src/hardware.rs:75`); the registry-id contract and the `discover_scanners()` exception (`registry.rs:272-335`, `discover_never_registers_a_card_terminal` present); the `HalError` variants and the `HalErrorKind` discriminator with `.kind()` (`error.rs:24-124`) — note the file also carries a real `PermissionDenied(String)` variant beyond the sample's set, which is fine because the sample is explicitly illustrative of the shape rather than exhaustive; `useBarcodeScanner.ts` `scanners[0]?.id` autodetect (`ui/src/features/sales/useBarcodeScanner.ts`, confirmed); `start_scanner_scoped` (`apps/desktop-tauri/src/commands/hardware.rs:125`); the "no `embedded-hal`, no CI check for the mandatory mock" claims.
+
+<!-- Superseded audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `crates/kasirmu-hal/src/traits/` holds **6** non-test trait files (barcode, printer, cash_drawer, customer_display, weight_scale, edc), matching the documented six. `crates/kasirmu-hal/src/transport/` holds `tcp.rs`, `serial.rs`, `usb.rs`, `bt_android.rs` and `mod.rs` — the `transport/bluetooth.rs` the 18-09-26 audit flagged is confirmed repaired to `transport/tcp.rs` in the layout diagram. `crates/kasirmu-hal/src/drivers/` holds 15 non-test driver files plus the `edc/` subdirectory. All four paths the file cites exist. · NOT re-measured: the driver-by-driver behavioural claims and the `HalError` variant list beyond the existence checks above. -->
 
 <!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 2 — error.rs sample added the real Unsupported(String) variant and the HalErrorKind discriminator contract the checklist already referenced; all other structural claims re-verified) · verified this pass: traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs + *_tests.rs siblings, transport/{usb,serial,tcp}.rs (+ mod), bootstrap.rs + registry.rs + error.rs + types.rs at crate root, drivers/edc/ dir, register_serial_printer/register_bluetooth_printer/HardwareConfig/BootstrapReport/HalErrorKind/discover_never_registers_a_card_terminal symbols all present, useBarcodeScanner.ts uses scanners[0]?.id autodetect, start_scanner_scoped in apps/desktop-tauri/src/commands/hardware.rs, real HalError has Timeout(u32) · prior: 2026-08-31 docs-auditor rev (F1-F4 repaired + EdcTerminal documented; dc07f32a bootstrap doc; 6624df1c registry-id contract; 1c8957ac serial-printer unification) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1-F4 repaired + EdcTerminal documented) · F1 FIXED: removed the false 'embedded-hal' claim (no such dep; plain async_trait) · F2 FIXED: traits list corrected to the 6 real traits (barcode/printer/cash_drawer/customer_display/weight_scale/edc) — fictional nfc.rs/payment_terminal.rs removed · F3 FIXED: drivers are transport-named (usb/bt/serial_scanner, usb/bt/tcp_printer, escpos, receipt, kds_chit, drawer, serial_display, scale, edc/{wired,wireless,protocol}) — fictional honeywell_barcode/star_printer/acr122u_nfc/idtech_payment removed; example struct now UsbHidBarcodeScanner (real) · F4 FIXED: mocks are always compiled (no `mock` feature gate) · NEW: EdcTerminal trait (traits/edc.rs) + edc/ drivers now documented · verified accurate: BarcodeScanner signature (connect/poll/cancel/device_info), DriverRegistry + discover, mock.rs location, async Result<T,HalError> convention · NEW (31-08, dc07f32a): documented bootstrap.rs (`HardwareConfig` + `apply_config()` → `BootstrapReport`) as the production registration path; corrected `discover()` framing (auto-probe, not startup registration) · CORRECTED 31-08 by DSH-Agent: the bootstrap note had carried "registration never blocks", which 6624df1c superseded (Connection::Usb enumerates the bus); added the registry-id contract that 6624df1c proved — discover() mints hardware-derived ids while commands look up fixed strings, so wiring a driver into discover() leaves it unreachable, and the checklist said to do exactly that · F5 (31-08, DSH-Agent, 1c8957ac): the driver tree omitted serial_printer.rs and presented bt_printer.rs as a separate driver. There is one serial printer implementation; Bluetooth SPP is a serial port to the application. Note this one ran the other way: this skill already listed "serial" as an addressed transport, and it was the CODE that was wrong — bootstrap.rs rejected every serial printer as having no driver. Marked scale.rs and edc/ as stubs so nobody wires a stub into a path and calls it a feature. · F6 (01-09, DSH-Agent, 1844626d): the registry-id rule was stated as absolute ("commands look up fixed strings, so discover() never resolves") and it is only half true — it holds where a caller hardcodes the id, not where the UI lists ids and hands one back. Scanners are the second case, and applying the absolute rule to them is what left barcode input dead in both clients. Rewrote the rule as "who picks the id", recorded that discovery enumerates without opening ports, and documented discover_scanners() as the startup path. -->
 # Hardware Abstraction Layer (HAL)
@@ -192,15 +194,21 @@ use crate::types::Barcode;
 
 /// A programmable mock for `BarcodeScanner`. Tests push scans into a queue;
 /// the mock returns them in order.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct MockBarcodeScanner {
     queue: Arc<Mutex<VecDeque<Barcode>>>,
     pub connect_calls: Arc<AtomicUsize>,
     pub poll_calls: Arc<AtomicUsize>,
+    pub cancel_calls: Arc<AtomicUsize>,
+    pub info: DeviceInfo,
 }
 
 impl MockBarcodeScanner {
-    pub fn new() -> Self { Self::default() }
+    #[must_use]
+    pub fn new() -> Self { Self::with_info(DeviceInfo::new("mock", "MockBarcode", "0000")) }
+
+    #[must_use]
+    pub fn with_info(info: DeviceInfo) -> Self { /* ... */ }
 
     /// Queue a barcode to be returned by the next `poll`. Safe to call from
     /// any context (sync test setup or async runtime) — uses `std::sync::Mutex`
@@ -223,20 +231,20 @@ impl BarcodeScanner for MockBarcodeScanner {
         Ok(self.queue.lock().expect("mock queue poisoned").pop_front())
     }
 
-    async fn cancel(&self) -> Result<(), HalError> { Ok(()) }
+    async fn cancel(&self) -> Result<(), HalError> {
+        self.cancel_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
 
     fn device_info(&self) -> DeviceInfo {
-        DeviceInfo {
-            vendor: "mock".into(),
-            model: "MockBarcode".into(),
-            serial: "0000".into(),
-        }
+        self.info.clone()
     }
 }
 ```
 
 **Rules:**
 - Mocks are **stateful** and **programmable**. Tests push inputs, then assert what the system did with them.
+- `Default` is implemented by hand (`impl Default for MockBarcodeScanner { fn default() -> Self { Self::new() } }`), not derived — the real struct carries a `DeviceInfo` field.
 - Counters (`connect_calls`, `poll_calls`, …) make assertions on driver behavior trivial.
 - Mocks implement the **same trait** as the real driver. No special "mock mode" in business code.
 - Mocks are `Send + Sync + Clone` so multiple tests can share them.
@@ -392,4 +400,4 @@ async fn sale_completes_after_scan() {
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 11-10-26 by docs-auditor

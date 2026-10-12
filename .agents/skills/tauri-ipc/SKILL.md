@@ -3,7 +3,9 @@ name: tauri-ipc
 description: Tauri v2 command and front-end API conventions for kasir.mu — where Rust commands live, how they are registered, and how the React/TypeScript front-end calls them. Use when adding a new IPC surface or wiring a new feature end-to-end.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `apps/desktop-tauri/src/commands/` holds **72** `.rs` files, of which **6** are `*_tests.rs` — so **66** non-test modules against the "~64 modules total" in the layout diagram, which the tilde covers. `scripts/ipc-parity-allowlist.json` exists. All eight paths the file cites exist (`apps/desktop-tauri`, `apps/desktop-tauri/src/error.rs`, `apps/mobile-tauri`, `ui/src/{__tests__,api,api/tauri.ts,types/domain.ts,utils/logged-invoke.ts}`). The `oz_pos_lib::run()` drift the 18-09-26 audit found is confirmed repaired — the file now names both shells. No `oz-*` crate reference remains outside the superseded stamp below. · NOT re-measured: the `*_scoped` command-count claim (101 files) and the parity script's own verdict, which need a script run this audit did not perform. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: REPAIRED — 2 major, 2 minor, fixed in place · Audited against branch `0.0.41` at `ea89612c3`. · F1 (HIGH, fixed): the "Events from backend to front-end" section was entirely fictional. It defined a `subscribe_barcode_scans` command (no such command exists anywhere in either shell — the scanner is started with `start_scanner_scoped`, `apps/desktop-tauri/src/commands/hardware.rs:125`) and emitted/listened for the event name `barcode:scan`; the real name is `barcode:scanned`, alongside `barcode:error` (`ui/src/api/hardware.ts:159,163`, exported as `onBarcodeScanned`/`onBarcodeError`). The TS example's payload type was also wrong (`BarcodeScan`, which `ui/src/types/domain.ts` does not define; the real one is `BarcodeScannedPayload` in `ui/src/api/hardware.ts:152`), as was the claim that the emit lives in a command body (`apps/desktop-tauri/src/commands/hardware.rs` emits nothing — zero `AppHandle`/`Emitter` hits). Rewrote both snippets and the event-name list to name only events that exist, and labelled the Rust side illustrative rather than pretending to a command that is not there. · F2 (HIGH, fixed): the Layout diagram said "~64 modules total". Re-measured: `apps/desktop-tauri/src/commands/` holds **75** `.rs` files, **7** of them `*_tests.rs`, so **68** non-test modules. The 2026-09-22 stamp had measured 72/6/66; the tree has grown since. Corrected, and the cell now carries the re-derive command. · F3 (LOW, fixed): golden rule 1 named both shells but not their crate identities; added `kasirmu-app`/`kasirmu_app_lib` for the desktop and `kasirmu-mobile`/`kasirmu_mobile_lib` for the tablet (`apps/*/Cargo.toml`, `apps/mobile-tauri/src/main.rs`). · F4 (LOW, fixed): "Errors are `AppError`, defined once in `apps/desktop-tauri/src/error.rs`" — each shell defines its own (`apps/mobile-tauri/src/error.rs` exists). · Verified ACCURATE and left alone: golden rules 1-2 and 7 (both shells genuinely have `commands/`; the two `generate_handler!` lists genuinely differ — 544 entries in desktop vs 482 in mobile, measured); rule 3 (`ui/src/api/` per-domain files); rule 4 (`AppError` serde-tagged `tag = "kind", rename_all = "camelCase"` with a `subKind` on Core/Hardware, `apps/desktop-tauri/src/error.rs:9-15,103-118` — no TS class to `instanceof`); rule 5 (`State<'_, AppState>`); rule 6 (`*_scoped` + ADR #7); `state.resolve_session` (`apps/desktop-tauri/src/state.rs:564`); `require_permission_for_session` (`apps/desktop-tauri/src/commands/authz.rs:114`); the module-qualified `generate_handler!` registration example and real reports commands (`get_daily_revenue_scoped` `reports.rs:98`, `get_menu_engineering_scoped` `reports.rs:63`); `loggedInvoke` from `ui/src/utils/logged-invoke.ts` routed through `ui/src/api/tauri.ts`; `scripts/ipc-parity-allowlist.json`; `scripts/verify-ipc-parity.py`. · NOT re-measured: the parity script's own verdict (not run this pass).
+
+<!-- Superseded audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `apps/desktop-tauri/src/commands/` holds **72** `.rs` files, of which **6** are `*_tests.rs` — so **66** non-test modules against the "~64 modules total" in the layout diagram, which the tilde covers. `scripts/ipc-parity-allowlist.json` exists. All eight paths the file cites exist (`apps/desktop-tauri`, `apps/desktop-tauri/src/error.rs`, `apps/mobile-tauri`, `ui/src/{__tests__,api,api/tauri.ts,types/domain.ts,utils/logged-invoke.ts}`). The `oz_pos_lib::run()` drift the 18-09-26 audit found is confirmed repaired — the file now names both shells. No `oz-*` crate reference remains outside the superseded stamp below. · NOT re-measured: the `*_scoped` command-count claim (101 files) and the parity script's own verdict, which need a script run this audit did not perform. -->
 
 <!-- Superseded audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 3 — golden rules 1 and 2 rewritten to name BOTH shells and new rule 7 added: a command only one shell registers is a parity gap that only scripts/verify-ipc-parity.py can see; the checklist's registration item and pitfall 8 now say the same; Layout shows apps/mobile-tauri. Learned from f49170d3d, where the avatar feature shipped desktop-only while the shared PosScreen restaurant sidebar, which the tablet shell also mounts, invoked it) · prior: 2026-09-03 · DSH · status: ACCURATE (rev 2 — command example rewritten to the real add_line_scoped(session_token, args, state) pattern with resolve_session + permission check; registration example now uses the module-qualified commands::<mod>:: names and real reports commands (get_daily_revenue_scoped etc. — daily_summary/export_csv do not exist); api wrapper example corrected to the real sales.ts pattern: loggedInvoke from utils/logged-invoke (bare @tauri-apps imports inside api/ are allowed but unused there); TS error guidance corrected — AppError is serde-tagged with a camelCase kind discriminator, there is no AppError class to instanceof on the TS side; hook example shadowing bug fixed; test checklist item aligned with the sibling *_tests.rs convention (51 such files under commands/)) · prior: 2026-08-31 docs-auditor rev (F1 fictional payments.rs removed, ~47 modules, *_scoped ADR #7 documented, per-domain api files) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1 repaired + scoped-IPC documented) · F1 FIXED: Layout/registration examples no longer reference the fictional payments.rs (payment commands are split, e.g. void.rs/gift_cards.rs); noted ~47 command modules, not 5 · NEW: golden rule 6 documents the *_scoped convention (ADR #7 Data Scope Guard) — the dominant pattern at HEAD (101 files) previously undocumented; registration example now shows pos::start_sale_scoped/complete_sale_scoped (verified at HEAD) · FIXED: 'pos.ts is the only entry point' corrected to per-domain ui/src/api/<feature>.ts (matches rule 3; real files currency.ts/edc.ts/hardware.ts/…); sales::→pos:: · verified accurate: commands/ dir, pos.rs/inventory.rs/hardware.rs/reports.rs present, AppError in error.rs, invoke_handler(generate_handler![…]) in lib.rs, State<AppState> + async Result<T,AppError> convention -->
 # Tauri IPC & Front-end API
@@ -26,8 +28,8 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Rust commands live in `apps/<shell>-tauri/src/commands/<feature>.rs`** — `apps/desktop-tauri` and `apps/mobile-tauri` (the tablet shell). | One folder per feature per shell, easy to find. |
-| 2 | **A command is registered in BOTH shells' `lib.rs`**, or the shell that lacks it is recorded in `scripts/ipc-parity-allowlist.json`. | Registration lives next to `Builder::default()` in each `invoke_handler!` list, and the two lists are not the same list. |
+| 1 | **Rust commands live in `apps/<shell>-tauri/src/commands/<feature>.rs`** — `apps/desktop-tauri` (crate `kasirmu-app`, lib `kasirmu_app_lib`) and `apps/mobile-tauri` (crate `kasirmu-mobile`, lib `kasirmu_mobile_lib`, the tablet shell). | One folder per feature per shell, easy to find. |
+| 2 | **A command is registered in BOTH shells' `lib.rs`**, or the shell that lacks it is recorded in `scripts/ipc-parity-allowlist.json`. | Registration lives next to `Builder::default()` in each `invoke_handler!` list, and the two lists are not the same list (measured 2026-10-12: 544 entries in `apps/desktop-tauri/src/lib.rs` vs 482 in `apps/mobile-tauri/src/lib.rs`). |
 | 3 | **Front-end calls go through `ui/src/api/` (per-domain files).** Components never call `invoke()` directly. |
 | 4 | **Every command is `async fn` and returns `Result<T, AppError>`.** | Errors are typed on both sides; no stringified blobs. |
 | 5 | **Every command takes its dependencies via `tauri::State<...>`.** | No globals, no thread-locals. |
@@ -51,10 +53,12 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
         ├── inventory.rs             # lookup_sku_scoped, adjust_stock_scoped
         ├── hardware.rs              # open_cash_drawer(_scoped), print_receipt(_scoped)
         ├── reports.rs               # get_daily_revenue_scoped, get_menu_engineering_scoped, …
-        └── …                        # ~64 modules total (currencies, exchange_rates,
-                                     #   gift_cards, kds, license, audit, …). There is
-                                     #   NO payments.rs — payment commands are split
-                                     #   (e.g. void.rs, gift_cards.rs).
+        └── …                        # 68 non-test modules at HEAD, of 75 .rs files
+                                     #   (currencies, exchange_rates, gift_cards, kds,
+                                     #   license, audit, …). There is NO payments.rs —
+                                     #   payment commands are split (e.g. void.rs,
+                                     #   gift_cards.rs). Re-count with:
+                                     #   ls apps/desktop-tauri/src/commands/*.rs
 ```
 
 ```
@@ -117,7 +121,7 @@ pub async fn add_line_scoped(
 - Argument struct is `*Args`, return type is `*Result`. Keeps the call site readable.
 - `State<'_, AppState>` is the only way to reach the database, services, or hardware. No module-level `static`s.
 - Scoped commands take `session_token: String` **first**, call `state.resolve_session(&session_token)?`, and check the required permission before touching data.
-- Errors are `AppError`, defined once in `apps/desktop-tauri/src/error.rs` and re-exported. Don't return `String` errors.
+- Errors are `AppError`, defined once per shell (`apps/desktop-tauri/src/error.rs`, `apps/mobile-tauri/src/error.rs`) and re-exported. Don't return `String` errors.
 - Commands are pure: they take inputs, return outputs, and use `State` for the world. No hidden state.
 
 ---
@@ -239,21 +243,18 @@ export function usePosState(cartId: CartId) {
 Use Tauri events for streaming or push-style updates (e.g., barcode scan, printer status, sync progress).
 
 ```rust
-// apps/desktop-tauri/src/commands/hardware.rs
+// apps/desktop-tauri/src/commands/hardware.rs — illustrative; the real emit lives
+// behind the scanner runtime, not in a command body. No `subscribe_barcode_scans`
+// command exists at HEAD (the scanner is started with `start_scanner_scoped`).
 
 use tauri::{AppHandle, Emitter};  // <-- Emitter trait is required for .emit()
 
-#[tauri::command]
-pub async fn subscribe_barcode_scans(app: AppHandle) -> Result<(), AppError> {
-    let app = app.clone();
+pub fn forward_scans(app: AppHandle, mut rx: /* barcode channel */ Receiver) {
     tokio::spawn(async move {
-        let mut rx = /* open barcode channel */;
         while let Some(scan) = rx.recv().await {
-            let _ = app.emit("barcode:scan", &scan);
+            let _ = app.emit("barcode:scanned", &scan);
         }
-        Ok::<_, AppError>(())
     });
-    Ok(())
 }
 ```
 
@@ -261,17 +262,16 @@ pub async fn subscribe_barcode_scans(app: AppHandle) -> Result<(), AppError> {
 // ui/src/api/hardware.ts
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { BarcodeScan } from '@/types/domain';
+import type { BarcodeScannedPayload } from '@/api/hardware';
 
-export async function onBarcodeScan(
-  handler: (scan: BarcodeScan) => void,
-): Promise<UnlistenFn> {
-  return listen<BarcodeScan>('barcode:scan', (e) => handler(e.payload));
-}
+export const onBarcodeScanned = (
+  handler: (payload: BarcodeScannedPayload) => void,
+): Promise<UnlistenFn> =>
+  listen<BarcodeScannedPayload>('barcode:scanned', (e) => handler(e.payload));
 ```
 
 **Rules:**
-- Event names are `domain:verb` (kebab/snake allowed; be consistent). Example: `barcode:scan`, `sale:completed`, `sync:progress`.
+- Event names are `domain:verb` (kebab/snake allowed; be consistent). Real examples: `barcode:scanned`, `barcode:error` (`ui/src/api/hardware.ts`); the illustrative `sale:completed` / `sync:progress` are not emitted under those names.
 - Always return the `UnlistenFn` from `listen()`. Components must call it in cleanup to avoid leaks.
 - Payload types are defined in `ui/src/types/domain.ts` and shared with the backend via JSON.
 
@@ -314,4 +314,4 @@ export async function onBarcodeScan(
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 11-10-26 by docs-auditor

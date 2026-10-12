@@ -3,7 +3,9 @@ name: onboarding-guide
 description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
-<!-- Audit stamp: 2026-10-02 · Budak-Korporat · status: PARTIAL — router only. Added the
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: REPAIRED — 2 major, 0 minor, fixed in place · Audited against branch `0.0.41` at `ea89612c3`. · F1 (HIGH, fixed): the First-time-setup paragraph said the hook "runs **eight steps**" and then listed seven, closing with "cargo fmt was an eighth step until 2026-09-13, when it was removed" — so the count and the list disagreed, and the sentence a reader would carry away was that the eighth step is gone. The eighth step exists and was added on 2026-10-09 in `5e8977387` ("docs(hooks): restate the gate count as eight in AGENTS.md and its skill mirrors"), which edited exactly this word and left the enumeration untouched: it is **Rust format (staged)**, a check-only `rustfmt --check` over the `.rs` files the commit stages (`.githooks/pre-commit` §"Rust format: staged files only"; AGENTS.md §2 step 8, which is the authority). Rewrote the paragraph to name all eight and separated the two facts that had been fused — the staged rustfmt step is new, the workspace-wide `cargo fmt --all` is what was removed in 2026-09-13. · F2 (MEDIUM, fixed): the closing "Pre-commit checklist" was a bare `cargo fmt --all -- --check && cargo clippy … && cargo test --workspace` block with no scope note. AGENTS.md §5.2 puts all three under **pre-push / final only** and explicitly lists `cargo clippy` and `cargo test --workspace` as NOT for routine iteration, so an agent reading the one-liner would run the slowest gates in the repo on every inner loop. Reframed the block and pointed at `scripts/check.sh`; also corrected the `check.ps1` framing (its own header states it is a subset, not a CI mirror). · Verified ACCURATE and left alone: every row of the skill router resolves — all 22 named skills exist as `.agents/skills/<name>/SKILL.md` (`android-apk-build`, `brand-asset-pipeline`, `codebase-memory`, `css-layout-verification`, `database`, `deploy-cloudflare`, `deploy-northflank`, `desktop-ui-automation`, `docs-auditor`, `exit-animation-pattern`, `hal-drivers`, `northflank-deploy-diagnosis`, `pr-create-pull-request`, `pr-repair`, `project-scaffold`, `rust-backend`, `skill-drift-guard`, `tauri-ipc`, `tdd`, `ui-components`, `android-adb-connect`, `android-ui-automation`); the "no dedicated skill yet" crate list and every README it cites exist (`crates/kasirmu-lua/README.md`, `crates/kasirmu-payment/README.md`, `crates/kasirmu-security/README.md`, `crates/kasirmu-reporting/README.md`, `crates/kasirmu-core/src/db/reports.rs`, `platform/sync`, `apps/cloud-server`, `shared-ui/locales/sales.ftl`); the hook opt-in commands and the `git config --get core.hooksPath` verification; `scripts/run-pre-push.py` and `scripts/lint-i18n.sh` both exist; the CI fail-closed bundle-parity claim (`dev-ci.yml#static-gates` runs `verify-bundle-parity.py` with no `continue-on-error`). · Bearing on the earlier stamp: the 2026-10-02 stamp was scoped to the router only and said so; its `android-adb-connect` row is still correct.
+
+<!-- Superseded audit stamp: 2026-10-02 · Budak-Korporat · status: PARTIAL — router only. Added the
 `android-adb-connect` row to the skill router, pointing at `.agents/skills/android-adb-connect/SKILL.md`.
 Verified this pass: that skill file exists and declares the matching `name`; the paths it cites
 (`ui/src/features/workspaces/WorkspaceHome.tsx`, `ui/src/features/workspaces/tools.tsx`,
@@ -62,7 +64,14 @@ git config core.hooksPath .githooks
 chmod +x .githooks/pre-commit
 ```
 
-Once enabled, verify with `git config --get core.hooksPath` (output should be the path you set; empty result means the commands above didn't take). `.githooks/pre-commit` then runs **eight steps** before every commit (<1s): LF line-ending normalization + bundle parity: staged files only (`scripts/verify-bundle-parity.py --staged-only …`) + FTL dedupe dry-run (`scripts/dedupe-ftl.py --dry-run`, when `.ftl` staged) + migration column-type lint (`scripts/verify-migration-column-types.py --staged-only`, when migrations are staged) + PG schema drift guard (`scripts/generate-pg-migration.py --check`, when any migration file, the migration registry, or the generator script is staged) + a conditional Go gate (gofmt re-stage + `go vet ./...`, only when `apps/license-server/*.go` is staged) + **FTL orphan lint** (`scripts/verify-ftl-orphans.py --staged-only`, only when a `.ftl` is staged). cargo fmt was an eighth step until 2026-09-13, when it was removed — it ran `cargo fmt --all` workspace-wide, reformating other agents' in-flight `.rs` files under concurrent sessions; formatting is now check-only in `.githooks/pre-push`, CI, `check.sh`, and `release.sh`. Heavy UI typechecks (`npm run typecheck`) and Vitest i18n (`lint-i18n.sh`) are offloaded to `.githooks/pre-push` (`scripts/run-pre-push.py`) and CI. **Source of truth is the hook: `grep -n '^# ──' .githooks/pre-commit`.**
+Once enabled, verify with `git config --get core.hooksPath` (output should be the path you set; empty result means the commands above didn't take). `.githooks/pre-commit` then runs **eight steps** before every commit (<1s): LF line-ending normalization + bundle parity: staged files only (`scripts/verify-bundle-parity.py --staged-only …`) + FTL dedupe dry-run (`scripts/dedupe-ftl.py --dry-run`, when `.ftl` staged) + migration column-type lint (`scripts/verify-migration-column-types.py --staged-only`, when migrations are staged) + PG schema drift guard (`scripts/generate-pg-migration.py --check`, when any migration file, the migration registry, or the generator script is staged) + a conditional Go gate (gofmt re-stage + `go vet ./...`, only when `apps/license-server/*.go` is staged) + **FTL orphan lint** (`scripts/verify-ftl-orphans.py --staged-only`, only when a `.ftl` is staged) + **Rust format, staged only** (check-only `rustfmt --check` over the `.rs` files this commit stages — it never auto-formats).
+
+Two corrections to keep this count honest, because it has been wrong twice:
+
+- **The eighth step is Rust format (staged), added 2026-10-09** — it is check-only on the *staged* `.rs` set. The workspace-wide `cargo fmt --all` was removed as a pre-commit step on 2026-09-13: it reformatted other agents' in-flight `.rs` files under concurrent sessions. Formatting is enforced check-only in `.githooks/pre-push`, CI, `check.sh`, and `release.sh`.
+- **`AGENTS.md` §2 is the authority** and lists all eight under the same names.
+
+Heavy UI typechecks (`npm run typecheck`) and Vitest i18n (`lint-i18n.sh`) are offloaded to `.githooks/pre-push` (`scripts/run-pre-push.py`) and CI. **Source of truth is the hook: `grep -n '^# ──' .githooks/pre-commit`.**
 
 For comprehensive local validation that mirrors the entire CI matrix (not just the pre-commit subset), run `bash scripts/check.sh`. For the rationale, see [`AGENTS.md`](../../../AGENTS.md) Quick Setup.
 
@@ -207,14 +216,16 @@ If a skill disagrees with the code, **the code is correct** until proven otherwi
 ## Pre-commit checklist (one-liner)
 
 ```bash
+# Pre-push / pre-PR only (AGENTS.md §5.2). Do NOT run these during routine iteration —
+# use `cargo check -p <crate>` + `cargo test -p <crate> <test_name>` while working.
 cargo fmt --all -- --check && \
 cargo clippy --all-targets --all-features -- -D warnings && \
 cargo test --workspace --all-features && \
 (cd ui && npm run lint && npm run typecheck && npm run test && npm run build)
 ```
 
-If this passes locally, the PR is ready.
+If this passes locally, the PR is ready. For the full local matrix in one command, prefer `bash scripts/check.sh` (POSIX); `scripts/check.ps1` covers a **subset** on Windows and is not a CI mirror.
 
 ---
 
-> last audited 02-10-26 by Budak-Korporat
+> last audited 11-10-26 by docs-auditor

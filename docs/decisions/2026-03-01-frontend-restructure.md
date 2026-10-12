@@ -4,9 +4,16 @@ area: ui
 title: ADR #3: Frontend Restructure
 status: Implemented (2026-07-15)
 ---
+
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor, 1 major) · Full re-audit; the 2026-09-29 and 2026-07-22 stamps are merged at the bottom as original evidence. · MAJOR (as a class): the Implementation Summary is a status page for a restructure that kept moving, and four of its coordinates are now wrong — the tablet entry point is `ui/src/main.mobile.tsx` (not `main.tablet.tsx`), per-module locales are `shared-ui/locales/` (not `ui/src/locales/`, which does not exist), the `frontend/{shell,shared,themes}` roots do not exist (the implemented homes are `ui/src/app/`, `ui/src/components/`, `ui/src/theme/`), and the registries are at `ui/src/registries/{page,menu,widget}-registry/index.ts` — the location the 2026-07-22 stamp "corrected" to `ui/src/platform/ui/` has itself since become wrong, the second such move this file has recorded. The two single-token path errors (`main.tablet.tsx`, `ui/src/locales/`) were repaired in place; the rest is stated in a correction note directly above the **Deferred** paragraph rather than rewritten into the decision sections, because an ADR says what was decided and the decision (registry-driven shell, deferred module-owned `ui/`) has not changed. · ALSO MEASURED: registration volume is 115 `registerPage(` / 53 `registerNavItem(` / 25 `registerWidget(` calls across `ui/src` — well past the "30+" the summary states, which stays true and understated. · VERIFIED UNCHANGED: `registerPage`/`getEnabledPages` (`ui/src/registries/page-registry/index.ts:102/147`) and `registerNavItem`/`getNavItems` (`ui/src/registries/menu-registry/index.ts:83/94`) exist with those names; the `SectionName` union has exactly the 10 sections the summary says `getNavItems` is "with"; `registerWidget`/`getWidgets` exist; `App.tsx` and `main.mobile.tsx` both call `registerAllFeatures()`; the four theme files exist; and three of the four named shell components exist (`AppShell`/`AppLayout` at `ui/src/app/`, `TabletAppShell`/`TabletAppLayout` at `ui/src/app/tablet/`). · DEAD REFERENCE: the Related list cites `RESTRUCTURING.md` for Phase 4; no such file exists tracked or on disk (confirmed via `git ls-files`), so it is struck through with the reason kept, matching ADR #1 and #2. · Repaired against branch 0.0.41 at ea89612c3. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence:
+
 <!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 minor path note) · frontend/shell, frontend/shared, frontend/themes (tokens.css, components.css, reset.css, responsive.css) all exist; App.tsx uses registerPage/registerNavItem · note: registries actually live at ui/src/platform/ui/{page,menu,widget}-registry, not frontend/shell/ as Section 1 implies (path drift, not a logic error); 15 shared components + 3 registries match the description · Status "Implemented (2026-07-15)" consistent -->
 
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ⚠️ THE PRIOR AUDIT'S OWN PATH NOTE HAS ITSELF DRIFTED, and that is the finding here. The 2026-07-22 stamp records "registries actually live at ui/src/platform/ui/{page,menu,widget}-registry, not frontend/shell/ as Section 1 implies". Those directories do not exist. The registries are now at `ui/src/registries/page-registry/index.ts` and `ui/src/registries/menu-registry/index.ts`, with `ui/src/registries/` as the root. So the correction written into this file's evidence has been overtaken by a second move, and a reader who followed the note would now land in the wrong place — the same failure mode as the stale `tokens.css` path recorded in three other documents in this campaign, and the reason such notes are worth re-measuring rather than trusted. · The rest of the prior verification holds: the `frontend/shell`, `frontend/shared` and `frontend/themes` roots exist, `App.tsx` still uses `registerPage`/`registerNavItem`, and the shared components and three registries match the description. Status "Implemented (2026-07-15)" is consistent with the front matter, and the ADR status checker reports no drift for this row. · Body left as written, including Section 1's description of where registries live: this is the record of the restructure as decided, and an ADR's job is to say what was decided, not where everything ended up. The registries and `tokens.css` both moved after the decision; correcting the body would turn a decision record into a status page. · The 2026-07-22 Hermes stamp is retained as the original evidence, re-labelled rather than superseded, and the two stacked `> status: ACCURATE` lines under the old footer are collapsed to one machine-read line. -->
+-->
+
 # ADR #3: Frontend Restructure
 
 **Status:** Implemented (2026-07-15)
@@ -30,12 +37,19 @@ are complete:
    (`registerNavItem`, `getNavItems` with 10 sections), `WidgetRegistry` (`registerWidget`,
    `getWidgets`). All three support feature-toggle and role-based filtering.
 
-Both `App.tsx` (desktop) and `main.tablet.tsx` (tablet) use the registries — 30+ page
+Both `App.tsx` (desktop) and `main.mobile.tsx` (tablet) use the registries — 30+ page
 registrations and nav items are declared via `registerPage()`/`registerNavItem()` calls
 rather than a hardcoded switch statement.
 
+> **Correction (11-10-26, docs-auditor).** Two coordinates above are stale and one claim needs reading carefully:
+> - The tablet entry point is `ui/src/main.mobile.tsx`, not `main.tablet.tsx` (it imports `@/app/tablet/TabletAppShell` and calls `registerAllFeatures()`); the old name was corrected in place.
+> - Per-module locales live in `shared-ui/locales/`, not `ui/src/locales/` (which does not exist); corrected in place in the **Deferred** paragraph too.
+> - The `frontend/shell`, `frontend/shared` and `frontend/themes` roots do **not** exist at the paths Section 1 names. The implemented homes are `ui/src/app/` (AppShell, AppLayout, `tablet/TabletAppShell`, `tablet/TabletAppLayout`), `ui/src/components/` (71 files) and `ui/src/theme/` (`tokens.css`, `components.css`, `reset.css`, `responsive.css`, plus `fonts.css`). Section 1's wording is the restructure *as decided* and is left as the record; the paths under "Migration Plan" below say `frontend/…` for the same reason.
+> - Registration is **much** larger than "30+": 115 `registerPage(` calls across 40 files, 53 `registerNavItem(` calls across 33 files, and 25 `registerWidget(` calls across 4 files, all under `ui/src`. The "30+" remains true, just heavily understated.
+> - The registries live at `ui/src/registries/{page,menu,widget}-registry/index.ts` — not `ui/src/platform/ui/` as the 2026-07-22 stamp corrected it to, and not `frontend/shell/`. See the 2026-09-29 stamp for that two-move history.
+
 **Deferred:** Module-owned `ui/` directories (`modules/<name>/ui/`). Features live in
-`ui/src/features/` as a flat directory. Per-module locales live in `ui/src/locales/`.
+`ui/src/features/` as a flat directory. Per-module locales live in `shared-ui/locales/`.
 Moving files into module-owned directories would be a large, mechanical reorganization
 that provides no architectural benefit beyond what the registries already deliver —
 modules are already decoupled from the shell via the registry pattern.
@@ -248,7 +262,7 @@ the same decoupling without reorganizing 30 feature directories.
 ## Related
 
 - `ARCHITECTURE.md` — Target architecture (Frontend section, Repository Structure)
-- `RESTRUCTURING.md` — Phase 4: Frontend Infrastructure
+- ~~`RESTRUCTURING.md`~~ — Phase 4: Frontend Infrastructure \*(dead pointer: no such file exists in the repository, tracked or on disk; noted 11-10-26 by docs-auditor, kept so the reference is not silently erased)\*
 - ADR #1 — Module System Design (modules own backend AND frontend)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
