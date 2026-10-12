@@ -797,7 +797,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (selectedLines.length === 0) return;
       if (remainingLines.length > 0 && sessionToken) {
         try {
-          const trimmedTable = (tableNumber ?? '').trim();
+          // ⚠️ DINE-IN ONLY — the same rule the PaymentModal open-bill path
+          // applies (795fc18d4), on the split-bill path added later in 276d6ce04.
+          // `tableNumber` is written into the remaining tab's cart_data, its label
+          // AND its customer_name, while `orderType` is written into the same
+          // record — so a takeaway with a stray number in the Table field persisted
+          // a tab contradicting itself: {"tableNumber":"T99","orderType":"takeaway"}.
+          // An open bill is a table's running tab; a takeaway has none.
+          const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
           const trimmedName = (customerName ?? '').trim();
           const trimmedGuest = (guestCount ?? '').trim();
           const cartData = JSON.stringify({

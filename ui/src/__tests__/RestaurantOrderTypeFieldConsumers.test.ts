@@ -102,6 +102,27 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     expect(CART_PANEL).toContain(DINE_IN);
   });
 
+  it('split-bill REMAINING tab — the table it writes into the saved tab', () => {
+    // The SIXTH site, found in the split-bill feature (276d6ce04). Its handler
+    // builds the remaining tab's cart_data, label and customer_name from
+    // `tableNumber` with no order-type check — and writes `orderType` into the
+    // same record, so a takeaway could persist
+    // `{"tableNumber":"T99","orderType":"takeaway"}`: the identical
+    // self-contradicting payload fixed on the PaymentModal path in 795fc18d4.
+    //
+    // Assert the handler derives its table under the dine-in rule. Matched as the
+    // derivation, not a bare string, so a comment cannot satisfy it.
+    const guards = POS_SCREEN.match(
+      /const trimmedTable = orderType === 'dine_in' \? \(tableNumber \?\? ''\)\.trim\(\) : ''/g,
+    ) ?? [];
+    expect(
+      guards.length,
+      'the split-bill handler must derive its table under the dine-in rule — ' +
+        'found ' + guards.length + ' of 1. Without it a takeaway split persists a ' +
+        'table number it does not own.',
+    ).toBe(1);
+  });
+
   it('the customer-name field is deliberately NOT restricted', () => {
     // A takeaway still has a customer to name on the ticket, so restricting it
     // would be a regression introduced by symmetry with the table/pax cases.
