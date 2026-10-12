@@ -249,7 +249,7 @@ mod debt;
 // 421 -> 422 with `workspaces::list_all_workspaces_scoped` (2026-10-08). Arrives
 // already gated on STAFF_READ on the bridge side, so it moves no debt ledger row
 // or ceiling, moving only the registration floor and ledger total.
-const REGISTERED_FLOOR: usize = 422;
+const REGISTERED_FLOOR: usize = 425;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
