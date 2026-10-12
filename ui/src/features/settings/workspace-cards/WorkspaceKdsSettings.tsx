@@ -147,7 +147,11 @@ export function WorkspaceKdsSettings({
     // not report it, which is why the sweep's count understated the class -- the real total was
     // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
     // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The suppression that used to sit here is GONE (2026-10-12) because it was
+    // stale: it was written for the old deps array, and once that array listed
+    // sessionToken and reloadNonce the rule had nothing left to report. A disable
+    // with no remaining violation is the same debt by another name — it hides the
+    // NEXT one, because the rule can never fire here again.
   }, [originalsLoaded, sessionToken, reloadNonce]);
 
   // ── Update helpers ───────────────────────────────────────────
