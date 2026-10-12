@@ -590,7 +590,10 @@ both shells wired it on **2026-09-29**, two days later; the daemon's own module 
 daemon now has callers". No path moved and nothing for a path checker to see. **The tell to sweep for is a
 row that quotes a grep RESULT as its evidence** ("returns only its own definition", "zero callers",
 "0 hits", "no such file"). **Re-grep every doc that asserts a NEGATIVE** as a matter of course; a single
-later commit falsifies it silently.
+later commit falsifies it silently. `grep -rnE 'uncommitted|not yet fixed|still open|no caller|0 hits|never runs|no such file'`
+over root plans and stamps is a cheap first sweep — measured 2026-10-11, that pattern yielded a clean
+instance in each of two consecutive batches (a status row claiming "zero callers", and a stamp claiming
+"UNCOMMITTED" / "not yet fixed anywhere" for a guard that landed the SAME DAY the stamp was written).
 
 **33. A directory-wide regex is a mutation, not a scan.** An auditor assigned 6 files in a shared directory
 ran a substitution over the WHOLE directory and wrote 11, touching 5 files belonging to a concurrent lane
@@ -598,6 +601,19 @@ ran a substitution over the WHOLE directory and wrote 11, touching 5 files belon
 structural: **scope every write to the assigned paths, and after any bulk edit confirm the changed-file
 list equals the assigned list.** This is trap 27 (a relocation commit repointing some references) and
 trap 16 (a loose regex inventing paths) applied to the WRITE side rather than the read side.
+
+**34. A `done-` file whose STAMP contradicts its own filename.** The filename and the stamp are two
+independent claims about the same file, and they can disagree: measured 2026-10-11, a `done-todo-*` plan
+carried `status: PLANNED` while its body held **43 `[x]` and zero `[ ]`** and every phase commit
+resolved — so the filename was the correct half and the stamp misrepresented it. **Sweep pattern: a
+`done-` file whose stamp says PLANNED / proposed / in-progress.** This is trap 14 in a new place, and it
+is cheap to grep: the two tokens sit within a few lines of each other.
+
+**35. A stamp's own STATUS for a milestone can lag the body by one day, in the unfavourable direction.**
+Same batch: a plan dated 2026-10-05 recorded chain-hash tamper detection as "DEFERRED"; it shipped
+2026-10-06 in a named commit, and a sibling plan records the same work as Completed. **A reader of the
+first plan would conclude the feature does not exist.** When two sibling plans cover the same milestone,
+diff their status words — the disagreement localises the stale one.
 
 ### The dated-record corpus: default to ZERO edits
 

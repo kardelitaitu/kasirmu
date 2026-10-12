@@ -1,6 +1,16 @@
 # Master Plan: Offline Multi-Terminal Sync (Track 2) & Restaurant Floor / KDS Live Firing (Track 3)
 
-<!-- Audit stamp: 2026-10-06 · status: PLANNED · version lock: 0.0.41
+<!-- Audit stamp: 2026-10-06 · status: PLANNED (STALE — see the re-verification note at the end of this comment) · version lock: 0.0.41
+     Re-verified 2026-10-11 (docs-auditor): THE BODY IS COMPLETE AND THE STAMP'S STATUS WAS NOT UPDATED.
+     Every phase below is marked COMPLETED — Table & Held Cart distributed lease (2.3), floor-plan table
+     status broadcast (3.1, 7fe413920), KDS live firing & course control (3.2, cb8df83d0), reconnect
+     snapshots (3.3), and 2.1/2.2 before them: 43 `- [x]` boxes and ZERO `- [ ]`. The phase commits
+     resolve and the named artefacts exist (`crates/kasirmu-lan/src/client.rs`, `.../table_sync.rs`,
+     `tests/crdt_replication_tests.rs`, `tests/distributed_lease_tests.rs`,
+     `tests/reconnect_snapshot_tests.rs`). The file carries the `done-` prefix, so the filename and the
+     stamp disagreed; the FILENAME is the correct half. The original status line is preserved above
+     as the reading it was. Re-derive: `git cat-file -t 7fe413920 cb8df83d0` and
+     `grep -c '^- \[x\]' done-todo-multi-terminal-sync-kds.md`.
      tracks:
        - Track 2: Offline Multi-Terminal Sync & Conflict Resolution (CRDT / SQLite WAL replication)
        - Track 3: Restaurant Floor Management & KDS Live Firing

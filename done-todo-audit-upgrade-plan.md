@@ -102,7 +102,19 @@ All 4 Phase 1 critical compliance items have been implemented, tested, and commi
 
 ---
 
-### P2.2 Tamper detection (chain-hash / HMAC integrity) — DEFERRED
+### P2.2 Tamper detection (chain-hash / HMAC integrity) — DEFERRED AT THIS PLAN'S DATE, **SINCE IMPLEMENTED**
+
+> **Audited 2026-10-11 (docs-auditor): the disposition below was correct when written and is no longer the state of the tree.**
+> This plan is dated 2026-10-05; chain-hash tamper detection **shipped the next day** in `05d307ebb` ("feat(audit): implement
+> tamper-evident cryptographic hash chaining on audit log"). `audit_log` now carries `previous_hash` / `hash` (migration
+> `crates/kasirmu-core/migrations/20261019_audit_chain_hash.sql`, plus the regenerated `20260813_init.pg.sql`), the shared
+> `compute_audit_entry_hash()` computes a chained SHA-256 in `crates/kasirmu-core/src/db/audit.rs:313`, and
+> `Store::verify_audit_chain()` (`:953`) walks the chain with unit coverage in `audit_tests.rs`. The sibling plan
+> `done-todo-audit-enhancement-plan.md` (2026-10-07) records the same work as Completed.
+> The RATIONALE below is a record of the reasoning at 2026-10-05 and is left as written; only the disposition changed.
+> Re-derive:
+> `git log -1 --format=%s 05d307ebb` and `grep -rn 'verify_audit_chain' crates/kasirmu-core/src`.
+
 
 **Rationale:**
 - In an offline SQLite embedded environment, the verifier and storage share the same host file.

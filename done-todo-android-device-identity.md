@@ -27,8 +27,7 @@ The device's own database confirms the consequence:
 provisioning.terminal_id = 'unknown-device'     (mode = 'linked')
 ```
 
-Re-measured 2026-10-05, unchanged. `apps/mobile-tauri/src/commands/health.rs:40` is a shim over the
-same bridge body, so the tablet has no Android-specific path.
+Re-measured 2026-10-05, unchanged. `apps/mobile-tauri/src/commands/health.rs` is a shim over the same bridge body, so the tablet has no Android-specific path. (Re-verified 11-10-26: the delegate is `get_device_id` at `:73`, which calls `resolve_device_id` at `:79`; the cited `:40` was a doc-comment reading on its date. The claim — a shim, no Android-specific path — is unchanged, and it is now IMPLEMENTED rather than pending: see the status banner above.)
 
 ## Why it works today, and why that is luck
 
@@ -92,6 +91,27 @@ adb shell run-as mu.kasir.mobile sqlite3 databases/../kasir.db \
 Note the DB lives at `/data/data/mu.kasir.mobile/kasir.db`, **not** under `databases/` — that
 directory is empty on Android. Pull it with `adb exec-out run-as mu.kasir.mobile cat kasir.db` and
 copy the `-wal` and `-shm` alongside it or you read a stale page set.
+
+## Re-verified 2026-10-11 (docs-auditor)
+
+Closed-loop on a record the tree has since outgrown. The plan is **IMPLEMENTED and its own status banner is
+accurate**: `crates/kasirmu-bridge/src/health.rs:76` is still the env-var reader, and the tablet's
+`apps/mobile-tauri/src/commands/health.rs:73` delegates to `resolve_device_id` (`:79`) which consults
+`AppState::terminal_id` — i.e. the persisted, cached identity this plan required, not a per-process
+derivation. The trap the plan names (a per-process UUID would re-onboard on every boot) was correctly avoided.
+
+Two of the plan's own predictions are now historical and were RIGHT: the "Optional, and cheaper" route (a
+resilient boot read adopting the single existing row) and the "Adopt the existing row" step both describe
+work this implementation discharged through the cached `AppState::terminal_id` path.
+
+One defect worth carrying: the plan's own claim that "there is no Android-specific path" is now the inverse
+of the truth — the Android arm EXISTS, having landed with the accepted implementation. The plan is a record
+of the DIAGNOSIS, so that sentence is left as the dated reading it is; the status banner above carries the
+implemented outcome.
+
+**NOT re-measured:** the on-device acceptance SQL (no tablet attached) and the three acceptance suites' live
+counts (this checkout cannot link Rust). The 36 `provisioning` test attributes the banner quotes ARE present
+in `provisioning_tests.rs` at that count, so the figure is consistent with the tree.
 
 ## Related, already pinned
 

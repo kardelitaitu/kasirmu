@@ -27,12 +27,12 @@ The Pilot Merchant program prepares kasir.mu for live production deployment acro
 - **Currency:** Locked to `IDR` (minor units = 0 exponent, Rupiah formatting).
 
 ### Step 3: Indonesian Tax & Service Charge Presets
-Select the matching merchant category preset:
-- **F&B / Restaurant Dining (PB1 / Pajak Restoran):**
-  - PB1 Rate: **10%** (applied to food & beverage subtotals).
-  - Optional Service Charge: **5%** (calculated before or after tax based on local regional regulation).
-- **Retail Store (PPN):**
-  - PPN Rate: **11%** (tax-inclusive or tax-exclusive pricing).
+Select the matching merchant category preset. **The provisionable presets are only three** — `ppn11`, `ppn11_service5` and `tax_free` (`crates/kasirmu-bridge/src/setup.rs:185`):
+- **Retail Store / default (PPN):** `ppn11` — **PPN 11%**, seeded as `tax_rates` row `tax-ppn-11` ("PPN 11%", `rate_bps=1100`) (`crates/kasirmu-cli/src/seed_demo.rs:272`). Price-inclusive vs exclusive is a per-rate flag.
+- **F&B with service charge:** `ppn11_service5` — the same PPN 11% plus the seeded **Service 5%** row (`tax-service-5`, `rate_bps=500`).
+- **Tax-free:** `tax_free`.
+
+**PB1 / Pajak Restoran is NOT a provisionable preset.** `"PB1"` exists only as a *receipt descriptor* string on the tax-regime field (`crates/kasirmu-core/src/regional.rs:580`, `db/receipt_formats.rs:452`) — there is no PB1 rate row, and nothing seeds a 10%. A restaurant that must charge PB1 sets its own `tax_rates` row; the 10% here was this document's assumption, not a shipped default. (Corrected 11-10-26.)
 
 ### Step 4: Hardware Pairing & Thermal Printer Test Chit
 1. Connect 58mm or 80mm ESC/POS thermal printer via USB, Bluetooth, or LAN.
@@ -57,7 +57,7 @@ Select the matching merchant category preset:
 ### 3.1 2D Floor Plan Setup & Table Merging
 1. Open **Table Management** screen (`/tables`).
 2. Arrange dining tables according to physical layout (Indoor, Outdoor, Bar zones).
-3. If a large party arrives, drag Table A over Table B to trigger **Table Merge** (`merged_into` link). Orders placed on either table aggregate into a single unified bill.
+3. If a large party arrives, open the source table's detail panel, tap **Merge Table**, and pick the destination from the occupied-table list (`#/tables` → `tables-merge-table-btn` → `tables-merge-dest-select` → `tables-merge-confirm-btn`). The merge is a confirmed selection, **not a drag gesture**, and there is no `merged_into` column: the source held cart is read, its lines are appended to the destination cart, both carts are rewritten/released, and the source table is set free — so the combined order lives on the **destination** table. (Corrected 11-10-26: the drag + `merged_into` description matched no code; the shipped flow is `ui/src/features/tables/TableManagementScreen.tsx:562`.)
 
 ### 3.2 Real-Time Tab Handover & Optimistic Concurrency Leases
 - When a server tablet opens Table 4 to add drinks, an optimistic tab lease (`tabs:changed`) is broadcast over LAN P2P.

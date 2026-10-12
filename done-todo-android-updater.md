@@ -1,8 +1,8 @@
 # Android In-App Self-Updater Specification & Architecture (Method 2)
 
 **Project:** `kasirmu`  
-**Document:** `todo-android-updater.md`  
-**Status:** Approved Architecture Draft for Execution  
+**Document:** `done-todo-android-updater.md` (the `done-` prefix has been earned; the draft status below is kept verbatim as the dated reading)  
+**Status (as drafted 2026-10-02):** Approved Architecture Draft for Execution — **IMPLEMENTED; see the Re-verified section at the end**  
 **Date:** 2026-10-02  
 **Target Platform:** Android Tablet & Mobile POS (`apps/mobile-tauri`)  
 **Scope:** Resilient, user-triggered in-app self-updater for Android APK releases  
@@ -286,3 +286,42 @@ npm run test -- Updater && npm run typecheck && npm run lint && python scripts/v
 - [ ] Active sales and unsynced offline transactions trigger safety warnings.
 - [ ] Database backup is successfully committed to disk before install trigger.
 - [ ] Full gate suite passes with 0 errors.
+
+---
+
+## Re-verified 2026-10-11 (docs-auditor)
+
+**The `done-` prefix is earned: the design shipped.** The plan reads as a draft with 20 unchecked boxes, and
+those boxes are a dated record of the design phase — the code they describe now exists, in the shape the plan
+argued for. Verified at HEAD:
+
+- `apps/mobile-tauri/src/commands/updater.rs` is 509 lines and exposes the planned ABI/manifest/version
+  helpers verbatim as named: `detect_device_abi`, `select_platform_asset`, `is_version_newer`, `get_updates_dir`.
+- The three IPC commands are REGISTERED in `apps/mobile-tauri/src/lib.rs:1482-1484` and reachable from the UI:
+  `ui/src/api/updater.ts` invokes them, `ui/src/dev-mock/handlers/system.ts` mocks them, and
+  `UpdateSettingsCard.test.tsx` exercises them.
+- `ui/src/features/settings/screens/UpdateSettingsCard.tsx` exists — the plan's claimed home, exactly.
+- `apps/mobile-tauri/gen/android/app/src/main/AndroidManifest.xml:54` carries
+  `REQUEST_INSTALL_PACKAGES`, and a `${applicationId}.fileprovider` provider is declared (:97), which is
+  the FileProvider sandboxing §3.4 requires.
+- The pre-flight SQLite snapshot the invariant demands is real: `prepare_and_launch_update` resolves the
+  session, requires `SETTINGS_EDIT`, refuses a missing APK, and writes
+  `$APPCACHE/backups/pre_update_<version>_<timestamp>.db` before handing off.
+
+**Four names differ from the design — the expected "shipped, but not under the name the plan gives" drift:**
+
+| Plan names | Shipped |
+|---|---|
+| `launch_apk_installer` (IPC) | `prepare_and_launch_update` (folds the backup step in) |
+| `AndroidUpdaterPlugin.kt` / `AndroidUpdaterHelper.kt` | no such file; the installer bridge lives in the existing `MainActivity.kt` (`launchPackageInstaller` at :333, called from `UpdateSettingsCard.tsx:219`) |
+| `latest-android.json` + its resolver | **no such manifest or generator exists anywhere in the tree** |
+| `UpdaterSettingsCard.tsx` | `UpdateSettingsCard.tsx` |
+
+**One genuine gap, recorded not assumed:** the plan's release-manifest contract (`latest-android.json`, §4)
+is NOT implemented — no such file and no script emits one, so the end-to-end "check for updates" path cannot
+yet resolve a real release. The in-app half (ABI selection, resumable download, SHA-256 verification, backup,
+installer handoff) is present. This is the plan's own Phase 3.1, and it is the one step that remains open.
+
+**NOT re-measured:** any on-device download/install/integrity behaviour (no tablet attached), and the
+acceptance command's live pass state (this checkout cannot link Rust); the command registration and UI wiring
+were verified by reading.

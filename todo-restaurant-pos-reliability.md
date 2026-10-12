@@ -3157,7 +3157,7 @@ one. That is the question for the owner in §4.
 
 ### P2 — Distinguish "unset" from "read failed" (fixes F4) — ✅ DONE 2026-10-09
 
-**Landed.** New pure model `ui/src/features/restaurant/screens/settingsModel.ts`
+**Landed.** New pure model `ui/src/features/restaurant/screens/restaurantSettingsModel.ts` (cited here on 2026-10-09 as `settingsModel.ts`; the file landed under the `restaurant`-prefixed name in `d29767d18` and has never existed unprefixed — corrected 11-10-26)
 (`loadRestaurantSettings` → `{ ok: true; values } | { ok: false; failedKeys }`),
 with `DEFAULT_RESTAURANT_SETTINGS` and the key list moved into it so there is one
 copy of each default. The reader is injected, so the model is unit-testable with no
@@ -3179,7 +3179,7 @@ A test asserting `queryByText(/All changes saved/i)` was null failed, because wi
 saved" — the exact misleading state the fix exists to remove. The header now
 renders nothing when `loadFailed`.
 
-**Tests:** `ui/src/__tests__/settingsModel.test.ts` (7 cases: unset→default,
+**Tests:** `ui/src/__tests__/restaurantSettingsModel.test.ts` (7 cases: unset→default,
 reject→`ok:false` naming EVERY failed key, stored `"false"` survives, local fallback
 for the interaction pair, DB beats local, spec/field completeness) plus screen-level
 cases for the banner, the disabled Save, the header copy and Retry.
@@ -5190,7 +5190,21 @@ startup with `Failed to load custom Reporter from basic`. Use the default report
 |---|---|
 | F1 | `RestaurantSettingsScreen.tsx:306-319` (the WRITE side). ⚠️ **Re-measured 2026-10-09 (round 76): the "no reader for 7 keys" half of this row is STALE** — 8 of the 10 keys now have readers, `hold_order` and `table_number` were removed. See the F1 resolution note below. |
 
-#### F1's evidence row, re-measured (round 76)
+| F2 | **Re-measured 2026-10-09 (round 77): the old anchors are DEAD.** The `\|\| activeWorkspace === 'restaurant-pos'` overrides this row cited at `CartPanel.tsx:612`/`:655` were REMOVED (P1 step 3), and `order_type_prompt` no longer appears in `CartPanel.tsx` at all. The key is now read, not forced: `PosScreen.tsx:334` (initial state from the workspace) and `:852` (`getSettingScoped('restaurant.order_type_prompt')`), with the D2 default raised to `true` so removing the override did not silently drop the selector (`restaurantSettingsModel.ts:54`). |
+| F3 | `RestaurantSettingsScreen.tsx:314`, `:326-339`; `WorkspaceRestaurantPosSettings.tsx:103-117` |
+| F4 | `RestaurantSettingsScreen.tsx:180-191`, `:206-249`, `:251-258`; `WorkspaceRestaurantPosSettings.tsx:85-88` |
+| F5 | `WorkspaceRestaurantPosSettings.tsx:99-137`; `RestaurantSettingsScreen.tsx:299-341` |
+| F6 | `RestaurantSettingsScreen.tsx:216-223`, `:317-324`; `utils/interaction.ts:41-78` |
+| F7 | `RestaurantSidebar.tsx:452-463`, `:426-439`; `TabletAppShell.tsx:264-281` |
+| F8 | `RestaurantSidebar.tsx:464-561`; `crates/kasirmu-bridge/src/settings.rs:571` |
+| F9 | grep `ErrorBoundary` under `features/restaurant` returns nothing; contrast `WorkspaceRestaurantPosSettings.tsx:143` |
+| F10 | `RestaurantSettingsScreen.tsx:44-90`, `:519-627`; `shared-ui/locales/products.ftl:84-99` |
+| F11 | `RestaurantReceiptsScreen.tsx:265-303`, `:383-430` |
+| F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
+| F13 | `ui/src/features/settings/DataManagementScreen.tsx` vs `.../screens/DataManagementScreen.tsx` |
+| F14 | `crates/kasirmu-bridge/src/setup.rs:378` (global) vs `crates/kasirmu-bridge/src/settings.rs:186-193` (store); `manager.rs:192`; no settings copy in `seed_demo.rs:171-240` or `workspaces.rs:176-187` |
+
+### F1's evidence row, re-measured (round 76)
 
 The row above said *"repo-wide grep returns no reader for 7 keys"*. True when written; false now,
 because **P1 wired them and the index row was never re-read** — the same rot as rounds 74/75, in a
@@ -5218,19 +5232,6 @@ the claim attached to it has been overtaken.
 **`table_number` is the trap worth naming.** Its only non-doc hit is a comment that *explains the
 key was removed*, so a naive grep counts it as a reader. This is the same shape as the F6 mirror
 in reverse: **a grep hit is not a reader until you read what it says.**
-| F2 | **Re-measured 2026-10-09 (round 77): the old anchors are DEAD.** The `\|\| activeWorkspace === 'restaurant-pos'` overrides this row cited at `CartPanel.tsx:612`/`:655` were REMOVED (P1 step 3), and `order_type_prompt` no longer appears in `CartPanel.tsx` at all. The key is now read, not forced: `PosScreen.tsx:334` (initial state from the workspace) and `:852` (`getSettingScoped('restaurant.order_type_prompt')`), with the D2 default raised to `true` so removing the override did not silently drop the selector (`restaurantSettingsModel.ts:54`). |
-| F3 | `RestaurantSettingsScreen.tsx:314`, `:326-339`; `WorkspaceRestaurantPosSettings.tsx:103-117` |
-| F4 | `RestaurantSettingsScreen.tsx:180-191`, `:206-249`, `:251-258`; `WorkspaceRestaurantPosSettings.tsx:85-88` |
-| F5 | `WorkspaceRestaurantPosSettings.tsx:99-137`; `RestaurantSettingsScreen.tsx:299-341` |
-| F6 | `RestaurantSettingsScreen.tsx:216-223`, `:317-324`; `utils/interaction.ts:41-78` |
-| F7 | `RestaurantSidebar.tsx:452-463`, `:426-439`; `TabletAppShell.tsx:264-281` |
-| F8 | `RestaurantSidebar.tsx:464-561`; `crates/kasirmu-bridge/src/settings.rs:571` |
-| F9 | grep `ErrorBoundary` under `features/restaurant` returns nothing; contrast `WorkspaceRestaurantPosSettings.tsx:143` |
-| F10 | `RestaurantSettingsScreen.tsx:44-90`, `:519-627`; `shared-ui/locales/products.ftl:84-99` |
-| F11 | `RestaurantReceiptsScreen.tsx:265-303`, `:383-430` |
-| F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
-| F13 | `ui/src/features/settings/DataManagementScreen.tsx` vs `.../screens/DataManagementScreen.tsx` |
-| F14 | `crates/kasirmu-bridge/src/setup.rs:378` (global) vs `crates/kasirmu-bridge/src/settings.rs:186-193` (store); `manager.rs:192`; no settings copy in `seed_demo.rs:171-240` or `workspaces.rs:176-187` |
 
 ### F44 — a duplicated list whose second copy went stale (round 104) — `3f0afbfd0`
 
