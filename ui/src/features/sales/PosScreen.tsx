@@ -782,7 +782,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // orderType is read above (the dine-in-only release) and so must be listed:
     // without it this callback closes over the render-time value and a cashier who
     // switches Dine-In -> Takeaway after mount would still free the table.
-  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess, releaseLease]);
+    // l10n is read above by the table-release warning toast, so it must be listed:
+    // the closure would otherwise keep the mount-time localizer and the toast would
+    // render in the language the cashier was NOT using after a locale switch.
+  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, l10n, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess, releaseLease]);
 
   const handlePrintBill = useCallback(async () => {
     if (lines.length === 0 || !total) return;
@@ -1318,7 +1321,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           });
       }
     },
-    [openBills, handleResumeOpenBill, sessionToken],
+    // addToast and l10n are read by the reservation warning toast above.
+    [openBills, handleResumeOpenBill, sessionToken, addToast, l10n],
   );
 
   // ── Sub-screen: Table Management ─────────────────────────────
