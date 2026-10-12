@@ -5,7 +5,9 @@ category: reference
 order: 1
 updated: "2026-10-01"
 ---
-<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · Baris QRIS di matriks paket menyatakan "✓ (statis + dinamis)" pada kolom Gratis. Terverifikasi salah untuk bagian DINAMIS: SubscriptionTier::supports_qris() mengembalikan false pada Free/OneTime (crates/kasirmu-core/src/subscription/tier.rs:217-222) dan kasir membatasi rail ini di balik prompt upgrade (ui/src/features/sales/PaymentModal.tsx:1909, QrisTenderPanel.tsx). QR STATIS tidak memerlukan entitlement dan tersedia di semua paket. Baris kini berbunyi "Statis saja" pada Gratis dengan catatan kaki pemisah, dan subscription-tiers.md §3 dikoreksi untuk mencatat keputusan pemilik 2026-09-29 bahwa QRIS dinamis SEHARUSNYA ada di Gratis — keputusan yang belum ditegakkan aplikasi. Penunjuk navigasi juga diperbarui: "Pengaturan → Lisensi" menjadi "Lisensi & Langganan" (label terverifikasi di shared-ui/locales/settings.id.ftl:56). · Repaired against branch 0.0.41. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · MINOR, fixed: the plan-matrix table's `| Skrip (Lua) |` row had been torn out of the table — it sat BELOW the footnote block (¹ QR statis/dinamis) and separated from the header, so it rendered as a stray paragraph instead of a table row. Moved up into the table directly after `Sinkron cloud`, footnote untouched. The SAME defect existed in en/licensing.md at the identical position, so both twins were repaired together and parity holds. VERIFIED cell by cell against crates/kasirmu-core/src/subscription/tier.rs: Lokasi 1/1/2/5/unlimited = max_locations (:96-104); Register/lokasi 1/2/5/unlimited = max_pos_instances (:106-112); Gudang tidak/tidak/tidak/unlimited = max_warehouses (:124-130, Some(0) below Premium); Staf 1/5/20/50/unlimited = max_staff_users (:132-144); Riwayat 3 bulan/1 tahun/5 tahun/unlimited = sales_history_days (:173-179 → 90/365/1825/None); QRIS Statis-saja on Gratis = supports_qris() (:217-222) with the footnote correctly splitting static (all plans) from dynamic (Plus+); Sinkron tidak/ya×4 = supports_cloud_sync() (:209-214); Skrip (Lua) tidak/tidak/tidak/ya/ya = supports_lua_engine() (:233-238). Prose grace periods 7/14/14/30/60 = offline_grace_days() (:279-286). Nav pointer 'Pengaturan → Lisensi & Langganan' = shared-ui/locales/settings.id.ftl:56. The five-tier list correctly omits the deprecated OneTime variant. · NOT re-measured: the live checkout/purchase flow and the pricing page's own figures. · Superseded stamp preserved verbatim below as quoted text: -->
+
+> Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major finding) · Baris QRIS di matriks paket menyatakan "✓ (statis + dinamis)" pada kolom Gratis. Terverifikasi salah untuk bagian DINAMIS: SubscriptionTier::supports_qris() mengembalikan false pada Free/OneTime (crates/kasirmu-core/src/subscription/tier.rs:217-222) dan kasir membatasi rail ini di balik prompt upgrade (ui/src/features/sales/PaymentModal.tsx:1909, QrisTenderPanel.tsx). QR STATIS tidak memerlukan entitlement dan tersedia di semua paket. Baris kini berbunyi "Statis saja" pada Gratis dengan catatan kaki pemisah, dan subscription-tiers.md §3 dikoreksi untuk mencatat keputusan pemilik 2026-09-29 bahwa QRIS dinamis SEHARUSNYA ada di Gratis — keputusan yang belum ditegakkan aplikasi. Penunjuk navigasi juga diperbarui: "Pengaturan → Lisensi" menjadi "Lisensi & Langganan" (label terverifikasi di shared-ui/locales/settings.id.ftl:56). · Repaired against branch 0.0.41.
 
 ## Paket
 
@@ -23,13 +25,13 @@ pembayaran QRIS, sinkron cloud, dan skrip — ditampilkan di
 | Riwayat penjualan   | 3 bulan | 1 tahun | 5 tahun | Tanpa batas | Tanpa batas |
 | Pembayaran QRIS     | Statis saja ¹ | ✓ (statis + dinamis) | ✓ | ✓ | ✓ |
 | Sinkron cloud       | Tidak  | ✓    | ✓   | ✓       | ✓         |
+| Skrip (Lua)         | Tidak  | Tidak | Tidak | ✓     | ✓         |
 
 ¹ **QR statis** (stiker QR toko Anda sendiri, direkonsiliasi pada struk) tidak
 memerlukan entitlement dan tersedia di semua paket. **QR dinamis** (kasir
 membuat QR per transaksi melalui Midtrans) dibatasi pada paket Plus ke atas,
 sesuai `SubscriptionTier::supports_qris()` — pada paket Gratis kasir
 menampilkan prompt upgrade, bukan kode QR.
-| Skrip (Lua)         | Tidak  | Tidak | Tidak | ✓     | ✓         |
 
 Paket tahunan = 2 bulan gratis (bayar 10 bulan, dapat 12).
 
@@ -82,4 +84,4 @@ kerja yang diizinkan. Halaman akun di situs web menampilkan hal yang sama
 dari browser Anda, lengkap dengan manajemen perangkat. Lihat
 [Aktivasi Lisensi](../activation/).
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

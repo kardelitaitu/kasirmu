@@ -6,6 +6,8 @@ order: 4
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · First audit stamp on this page; Indonesian translation of en/docs-authoring.md. · MINOR, AND IT IS THE SAME OMISSION THE EN TWIN CARRIED UNTIL THE SAME DAY: the §Callout list named five labels (Catatan, Info, Tip, Warning, Danger) while the renderer accepts SIX. website/src/plugins/rehype-callouts.mjs defines `KINDS = { note, info, tip, warning, caution, danger }` and aliases `caution` to the warning style, so `**Caution:**` works and a writer reading only this guide would not know. Added as an explicit alias with the note that it is not a distinct colour — a label list that under-reports the accepted set is the one omission a styling guide cannot afford. · VERIFIED: Mermaid is genuinely wired and the page's explanation is exact — astro.config.mjs imports `rehype-mermaid` and `rehypeMermaidClass` and runs them in that order (:8-9, :47-50, :58), rendering ```mermaid to inline SVG at build time via `strategy: 'img-svg'`, which is why the page can say the site stays JavaScript-free and the CSP never changes; all three plugins exist under website/src/plugins/ (rehype-callouts.mjs, rehype-mermaid-class.mjs, rehype-strip-audit-footer.mjs); the branded-diagram rules (var(--color-accent)/-surface/-ink/-muted, class="docs-flow", 760×250 canvas, single `<marker id="flow-arrow">`) match website/src/styles/global.css:378-382 and the working example in offline-mode; the parity instruction is correct AS WRITTEN — `python3 scripts/check-doc-parity.py` must run FROM website/, and from the repo root it fails "can't open file". · NOT re-measured: the build-time Mermaid SVG output, which needs a site build with .astro wiped. · The footer below is an internal marker, stripped from the built site. -->
+
 ## Callout
 
 Callout menyoroti informasi penting. Tulis blockquote yang baris pertamanya
@@ -20,6 +22,10 @@ diawali label tebal — label menentukan warnanya:
 > **Warning:** Sesuatu yang perlu diwaspadai — hasilnya mungkin tidak sesuai harapan.
 
 > **Danger:** Tindakan yang dapat menyebabkan kehilangan data atau merusak instalasi.
+
+> **Caution:** Alias untuk Warning. Perender menerima enam label, bukan lima —
+> `caution` dipetakan ke gaya warning yang sama (bukan warna tersendiri), jadi
+> memakainya aman bila kata "Warning" terasa terlalu keras.
 
 Teks apa pun setelah label tebal adalah isi callout:
 
@@ -137,3 +143,5 @@ Skrip gagal bila pasangan hilang, dan memperingatkan perbedaan jumlah judul
 atau `updated` antar lokal. `updated` kedua lokal bergerak bersama setiap
 kali konten berubah — itulah sinyal kesegaran halaman, jadi mengedit
 halaman tanpa membarukannya adalah drift.
+
+> last audited 11-10-26 by docs-auditor

@@ -6,6 +6,8 @@ order: 7
 updated: "2026-08-16"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings (0 major, 0 minor, 0 ambiguous) · First audit stamp this page has carried. Full audit against HEAD; every anchor re-derived rather than read. VERIFIED: the page's central claim — every change written locally first, then queued and drained on reconnect — matches the offline queue implementation (crates/kasirmu-core/src/db/offline/). The queue screen is real and manager-gated (ui/src/features/offline/register.tsx registers route 'offline-queue' with requiredRole: 'manager'), which is what the parenthetical "(manager)" says. "Sync All" is the app's own button (ui/src/features/offline/OfflineQueueScreen.tsx:339 rendering offline-queue-sync-all = "Sync All" at shared-ui/locales/offline.ftl:8), with aria-label offline-queue-sync-all-label. The pending/synced/failed tri-state is real (:44-48 mapping to status-pending/status-synced/status-failed). Quarantine and requeue are real — remote items quarantined after repeated pull-application failures (:133-140) with requeueRemoteFailureScoped, which is the "requeued once the cause is fixed" claim. Conflict resolution is LWW as the page says: platform/sync/src/conflict.rs dispatches per entity (version LWW for reference data, sale-status DAG rank for sales, created-at LWW as fallback) and the page's "latest change wins for each record" is the correct user-level summary. The inline SVG is a docs-flow figure with role="img" and an aria-label (the same class the sibling offline-mode/cloud-sync pages use). NOT re-measured: an actual offline-to-online drain on a live register, the conflict count surfacing, and the pull-to-refresh gesture. -->
+
 ## How it works
 
 <svg class="docs-flow" role="img" aria-label="Offline flow: a sale is written to the local database first; online it syncs to the cloud, offline it waits in the queue and drains to the cloud when the connection returns; every register then updates." viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg">
@@ -74,3 +76,5 @@ Cloud sync moves the queue between registers and is part of paid plans. On a
 plan without sync, the offline queue keeps working exactly the same — sales
 are safe locally and drain the moment you upgrade. See
 [Cloud Sync](../cloud-sync/) for what syncs and how to check its status.
+
+> last audited 11-10-26 by docs-auditor
