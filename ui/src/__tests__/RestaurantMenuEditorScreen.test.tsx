@@ -113,8 +113,21 @@ describe('RestaurantMenuEditorScreen', () => {
     const rail = screen.getByLabelText('Categories');
     await user.click(within(rail).getByText('Mains'));
 
+    // ⚠️ BOTH assertions go through waitFor, and the ABSENCE one is the one that
+    // matters. The click sets selectedCategoryName; the filtered list is a new
+    // render, and the item data itself arrives asynchronously. Asserting absence
+    // straight after the click raced that settle.
+    //
+    // Measured: this test passed alone and in most subsets, failed inside the full
+    // restaurant/KDS run (1250 passed, this one red), then passed again on re-run
+    // with no code change. A test that fails only sometimes is worse than one that
+    // always fails — it teaches the team to re-run CI instead of reading it — so the
+    // retry belongs on the assertion whose failure is the timing, not just on the
+    // happy path above it.
+    await waitFor(() => {
+      expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
+    });
     expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
-    expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
   });
 
   it('filters items by real-time search query', async () => {
