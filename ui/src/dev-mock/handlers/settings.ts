@@ -142,10 +142,19 @@ function writeMockSetting(args: unknown): boolean {
   return true;
 }
 
-/** Batch write (set_settings / set_settings_scoped) — one persist, not N. */
+/**
+ * Batch write (set_settings / set_settings_scoped) — one persist, not N.
+ *
+ * Takes the ENTRIES MAP, already unwrapped by the caller. It must not unwrap
+ * again: the call sites pass `unwrapSettings(args)['entries']`, so re-wrapping
+ * would hand this an object whose only key is the literal string "entries" and
+ * silently store that instead of the caller's keys. (Measured: it returned true
+ * while writing one setting named "entries" = "[object Object]", so the batch
+ * command answered success and persisted nothing usable.)
+ */
 function writeMockSettings(entries: unknown): boolean {
-  const raw = unwrapSettings({ entries });
-  for (const [key, value] of Object.entries(raw)) {
+  if (!entries || typeof entries !== 'object') return false;
+  for (const [key, value] of Object.entries(entries as Record<string, unknown>)) {
     mockSettings[key] = String(value ?? '');
   }
   saveMockSettings();
