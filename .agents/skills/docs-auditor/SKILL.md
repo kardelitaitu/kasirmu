@@ -549,6 +549,33 @@ location, and report the genuine stale citations separately — here six of the 
 **code comments** (`robots.txt`, `_headers`, `worker.ts`, `SiteHead.astro`), which is a code owner's
 call, not a documentation edit.
 
+**30. The 2026-10-02 records restructure is a MULTI-CORPUS sweep target, and it hit 3 batches running.**
+Four commits moved whole corpora into subfolders on that day, each leaving LOCATION SENTENCES in the stamps
+written four days earlier plus dead paths inside runnable command sequences: `afca83144` (benchmarks +
+releases), `cd8d671a6` (security + observability), `a0c4f7b90` (14 audit reports), `2daaabdfe`
+(campaign journals). Measured across 2026-10-11: batches 24 and 25 found the same class in security,
+setup, benchmarks, findings and campaigns. **Expect it in `docs/records/releases/**` and
+`docs/records/findings/**` for whatever remains.** The highest-value variant is not the stamp's prose but
+a **runnable command**: `regression-tracking.md` told a reader to `cp …` into the benchmarks directory
+under `docs/` — a directory that no longer exists at that path, so the instruction whose whole job is
+updating a baseline writes nowhere.
+
+**31. A record can cite a commit that matches NO object — and still be right.** Three restore SHAs in an
+I18N-05 evidence list (`ecbcc635`, `af246396`, `6e270d70`) match no object anywhere: `git cat-file` fails,
+`rev-list --all` prefix matching returns nothing, they are not 8-hex role ids, not checksums, and not within
+Hamming 2 of any real commit. **The finding's SUBSTANCE still held** — both gates the entry describes are
+restored and the checker exits 0 today. **Record the SHA problem; do not call the finding false.** Compare
+trap 15 (a gate that never existed) and trap 3 (a guard that grew): here the evidence pointer is broken while
+the conclusion is sound.
+
+> **Authoring note — documenting a trap can itself trip a checker.** Four times on 2026-10-11 a
+> path written into this file ONLY as an example (a deleted directory, a pre-rebrand crate, a
+> pre-rename app dir) was read by `check-dead-refs.py` as a live claim, because this file is a LIVE
+> doc and is scanned. **When a trap needs to show a path that no longer exists, spell it
+> non-literally** (a prose description, or a placeholder like `apps/<tablet>-client`) **or mark it
+> explicitly as a historical spelling.** Run `check-dead-refs.py .agents/skills/docs-auditor/SKILL.md`
+> after any edit that adds an example path.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually
