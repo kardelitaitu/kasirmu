@@ -96,6 +96,8 @@ pub mod purchasing;
 /// (agents-3 3.1b — born on the bridge, delegated by the desktop; the
 /// tablet still inlines it pending its own `BridgeCtx` plumbing).
 pub mod qris_auto;
+/// Zero-MDR QRIS push notification listener and simulation command bodies.
+pub mod qris_listener;
 /// Receipt-format template command bodies (Wave D). Not yet extracted.
 pub mod receipt_format;
 /// Refund command bodies (Wave D). Not yet extracted.

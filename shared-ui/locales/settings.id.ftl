@@ -1040,6 +1040,14 @@ settings-localpay-no-location = Belum ada lokasi untuk dikonfigurasi.
 settings-localpay-empty-list = Belum ada jalur yang dicatat — tambahkan yang ditawarkan lokasi ini.
 settings-localpay-scope-location = Diatur di lokasi ini
 settings-localpay-scope-legal-entity = Default pasar (badan hukum)
+settings-localpay-qris-autoverify-title = Verifikasi Otomatis Notifikasi Bank (0% MDR)
+settings-localpay-qris-autoverify-desc = Verifikasi pembayaran QRIS otomatis dari notifikasi aplikasi bank (BCA, Mandiri, BRI, Bank Jatim, GoPay, ShopeePay) tanpa potongan fee payment gateway.
+settings-localpay-qris-status-active = Aktif & Memantau
+settings-localpay-qris-status-inactive = Izin Notifikasi Diperlukan
+settings-localpay-qris-status-desktop = Mode Desktop / Simulasi
+settings-localpay-qris-enable-btn = Buka Pengaturan Izin Notifikasi Android
+settings-localpay-qris-test-btn = Uji Notifikasi (Simulasi Rp 50.000)
+settings-localpay-qris-test-success = Event simulasi pembayaran berhasil dikirim!
 
 # ── Store credit (F24, Business Defaults screen) ────────────────────────
 settings-credit-title = Kredit toko

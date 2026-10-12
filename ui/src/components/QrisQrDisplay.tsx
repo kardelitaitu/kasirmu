@@ -5,6 +5,7 @@ import { requiredLocalized } from '@/components';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { minorUnitExponent } from '@/types/domain';
+import { triggerInteraction } from '@/utils/interaction';
 import './QrisQrDisplay.css';
 
 interface QrisQrDisplayProps {
@@ -180,6 +181,7 @@ export default function QrisQrDisplay({
 
   useEffect(() => {
     if (status !== 'confirmed') return;
+    triggerInteraction('pay');
     const timer = setTimeout(() => {
       onPaymentConfirmed();
     }, 1200);

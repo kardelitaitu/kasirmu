@@ -338,6 +338,35 @@ export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHan
     return { orderId: id, status: 'issued', settled: false };
   },
 
+  // ── QRIS Notification Listener & Simulation ─────────────────────────
+  'get_qris_listener_status_scoped': () => ({
+    isSupported: true,
+    isEnabled: true,
+    isConnected: true,
+    platform: 'desktop',
+  }),
+  'open_qris_listener_settings_scoped': () => null,
+  'simulate_qris_notification_scoped': (args) => {
+    const a = unwrapArgs<{ packageName?: string; title?: string; text: string; timestampMs?: number }>(args);
+    const text = a.text ?? '';
+    const match = /(?:rp\.?|idr)\s*([\d.,]+)/i.exec(text);
+    const amountGroup = match?.[1];
+    const amountMinor = amountGroup ? parseInt(amountGroup.replace(/[.,]/g, ''), 10) || 50000 : 50000;
+    const payment = {
+      provider: text.toLowerCase().includes('mandiri') ? 'Mandiri' : text.toLowerCase().includes('bri') ? 'BRI' : 'BCA',
+      amountMinor,
+      amountFormatted: `Rp ${amountMinor.toLocaleString('de-DE')}`,
+      rawText: text,
+      packageName: a.packageName ?? 'com.bca',
+      timestampMs: a.timestampMs ?? Date.now(),
+      senderName: 'Pelanggan Dev',
+    };
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kasirmu:qrisPaymentNotification', { detail: payment }));
+    }
+    return payment;
+  },
+
   // ═══════════════════════════════════════════════════════════════
   // TERMINALS
   // ═══════════════════════════════════════════════════════════════

@@ -1062,6 +1062,14 @@ settings-localpay-no-location = No location to configure yet.
 settings-localpay-empty-list = No rails recorded yet — add the ones this site offers.
 settings-localpay-scope-location = Set at this site
 settings-localpay-scope-legal-entity = Market default (legal entity)
+settings-localpay-qris-autoverify-title = Zero-MDR Push Notification Verification
+settings-localpay-qris-autoverify-desc = Automatically verify incoming QRIS payments from Indonesian banking apps (BCA, Mandiri, BRI, Bank Jatim, GoPay, ShopeePay) with 0% payment gateway fees.
+settings-localpay-qris-status-active = Active & Listening
+settings-localpay-qris-status-inactive = Permission Required
+settings-localpay-qris-status-desktop = Desktop / Simulation Mode
+settings-localpay-qris-enable-btn = Enable Android Notification Access
+settings-localpay-qris-test-btn = Test Notification (Simulate Rp 50.000)
+settings-localpay-qris-test-success = Test payment event dispatched!
 
 # ── Store credit (F24, Business Defaults screen) ────────────────────────
 # The `credit.*` family had no surface at all before this card: a key, typed

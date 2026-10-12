@@ -26,6 +26,12 @@ import {
   type PaymentRailScope,
 } from '@/api/local-payment';
 import { getPrimaryLocationScoped } from '@/api/locations';
+import {
+  getQrisListenerStatusScoped,
+  openQrisListenerSettingsScoped,
+  simulateQrisNotificationScoped,
+  type QrisListenerStatus,
+} from '@/api/qris-listener';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './LocalPaymentSettingsCard.css';
 
@@ -59,6 +65,9 @@ export function LocalPaymentSettingsCard() {
   const [saved, setSaved] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [listenerStatus, setListenerStatus] = useState<QrisListenerStatus | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const [testSuccess, setTestSuccess] = useState(false);
 
   const load = useCallback(
     async (token: string) => {
@@ -89,6 +98,60 @@ export function LocalPaymentSettingsCard() {
     if (!sessionToken) return;
     void load(sessionToken);
   }, [sessionToken, load]);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    let mounted = true;
+    void getQrisListenerStatusScoped(sessionToken)
+      .then((status) => {
+        if (mounted) setListenerStatus(status);
+      })
+      .catch(() => {
+        if (mounted) {
+          setListenerStatus({
+            isSupported: false,
+            isEnabled: false,
+            isConnected: false,
+            platform: 'desktop',
+          });
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [sessionToken]);
+
+  const handleOpenListenerSettings = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      if (typeof window !== 'undefined' && window.__kasirmuNative?.openNotificationListenerSettings) {
+        window.__kasirmuNative.openNotificationListenerSettings();
+      } else {
+        await openQrisListenerSettingsScoped(sessionToken);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [sessionToken]);
+
+  const handleSimulateTestNotification = useCallback(async () => {
+    if (!sessionToken) return;
+    setSimulating(true);
+    setTestSuccess(false);
+    try {
+      await simulateQrisNotificationScoped(sessionToken, {
+        packageName: 'com.bca',
+        title: 'BCA mobile',
+        text: 'QRIS Masuk: Rp 50.000 dari SITI NURHALIZA 15/09 11:20:05',
+      });
+      setTestSuccess(true);
+      setTimeout(() => setTestSuccess(false), 3000);
+    } catch {
+      /* ignore */
+    } finally {
+      setSimulating(false);
+    }
+  }, [sessionToken]);
 
   const handleSave = useCallback(async () => {
     if (!sessionToken || !locationId) return;
@@ -193,28 +256,93 @@ export function LocalPaymentSettingsCard() {
               <Localized id={provenanceKey(draft.scope)}>{draft.scope}</Localized>
             </span>
             {draft.rail_code === 'qris' && (
-              // agents-5 R2: the manual QRIS dialog shows this real
-              // EMVCo string as a scannable QR (the retired demo grid
-              // drew fake cells). Market metadata, not a credential —
-              // the same public code a counter poster prints.
-              <label className="localpay-static-qr">
-                <Localized id="settings-localpay-static-qr-label">
-                  <span className="localpay-static-qr-label">Static QR payload</span>
-                </Localized>
-                <textarea
-                  className="localpay-static-qr-input"
-                  value={readStaticQrPayload(draft.parameters) ?? ''}
-                  onChange={(e) => {
-                    const next = [...drafts];
-                    next[index] = { ...draft, parameters: writeStaticQrPayload(draft.parameters, e.target.value) };
-                    setDrafts(next);
-                    setSaved(false);
-                  }}
-                  aria-label={l10n.getString('settings-localpay-static-qr-label')}
-                  rows={3}
-                  spellCheck={false}
-                />
-              </label>
+              <>
+                <label className="localpay-static-qr">
+                  <Localized id="settings-localpay-static-qr-label">
+                    <span className="localpay-static-qr-label">Static QR payload</span>
+                  </Localized>
+                  <textarea
+                    className="localpay-static-qr-input"
+                    value={readStaticQrPayload(draft.parameters) ?? ''}
+                    onChange={(e) => {
+                      const next = [...drafts];
+                      next[index] = { ...draft, parameters: writeStaticQrPayload(draft.parameters, e.target.value) };
+                      setDrafts(next);
+                      setSaved(false);
+                    }}
+                    aria-label={l10n.getString('settings-localpay-static-qr-label')}
+                    rows={3}
+                    spellCheck={false}
+                  />
+                </label>
+
+                <div className="localpay-qris-autoverify-container">
+                  <div className="localpay-qris-autoverify-header">
+                    <span className="localpay-qris-badge-icon" aria-hidden="true">⚡</span>
+                    <div>
+                      <h4 className="localpay-qris-autoverify-title">
+                        <Localized id="settings-localpay-qris-autoverify-title">Zero-MDR Push Notification Verification</Localized>
+                      </h4>
+                      <p className="localpay-qris-autoverify-desc">
+                        <Localized id="settings-localpay-qris-autoverify-desc">
+                          Automatically verify incoming QRIS payments from Indonesian banking apps (BCA, Mandiri, BRI, Bank Jatim, GoPay, ShopeePay) with 0% payment gateway fees.
+                        </Localized>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="localpay-qris-status-strip">
+                    <div className="localpay-qris-status-indicator">
+                      <span
+                        className={`localpay-qris-dot ${
+                          listenerStatus?.isSupported && listenerStatus.isEnabled
+                            ? 'localpay-qris-dot--active'
+                            : listenerStatus?.isSupported
+                              ? 'localpay-qris-dot--warning'
+                              : 'localpay-qris-dot--neutral'
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span className="localpay-qris-status-text">
+                        {listenerStatus?.isSupported && listenerStatus.isEnabled ? (
+                          <Localized id="settings-localpay-qris-status-active">Active &amp; Listening</Localized>
+                        ) : listenerStatus?.isSupported ? (
+                          <Localized id="settings-localpay-qris-status-inactive">Permission Required</Localized>
+                        ) : (
+                          <Localized id="settings-localpay-qris-status-desktop">Desktop / Simulation Mode</Localized>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="localpay-qris-actions">
+                      {listenerStatus?.isSupported && !listenerStatus.isEnabled && (
+                        <button
+                          type="button"
+                          className="localpay-qris-btn localpay-qris-btn--primary"
+                          onClick={() => { void handleOpenListenerSettings(); }}
+                        >
+                          <Localized id="settings-localpay-qris-enable-btn">Enable Android Notification Access</Localized>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="localpay-qris-btn localpay-qris-btn--secondary"
+                        onClick={() => { void handleSimulateTestNotification(); }}
+                        disabled={simulating}
+                      >
+                        <Localized id="settings-localpay-qris-test-btn">Test Notification (Simulate Rp 50.000)</Localized>
+                      </button>
+                    </div>
+                  </div>
+
+                  {testSuccess && (
+                    <p className="localpay-qris-success-note" role="status">
+                      <Localized id="settings-localpay-qris-test-success">Test payment event dispatched!</Localized>
+                    </p>
+                  )}
+                </div>
+              </>
             )}
           </div>
         ))}
