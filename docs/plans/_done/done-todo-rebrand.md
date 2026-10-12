@@ -1,7 +1,7 @@
 # todo-rebrand.md — OZ-POS → kasir.mu
 
 <!-- Rebrand status: COMPLETED — all phases 1 through 9 implemented and verified.
-     Checklist items [x] complete. Tier 3 deferred to todo-rebrand-2.md. -->
+     Checklist items [x] complete. Tier 3 deferred to todo-rebrand-2.md.
      Counts measured 2026-09-16 at `442473337`, each with its command because two defensible greps
      disagree and the population matters:
        git grep -l -i -E "oz[-_ ]?pos" | wc -l                                  -> 692 files

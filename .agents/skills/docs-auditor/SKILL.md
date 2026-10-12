@@ -474,54 +474,65 @@ done
 
 > last audited 11-10-26 by docs-auditor
 
-### Merging a stamp must not NEST a comment — and fixing it is NOT a bulk transform
+### Merging a stamp must not NEST a comment
 
-When you preserve a superseded stamp under a "STAMP MERGED INTO THIS ONE" note, do **not**
-copy the old stamp's delimiters inside the new comment. The old body opens with a comment
-token, so placing it inside the merge comment nests the two: under real markdown rules
-(comments do **not** nest) the FIRST close ends the comment, and the merge note plus every
-preserved body after it render as **visible page text**.
+A preserved superseded stamp carries its own comment delimiters. Dropping that text inside a
+new comment nests the two, and **markdown comments do not nest** — the FIRST close ends the
+comment, so the merge note and every preserved body after it render as **visible page text**.
+Measured 2026-10-11: **45 files nested and 5 were unbalanced**, and **9 leaked** the literal
+string "STAMP MERGED INTO THIS ONE" onto the page. Every batch of this campaign contributed;
+it is not one author's error.
 
-**Measured extent, 2026-10-11 (the campaign that introduced it):** 45 tracked `.md` files
-carry `maxDepth > 1`, and 5 more are unbalanced (`finalDepth != 0`). It is spread across
-`docs/decisions` (20), `docs/specs` (12), `.agents/skills` (7) and several single files —
-i.e. every batch of this campaign, not one author. Severity splits cleanly: 55 of the 58
-render a stray comment-close of their own on the page (cosmetic), and 3 leak real stamp text into the body.
+**The repair is a close-counted, per-shape edit — but it IS mechanizable if you verify each
+file.** Three shapes occur, and each needs its own handling:
 
-**⚠️ Do NOT "fix" it with a bulk regex.** Two attempts on 2026-10-11 both had to be
-abandoned: de-delimiting the nested opens drives a file to `finalDepth = -1` (a stray close)
-because the preserved body carries its OWN trailing close, and stripping those too over-strips
-the outer comment. The transform is file-specific — the nesting arises from three different
-shapes (a merge marker + one body, a merge marker + two bodies, a marker appended after an
-existing stamp) and each needs its own close-counted repair. **Repair these by hand, one file
-at a time, verifying after each.**
+| Shape | Example | Fix |
+|---|---|---|
+| `<!-- merge marker` … `<!-- old stamp -->` … `-->` | `docs/decisions/2026-01-15-*` | de-delimit the nested opens AND strip the preserved bodies' trailing closes; keep ONE close |
+| blockquote merge note (`> **STAMP MERGED …**`) over bodies with `<!--` | `docs/specs/_active/c4-*` | replace the whole blockquote region with a single comment; bodies as plain quoted text |
+| plain-text merge marker above preserved bodies | `docs/decisions/2026-08-11-adr37-*` | wrap the region in one comment; de-delimit the bodies |
 
-**Rules that ARE mechanical and safe:**
+**Verify after every file; write only when the result is clean.** A transform that overshoots
+drives `finalDepth` negative, and that is a *worse* file than the nest it replaced — two bulk
+attempts on 2026-10-11 had to be abandoned for exactly that reason before the third, which
+checked each output, fixed 42 of the 45.
 
-1. **Never write a comment-open token literally inside a comment — not even to explain this
-   hazard.** One attempt's own warning sentence re-opened the comment it warned about.
-2. **Keep machine-read fields before any literal comment example**, per the stamp-shape rule
-   in this file. A stamp that documents delimiter syntax is documented *by* it.
-3. **Verify with a depth walk, never by eye** — a file that "looks right" is exactly what this
-   trap produces, and balanced-looking token counts hide it. `finalDepth == 0` and
-   `maxDepth <= 1` is the only pass; a render simulation's first non-blank line must be the
-   document's own title or frontmatter.
+**The checker must be line-wise, fence-aware, AND inline-code-aware.** Two false-positive
+sources bit this campaign:
+
+- **Mermaid arrows.** A non-greedy fence-strip regex (````.*?`````) mis-pairs when an
+  *inline* triple-backtick appears in prose, and then counts `-->` flowchart arrows as
+  comment closes — it reported `finalDepth=-4` on a clean file. Toggle fence state on a line
+  that STARTS with three backticks instead.
+- **Inline code.** A `-->` inside backticks (a diagram arrow in a sentence, or a doc
+  documenting its own syntax) is not a delimiter. Strip `\`[^\`]*\`` spans before counting.
 
 ```bash
 python3 - <<'PY'
 import re, sys, pathlib
 for f in sys.argv[1:]:
-    s = pathlib.Path(f).read_text(encoding='utf-8', errors='replace')
-    s = re.sub(r'```.*?```', '', s, flags=re.S)
-    depth = maxd = 0
-    for m in re.finditer(r'<!--|-->', s):
-        depth += 1 if m.group() == '<!--' else -1
-        maxd = max(maxd, depth)
+    lines = pathlib.Path(f).read_text(encoding='utf-8', errors='replace').replace('\r\n','\n').split('\n')
+    fence = False; depth = maxd = 0
+    for raw in lines:
+        if raw.lstrip().startswith('```'):
+            fence = not fence; continue
+        if fence: continue
+        line = re.sub(r'`[^`]*`', '', raw)          # drop inline code
+        pos = 0
+        while pos < len(line):
+            o = line.find('<!--', pos); c = line.find('-->', pos)
+            if o >= 0 and (c < 0 or o < c): depth += 1; maxd = max(maxd, depth); pos = o + 4
+            elif c >= 0: depth -= 1; pos = c + 3
+            else: break
     print(('OK ' if depth == 0 and maxd <= 1 else '!!'), f, 'finalDepth=%d maxDepth=%d' % (depth, maxd))
 PY
 ```
 
-**When merging a stamp, the safe form is: one comment, the merge marker and every preserved
-body as PLAIN TEXT inside it, and exactly one closing token.** If a preserved body must keep
-its own delimiters as evidence, do not nest it — quote it in a fenced block or drop the
-delimiters and say so.
+`finalDepth == 0` and `maxDepth <= 1` is the only pass. A negative depth is a stray close; a
+`maxDepth of 2` is a nest. **Then render-check**: strip `<!-- … -->` and confirm the first
+non-blank visible line is the document's own title, not a stray `-->` or merge-note text.
+
+**Two rules that are always safe, and worth stating because both were violated here:** never
+write a comment-open token literally inside a comment (not even to explain this hazard), and
+never nest a preserved stamp — quote its text, or wrap the whole region in one comment.
+

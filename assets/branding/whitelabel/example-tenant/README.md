@@ -1,11 +1,13 @@
 <!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Fresh full audit against branch 0.0.41; the 2026-07-24 Hermes-Agent stamp (79 days old) is merged below as original evidence. · THE REQUIRED-FILE TABLES MATCH THE TREE: the four sections document `vector/` (4 SVGs), `web/` (6 files incl. `icon-maskable-512.png`), `desktop/` (4 files incl. `icon.icns` and `tray-icon.png`) and `hardware/` (3 files); all four subdirectories exist under this template, and the manifest's `assets` block declares paths in exactly these four groups. · THE WARNING IS TRUE AND IS THE POINT OF THE DIRECTORY: "Do not commit placeholder or sample assets" — verified, this template contains ONLY `.gitkeep` files in all four subdirectories plus `manifest.json` and this README, so the "paths document what is expected" reading is the correct one and a reader cannot mistake the template for a working brand. · The two `powershell -File scripts/sync-branding.ps1 -Brand <your-tenant-id>` invocations (plain and `-DryRun`) match the script's real `param()` block. · The recommended sizes are design guidance, not machine-checked anywhere (no gate reads this table) — stated so the numbers are not mistaken for an enforced contract. · NOT re-measured: whether the resize dimensions survive a real sync (no pwsh run this pass). -->
 <!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, template-doc verified) · example-tenant/ has all 4 subdirs (vector/web/desktop/hardware) + manifest.json + README.md; required-file tables (vector/web/desktop/hardware) match actual subdirs; sync-branding.ps1 -Brand/-DryRun documented correctly -->
 
-> **STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:**
->
-> `<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, template-doc verified) · example-tenant/ has all 4 subdirs (vector/web/desktop/hardware) + manifest.json + README.md; required-file tables (vector/web/desktop/hardware) match actual subdirs; sync-branding.ps1 -Brand/-DryRun documented correctly -->`
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence (delimiters stripped so they cannot nest):
 
+**STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:**
 
+`Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, template-doc verified) · example-tenant/ has all 4 subdirs (vector/web/desktop/hardware) + manifest.json + README.md; required-file tables (vector/web/desktop/hardware) match actual subdirs; sync-branding.ps1 -Brand/-DryRun documented correctly -->`
+
+-->
 # Example Tenant — Whitelabel Brand Template
 
 This directory is a **template** for creating a whitelabel tenant brand. Add your own brand assets to the subdirectories listed below before running the sync script.
