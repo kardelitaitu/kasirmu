@@ -937,6 +937,9 @@ fn concurrent_saves_to_same_db() {
             let p = path_str.clone();
             std::thread::spawn(move || {
                 let conn = Connection::open(&p).unwrap();
+                // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+                conn.busy_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
                 let payload = TopologyNodePayload {
                     id: format!("thread-{i}"),
                     node_type: "store".into(),
@@ -1047,6 +1050,9 @@ fn concurrent_read_write_cycle_stress() {
         std::thread::spawn(move || {
             for i in 0..25 {
                 let conn = Connection::open(&p).unwrap();
+                // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+                conn.busy_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
                 let data = TopologyData {
                     nodes: vec![TopologyNodePayload {
                         id: format!("write-{i}"),
@@ -1107,6 +1113,9 @@ fn concurrent_saves_different_keys_dont_interfere() {
             let p = path_str.clone();
             std::thread::spawn(move || {
                 let conn = Connection::open(&p).unwrap();
+                // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+                conn.busy_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
                 let key = format!("oz-pos/topo-race-{i}");
                 let data = TopologyData {
                     nodes: vec![TopologyNodePayload {
@@ -1776,6 +1785,9 @@ fn racing_publishes_to_one_branch_yield_two_ordered_revisions() {
             let note = format!("race {i}");
             std::thread::spawn(move || {
                 let conn = Connection::open(&p).unwrap();
+                // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+                conn.busy_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
                 let context = TopologyRevisionContext {
                     change_note: &note,
                     published_by: "user-racer",
@@ -1852,6 +1864,9 @@ fn racing_publishes_with_the_same_expected_revision_cas_reject_one() {
             let note = format!("cas race {i}");
             std::thread::spawn(move || {
                 let conn = Connection::open(&p).unwrap();
+                // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+                conn.busy_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
                 let context = TopologyRevisionContext {
                     change_note: &note,
                     published_by: "user-racer",
