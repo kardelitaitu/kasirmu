@@ -58,6 +58,40 @@ takeaway or delivery", driven for both order types, asserting the sale STILL
 completes while **no** `assign_table_order_scoped` call is made. Kill-tested:
 removing the guard fails it.
 
+## The fix was only HALF of it — the release path (`035d1d01b`)
+
+The claim fix was incomplete, and following the same `tableNumber` guard across
+the codebase is what showed it. `PosScreen.tsx:713` had the mirror-image:
+
+```ts
+// Release table if the completed order/bill had one
+if (tableNumber && sessionToken) {   // <- order type ignored, exactly as before
+  ... if (match && (occupied || reserved)) return releaseTableScoped(sessionToken, match.id);
+}
+```
+
+So blocking the CLAIM alone still left the RELEASE wide open: a **Takeaway** with
+a number left in the Table field would free whatever table that number resolved
+to, including an occupied one it had never claimed. Blocking one half of a
+claim/release pair does not fix the pair.
+
+Fixed with the same `orderType === 'dine_in'` condition, and `orderType` added to
+the completion callback's dependency array — it is read by the guard, so leaving
+it out is a stale closure where a cashier switching Dine-In -> Takeaway after
+mount still frees the table.
+
+**Guards**: `PosScreenTableReleaseOrderType.test.ts` — three cases: the release
+guard requires dine-in; the CLAIM and RELEASE guards must not disagree (the
+asymmetry was the bug); and `orderType` must be a declared dependency.
+Kill-tested both ways: removing the condition fails case 1, dropping the dep
+fails case 3.
+
+**Why source-level for the release.** Driving PosScreen's completion handler needs
+the whole checkout (shift, receipt settings, a PaymentModal round-trip), whose
+harness is PosScreen.integration.test.tsx. The claim half has a real behavioural
+test in PaymentModalSaleFlow; the release half is pinned by the source guard plus
+its two kill-tests. Stated so the weaker evidence is not mistaken for the stronger.
+
 ## Not verified live
 
 The browser pass that found this could not be repeated after the fix — the Vite
