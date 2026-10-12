@@ -1,6 +1,6 @@
 //! Zero-MDR QRIS Notification Listener IPC commands (tablet shell).
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::State;
 
 use kasirmu_bridge::qris_listener::{
     QrisListenerStatusDto, QrisRecentPaymentDto, SimulateQrisNotificationArgs,
@@ -45,7 +45,6 @@ pub async fn open_qris_listener_settings_scoped(
 pub async fn simulate_qris_notification_scoped(
     session_token: String,
     args: SimulateQrisNotificationArgs,
-    app_handle: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<QrisRecentPaymentDto>, AppError> {
     let session = state.resolve_session(&session_token)?;
@@ -62,8 +61,19 @@ pub async fn simulate_qris_notification_scoped(
     let parsed = qris_core::parse_notification(pkg, args.title.as_deref(), &args.text, now);
     let result: Option<QrisRecentPaymentDto> = parsed.map(Into::into);
 
-    if let Some(ref payment) = result {
-        let _ = app_handle.emit("kasirmu:qrisPaymentNotification", payment);
+    // Routed through the injected EventSink, not a raw AppHandle: the seam is what
+    // keeps a second shell bindable (R10 #3), and state.rs:555 already builds the
+    // sink from this shell's app handle. A raw `app_handle.emit` here was a new
+    // blocking finding in verify-architecture-boundaries.
+    //
+    // This command does its own permission gate rather than calling the bridge body
+    // the desktop shell uses, so the ctx is built locally for the emitter alone.
+    let ctx = state.bridge_ctx();
+    if let (Some(emitter), Some(payment)) = (ctx.emitter.as_ref(), result.as_ref()) {
+        emitter.emit(
+            "kasirmu:qrisPaymentNotification",
+            serde_json::to_value(payment).unwrap_or(serde_json::Value::Null),
+        );
     }
 
     Ok(result)
