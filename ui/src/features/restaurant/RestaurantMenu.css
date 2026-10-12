@@ -797,6 +797,19 @@ body.is-resizing .restaurant-card * {
   box-shadow: var(--shadow-sm);
 }
 
+/* A refused add on an 86'd card. The card is excluded from the :hover/:active
+   rules above (they all carry :not(.restaurant-card--disabled)), so a tap used
+   to produce NO movement at all — a dead tap a cashier cannot tell apart from a
+   frozen tablet. This is the one state that fires for a disabled card, and it is
+   deliberately a RECOIL rather than the lift a successful add gives: the gesture
+   must not read as "added". Paired with a role="status" line so it is announced
+   too, and timed at 600ms in the component. */
+.restaurant-card--rejected {
+  transform: translateY(0) scale(0.97);
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger) 45%, transparent);
+}
+
 .restaurant-card:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;

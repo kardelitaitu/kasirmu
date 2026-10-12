@@ -342,6 +342,10 @@ restaurant-sort-date = By Date
 restaurant-sort-popularity = Popularity
 restaurant-card-add = Add
 restaurant-card-unavailable = Unavailable
+# Announced when a cashier taps an 86'd card and nothing is added. The refusal is
+# deliberate (an out-of-stock item must never enter the sale) but it used to be
+# silent, which on a busy service is indistinguishable from a frozen tablet.
+restaurant-card-unavailable-tap = This item is 86'd and cannot be added
 restaurant-context-color-label = Color
 restaurant-search-aria = Search menu items
 restaurant-search-clear-aria = Clear search

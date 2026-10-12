@@ -336,6 +336,7 @@ restaurant-sort-date = Berdasarkan Tanggal
 restaurant-sort-popularity = Popularitas
 restaurant-card-add = Tambah
 restaurant-card-unavailable = Tidak tersedia
+restaurant-card-unavailable-tap = Item ini sedang habis (86) dan tidak bisa ditambahkan
 restaurant-context-color-label = Warna
 restaurant-search-aria = Cari item menu
 restaurant-search-clear-aria = Hapus pencarian
