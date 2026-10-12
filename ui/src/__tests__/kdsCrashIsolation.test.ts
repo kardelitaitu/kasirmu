@@ -53,6 +53,23 @@ const SURFACES: GuardedSurface[] = [
     element: /<KdsZoneChips\b/,
     why: 'zone filter chips: derived from the order set',
   },
+  // ── The Expo (expediter) screen ──
+  //
+  // ⚠️ A SECOND routed KDS screen, 594 lines, registered as `kds-expo` with its own
+  // nav item (features/kds/register.tsx:20-28). It had NO boundary either — the same
+  // gap as KdsScreen, on the route the round-52 pass did not look at, because that
+  // pass started from `grep LocalizedErrorBoundary features/kds` and this file simply
+  // had none to find.
+  //
+  // The shell renders every fullscreen page inside <LazyBoundary>, which is a
+  // <Suspense> and NOT an error boundary (components/LazyBoundary.tsx:20-33) — so a
+  // throw here reached AppProviders' app-level boundary and its full reload, blanking
+  // the expo pass mid-service exactly as it would the kitchen board.
+  {
+    file: path.join(SRC, 'features/kds/ExpoScreen.tsx'),
+    element: /<StationSelectorModal\b/,
+    why: 'the expo screen\'s station picker: the only dialog on that route',
+  },
 ];
 
 /**

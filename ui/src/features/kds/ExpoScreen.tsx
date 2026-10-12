@@ -52,6 +52,12 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized, LoadingStatus } from '@/components';
+// Scoped crash isolation. This route had NONE: the shell wraps every fullscreen
+// page in <LazyBoundary>, which is a <Suspense> and NOT an error boundary
+// (components/LazyBoundary.tsx:20-33), so a throw here reached AppProviders'
+// app-level boundary and its full reload — blanking the expo pass mid-service.
+// Same fix as KdsScreen; this route was added after that pass looked.
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { l10nErrorMessage } from '@/utils/app-error';
 import {
   listKdsOrdersScoped,
@@ -496,6 +502,10 @@ export default function ExpoScreen() {
         {renderContent()}
 
         {/* ── Station selector (dedicated station view entry point) ── */}
+        {/* Crash isolation — see the import note. resetKeys on the station filter
+            and the station list, so a caught error clears when its input changes
+            rather than leaving a dead dialog for the pass. */}
+        <LocalizedErrorBoundary resetKeys={[station, String(stations.length)]}>
         <StationSelectorModal
           isOpen={stationPickerOpen}
           options={stationOptions}
@@ -503,6 +513,7 @@ export default function ExpoScreen() {
           onSelect={changeStation}
           onClose={() => setStationPickerOpen(false)}
         />
+        </LocalizedErrorBoundary>
 
         {/* ── Recall dialog ─────────────────────────────────────────── */}
         {recallOpen && (
