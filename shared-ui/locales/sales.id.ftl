@@ -1153,5 +1153,9 @@ pos-toast-bill-save-failed = Gagal menyimpan tagihan
 pos-toast-bill-resume-failed = Gagal membuka kembali tagihan
 pos-toast-bill-saved = Tagihan untuk { $label } disimpan
 pos-toast-bill-updated = Tagihan untuk { $label } diperbarui
+pos-toast-printer-unconfirmed = Printer tidak mengonfirmasi cetakan — periksa perangkatnya
+pos-toast-test-receipt-sent = Struk uji terkirim
+pos-toast-drawer-kick-sent = Sinyal laci kas terkirim
+pos-toast-drawer-unconfirmed-short = Laci kas tidak mengonfirmasi terbuka — periksa perangkatnya
 
 

@@ -46,23 +46,46 @@ function collect(dir: string, out: string[] = []): string[] {
 const ROOTS = ['features/sales', 'features/restaurant', 'features/tables', 'features/kds'];
 
 /**
- * Files outside the POS surface that still hold raw literals, verified 2026-10-12.
- * Each is a real defect in another objective — recorded, not fixed here.
+ * Files outside the POS roots that hold offenders the scan cannot judge, keyed by
+ * HOW MANY it may hold.
+ *
+ * A COUNT, not a flag. An earlier revision exempted the whole file, and a
+ * kill-tested injection into an exempt file passed — the list hid exactly the new
+ * defect it existed to bound. With a count, a file that gains an offender fails here
+ * even though it is listed.
+ *
+ * Two kinds of entry:
+ *
+ *   - A scan limit: the message is BUILT from a localized lookup on a neighbouring
+ *     line (`StockCountDetail:68` uses l10nErrorMessage; SyncSection's
+ *     `result.status` comes from the verb it reports on). Correct code the guard
+ *     cannot follow.
+ *   - A recorded defect with a stated reason that is NOT a POS-flow bug — named in
+ *     the comments below rather than silently fixed.
+ *
+ * Files that are simply clean are NOT listed: SyncStatusScreen and SyncSection
+ * started here and were removed once the allowance was made precise enough to see
+ * that they pass.
  */
-const OUT_OF_SCOPE = new Set([
-  'features/auth/LicenseActivationScreen.tsx',
-  'features/design/DesignSystem.tsx',
-  'features/inventory/StockCountDetail.tsx',
-  'features/inventory/StockCountHistory.tsx',
-  'features/inventory/StockCountsScreen.tsx',
-  'features/inventory/TransitAuditScreen.tsx',
-  'features/locations/TopologyScreen.tsx',
-  'features/settings/components/EdcTerminalsCard.tsx',
-  'features/settings/EmailReportSettings.tsx',
-  'features/settings/screens/SyncStatusScreen.tsx',
-  'features/settings/sections/SyncSection.tsx',
-  'features/settings/workspace-cards/WorkspaceStorePosSettings.tsx',
-  'features/warehouse/WarehouseConsole.tsx',
+const EXEMPT = new Map<string, number>([
+  // — scan limit: message built elsewhere from a localized lookup —
+  ['features/auth/LicenseActivationScreen.tsx', 1],
+  ['features/inventory/StockCountDetail.tsx', 1],
+  ['features/inventory/StockCountHistory.tsx', 1],
+  ['features/inventory/StockCountsScreen.tsx', 1],
+  ['features/inventory/TransitAuditScreen.tsx', 1],
+  ['features/settings/EmailReportSettings.tsx', 1],
+  // — recorded defects with reasons, not POS bugs —
+  // The design-system reference page. Its four toast-demo literals are real English
+  // on a routed page, but the page has no bundle of its own — its other labels are
+  // hardcoded too, and `ds-title` resolves only to unrelated fixtures. Localizing
+  // four demo strings while the page around them stays English would be cosmetic.
+  // A whole-page task for whoever owns features/design.
+  ['features/design/DesignSystem.tsx', 4],
+  // Not a localization defect: onPrint/onShowHelp are unimplemented stubs that
+  // acknowledge with a literal ('Print', '?'). Localizing '?' would dress an
+  // unfinished feature as a finished one — the defect is the missing feature.
+  ['features/warehouse/WarehouseConsole.tsx', 2],
 ]);
 
 /** Every source under the POS roots. */
@@ -111,7 +134,7 @@ const ADAPTER = /plainErrorMessage\(\s*[^,]+,\s*(requiredLocalized|.*getString)/
  * slip past THIS call. It is narrow: the literal still has to exist in some scanned
  * file, and a raw string there is caught at its own site.
  */
-const VARIABLE_MESSAGE = /message\s*:\s*[A-Za-z_$][\w$]*\s*[,}]/;
+const VARIABLE_MESSAGE = /message\s*:\s*[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*\s*[,}]/;
 
 function unlocalizedToasts(src: string): string[] {
   const lines = src.split(/\r?\n/);
@@ -156,20 +179,37 @@ describe('every user-visible toast is localized', () => {
     expect(SOURCES.filter(([r]) => r.includes('features/sales/hooks/')).length, 'the hooks dir is not scanned').toBeGreaterThanOrEqual(2);
   });
 
-  it('no file OUTSIDE the POS surface has gained an unlocalized toast', () => {
-    // The debt list is a CEILING, not a licence: a file not named in OUT_OF_SCOPE
-    // that holds a raw literal fails here. Without this, widening the scan would
-    // only ever have been a one-off measurement.
-    const fresh = ALL_SOURCES.filter(([rel, src]) => {
-      if (ROOTS.some((root) => rel.startsWith(root + '/'))) return false;
-      if (OUT_OF_SCOPE.has(rel)) return false;
-      return unlocalizedToasts(src).length > 0;
-    }).map(([rel]) => rel);
+  it('every file outside the POS roots is either clean or has a stated reason', () => {
+    // The debt list is a CEILING of recorded reasons, not a licence. An earlier
+    // revision filtered BOTH surfaces by OUT_OF_SCOPE, which meant the case could
+    // never see the files it was written about — it was green by construction.
+    //
+    // This version scans the WHOLE features tree and allows a file only when it is
+    // genuinely clean, OR when its entry in EXEMPT names a structural reason the
+    // guard cannot see (a variable built elsewhere). Every exemption is therefore
+    // auditable, and a new offender fails here by name.
+    const fresh: string[] = [];
+    for (const [rel, src] of ALL_SOURCES) {
+      if (ROOTS.some((root) => rel.startsWith(root + '/'))) continue;
+      const bad = unlocalizedToasts(src);
+      if (bad.length === 0) continue;
+      // EXEMPT names how many offenders a file is ALLOWED to have, not that the file
+      // is ignored. A blanket per-file exemption hid a freshly injected literal when
+      // this case was kill-tested; a count means a new one in an exempt file still
+      // fails, which is the whole point of recording the debt.
+      const allowed = EXEMPT.get(rel);
+      if (allowed !== undefined && bad.length <= allowed) continue;
+      fresh.push(
+        rel + '  (' + bad.length + ' offender(s)' +
+          (allowed === undefined ? ', not exempt' : ', allowed ' + allowed) +
+          ')  ' + bad[0],
+      );
+    }
     expect(
       fresh,
-      'These are outside the POS roots and the recorded debt list, and now hold an ' +
-        'unlocalized toast. Either localize them, or add them to OUT_OF_SCOPE with ' +
-        'the reason — do not widen silently.',
+      'These hold an unlocalized toast, are outside the POS roots, and are not in ' +
+        'EXEMPT. Localize them, or add them to EXEMPT with the structural reason ' +
+        '(e.g. a message built from a localized lookup elsewhere) — not silently.',
     ).toEqual([]);
   });
 

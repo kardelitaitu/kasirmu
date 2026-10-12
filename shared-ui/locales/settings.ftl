@@ -1240,6 +1240,10 @@ settings-edc-default-select = Register Default EDC Terminal
 settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.
+# Failure fallbacks — what the operator sees when the backend sent no message.
+settings-edc-load-failed = Could not load the EDC terminals
+settings-edc-status-failed = Could not read the terminal status
+settings-edc-delete-failed = Could not delete the terminal
 settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
 
 # Quarantined Sync Conflicts Panel (Dead-letter recovery)

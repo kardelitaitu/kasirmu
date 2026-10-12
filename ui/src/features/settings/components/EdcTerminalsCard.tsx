@@ -71,13 +71,13 @@ export function EdcTerminalsCard({
       setTerminals(Array.isArray(list) ? list : []);
     } catch (err) {
       addToast({
-        message: plainErrorMessage(err),
+        message: plainErrorMessage(err, l10n.getString('settings-edc-load-failed')),
         type: 'error',
       });
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, addToast]);
+  }, [sessionToken, addToast, l10n]);
 
   useEffect(() => {
     fetchTerminals();
@@ -93,14 +93,14 @@ export function EdcTerminalsCard({
       } catch (err) {
         setStatusMap((prev) => ({ ...prev, [id]: 'error' }));
         addToast({
-          message: plainErrorMessage(err),
+          message: plainErrorMessage(err, l10n.getString('settings-edc-status-failed')),
           type: 'error',
         });
       } finally {
         setTestingId(null);
       }
     },
-    [sessionToken, addToast],
+    [sessionToken, addToast, l10n],
   );
 
   const handleOpenAdd = () => {
@@ -210,7 +210,7 @@ export function EdcTerminalsCard({
       await fetchTerminals();
     } catch (err) {
       addToast({
-        message: plainErrorMessage(err),
+        message: plainErrorMessage(err, l10n.getString('settings-edc-delete-failed')),
         type: 'error',
       });
     } finally {

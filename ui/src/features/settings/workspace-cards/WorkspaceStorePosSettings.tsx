@@ -150,9 +150,9 @@ export function WorkspaceStorePosSettings({
         payments: [{ method: 'cash', amount: { minorUnits: 10000, currency }, change: null }],
       });
       if (res && res.printed === false) {
-        addToast({ message: 'Printer reported unconfirmed print', type: 'warning' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-printer-unconfirmed'), type: 'warning' });
       } else {
-        addToast({ message: 'Test receipt sent successfully', type: 'success' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-test-receipt-sent'), type: 'success' });
       }
     } catch (err) {
       addToast({ message: `Test print failed: ${l10nErrorMessage(err, l10n, 'settings-pos-hardware-failed')}`, type: 'error' });
@@ -170,9 +170,9 @@ export function WorkspaceStorePosSettings({
     try {
       const res = await openCashDrawerScoped(sessionToken);
       if (res && res.opened !== false) {
-        addToast({ message: 'Cash drawer kick signal sent successfully', type: 'success' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-drawer-kick-sent'), type: 'success' });
       } else {
-        addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-drawer-unconfirmed-short'), type: 'warning' });
       }
     } catch (err) {
       addToast({ message: `Cash drawer kick failed: ${l10nErrorMessage(err, l10n, 'settings-pos-hardware-failed')}`, type: 'error' });

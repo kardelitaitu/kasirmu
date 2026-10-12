@@ -1211,6 +1211,9 @@ settings-edc-default-select = Terminal EDC Standar Kasir Ini
 settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.
+settings-edc-load-failed = Gagal memuat terminal EDC
+settings-edc-status-failed = Gagal membaca status terminal
+settings-edc-delete-failed = Gagal menghapus terminal
 settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
 
 # Panel Konflik Sinkronisasi Terkarantina (Dead-letter recovery)

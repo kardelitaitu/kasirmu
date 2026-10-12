@@ -245,6 +245,7 @@ topology-tier-capacity-notice = Warehouse capacity numbers are saved but not enf
 topology-toast-wire-duplicate = A wire already connects these ports.
 topology-toast-fallback-warehouse = Multi-warehouse stock deduction fallback wires require a Pro Tier license.
 topology-toast-load-error = Failed to load topology
+topology-toast-restore-error = Could not restore that revision
 topology-wire-incompatible = These connectors cannot be connected.
 topology-relationship-picker-title = Choose connection type
 topology-relationship-picker-cancel = Cancel

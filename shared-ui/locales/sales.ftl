@@ -1187,3 +1187,8 @@ pos-toast-bill-save-failed = Failed to save the tab
 pos-toast-bill-resume-failed = Failed to reopen the tab
 pos-toast-bill-saved = Tab for { $label } saved
 pos-toast-bill-updated = Tab for { $label } updated
+# POS hardware checks on the store settings card.
+pos-toast-printer-unconfirmed = The printer did not confirm the print — check the device
+pos-toast-test-receipt-sent = Test receipt sent
+pos-toast-drawer-kick-sent = Cash drawer signal sent
+pos-toast-drawer-unconfirmed-short = The cash drawer did not confirm it opened — check the device

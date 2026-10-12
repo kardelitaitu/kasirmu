@@ -279,7 +279,10 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
         setHistoryOpen(false);
         addToast({ message: l10n.getString('topology-rev-browser-restore-notice'), type: 'info' });
       } catch (err) {
-        addToast({ message: plainErrorMessage(err), type: 'error' });
+        // The cause is logged, not shown: the toast carries the instruction, and the
+        // diagnostic belongs where support can read it.
+        console.error('restore revision failed', err);
+        addToast({ message: l10n.getString('topology-toast-restore-error'), type: 'error' });
       } finally {
         setRestoringRevision(null);
       }
@@ -740,7 +743,9 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
     ): Promise<TopologyApplyResult & { idMap?: Record<string, string> }> => {
       if (!sessionToken) {
         const error = new Error(l10n.getString('topology-toast-no-session'));
-        addToast({ message: plainErrorMessage(error), type: 'error' });
+        // `error` was built from l10n.getString one line above, so its message IS the
+        // localized text; plainErrorMessage would re-wrap it and drop the locale.
+        addToast({ message: error.message, type: 'error' });
         throw error;
       }
 
