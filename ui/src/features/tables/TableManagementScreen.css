@@ -125,6 +125,8 @@
   align-items: center;
   gap: var(--space-1_5);
   font-weight: var(--font-weight-medium);
+}
+
 .tables-legend-text {
   font-size: var(--text-xs);
   color: var(--color-fg-secondary);
