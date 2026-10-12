@@ -1458,3 +1458,64 @@ drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`.
  before being restored: flipping the backfill expectation to `'restaurant'`,
  removing the pragma, and flipping both `stock_qty` expectations each produce a
  failure. `cargo fmt -- --check` clean.
+
+## 2026-10-12 — The last reds were the sandbox, and the fixtures now match production
+
+**The proxy two — closed with no code change.** The full-workspace run
+(`cargo nextest run --workspace --no-fail-fast`) had ended 11140/11144, and the
+two local-API lifecycle tests looked like a shutdown-path defect: both assert a
+connection fails after the server stops, and both failed 3/3 nextest retries.
+The sandbox exports `HTTP_PROXY`/`HTTPS_PROXY`/`http_proxy`/`https_proxy` =
+`http://127.0.0.1:16982`, `reqwest` honours them, so the request to the dead
+listener is answered by the proxy (502, `is_ok() == true`) and the assertion can
+never fire. Proven: `curl http://127.0.0.1:1/api/v1/health` returns 502 with
+exit 0, and both tests pass 1/1 with the four variables unset —
+`kasirmu-local-api tests::server_serves_health_protected_routes_and_stops` and
+`kasirmu-app commands::local_api::tests::set_port_restarts_running_server_on_new_port`.
+`stop()` / `stop_async()` are sound; the "investigate the graceful shutdown"
+agenda was avoided by running the control first. This is Trap 1 of the
+env-traps skill, which already carries `set_port_restarts_running_server_on_new_port`
+as a casualty from 2026-09-28 — the durable local fix is
+`NO_PROXY=127.0.0.1,localhost`, which is not set on this box.
+
+**The concurrency reds — one machine-level fact, cited by probe.** With the
+proxy unset the same full run closed **11146 passed (3 flaky), 1 failed, 91
+skipped** of 11147. The reds (membership moves between runs — a second run of
+the filter lost different members) were all multi-connection fixtures:
+`kasirmu-bridge topology_stress_tests::{concurrent_saves_to_same_db,
+concurrent_saves_different_keys_dont_interfere, concurrent_read_write_cycle_stress,
+racing_publishes_to_one_branch_yield_two_ordered_revisions,
+racing_publishes_with_the_same_expected_revision_cas_reject_one}` and
+`platform-core settings::tests::set_tracked_concurrent_threads_independent_keys`.
+The panic is **not** contention: `SqliteFailure(code: ReadOnly, extended_code: 8,
+"attempt to write a readonly database")` — SQLite cannot write the temp-dir
+`-wal`/`-shm` sidecars, so these fixtures cannot run green on this box today.
+Three code-level theories were each disproven by a control before being
+abandoned: a missing `busy_timeout` (the error is ReadOnly, not Busy), the
+Low-Mandatory-Level ACL of Trap N+8 (`icacls "C:\dev\kasirmu"` now reads
+**Medium**), and a blanket rustc-binary write denial (a probe built by `rustc`
+and run from inside `target/` writes both temp dirs fine). CI, which has neither
+the proxy nor whatever blocks these sidecar writes, has always been green — do
+not re-litigate these as defects.
+
+**What did change — `3bf33cb35`.** The five contended writer connections in
+`topology_stress_tests` and the two thread connections in
+`set_tracked_concurrent_threads_independent_keys` now set
+`busy_timeout(Duration::from_secs(5))` after their bare `Connection::open`,
+matching what `migrations::run` gives every production connection — the repo's
+own convention (see `db/sales_tests.rs:3518` and the sibling tests later in the
+same settings file). This is fixture production-parity, **not** a flake fix: the
+local READONLY failures are environmental and the change is CI-neutral.
+
+**Also this pass:** `bce1a2223` (mobile registration floor 422 → 425 with the
+ledger total — the three new commands arrived already gated, so no debt row or
+ceiling moves) and `edb716301` (`get_product_unknown_type_defaults_to_retail`
+forges the out-of-contract row through `PRAGMA ignore_check_constraints = ON`;
+the write-side invariant stays pinned in `products_tests.rs`, the legacy
+backfill in `migrations_tests.rs`).
+
+**Verification:** both local-API tests 1/1 with the proxy vars unset;
+`modules-inventory` pragma test 1/1; mobile registration gate 12/12; the two
+edited suites compiled and ran (their residual reds are the environmental
+READONLY family above). `rustfmt --edition 2024` clean on both edited files,
+purely additive diffs (21 insertions, 0 deletions).
