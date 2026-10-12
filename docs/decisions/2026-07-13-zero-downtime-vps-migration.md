@@ -4,10 +4,43 @@ area: release
 title: ADR #11: Zero-Downtime VPS Migration Strategy
 status: Implemented (2026-07-15)
 ---
+
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Fresh full audit of this decision record; the 2026-09-29 stamp and the 2026-07-24 marker are merged below as original evidence. · Correction note added; the 22-test figure left as a dated 2026-07-15 snapshot with the heading and caption annotated rather than recounted. REPAIRED (minor): `crates/oz-core/src/settings.rs` → `crates/kasirmu-core/src/settings.rs:496` for `set_sync_server_url` (rebrand; `crates/oz-core/` does not exist). VERIFIED AT SOURCE: `apps/cloud-server/src/redirect.rs` returns `StatusCode::MISDIRECTED_REQUEST` (421) with `{"error":"server_migrated","new_url":…}`; `OZ_SYNC_REDIRECT_URL` + `OZ_REDIRECT_ONLY` read at `apps/cloud-server/src/config.rs:191-195` with their documented dependency; `SyncError::ServerMigrated` (`platform/sync/src/lib.rs:105`, handled `transport.rs:453/519/603`); `parse_server_migrated()` (`transport.rs:638`); both test helpers in `test_helpers.rs`; `docs/operations/vps-migration.md` exists; all eight files the prior stamp listed resolve. NOT re-measured: deployment topology and the 15–30 day cutover window (operational parameters). · Body left as written: an ADR records what was decided, not where things ended up — the repairs above are dated correction notes and dead-path fixes in present-tense contexts only. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence:
+
 <!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 noted finding) · F1: "22 tests" historical snapshot -> current files grown (transport.rs 38, redirect.rs 4, lib.rs 35, daemon.rs 16 = 90+) since 2026-07-15; count is dated, not false · verified accurate: apps/cloud-server/src/redirect.rs (OZ_SYNC_REDIRECT_URL, HTTP 421) + main.rs (OZ_REDIRECT_ONLY); platform/sync/src/lib.rs ServerMigrated variant (:90) + transport.rs parse_server_migrated (:166/:225); Settings::set_sync_server_url at crates/oz-core/src/settings.rs:393; all 8 referenced files exist -->
 
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the one finding the prior pass recorded is confirmed rather than dismissed. The 2026-07-24 stamp flagged F1: the ADR's "22 tests" is a dated snapshot and the files have grown since. Re-measured in spirit rather than to a new number — the modules it names are all substantially larger now, and nothing contradicts the ADR's substance. Recounting would replace one dated figure with another dated figure, which is not an improvement; the honest position is the one the prior stamp already took. · The migration mechanism this ADR exists to specify is intact, and that is the part worth confirming. `apps/cloud-server/src/redirect.rs` is real, `OZ_SYNC_REDIRECT_URL` and `OZ_REDIRECT_ONLY` are read in `apps/cloud-server/src/config.rs:175` and `:192` with a documented dependency between them, and the `ServerMigrated` signal the client acts on is present in `platform/sync/src/daemon_tick.rs` alongside its daemon tests. A 421-redirect migration that keeps both old and new servers serving through a cutover is exactly the kind of decision that must stay checkable against code, and it is. · `Settings::set_sync_server_url` and the eight referenced files all resolve at their current paths. · Left as written with its `crates/oz-core` / `apps/cloud-server` references intact. The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed. -->
+
+-->
+
 # ADR #11: Zero-Downtime VPS Migration Strategy
+
+> **CORRECTION NOTE (2026-10-11, docs-auditor) — the mechanism is intact; one path and one count drifted.**
+>
+> **Verified at source:** `apps/cloud-server/src/redirect.rs` exists and returns HTTP 421
+> (`StatusCode::MISDIRECTED_REQUEST`) with `{"error":"server_migrated","new_url":"<url>"}`;
+> `OZ_SYNC_REDIRECT_URL` and `OZ_REDIRECT_ONLY` are read in `apps/cloud-server/src/config.rs:191-195`
+> with the documented dependency between them (`OZ_REDIRECT_ONLY=true` requires the URL);
+> `SyncError::ServerMigrated` is in `platform/sync/src/lib.rs:105` and handled on push, pull and
+> snapshot paths in `transport.rs:453/519/603`; `parse_server_migrated()` is at `transport.rs:638`;
+> both test helpers (`spawn_redirect_server`, `spawn_anchor_then_redirect_server`) are in
+> `test_helpers.rs`.
+>
+> **One path drifted:** `Settings::set_sync_server_url` is at **`crates/kasirmu-core/src/settings.rs:496`**
+> (`crates/oz-core/…` is the pre-rebrand name; `crates/oz-core/` does not exist).
+>
+> **One count is a dated snapshot, left as written:** the "22 tests" figure in the front matter
+> (`Updated: 2026-07-15 — 22 tests`) and the per-module table below record the module state on
+> 2026-07-15. The files have grown substantially since — recounting would replace one point-in-time
+> number with another, so the figure is annotated rather than corrected. What matters is confirmed:
+> the redirect mechanism it counts still exists and is still tested.
+>
+> **`apps/cloud-server`** in the body is correct today (it was `oz-cloud-server` at decision time).
+>
+> **NOT re-measured:** the deployment topology and the 15–30 day cutover window, which are operational
+> parameters, not code facts.
 
 **Status:** Implemented (2026-07-15)
 **Date:** 2026-07-13
@@ -50,7 +83,7 @@ If the domain name itself must be changed (e.g., moving from `https://sync.ozpos
 
 ```rust
 if response.error == "server_migrated" {
-    Settings::set_sync_server_url(store.conn(), &response.new_url)?;
+    Settings::set_sync_server_url(store.conn(), &response.new_url)?;   // crates/kasirmu-core/src/settings.rs:496
 }
 ```
 
@@ -77,7 +110,7 @@ if response.error == "server_migrated" {
 - **Status**: Operational (no code — update DNS A/AAAA record at the domain provider)
 - Clients connect via domain name (e.g., `https://sync.ozpos.com`), never hardcoded IPs.
 
-### Layer 2 — Server Auto-Redirection (6 commits, 22 tests)
+### Layer 2 — Server Auto-Redirection (6 commits, 22 tests — ⚠️ the counts below are the 2026-07-15 snapshot; see the correction note)
 
 **Server-side** (`apps/cloud-server/`):
 - `src/redirect.rs` — Redirect middleware gated by `OZ_SYNC_REDIRECT_URL` env var.
@@ -103,7 +136,7 @@ if response.error == "server_migrated" {
   all endpoints) and `spawn_anchor_then_redirect_server` (410 on pull, 421 on
   snapshot) for E2E testing.
 
-**Test coverage** (22 tests across 4 modules + 1 shared helper):
+**Test coverage** (22 tests across 4 modules + 1 shared helper — dated 2026-07-15, not re-derived):
 | Module | Tests | Focus |
 |--------|-------|-------|
 | `transport.rs` | 11 | `parse_server_migrated` (6) + push/pull/snapshot redirect (3) + snapshot struct (3) |
@@ -133,7 +166,7 @@ if response.error == "server_migrated" {
 ## Related
 - ADR #4 — Store-First Tenancy
 - ADR #10 — Sync Performance, Ultra-Low-Cost Server, and 3-Month Retention Strategy
-- `crates/oz-core/src/settings.rs` — Settings DB getters/setters
+- ~~`crates/oz-core/src/settings.rs`~~ → **`crates/kasirmu-core/src/settings.rs:496`** — Settings DB getters/setters (renamed in the rebrand)
 - `platform/sync/src/transport.rs` — Client transport parsing
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

@@ -4,10 +4,40 @@ area: release
 title: ADR #13: Desktop App Updater — Tauri Plugin + Settings Page Integration
 status: Partially Implemented (2026-07-16) — Settings About page UI is live; see ADR #14 for release automation
 ---
+
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 4 minor) · Fresh full audit of this decision record; the 2026-09-29 stamp and the 2026-07-24 marker are merged below as original evidence. · Correction note added; body left as the decision. REPAIRED (minor, all rename-class): `apps/desktop-client/…` → `apps/desktop-tauri/…` (plugin registered at `apps/desktop-tauri/src/lib.rs:136`); `oz-pos-updater.key.pub` → `kasirmu-updater.key.pub` (root); `ui/src/locales/{shared,settings}.ftl` → `shared-ui/locales/…`; the About-page target `ui/src/features/settings/SettingsPage.tsx` → `ui/src/features/settings/sections/AboutSection.tsx` (the card was extracted). VERIFIED TRUE: `@tauri-apps/plugin-updater ^2.10.1` in `ui/package.json`; `tauri.conf.json` carries a non-empty `pubkey` + `windows.installMode: "basicUi"`; `bundle.targets: "all"`; `updater:default` capability; `ui/src/app/UpdateBanner.tsx`; the `settings-*` updater strings in BOTH `shared-ui/locales/settings.ftl` and `settings.id.ftl`; `release.yml` + `scripts/generate-latest-json.mjs` now exist. RECORDED (not repaired): the updater endpoint list now leads with `beta.json` before `latest.json` — this ADR describes only the stable manifest. NOT re-measured: the updater's own behaviour, manifest format and signing chain (need a live update cycle). · Body left as written: an ADR records what was decided, not where things ended up — the repairs above are dated correction notes and dead-path fixes in present-tense contexts only. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence:
+
 <!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: RESOLVED (AUDIT-28 2026-08-03) · F1: release workflow is SHIPPED and now builds real Tauri installers with signed latest.json/beta.json manifests (see release.yml + generate-latest-json.mjs). F2: Settings About updater UI is live at SettingsPage.tsx with full updater state + FTL strings. · verified accurate: tauri_plugin_updater registered (lib.rs); @tauri-apps/plugin-updater ^2.10.1 in ui/package.json; tauri.conf.json updater config; oz-pos-updater.key.pub present; capabilities/default.json grants updater:default; UpdateBanner.tsx exists; shared.ftl banner strings present -->
 
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 308 lines, with a prior marker re-verified rather than replaced. ADR #13 covers the in-app updater, and its status line is the kind this campaign has learned to trust — Partially Implemented, with the specific boundary named (the Settings About-page UI is live; release automation is deferred to another ADR) rather than a blanket claim. · THE PRIOR STAMP RECORDS A RESOLUTION RATHER THAN A FINDING, and that is a distinction worth preserving. It notes the release workflow is now SHIPPED and builds real Tauri installers with signed artifacts, which is exactly the gap this campaign has been chasing elsewhere in the tree: the archived CI dashboard said the release job no longer existed, and the changelog set stopped at 0.0.34. Three documents describing the same release pipeline in three different states is the divergence pattern the ARCHITECTURE stub was created to end, and this file is the most current of the three. · WHY IT MATTERS BEYOND ITS OWN LINE COUNT. The updater is the mechanism by which a signed artifact reaches an installed terminal, which makes this ADR upstream of the security posture several other documents in this campaign assume: the keystore guide that had to be corrected about a retired Android workflow, the licence and tamper-resistance decisions that assume a terminal can be brought up to date, and the release checklist whose whole purpose is a trustworthy update path. A document that is honest about the boundary between what shipped and what did not is load-bearing precisely because so much else assumes it. · THE STRUCTURAL NOTE, consistent with the desktop-appupdater family across this tree: the status line names ADR #14 for the release automation rather than absorbing it, and the prior stamp supplies the current answer. Splitting a decision and then cross-referencing the follow-up is what keeps a superseded half from being read as current. · NOT re-measured: the updater's own behaviour, the manifest format, or the signing chain, all of which are the document's content and would need a real update cycle to exercise. What is recorded is that its scope boundary is stated accurately and its cross-references are live. · Prior stamp retained as original evidence; footer re-dated to match the new stamp. -->
+
+-->
+
 # ADR #13: Desktop App Updater — Tauri Plugin + Settings Page Integration
+
+> **CORRECTION NOTE (2026-10-11, docs-auditor) — paths in this record predate three renames; the mechanism is intact.**
+>
+> This is a decision record, so the body below is left as written. What has moved since, so a reader
+> does not chase a dead citation:
+>
+> | Cited in this ADR | Real path today | Why |
+> |---|---|---|
+> | `apps/desktop-client/…` (`src/lib.rs`, `tauri.conf.json`, `capabilities/default.json`) | `apps/desktop-tauri/…` | The desktop shell was renamed in the rebrand; `apps/desktop-client/` does not exist. The plugin is registered at `apps/desktop-tauri/src/lib.rs:136`. |
+> | `oz-pos-updater.key.pub` | `kasirmu-updater.key.pub` (repo root) | Public key renamed with the project. The old name is committed nowhere. |
+> | `ui/src/locales/shared.ftl`, `ui/src/locales/settings.ftl` | `shared-ui/locales/shared.ftl`, `shared-ui/locales/settings.ftl` | The Fluent corpus moved to `shared-ui/` (P9a). `ui/src/locales/` no longer exists. |
+> | `ui/src/app/UpdateBanner.tsx` | `ui/src/app/UpdateBanner.tsx` ✅ still correct | (the `components/` twin was retired 2026-10-09, as this ADR's own stamp already records) |
+> | Settings About-page UI target `ui/src/features/settings/SettingsPage.tsx` | `ui/src/features/settings/sections/AboutSection.tsx` | The About card was extracted out of `SettingsPage.tsx` into its own section component; the updater strings it references are `settings-check-for-updates` / `settings-up-to-date` / `settings-install-update`. |
+> | Endpoint list in `tauri.conf.json` | `beta.json` **then** `latest.json` | The config now lists a beta channel ahead of stable. This record describes only the `latest.json` path. |
+>
+> **Verified still true:** the plugin is registered (`apps/desktop-tauri/src/lib.rs:136`),
+> `@tauri-apps/plugin-updater ^2.10.1` is in `ui/package.json`, `tauri.conf.json` carries a
+> non-empty `pubkey` plus `windows.installMode: "basicUi"`, `bundle.targets` is `"all"`, the
+> `settings-*` updater Fluent strings exist in both `shared-ui/locales/settings.ftl` and
+> `settings.id.ftl`, and both the `release.yml` workflow and the manifest-generation script this
+> ADR deferred to ADR #14 now exist (`scripts/generate-latest-json.mjs`, not the `.js` this file
+> names).
 
 **Status:** Partially Implemented (2026-07-16) — Settings About page UI is live; see ADR #14 for release automation
 **Date:** 2026-07-16
@@ -42,7 +72,7 @@ The project already has significant updater scaffolding in place:
 | `tauri-plugin-updater` (Rust) | ✅ Registered | `apps/desktop-client/src/lib.rs:66` |
 | `@tauri-apps/plugin-updater` (npm) | ✅ Installed v2.10.1 | `ui/package.json` |
 | `tauri.conf.json` updater config | ✅ Configured | `apps/desktop-client/tauri.conf.json:60` |
-| Public key file | ✅ Present | `oz-pos-updater.key.pub` |
+| Public key file | ✅ Present | `oz-pos-updater.key.pub` → **renamed `kasirmu-updater.key.pub`** (see correction note) |
 | `updater:default` permission | ✅ Granted | `apps/desktop-client/capabilities/default.json` |
 | `UpdateBanner` component | ✅ Exists | `ui/src/app/UpdateBanner.tsx` (the `components/` twin was unreachable and retired 2026-10-09, commit `f9d6f2e65`) |
 | Fluent strings (banner) | ✅ Present | `ui/src/locales/shared.ftl` lines 85-91 |
@@ -100,7 +130,7 @@ The `downloadAndInstall()` call on the returned `Update` object triggers the pla
 
 ### 2. Fluent Locale Strings
 
-New strings in `settings.ftl` / `settings.id.ftl`:
+New strings in `settings.ftl` / `settings.id.ftl` (now under `shared-ui/locales/`):
 
 ```
 settings-updates-heading = Updates
@@ -167,7 +197,7 @@ GitHub's `/releases/latest/download/` redirects to the **latest release's** asse
 - Clients always point to the latest published version
 - Old releases still serve their own `latest.json` via the tag-specific URL, but consumers following `/latest/` always get the newest
 
-The `latest.json` manifest is **signed** with the Ed25519 keypair. The public key embedded in `tauri.conf.json` verifies the manifest at update-check time. If the manifest is tampered with or served from a different source, verification fails and the update is rejected.
+The `latest.json` manifest is **signed** with the Ed25519 keypair. The public key embedded in `tauri.conf.json` verifies the manifest at update-check time — and the config lists a **beta channel (`beta.json`) ahead of `latest.json`**, which this record does not describe. If the manifest is tampered with or served from a different source, verification fails and the update is rejected.
 
 ### 5. Release Workflow
 
@@ -296,14 +326,10 @@ Rely solely on the existing `UpdateBanner` component that auto-checks on mount.
 - `ui/src/features/settings/SettingsPage.tsx` — Target for the manual check button
 - `ui/src/locales/settings.ftl` — Fluent strings for settings (~line 600 where `settings-app-version` is defined)
 - `ui/src/locales/settings.id.ftl` — Indonesian locale mirror
-- `oz-pos-updater.key.pub` — Ed25519 public key (committed)
-- `oz-pos-updater.key` — Ed25519 private key (not committed; stored as GitHub secret `UPDATER_PRIVATE_KEY`)
+- ~~`oz-pos-updater.key.pub`~~ → **`kasirmu-updater.key.pub`** — Ed25519 public key (committed; renamed in the rebrand)
+- `oz-pos-updater.key` — Ed25519 private key (not committed; stored as GitHub secret `UPDATER_PRIVATE_KEY`) — the private key was never committed under either name, so this line has no dead path to chase
 - `.github/workflows/release.yml` — Release automation workflow (new)
 - `docs/decisions/2026-01-15-module-system-design.md` — ADR #1: Module system (updater module could be extracted later)
 - [Tauri v2 Updater Plugin Documentation](https://v2.tauri.app/plugin/updater/) — Reference for plugin API and config
 
-> last audited 29-09-26 by docs-auditor
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-
+> last audited 11-10-26 by docs-auditor

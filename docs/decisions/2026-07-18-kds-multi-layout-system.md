@@ -4,7 +4,12 @@ area: kds
 title: ADR #17: KDS Multi-Layout System — Switchable Kitchen Display Layouts with Per-User Preferences
 status: Implemented (2026-07-26)
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ⚠️ THE SUBJECT OF THIS ADR NO LONGER EXISTS — superseded rather than contradicted, and the most consequential finding in this batch. The ADR exists to specify three switchable KDS layouts: `KdsLayoutKanban`, `KdsLayoutFocus` and `KdsLayoutMetro`. All three are GONE; a search of every tracked file under `ui/src/` for those names returns nothing. The only layout component that remains is `ui/src/features/kds/KdsLayoutMasonry.tsx`, with tests for a second arrangement at `ui/src/__tests__/KdsLayoutRoundRobin.test.ts`. The switcher the ADR specifies, `KdsLayoutSwitcher.tsx`, is gone too. · THE REPLACEMENT WAS SPECIFIED IN ADVANCE, IN A DOCUMENT THIS CAMPAIGN AUDITED ELEVEN ROUNDS AGO. `docs/specs/_active/kds-redesign-ux.md`, audited in round 3, opens by proposing to "Replace the current 3-layout KDS (Kanban / Focus / Metro) with a single production-focused view", and lists removing the layout switcher as its first goal. The proposal was adopted, and the layouts it named are the ones that disappeared. Worth recording as a closed loop: an `_active/` spec audited for accuracy turned out to be the live specification of a change that has since landed, which is the best available outcome for a document in that folder. · WHAT SURVIVES is the ADR's second half — the per-user preference mechanism. `KdsSettingsPanel` moved out of `ui/src/features/kds/` entirely (the prior stamp's O1 noted the ADR's own file list omitted it; it is now absent from that directory), while `KdsTicketCard` remains at its path and the `useKdsPreferences` / `getUserPreferences` / `setUserPreferences` chain the stamp verified is still the mechanism. So the preference half is live and the layout half is retired. · NOT REPAIRED, deliberately. An ADR marked "Implemented (2026-07-26)" whose components were later replaced by a different design is exactly the case where editing the body destroys information: rewriting it to describe the current layouts would erase the record that a three-layout switchable KDS was built, used, and then deliberately retired — and that the retirement was specified before it happened. The correct disposition is a stamp that says so. · The status checker reports no drift; the front matter still reads "Implemented (2026-07-26)", which remains true of what it describes. Prior stamp retained; stacked footer collapsed. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major carried, 2 minor repaired) · The 2026-09-29 finding is carried forward and now repaired IN THE BODY rather than only in the stamp: the ADR's layout half no longer exists, and its Related list and File-Organisation tree presented five dead paths in the present tense ("(new)" against files that return zero hits). Both now carry a dated correction note and retain their as-decided text — an ADR is the record of what was decided, so the paths stay and the note says what became of them. · REPAIRED: (a) a Path-status note above the Related list naming exactly which four paths still resolve (KdsScreen.tsx, components/KdsTicketCard.tsx, hooks/useKdsPreferences.ts, ui/src/api/settings.ts), which four are gone (KdsLayoutKanban/Focus/Metro.tsx + KdsLayoutSwitcher.tsx → 0 hits under ui/src; the surviving layout is KdsLayoutMasonry.tsx, with KdsLayoutMasonry.test.tsx and KdsLayoutRoundRobin.test.ts), and the post-rebrand spelling of the two `crates/oz-core/...` paths (`crates/kasirmu-core/src/user_preferences.rs` and `user_preferences` in `crates/kasirmu-core/migrations/20260813_init.sql:938`); (b) an as-decided banner above the §6 file tree; (c) the two pre-rebrand spellings in the Related list annotated inline. · VERIFIED STILL TRUE: the preference half of the ADR is live and unchanged — `useKdsPreferences.ts` resolves, `getUserPreferences`/`setUserPreferences` are at `ui/src/api/settings.ts:282,286`, the `user_preferences` key-value table is real (`20260813_init.sql:938`, columns user_id/pref_key/pref_value/updated_at, matching the ADR's §2 storage table), and `crates/kasirmu-core/src/user_preferences.rs` exposes `get_all`/`set_batch` over exactly that table. The retirement is not a contradiction of the ADR: `docs/specs/_active/kds-redesign-ux.md` (audited 2026-09-29) proposes precisely this replacement ("Replace the current 3-layout KDS (Kanban / Focus / Metro) with a single production-focused view"), so the ADR did what it set out to do and the layouts were later deliberately withdrawn. · NOT re-measured: the ASCII layout diagrams and the animation/interaction behaviour, which are design intent rather than code claims. · Prior stamp retained below as original evidence, rendered as blockquote text (never nested inside this comment — nesting closes the outer comment early). -->
+
+STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ⚠️ THE SUBJECT OF THIS ADR NO LONGER EXISTS — superseded rather than contradicted, and the most consequential finding in this batch. The ADR exists to specify three switchable KDS layouts: `KdsLayoutKanban`, `KdsLayoutFocus` and `KdsLayoutMetro`. All three are GONE; a search of every tracked file under `ui/src/` for those names returns nothing. The only layout component that remains is `ui/src/features/kds/KdsLayoutMasonry.tsx`, with tests for a second arrangement at `ui/src/__tests__/KdsLayoutRoundRobin.test.ts`. The switcher the ADR specifies, `KdsLayoutSwitcher.tsx`, is gone too. · THE REPLACEMENT WAS SPECIFIED IN ADVANCE, IN A DOCUMENT THIS CAMPAIGN AUDITED ELEVEN ROUNDS AGO. `docs/specs/_active/kds-redesign-ux.md`, audited in round 3, opens by proposing to "Replace the current 3-layout KDS (Kanban / Focus / Metro) with a single production-focused view", and lists removing the layout switcher as its first goal. The proposal was adopted, and the layouts it named are the ones that disappeared. Worth recording as a closed loop: an `_active/` spec audited for accuracy turned out to be the live specification of a change that has since landed, which is the best available outcome for a document in that folder. · WHAT SURVIVES is the ADR's second half — the per-user preference mechanism. `KdsSettingsPanel` moved out of `ui/src/features/kds/` entirely (the prior stamp's O1 noted the ADR's own file list omitted it; it is now absent from that directory), while `KdsTicketCard` remains at its path and the `useKdsPreferences` / `getUserPreferences` / `setUserPreferences` chain the stamp verified is still the mechanism. So the preference half is live and the layout half is retired. · NOT REPAIRED, deliberately. An ADR marked "Implemented (2026-07-26)" whose components were later replaced by a different design is exactly the case where editing the body destroys information: rewriting it to describe the current layouts would erase the record that a three-layout switchable KDS was built, used, and then deliberately retired — and that the retirement was specified before it happened. The correct disposition is a stamp that says so. · The status checker reports no drift; the front matter still reads "Implemented (2026-07-26)", which remains true of what it describes. Prior stamp retained; stacked footer collapsed.
+
 # ADR #17: KDS Multi-Layout System — Switchable Kitchen Display Layouts with Per-User Preferences
 
 <!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 observation) · O1: File Organisation (S6) omits KdsSettingsPanel.tsx which exists in ui/src/features/kds/; migration 038_user_preferences.sql is cited as the historical table origin (the feature adds no new migrations, per S2) · verified accurate: KdsLayoutKanban/Focus/Metro.tsx + KdsLayoutSwitcher.tsx + components/KdsTicketCard.tsx + hooks/useKdsPreferences.ts present; getUserPreferences/setUserPreferences in ui/src/api/settings.ts; getKdsQueue in ui/src/api/kds.ts; crates/oz-core/src/user_preferences.rs + 038_user_preferences.sql exist; Status "Implemented" matches on-disk code -->
@@ -204,6 +209,10 @@ KdsScreen mount
 
 ### 6. File Organisation
 
+The tree below is the layout the ADR specified. It is **not** the current tree:
+the three layout components and the switcher were retired when `docs/specs/_active/kds-redesign-ux.md`
+was adopted (`KdsLayoutMasonry.tsx` is what ships). Kept verbatim as the as-decided map.
+
 ```
 ui/src/features/kds/
 ├── KdsScreen.tsx                  # Shell — fetch orders + prefs, render toolbar + layout
@@ -294,17 +303,30 @@ Provide the layout switcher exclusively in the Settings page.
 
 ## Related
 
+> **Path status (correction note, 2026-10-11).** The list below is the ADR's
+> as-decided file map and is kept verbatim; the layout half of it no longer resolves.
+> Verified at HEAD: `KdsScreen.tsx`, `components/KdsTicketCard.tsx`,
+> `hooks/useKdsPreferences.ts` and `ui/src/api/settings.ts` still exist **at the paths
+> given**. `KdsLayoutKanban.tsx`, `KdsLayoutFocus.tsx`, `KdsLayoutMetro.tsx` and
+> `KdsLayoutSwitcher.tsx` are **gone** (`grep -rn 'KdsLayout{Kanban,Focus,Metro}|KdsLayoutSwitcher' ui/src`
+> → 0 hits); the surviving layout is `ui/src/features/kds/KdsLayoutMasonry.tsx` with tests at
+> `ui/src/__tests__/KdsLayoutMasonry.test.tsx` and `KdsLayoutRoundRobin.test.ts`. The two
+> `crates/oz-core/...` paths are pre-rebrand spellings: `user_preferences.rs` is now
+> `crates/kasirmu-core/src/user_preferences.rs`, and the numbered migration series was
+> retired — the `user_preferences` table is created in
+> `crates/kasirmu-core/migrations/20260813_init.sql:938`.
+
 - `ui/src/features/kds/KdsScreen.tsx` — Shell component (to be refactored)
-- `ui/src/features/kds/KdsLayoutKanban.tsx` — Kanban layout (new)
-- `ui/src/features/kds/KdsLayoutFocus.tsx` — Focus layout (new)
-- `ui/src/features/kds/KdsLayoutMetro.tsx` — Metro layout (new)
-- `ui/src/features/kds/KdsLayoutSwitcher.tsx` — Layout options popover (new)
+- `ui/src/features/kds/KdsLayoutKanban.tsx` — Kanban layout (new) — **retired, see note above**
+- `ui/src/features/kds/KdsLayoutFocus.tsx` — Focus layout (new) — **retired, see note above**
+- `ui/src/features/kds/KdsLayoutMetro.tsx` — Metro layout (new) — **retired, see note above**
+- `ui/src/features/kds/KdsLayoutSwitcher.tsx` — Layout options popover (new) — **retired, see note above**
 - `ui/src/features/kds/components/KdsTicketCard.tsx` — Shared ticket card
 - `ui/src/features/kds/hooks/useKdsPreferences.ts` — Preference hook (new)
 - `ui/src/api/settings.ts` — API for `getUserPreferences` / `setUserPreferences`
-- `crates/oz-core/src/user_preferences.rs` — Rust `UserPreferences` struct
-- `crates/oz-core/migrations/038_user_preferences.sql` — User preferences table
+- `crates/oz-core/src/user_preferences.rs` — Rust `UserPreferences` struct (pre-rebrand; now `crates/kasirmu-core/src/user_preferences.rs`)
+- `crates/oz-core/migrations/038_user_preferences.sql` — User preferences table (numbered series retired; table in `20260813_init.sql:938`)
 - `docs/decisions/2026-07-18-kds-multi-layout-system.md` — This ADR
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 

@@ -4,7 +4,12 @@ area: inventory
 title: ADR #18: Multi-Location Inventory — Workspace-Bound Stock Locations for Wholesale & Retail
 status: Implemented (2026-07-19)
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the prior pass's one finding is confirmed. The 2026-07-26 stamp recorded F1: §13 cites "079_workspace_types_rename.sql" and attributes the per-location index to 079, but 079 is actually `079_inventory_location_id.sql` — the workspace rename cascade shipped as 091 and the index as 080. That is a migration-number attribution error in the body, left exactly as written: the numbered series has since been retired wholesale in favour of date-stamped files folded into `crates/kasirmu-core/migrations/20260813_init.sql`, so "correcting" 079 to 091 inside a record of a series that no longer exists would be a cosmetic fix to a historical document. The finding is preserved here instead, which is more useful than a repaired number. · THE SCHEMA THIS ADR ESTABLISHES IS INTACT AND LOAD-BEARING. `adjust_stock_at_location_with_reason` is live, now in `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs` after the `products.rs` split — the same reorganisation that has invalidated path references in three other documents audited in this campaign. `InventoryStockHandler` is at `modules/inventory/src/handlers.rs`, `rebuild_stock_summary` moved with the other ledger helpers into `db/products_stock_adjust/ledger.rs`, and the `stock_summary` composite primary key, `stock_movements.location_id`, `workspace_inventory_locations`, `inventory_transactions`, `stock_thresholds` and the location-scoped `purchase_orders` columns are all present in the base schema. This ADR is the origin of the stock-location model that ADR-19, the topology phase records and the warehouse spec all build on, so its accuracy matters more than most. · At 1,652 lines it is one of the largest ADRs in the directory; the audit was scoped to its schema and symbol claims rather than a line-by-line read, which is the right proportion at that size. · Status checker reports no drift. Prior stamp retained; stacked footer collapsed. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor) · This is one of the largest ADRs in the directory (now 1,700 lines) so the pass was scoped to its schema and symbol claims plus its path inventory, the same proportion the 2026-09-29 stamp recorded. · REPAIRED: the §Related list and the §Rename-cascade runbook are written in the pre-rebrand spelling throughout — `crates/oz-core/...` for what is now `kasirmu-core`, `apps/desktop-client/...` for a directory that does not exist, and numbered migration files (`035_workspaces.sql`, `060_workspace_instances.sql`, `081_multi_location_inventory.sql`) for a series retired into `crates/kasirmu-core/migrations/20260813_init.sql`. Both now carry a dated correction note; neither was rewritten, because a decision record's as-built file map is evidence and the note says where the files went. · VERIFIED STILL TRUE AND LOAD-BEARING: this ADR establishes the stock-location model everything else builds on, and the model is intact at HEAD — `inventory_locations`, `stock_summary` (composite PK), `stock_movements`, `workspace_inventory_locations`, `inventory_transactions`, `stock_thresholds` and the location-scoped `purchase_orders` columns all resolve in the base schema; `adjust_stock_at_location_with_reason` is live at `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190`; the canonical default location UUID `01926b3a-…-001` returns 54 hits under `crates/kasirmu-core`; `resolve_primary_location`/`resolve_all_locations`/`resolve_location_chain_for_sku`/`get_default_location_id` are all in `crates/kasirmu-core/src/location_resolver.rs` (plus their test module); `InventoryStockHandler` is at `modules/inventory/src/handlers.rs`; `rebuild_stock_summary` is live. The §13 finding 1 (migration-number attribution: "079" for a rename that shipped later) is carried exactly as the prior stamp left it — the series is retired, so the number is a historical label, not a pointer, and "correcting" it would be a cosmetic edit to a record. · The §COR-13 appendix (fixed 2026-10-04) and its absent-transaction-type pin sit below §Related; they are a separate later addendum, not part of this ADR's decision, and are correct as written. · Status checker reports no drift. · NOT re-measured: the ~1,000 lines of normative design prose and the §13 finding-by-finding review, which describe intent and history rather than present code state. -->
+
+STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the prior pass's one finding is confirmed. The 2026-07-26 stamp recorded F1: §13 cites "079_workspace_types_rename.sql" and attributes the per-location index to 079, but 079 is actually `079_inventory_location_id.sql` — the workspace rename cascade shipped as 091 and the index as 080. That is a migration-number attribution error in the body, left exactly as written: the numbered series has since been retired wholesale in favour of date-stamped files folded into `crates/kasirmu-core/migrations/20260813_init.sql`, so "correcting" 079 to 091 inside a record of a series that no longer exists would be a cosmetic fix to a historical document. The finding is preserved here instead, which is more useful than a repaired number. · THE SCHEMA THIS ADR ESTABLISHES IS INTACT AND LOAD-BEARING. `adjust_stock_at_location_with_reason` is live, now in `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs` after the `products.rs` split — the same reorganisation that has invalidated path references in three other documents audited in this campaign. `InventoryStockHandler` is at `modules/inventory/src/handlers.rs`, `rebuild_stock_summary` moved with the other ledger helpers into `db/products_stock_adjust/ledger.rs`, and the `stock_summary` composite primary key, `stock_movements.location_id`, `workspace_inventory_locations`, `inventory_transactions`, `stock_thresholds` and the location-scoped `purchase_orders` columns are all present in the base schema. This ADR is the origin of the stock-location model that ADR-19, the topology phase records and the warehouse spec all build on, so its accuracy matters more than most. · At 1,652 lines it is one of the largest ADRs in the directory; the audit was scoped to its schema and symbol claims rather than a line-by-line read, which is the right proportion at that size. · Status checker reports no drift. Prior stamp retained; stacked footer collapsed.
+
 # ADR #18: Multi-Location Inventory — Workspace-Bound Stock Locations for Wholesale & Retail
 
 <!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 finding) · F1: §13 cites "079_workspace_types_rename.sql" / "Migration 079 adds a per-location index" but 079 is actually 079_inventory_location_id.sql; the workspace rename cascade shipped as 091_workspace_types_rename.sql and the per-location index as 080_stock_movements_location_id.sql (migration numbers off-by-actual in the doc) · verified accurate: migrations 078-091 present (078 inventory_locations, 080 stock_movements.location_id, 082 bound_location_id, 083 workspace_inventory_locations, 084 inventory_transactions, 085 inventory_transaction_id FK, 087 stock_thresholds, 089 stock_summary composite PK, 090 purchase_orders.location_id, 091 workspace rename); 035_workspaces + 060_workspace_instances + 072 archive present; adjust_stock_at_location_with_reason at crates/oz-core/src/db/products.rs:791; InventoryStockHandler at modules/inventory/src/handlers.rs; rebuild_stock_summary in products.rs; Status "Implemented" matches on-disk schema -->
@@ -44,11 +49,11 @@ A snack wholesale business operates with **multiple inventory locations** and ne
 > hard-codes the literal string `'inventory'` in at least six sites that must
 > be migrated in lockstep:
 >
-> 1. `crates/oz-core/migrations/035_workspaces.sql:32` — workspace seed row.
+> 1. `crates/oz-core/migrations/035_workspaces.sql:32` — workspace seed row. *(pre-rebrand; now `crates/kasirmu-core/`, numbered series folded into `20260813_init.sql`)*
 > 2. `crates/oz-core/migrations/035_workspaces.sql:46-51` — `workspace_screens`
->    rows that key by `'inventory'`.
+>    rows that key by `'inventory'`. *(same)*
 > 3. `crates/oz-core/migrations/060_workspace_instances.sql:110` — sort_order
->    CASE expression `WHEN 'inventory' THEN 4`.
+>    CASE expression `WHEN 'inventory' THEN 4`. *(same)*
 > 4. `ui/src/features/inventory/` — feature directory name; the front-end
 >    router (`ui/src/App.tsx` and friends) resolves workspace keys by string.
 > 5. `ui/src/locales/*.ftl` — fluent bundle IDs prefixed `inventory-…`.
@@ -56,7 +61,7 @@ A snack wholesale business operates with **multiple inventory locations** and ne
 > 7. `modules/inventory/manifest.json` — `id` field literally equals `"inventory"`; the manifest is read at module-discovery time, so a rename requires this file to be patched in lockstep.
 > 8. The `modules/inventory/` Rust crate name (a public name surface that downstream code may import) — cannot be renamed without a multi-crate refactor; the ADR will keep the internal crate name and only rename the user-facing workspace key.
 >
-> Migration 079 (`079_workspace_types_rename.sql`) MUST update all six sites
+> Migration 079 (`079_workspace_types_rename.sql`) MUST update all six sites *(numbering per §13 finding 1 below; the cascade actually shipped as the workspace-rename migration and the whole numbered series is now retired into `20260813_init.sql`)*
 > atomically inside a single transaction. Failure to coordinate causes
 > front-end routes to 404, fluent bundles to miss the rename, and POS module
 > registration to fail at startup. A clippy lint
@@ -1625,6 +1630,20 @@ Instead of a `location_id` column, give each location its own SQLite file.
 
 ## Related
 
+> **Path status (correction note, 2026-10-11).** Every `crates/oz-core/...` and
+> `apps/desktop-client/...` entry below is the **pre-rebrand / pre-split spelling** of what
+> this ADR created. The crate is now `kasirmu-core`, the desktop shell is
+> `apps/desktop-tauri` (there is no `apps/desktop-client`), and the numbered migration
+> series was retired — the schema lives in
+> `crates/kasirmu-core/migrations/20260813_init.sql`. Two entries have also moved by the
+> `products.rs` split: `adjust_stock`/`adjust_stock_with_reason` and the ledger helpers
+> are now under `crates/kasirmu-core/src/db/products_stock_adjust/` (`adjust.rs`,
+> `ledger.rs`, `movements.rs`). Verified at HEAD: `location_resolver.rs`,
+> `inventory_transactions.rs`, `inventory_shifts.rs`, `stock_transfers.rs`,
+> `stock_counts.rs` and `modules/inventory/src/handlers.rs` all resolve under their new
+> roots; `InventoryStockHandler` is at `modules/inventory/src/handlers.rs`. The list is
+> kept verbatim as the as-built record rather than rewritten.
+
 - `crates/oz-core/migrations/081_multi_location_inventory.sql` — Schema migration (new; targets `inventory`, `stock_movements`, `stock_movements_archive`, `stock_summary`, `stock_transfers`, `purchase_orders`, `workspace_instances`, `inventory_transactions`)
 - `crates/oz-core/src/db/inventory_locations.rs` — Inventory location CRUD (new)
 - `crates/oz-core/src/db/inventory_transactions.rs` — Inventory transaction log CRUD + staff audit queries (new)
@@ -1677,5 +1696,5 @@ mapper return `Err`.
 `crates/kasirmu-core/src/inventory_transaction.rs`,
 `crates/kasirmu-core/src/db/inventory_tests.rs`.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 

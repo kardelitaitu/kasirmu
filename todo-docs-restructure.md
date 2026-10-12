@@ -1067,6 +1067,39 @@ real fixes and 20 spec.yaml paths into 3. **A number this large is a prompt to c
 **Rule, now stated once and applied everywhere (§6j, §6o, §6p):** *a path inside a dated record is
 evidence; a path in a live claim is drift.* The discriminator is not the file — it is whether the
 sentence is about **what was** or about **what is**.
+
+### 6q — the tombstone class: 58 refs under `docs/archived/`, re-measured 2026-10-11
+
+Found during the oldest-markdown audit campaign (batches 1-3) and recorded here because this plan
+owns the folder retirement. `docs/archived/README.md` is a one-file tombstone and `check-dead-refs.py`
+**structurally cannot see** references to files beneath it: the directory resolves, so the path
+looks alive. Re-derive:
+
+```bash
+git grep -nE 'docs/archived/[A-Za-z0-9_.-]+\.md'
+```
+
+| | |
+|---|---|
+| Total refs | **58** across 33 files (6 are the tombstone's own historical list — correct as written) |
+| Distinct dead targets | **17**; **16 have a known new home** under `docs/records/audits/` or `docs/records/superseded/` |
+| In an HTML comment (a dated record) | the majority — evidence, per the rule below |
+| In a live claim | **21**, of which **19 are Rust source comments**, not markdown; the other 2 are the tombstone README itself |
+
+**The verdict is §6p's verdict, applied to a new class: this is not a backlog.**
+`crates/kasirmu-api/src/lib.rs:119` citing `docs/archived/2026-08-15-unify-auth-and-sync.md` is
+evidence of *where a design came from*, and the file it names is at
+`docs/records/audits/2026-08-15-unify-auth-and-sync.md`. Repointing 19 source comments is a code
+change, not a docs one, and none of them is wrong about the present — they are citations of what
+was. **No markdown live-claim needs a repair**; the single ambiguity is `BUSINESS_PLAN.md`, the one
+target with no counterpart under `docs/records/` (it is at `docs/guides/product/BUSINESS_PLAN.md`
+and was never archived), which only appears inside dated records and is therefore out of scope.
+
+**What this does change:** the tombstone README is the only thing making these paths resolve, so if
+it is ever deleted the class becomes 58 hard 404s at once. That is an argument for keeping the
+tombstone, not for touching 33 files. `scripts/generate-records-index.mjs:408` already records the
+same conclusion in a comment beside its now-empty `scattered` list.
+
 ## 9. B5 (NEW, 2026-10-02) — the worst E4 violation, measured, **not** actioned
 
 `0.0.36-backlog.md` surfaced in §1.1's own audit: **4,560 lines / 294 KB**, the largest file in the

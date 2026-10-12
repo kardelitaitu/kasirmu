@@ -386,6 +386,44 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 - If the audit was not completed (blocked or ambiguous with no user answer), do not stamp.
 - If a stamp already exists, compute `git diff <last-date> -- <path>` and mention what changed in the report.
 
+
+### The footer must be the LAST non-empty line — check it, do not assume it
+
+A `> last audited` line that is not at end-of-file makes everything appended after it
+**invisible** to the two tools that read that line: `detect.sh` Checks 9/10
+(`skill-drift-guard`) and `.agents/skills/docs-auditor/scripts/check-audit-stamps.py`.
+Both take the footer as the document's freshness signal, so an addendum parked below it is
+read as if it did not exist — the same class as an unversioned backfill block, one level
+down. Found 2026-10-11 during the oldest-markdown campaign in two distinct shapes:
+
+* **Footer placed early, body after it.** `docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`
+  carried its footer at line 18, directly under the header blockquote and *above* the entire
+  body — so the machine-read date described a document that had not been written yet at that
+  point. A 192-line gap.
+* **Addendum appended below the footer.** `docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md`
+  had a 2026-10-04 section added under a 29-09-26 footer. A 224-line gap. Same pattern in
+  `docs/decisions/2026-07-10-crdt-delta-ledger-offline-sync.md` (17), `docs/decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (7),
+  `docs/guides/developer/admin-guide.md` (9) and `docs/guides/product/SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS.md` (10).
+
+Both are repaired by MOVING the footer to the true end of file, never by deleting the
+appended content — the content is usually the newest and most correct part.
+
+Re-derive the whole class with this one-liner (prints `file:line  N` for each doc whose
+footer has N non-empty, non-blockquote-continuation lines after it):
+
+```bash
+git ls-files '*.md' | while read -r f; do
+  awk '/^> last audited /{n=NR} {if(NR>n && $0 !~ /^[[:space:]]*>/ && $0 !~ /^[[:space:]]*$/) c++} END{if(c) print FILENAME ":" n "  " c}' "$f"
+done
+```
+
+Measured 2026-10-11: 29 tracked `.md` files have *something* after their footer; 12 of those
+are benign (only `>`-continuation lines, i.e. the footer is a multi-line blockquote), and
+**9 live docs** carry real stranded content. Exempt dated records (`.agents/`, `todo-`,
+`done-`, `plan-`) — a plan appending after a footer is a plan. Do not exempt `docs/`.
+
+---
+
 ## 14. Operational Guidelines
 
 - Run the entire audit synchronously and immediately in the current chat turn — never schedule it for later.

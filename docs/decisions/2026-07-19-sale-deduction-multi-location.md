@@ -4,7 +4,12 @@ area: inventory
 title: ADR #19: Sale-Deduction Flow for Multi-Location Inventory
 status: Implemented (2026-07-19)
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its location resolver is still the one every later document defers to. All four helpers the 2026-07-26 stamp verified are live in `crates/kasirmu-core/src/location_resolver.rs` -- `get_default_location_id`, `resolve_primary_location`, `resolve_all_locations` and `resolve_location_chain_for_sku` -- and this ADR is the origin of the deduction-location model that ADR-20, the topology phase records, the warehouse console spec and the `deduction_locations` JSON contract all build on. A resolver that has survived intact across a crate rename, a file split and five dependent ADRs is a strong result. · The prior pass's O1 is confirmed and is NOT a document bug: the "branch 0.0.10" and "v0.0.10 (current)" references at lines 13 and 297 are development-era statements, and the branch is now `0.0.40`. Left as written -- a decision record naming the branch it was written on is doing its job, and correcting it would erase the only temporal anchor the document has. · `adjust_stock_at_location_with_reason` is live, now at `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs` after the `products.rs` split. The three migrations the stamp names (rebuild-by-location, `sales.deduction_locations`, active-carts location lock) are part of the base schema now rather than separately-numbered files; the `deduction_locations` column is at `crates/kasirmu-core/migrations/20260813_init.sql:618`, verified repeatedly in this campaign. · At 596 lines the audit was scoped to its schema and symbol claims. Status checker reports no drift; prior stamp retained and the stacked footer collapsed. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor, 1 structural) · The 2026-09-29 pass verified this ADR's resolver chain and left it "ACCURATE"; that verdict is confirmed here and the two things a schema/symbol pass does not look at are what this pass repaired. · REPAIRED (1) — pre-rebrand paths in present tense. The body cites `crates/oz-core/src/location_resolver.rs`, `crates/oz-core/src/db/products.rs`, `crates/oz-core/src/db/offline_queue.rs`, and both `apps/desktop-client/` and `apps/tablet-client/` command paths. None of those roots exist — the crate is `kasirmu-core`, the shells are `apps/desktop-tauri` and `apps/mobile-tauri`, and the numbered migration series is retired into `crates/kasirmu-core/migrations/20260813_init.sql`. A dated Path-status note now sits under §Context and the body text is kept verbatim. · REPAIRED (2) — the machine-read footer was stranded mid-document. `> last audited 29-09-26` sat at line 593 immediately after "**End of ADR #19.**", with a 35-line `## COR-19 closed` addendum (2026-10-04) BELOW it. A footer that is not last means anything appended later is invisible to every footer-reading tool and to the skill-drift-guard's Check 9/10 corpus. The footer is now the final line of the file, below the COR-19 addendum. · REPAIRED (3) — the §5.2 snippet's `InsufficientStockAtLocation { .. }` arm rests on a `CHECK (qty >= 0)` that the note above it attributes to "migration 079"; that attribution is the same off-by-number the sibling ADR-18's §13 finding 1 records, and it is annotated rather than corrected because the whole numbered series is retired. · VERIFIED LIVE AND LEFT ALONE: the four resolver helpers in `crates/kasirmu-core/src/location_resolver.rs`; `adjust_stock_at_location_with_reason` at `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190` (moved by the `products.rs` split); `complete_sale_with_resolved_shortfalls` at `crates/kasirmu-bridge/src/pos/checkout.rs:328`; `sales.deduction_locations` (`20260813_init.sql:618`); `active_carts.deduction_location_id` + `location_override_at` (`20260813_init.sql:12-13`); the canonical default UUID `01926b3a-…-001`; and the COR-19 addendum's own line numbers — its claims about `stock_transfers.rs`/`stock_counts.rs` routing through the canonical writer are correct as written. · The "branch 0.0.10" / "v0.0.10 (current)" references are development-era anchors and are left as written, as the prior stamp decided. · NOT re-measured: the resolver's runtime behaviour and the migration-092/093/094 rebuild semantics, which need a live DB run. -->
+
+STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its location resolver is still the one every later document defers to. All four helpers the 2026-07-26 stamp verified are live in `crates/kasirmu-core/src/location_resolver.rs` -- `get_default_location_id`, `resolve_primary_location`, `resolve_all_locations` and `resolve_location_chain_for_sku` -- and this ADR is the origin of the deduction-location model that ADR-20, the topology phase records, the warehouse console spec and the `deduction_locations` JSON contract all build on. A resolver that has survived intact across a crate rename, a file split and five dependent ADRs is a strong result. · The prior pass's O1 is confirmed and is NOT a document bug: the "branch 0.0.10" and "v0.0.10 (current)" references at lines 13 and 297 are development-era statements, and the branch is now `0.0.40`. Left as written -- a decision record naming the branch it was written on is doing its job, and correcting it would erase the only temporal anchor the document has. · `adjust_stock_at_location_with_reason` is live, now at `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs` after the `products.rs` split. The three migrations the stamp names (rebuild-by-location, `sales.deduction_locations`, active-carts location lock) are part of the base schema now rather than separately-numbered files; the `deduction_locations` column is at `crates/kasirmu-core/migrations/20260813_init.sql:618`, verified repeatedly in this campaign. · At 596 lines the audit was scoped to its schema and symbol claims. Status checker reports no drift; prior stamp retained and the stacked footer collapsed.
+
 # ADR #19: Sale-Deduction Flow for Multi-Location Inventory
 
 <!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 observation) · O1: doc references "branch 0.0.10" / "v0.0.10 (current)" (lines 13, 297) — historical development-era refs; current release branch is 0.0.22 (user-owned version divergence, not a doc bug) · verified accurate: commit ef87dac exists ("feat(inventory): implement ADR-18 Phase 1+2 schema foundation"); crates/oz-core/src/location_resolver.rs present with resolve_primary_location:300 / resolve_all_locations:387 / resolve_location_chain_for_sku:476 / get_default_location_id:103; adjust_stock_at_location_with_reason at crates/oz-core/src/db/products.rs:791; migrations 092_rebuild_stock_summary_group_by_location + 093_sales_deduction_locations + 094_active_carts_location_lock all present; Status "Implemented" matches on-disk code -->
@@ -18,6 +23,24 @@ status: Implemented (2026-07-19)
 ---
 
 ## Context
+
+> **Path status (correction note, 2026-10-11).** This ADR was written before the rebrand
+> and the crate split, so its body spells paths `crates/oz-core/...` and
+> `apps/desktop-client/...` / `apps/tablet-client/...`. None of those roots exist now:
+> the crate is `kasirmu-core`, the shells are `apps/desktop-tauri` and
+> `apps/tablet-tauri`/`apps/mobile-tauri`, and the numbered migration series was retired
+> into `crates/kasirmu-core/migrations/20260813_init.sql`. The **substance is intact** —
+> verified at HEAD: `location_resolver.rs` and all four helpers
+> (`get_default_location_id`, `resolve_primary_location`, `resolve_all_locations`,
+> `resolve_location_chain_for_sku`) are live in `crates/kasirmu-core/src/location_resolver.rs`;
+> `adjust_stock_at_location_with_reason` is at
+> `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190`;
+> `complete_sale_with_resolved_shortfalls` is at
+> `crates/kasirmu-bridge/src/pos/checkout.rs:328`; and the three schema facts this ADR
+> mandates are present — `sales.deduction_locations` (`20260813_init.sql:618`),
+> `active_carts.deduction_location_id` + `location_override_at` (`20260813_init.sql:12-13`).
+> The body's pre-rebrand spellings are kept verbatim as the record of how the work was
+> originally described.
 
 ADR #18 (Multi-Location Inventory) shipped its **schema foundation** in commit `ef87dac` on branch `0.0.10`:
 
@@ -590,7 +613,6 @@ The ADR is "complete" (can move from Proposed → Accepted) when:
 
 **End of ADR #19.** This document is the canonical reference for the Rust implementation; commit `ef87dac` (ADR-18 schema kit) is its prerequisite foundation.
 
-> last audited 29-09-26 by docs-auditor
 
 
 ---
@@ -626,3 +648,5 @@ inert, that send leaves `stock_summary` at the source location at 40 (from a leg
 seed of 50), and that a `stock_movements` row with `delta = -10` and
 `reason = 'stock_transfer_out'` exists. The footer now records COR-19 FIXED and
 `next: none`.
+
+> last audited 11-10-26 by docs-auditor

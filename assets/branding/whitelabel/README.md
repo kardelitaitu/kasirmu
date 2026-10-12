@@ -1,4 +1,10 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Fresh full audit against branch 0.0.41; the 2026-07-24 Hermes-Agent stamp (79 days old, the stalest in this batch) is merged below as original evidence. · EVERY CLAIM VERIFIED: the `example-tenant/` template holds exactly the documented shape — `manifest.json` + `README.md` + the four subdirectories `vector/`, `web/`, `desktop/`, `hardware/`, each carrying only a `.gitkeep` and no sample assets, which is precisely what the template is for; the `Copy-Item -Recurse assets/branding/whitelabel/example-tenant` source path in step 1 resolves; step 4's `powershell -File scripts/sync-branding.ps1 -Brand <your-tenant-id>` matches the script's real interface (`param([string]$Brand = "default", [switch]$DryRun)`, `scripts/sync-branding.ps1:21-24`); the three real brand directories this page points at (`default`, `acme-tenant`, `beta-retail`) all exist and are tracked. · One thing worth stating because a reader could mis-infer it: the sibling brands `acme-tenant` and `beta-retail` are NOT copies of this template — they are materialised brands with real binary assets under git, whereas `whitelabel/example-tenant` is the placeholder-only reference. This page already says so ("serves as a reference for the expected structure"); verified rather than repaired. · NOT re-measured: the sync script's end-to-end behaviour (no pwsh run this pass). -->
 <!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, template-doc verified) · example-tenant/ has all 4 subdirs (vector/web/desktop/hardware) + manifest.json + README.md matching documented layout; Copy-Item source path correct; sync-branding.ps1 accepts -Brand (param line 22) and -DryRun -->
+
+> **STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:**
+>
+> `<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, template-doc verified) · example-tenant/ has all 4 subdirs (vector/web/desktop/hardware) + manifest.json + README.md matching documented layout; Copy-Item source path correct; sync-branding.ps1 accepts -Brand (param line 22) and -DryRun -->`
+
 
 # Whitelabel Tenant Templates
 
@@ -42,4 +48,4 @@ whitelabel/
 
 Each tenant brand folder under `assets/branding/` follows the exact same structure.
 
-> last audited 24-07-26 by Hermes-Agent
+> last audited 11-10-26 by docs-auditor

@@ -1,6 +1,11 @@
-<!-- Superseded audit marker (2026-07-22 · Hermes-Agent, body kept verbatim) · retained · status: ACCURATE (1 minor note) · DONE card matches code: apps/desktop-client/src/lan_server.rs defaults to "127.0.0.1:9180" (line 190) with configurable bind_addr (line 114); PSK handshake present (HelloMsg{psk}, PSK_HANDSHAKE_TIMEOUT_SECS=5, psk: Option<Arc<String>>, lines 48-94); tests for loopback-default + external-rejected + psk paths exist. Minor: card references Settings::get_lan_server_bind/set_lan_server_bind in db/settings.rs/settings.rs, which don't exist by that name — bind is read via LanServerConfig/bind_addr instead; narrative otherwise accurate · closed by commit 2026-07-23 per card -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 5 minor) · Fresh full audit; the 2026-09-29 stamp and the 2026-07-22 Hermes marker below are merged as original evidence. · MAJOR (the spec's own API does not exist): the card names a settings key `lan_server_bind` and a pair of helpers `Settings::get_lan_server_bind` / `set_lan_server_bind` as the interface to build. **Neither exists and neither was built.** The shipped key is `lan_server.bind`, read as a raw `kasirmu_core::Settings::get(&db, "lan_server.bind")` and paired with the typed PSK accessors `get_lan_server_psk`/`set_lan_server_psk` in `platform/core/src/settings/typed.rs`. The 2026-07-22 Hermes marker had already noted the helper names were wrong; that note was never propagated into the body, so the card still taught the wrong key to anyone who read it as an interface — the `docs/specs/` failure mode where a plausible-looking name survives because nothing re-derives it. Corrected in all four places (Acceptance, Plan steps 1-2, References). · MINOR 1-3 (pre-rebrand paths, dead): `apps/desktop-client/src/lan_server.rs` in the Summary, the Baseline snippet and the References. The directory does not exist; the implementation is `crates/kasirmu-lan/src/lib.rs`, re-exported by a 10-line shim at `apps/desktop-tauri/src/lan_server.rs`. · MINOR 4 (the security design moved past this card, in the safe direction): the card's plan specifies a plaintext first-message PSK handshake over an otherwise-cleartext channel, and its Risks section lists "Plaintext PSK transmission" as accepted for this card with TLS deferred. What actually shipped is stronger and this card never records it: `crates/kasirmu-lan` implements a `Noise_XXpsk3_25519_ChaChaPoly_SHA256` handshake (`noise-psk-v1`) in which the PSK never crosses the wire, keeps the legacy cleartext `{"op":"hello","psk":...}` path as `legacy-psk-v1` for old KDS peers, and uses a constant-time PSK compare (DC-1). A reader auditing the LAN surface from this card alone would conclude the PSK still travels in the clear. Recorded as a note; the risk entry is left as the card's own accepted position. · MINOR 5 (stale package names in runnable blocks): `cargo test -p oz-pos-app` in Verification, and the two grep paths in the Plan/Verification blocks still aimed at the pre-rebrand tree. Annotated. · VERIFIED AND LEFT ALONE, because the card's core claims are TRUE: the loopback default is real (`crates/kasirmu-lan/src/lib.rs:536` `Self::new("127.0.0.1:9180", None)`), the "0.0.0.0 refused without a non-empty PSK" rule is enforced at the call site with a loud fallback to loopback (`apps/desktop-tauri/src/lib.rs:961-999`, `tracing::warn!` on refusal), and the typed PSK getter really is decrypt-or-passthrough rather than a fail-closed guarantee — the code says so itself at `lib.rs:969-978`, which is exactly the honesty this card's Acceptance criterion asked for. The 2026-07-22 marker's line numbers (:190 bind default, :114 bind_addr, :48-94 PSK handshake) are pre-relocation coordinates and are superseded by the crate move, not by a behaviour change. · NOT re-measured: whether LAN encryption is enabled on the current default configuration, and the Noise handshake's cryptographic properties (that is the crate's own audit surface, not a documentation claim). · Prior marker retained; footer re-dated. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 173 lines, with a prior marker re-verified rather than replaced. It belongs to the numbered C-series in this directory, which — as the money-closure spec audited in the same round records — is a set of audit-CLOSURE specifications rather than a work backlog. That framing matters here, because a closure document that reads like an open plan will send a reader looking for work that is already done. · THE SUBJECT IS AT REST ENCRYPTION FOR THE LOCAL NETWORK SURFACE, and the substrate is present in a form this campaign has verified from several other documents: a dedicated crypto crate exists in the workspace with its own test file, and the same crate is the one that reads the master-key variable the root guide describes. The encryption this specification calls for is therefore not aspirational — it has a home, and the sibling spec audited alongside it in this same round concerns the other half of the same problem, the licence key rather than the database. · THE PAIRING IS THE USEFUL THING TO RECORD. Two closure documents, one about a database file and one about a credential, both closing plaintext-at-rest findings, both landing in the same crypto crate. A reader auditing either one is better served knowing the other exists, because a partial fix that encrypts the database but leaves the licence key in the settings table would satisfy one of these documents and not the other. That is exactly the failure the sibling's prior audit caught. · NOT re-measured: whether LAN-mode encryption is enabled on the current default configuration, or the key-derivation parameters in use. Those are the document's own content and would need the running application to exercise. What is established is that the primitive both documents rely on exists in the workspace. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
+> **STAMP MERGED INTO THIS ONE (2026-10-11)** — superseded bodies kept verbatim as original evidence:
+>
+> <!-- Superseded audit marker (2026-07-22 · Hermes-Agent, body kept verbatim) · retained · status: ACCURATE (1 minor note) · DONE card matches code: apps/desktop-client/src/lan_server.rs defaults to "127.0.0.1:9180" (line 190) with configurable bind_addr (line 114); PSK handshake present (HelloMsg{psk}, PSK_HANDSHAKE_TIMEOUT_SECS=5, psk: Option<Arc<String>>, lines 48-94); tests for loopback-default + external-rejected + psk paths exist. Minor: card references Settings::get_lan_server_bind/set_lan_server_bind in db/settings.rs/settings.rs, which don't exist by that name — bind is read via LanServerConfig/bind_addr instead; narrative otherwise accurate · closed by commit 2026-07-23 per card -->
+> 
+> <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 173 lines, with a prior marker re-verified rather than replaced. It belongs to the numbered C-series in this directory, which — as the money-closure spec audited in the same round records — is a set of audit-CLOSURE specifications rather than a work backlog. That framing matters here, because a closure document that reads like an open plan will send a reader looking for work that is already done. · THE SUBJECT IS AT REST ENCRYPTION FOR THE LOCAL NETWORK SURFACE, and the substrate is present in a form this campaign has verified from several other documents: a dedicated crypto crate exists in the workspace with its own test file, and the same crate is the one that reads the master-key variable the root guide describes. The encryption this specification calls for is therefore not aspirational — it has a home, and the sibling spec audited alongside it in this same round concerns the other half of the same problem, the licence key rather than the database. · THE PAIRING IS THE USEFUL THING TO RECORD. Two closure documents, one about a database file and one about a credential, both closing plaintext-at-rest findings, both landing in the same crypto crate. A reader auditing either one is better served knowing the other exists, because a partial fix that encrypts the database but leaves the licence key in the settings table would satisfy one of these documents and not the other. That is exactly the failure the sibling's prior audit caught. · NOT re-measured: whether LAN-mode encryption is enabled on the current default configuration, or the key-derivation parameters in use. Those are the document's own content and would need the running application to exercise. What is established is that the primitive both documents rely on exists in the workspace. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
+
 # C-4 — LAN event server: default-bind to loopback, add PSK for opt-in KDS bridge
 
 - **Status:** DONE
@@ -14,7 +19,7 @@
 
 ## Summary
 
-`apps/desktop-client/src/lan_server.rs` binds the LAN event server
+`apps/desktop-client/src/lan_server.rs` (pre-rebrand path; the implementation is `crates/kasirmu-lan/` today, re-exported by `apps/desktop-tauri/src/lan_server.rs`) binds the LAN event server
 to `0.0.0.0:9180` in plaintext, with no TLS, no shared-secret
 handshake, and no IP allowlist. Any device on the corporate LAN can
 subscribe to `sale.completed` and `order.course_fired` events
@@ -25,7 +30,7 @@ pre-shared-key (PSK) handshake for the opt-in KDS bridge mode.
 ## Baseline (pre-fix)
 
 ```rust
-// apps/desktop-client/src/lan_server.rs:56, 95-110
+// apps/desktop-client/src/lan_server.rs:56, 95-110   (pre-rebrand path — dead; impl is crates/kasirmu-lan/)
 let listener = TcpListener::bind("0.0.0.0:9180").await?;
 // ... newline-delimited JSON, no TLS, no handshake, no allowlist
 ```
@@ -41,7 +46,7 @@ also drown the offline buffer.
 
 - [ ] TCP listener binds to `127.0.0.1:9180` by default
 - [ ] `0.0.0.0` bind requires an explicit opt-in (e.g.,
-      `lan_server_bind: "0.0.0.0"` setting in the SQLite settings
+      `lan_server.bind: "0.0.0.0"` setting in the SQLite settings
       table) and the operator has documented justification
 - [ ] When `0.0.0.0` bind is enabled, the server requires a
       pre-shared key (PSK) handshake on the first message before
@@ -68,14 +73,19 @@ also drown the offline buffer.
 
 ## Plan (proposed)
 
-1. **Add a `lan_server_bind` setting** in the SQLite settings table
+1. **Add a `lan_server.bind` setting** in the SQLite settings table  (corrected 2026-10-11: the shipped key is `lan_server.bind`, read via `kasirmu_core::Settings::get(&db, "lan_server.bind")`; there is no `lan_server_bind` and never was)
    with default value `"127.0.0.1"`. Reject `"0.0.0.0"` unless the
    `lan_server_psk` setting is also present and non-empty.
 2. **Read the bind address from settings** in
    `lan_server::start()` instead of hardcoding `"0.0.0.0:9180"`:
    ```rust
-   let bind = oz_core::Settings::get_lan_server_bind(&conn)
-       .unwrap_or_else(|_| "127.0.0.1".into());
+   // SHIPPED SHAPE (the sketch below named a getter that does not exist):
+   //   kasirmu_core::Settings::get(&db, "lan_server.bind")   // raw key read
+   //   platform_core::settings::Settings::get_lan_server_psk(&db)  // typed, decrypt-or-passthrough
+   let bind = kasirmu_core::Settings::get(&conn, "lan_server.bind")
+       .ok()
+       .flatten()
+       .unwrap_or_else(|| "127.0.0.1".into());
    let listener = TcpListener::bind(format!("{bind}:9180")).await?;
    ```
 3. **Add a PSK handshake** in the connection accept loop:
@@ -91,6 +101,13 @@ also drown the offline buffer.
    `keyring` crate is already in the dependency tree (C-5's
    work). Otherwise, store it in the settings table with a
    `// SECURITY: move to OS credential store in C-5` marker.
+   **What shipped differs: there is no `keyring` crate, and the PSK is
+   stored in the settings table encrypted at rest through the typed
+   accessors** (`set_lan_server_psk` / `get_lan_server_psk`,
+   `platform/core/src/settings/typed.rs`). The getter is deliberately
+   decrypt-or-passthrough, so a plaintext PSK saved before that change still
+   reads back as plaintext — the typed setter is the at-rest measure, not a
+   guarantee the stored value is ciphertext.
 5. **Add unit tests** in `lan_server.rs`:
    - `lan_server_loopback_default` — server starts on
      `127.0.0.1:9180` and a `TcpStream::connect("127.0.0.1:9180")`
@@ -111,11 +128,11 @@ also drown the offline buffer.
 
 ```bash
 # 1. Default-bind is 127.0.0.1
-grep -A2 'lan_server_bind' apps/desktop-client/src/lan_server.rs
+grep -A2 'lan_server.bind' apps/desktop-tauri/src/lib.rs   # the settings read moved to the shell
 # expect: "127.0.0.1" (or via settings table)
 
 # 2. Tests pass
-cargo test -p oz-pos-app --lib --features test
+cargo test -p oz-pos-app --lib --features test   # pre-rebrand package name; unresolvable today
 # expect: 4 new tests in lan_server pass
 
 # 3. Lint + fmt clean
@@ -128,7 +145,7 @@ cargo fmt --all -- --check
 # — expect: connection closed within 1s, tracing::warn! emitted
 
 # 5. Audit grep §10 line 4 returns the new bind config
-grep -rn 'TcpListener::bind' apps/desktop-tauri/src/
+grep -rn 'TcpListener::bind' crates/kasirmu-lan/src/
 # expect: "127.0.0.1:9180" (or via settings table)
 ```
 
@@ -165,10 +182,13 @@ grep -rn 'TcpListener::bind' apps/desktop-tauri/src/
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §2 C-4
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §6 X-2 (epic)
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §7 release-blocker list
-- `apps/desktop-client/src/lan_server.rs:56, 95-110`
-- `crates/kasirmu-core/src/settings.rs` (where the `lan_server_bind`
-  setting will live)
+- `apps/desktop-client/src/lan_server.rs:56, 95-110` — **pre-rebrand path (dead); the impl is `crates/kasirmu-lan/src/lib.rs`, re-exported by `apps/desktop-tauri/src/lan_server.rs`**
+- `crates/kasirmu-core/src/settings.rs` (where the `lan_server.bind`
+  setting lives)
 - `crates/kasirmu-core/src/db/settings.rs` (`Settings::get_lan_server_bind`
-  and `Settings::set_lan_server_bind` to be added)
+  and `Settings::set_lan_server_bind` to be added) — **these helpers do not
+  exist and were never added; the shipped reads are a raw
+  `Settings::get(&db, "lan_server.bind")` plus the typed PSK accessors in
+  `platform/core/src/settings/typed.rs`**
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
