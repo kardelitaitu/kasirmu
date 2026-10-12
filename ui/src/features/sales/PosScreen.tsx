@@ -1479,8 +1479,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       )}
 
       {/* ── Restaurant Portrait: Floating Cart Bar & Bottom Sheet Drawer ── */}
+      {/* Crash isolation (F9). Portrait — the TABLET form factor — is where the
+          restaurant actually runs, and these two are the cashier's ONLY route to the
+          cart there: the bar opens the sheet, and the sheet is where the sale is
+          edited. Unwrapped, a throw in either unmounted the whole POS screen and took
+          the cart with it mid-sale, which is the F9 failure. They were missed by
+          restaurantPosCrashIsolation.test.ts because neither name ends in `Screen` or
+          `Modal` — the shape every other guarded entry happens to have. Both are now
+          listed there, so removing a boundary fails that guard. */}
       {isPortraitRestaurant && (
-        <>
+        <LocalizedErrorBoundary resetKeys={[String(lines.length), activeWorkspace]}>
           <RestaurantFloatingCartBar
             lines={lines}
             total={total}
@@ -1492,12 +1500,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             onClose={() => setCartSheetOpen(false)}
             tableNumber={tableNumber}
           >
-            <CartPanel
-              {...cartPanelProps}
-              hidden={false}
-            />
+            <LocalizedErrorBoundary resetKeys={[String(lines.length)]}>
+              <CartPanel
+                {...cartPanelProps}
+                hidden={false}
+              />
+            </LocalizedErrorBoundary>
           </RestaurantCartSheet>
-        </>
+        </LocalizedErrorBoundary>
       )}
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
