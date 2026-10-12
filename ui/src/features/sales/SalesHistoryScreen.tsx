@@ -687,7 +687,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       load();
       setShowStampModal(false);
       addToast({
-        message: 'e-Faktur NSFP successfully stamped',
+        message: requiredLocalized(l10n, 'sales-history-nsfp-stamped'),
         type: 'success',
       });
     } catch (err) {
@@ -711,7 +711,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       invalidateCache(detail.id);
       load();
       addToast({
-        message: `Faktur Pengganti created (${updated.formatted})`,
+        message: l10n.getString('sales-history-pengganti-created', { number: updated.formatted ?? '' }),
         type: 'success',
       });
     } catch (err) {
@@ -741,12 +741,12 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       invalidateCache(detail.id);
       load();
       addToast({
-        message: `Statutory Tax Invoice issued: ${invNumber}`,
+        message: l10n.getString('sales-history-statutory-issued', { number: invNumber }),
         type: 'success',
       });
     } catch (err) {
       addToast({
-        message: plainErrorMessage(err, 'Failed to issue statutory tax invoice'),
+        message: plainErrorMessage(err, l10n.getString('sales-history-statutory-issue-failed')),
         type: 'error',
       });
     } finally {

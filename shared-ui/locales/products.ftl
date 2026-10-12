@@ -614,6 +614,11 @@ restaurant-payment-connection = Connection
 restaurant-payment-qr-mode = QR Mode
 restaurant-payment-qr-payload = Static QR payload (EMVCo string)
 restaurant-payment-midtrans-env = Midtrans Environment
+# The Midtrans twin of restaurant-payment-stripe-keys-valid/-missing below. Named to
+# mirror them: this screen's credential checks are one pattern applied per provider,
+# and the Midtrans pair was the one that never got keys.
+restaurant-payment-midtrans-keys-valid = Midtrans keys format valid ({ $env })
+restaurant-payment-midtrans-keys-missing = Please enter Client Key and Server Key
 restaurant-payment-stripe-mode = Stripe Mode
 restaurant-payment-custom-code = Payment method code is required
 restaurant-payment-custom-code-example = e.g. ovo, shopeepay, voucher

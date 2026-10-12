@@ -1434,9 +1434,14 @@ export function RestaurantPaymentsScreen({
                       onClick={() => {
                         const isConfigured = Boolean(midtransClientKey && midtransServerKey);
                         addToast({
+                          // Mirrors the Stripe branch just below, which was already
+                          // localized: this screen's credential checks are one pattern
+                          // applied per provider, and only Midtrans was left as literals.
                           message: isConfigured
-                            ? `Midtrans credentials format verified (${midtransEnv.toUpperCase()})`
-                            : 'Please enter Client Key and Server Key',
+                            ? l10n.getString('restaurant-payment-midtrans-keys-valid', {
+                                env: midtransEnv.toUpperCase(),
+                              })
+                            : l10n.getString('restaurant-payment-midtrans-keys-missing'),
                           type: isConfigured ? 'success' : 'warning',
                         });
                       }}

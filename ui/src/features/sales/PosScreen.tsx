@@ -744,7 +744,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     if (activeOpenBillId) {
       void releaseLease(activeOpenBillId);
       deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {
-        addToast({ message: 'Failed to delete held cart', type: 'error' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-held-cart-delete-failed'), type: 'error' });
       });
       setActiveOpenBillId(null);
       loadOpenBills();
@@ -813,7 +813,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const handlePrintBill = useCallback(async () => {
     if (lines.length === 0 || !total) return;
     if (!sessionToken) {
-      addToast({ message: 'Authentication required to print bill', type: 'error' });
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'error' });
       return;
     }
     // ⚠️ DINE-IN ONLY — the NINTH site of this rule. Same derivation as the saved-tab
@@ -911,7 +911,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           setActiveOpenBillId(null);
           loadOpenBills();
         } catch {
-          addToast({ message: 'Failed to update remaining tab balance', type: 'error' });
+          addToast({ message: requiredLocalized(l10n, 'pos-toast-tab-balance-failed'), type: 'error' });
         }
       }
       setLines(selectedLines);
@@ -1288,15 +1288,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   const handleOpenCashDrawer = useCallback(async () => {
     if (!sessionToken) {
-      addToast({ message: 'Authentication required to open cash drawer', type: 'error' });
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'error' });
       return;
     }
     try {
       const res = await openCashDrawerScoped(sessionToken);
       if (res && res.opened !== false) {
-        addToast({ message: 'Cash drawer opened', type: 'success' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-drawer-opened'), type: 'success' });
       } else {
-        addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-drawer-unconfirmed'), type: 'warning' });
       }
     } catch (err) {
       addToast({
@@ -1330,12 +1330,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         } catch { /* ignore */ }
       }
       if (!prod) {
-        addToast({ message: 'Product details not found', type: 'error' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-product-not-found'), type: 'error' });
         return;
       }
       const groups = getProductModifierGroups(prod);
       if (groups.length === 0) {
-        addToast({ message: 'No modifiers configured for this item', type: 'info' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-no-modifiers'), type: 'info' });
         return;
       }
       setEditingCartLine(line);
