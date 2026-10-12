@@ -1358,6 +1358,16 @@ const SCREENS: ScreenEntry[] = [
     css: ['sales/components/ItemModifierModal.css'],
   },
   {
+    // Split Bill by Item (the pre-bill / table-transfer / split-bill feature).
+    // Landed with its .css and .tsx but WITHOUT this entry, so the sheet sat
+    // uncited — the "a new stylesheet may not join a shrink-only list" case the
+    // uncited-sheet case names. Authored here rather than added to
+    // BASELINE_UNCITED, which is for a sheet nobody has read.
+    name: 'SplitBillModal',
+    tsx: 'sales/components/SplitBillModal.tsx',
+    css: ['sales/components/SplitBillModal.css'],
+  },
+  {
     name: 'PosScreen',
     tsx: 'sales/PosScreen.tsx',
     // The fence of this measurement is the screen's own import block:

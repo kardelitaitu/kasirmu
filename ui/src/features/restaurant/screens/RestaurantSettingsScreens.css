@@ -200,15 +200,6 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.restaurant-preview-title {
-  font-size: var(--text-base);
-  font-weight: 600;
-  color: var(--color-fg);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .restaurant-preview-tabs {
   display: flex;
   align-items: center;
@@ -306,6 +297,24 @@
 .resto-receipt-kot-qty {
   min-width: 1.5rem;
   font-weight: bold;
+}
+
+/* The item's name, the flex partner of .resto-receipt-kot-qty above. Present in
+   the markup since the KOT preview was added but never given a rule — the only
+   two classes in that preview that were not, so it fell back to the flex default
+   and could not shrink. `min-width: 0` is what lets a long name ellipsize
+   instead of pushing the qty column out of the 58mm preview width. */
+.resto-receipt-kot-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+/* Extra class on the centred KOT header block (it also carries
+   .resto-receipt-center). Exists so the header's own spacing can be tuned
+   without touching the shared centring utility. */
+.resto-receipt-kot-header {
+  margin-bottom: var(--space-1);
 }
 
 .resto-receipt-kot-note {

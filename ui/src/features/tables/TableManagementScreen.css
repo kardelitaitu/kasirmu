@@ -532,11 +532,6 @@
   border-radius: var(--radius-lg);
 }
 
-.tables-table--booth {
-  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-sm);
-  border-top-width: 4px;
-}
-
 .tables-table--arranging {
   cursor: grab !important;
   touch-action: none;
