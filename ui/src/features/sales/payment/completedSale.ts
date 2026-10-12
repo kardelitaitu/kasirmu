@@ -24,9 +24,10 @@
  * default. A third caller has to state its tenders; it cannot inherit one
  * site's answer by accident.
  */
-import type { CartLine, Money } from '@/types/domain';
+import { courseLabel, type CartLine, type Money } from '@/types/domain';
 import type { PaymentDto, PrintSalesReceiptArgs, SaleDetail } from '@/api/sales';
 import type { ActiveMarketProfile } from '@/api/regional';
+import { bareTableNumber } from '../utils/tableLabel';
 
 export interface CompletedSaleReceiptInput {
   /** `saleResult.saleId` — keys the receipt number. */
@@ -232,6 +233,57 @@ export function buildPreCheckoutBillReceipt({
     ...(customerName ? { customerName } : {}),
     ...(taxIdLabel ? { taxIdLabel } : {}),
     ...(taxRegime ? { taxRegime } : {}),
+  };
+}
+
+export interface KitchenChitReceiptInput {
+  chitNumber?: string;
+  cartLines: CartLine[];
+  cartCurrency: string;
+  tableNumber?: string | undefined;
+  customerName?: string | undefined;
+}
+
+/**
+ * Format a kitchen order ticket (KOT / chit) for food orders sent to the kitchen.
+ * Formats line items with their quantity, modifiers, course indicators, and notes.
+ */
+export function buildKitchenChitReceipt({
+  chitNumber,
+  cartLines,
+  cartCurrency,
+  tableNumber,
+  customerName,
+}: KitchenChitReceiptInput): PrintSalesReceiptArgs {
+  return {
+    date: new Date().toISOString(),
+    receiptNumber: chitNumber ?? `KOT-${bareTableNumber(tableNumber || '') || 'ORDER'}-${Date.now().toString().slice(-4)}`,
+    items: cartLines.map((line) => {
+      let displayName = line.name ?? line.sku;
+      if (line.courseId) {
+        displayName = `[${courseLabel(line.courseId)}] ${displayName}`;
+      }
+      const noteParts: string[] = [];
+      if (line.modifiers && line.modifiers.length > 0) {
+        noteParts.push(line.modifiers.map((m) => m.modifierName).join(', '));
+      }
+      if (line.note?.trim()) {
+        noteParts.push(line.note.trim());
+      }
+      return {
+        name: displayName,
+        quantity: line.qty,
+        unitPrice: { minorUnits: 0, currency: cartCurrency },
+        totalPrice: { minorUnits: 0, currency: cartCurrency },
+        ...(noteParts.length > 0 ? { note: noteParts.join(' | ') } : {}),
+      };
+    }),
+    subtotal: { minorUnits: 0, currency: cartCurrency },
+    total: { minorUnits: 0, currency: cartCurrency },
+    payments: [],
+    ...(tableNumber ? { tableNumber } : {}),
+    ...(customerName ? { customerName } : {}),
+    documentKind: 'receipt',
   };
 }
 

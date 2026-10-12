@@ -565,4 +565,43 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     expect(within(modal).getByText('Nasi Goreng')).toBeDefined();
     expect(within(modal).getByText('Es Teh')).toBeDefined();
   });
+
+  it('renders Send to Kitchen button when hasUndispatchedItems is true and invokes handleSendToKitchen', () => {
+    const handleSendToKitchen = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng')],
+      tableNumber: 'Table 4',
+      subtotal: SUBTOTAL,
+      hasUndispatchedItems: true,
+      handleSendToKitchen,
+    });
+
+    const sendKitchenBtn = screen.getByTestId('pos-cart-send-kitchen-btn');
+    expect(sendKitchenBtn).toBeDefined();
+    fireEvent.click(sendKitchenBtn);
+    expect(handleSendToKitchen).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Send to Kitchen button when hasUndispatchedItems is false', () => {
+    renderPanel({
+      lines: [makeLine('Nasi Goreng')],
+      subtotal: SUBTOTAL,
+      hasUndispatchedItems: false,
+    });
+
+    expect(screen.queryByTestId('pos-cart-send-kitchen-btn')).toBeNull();
+  });
+
+  it('renders line status badges: New when undispatched and Sent when dispatched', () => {
+    const newLine = { ...makeLine('Ayam Bakar'), qty: 2, dispatchedQty: 0 };
+    const sentLine = { ...makeLine('Es Teh'), qty: 1, dispatchedQty: 1 };
+    renderPanel({
+      lines: [newLine, sentLine],
+      subtotal: SUBTOTAL,
+    });
+
+    // In English locale, pos-line-status-new -> "New", pos-line-status-sent -> "Sent"
+    expect(screen.getByText('New')).toBeDefined();
+    expect(screen.getByText('Sent')).toBeDefined();
+  });
 });

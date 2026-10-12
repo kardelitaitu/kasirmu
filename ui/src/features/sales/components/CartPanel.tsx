@@ -320,6 +320,9 @@ export interface CartPanelProps {
   showSplitBillModal?: boolean | undefined;
   setShowSplitBillModal?: Dispatch<SetStateAction<boolean>> | undefined;
   handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void) | undefined;
+  hasUndispatchedItems?: boolean | undefined;
+  sendingToKitchen?: boolean | undefined;
+  handleSendToKitchen?: (() => Promise<void> | void) | undefined;
 }
 
 export function CartPanel({
@@ -427,6 +430,9 @@ export function CartPanel({
   showSplitBillModal,
   setShowSplitBillModal,
   handleConfirmSplitBill,
+  hasUndispatchedItems,
+  sendingToKitchen,
+  handleSendToKitchen,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
   // In the restaurant workspace the cart header's buttons do not live here at
@@ -1066,6 +1072,9 @@ export function CartPanel({
               handlePrintBill={handlePrintBill}
               splitBillEnabled={splitBillEnabled}
               handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
+              hasUndispatchedItems={hasUndispatchedItems}
+              sendingToKitchen={sendingToKitchen}
+              handleSendToKitchen={handleSendToKitchen}
             />
           </CartFooterTotals>
         )}

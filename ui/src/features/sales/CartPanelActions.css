@@ -128,7 +128,8 @@
 /* ── Print Bill & Split Bill buttons ───────────────── */
 
 .pos-cart-print-bill-btn,
-.pos-cart-split-bill-btn {
+.pos-cart-split-bill-btn,
+.pos-cart-send-kitchen-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -145,15 +146,23 @@
   white-space: nowrap;
 }
 
+.pos-cart-send-kitchen-btn {
+  color: var(--color-warning-fg, #b45309);
+  background: var(--color-warning-bg, rgba(245, 158, 11, 0.08));
+  border-color: var(--color-warning-border, rgba(245, 158, 11, 0.3));
+}
+
 .pos-cart-print-bill-btn:hover,
-.pos-cart-split-bill-btn:hover {
+.pos-cart-split-bill-btn:hover,
+.pos-cart-send-kitchen-btn:hover {
   background: var(--color-bg-elevated);
   border-color: var(--color-border-hover);
   color: var(--color-fg);
 }
 
 .pos-cart-print-bill-btn:focus-visible,
-.pos-cart-split-bill-btn:focus-visible {
+.pos-cart-split-bill-btn:focus-visible,
+.pos-cart-send-kitchen-btn:focus-visible {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 

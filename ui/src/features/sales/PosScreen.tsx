@@ -63,7 +63,7 @@ import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
 import { matchesTableBill, bareTableNumber, heldCartLabel } from './utils/tableLabel';
-import { buildPreCheckoutBillReceipt } from './payment/completedSale';
+import { buildPreCheckoutBillReceipt, buildKitchenChitReceipt } from './payment/completedSale';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
@@ -620,6 +620,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   });
 
   // ── Open Bill / held-cart state ──────────────────────────────────
+  const [dispatchOnTabSave, setDispatchOnTabSave] = useState<boolean | null>(null);
+  const [autoPrintKitchen, setAutoPrintKitchen] = useState<boolean | null>(null);
+  const dispatchKitchenDeltaRef = useRef<((deltaLines: CartLine[]) => Promise<void>) | null>(null);
+
   const {
     activeOpenBillId,
     setActiveOpenBillId,
@@ -660,6 +664,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setServiceCharge,
     orderType,
     setOrderType,
+    dispatchOnTabSave,
+    onDispatchKitchen: useCallback(
+      async (deltaLines: CartLine[]) => {
+        if (dispatchKitchenDeltaRef.current) {
+          await dispatchKitchenDeltaRef.current(deltaLines);
+        }
+      },
+      [],
+    ),
   });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
@@ -875,6 +888,104 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     ],
   );
 
+  const [sendingToKitchen, setSendingToKitchen] = useState(false);
+
+  const hasUndispatchedItems = useMemo(
+    () => lines.some((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0),
+    [lines],
+  );
+
+  const handleDispatchKitchenDelta = useCallback(
+    async (deltaLines: CartLine[]) => {
+      if (deltaLines.length === 0 || !sessionToken) return;
+      if (autoPrintKitchen !== false) {
+        const chit = buildKitchenChitReceipt({
+          cartLines: deltaLines,
+          cartCurrency: subtotal?.currency || activeCurrency,
+          tableNumber: tableNumber || undefined,
+          customerName: customerName || undefined,
+        });
+        await printSalesReceipt(sessionToken, chit);
+      }
+    },
+    [sessionToken, autoPrintKitchen, subtotal, activeCurrency, tableNumber, customerName],
+  );
+  dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
+
+  const handleSendToKitchen = useCallback(async () => {
+    if (lines.length === 0 || !sessionToken) return;
+    const deltaLines = lines
+      .filter((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0)
+      .map((l) => ({ ...l, qty: l.qty - (l.dispatchedQty ?? 0) }));
+    if (deltaLines.length === 0) return;
+
+    setSendingToKitchen(true);
+    try {
+      await handleDispatchKitchenDelta(deltaLines);
+      const updatedLines = lines.map((l) => ({ ...l, dispatchedQty: l.qty }));
+      setLines(updatedLines);
+
+      // Persist to open bill if active or table assigned
+      const trimmedTable = (tableNumber ?? '').trim();
+      const trimmedName = (customerName ?? '').trim();
+      const trimmedGuest = (guestCount ?? '').trim();
+      if (activeOpenBillId || trimmedTable) {
+        const cartData = JSON.stringify({
+          lines: updatedLines.map((l) => ({
+            sku: l.sku,
+            name: l.name,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
+            dispatchedQty: l.qty,
+          })),
+          discountPercent,
+          discountLabel,
+          ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+          ...(trimmedName ? { customerName: trimmedName } : {}),
+          ...(trimmedGuest ? { guestCount: trimmedGuest } : {}),
+          ...(typeof tipPercent === 'number' && tipPercent > 0 ? { tipPercent } : {}),
+          ...(typeof serviceChargeEnabled === 'boolean' ? { serviceChargeEnabled } : {}),
+          ...(typeof serviceChargePercent === 'number' && serviceChargePercent > 0 ? { serviceChargePercent } : {}),
+          ...(orderType ? { orderType } : {}),
+        });
+
+        const label = heldCartLabel(trimmedTable, trimmedName) ?? (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
+
+        if (activeOpenBillId) {
+          await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+        }
+
+        const held = await holdCartScoped(sessionToken, {
+          label,
+          cart_data: cartData,
+          item_count: updatedLines.length,
+          total_minor: subtotal?.minor_units ?? 0,
+          currency: subtotal?.currency ?? activeCurrency,
+          bill_type: 'open_bill',
+          customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+        });
+        setActiveOpenBillId(held.id);
+        loadOpenBills();
+      }
+
+      addToast({
+        message: l10n.getString('pos-toast-kitchen-dispatched', { table: tableNumber || 'Order' }) || 'Order sent to kitchen',
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'pos-toast-kitchen-dispatch-failed'),
+        type: 'error',
+      });
+    } finally {
+      setSendingToKitchen(false);
+    }
+  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n]);
+
   // ── Lock: save cart state to localStorage, then logout ───────────
 
   const handleLock = useCallback(() => {
@@ -1014,7 +1125,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen` (settingsModel), so an unset key
   // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
   // what the module's own default says a kitchen expects.
-  const [autoPrintKitchen, setAutoPrintKitchen] = useState<boolean | null>(null);
 
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
@@ -1057,6 +1167,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     void getSettingScoped(sessionToken, 'restaurant.split_bill_by_item')
       .then((raw) => { if (!cancelled) setSplitBillEnabled(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setSplitBillEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.dispatch_on_tab_save')
+      .then((raw) => { if (!cancelled) setDispatchOnTabSave(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setDispatchOnTabSave(null); });
     // F20: the Auto-Print KOT switch. A failed read keeps `null`, which the modal
     // treats as its default (print) — so a settings outage cannot silently stop a
     // kitchen printing tickets, the direction of failure that goes unnoticed.
@@ -1390,6 +1503,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     showSplitBillModal,
     setShowSplitBillModal,
     handleConfirmSplitBill,
+    hasUndispatchedItems,
+    sendingToKitchen,
+    handleSendToKitchen,
   };
   const cartPanelProps: CartPanelProps = {
     ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,

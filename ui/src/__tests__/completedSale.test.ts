@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCompletedSaleReceipt } from '@/features/sales/payment/completedSale';
+import { buildCompletedSaleReceipt, buildKitchenChitReceipt } from '@/features/sales/payment/completedSale';
 import type { CartLine, Money } from '@/types/domain';
 import type { SaleDetail, PaymentDto } from '@/api/sales';
 import type { ActiveMarketProfile } from '@/api/regional';
@@ -220,3 +220,57 @@ describe('buildCompletedSaleReceipt', () => {
     expect(receipt.customerTaxId).toBe('01.234.567.8-901.000');
   });
 });
+
+describe('buildKitchenChitReceipt', () => {
+  it('formats kitchen order ticket with delta items, table number, modifiers, and notes', () => {
+    const lines: CartLine[] = [
+      {
+        ...makeCartLine('Nasi Goreng Spesial', 2, 35000),
+        courseId: 'main',
+        note: 'Pedas level 3, tanpa timun',
+        modifiers: [
+          { modifierId: 'mod-1', modifierName: 'Extra Telur', priceDeltaMinor: 5000 },
+        ],
+      },
+      {
+        ...makeCartLine('Es Teh Manis', 1, 6000),
+        courseId: 'beverage',
+      },
+    ];
+
+    const chit = buildKitchenChitReceipt({
+      chitNumber: 'KOT-12-001',
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: '12',
+      customerName: 'Bpk. Ahmad',
+    });
+
+    expect(chit.receiptNumber).toBe('KOT-12-001');
+    expect(chit.tableNumber).toBe('12');
+    expect(chit.customerName).toBe('Bpk. Ahmad');
+    expect(chit.items).toHaveLength(2);
+
+    expect(chit.items[0].name).toBe('[Main Course] Nasi Goreng Spesial');
+    expect(chit.items[0].quantity).toBe(2);
+    expect(chit.items[0].note).toBe('Extra Telur | Pedas level 3, tanpa timun');
+
+    expect(chit.items[1].name).toBe('[Beverage] Es Teh Manis');
+    expect(chit.items[1].quantity).toBe(1);
+    expect(chit.items[1].note).toBeUndefined();
+  });
+
+  it('generates a fallback receiptNumber when chitNumber is omitted', () => {
+    const lines: CartLine[] = [makeCartLine('Mie Goreng', 1, 25000)];
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: 'Table 5',
+    });
+
+    expect(chit.receiptNumber).toMatch(/^KOT-5-\d+$/);
+    expect(chit.items).toHaveLength(1);
+    expect(chit.items[0].quantity).toBe(1);
+  });
+});
+

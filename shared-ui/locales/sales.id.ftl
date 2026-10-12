@@ -1116,6 +1116,9 @@ pos-split-modal-confirm-pay = Bayar Pilihan ({ $amount })
 pos-split-modal-cancel = Batal
 pos-toast-bill-printed = Bill dicetak untuk { $table }
 pos-toast-bill-print-failed = Gagal mencetak bill
-
-
-
+pos-cart-send-kitchen = Kirim ke Dapur
+pos-cart-send-kitchen-aria = Kirim item baru ke printer dapur dan KDS
+pos-toast-kitchen-dispatched = Pesanan dikirim ke dapur untuk { $table }
+pos-toast-kitchen-dispatch-failed = Gagal mengirim pesanan ke dapur
+pos-line-status-sent = Terkirim
+pos-line-status-new = Baru

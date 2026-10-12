@@ -59,6 +59,8 @@ export interface UsePosHeldCartsParams {
   setServiceCharge?: (enabled: boolean, percent: number) => void;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
   setOrderType?: (orderType: 'dine_in' | 'takeaway' | 'delivery') => void;
+  dispatchOnTabSave?: boolean | null;
+  onDispatchKitchen?: (deltaLines: CartLine[]) => Promise<void>;
 }
 
 /**
@@ -97,6 +99,8 @@ export function usePosHeldCarts({
   setServiceCharge,
   orderType = 'dine_in',
   setOrderType,
+  dispatchOnTabSave,
+  onDispatchKitchen,
 }: UsePosHeldCartsParams) {
   // An open bill is a Restaurant POS concept: `list_open_bills_scoped` — its
   // only reader — refuses every other vertical in the bridge
@@ -176,11 +180,28 @@ export function usePosHeldCarts({
     if (!subtotal || lines.length === 0) return;
     setOpeningBill(true);
     try {
+      const shouldDispatch = dispatchOnTabSave !== false;
+      const deltaLines = lines
+        .filter((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0)
+        .map((l) => ({ ...l, qty: l.qty - (l.dispatchedQty ?? 0) }));
+
+      if (shouldDispatch && deltaLines.length > 0 && onDispatchKitchen) {
+        try {
+          await onDispatchKitchen(deltaLines);
+        } catch {
+          // Non-blocking for tab persistence
+        }
+      }
+
+      const linesToSave = shouldDispatch && deltaLines.length > 0
+        ? lines.map((l) => ({ ...l, dispatchedQty: l.qty }))
+        : lines;
+
       const trimmedTable = (tableNumber ?? '').trim();
       const trimmedName = (customerName || openBillName || '').trim();
       const trimmedGuest = (guestCount ?? '').trim();
       const cartData = JSON.stringify({
-        lines: lines.map((l) => ({
+        lines: linesToSave.map((l) => ({
           sku: l.sku,
           name: l.name,
           qty: l.qty,
@@ -191,6 +212,7 @@ export function usePosHeldCarts({
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
           ...(l.note ? { note: l.note } : {}),
+          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
         })),
         discountPercent,
         discountLabel,
@@ -224,7 +246,7 @@ export function usePosHeldCarts({
       await holdCartScoped(sessionToken, {
         label,
         cart_data: cartData,
-        item_count: lines.length,
+        item_count: linesToSave.length,
         total_minor: subtotal.minor_units,
         currency: subtotal.currency,
         bill_type: 'open_bill',
@@ -250,7 +272,7 @@ export function usePosHeldCarts({
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {
@@ -268,6 +290,7 @@ export function usePosHeldCarts({
           coursingStatus?: CartLine['coursingStatus'];
           modifiers?: CartLine['modifiers'];
           note?: string;
+          dispatchedQty?: number;
         }) => ({
           id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
           sku: l.sku as Sku,
@@ -281,6 +304,7 @@ export function usePosHeldCarts({
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
           ...(l.note ? { note: l.note } : {}),
+          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
         })));
       }
       if (typeof data.discountPercent === 'number') {

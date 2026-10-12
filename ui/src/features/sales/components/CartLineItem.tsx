@@ -189,6 +189,20 @@ export function CartLineItem({
         <div className="pos-cart-line-info">
           <div className="pos-cart-line-name">
             {line.name ?? line.sku}
+            {line.dispatchedQty !== undefined && line.dispatchedQty >= line.qty && (
+              <span className="pos-cart-line-dispatched-badge" data-testid="cart-line-dispatched-badge">
+                <Localized id="pos-line-status-sent">
+                  <span>Sent</span>
+                </Localized>
+              </span>
+            )}
+            {line.dispatchedQty !== undefined && line.dispatchedQty < line.qty && (
+              <span className="pos-cart-line-draft-badge" data-testid="cart-line-draft-badge">
+                <Localized id="pos-line-status-new">
+                  <span>New</span>
+                </Localized>
+              </span>
+            )}
             {onUpdateNote && (
               <button
                 type="button"

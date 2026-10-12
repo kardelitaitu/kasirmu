@@ -123,6 +123,8 @@ export interface CartLine {
   readonly modifiers?: ModifierSelection[];
   /** Optional customer/kitchen note for this item (e.g. "pedas", "less ice"). */
   readonly note?: string;
+  /** Quantity that has already been dispatched to the kitchen. */
+  readonly dispatchedQty?: number;
 }
 
 /**
