@@ -226,7 +226,6 @@ export function CartLineItem({
                   onEditModifiers(line);
                 }}
                 aria-label={l10n.getString('edit-modifiers') || 'Customize item'}
-                title={l10n.getString('edit-modifiers') || 'Customize item'}
                 data-testid="cart-line-add-modifier-btn"
               >
                 <SlidersIcon />
@@ -349,7 +348,6 @@ export function CartLineItem({
                     onOverride(line);
                   }}
                   aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
-                  title={l10n.getString('pos-cart-line-override', undefined, 'Override')}
                   data-testid="cart-line-override-btn"
                 >
                   <span aria-hidden="true">$</span>

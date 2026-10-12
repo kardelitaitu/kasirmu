@@ -91,7 +91,6 @@ export function CartActionBar({
           className="pos-cart-clear-btn"
           onClick={() => { setCartId(null); deductionLocationIdRef.current = null; setDeductionLocationName(null); setDeductionOverridden(false); resetCart(); }}
           aria-label={l10n.getString('pos-cart-clear-aria')}
-          title={l10n.getString('pos-cart-clear-aria')}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
             <polyline points="3 6 5 6 21 6" />
@@ -162,7 +161,6 @@ export function CartActionBar({
           className="pos-cart-print-bill-btn"
           onClick={() => { void handlePrintBill(); }}
           aria-label={l10n.getString('pos-cart-print-bill-aria') || 'Print Bill'}
-          title={l10n.getString('pos-cart-print-bill-aria') || 'Print Bill'}
           data-testid="pos-cart-print-bill-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
@@ -182,7 +180,6 @@ export function CartActionBar({
           disabled={sendingToKitchen}
           onClick={() => { void handleSendToKitchen(); }}
           aria-label={l10n.getString('pos-cart-send-kitchen-aria') || 'Send to Kitchen'}
-          title={l10n.getString('pos-cart-send-kitchen-aria') || 'Send to Kitchen'}
           data-testid="pos-cart-send-kitchen-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
@@ -203,7 +200,6 @@ export function CartActionBar({
           className="pos-cart-split-bill-btn"
           onClick={handleOpenSplitBill}
           aria-label={l10n.getString('pos-cart-split-bill-aria') || 'Split Bill'}
-          title={l10n.getString('pos-cart-split-bill-aria') || 'Split Bill'}
           data-testid="pos-cart-split-bill-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">

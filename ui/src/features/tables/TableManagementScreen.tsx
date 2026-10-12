@@ -906,10 +906,19 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 left: `${t.pos_x}%`, top: `${t.pos_y}%`,
                 width: `${w}%`, height: `${h}%`,
               }}
-              aria-label={l10n.getString('tables-table-label', { name: t.name, status: statusLabel(t.status) })}
+              aria-label={
+                t.capacity > 0
+                  // Capacity is folded into the button's name: the visible badge is
+                  // abbreviated ("12p") and the span carrying it is aria-hidden, so
+                  // without this assistive tech never hears the seat count at all.
+                  // It used to ride a native `title` on that span, which the browser
+                  // renders unlocalized and on top of the app's own tooltip.
+                  ? l10n.getString('tables-table-label', { name: t.name, status: statusLabel(t.status) }) + ', ' + t.capacity + ' seats'
+                  : l10n.getString('tables-table-label', { name: t.name, status: statusLabel(t.status) })
+              }
             >
               {t.capacity > 0 && (
-                <span className="tables-table-capacity" aria-hidden="true" title={`${t.capacity} seats`}>
+                <span className="tables-table-capacity" aria-hidden="true">
                   {t.capacity}p
                 </span>
               )}
