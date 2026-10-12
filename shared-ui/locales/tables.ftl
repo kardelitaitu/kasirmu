@@ -63,4 +63,7 @@ tables-toast-merged = Merged Table { $from } into { $to }
 tables-toast-merge-failed = Failed to merge tables
 tables-toast-bill-printed = Bill printed for { $table }
 tables-toast-bill-print-failed = Failed to print bill
+tables-tab-conflict-warning = { $terminal } is currently editing this tab
+tables-tab-takeover = Take Over Tab
+tables-toast-takeover-success = Took over tab from { $terminal }
 

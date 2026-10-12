@@ -21,6 +21,7 @@ import { CourseSelectorBar } from './CourseSelectorBar';
 import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
 import { SplitBillModal } from './SplitBillModal';
+import { useTabLeases } from '@/features/sales/hooks/useTabLeases';
 
 /**
  * The order-type slider's glyph, as an inline MONOCHROME svg.
@@ -435,6 +436,8 @@ export function CartPanel({
   handleSendToKitchen,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
+  const { getConflict, forceTakeover, releaseLease } = useTabLeases();
+  const tabConflict = getConflict(activeOpenBillId);
   // In the restaurant workspace the cart header's buttons do not live here at
   // all: PosScreen hands them to the sidebar popover (MenuPreferencesMenu's
   // `cartActions`) and this panel keeps only what identifies the order — title,
@@ -754,6 +757,9 @@ export function CartPanel({
               type="button"
               className="pos-cart-new-tab-btn"
               onClick={() => {
+                if (activeOpenBillId) {
+                  void releaseLease(activeOpenBillId);
+                }
                 resetCart();
                 setTableNumber('');
                 setCustomerName?.('');
@@ -762,6 +768,26 @@ export function CartPanel({
               data-testid="pos-cart-new-tab-btn"
             >
               + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
+            </button>
+          </div>
+        )}
+
+        {activeOpenBillId && tabConflict && (
+          <div className="pos-cart-conflict-alert" role="alert" data-testid="pos-cart-conflict-alert">
+            <span>
+              <Localized id="pos-cart-tab-conflict-warning" vars={{ terminal: tabConflict.terminalName }}>
+                <span>{tabConflict.terminalName} is currently adding items to this tab</span>
+              </Localized>
+            </span>
+            <button
+              type="button"
+              className="pos-cart-conflict-takeover-btn"
+              data-testid="pos-cart-conflict-takeover-btn"
+              onClick={() => void forceTakeover(activeOpenBillId, tableNumber)}
+            >
+              <Localized id="pos-cart-tab-takeover-btn">
+                <span>Take Over</span>
+              </Localized>
             </button>
           </div>
         )}

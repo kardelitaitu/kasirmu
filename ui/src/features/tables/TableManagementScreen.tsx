@@ -27,6 +27,7 @@ import {
   type Table,
 } from '@/api/tables';
 import { listen } from '@/api/tauri';
+import { useTabLeases } from '@/features/sales/hooks/useTabLeases';
 import { matchesTableBill, bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
 import { buildPreCheckoutBillReceipt } from '@/features/sales/payment/completedSale';
 import './TableManagementScreen.css';
@@ -84,6 +85,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     (toast) => toastRef.current?.addToast(toast) ?? '',
     [],
   );
+  const { getConflict, forceTakeover } = useTabLeases();
   const [printBillEnabled, setPrintBillEnabled] = useState<boolean | null>(null);
   const [tableTransferEnabled, setTableTransferEnabled] = useState<boolean | null>(null);
   const [moveTableModal, setMoveTableModal] = useState<Table | null>(null);
@@ -208,7 +210,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   useEffect(() => {
     let unlistenStatus: (() => void) | undefined;
     let unlistenDeleted: (() => void) | undefined;
+    let unlistenTabs: (() => void) | undefined;
     let cancelled = false;
+
+    listen('tabs:changed', () => {
+      void loadTables();
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenTabs = fn;
+      })
+      .catch(() => {});
 
     listen<Table>('tables:status-changed', (event) => {
       const updated = event.payload;
@@ -242,6 +254,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       cancelled = true;
       unlistenStatus?.();
       unlistenDeleted?.();
+      unlistenTabs?.();
     };
   }, []);
 
@@ -952,6 +965,38 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 </div>
               </div>
             )}
+
+            {activeBill && (() => {
+              const conflictLease = getConflict(activeBill.id);
+              if (!conflictLease) return null;
+              return (
+                <div className="tables-warning-banner" role="alert" data-testid="tables-tab-conflict-banner">
+                  <div className="tables-warning-title">
+                    <Localized id="tables-tab-conflict-warning" vars={{ terminal: conflictLease.terminalName }}>
+                      <span>{conflictLease.terminalName} is currently editing this tab</span>
+                    </Localized>
+                  </div>
+                  <div className="tables-warning-actions">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      data-testid="tables-tab-takeover-btn"
+                      onClick={async () => {
+                        await forceTakeover(activeBill.id, selected.name);
+                        addToast({
+                          message: l10n.getString('tables-toast-takeover-success', { terminal: conflictLease.terminalName }),
+                          type: 'success',
+                        });
+                      }}
+                    >
+                      <Localized id="tables-tab-takeover">
+                        <span>Take Over Tab</span>
+                      </Localized>
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {actionError && (
               <p className="tables-action-error" role="alert">

@@ -137,6 +137,9 @@ pub async fn hold_cart_scoped(
     )?;
     drop(db);
     tracing::info!(held_cart_id = %id, label = %args.label, "cart held (scoped)");
+    if let Some(emitter) = &ctx.emitter {
+        emitter.emit("tabs:changed", serde_json::Value::Null);
+    }
     Ok(HoldCartResult { id })
 }
 
@@ -251,5 +254,8 @@ pub async fn delete_held_cart_scoped(
     store.delete_held_cart(&id)?;
     drop(db);
     tracing::info!(held_cart_id = %id, "held cart deleted (scoped)");
+    if let Some(emitter) = &ctx.emitter {
+        emitter.emit("tabs:changed", serde_json::Value::Null);
+    }
     Ok(())
 }

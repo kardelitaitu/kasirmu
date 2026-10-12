@@ -1127,3 +1127,6 @@ pos-toast-kitchen-dispatched = Pesanan dikirim ke dapur untuk { $table }
 pos-toast-kitchen-dispatch-failed = Gagal mengirim pesanan ke dapur
 pos-line-status-sent = Terkirim
 pos-line-status-new = Baru
+pos-cart-tab-conflict-warning = { $terminal } sedang mengedit tagihan ini
+pos-cart-tab-takeover-btn = Ambil Alih
+

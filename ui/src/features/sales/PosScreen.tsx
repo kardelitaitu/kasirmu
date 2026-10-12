@@ -638,6 +638,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     openingBill,
     handleOpenBill,
     handleResumeOpenBill,
+    releaseLease,
   } = usePosHeldCarts({
     sessionToken,
     addToast,
@@ -717,6 +718,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setAppliedPromotions([]);
     // If this was an open bill being paid, delete it from DB.
     if (activeOpenBillId) {
+      void releaseLease(activeOpenBillId);
       deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {
         addToast({ message: 'Failed to delete held cart', type: 'error' });
       });
@@ -771,7 +773,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // orderType is read above (the dine-in-only release) and so must be listed:
     // without it this callback closes over the render-time value and a cashier who
     // switches Dine-In -> Takeaway after mount would still free the table.
-  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
+  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess, releaseLease]);
 
   const handlePrintBill = useCallback(async () => {
     if (lines.length === 0 || !total) return;

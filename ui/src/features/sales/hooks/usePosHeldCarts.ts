@@ -4,6 +4,8 @@ import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { requiredLocalized } from '@/components';
 import { parseAppError } from '@/utils/app-error';
+import { listen } from '@/api/tauri';
+import { useTabLeases } from '@/features/sales/hooks/useTabLeases';
 
 /** The shape `requiredLocalized` accepts, matching `usePosCartActions`. */
 type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
@@ -119,6 +121,8 @@ export function usePosHeldCarts({
   const workspaceScope = useWorkspaceScope();
   const isRestaurantPos = workspaceScope?.typeKey === 'restaurant-pos';
 
+  const { claimLease, releaseLease } = useTabLeases();
+
   // ── Open Bill state ──────────────────────────────────────────────
   const [activeOpenBillId, setActiveOpenBillId] = useState<string | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
@@ -150,6 +154,32 @@ export function usePosHeldCarts({
         addToast({ message: 'Failed to load open bills', type: 'error' });
       });
   }, [addToast, sessionToken, isRestaurantPos]);
+
+  // Real-time tab sync via Tauri events or local DOM events
+  useEffect(() => {
+    let unlistenTabs: (() => void) | undefined;
+    let cancelled = false;
+
+    listen('tabs:changed', () => {
+      loadOpenBills();
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenTabs = fn;
+      })
+      .catch(() => {});
+
+    const domTabsChanged = () => {
+      loadOpenBills();
+    };
+    window.addEventListener('kasirmu:tabs:changed', domTabsChanged);
+
+    return () => {
+      cancelled = true;
+      unlistenTabs?.();
+      window.removeEventListener('kasirmu:tabs:changed', domTabsChanged);
+    };
+  }, [loadOpenBills]);
 
   // ── Open Bill inline state ────────────────────────────────────
   const [showOpenBillInput, setShowOpenBillInput] = useState(false);
@@ -241,6 +271,7 @@ export function usePosHeldCarts({
       // the operation, which the caller's existing catch turns into an error toast.
       if (activeOpenBillId) {
         await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+        await releaseLease(activeOpenBillId);
       }
 
       await holdCartScoped(sessionToken, {
@@ -272,7 +303,7 @@ export function usePosHeldCarts({
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {
@@ -334,11 +365,12 @@ export function usePosHeldCarts({
         }
       }
       setActiveOpenBillId(id);
+      await claimLease(id, data.tableNumber);
       openBillsExit.requestClose();
     } catch {
       addToast({ message: 'Failed to resume open bill', type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease]);
 
   return {
     activeOpenBillId,
@@ -354,5 +386,7 @@ export function usePosHeldCarts({
     openingBill,
     handleOpenBill,
     handleResumeOpenBill,
+    releaseLease,
+    claimLease,
   };
 }

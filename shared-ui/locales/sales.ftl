@@ -1153,3 +1153,5 @@ pos-toast-kitchen-dispatched = Order sent to kitchen for { $table }
 pos-toast-kitchen-dispatch-failed = Failed to send order to kitchen
 pos-line-status-sent = Sent
 pos-line-status-new = New
+pos-cart-tab-conflict-warning = { $terminal } is currently editing this tab
+pos-cart-tab-takeover-btn = Take Over

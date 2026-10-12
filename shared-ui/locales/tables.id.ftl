@@ -61,6 +61,9 @@ tables-toast-merged = Menggabungkan Meja { $from } ke { $to }
 tables-toast-merge-failed = Gagal menggabungkan meja
 tables-toast-bill-printed = Bill dicetak untuk { $table }
 tables-toast-bill-print-failed = Gagal mencetak bill
+tables-tab-conflict-warning = { $terminal } sedang mengedit tagihan ini
+tables-tab-takeover = Ambil Alih Tagihan
+tables-toast-takeover-success = Berhasil mengambil alih tagihan dari { $terminal }
 
 
 # ── Tax Configuration ──

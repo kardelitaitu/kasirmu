@@ -8,6 +8,7 @@ import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import type { Table } from '@/api/tables';
 import type * as SalesApi from '@/api/sales';
+import { resetMemoryLeasesForTest } from '@/features/sales/hooks/useTabLeases';
 
 const {
   mockListTables,
@@ -113,6 +114,7 @@ async function openTableDetail(table: Table) {
 
 describe('TableManagementScreen', () => {
   beforeEach(() => {
+    resetMemoryLeasesForTest();
     mockListTables.mockReset();
     mockListSections.mockReset();
     mockUpdateTableStatus.mockReset();
@@ -1045,4 +1047,55 @@ describe('TableManagementScreen', () => {
       expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
     });
   });
+
+  it('displays conflict banner and allows takeover when active tab has a foreign lease', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-conflict-1',
+        label: 'Table 1',
+        item_count: 2,
+        total_minor: 40000,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    // Dispatch foreign lease acquired after mount
+    window.dispatchEvent(
+      new CustomEvent('kasirmu:tabs:lease-acquired', {
+        detail: {
+          tabId: 'bill-conflict-1',
+          tableNumber: 'Table 1',
+          terminalId: 'foreign-terminal-waiter',
+          terminalName: 'Waiter iPad 2',
+          timestamp: Date.now(),
+          expiresAt: Date.now() + 60_000,
+        },
+      }),
+    );
+
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tables-tab-conflict-banner')).toBeDefined();
+    });
+    expect(screen.getByText(/Waiter iPad 2/)).toBeDefined();
+
+    // Click Take Over
+    const takeoverBtn = screen.getByTestId('tables-tab-takeover-btn');
+    await userEvent.click(takeoverBtn);
+
+    // Conflict banner should disappear as local terminal now owns the lease
+    await waitFor(() => {
+      expect(screen.queryByTestId('tables-tab-conflict-banner')).toBeNull();
+    });
+  });
 });
+
