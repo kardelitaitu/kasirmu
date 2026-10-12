@@ -6,6 +6,12 @@ order: 3
 updated: "2026-09-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor, parity) · Cap audit pertama untuk halaman ini. Halaman ini adalah pasangan bahasa Indonesia dari en/api-read-tiers.md, dan seluruh klaim teknisnya diverifikasi ulang terhadap kode, bukan disalin dari kembarannya.
+ · PERBAIKAN (paritas): tabel peta kunci baca hanya memuat 11 baris, sedangkan kembaran bahasa Inggrisnya — dan kode — memuat 12. Baris yang hilang adalah `GET /api/v1/memos/active` → `sales:view` → tidak PII, yang ada di `kasirmu_api::read_tiers::READ_KEY_MAP`. Baris itu ditambahkan pada posisi yang sama seperti di halaman Inggris, sehingga kedua tabel kini identik baris demi baris.
+ · DIVERIFIKASI TERHADAP KODE: seluruh 12 rute dan pasangan (rute, kunci, PII) cocok dengan `READ_KEY_MAP`; ketiga preset cocok huruf demi huruf dengan `TERMINAL_PRESET`, `DASHBOARD_PRESET`, dan `AUDIT_PRESET`; kontrak galat nyata — `403 {"error":"insufficient_scope"}` berasal dari `read_tiers::insufficient_scope`, dan `422` dengan `unknown_preset` / `unknown_permission` dari `routes/tokens.rs`; pintu darurat `OZ_TERMINAL_READ_TIER=full` nyata dan memang mencetak peringatan saat start; rujukan ke `platform/core/src/permission_registry.rs` benar; dan tautan ke panduan peran menunjuk ke rute lokalnya sendiri (`/id/docs/user-roles/`), bukan ke halaman Inggris.
+ · TIDAK diukur ulang: percobaan mint → panggil terhadap server yang berjalan, dan hasil render situs (footer audit ini dihapus saat build, jadi tidak sampai ke pembaca).
+ · Ditandai untuk pemilik, TIDAK diperbaiki di sini karena bukan klaim dokumentasi: baris terakhir halaman menyebut kanal Slack `#api`, dan tidak ada rujukan Slack lain di seluruh korpus situs. -->
+
 ## Ikhtisar
 
 Setiap JWT dapat membawa klaim `permissions` — daftar kunci
@@ -110,6 +116,7 @@ Setiap rute GET yang dilindungi dipetakan ke kunci registri:
 | GET /api/v1/exchange-rates/latest/{from}/{to} | `reference:read` | tidak |
 | GET /api/v1/tenants/me/plan | `plan:read` | tidak |
 | GET /api/v1/sales/{id} | `sales:view` | **ya** |
+| GET /api/v1/memos/active | `sales:view` | tidak |
 | GET /api/v1/images:pack | `products:read` | tidak |
 | GET /api/v1/images:missing | `products:read` | tidak |
 | GET /api/v1/images/{hash16} | `products:read` | tidak |
@@ -144,3 +151,5 @@ untuk registri lengkap.
 
 Buka issue dengan tag `auth-read-tiers` atau tanyakan di Slack
 `#api`.
+
+> last audited 11-10-26 by docs-auditor

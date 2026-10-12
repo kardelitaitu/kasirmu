@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE with one location divergence recorded. The `SettingsContext` shipped: `ui/src/contexts/SettingsContext.tsx` exists and exports both halves of the contract this spec defines — `SettingsState`/`SettingsBrandState`/`SettingsPreferencesState` interfaces, a `SettingsContextValue` shape, and `export function useSettings(): SettingsContextValue` at line 550. The DIVERGENCE is that the Plan step said to create a separate `ui/src/hooks/useSettings.ts`, and that file does not exist; the hook was exported from the context file itself instead. That is a strictly reasonable implementation choice — co-locating the hook with its provider is the common React pattern and avoids a one-line re-export module — so this is recorded as a path note, NOT a missing deliverable, and the substance of the spec is satisfied. · `platform/kernel/src/event_bus.rs` (cited in References) and `ui/src/contexts/AuthContext.tsx` (the pattern to follow) both still exist. · The Baseline section is a pre-fix record and is left as written, including the two "does not exist" lines that are now false — that is what a Baseline is for. · Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while the boxes are open. The boxes are the plan-as-approved and I did not tick them, because confirming the artifacts exist is not the same as confirming the debounce/scoped-refetch unit tests pass. · `crates/oz-bus` is named in the Summary as the event source; that crate name is pre-restructure and the event bus now lives in `platform/kernel`, so the reference is historical. · No house stamp existed at the top of this file before this pass. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: REPAIRED (0 major, 1 minor) · The deliverable is real and re-derived at HEAD, not inherited: `ui/src/contexts/SettingsContext.tsx` exports `SettingsProvider` at :199 and `useSettings(): SettingsContextValue` at :711 (the prior stamp cited :550 — the file has grown, the export is unchanged; ordinary line drift). The recorded divergence still holds and is still reasonable: the Plan said to create a separate `ui/src/hooks/useSettings.ts` and the hook ships from the context file instead. MINOR: two Reference paths are stale and left as historical pointers — `platform/core/src/settings.rs` is now the directory `platform/core/src/settings/`, and `crates/oz-bus` is a pre-restructure name (the bus is `platform/kernel/src/event_bus.rs`, which exists). NOT re-measured: the debounce/scoped-refetch unit tests the criteria assert; the boxes stay unticked for that reason. · Superseded 2026-09-29 body preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE with one location divergence recorded. The `SettingsContext` shipped: `ui/src/contexts/SettingsContext.tsx` exists and exports both halves of the contract this spec defines — `SettingsState`/`SettingsBrandState`/`SettingsPreferencesState` interfaces, a `SettingsContextValue` shape, and `export function useSettings(): SettingsContextValue` at line 550. The DIVERGENCE is that the Plan step said to create a separate `ui/src/hooks/useSettings.ts`, and that file does not exist; the hook was exported from the context file itself instead. That is a strictly reasonable implementation choice — co-locating the hook with its provider is the common React pattern and avoids a one-line re-export module — so this is recorded as a path note, NOT a missing deliverable, and the substance of the spec is satisfied. · `platform/kernel/src/event_bus.rs` (cited in References) and `ui/src/contexts/AuthContext.tsx` (the pattern to follow) both still exist. · The Baseline section is a pre-fix record and is left as written, including the two "does not exist" lines that are now false — that is what a Baseline is for. · Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while the boxes are open. The boxes are the plan-as-approved and I did not tick them, because confirming the artifacts exist is not the same as confirming the debounce/scoped-refetch unit tests pass. · `crates/oz-bus` is named in the Summary as the event source; that crate name is pre-restructure and the event bus now lives in `platform/kernel`, so the reference is historical. · No house stamp existed at the top of this file before this pass. -->
 <!-- dead-ref-prefix-ok: crates/oz-bus -->
 <!-- dead-ref-prefix-ok: ui/src/hooks/useSettings.ts -->
 <!-- Pre-restructure crate name, and the separate hook file: useSettings() shipped from SettingsContext.tsx:550 instead. Both recorded in the stamp above. -->
@@ -10,6 +12,19 @@
 - **Severity:** PREREQUISITE (blocks Phases 1–5)
 - **Owner:** TBD
 - **Est. effort:** 2-3 days
+
+## ✅ Audit re-verification (2026-10-11)
+
+The `SettingsContext` this phase exists to build is real and re-verified at HEAD:
+`ui/src/contexts/SettingsContext.tsx` exports `SettingsProvider` at :199 and
+`export function useSettings(): SettingsContextValue` at :711. (The 2026-09-29 stamp cited
+`:550` for the hook; the file has grown and the line moved — the export itself is unchanged.)
+The stamp's recorded divergence still holds and is still reasonable: the Plan said to create a
+separate `ui/src/hooks/useSettings.ts`, and the hook ships from the context file instead.
+
+Two Reference paths are stale and left as historical pointers: `platform/core/src/settings.rs`
+(now the directory `platform/core/src/settings/`) and `crates/oz-bus` (pre-restructure; the event
+bus is `platform/kernel/src/event_bus.rs`, which still exists).
 
 ## Summary
 
@@ -91,4 +106,4 @@ Build a React context (`SettingsContext`) that acts as the single source of trut
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

@@ -1,4 +1,11 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — a live spec that claimed implemented status while naming a crate that no longer exists, in four places including its own scope line. The stale name was replaced with the current one throughout. That is a small edit, and it is the kind this campaign treats as a repair rather than a record, because a spec is a description of what a reader should go and look at: a scope line naming a removed crate sends someone looking for code that is not there, and the status line claiming IMPLEMENTED makes them trust the rest. · WHAT WAS VERIFIED AROUND THE REPAIR. The crate the old name referred to is genuinely gone from the tree — no file carries it — so the rename was mechanical and unambiguous rather than a judgement call. The document's own cross-references were left alone deliberately: it points at the sibling spec, a user-role campaign residual and a permission-registry decision, and those are relationships rather than coordinates. One table row still names a pre-restructure production binary, and it was left because it is describing a deployment fact at the time of writing rather than directing a reader at a file to open; that is noted here rather than silently patched, because the distinction between the two is exactly what this campaign has been trying to get right. · THE DOCUMENT'S SUBJECT MATTERS MORE THAN ITS SIZE, and the stamp should say why. A drift guard between a published interface description and the code that implements it is a spec that keeps itself honest, and the read-tier half — restricting what a valid token may read, rather than authenticating and then allowing everything — is a security property that this repository has reasoned about carefully elsewhere. A reader auditing the implementation should start from the states the spec records: what the claims shape is, where tokens are minted, and what the authorisation actually permits today. Those are the document's own content and were not re-derived. · NOT re-measured: whether the guard currently runs, and whether the tiering it specifies is enforced as written. Both are the original work. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 6 minor) · Re-audit of a spec whose Status line reads implemented (2026-09-01); the 2026-09-29 stamp is merged at the bottom as original evidence.
+ · THE SUBSTANCE HOLDS AND BOTH HALVES SHIPPED. Part A's three assertions are live in apps/cloud-server/src/openapi_tests.rs (tower::ServiceExt::oneshot liveness probes, the bearerAuth security-coverage walk, and the bidirectional path-set check). Part B is crates/kasirmu-api/src/read_tiers.rs, 255 lines: READ_KEY_MAP with its pii flag, TERMINAL_PRESET / DASHBOARD_PRESET / AUDIT_PRESET matching the published table key-for-key, resolve_preset rejecting unknown names, validate_keys checking the registry, the read-gate middleware (crates/kasirmu-api/src/lib.rs:396), 403 insufficient_scope, and the OZ_TERMINAL_READ_TIER=full escape hatch with its one-time startup warning (routes/tokens.rs). The PII invariant is test-visible exactly as decision 3 required (read_tiers_tests.rs dashboard_preset_disjoint_from_pii_routes). Every registry key the spec names resolves in platform/core/src/permission_registry.rs.
+ · WHAT WAS REPAIRED IS COORDINATES, and the pattern is worth naming: a spec is a description of what a reader should go and look at, so a stale coordinate is not cosmetic. The section-2 table located the whole OpenAPI document in one 1,035-line apps/cloud-server/src/openapi.rs; it is now SPLIT — the shared surface lives in crates/kasirmu-api/src/spec/ (mod.rs, paths.rs 598 lines, schemas.rs) and the cloud file is 212 lines that merges cloud-only paths on top. The table's other line citations (auth.rs:45-55 for the claims struct, tokens.rs:110-126 for the mints, lib.rs:265 for the read authorization) have ALL drifted, and the last one is now misleading in the other direction: the spec said read authorization was JWT-middleware-anything-goes, which was true when written and is exactly what Part B changed.
+ · THE DRIFT MARKER THIS SPEC WAS WRITTEN TO FIX IS ITSELF FIXED: the module doc's count line is gone (a grep for it returns nothing), so the section-2 row recording it as a live marker was annotated CLOSED rather than left to mislead the next reader.
+ · AND THE COUNT IS A READING, NOT AN INVARIANT: the row said 13 GET operations; the shared base document declares 15 today. The guard does not depend on the number — read_key_map_covers_all_protected_get_routes derives the route set from the router SOURCE and asserts a floor on purpose, which is why the repair states the command rather than a new constant.
+ · NOT re-measured, deliberately: whether the guard currently runs and whether the tiering is enforced in a live deployment — the same limit the 2026-09-29 stamp recorded. · Superseded 2026-09-29 body follows as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — a live spec that claimed implemented status while naming a crate that no longer exists, in four places including its own scope line. The stale name was replaced with the current one throughout. That is a small edit, and it is the kind this campaign treats as a repair rather than a record, because a spec is a description of what a reader should go and look at: a scope line naming a removed crate sends someone looking for code that is not there, and the status line claiming IMPLEMENTED makes them trust the rest. · WHAT WAS VERIFIED AROUND THE REPAIR. The crate the old name referred to is genuinely gone from the tree — no file carries it — so the rename was mechanical and unambiguous rather than a judgement call. The document's own cross-references were left alone deliberately: it points at the sibling spec, a user-role campaign residual and a permission-registry decision, and those are relationships rather than coordinates. One table row still names a pre-restructure production binary, and it was left because it is describing a deployment fact at the time of writing rather than directing a reader at a file to open; that is noted here rather than silently patched, because the distinction between the two is exactly what this campaign has been trying to get right. · THE DOCUMENT'S SUBJECT MATTERS MORE THAN ITS SIZE, and the stamp should say why. A drift guard between a published interface description and the code that implements it is a spec that keeps itself honest, and the read-tier half — restricting what a valid token may read, rather than authenticating and then allowing everything — is a security property that this repository has reasoned about carefully elsewhere. A reader auditing the implementation should start from the states the spec records: what the claims shape is, where tokens are minted, and what the authorisation actually permits today. Those are the document's own content and were not re-derived. · NOT re-measured: whether the guard currently runs, and whether the tiering it specifies is enforced as written. Both are the original work. · No stamp existed; this is the first. -->
 # Spec 0047 — OpenAPI Drift Guard + JWT Read Tiers
 
 **Status:** implemented (2026-09-01) · **Created:** 2026-08-31 · **Scope:** cloud-server, kasirmu-api, platform-core, website docs
@@ -10,11 +17,12 @@
 
 Close the two residuals of the API-facing surface:
 
-**A. Contract drift** — `apps/cloud-server/src/openapi.rs` is a 1,035-line
-hand-maintained OpenAPI 3.1 document with no mechanical link to the real
-router. Drift is already visible (module doc claims "20 endpoints across 7
-tag groups"; the spec declares 18 tags and ~26 paths). A cheap mechanical
-guard turns silent drift into a red test.
+**A. Contract drift** — the hand-maintained OpenAPI 3.1 document has no
+mechanical link to the real router, so it drifts silently. *(The 2026-08-31
+reading located it in a single 1,035-line `apps/cloud-server/src/openapi.rs`;
+it has since been split — see the §2 correction below — and the drift marker
+this sentence quotes was itself fixed.)* A cheap mechanical guard turns silent
+drift into a red test.
 
 **B. Read tiers** — every valid JWT can read every GET endpoint, including
 terminal device tokens (`terminal_id`-scoped client-credential tokens).
@@ -29,17 +37,41 @@ precedent); token revocation lists.
 
 ## 2. Ground truth (all verified 2026-08-31)
 
+> **📌 Correction (2026-10-11, docs-auditor).** The table below is a **dated
+> 2026-08-31 reading** and several of its coordinates have moved. Two are worth
+> stating here rather than only beside the row:
+>
+> 1. **The OpenAPI document is no longer one file.** The shared surface
+>    (`x-oz-scope: "both"`) now lives in `crates/kasirmu-api/src/spec/` —
+>    `mod.rs` (the document + tags), `paths.rs` (598 lines), `schemas.rs` — and
+>    `apps/cloud-server/src/openapi.rs` (212 lines) merges the cloud-only
+>    paths/schemas/docs handlers on top. It is still a single source of truth,
+>    just a shared one: the desktop local API serves the same base document.
+> 2. **The count in the "read surface" row is a reading, not an invariant.** It
+>    said 13 GET operations; the shared base document declares 15 today. The
+>    guard does not depend on the number — `read_tiers_tests.rs`
+>    `read_key_map_covers_all_protected_get_routes` derives the route set from
+>    the router source and asserts `>= 10`, deliberately a floor.
+>
+> **Both halves shipped.** Part A's three assertions are live in
+> `apps/cloud-server/src/openapi_tests.rs` (`oneshot` liveness probes,
+> `bearerAuth` security-coverage walk, and the bidirectional path-set check),
+> and Part B is `crates/kasirmu-api/src/read_tiers.rs` (255 lines) —
+> `READ_KEY_MAP`, the three presets, the read-gate middleware
+> (`lib.rs:396`), `403 insufficient_scope`, and the
+> `OZ_TERMINAL_READ_TIER=full` escape hatch with its startup warning.
+
 | Fact | Evidence |
 |---|---|
-| OpenAPI 3.1 spec + Swagger UI + Scalar served publicly at `/api/openapi.json`, `/api/docs`, `/api/docs/scalar` | `apps/cloud-server/src/openapi.rs:1-6`, `main.rs:493-510` (docs router merged outside the auth layer) |
+| OpenAPI 3.1 spec + Swagger UI + Scalar served publicly at `/api/openapi.json`, `/api/docs`, `/api/docs/scalar` | `apps/cloud-server/src/openapi.rs` (module doc, 212 lines today) + `main.rs` (docs router merged outside the auth layer) |
 | Prod binary `oz-cloud-server` (supervisord `program:sync`) embeds kasirmu-api's router via `oz_api::build_api_router` | `apps/unified/supervisord.conf:49`, `apps/cloud-server/src/main.rs:449-451`, `Cargo.toml:18` |
 | axum **0.7.9** — `Router: IntoIterator<Item = (String, MethodRouter)>` exists in this version | `Cargo.lock` axum 0.7.9 |
-| 13 GET operations declared in the spec (the read surface) | `grep '"get"' openapi.rs` |
-| Claims shape: `sub, jti, exp, iat, tenant_id, terminal_id` — no scope/permission field | `crates/kasirmu-api/src/auth.rs:45-55` |
-| Mint paths: admin-key mint (arbitrary tenant), terminal client-credentials (`client_id`+`client_secret`, no admin key) | `crates/kasirmu-api/src/routes/tokens.rs:110-126` |
-| Read authorization today: router-wide JWT middleware only — any valid token reads everything | `crates/kasirmu-api/src/lib.rs:265` (verified during G-1) |
+| The read surface (the GET operations the spec declares) — 15 in the shared base document at the 2026-10-11 re-measure | `grep -c '"get":' crates/kasirmu-api/src/spec/paths.rs` |
+| Claims shape: `sub, jti, exp, iat, tenant_id, terminal_id` — no scope/permission field | `crates/kasirmu-api/src/auth.rs` `ApiTokenClaims` (the 2026-08-31 line range no longer holds it) |
+| Mint paths: admin-key mint (arbitrary tenant), terminal client-credentials (`client_id`+`client_secret`, no admin key) | `crates/kasirmu-api/src/routes/tokens.rs` `create_token_handler` |
+| Read authorization **at the time of writing**: router-wide JWT middleware only — any valid token reads everything | `crates/kasirmu-api/src/lib.rs` (the 2026-08-31 line citation has drifted). **Part B has since changed this** — the read gate is now `read_tiers::read_gate_middleware`, layered at `lib.rs:396` |
 | Permission registry + `has_permission` resolver already in the dependency tree with read keys (`products:read`, `sales:view`, `reports:view`, `audit:view`, `customers:view`, `staff:read`, `settings:read`, `staff:read_identity`, `staff:read_payroll`) | `platform/core/src/permission_registry.rs`, user-role campaign stamps A/C |
-| Known drift marker: module doc "20 endpoints across 7 tag groups" vs 18 declared tags | `openapi.rs:16` vs `openapi.rs:35-53` |
+| Known drift marker: module doc "20 endpoints across 7 tag groups" vs the declared tag count | the module doc was corrected — `grep -rn '20 endpoints' --include='*.rs'` returns nothing today, so this marker is CLOSED. The tag count now reads 21 `"name":` entries in `crates/kasirmu-api/src/spec/mod.rs` |
 
 ## 3. Part A — Drift guard (F1, test-only, no runtime change)
 
@@ -191,4 +223,4 @@ an optional `permissions`/`preset` field; anything else keeps full-read.
   `OZ_TERMINAL_READ_TIER=full` escape hatch covers any deployed
   integration during the one-cycle deprecation window.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

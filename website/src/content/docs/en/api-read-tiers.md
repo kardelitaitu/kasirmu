@@ -6,6 +6,15 @@ order: 3
 updated: "2026-09-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp this page has carried. It is a USER-FACING integrator guide, so every technical claim was re-derived at HEAD rather than read: the mint, preset, call and error contracts are exactly what the code does.
+ · THE READ-KEY TABLE WAS CHECKED ROW-FOR-ROW AGAINST THE CODE, which is the only way this page can be wrong in a way a reader would act on. All 12 GET routes it lists exist in `kasirmu_api::read_tiers::READ_KEY_MAP`, and every (route, key, PII) triple matches — including the one PII-flagged route, `GET /api/v1/sales/{id}` → `sales:view` → yes, and the shared `products:read` on the three image routes.
+ · THE PRESETS MATCH THEIR CONSTANTS KEY-FOR-KEY, not approximately: `terminal` = `TERMINAL_PRESET` (products:read, categories:read, reference:read, plan:read), `dashboard` = `DASHBOARD_PRESET` (products:read, reports:view, analytics:view), `audit` = `AUDIT_PRESET` (audit:view, reports:view). The page's claim that `dashboard` is PII-free by construction is the invariant the test `dashboard_preset_disjoint_from_pii_routes` pins.
+ · THE ERROR CONTRACT IS REAL, and both halves were traced to the code that emits them: `403 {"error":"insufficient_scope"}` is `read_tiers::insufficient_scope`, and `422` with `unknown_preset` / `unknown_permission` is `routes/tokens.rs` returning `StatusCode::UNPROCESSABLE_ENTITY` for each. The `OZ_TERMINAL_READ_TIER=full` escape hatch is real and carries the startup warning the page describes.
+ · THE DRIFT-GUARD TEST THE PAGE NAMES EXISTS AND DOES WHAT IT SAYS: `every_spec_get_operation_has_read_key_entry` in `apps/cloud-server/src/openapi_tests.rs` (assertion 4 of the spec-0047 guard) walks the merged spec's GET operations and requires a `READ_KEY_MAP` entry for each. A reader who checks the name finds it.
+ · THE REGISTRY POINTER RESOLVES: `platform/core/src/permission_registry.rs` is the file named and it is the registry — the eight read keys the page lists are all registered there. Its own header's "84-key" figure is a DATED reading (it is 95 `sensitive:` fields today); the page quotes no count, which is why it needed no repair on that account.
+ · NOT re-measured, and stated rather than implied: a live mint → call round-trip against a running server, and the rendered site (the page is build-time processed and its audit footer is stripped from the published output).
+ · Flagged for the owner, NOT repaired here because it is not a doc claim: the page's final line invites readers to "the dev Slack `#api` channel" — there is no Slack reference anywhere else in the website corpus, so the channel may not exist. Recorded rather than edited, since inventing a replacement contact would be the same class of unverified statement. -->
+
 ## Overview
 
 Every JWT can optionally carry a `permissions` claim — a list of
@@ -144,3 +153,5 @@ full registry.
 
 Open an issue tagged `auth-read-tiers` or ask in the dev Slack
 `#api` channel.
+
+> last audited 11-10-26 by docs-auditor

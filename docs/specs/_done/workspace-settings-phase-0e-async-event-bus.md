@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass, with one named reference that no longer resolves. The premise this phase was written against is confirmed still true at the source: `platform/kernel/src/event_bus.rs` still dispatches handlers inline, and the pass over that file in this same campaign (the ADR-42 gate audit) read the dispatch loop directly — handlers are invoked inside `catch_unwind` and both the error and panic arms log and continue, which is the synchronous-publisher behavior the spec describes as the problem. The chosen Option A (handler-side `tokio::spawn`, no `EventBus` API change) is the minimal-footprint approach the Residual section justifies, and ADR #2 (`docs/decisions/2026-02-01-event-bus-design.md`) — cited as the governing decision — exists. · STALE REFERENCE: `platform/core/src/settings.rs` is named in References and no longer exists as a file; the module is now the directory `platform/core/src/settings/`. Left as written, since a References block naming the file the phase worked against is a historical pointer. · The "No `publish_async` API exists" Baseline line is a pre-fix statement and is left alone for the same reason as the sibling Baselines. · The parent spec reference resolves. · Same unchecked-criteria note as the sibling 0-phase files. · No house stamp existed at the top of this file before this pass. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE (0 findings) · The premise this phase was written against is STILL TRUE at HEAD, which is what keeps its chosen fix correct: `platform/kernel/src/event_bus.rs` documents handlers as 'dispatched synchronously — the publisher blocks until all handlers have run', and `EventBus::publish<E>(&self, event: &E) -> ModuleResult` still returns a result rather than a handle, so no `publish_async` API exists and the Option A handler-side `tokio::spawn` shape remains the one in use. ADR #2 (the governing decision) resolves. One stale Reference left as historical: `platform/core/src/settings.rs` is now the directory `platform/core/src/settings/`. NOT re-measured: the <5ms publish timing and the handler-completes-after-return integration tests (a test run). · Superseded 2026-09-29 body preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass, with one named reference that no longer resolves. The premise this phase was written against is confirmed still true at the source: `platform/kernel/src/event_bus.rs` still dispatches handlers inline, and the pass over that file in this same campaign (the ADR-42 gate audit) read the dispatch loop directly — handlers are invoked inside `catch_unwind` and both the error and panic arms log and continue, which is the synchronous-publisher behavior the spec describes as the problem. The chosen Option A (handler-side `tokio::spawn`, no `EventBus` API change) is the minimal-footprint approach the Residual section justifies, and ADR #2 (`docs/decisions/2026-02-01-event-bus-design.md`) — cited as the governing decision — exists. · STALE REFERENCE: `platform/core/src/settings.rs` is named in References and no longer exists as a file; the module is now the directory `platform/core/src/settings/`. Left as written, since a References block naming the file the phase worked against is a historical pointer. · The "No `publish_async` API exists" Baseline line is a pre-fix statement and is left alone for the same reason as the sibling Baselines. · The parent spec reference resolves. · Same unchecked-criteria note as the sibling 0-phase files. · No house stamp existed at the top of this file before this pass. -->
 # Phase 0e — Async Event Bus Handler Support
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -7,6 +9,18 @@
 - **Severity:** PREREQUISITE (blocks Phase 3)
 - **Owner:** TBD
 - **Est. effort:** 1-2 days
+
+## ✅ Audit re-verification (2026-10-11)
+
+The premise this phase was written against is **still true at HEAD**, which is what makes the
+phase's chosen fix still the right one: `platform/kernel/src/event_bus.rs` documents that handlers
+are "dispatched synchronously — the publisher blocks until all handlers have run", and
+`EventBus::publish<E>(&self, event: &E) -> ModuleResult` takes `&self` and returns a result rather
+than a handle — there is still no `publish_async` API, so Option A (handler-side `tokio::spawn`)
+remains the shape in use. The governing decision, ADR #2, resolves.
+
+**Stale Reference, left as historical:** `platform/core/src/settings.rs` is now the directory
+`platform/core/src/settings/`.
 
 ## Summary
 
@@ -82,4 +96,4 @@ Simplest change. No API changes to `EventBus`. The handler itself is responsible
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

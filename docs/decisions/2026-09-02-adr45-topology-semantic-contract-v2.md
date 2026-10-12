@@ -4,7 +4,10 @@ area: topology
 title: ADR #45: Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity
 status: Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,240 lines — the largest decision record audited in this campaign, larger than the 786-line Fluent journal and the 1,647-line setup working notes combined with room to spare. It carried no audit stamp, no footer and no marker. · THE SCOPE IS DELIBERATELY STRUCTURAL, and at this size there is no honest alternative. A 1,240-line semantic contract is a specification whose value is in its rules, and re-deriving those rules would be re-designing rather than auditing. What a documentation audit can establish, and what this pass establishes, is whether the tree still implements the contract it defines. The status line claims a specific and unusual degree of completeness — several sections implemented including a migration function and a backend-parity ordering rule, with the UI swap and the checklist UI still proposed — and that kind of precision is checkable in outline without re-walking 1,240 lines. · THE ADJUDICATION IS STRONGER THAN USUAL HERE BECAUSE THE ADJACENCY IS UNUSUAL. This decision sits directly upstream of four things this campaign has audited from the implementation side: the topology validation records verify the cycle check and the legacy-wire rejection this contract governs; the phase-0e record verifies the async event-bus boundary it depends on; the API surface checker reconciles the IPC surface it defines against both clients; and ADR-34, audited in the previous round, is the design this v2 contract supersedes. Five documents on either side of it agree that the contract's mechanisms are present in code. A specification whose rules are each independently pinned downstream is a specification that landed — a stronger statement than a line-by-line confirmation of its prose would have been. · WHAT A READER SHOULD KNOW AND THE DOCUMENT DOES NOT SAY: the topology tree it describes has since been DECOMPOSED. The editor and its validators now live as roughly twenty focused modules under `ui/src/features/locations/`, moved out of `ui/src/features/stores/`, with DB helpers relocated into `db/products_stock_adjust/` and the settings module split into `platform/core/src/settings/`. The contract is intact; the file layout it points at is not. The same decomposed-not-replaced distinction recorded against ADR-34 applies here. · NOT re-measured: the rule set itself, the SQL in its storage section, and the ordering rule, all of which are the document's own content. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 12 minor) · Re-audit of the largest record in this campaign; the 2026-09-29 stamp is preserved verbatim below as plain quoted text (delimiters stripped so it cannot nest). · MAJOR (a live count, in a present-tense sentence): §Context said the seeded `workspace_types` table "carries five keys — restaurant-pos, store-pos, warehouse, admin, kds". It carries SIX today: `crates/kasirmu-core/migrations/20260813_init.pg.sql:3684-3689` seeds a sixth, `retail-pos`, added after this ADR was written. The claim is load-bearing for the argument it supports ("three lists, three meanings, no declared owner") because the whole point of the sentence is to enumerate the real enum; a five-key list under a six-row table is exactly the drift §3 exists to prevent. Repaired to six, with the sixth named.
+· MINOR (12, all the same class — pre-rebrand and pre-restructure coordinates that the tree has moved past): `crates/oz-core/…` → `crates/kasirmu-core/…` in the vendored-copy paragraph, the impl-record sentence and the matrix-corpus path; `cargo test -p oz-core` / `-p oz-pos-app` → `-p kasirmu-core` / `-p kasirmu-app` in four commands and five gate-record table rows; `ui/src/frontend/themes/components.css` → `ui/src/theme/components.css` in the deferred action item; `desktop-client` → `desktop-tauri`. Two line numbers had also drifted and are now corrected to the code: the `include_str!` is at `crates/kasirmu-core/src/topology.rs:36` (the ADR said `:35`, and its own `:12` module doc already names the new path), and the drift test is `vendored_contract_matches_ui_canonical` at `topology_tests.rs:26` (the ADR said "`:30` fails the build", which is now a line inside that test's own assertion — the test's premise is the thing the ADR cites). · THIS ADR IS NOT ROTTED, AND THIS PASS PROVED IT BY RUNNING THE CONTRACT RATHER THAN READING IT: `python3 scripts/verify-topology-parity.py` exits 0 and reports the two `topologySemantics.json` copies byte-identical (2515 bytes) with the corpus covering exactly the 7 pairings × 9 kinds = 567 verdicts the ADR's §2 claims; `cargo test -p kasirmu-core --lib topology` runs **63 passed, 0 failed**; all five named symbols resolve — `NODE_KIND_REGISTRY` (ui/src/features/locations/topologyCard.ts:79), `pairingAdmitsKinds` (:340), `pairing_admits_kinds` (crates/kasirmu-core/src/topology.rs:208), `vendored_contract_matches_ui_canonical` (topology_tests.rs:26) and `topology_matrix_golden_matches_the_rust_evaluator` (:791). The three UI test files the ADR names exist. · THE DECOMPOSITION THE PRIOR STAMP RECORDED IS CONFIRMED AND IN FACT WORSENED: the topology editor now lives across ~36 `.tsx` files under `ui/src/features/locations/` (the prior stamp said "roughly twenty"), and `ui/src/features/stores/` no longer exists — the code itself records the move (`scripts/verify-topology-parity.py:67-68` notes `features/stores/` -> `features/locations/`, and the Rust test's own failure message documents that this path "went stale again"). The contract is intact; only the coordinates had drifted, which is why every path repair here was a rename and none was a behavioural claim. · NOT re-measured: the rule set itself, the §4.2 UI-swap and checklist-UI proposals (still open, as the status line states), and the dated gate-record counts, which are readings of the 2026-09-02 tree and are left as written. · Superseded 2026-09-29 stamp, preserved as quoted text:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,240 lines — the largest decision record audited in this campaign, larger than the 786-line Fluent journal and the 1,647-line setup working notes combined with room to spare. It carried no audit stamp, no footer and no marker. · THE SCOPE IS DELIBERATELY STRUCTURAL, and at this size there is no honest alternative. A 1,240-line semantic contract is a specification whose value is in its rules, and re-deriving those rules would be re-designing rather than auditing. What a documentation audit can establish, and what this pass establishes, is whether the tree still implements the contract it defines. The status line claims a specific and unusual degree of completeness — several sections implemented including a migration function and a backend-parity ordering rule, with the UI swap and the checklist UI still proposed — and that kind of precision is checkable in outline without re-walking 1,240 lines. · THE ADJUDICATION IS STRONGER THAN USUAL HERE BECAUSE THE ADJACENCY IS UNUSUAL. This decision sits directly upstream of four things this campaign has audited from the implementation side: the topology validation records verify the cycle check and the legacy-wire rejection this contract governs; the phase-0e record verifies the async event-bus boundary it depends on; the API surface checker reconciles the IPC surface it defines against both clients; and ADR-34, audited in the previous round, is the design this v2 contract supersedes. Five documents on either side of it agree that the contract's mechanisms are present in code. A specification whose rules are each independently pinned downstream is a specification that landed — a stronger statement than a line-by-line confirmation of its prose would have been. · WHAT A READER SHOULD KNOW AND THE DOCUMENT DOES NOT SAY: the topology tree it describes has since been DECOMPOSED. The editor and its validators now live as roughly twenty focused modules under `ui/src/features/locations/`, moved out of `ui/src/features/stores/`, with DB helpers relocated into `db/products_stock_adjust/` and the settings module split into `platform/core/src/settings/`. The contract is intact; the file layout it points at is not. The same decomposed-not-replaced distinction recorded against ADR-34 applies here. · NOT re-measured: the rule set itself, the SQL in its storage section, and the ordering rule, all of which are the document's own content. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
 # ADR #45: Topology Semantic Contract v2
 
 **Status:** Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed
@@ -24,10 +27,10 @@ for what may connect.
 
 A design review of the topology surface (2026-09-02) found that the *row table*
 is in fact a single source of truth, and is well guarded: the Rust crate vendors
-a copy (`crates/oz-core/src/topologySemantics.json`, embedded via `include_str!`
-at `crates/oz-core/src/topology.rs:35`), `scripts/verify-topology-parity.py:61-68`
-byte-compares the two copies, and `crates/oz-core/src/topology_tests.rs:30` fails
-the build on drift. The two files are byte-identical today.
+a copy (`crates/kasirmu-core/src/topologySemantics.json`, embedded via `include_str!`
+at `crates/kasirmu-core/src/topology.rs:36`), `scripts/verify-topology-parity.py:61-68`
+byte-compares the two copies, and `vendored_contract_matches_ui_canonical` in
+`crates/kasirmu-core/src/topology_tests.rs` fails the build on drift. The two files are byte-identical today.
 
 What is **not** in that contract is the second half of every rule: which *node
 kinds* may sit on each end of a row. Those predicates exist, are enforced, and
@@ -83,8 +86,9 @@ produced it was left in place. This ADR addresses the shape.
 that field and hardcodes its own list at `NodeTopologyEditor.tsx:307` —
 `['store-pos', 'restaurant-pos', 'kds', 'warehouse']`. Neither list is the
 system's real enum: the seeded `workspace_types` table
-(`crates/oz-core/migrations/20260813_init.pg.sql:1601-1605`) carries five keys —
-`restaurant-pos`, `store-pos`, `warehouse`, `admin`, `kds`. So `warehouse` in
+(`crates/kasirmu-core/migrations/20260813_init.pg.sql:3684-3689`) carries six keys —
+`restaurant-pos`, `store-pos`, `kds`, `warehouse`, `admin` and, added after this ADR
+was written, `retail-pos`. So `warehouse` in
 the editor's list is not a bug, and the contract field is not wrong either; it
 is the *topology-relevant* subset wearing a name that implies exhaustiveness.
 Three lists, three meanings, no declared owner — which is precisely the
@@ -313,7 +317,7 @@ is to make that guarantee explicit and testable:
 - Gate the one ungated infinite animation, `port-glow` (`:1931-1933`), using the
   house pattern already present at `:1098-1102` (`prefers-reduced-motion:
   no-preference`).
-- Delete `.topology-shortcuts-popover` from `ui/src/frontend/themes/components.css`;
+- Delete `.topology-shortcuts-popover` from `ui/src/theme/components.css`;
   its component no longer exists. Deferred — two compliance tests still list it
   and the removal belongs to the in-flight component deletion. See the
   implementation record.
@@ -389,7 +393,7 @@ live, silent, cross-language failure mode with a recorded precedent.
 
 - `python3 scripts/verify-topology-parity.py` — byte parity **and** the generated
   corpus verdict comparison.
-- `cargo test -p oz-core topology` — the vendored-contract drift test plus the
+- `cargo test -p kasirmu-core topology` — the vendored-contract drift test plus the
   semantic validation suites.
 - `npm run typecheck && npm run lint && npm run test` from `ui/` — the registry
   snapshot must be byte-identical to the pre-refactor capture.
@@ -416,7 +420,7 @@ transfer source. Previously the canvas offered that wire and the Rust gate
 rejected it, so the merchant was invited to draw a relationship that could never
 persist. An unregistered type becomes authorable by declaring its endpoint rows.
 
-**Evidence.** `cargo test -p oz-core --lib topology` 47/47 (5 new);
+**Evidence.** `cargo test -p kasirmu-core --lib topology` 47/47 (5 new);
 `topologyCard.test.ts` + `topologyContract.test.ts` 94/94 (3 new); the eight
 topology component suites 312/312; `tsc --noEmit` clean; `eslint` clean;
 `verify-topology-parity.py` OK. In the full UI suite, 11 tests fail — all 11
@@ -427,7 +431,7 @@ preset-removal work, not this contract.
 
 ### §2 — corpus test (shipped 2026-09-02)
 
-`crates/oz-core/src/topologySemantics.matrix.json` is the generated corpus:
+`crates/kasirmu-core/src/topologySemantics.matrix.json` is the generated corpus:
 every (pairing row × source kind × target kind) combination — 7 rows × 9 kinds
 × 9 kinds = 567 verdicts — produced by the Rust evaluator, never by restating a
 rule. Both gates assert against it:
@@ -899,8 +903,8 @@ Every gate run together for the first time, after all implementation commits:
 | Gate | Result |
 |---|---|
 | Full UI suite (`--maxWorkers=2`) | 7732 passed / 18 skipped / **4 failed** |
-| `cargo test -p oz-core --lib topology` | 52 / 52 |
-| `cargo test -p oz-pos-app --lib topology` | 329 / 329 |
+| `cargo test -p kasirmu-core --lib topology` | 52 / 52 |
+| `cargo test -p kasirmu-app --lib topology` | 329 / 329 |
 | `scripts/verify-topology-parity.py` | exit 0, both phases |
 
 The four UI failures are the same four as the first full run, one commit earlier,
@@ -937,7 +941,7 @@ count on this machine, which is an environment limit and not a test failure.
    give better messages and should stay, but the contract should generate them.
 
    **Done for `invalid-operation-source` (2026-09-02)**, in both languages:
-   `topologyContract.ts` and `crates/oz-core/src/topology.rs` now ask
+   `topologyContract.ts` and `crates/kasirmu-core/src/topology.rs` now ask
    `pairingAdmitsKinds` / `pairing_admits_kinds` rather than testing a type key
    alone. The Rust set was also inconsistent with its own neighbour —
    `restaurant_pos_ids` checked type key only while `retail_pos_ids` checked kind
@@ -1031,7 +1035,7 @@ Breakdown of the ten, each verified individually:
 - **Three live at another layer, by design.** `unsupported-schema-version` is
   enforced on read in `semantics.rs:235` (see the two-version-axes note in §2 —
   the envelope version is a read gate, not a graph rule). `warehouse-at-capacity`
-  and `warehouse-missing-stock-routing` are enforced in the desktop-client
+  and `warehouse-missing-stock-routing` are enforced in the desktop-tauri
   `persistence.rs`, which is where Apply actually runs.
 - **One is a code-name divergence, not a gap.** `unknown-wire-endpoint` has no
   backend equivalent, but a probe with a wire pointing at a nonexistent node is
@@ -1094,8 +1098,8 @@ suite - the exact gap round 20 named. Run now:
 | UI test files | 409 | **410** | +1 (`topologyValidationParity`) |
 | UI tests | 7754 | **7774** | +20 |
 | UI failures | 4 | **4** | same four |
-| `oz-core` topology | 52 | **58** | +6 |
-| `oz-pos-app` topology | 329 | **329** | 0 |
+| `kasirmu-core` topology | 52 | **58** | +6 |
+| `kasirmu-app` topology | 329 | **329** | 0 |
 
 The +20 is fully accounted: 10 ordering tests, 4 priority-table guards, 6 parity
 tests. Nothing appeared and nothing went missing. The four failures are identical
@@ -1177,14 +1181,14 @@ quieter and worse loss than a visible failure.
 ## Correction to the sweep above: the Rust side was scoped too (2026-09-02)
 
 The round-37 record claimed eight rounds were cleared, citing
-`oz-pos-app --lib topology` at 329/329. The number is correct and the conclusion
+`kasirmu-app --lib topology` at 329/329. The number is correct and the conclusion
 drawn from it was not: **329 is the topology-filtered subset of a 1160-test crate.**
 Running the whole crate:
 
 | Crate | Scoped (as reported) | Full crate |
 |---|---|---|
-| `oz-core --lib` | 58 topology | **2396 / 2396** |
-| `oz-pos-app --lib` | 329 topology | **1153 / 1160 — 7 failed** |
+| `kasirmu-core --lib` | 58 topology | **2396 / 2396** |
+| `kasirmu-app --lib` | 329 topology | **1153 / 1160 — 7 failed** |
 
 The irony is the point: the lesson was applied to the UI suite and then quietly not
 applied to Rust, in the same round, in a section whose entire subject is that scoped
@@ -1217,8 +1221,8 @@ tests, and it will read as flakiness to anyone running them singly.
 | UI test files | 410 | **410** | 0 |
 | UI tests | 7774 | **7776** | **+2** — exactly the migration canary |
 | UI failures | 4 | **4** | same four, unchanged |
-| `oz-core --lib` (full) | 2396 | 2396 +2 ticket tests | clean |
-| `oz-pos-app --lib` (full) | 1153/1160 | unchanged | 7 staff failures, another campaign |
+| `kasirmu-core --lib` (full) | 2396 | 2396 +2 ticket tests | clean |
+| `kasirmu-app --lib` (full) | 1153/1160 | unchanged | 7 staff failures, another campaign |
 
 Checked before running, because the canary added in round 40 asserts the *current*
 state of `NodeTopologyEditor.tsx` and a concurrent agent had four UI files open at
@@ -1240,4 +1244,4 @@ deferred list.
 - [ADR #44: Typed Connection Gating & Live Validation](./2026-08-08-adr44-typed-connection-gating.md) — §1 completes its single-source-of-truth goal
 - [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

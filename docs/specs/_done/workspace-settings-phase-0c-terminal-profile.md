@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · MIXED, and the honest split matters more than a single verdict. SHIPPED: `ui/src/hooks/useTerminalProfile.ts` exists, so the hook this phase exists to build is real. NOT FOUND: the schema document. The Plan's first step and the first acceptance criterion both require `docs/terminal-profile-schema.md` to define the full JSON schema with field types, defaults and validation rules, and a search of every tracked path matching "terminal-profile" returns only this spec itself — the document was never created. That is a real gap, not a path that moved: a schema file has no reason to be renamed, and the spec inlines the JSON shape so nothing else carries the contract. Recorded rather than written, because authoring a hardware-binding schema is design work the phase owner should own, and a guessed schema is worse than a known gap. · ALSO STALE: `platform/core/src/settings.rs` no longer exists as a file — the settings module was split into a directory (`platform/core/src/settings/` with `mod.rs`, `keys.rs`, `raw.rs`). Left in place in the Baseline/References, since those are records of the pre-fix layout. · The JSON schema block, the corruption-recovery rules (`.corrupted.{timestamp}.json`, three-phase backup/write/delete commit) and the per-platform storage paths are design content, left as written. · Same unchecked-criteria note as siblings. · No house stamp existed at the top of this file before this pass. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: REPAIRED (0 major, 1 minor) · Both halves of the prior MIXED verdict were re-derived, and both still hold — which is the useful result. SHIPPED, confirmed: `ui/src/hooks/useTerminalProfile.ts` exists. STILL MISSING, confirmed a second time by a different method: `docs/terminal-profile-schema.md` was never created — listing every tracked path matching 'terminal-profile' returns only this spec file. The Plan's step 1 and the first acceptance criterion both require it, so a spec whose header reads IMPLEMENTED still has an open deliverable; recorded, not authored, because schema design belongs to the phase owner. MINOR: `platform/core/src/settings.rs` is now a directory. The JSON schema block and corruption-recovery rules are design content, left as written. NOT re-measured: the hook's runtime read/write behaviour and its unit suite. · Superseded 2026-09-29 body preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · MIXED, and the honest split matters more than a single verdict. SHIPPED: `ui/src/hooks/useTerminalProfile.ts` exists, so the hook this phase exists to build is real. NOT FOUND: the schema document. The Plan's first step and the first acceptance criterion both require `docs/terminal-profile-schema.md` to define the full JSON schema with field types, defaults and validation rules, and a search of every tracked path matching "terminal-profile" returns only this spec itself — the document was never created. That is a real gap, not a path that moved: a schema file has no reason to be renamed, and the spec inlines the JSON shape so nothing else carries the contract. Recorded rather than written, because authoring a hardware-binding schema is design work the phase owner should own, and a guessed schema is worse than a known gap. · ALSO STALE: `platform/core/src/settings.rs` no longer exists as a file — the settings module was split into a directory (`platform/core/src/settings/` with `mod.rs`, `keys.rs`, `raw.rs`). Left in place in the Baseline/References, since those are records of the pre-fix layout. · The JSON schema block, the corruption-recovery rules (`.corrupted.{timestamp}.json`, three-phase backup/write/delete commit) and the per-platform storage paths are design content, left as written. · Same unchecked-criteria note as siblings. · No house stamp existed at the top of this file before this pass. -->
 <!-- dead-ref-prefix-ok: docs/terminal-profile-schema.md -->
 <!-- The schema doc this phase required was never created. Recorded as a gap in the stamp above, not repaired. -->
 # Phase 0c — `terminal_profile.json` Schema + `useTerminalProfile` Hook
@@ -9,6 +11,18 @@
 - **Severity:** PREREQUISITE (blocks Phase 1)
 - **Owner:** TBD
 - **Est. effort:** 2-3 days
+
+## ✅ Audit re-verification (2026-10-11)
+
+Both halves of the 2026-09-29 stamp were re-derived and both still hold, which is the useful
+result for a mixed verdict:
+
+- **SHIPPED, confirmed:** `ui/src/hooks/useTerminalProfile.ts` exists.
+- **STILL MISSING, confirmed again:** `docs/terminal-profile-schema.md` was **never created**.
+  Re-checked by listing every tracked path matching "terminal-profile" — the only hit is this spec
+  file itself. The Plan's step 1 and the first acceptance criterion both require it, so this is a
+  real open gap in a spec whose header says IMPLEMENTED.
+- **Still stale:** `platform/core/src/settings.rs` (now a directory).
 
 ## Summary
 
@@ -130,4 +144,4 @@ Define a JSON file format for register-local hardware bindings (`terminal_profil
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
