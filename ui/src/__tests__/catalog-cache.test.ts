@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { listProductsScoped, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { loadCatalog, getCatalog, invalidateCatalog } from '@/utils/catalog-cache';
