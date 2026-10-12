@@ -507,19 +507,49 @@ fn get_stock_zero_for_product_without_inventory_row() {
 
 // ── Product with stock_qty in list ───────────────────────────────────
 
+// A retail product always carries an authoritative ledger row — even at zero
+// stock — so the list reports Some(0) rather than NULL. A product that does not
+// track inventory (restaurant / service) has no such row and reports None.
+// c07279f02 made the zero row the rule so stock_summary always has an
+// authoritative row; this pins the contract list_products must now honour, in
+// both directions, because collapsing them back to one behaviour is the
+// regression this shape of test exists to catch.
 #[test]
-fn products_without_stock_show_none_in_list() {
+fn list_products_separates_a_zero_stock_row_from_no_stock_row() {
     let conn = setup();
     let s = store(&conn);
-    let p = s
-        .create_product("NO-STOCK-LIST", "No Stock", price(100), None, None, 0, None)
+    let retail = s
+        .create_product("ZERO-STOCK", "Zero Stock", price(100), None, None, 0, None)
+        .unwrap();
+    let menu_item = s
+        .create_product(
+            "MENU-ITEM",
+            "Menu Item",
+            price(100),
+            None,
+            None,
+            0,
+            Some("restaurant"),
+        )
         .unwrap();
 
     let products = s.list_products().unwrap();
-    let found = products.iter().find(|pr| pr.product.id == p.id).unwrap();
+    let found_retail = products
+        .iter()
+        .find(|pr| pr.product.id == retail.id)
+        .unwrap();
     assert_eq!(
-        found.stock_qty, None,
-        "product without inventory row shows None"
+        found_retail.stock_qty,
+        Some(0),
+        "a retail product at zero stock reports Some(0): the ledger row is authoritative"
+    );
+    let found_menu = products
+        .iter()
+        .find(|pr| pr.product.id == menu_item.id)
+        .unwrap();
+    assert_eq!(
+        found_menu.stock_qty, None,
+        "a product that does not track inventory has no ledger row and reports None"
     );
 }
 

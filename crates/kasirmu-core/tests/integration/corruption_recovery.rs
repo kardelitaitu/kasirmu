@@ -365,11 +365,20 @@ fn sale_with_empty_status_defaults_to_pending() {
 // ── Invalid Product Types ────────────────────────────────────────────
 //
 // ProductType::parse_str() returns None for unrecognized strings,
-// and the row mapper uses unwrap_or_default(). No panic possible,
+// and the row mapper uses parse_stored_or_default(). No panic possible,
 // but verify robustness.
+//
+// The 20261020 migration constrains products.product_type to
+// ('retail', 'restaurant', 'service') and backfills whatever an older build left
+// behind, so a bad value can no longer be written through ordinary SQL. A row
+// that bypassed the constraint anyway — an external sqlite edit, a database file
+// restored from before the constraint — is forged here with SQLite's own escape
+// hatch. The invariant itself (bad values are rejected on write) is pinned in
+// db/products_tests.rs; the backfill that retires a legacy database is pinned in
+// migrations_tests.rs. This one pins the reader.
 
 #[test]
-fn product_with_unknown_type_defaults_to_retail() {
+fn product_with_type_that_bypassed_the_constraint_defaults_to_retail() {
     let conn = setup();
     let s = store(&conn);
 
@@ -383,11 +392,15 @@ fn product_with_unknown_type_defaults_to_retail() {
         Some("retail"),
     )
     .unwrap();
+    conn.execute("PRAGMA ignore_check_constraints = ON", [])
+        .unwrap();
     conn.execute(
         "UPDATE products SET product_type = 'quantum-computing' WHERE sku = 'TYPE-TEST'",
         [],
     )
     .unwrap();
+    conn.execute("PRAGMA ignore_check_constraints = OFF", [])
+        .unwrap();
 
     let product = s
         .get_product("TYPE-TEST")
@@ -399,32 +412,6 @@ fn product_with_unknown_type_defaults_to_retail() {
         product.product.product_type,
         kasirmu_core::ProductType::default(),
         "unknown product type should fall back to default"
-    );
-}
-
-#[test]
-fn product_with_very_long_type_string_defaults_to_retail() {
-    let conn = setup();
-    let s = store(&conn);
-
-    // product_type with an abnormally long invalid string.
-    s.create_product("LONG-TYPE", "Long Type", price(100), None, None, 10, None)
-        .unwrap();
-    let long_type = "x".repeat(500);
-    conn.execute(
-        "UPDATE products SET product_type = ?1 WHERE sku = 'LONG-TYPE'",
-        rusqlite::params![long_type],
-    )
-    .unwrap();
-
-    let product = s
-        .get_product("LONG-TYPE")
-        .unwrap()
-        .expect("product should load");
-    assert_eq!(
-        product.product.product_type,
-        kasirmu_core::ProductType::default(),
-        "very long product type should fall back to default"
     );
 }
 
