@@ -6,6 +6,7 @@ import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { minorUnitExponent } from '@/types/domain';
 import { triggerInteraction } from '@/utils/interaction';
+import { listen } from '@/api/tauri';
 import './QrisQrDisplay.css';
 
 interface QrisQrDisplayProps {
@@ -88,9 +89,26 @@ export default function QrisQrDisplay({
 
   // ── Zero-MDR QRIS Notification Listener ────────────────────────
   // When an incoming push notification from an Indonesian bank/e-wallet
-  // arrives on the tablet, verify if the parsed amount matches this invoice.
+  // arrives on the tablet/desktop, verify if the parsed amount matches this invoice.
   useEffect(() => {
     if (!isOpen || status !== 'waiting') return;
+    let unlistenTauri: (() => void) | undefined;
+    let cancelled = false;
+
+    const onPaymentReceived = (data?: {
+      provider?: string;
+      amountMinor?: number;
+      amount?: number;
+      rawText?: string;
+    }) => {
+      if (!data || status === 'confirmed') return;
+      const receivedAmount = data.amountMinor ?? data.amount;
+      if (receivedAmount === amount) {
+        setVerifiedProvider(data.provider ?? 'QRIS');
+        setStatus('confirmed');
+      }
+    };
+
     const handleQrisPayment = (e: Event) => {
       const customEvent = e as CustomEvent<{
         provider?: string;
@@ -98,17 +116,28 @@ export default function QrisQrDisplay({
         amount?: number;
         rawText?: string;
       }>;
-      const detail = customEvent.detail;
-      if (!detail) return;
-      const receivedAmount = detail.amountMinor ?? detail.amount;
-      if (receivedAmount === amount) {
-        setVerifiedProvider(detail.provider ?? 'QRIS');
-        setStatus('confirmed');
-      }
+      onPaymentReceived(customEvent.detail);
     };
 
     window.addEventListener('kasirmu:qrisPaymentNotification', handleQrisPayment);
+
+    listen<{
+      provider?: string;
+      amountMinor?: number;
+      amount?: number;
+      rawText?: string;
+    }>('kasirmu:qrisPaymentNotification', (event) => {
+      onPaymentReceived(event.payload);
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenTauri = fn;
+      })
+      .catch(() => {});
+
     return () => {
+      cancelled = true;
+      unlistenTauri?.();
       window.removeEventListener('kasirmu:qrisPaymentNotification', handleQrisPayment);
     };
   }, [isOpen, status, amount]);

@@ -20,6 +20,7 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import { withFluent } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
+import { listen } from '@/api/tauri';
 
 import {
   ExitAnimHost,
@@ -529,6 +530,49 @@ describe('QrisQrDisplay — Zero-MDR QRIS Notification Listener', () => {
 
     fireEvent.click(enableBtn);
     expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies payment when notification is received via Tauri event', () => {
+    let tauriHandler: ((event: { payload: unknown }) => void) | undefined;
+    vi.mocked(listen).mockImplementation((event: string, handler: any) => {
+      if (event === 'kasirmu:qrisPaymentNotification') {
+        tauriHandler = handler;
+      }
+      return Promise.resolve(() => {});
+    });
+
+    const onPaymentConfirmed = vi.fn();
+    const hostRef = makeHostRef();
+    render(
+      withFluent(
+        <HostModal
+          hostRef={hostRef}
+          onPaymentConfirmed={onPaymentConfirmed}
+        />,
+        salesFtl,
+      ),
+    );
+
+    expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(tauriHandler).toBeDefined();
+
+    act(() => {
+      tauriHandler?.({
+        payload: {
+          provider: 'Mandiri',
+          amountMinor: 25000,
+          amountFormatted: 'Rp 25.000',
+        },
+      });
+    });
+
+    expect(screen.getByText('Payment verified via Mandiri!')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
   });
 });
 
