@@ -963,12 +963,17 @@ retryCurrencyLoad,
         try {
           await finalizeSale(sessionToken, saleResult.saleId);
         } catch (finalizeErr) {
-          addToast({ message: `Finalize failed, attempting void: ${finalizeErr instanceof Error ? finalizeErr.message : String(finalizeErr)}`, type: 'error' });
+          // The backend cause arrives in English and cannot be localized here, so it
+          // is LOGGED rather than shown: the cashier needs the instruction, and the
+          // diagnostic belongs in the console where support can read it.
+          console.error('finalizeSale failed', saleResult.saleId, finalizeErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-finalize-failed'), type: 'error' });
           if (voidOnFinalizeFailure) {
             try {
               await voidPendingSale(sessionToken, saleResult.saleId);
             } catch (voidErr) {
-              addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+              console.error('voidPendingSale failed', saleResult.saleId, voidErr);
+              addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-void-failed'), type: 'error' });
             }
           }
           throw finalizeErr;
@@ -1361,11 +1366,13 @@ retryCurrencyLoad,
           await finalizeSale(sessionToken, saleResult.saleId);
         } catch (finalizeErr) {
           // Attempt to void the pending sale to restore stock
-          addToast({ message: `Finalize failed, attempting void: ${finalizeErr instanceof Error ? finalizeErr.message : String(finalizeErr)}`, type: 'error' });
+          console.error('finalizeSale failed', saleResult.saleId, finalizeErr);
+          addToast({ message: requiredLocalized(l10n, 'payment-toast-finalize-failed'), type: 'error' });
           try {
             await voidPendingSale(sessionToken, saleResult.saleId);
           } catch (voidErr) {
-            addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+            console.error('voidPendingSale failed', saleResult.saleId, voidErr);
+            addToast({ message: requiredLocalized(l10n, 'payment-toast-void-failed'), type: 'error' });
           }
           // Throw the original finalize error so the outer catch handles it
           throw finalizeErr;

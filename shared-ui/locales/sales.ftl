@@ -205,6 +205,11 @@ payment-toast-print-failed = Nothing was printed — check that a printer is set
 payment-toast-receipt-unavailable = Payment succeeded, but the receipt could not be prepared — the sale is saved, check the sale history to reprint
 payment-toast-invoice-issued = Tax invoice issued successfully
 payment-toast-invoice-failed = Failed to issue tax invoice
+# Money-path failures. These two are written as INSTRUCTIONS rather than diagnoses:
+# the cashier has to settle a half-completed payment by hand, and the backend cause
+# (which arrives in English and cannot be localized here) is logged, not shown.
+payment-toast-finalize-failed = The sale could not be finalised — check the sale history and settle it manually
+payment-toast-void-failed = The pending sale could NOT be voided — it is still open and must be cleared manually
 payment-customer-placeholder = e.g. John Doe
 payment-loyalty-points-aria = Points
 payment-search-customers-aria = Search customers
