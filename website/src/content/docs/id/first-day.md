@@ -6,6 +6,8 @@ order: 8
 updated: "2026-09-30"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor) · Indonesian counterpart, audited at HEAD in the same pass as the en page. · MINOR 1: a copy typo, "layar struk memilki tombol" -> "layar struk memiliki tombol". MINOR 2: a garbled idiom, "di depan layar itu berlimat lipat nilainya" -> "di depan layar itu berlipat ganda nilainya" ("berlimat" is not a word; "berlipat ganda" is the intended phrase). Both were in body copy a customer reads. · VERIFIED AND LEFT ALONE: the same six pointers the en page carries all resolve; the ID terms match the app's Indonesian Fluent bundle (Ruang Kerja, Layar Dapur, Peran Pengguna); front matter parity with en/first-day.md is exact. · NOT reviewed: the Indonesian prose as copywriting — only the two defects above were touched. -->
+
 Semua halaman sebelumnya masih latihan. Ini periksaan terakhir sebelum
 pelanggan sungguhan berdiri di konter Anda. Kebanyakan masing-masing hanya
 butuh satu menit.
@@ -24,7 +26,7 @@ butuh satu menit.
 
 1. Daftarkan perangkat sebagai terminal dari **bagian Tools** navigasi
    utama — peran manajer diperlukan: [Terminal](../terminals/).
-2. **Printer struk** — dari pengaturan POS Restoran, layar struk memilki
+2. **Printer struk** — dari pengaturan POS Restoran, layar struk memiliki
    tombol **uji cetak**. Perhatikan: ujinya memakai pengaturan yang *terakhir
    disimpan*, jadi simpan draf tata letak Anda dulu atau uji memakai tata
    lama. Tata cetak ritel dikonfigurasi per ruang kerja di Pengaturan.
@@ -61,10 +63,10 @@ yang tidak bisa dibuka hanya tampil tidak aktif. Lihat
 
 Cabut kabel internet (atau matikan Wi-Fi) dan hitung satu transaksi.
 Harusnya selesai seperti biasa, masuk antrean lokal, dan tersinkron saat
-koneksi kembali. Sekali dengan Anda di depan layar itu berlimat lipat
+koneksi kembali. Sekali dengan Anda di depan layar itu berlipat ganda
 nilainya dibanding esei-dokumentasi — [Mode Offline](../offline-mode/)
 menjelaskan apa yang ditampilkan antrean.
 
 Lanjut membaca · **Sebelumnya:** [Ruang Kerja](../workspaces/)
 
-> last audited 30-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

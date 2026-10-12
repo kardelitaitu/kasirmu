@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · Re-audit of the file that PREDICTS ITS OWN DRIFT — and the prediction came true a second time. The 2026-10-07 pass verified "all 11 cited line numbers still land exactly on their fn"; at HEAD SIX of those 11 have moved (inventory_tests.rs 311->307, products_tests.rs 2628->2695, sales_tests.rs 260->292 and 271->303, refunds_tests.rs 122->140, 210->228, 417->435), plus two SOURCE anchors (foundation/src/inventory.rs 359->380 for allow_negative_stock; products_stock_query.rs 460->470 for the guard message), and one cited test does not exist under the name given — lamport_tests.rs has no "commutativity" test; the two real order-independence properties are now named. ALL 17 NAMED TESTS STILL EXIST, so the invariant set is unchanged and the enforcement claim holds; only coordinates and one name were stale. ALL FOUR INVARIANTS re-verified live: the two-layer negative-stock floor (Rust guard + CHECK constraint at 20260813_init.sql:171, both present), from_cart's construction of the sale total, the three refund bounds in refunds.rs (cumulative money :132, quantity :265, per-line :343 — all exact), and the sync convergence tests. The file's own "Not a gate" note is still accurate and is now the third hand pass to find drift here. · Verified and left alone: the 2026-10-07 repair to §1, the debug_assert/invariant census figures (dated), and the two "NOT stronger than it reads" caveats. NOT re-measured: whether the named tests PASS, or whether they run in CI rather than by hand. · Prior two stamps preserved below as plain text. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. It sits in the architecture directory alongside what is now a pointer to the canonical architecture document, and it is a different kind of artefact: a short list of invariants the system must never violate, each naming the test that enforces it. · THE CLAIM IN ITS HEADER IS THE ONE WORTH CHECKING, because it is unusually specific for a self-assessment. It states that every enforcement link names a test that was located, and in most cases actually run, and that every figure is measured — easy to claim, hard to honour. It holds: all six test files named across the four invariants resolve in the tree. A list of invariants naming tests that do not exist is worse than no list, because it converts an aspiration into an apparent guarantee, and this one has avoided that. · WHY FOUR AND NOT A DOCTRINE, which is the design decision that makes the document useful. A critical-path list exists because not every property deserves equal attention, and a document enumerating all of them would be neither shorter nor more trusted. Four, each with a named enforcer, is a list someone can read in a minute and act on. It is the same instinct as the scoped-coverage gate and the boundary checker: prefer a small set of mechanically enforced properties over a large set of aspirational ones. · A NOTE ON THE FRAMING, since it is what a reader skims past. Calling these CRITICAL PATH rather than requirements is a statement about consequence rather than importance — the violations that would make the product wrong in a way that matters, as distinct from those that would merely make it untidy. All four are reachable from this campaign's own history: a money value that must never be a float, an operation that must not be recorded twice, a connection that must not be silently trusted, and a store that must not be deleted out from under a record. A reader who has met the money-closure spec, the idempotency migration and the settings-ingest policy will recognise all four. · NOT re-measured: whether the named tests currently pass, or whether they run in continuous integration rather than only by hand. Running them is the original work, and this stamp deliberately does not claim the invariants currently hold — only that each has an identifiable enforcer. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Critical-path invariants
 
@@ -21,7 +22,7 @@ without saying so below.
 
 **The invariant is conditional, and stating it unconditionally would be false.**
 `WorkspaceInventoryLocation.allow_negative_stock`
-(`foundation/src/inventory.rs:359`) is a per-location policy flag, and the stock
+(`foundation/src/inventory.rs:380`) is a per-location policy flag, and the stock
 write is a raw `UPDATE inventory SET qty = qty + ?1`. A location that opts in may
 oversell; a location that does not must be refused.
 
@@ -39,7 +40,7 @@ Where it is enforced — **two independent layers**, which is worth knowing:
 
 | Layer | Where | What it does |
 |---|---|---|
-| Rust guard | `crates/kasirmu-core/src/db/products_stock_query.rs:460` | `.filter(\|&v\| v >= 0)` on the new quantity; rejects with `"adjustment would cause negative stock (previous: N, delta: M)"` |
+| Rust guard | `crates/kasirmu-core/src/db/products_stock_query.rs:470` | `.filter(\|&v\| v >= 0)` on the new quantity; rejects with `"adjustment would cause negative stock (previous: N, delta: M)"` |
 | Rust guard (batch) | `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs:156` | same, for a batch whose ANY member would go negative |
 | **Database** | CHECK constraint `qty >= 0` on `inventory` (`crates/kasirmu-core/migrations/20260813_init.sql:171`) | refuses the write even if the Rust guard is removed |
 
@@ -49,10 +50,10 @@ layers. That was found while writing the adversarial tests below, and no
 single-layer test would have shown it.
 
 **Enforced by:**
-- `foundation/src/inventory_tests.rs:311` — `inventory_new_rejects_negative_qty`
+- `foundation/src/inventory_tests.rs:307` — `inventory_new_rejects_negative_qty`
 - `foundation/src/inventory_proptests.rs:167` — `inventory_rejects_negative_qty_at_construction` (property: any `qty` in `i64::MIN..0` panics)
 - `platform/sync/tests/adversarial_paths.rs` — `two_locations_overselling_the_same_stock_contain_the_overspend` (two partitioned devices sell 30 of 50 each; the pair converges at 20, having REFUSED the other's duplicate deduction)
-- `crates/kasirmu-core/src/db/products_tests.rs:2628` — `negative_stock_event_fires_when_allow_negative_enabled` (pins the OPT-IN path, so the conditional clause above is tested rather than merely documented)
+- `crates/kasirmu-core/src/db/products_tests.rs:2695` — `negative_stock_event_fires_when_allow_negative_enabled` (pins the OPT-IN path, so the conditional clause above is tested rather than merely documented)
 
 ---
 
@@ -66,8 +67,8 @@ mutates a `Sale` directly — which the negative-value guards then catch.
 - `foundation/src/cart_tests.rs:748` — `cart_with_multiple_lines_total`
 - `foundation/src/cart_tests.rs:322` — `cart_line_total_calculated`
 - `foundation/src/cart_tests.rs:93` — `total_overflow_returns_none` (the sum is checked, not wrapping)
-- `crates/kasirmu-core/src/db/sales_tests.rs:260` — `create_sale_rejects_negative_line_total`
-- `crates/kasirmu-core/src/db/sales_tests.rs:271` — `create_sale_rejects_negative_total`
+- `crates/kasirmu-core/src/db/sales_tests.rs:292` — `create_sale_rejects_negative_line_total`
+- `crates/kasirmu-core/src/db/sales_tests.rs:303` — `create_sale_rejects_negative_total`
 
 **Caveat, stated because it is the weak point.** There is no single test asserting
 "header == Σ lines" over arbitrary carts. The invariant holds because
@@ -96,9 +97,9 @@ defaulting to `0`, so an unreadable ledger refuses the refund instead of
 admitting an unbounded one.
 
 **Enforced by:**
-- `crates/kasirmu-core/src/db/refunds_tests.rs:122` — `create_refund_rejects_over_refund`
-- `crates/kasirmu-core/src/db/refunds_tests.rs:210` — `over_refund_guard_fails_closed_when_cumulative_sum_unreadable`
-- `crates/kasirmu-core/src/db/refunds_tests.rs:417` — `refund_qty_exceeds_original_deduction_fails`
+- `crates/kasirmu-core/src/db/refunds_tests.rs:140` — `create_refund_rejects_over_refund`
+- `crates/kasirmu-core/src/db/refunds_tests.rs:228` — `over_refund_guard_fails_closed_when_cumulative_sum_unreadable`
+- `crates/kasirmu-core/src/db/refunds_tests.rs:435` — `refund_qty_exceeds_original_deduction_fails`
 - `platform/sync/tests/adversarial_paths.rs` — `two_locations_cannot_refund_more_than_was_sold`
 
 **Scope note.** `platform/sync` deliberately does NOT re-derive these bounds when
@@ -119,7 +120,7 @@ is promised.
 - `platform/sync/tests/convergence_replay.rs` — `replaying_every_item_a_second_time_changes_nothing`
 - `platform/sync/src/conflict_proptests.rs` — `sale_resolution_is_symmetric_in_outcome_rank` and `version_resolution_is_symmetric_in_outcome_version` (property: swapping the arguments cannot change the surviving rank)
 - `platform/sync/src/conflict_proptests.rs` — `a_more_advanced_status_always_wins_over_a_less_advanced_one` (a completed sale is never reverted by a stale `active` copy)
-- `platform/sync/src/crdt/lamport_tests.rs:54` — the CRDT commutativity property
+- `platform/sync/src/crdt/lamport_tests.rs:50` — `tie_break_is_deterministic_across_argument_order`, and `:62` — `ordering_is_transitive_over_a_scrambled_set` (the two order-independence properties; no test named "commutativity" exists)
 
 **Two ways this is NOT stronger than it reads**, stated so nobody over-trusts it:
 the convergence test calls `rebuild_stock_summary` before comparing, because
@@ -149,5 +150,16 @@ items are never delivered back to it, since they are already local.
   > was in PROSE, which is the kind the dead-ref checker does not grade. A checker
   > that parsed this file for `path.rs:NN` — `fn name` pairs and asserted the `fn`
   > exists at that line would be ~20 lines and is still not written.
+  >
+  > **Re-verified 11-10-26 — the prediction came true a second time.** Of the 11 `path:NN` → `fn`
+  > pairs, **6 had drifted** (`inventory_tests.rs` 311→307, `products_tests.rs` 2628→2695,
+  > `sales_tests.rs` 260→292 and 271→303, `refunds_tests.rs` 122→140, 210→228 and 417→435 — the
+  > sales and refunds batches each shifted together), plus two source anchors
+  > (`foundation/src/inventory.rs` 359→380 for `allow_negative_stock`, and
+  > `products_stock_query.rs` 460→470 for the guard message), and one cited test did not exist
+  > under the name given: `lamport_tests.rs` has no `commutativity` test, so the two real
+  > order-independence properties are now named. **All 17 named tests still EXIST** — only line
+  > numbers and that one test name were stale, so the invariant set is unchanged. Still no checker
+  > parses these pairs; this is the third hand pass to find drift in this file.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

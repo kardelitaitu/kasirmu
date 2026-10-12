@@ -1,4 +1,7 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with no prior stamp, footer or marker. It is marked completed, and it is the third document in this directory to address the payment phase — after the methods plan that decides what exists, the resilience design that decides how failures are handled, and the owner question recording that part of the phase is blocked on input. A reader who takes this one alone will conclude the phase is finished, which is why the stamp leads with the set rather than the file. · THE HARDWARE ABSTRACTION IT PLANS AGAINST IS REAL, and this is the checkable part. The card-present driver exists in the hardware abstraction layer with a sibling test file beside it, which is the structural convention the root guide requires — driver implementations and their tests as separate files rather than tests embedded in the implementation. A plan describing hardware that does not exist is a different document, and this is not one. · THE DESIGN PROBLEM IS THE INTERESTING PART, and it is why the word RESILIENT appears in the title alongside binding. One physical card terminal shared across several logical registers or workspaces is a resource-arbitration problem before it is a driver problem: two cashiers must not drive one device simultaneously, the device must be claimable and releasable without a crash stranding it, and a terminal failing mid-transaction must leave the sale in a state a person can reason about. That is why it is filed next to the resilience design rather than with the ordinary hardware documentation — the binding and the failure handling are ONE problem, and the resilience mechanism audited in an earlier round is the same machinery this one depends on. · NOT re-measured: the binding implementation, the arbitration, or the recovery behaviour on device failure. Those are the document's own content and are the original work. What is established is that the driver it builds on exists, and that its design problem is the same one the resilience decision addresses. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · Re-audit. The plan IS implemented: resolve_terminal (kasirmu-bridge/src/edc.rs:285, const :36), list_edc_terminals_scoped (:481), create_edc_terminal_scoped (:512), terminalId across ui/src/api/edc.ts (16 occurrences), defaultEdcTerminalId in register LocalPrefs (45 hits), EdcTerminalsCard mounted at settings/screens/DevicesConnectivityScreen.tsx:22, and the checkout picker's selectedTerminalId/setSelectedTerminalId (useEdcTenderPhase.ts:133, returned at :268-277). ONE MINOR REPAIR, in the 'shipped but not under the name the plan gives' class: the card lives under settings/components/ (not settings/), and the hook exposes `terminals`, not the proposed `availableTerminals`. Both corrected in place with the deviation recorded. NOT re-measured: the §4 verification checklist's own runs (cargo check, cargo test -p kasirmu-bridge edc, the UI suites) — those are executions, and this pass establishes that the named artefacts exist, not that the commands pass.
+
+     --- prior stamp, preserved as plain text (delimiters stripped) ---
+ -->
 # PLAN: Multi-Terminal EDC Hardware Binding (R4) & Resilient Abstraction
 
 **Status:** COMPLETED · **Date:** 2026-09-29 · **Scope:** `crates/kasirmu-bridge`, `apps/desktop-tauri`, `apps/mobile-tauri`, `ui/src/api/edc.ts`, `ui/src/features/settings`, `ui/src/features/sales/payment`
@@ -49,7 +52,7 @@ In Indonesian and global retail/hospitality, registers frequently connect to **m
 
 ### Phase 3: Hardware Settings Management UI
 - [x] In `ui/src/features/settings/`:
-  - Add `EdcTerminalsCard` to Hardware Settings.
+  - Add `EdcTerminalsCard` to Hardware Settings (`ui/src/features/settings/components/EdcTerminalsCard.tsx`, mounted on `screens/DevicesConnectivityScreen.tsx`).
   - Show list of configured terminals with connection type badges.
   - "Test Connection" button to probe terminal status on-demand.
   - Add/Edit/Delete terminal modal with connection & transport validation.
@@ -60,7 +63,7 @@ In Indonesian and global retail/hospitality, registers frequently connect to **m
   - In `useEdcTenderPhase.ts`:
     - Fetch active terminals on mount.
     - Manage `selectedTerminalId`, defaulting to register's preferred terminal.
-    - Expose `availableTerminals`, `selectedTerminalId`, and `setSelectedTerminalId`.
+    - Expose the terminal list and selection state — shipped as `terminals`, `selectedTerminalId`, `setSelectedTerminalId` (`useEdcTenderPhase.ts:268-277`); the plan's proposed name `availableTerminals` was not used.
     - Probe and tender against `selectedTerminalId`.
   - In `PaymentModal.tsx`:
     - If multiple terminals are active, render selection chips (`[BCA Counter 1]`, `[Mandiri Pax]`).
@@ -79,4 +82,22 @@ In Indonesian and global retail/hospitality, registers frequently connect to **m
 4. `npm run test` on touched UI suites.
 5. All repo pre-commit gates pass (`verify-migration-column-types`, `generate-pg-migration --check`, `check-dead-refs`).
 
-> last audited 29-09-26 by docs-auditor
+
+---
+
+## 5. Verified 11-10-26 — the plan is implemented, under slightly different names
+
+Every mechanism in this plan was re-derived at HEAD on 11-10-26 and EXISTS: `resolve_terminal`
+(`crates/kasirmu-bridge/src/edc.rs:285`, the const at `:36`), `list_edc_terminals_scoped` (`:481`) and
+`create_edc_terminal_scoped` (`:512`), `terminalId` across `ui/src/api/edc.ts` (16 occurrences),
+`defaultEdcTerminalId` in register LocalPrefs (45 hits in `ui/src`), `EdcTerminalsCard` mounted at
+`screens/DevicesConnectivityScreen.tsx:22`, and the checkout picker's `selectedTerminalId` /
+`setSelectedTerminalId` at `useEdcTenderPhase.ts:133`. Two naming corrections are recorded in place
+above (the card lives under `components/`; the hook exposes `terminals`, not `availableTerminals`) —
+the "shipped, but not under the name the plan gives" class.
+
+**NOT re-measured:** the §4 verification checklist's own runs — `cargo check`, `cargo test -p
+kasirmu-bridge edc`, and the UI suites. Those are executions, and the plan's own status line already
+claims them; this pass establishes that the named artefacts exist, not that the commands pass.
+
+> last audited 11-10-26 by docs-auditor

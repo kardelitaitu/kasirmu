@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor class, 11 coordinates) · ELEVEN line anchors had drifted and are repaired; the SEQUENCE and every symbol name are unchanged, which is the reassuring half — this is a narrative doc and its substance held while its coordinates aged. Repointed: lifecycle.rs load_all 234->267, resolve_dependencies 487->520, verify_capabilities 245->278, the pre-loop check 247->280, on_load 270->303, KernelContext 280->313, on_context 281->314, start_all 299->332, stop_all 374->407, subscribe_gated 696->729; and contracts.rs on_context 88->102. Every function the diagram names was re-read and EXISTS at the new line (register :69, declare_capabilities :127, capability parse :29, verify_all :164 — those four were already exact). The four registry/path references, the 14-module registration count and the Phase-2 historical-scope banner all still hold. · NOT re-measured: whether the boot path still behaves as described at runtime, and the P3 test names beyond their existence. · Prior two stamps preserved below as plain text. -->
 # Module Boot Sequence
 
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Repaired: (1) the title read "(Phase 2)" while Phase 4 has landed — retitled, with a historical-scope note above; (2) the "Raw connection access" bullet described `NamespacedStore::raw` in the present tense while the very next paragraph said it was removed 2026-10-03, and `fn raw` no longer exists in `crates/kasirmu-core/src/db/namespaced.rs` (0 hits) — rewritten to past tense. Path references repointed this pass: `docs/architecture/phase2-implementation-tickets.md` and `namespaced-store-api-draft.md` -> `docs/records/superseded/` (both verified present). · Repaired against branch `0.0.41` at `134aaed1b`. -->
@@ -7,6 +8,14 @@
      since landed (namespace governance runs `--strict` in `scripts/check.sh:509`; capability parity at
      `:532`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
      bullet is now past tense, matching the removal the next paragraph already recorded. -->
+
+<!-- Re-verified 11-10-26: every line anchor above was re-read at HEAD and ELEVEN had drifted
+     (lifecycle.rs load_all 234->267, resolve_dependencies 487->520, verify_capabilities 245->278,
+     the pre-loop check 247->280, on_load 270->303, KernelContext 280->313, on_context 281->314,
+     start_all 299->332, stop_all 374->407, subscribe_gated 696->729; contracts.rs on_context
+     88->102). The SEQUENCE and every symbol name are unchanged — only the coordinates moved as
+     the files grew. The narrative is otherwise accurate: register/declare/load/start all exist at
+     the named functions. -->
 
 This page describes what actually happens between `init_module_system` being
 called and the first domain event being delivered, naming the real functions and
@@ -26,19 +35,19 @@ init_module_system(kernel, db_path)          platform/startup/src/lib.rs:109
   │    Kernel::declare_capabilities          platform/kernel/src/kernel/lifecycle.rs:127
   │
   ├─ load_all                               platform/startup/src/lib.rs:165
-  │    │  Kernel::load_all                   platform/kernel/src/kernel/lifecycle.rs:234
-  │    ├─ resolve_dependencies (topo sort)   platform/kernel/src/kernel/lifecycle.rs:487
-  │    ├─ verify_capabilities (FAIL FAST)    platform/kernel/src/kernel/lifecycle.rs:245
+  │    │  Kernel::load_all                   platform/kernel/src/kernel/lifecycle.rs:267
+  │    ├─ resolve_dependencies (topo sort)   platform/kernel/src/kernel/lifecycle.rs:520
+  │    ├─ verify_capabilities (FAIL FAST)    platform/kernel/src/kernel/lifecycle.rs:278
   │    ├─ per module, in order:
-  │    │    on_load                          platform/kernel/src/kernel/lifecycle.rs:270
-  │    │    on_context(KernelContext)        platform/kernel/src/kernel/lifecycle.rs:281
+  │    │    on_load                          platform/kernel/src/kernel/lifecycle.rs:303
+  │    │    on_context(KernelContext)        platform/kernel/src/kernel/lifecycle.rs:314
   │    └─ finish
   │
   ├─ start_all                              platform/startup/src/lib.rs:166
-  │    Kernel::start_all                    platform/kernel/src/kernel/lifecycle.rs:299
+  │    Kernel::start_all                    platform/kernel/src/kernel/lifecycle.rs:332
   │    per module, in order: on_start
   │
-  ├─ subscribe_gated (11 sites)             platform/kernel/src/kernel/lifecycle.rs:696
+  ├─ subscribe_gated (11 sites)             platform/kernel/src/kernel/lifecycle.rs:729
   │    KernelError::MissingCapability on an ungranted topic
   │
   └─ init_pending_sale_reaper               platform/startup/src/lib.rs:554
@@ -69,44 +78,44 @@ must make the same declaration in its manifest `capabilities` list.
 
 ## 4. Dependency sort and the capability check
 
-`Kernel::load_all` (`platform/kernel/src/kernel/lifecycle.rs:234`) first resolves
+`Kernel::load_all` (`platform/kernel/src/kernel/lifecycle.rs:267`) first resolves
 the dependency graph with `resolve_dependencies`
-(`platform/kernel/src/kernel/lifecycle.rs:487`) — a Kahn topological sort over the
+(`platform/kernel/src/kernel/lifecycle.rs:520`) — a Kahn topological sort over the
 `dependencies` each module returns (`foundation/src/contracts.rs:64`). A missing
 dependency is `KernelError::MissingDependency`; a cycle is
 `KernelError::CircularDependency`. A dependency's `on_load`/`on_start` always runs
 before its dependents'.
 
 Immediately after the sort, and **before any `on_load` runs**, `load_all` calls
-`verify_capabilities` (`platform/kernel/src/kernel/lifecycle.rs:245`). This is the
+`verify_capabilities` (`platform/kernel/src/kernel/lifecycle.rs:278`). This is the
 fail-fast point: a module that declared a required capability it was not granted
 stops the boot with `KernelError::MissingCapability { module, missing }` naming
 both. Because the check runs before the loop
-(`platform/kernel/src/kernel/lifecycle.rs:247`), a half-loaded system never exists.
+(`platform/kernel/src/kernel/lifecycle.rs:313`), a half-loaded system never exists.
 An empty registry is not an error; a module that declares nothing is simply
 unconstrained (the legacy path, §7).
 
 ## 5. Load, context, and start
 
 For each module in dependency order, `load_all` calls `on_load`
-(`platform/kernel/src/kernel/lifecycle.rs:270`), then builds a `KernelContext`
-scoped to that module (`platform/kernel/src/kernel/lifecycle.rs:280`) and hands it
-over through `Module::on_context` (`platform/kernel/src/kernel/lifecycle.rs:281`).
+(`platform/kernel/src/kernel/lifecycle.rs:303`), then builds a `KernelContext`
+scoped to that module (`platform/kernel/src/kernel/lifecycle.rs:313`) and hands it
+over through `Module::on_context` (`platform/kernel/src/kernel/lifecycle.rs:314`).
 `on_context` is a default no-op on the `Module` trait
-(`foundation/src/contracts.rs:88`), so existing modules compile unchanged; a module
+(`foundation/src/contracts.rs:102`), so existing modules compile unchanged; a module
 that needs a platform service overrides it. The context is the `dyn`-compatible
 `ModuleContext` trait (`foundation/src/contracts.rs:35`); `load_all` skips a module
 already in `Loaded` status, which keeps a retry idempotent.
 
-`Kernel::start_all` (`platform/kernel/src/kernel/lifecycle.rs:299`) then calls
+`Kernel::start_all` (`platform/kernel/src/kernel/lifecycle.rs:332`) then calls
 `on_start` in the same order, auto-loading first if needed. `stop_all`
-(`platform/kernel/src/kernel/lifecycle.rs:374`) runs `on_stop` in reverse.
+(`platform/kernel/src/kernel/lifecycle.rs:407`) runs `on_stop` in reverse.
 
 ## 6. Gated subscriptions
 
 Handler wiring does not use the raw bus. Each of the 11 subscription sites calls
 `Kernel::subscribe_gated`
-(`platform/kernel/src/kernel/lifecycle.rs:696`) with the module id, topic, and the
+(`platform/kernel/src/kernel/lifecycle.rs:729`) with the module id, topic, and the
 `subscribe:<event>` capability it needs:
 
 ```rust
@@ -189,4 +198,4 @@ What the namespace firewall as a whole now guarantees — and the one named runt
 
 ---
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

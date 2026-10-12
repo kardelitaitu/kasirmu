@@ -1,4 +1,7 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 72 lines, with no prior stamp, footer or marker. It is a short record of a genuinely uncomfortable finding — the repository's own formatting gate is red on committed code — and the reason it was written down rather than quietly fixed is the subject of the document itself. · IT RULES OUT THE TWO EXPLANATIONS THAT WOULD HAVE MADE IT BORING, and that is the value here. The obvious explanations for a formatter suddenly failing on code it formatted before are line endings and a toolchain change, and the record eliminates both with evidence rather than assertion: it shows the violating file is line-feed-only with a measured carriage-return count of zero despite the checkout's autocrlf setting, and it reasons from commit dates that code written after the installed formatter's release cannot have been formatted by a different version of it. A record that had stopped at 'the gate is red' would have been filed and forgotten; a record that excludes the boring causes is one someone can act on. · THE CONFIGURATION CLAIMS CHECK OUT, which is the part a reader can re-verify. There is no formatter configuration file in the repository, so the failing style genuinely is the tool's default, and the toolchain file pins the stable channel as the document states. Both were confirmed this pass rather than taken on trust, because a claim about which style is in force is exactly the kind that quietly changes. · AND THE REPOSITORY'S OWN HISTORY CORROBORATES THE DECISION THAT FOLLOWS. The pre-commit hook carries a comment recording that a commit-time auto-format step rewrote other agents' in-flight source files — the same class of harm this campaign's own operating rules exist to prevent, and the reason formatting is check-only at push time rather than a commit step. So this snapshot is not an isolated complaint about a red gate; it is the evidence behind a policy change that the root agent guide now records. A reader who wonders why formatting is not enforced at commit time has the answer here, and it is a good one. · NOT re-measured: the fifty diffs themselves. Re-running the formatter check is cheap for whoever owns the tree, and the count will have moved since — which is exactly the caveat the record's own header carries by naming the date, the branch and the fact that other lanes' edits were present in the working tree at the time. That scoping is what makes the number quotable. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) + OUTCOME CLOSED · Re-audit, and this record's open item is CLOSED: cargo fmt --all -- --check now exits 0 with 0 'Diff in' blocks (was 50, then 1). The survivor it named, modules/inventory/src/handlers_tests.rs, is formatted and clean, so the quiet window it asked for arrived. ONE MINOR REPAIR: the line-ending census quoted (crlf=0, bare_lf=45) — re-derived as bare_lf=46 at HEAD, the file having grown one line; the old reading is kept beside it. The record's two excluded explanations (line endings, toolchain drift), its configuration claims (no .rustfmt.toml, stable channel pinned) and every cited SHA re-verify. NOT re-measured: whether channel="stable" was ever replaced — rust-toolchain.toml still pins it, so the DURABLE half of this record's advice remains open.
+
+     --- prior stamp, preserved as plain text (delimiters stripped) ---
+ -->
 # The formatting gate is red — 50 rustfmt diffs on committed code
 
 **Measured:** 2026-09-28, branch `0.0.40`, in a working tree also carrying concurrent lanes' edits.
@@ -8,7 +11,7 @@
 
 ## What the diffs are
 
-Not line endings. `crates/kasirmu-hal/src/drivers/edc/mod.rs` is LF-only (`crlf=0`, `bare_lf=45`)
+Not line endings. `crates/kasirmu-hal/src/drivers/edc/mod.rs` is LF-only (`crlf=0`, `bare_lf=45` when measured; **46** at HEAD on 11-10-26, the file having grown one line)
 even though `core.autocrlf=true`, and the hunks are argument wrapping:
 
 ```diff
@@ -54,6 +57,8 @@ which AGENTS.md §7.3 forbids. Excluding the dirty subset is a moving target rat
 > **dirty** (`git status` records an uncommitted edit), and formatting another lane's uncommitted file would write
 > into their work, so it was deliberately left. Same quiet-window rule as above, now with a much smaller surface.
 
+> **Re-measured 11-10-26 — the gate is GREEN and this record's open item is closed.** `cargo fmt --all -- --check` now exits **0** with **0** `Diff in` blocks (was 50, then 1). The survivor this record named, `modules/inventory/src/handlers_tests.rs`, is formatted — it is 534 lines today and `git status` is clean, so its owning lane landed and the "quiet window" this record asked for arrived. The 30-file outcome block below stands as the first of the two steps; this note records the second. NOT re-measured: whether `channel = "stable"` was ever replaced (recommendation 2) — `rust-toolchain.toml` still pins the stable channel, so the DURABLE half of this record's advice is still open while the immediate half is done.
+
 ## What would close it
 
 1. **Now:** in a quiet window, `cargo fmt --all`, then `cargo fmt --all -- --check` -> exit 0,
@@ -72,4 +77,4 @@ All figures re-derived in this pass; no suite, no build, no Docker. Diff-block c
 (`[IO.File]::ReadAllText` + regex), the `git status --porcelain` cleanliness checks, and the
 `git log -1 --date=short` dates were each read on this checkout on 2026-09-28.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

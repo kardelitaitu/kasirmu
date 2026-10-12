@@ -448,6 +448,24 @@ the item stayed actionable under new names. A neighbouring item's module had bee
 away entirely, carrying none of the named defects. **Repoint when the substance survives; record a
 retirement when it does not.** Same discipline in reverse for trap 12.
 
+**18. A doc can PREDICT its own decay — and be right.** `docs/architecture/CRITICAL_PATH_INVARIANTS.md`
+carries a "Not a gate" note saying nothing checks its citations and that drift there would be silent.
+Measured 2026-10-11: six of eleven cited test line numbers had moved, two source anchors had moved, and
+one cited test never existed under its given name — while every named test still existed and every
+invariant still held. **A page that declares itself unchecked is a high-yield audit target; audit it
+first, not last.** The same pass found eleven drifted anchors in `module-boot-sequence.md` with the
+sequence itself unchanged — coordinates age, substance does not.
+
+**19. A documented ceiling with a RED gate: report, never re-baseline.** `module-namespace-firewall.md`
+§6 states a conscious core-size ceiling of 37,176 lines and says the ratchet fails if core grows past
+it. At HEAD it IS failing: `scripts/verify-core-size.py` reports 38,703 (+1,527), exit 1, with the
+baseline file committed-clean and only a README dirty under `crates/kasirmu-core/` — so it is MERGED
+work that never got the deliberate ceiling edit the section itself demands. The gate's own message
+says the ceiling is lowered "deliberately … in a commit that says why". **Lowering a ceiling is a code
+owner's act, not a documentation repair.** Report it with the exact command and numbers; do not edit
+the baseline. This is the same red-gate class as a guard that grew (trap 4), but the fix belongs to
+someone else.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually
