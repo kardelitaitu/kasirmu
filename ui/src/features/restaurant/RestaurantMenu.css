@@ -686,9 +686,15 @@
   transition: gap var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.restaurant-grid-item,
+.restaurant-grid > [role="listitem"] {
+  display: contents;
+}
+
 /* ── Restaurant card (diagonal layout) ──────────── */
 .restaurant-card {
   position: relative;
+  width: 100%;
   /* Slimmer accent strip: keeps the + Add affordance while giving the name
      and price far more horizontal room (was 32% of the card width). */
   --card-add-width: 26%;

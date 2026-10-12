@@ -100,9 +100,9 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
         // The grid is a role="list", so each tile must be wrapped in a list
         // item. It cannot go ON the tile: that root is a <button>, and axe
         // rejects role="listitem" there (aria-allowed-role). Without the
-        // wrapper the container advertised a list whose only children were
-        // buttons, so a screen reader announced an empty list.
-        <div key={product.sku} role="listitem">
+        // display: contents on the wrapper preserves the CSS grid layout so
+        // cards stretch to their full column cell as intended.
+        <div key={product.sku} role="listitem" className="restaurant-grid-item">
         <MenuItemTile
           product={{ ...product, inStock: product.inStock && !unavailable.has(product.sku) }}
           sourceInStock={product.inStock}
