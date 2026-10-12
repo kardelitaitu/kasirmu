@@ -109,7 +109,7 @@ menu.
 
 ## Not covered here
 - Settling with a split tender, or with a stored card method.
-- Screens reached only through the sidebar (History, Menu Editor, Receipts,
-  Payments, Settings) — the harness stops at the POS + payment modal.
+- ~~Screens reached only through the sidebar~~ — COVERED in round 33 (all six).
+- Settling with a stored card method, or a QRIS/EDC rail end to end.
 - Anything requiring the real Rust bridge: this drives the dev-mock, so the five
   persistence fixes from rounds 24-30 are exercised here but NOT against SQLite.
