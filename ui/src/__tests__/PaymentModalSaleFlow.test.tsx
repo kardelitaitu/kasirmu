@@ -1702,6 +1702,18 @@ describe('PaymentModal — EDC card-present tender', () => {
             screen.getByRole('button', { name: /pay on card terminal/i }),
           ).not.toBeDisabled(),
         );
+
+        // ⚠️ THE UNPAID-SALE GUARD. After a declined capture the method is still
+        // 'card' and every non-cash method was treated as automatically
+        // sufficient, so Complete stayed armed: pressing it settled the sale and
+        // printed a receipt reading "CARD $ 7,00" for a card the terminal had
+        // just refused. Measured live before this assertion existed. Complete must
+        // now be withheld until the cashier retries or leaves the card tender.
+        expect(
+          screen.getByTestId('settle-button'),
+          'Complete must NOT be offered after a declined card capture — ' +
+            'pressing it books a card sale with no money taken',
+        ).toBeDisabled();
       },
     );
     view.unmount();

@@ -1061,6 +1061,8 @@ retryCurrencyLoad,
     terminals: edcTerminals,
     selectedTerminalId: edcSelectedTerminalId,
     setSelectedTerminalId: setEdcSelectedTerminalId,
+    terminalFailed: edcTerminalFailed,
+    clearTerminalFailed: clearEdcTerminalFailed,
   } = useEdcTenderPhase({
     sessionToken,
     effectiveTotalInCartCurrency,
@@ -1071,6 +1073,12 @@ retryCurrencyLoad,
     addToast,
     setProcessing,
   });
+
+  // Leaving the card tender abandons that route's failure, so Complete is not
+  // left blocked for a method the cashier has moved on from.
+  useEffect(() => {
+    if (method !== 'card') clearEdcTerminalFailed();
+  }, [method, clearEdcTerminalFailed]);
 
   const autoSplitEvenly = useCallback(() => {
     // W5-d: the arithmetic itself moved verbatim to ./payment/splitDistribution -
@@ -1119,8 +1127,19 @@ retryCurrencyLoad,
     }
     if (method === 'cash') return sufficient;
     if (method === 'qris') return qrReference.length > 0;
+    // A failed card-terminal attempt blocks Complete UNTIL the cashier retries or
+    // leaves the method. Without this, Complete stayed armed after the terminal
+    // declined and settled the sale as CARD with no money taken — measured live:
+    // "Card payment failed" toast, method still card, Complete still enabled, and
+    // a receipt recording CARD Rp 45.000.
+    //
+    // Deliberately NOT "method === 'card' is never completable": card is also a
+    // manual tender for a payment taken on another machine, and that path is
+    // intended (see the "keeps manual card" test). The gate keys on the EVIDENCE
+    // of a failure, so a cashier recording an off-POS card payment still can.
+    if (method === 'card' && edcTerminalFailed) return false;
     return true;
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference, creditOffered, creditSettings, total.minor_units]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
