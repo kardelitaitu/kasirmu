@@ -47,19 +47,62 @@ describe('PosScreen cart persistence carries the order type', () => {
         ' active-draft, memory-trim and lock writes)',
     ).toBeGreaterThanOrEqual(3);
 
-    // Walk back from each persist call to its object literal and read the keys.
+    // Read each payload's OWN object literal, by BRAINCE-BALANCING back from the
+    // persist call to its opening brace.
+    //
+    // The previous version walked back a fixed 1200 characters and took the nearest
+    // `const draft = {` it found. Deleting a key shortens that span by far less than
+    // 1200, so the window reached PAST the payload into an earlier literal that still
+    // contained `orderType` — and excused it. Kill-tested: removing `orderType` from
+    // the active-draft payload left this guard GREEN. A fixed-distance lookback is a
+    // matcher keyed to proximity, which is how round 10's deps guard also went wrong.
+    //
+    // Brace balance cannot overshoot: it stops at the brace that closes the literal
+    // the persist call is inside.
     const missing: number[] = [];
     for (const m of payloads) {
       const at = m.index ?? 0;
-      const before = SRC.slice(Math.max(0, at - 1200), at);
-      const open = Math.max(
-        before.lastIndexOf('const data = {'),
-        before.lastIndexOf('const draft = {'),
-      );
-      // Fall back to the tail if the literal was renamed — better a loose read than
-      // a guard that silently stops checking.
-      const body = open >= 0 ? before.slice(open) : before.slice(-800);
-      if (!/orderType/.test(body)) {
+      // The payload is built as `const <name> = { … }` and passed BY NAME to
+      // JSON.stringify, so the literal is not at the persist call. Read the name,
+      // then read that declaration's own literal.
+      const call = SRC.slice(at, at + 200);
+      const ref = call.match(/JSON\.stringify\(\s*([A-Za-z_$][\w$]*)\s*\)/);
+      if (!ref) {
+        missing.push(SRC.slice(0, at).split('\n').length);
+        continue;
+      }
+      const decl = SRC.lastIndexOf('const ' + ref[1] + ' = {', at);
+      if (decl === -1) {
+        missing.push(SRC.slice(0, at).split('\n').length);
+        continue;
+      }
+      // Brace-balance from the declaration so the span is EXACTLY this literal. A
+      // fixed-distance lookback reached into the neighbouring payload and excused a
+      // removed key (kill-tested: the guard stayed green).
+      const open = SRC.indexOf('{', decl);
+      let depth = 0;
+      let end = open;
+      for (let k = open; k < at; k++) {
+        const ch = SRC[k];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) { end = k; break; }
+        }
+      }
+      const body = SRC.slice(decl, end + 1);
+      // Strip COMMENTS before looking for the key. The payload carries a comment that
+      // explains why orderType rides with the cart, and it contains the word — so a
+      // plain /orderType/ matched the PROSE and excused a payload whose key had been
+      // deleted. Kill-tested: removing `orderType,` from the active-draft payload left
+      // this guard green. A matcher keyed to text rather than to the property is the
+      // same mistake the sibling guards record.
+      const code = body
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+      // The property, in any of its written forms: shorthand `orderType,`, or
+      // `orderType: value`.
+      if (!/(^|[{,\s])orderType\s*[:,}]/m.test(code)) {
         missing.push(SRC.slice(0, at).split('\n').length);
       }
     }
@@ -78,10 +121,43 @@ describe('PosScreen cart persistence carries the order type', () => {
       SRC.indexOf('Listen for Android OS memory trim'),
     );
     expect(restore.length, 'the restore effect moved — re-point this guard').toBeGreaterThan(0);
+    // Assert the APPLY, not the identifier. `toContain('setOrderType')` passed with the
+    // condition replaced by `if (false)` — the call was still there, just unreachable.
+    // Kill-tested: that mutation left this case green, so the assertion proved only
+    // that the name was typed somewhere.
+    //
+    // What must hold is that the payload's value is (a) VALIDATED against the union
+    // and (b) APPLIED to the setter. Both, in that order.
+    const validate = restore.match(
+      /data\.orderType === 'dine_in'\s*\|\|\s*data\.orderType === 'takeaway'\s*\|\|\s*data\.orderType === 'delivery'/,
+    );
     expect(
-      restore,
-      'the restore reads the saved payload but never applies its orderType, so' +
-        ' the state keeps the dine_in default.',
-    ).toContain('setOrderType');
+      validate,
+      'the restore must validate the stored orderType against the union before' +
+        ' applying it — an unchecked value reaches setOrderType.',
+    ).not.toBeNull();
+    const apply = restore.match(/setOrderType\(\s*data\.orderType\s*\)/);
+    expect(
+      apply,
+      'the restore must APPLY the payload value (setOrderType(data.orderType)), not' +
+        ' merely mention the setter.',
+    ).not.toBeNull();
+  });
+
+  it('the restore assertions are not satisfied by commented-out code', () => {
+    // A guard on a guard: the two patterns above must be matched on CODE. If a future
+    // edit comments the apply out, `toContain`-style matching would still see it —
+    // which is the defect this pair of cases exists to prevent.
+    const restore = SRC.slice(
+      SRC.indexOf('Restore locked cart or active draft on mount'),
+      SRC.indexOf('Listen for Android OS memory trim'),
+    );
+    const code = restore
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(
+      /setOrderType\(\s*data\.orderType\s*\)/.test(code),
+      'the apply must be live code, not inside a comment',
+    ).toBe(true);
   });
 });
