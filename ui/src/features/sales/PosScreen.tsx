@@ -863,7 +863,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // An open bill is a table's running tab; a takeaway has none.
           const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
           const trimmedName = (customerName ?? '').trim();
-          const trimmedGuest = (guestCount ?? '').trim();
+          // ⚠️ PAX IS DINE-IN ONLY, the same rule the table line above applies. The
+          // setting's own description is "party size and number of SEATED GUESTS PER
+          // TABLE" (products.ftl:105), and CartPanel.tsx:908 already hides the field
+          // on a takeaway — but the FIELD was hidden while the VALUE persisted, so a
+          // cashier who typed a pax and then switched to Takeaway saved a party size
+          // for an order with no table.
+          const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
           const cartData = JSON.stringify({
             lines: remainingLines.map((l) => ({
               sku: l.sku,
@@ -1002,7 +1008,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // A takeaway has no table to open a tab against.
       const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
       const trimmedName = (customerName ?? '').trim();
-      const trimmedGuest = (guestCount ?? '').trim();
+      // PAX is dine-in-only — see the split-bill site above for the rule and the
+      // reachable sequence.
+      const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
       if (activeOpenBillId || trimmedTable) {
         const cartData = JSON.stringify({
           lines: updatedLines.map((l) => ({

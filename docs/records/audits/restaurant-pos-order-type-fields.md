@@ -30,6 +30,47 @@ on a setting"). The mistake was never the field being unconditional; it is each
 | 12 | `PosScreen` kitchen CHIT | **sent the pass a ticket naming a table that did not order** | (this round) |
 | 13 | `SplitBillModal` header | announced a table on the split dialog | (this round) |
 
+### The SIBLING FIELD — `guestCount`, and why the earlier sweeps could not see it
+
+Found 2026-10-12 by moving to the field beside `tableNumber` rather than walking that
+field again. PAX shares the property exactly: its own setting description is *"party size
+and number of **SEATED GUESTS PER TABLE**"* (products.ftl:105), and round 45 gated the
+**field** on it (CartPanel.tsx:908 — `guestCountEnabled !== false && orderType ===
+'dine_in'`).
+
+**The three payloads were never brought along.** In each, `trimmedGuest` was derived
+unconditionally while the `trimmedTable` line directly above it carried the guard:
+
+```ts
+const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
+const trimmedGuest = (guestCount ?? '').trim();          // <-- unguarded
+```
+
+The reachable sequence is ordinary: a cashier seats a party of four and types **4**, then
+the order becomes a takeaway (the customer changes their mind, or the wrong type was
+picked first). The field **hides** at :908 but the value stays in state, so the saved tab
+records `guestCount: '4'` for an order with no table — and a recall restores it.
+
+**Why neither existing guard caught it:**
+
+| Guard | Why it was blind |
+|---|---|
+| the `tableNumber` sweep | keyed to the *field*, not to the *rule* |
+| round 45's guard | asserts the **render** gate, not the **payload** |
+
+### The recall needed its own gate, and the reason is instructive
+
+Fixing the save side does **not** repair tabs persisted before it — those carry
+`guestCount` even on a takeaway. The recall applies `guestCount` **before**
+`orderType`, so a legacy tab would resurrect a party size onto a takeaway. It now reads
+the **payload's** orderType rather than the current state, because the state is the thing
+about to change.
+
+**Site count is now 14.** The lesson worth keeping: a field-level sweep finds the field you
+name. The rule has to be asserted on the *concept* — here, "an order-type-dependent value
+must not reach a persisted record unless the order type permits it" — and this round added
+the second field to that.
+
 ### Sites 12 and 13 — the rule-shaped sweep the previous round asked for
 
 Round 7 closed by noting that a NAME LIST is exactly what went blind in round 4, and

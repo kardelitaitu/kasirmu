@@ -238,7 +238,12 @@ export function usePosHeldCarts({
       // everything it needs here.
       const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
       const trimmedName = (customerName || openBillName || '').trim();
-      const trimmedGuest = (guestCount ?? '').trim();
+      // ⚠️ PAX IS DINE-IN ONLY, matching the table line above. The setting reads
+      // "party size and number of SEATED GUESTS PER TABLE" (products.ftl:105) and
+      // CartPanel.tsx:908 hides the field on a takeaway — but hiding the FIELD left
+      // the VALUE in state, so this payload recorded a party size for an order with
+      // no table, and a recall restored it.
+      const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
       const cartData = JSON.stringify({
         lines: linesToSave.map((l) => ({
           sku: l.sku,
@@ -353,7 +358,13 @@ export function usePosHeldCarts({
       if (typeof data.tableNumber === 'string') {
         setTableNumber(data.tableNumber);
       }
-      if (typeof data.guestCount === 'string') {
+      // PAX is dine-in-only, and this gate is why the RECALL needs its own check
+      // rather than relying on the save side: a tab persisted BEFORE 2026-10-12
+      // carries guestCount even on a takeaway (the field was hidden but the value
+      // was written), and orderType is applied below, so a legacy tab would
+      // otherwise resurrect a party size onto a takeaway. Read the payload's own
+      // orderType, not the current state, because the state is about to change.
+      if (typeof data.guestCount === 'string' && data.orderType !== 'takeaway' && data.orderType !== 'delivery') {
         setGuestCount?.(data.guestCount);
       }
       if (typeof data.tipPercent === 'number') {
