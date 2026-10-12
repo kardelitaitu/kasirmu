@@ -1,7 +1,18 @@
+<!-- Re-verified 11-10-26 · docs-auditor · Cross-link repair, dated records, no content rewritten.
+     The 2026-10-02 records restructure moved NINE of the documents these six records cite from
+     `docs/architecture/` into `docs/records/superseded/` (45e1cd520 and its companions), so every
+     `docs/architecture/<moved>.md` citation in the Predecessors/Successor blocks named a path that no
+     longer resolves — 42 across the six files. Repointed to the live home. The three cited documents
+     that are STILL in `docs/architecture/` (module-namespace-governance.md, module-namespace-firewall.md,
+     module-boot-sequence.md) were deliberately left alone, as were the relative markdown links, which
+     already resolved because the files moved together. No claim, count or ticket status was altered.
+     Verified after the edit: 0 residual stale citations, 42 repointed, 32 correct citations preserved,
+     0 dead relative links, and every cited ticket/decision path still resolving. NOT re-measured: the
+     phases' own per-ticket acceptance runs and the runtime behaviour of the seams they describe. -->
 # Phase 5 Implementation Tickets — Core Extraction and the Inventory Seam
 
 **Status:** complete 2026-10-03 — P5.1–P5.5 all DONE. Successor to
-`docs/architecture/phase4-implementation-tickets.md`.
+`docs/records/superseded/phase4-implementation-tickets.md`.
 
 ## Why this phase exists
 

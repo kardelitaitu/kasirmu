@@ -1,6 +1,7 @@
 # Beta Testing Master Plan (January 2027)
 
 <!-- Audit stamp: 2026-10-10 · Release Engineering & Device Automation · Status: ACTIVE PLAN · Live physical tablet verification completed (Tracks A, B, C, 1, 2, 3, 4) -->
+<!-- Verification 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor). Every path, command and product fact re-derived at HEAD: the acceptance command's two crate names are real (`kasirmu-app`, `kasirmu-mobile`); `npm run check:all` exists; all ten cited commits resolve; all three HAL drivers exist (`AndroidBtReceiptPrinter`, `PrinterKickCashDrawer`, `TcpReceiptPrinter`); all nine `*_scoped` IPC commands exist under apps/mobile-tauri; `export_diagnostics`, `install_panic_hook` and `get_storage_health` exist; the package id is `mu.kasir.mobile`; the version lock is 0.0.41; `/[locale]/download.astro` is the download route; android.yml's keystore injection is at :146-148; and every cited script exists. MINOR REPAIRED: the Tablet Split Layout row's parenthetical "all 19 orientation walker tests passed" was withdrawn — orientationAdaptiveWalker.test.ts has 6 top-level tests and had 6 at this plan's own date, so 19 never counted it, and no grouping reproduces 19. The §6 gate table and the Track figures are KEPT as the dated readings of one run they are. NOT re-measured: the on-device verification itself (the tablet is not attached), the memory/APK/footprint figures, and every runtime claim. No footer added — this corpus does not use one. -->
 
 **Project:** `kasir.mu`  
 **Document:** `todo-beta-testing-january-2027.md`  
@@ -68,7 +69,7 @@ Master verification executed directly on reference physical Android hardware (**
 - [x] **Orientation Lock:** Force default landscape orientation on tablet devices (`SCREEN_ORIENTATION_SENSOR_LANDSCAPE` in `AndroidManifest.xml`).
 - [x] **Touch Target Sizing:** Audit all cashier buttons, numpad keys, and cart line items to guarantee minimum 48×48 dp physical touch targets (`--touch-target-min: 48px`).
 - [x] **Virtual Keyboard Handling:** Add `windowSoftInputMode="adjustResize"` and UI scroll constraints to ensure soft keyboards never obscure the "Pay" button or total amount.
-- [x] **Tablet Split Layout:** Verify responsive master-detail layout (Product Grid on Left, Cart & 10-key on Right) across 1280×800, 1920×1080, and 2000×1200 tablet resolutions (all 19 orientation walker tests passed).
+- [x] **Tablet Split Layout:** Verify responsive master-detail layout (Product Grid on Left, Cart & 10-key on Right) across 1280×800, 1920×1080, and 2000×1200 tablet resolutions. **Re-verified 2026-10-11: the parenthetical "all 19 orientation walker tests passed" could not be re-derived and is not a count of the cited file.** `ui/src/__tests__/orientationAdaptiveWalker.test.ts` (722 lines) has **6** top-level `it()` blocks — and it had 6 at the plan's own date (`1c91590e8`, 2026-10-08), so the 19 was never a count of it. No other grouping reproduces 19 either (the four orientation-named suites total 34 today). The checkbox stays ticked — the layout work is real and its walker is green — but the number is withdrawn rather than replaced with a guess.
 
 ---
 

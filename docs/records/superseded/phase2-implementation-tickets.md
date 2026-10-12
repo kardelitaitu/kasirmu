@@ -1,16 +1,27 @@
+<!-- Re-verified 11-10-26 · docs-auditor · Cross-link repair, dated records, no content rewritten.
+     The 2026-10-02 records restructure moved NINE of the documents these six records cite from
+     `docs/architecture/` into `docs/records/superseded/` (45e1cd520 and its companions), so every
+     `docs/architecture/<moved>.md` citation in the Predecessors/Successor blocks named a path that no
+     longer resolves — 42 across the six files. Repointed to the live home. The three cited documents
+     that are STILL in `docs/architecture/` (module-namespace-governance.md, module-namespace-firewall.md,
+     module-boot-sequence.md) were deliberately left alone, as were the relative markdown links, which
+     already resolved because the files moved together. No claim, count or ticket status was altered.
+     Verified after the edit: 0 residual stale citations, 42 repointed, 32 correct citations preserved,
+     0 dead relative links, and every cited ticket/decision path still resolving. NOT re-measured: the
+     phases' own per-ticket acceptance runs and the runtime behaviour of the seams they describe. -->
 # Phase 2 Implementation Tickets — Module Context and Registry Hardening
 
 **Status:** Draft for execution (2026-10-02) — tickets only, no code changed by this document
 **Scope:** Phase 2 of the modular scaffolding plan (`todo-modular-scaffolding.md` §7 "Phase 2 — Module
-Context and Registry Hardening"), plus the Phase 2 half of `docs/architecture/namespaced-store-api-draft.md`.
+Context and Registry Hardening"), plus the Phase 2 half of `docs/records/superseded/namespaced-store-api-draft.md`.
 
 **Predecessors:**
 - `docs/architecture/module-namespace-governance.md` — Phase 1 rules, the table-ownership map, and the
   single-source note added in Phase 2 kickoff.
-- `docs/architecture/namespaced-store-api-draft.md` — the `NamespacedStore` shape (§3), the validation
+- `docs/records/superseded/namespaced-store-api-draft.md` — the `NamespacedStore` shape (§3), the validation
   reuse plan (§4), the per-module migration order (§5), and the reporting-exception construction (§6).
-- `docs/architecture/phase1-implementation-tickets.md` — the sibling ticket set; T1–T5 are all DONE.
-- `docs/architecture/phase3-implementation-tickets.md` — the successor ticket set this phase feeds (P3.1–P3.5).
+- `docs/records/superseded/phase1-implementation-tickets.md` — the sibling ticket set; T1–T5 are all DONE.
+- `docs/records/superseded/phase3-implementation-tickets.md` — the successor ticket set this phase feeds (P3.1–P3.5).
 - `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` — the seam vocabulary and the D5 read exception.
 
 **Grounding rule (learned in Phase 0):** every ticket names a repository fact verified at the time of
@@ -111,7 +122,7 @@ code (`modules/inventory/manifest.json`).
    exposing the plan's list: the event-bus handle, the capability registry, the settings store, a namespaced
    store factory, the reporting facade handle, a logger, a clock, and the transaction coordinator.
 2. Add `CapabilityRegistry`: a module declares required capabilities (from its manifest `permissions` plus a
-   new `capabilities` list in the vocabulary `docs/architecture/namespaced-store-api-draft.md` needs:
+   new `capabilities` list in the vocabulary `docs/records/superseded/namespaced-store-api-draft.md` needs:
    `read:<module>`, `subscribe:<event>`, `use:reporting_facade`, ...), and `register` **fails fast** when a
    required capability is not explicitly granted.
 3. Keep the context **narrow**: no service-locator bag. Each accessor returns a typed handle, and granting is

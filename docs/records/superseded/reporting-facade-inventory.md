@@ -12,7 +12,7 @@ Plan §9.5 names the sanctioned cross-vertical read path and sketches a four-met
 `crates/kasirmu-core/src/db/reports/` — and the plan's summary of it is stale in three ways this
 inventory corrects:
 
-1. the real surface is **24 public query methods**, not four;
+1. the real surface is **21 public query methods**, not four;
 2. the facade is **not read-only** — one method writes;
 3. the plan lists `payments` as facade-readable data, but the facade's SQL names **no payments table**.
 
@@ -62,16 +62,16 @@ place the facade joins the kitchen vertical's `kds_orders`.
 | Method | Line | Reads | Writes |
 |---|---|---|---|
 | `top_products` | :151 | sales, sale_lines, products | — |
-| `low_stock_alerts` | :219 | products, inventory | — (**deprecated**) |
+| `low_stock_alerts` | :220 | products, inventory | — (**deprecated**) |
 | `low_stock_alerts_at_location` | :258 | products, stock_summary, stock_thresholds | — |
 | `active_stock_alerts` | :314 | stock_alert_events, products | — |
-| `acknowledge_stock_alert` | :355 | stock_alert_events | **stock_alert_events** |
+| `acknowledge_stock_alert` | :356 | stock_alert_events | **stock_alert_events** |
 | `category_breakdown` | :376 | sale_lines, sales, products, categories | — |
 | `inventory_turnover` | :434 | sale_lines, sales, stock_summary, products | — |
 | `inventory_trend` | :470 | sale_lines, sales | — |
 
 `low_stock_alerts` carries `#[deprecated(note = "use low_stock_alerts_at_location instead")]`
-(`:218`); it is the only deprecated method on the surface. `acknowledge_stock_alert` is the only
+(`:219`); it is the only deprecated method on the surface. `acknowledge_stock_alert` is the only
 writer (see §4).
 
 ### 2.4 `datetime.rs` — date/hour contract helpers
@@ -110,7 +110,7 @@ would change the module-registration parity convention.
 
 ## 4. The write question (T5 item 2) — DECISION
 
-**Finding.** `acknowledge_stock_alert` (`product_sales.rs:355`) issues
+**Finding.** `acknowledge_stock_alert` (`product_sales.rs:356`) issues
 `UPDATE stock_alert_events SET status = 'acknowledged', acknowledged_at = ?1, acknowledged_by = ?2 WHERE id = ?3 AND status = 'active'`.
 It writes, and it writes a table the facade does not own. Read plainly, \"reads through the facade,
 never writes\" (ADR-62 D5) is false as the code stands.
@@ -141,7 +141,7 @@ it, not a substitute for the ADR line.
 ## 5. Trait shape (T5 item 3) — DECISION: NARROW
 
 Plan §9.5 sketches `trait ReportingFacade { daily_revenue; sales_summary; product_sales; low_stock_alerts }`.
-The real surface is 24 methods; the trait is **narrow** — the four plan methods, no more.
+The real surface is 21 methods; the trait is **narrow** — the four plan methods, no more.
 
 Rationale: a trait that re-exports every inherent method adds an indirection with no boundary, and
 the facade's value is exactly the boundary. The four methods are the four *aggregate families*
@@ -210,5 +210,5 @@ but the map's silence is a real gap the T5 inventory surfaces for the Phase 2 st
 - `crates/kasirmu-core/src/db/reports.rs` and `crates/kasirmu-core/src/db/reports/` — the facade.
 - `crates/kasirmu-bridge/src/reports.rs` — the live scoped consumer surface (~37 functions).
 - `modules/reporting/src/lib.rs` — the module shell that remains after P3.1 retired the bypass edge.
-- [docs/architecture/namespaced-store-api-draft.md](namespaced-store-api-draft.md) §5 row 2.4 — the migration this stages.
+- [docs/architecture/namespaced-store-api-draft.md](namespaced-store-api-draft.md) §5 row 2.4 — the migration this stages. (Path corrected 11-10-26: the draft moved from `docs/architecture/` into `docs/records/superseded/` in the 2026-10-02 records restructure; the relative link already resolved because both files moved together.)
 - [done-todo-modular-scaffolding.md](../../plans/_done/done-todo-modular-scaffolding.md) §9.5 — the plan paragraph being reconciled.

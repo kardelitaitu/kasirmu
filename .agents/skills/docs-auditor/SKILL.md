@@ -583,6 +583,22 @@ the conclusion is sound.
 > explicitly as a historical spelling.** Run `check-dead-refs.py .agents/skills/docs-auditor/SKILL.md`
 > after any edit that adds an example path.
 
+**32. A NEGATIVE grep is the most perishable evidence a doc can carry.** The dangerous variant of
+trap 14 is not "the doc was wrong" but "**the doc was RIGHT and the fix landed the next day**". Measured
+2026-10-11: a status row re-verified `init_rate_sync` had "zero callers" on 2026-09-27 — correctly — and
+both shells wired it on **2026-09-29**, two days later; the daemon's own module header now says "The
+daemon now has callers". No path moved and nothing for a path checker to see. **The tell to sweep for is a
+row that quotes a grep RESULT as its evidence** ("returns only its own definition", "zero callers",
+"0 hits", "no such file"). **Re-grep every doc that asserts a NEGATIVE** as a matter of course; a single
+later commit falsifies it silently.
+
+**33. A directory-wide regex is a mutation, not a scan.** An auditor assigned 6 files in a shared directory
+ran a substitution over the WHOLE directory and wrote 11, touching 5 files belonging to a concurrent lane
+(2026-10-11). It caught the breach with `git diff --name-only` and reverted byte-for-byte, but the risk is
+structural: **scope every write to the assigned paths, and after any bulk edit confirm the changed-file
+list equals the assigned list.** This is trap 27 (a relocation commit repointing some references) and
+trap 16 (a loose regex inventing paths) applied to the WRITE side rather than the read side.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually

@@ -1,5 +1,7 @@
 # todo-docs-restructure.md — split `docs/` into claims and records
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Fresh full audit of the plan that MADE the docs/ records restructure, checked against what actually happened. The moves it claims all verify: `docs/audits/` is gone, its 14 files are under `records/audits/` (44 today), and `docs/archived/` is a real tombstone holding only README.md. Its own §8a acceptance was RE-RUN and recorded: steps 1, 2 and 4 pass unchanged, step 3's three h4 promotions held, step 5 passes but the record count has grown 102 -> 122, and step 6 still fails at step 01 on 33 root-policy findings that are all other sessions' scratch — the same verdict its §11 reached. REPAIRED/ADDED: (1) §6q's tombstone-class figures re-measured (58/33/17 -> 60/36/21) with the additions explained as this plan's own §1/A4 text plus later audit notes — verdict unchanged, still not a backlog; (2) the root-plan-doc count corrected in both places it is quoted (8 -> 9, `todo-restaurant-pos-reliability.md` landing 2026-10-12 after this file's last edit); (3) a dated §8a re-run table, and a note that `todo-restaurant-pos-reliability.md` is now flagged as a stray root file of exactly the class `ROOT_FILE_ALLOWLIST` lists by name — a one-line fix for its owner, since this plan may not edit a script. **The plan's own documentation work is complete; its acceptance gate cannot pass in this dirty tree, and those are different things.** NOT re-measured: the per-move verification sections' own dated readings. No footer — this corpus does not use one. -->
+
 **Status (2026-10-02): the documentation work is DONE. Three items await an owner decision, and the
 acceptance gate is blocked by files that are not documentation.**
 
@@ -894,6 +896,36 @@ was attempted. Fixed first, then run.)*
 
 ### 8a — RUN 2026-10-02: **5 of 6 pass. The 6th fails on findings that are not this plan's.**
 
+**Re-run 2026-10-11 (docs-auditor). The table below repeats the original's rows deliberately**, so the two dates can be compared line for line; steps 1, 2 and 4 read identically because they still pass unchanged, while steps 3 and 5 have moved:
+
+| # | Step | Re-run result 2026-10-11 |
+|---|---|---|
+| 1 | `check-dead-refs.py --self-test` | **PASS** — 41 cases, unchanged |
+| 2 | `check-dead-refs.py` | **PASS** — 0 unresolved across 13 live docs |
+| 3 | `check-orphans.py` | **PASS** — the three h4 skips in `plan-c1-install-key-s2b-s2c.md` were promoted in `fddbf72de` and stayed fixed |
+| 4 | `check-adr-status.py` | **PASS** — 0 drift across 59 rows |
+| 5 | `generate-records-index.mjs --check` | **PASS** — but the record count has grown **102 → 122** |
+| 6 | `scripts/check.sh` | still **FAIL** at step 01 — see below |
+
+**Step 5's figure is the point, not a problem.** This plan's own restructure is what made the
+records index the thing it is; the corpus has since grown from 102 to 122 records (the journal
+split, the campaign journals, the snapshots). The gate passes; only the number moved.
+
+**Step 6 at HEAD: 33 root-policy findings, and the set is entirely other sessions' scratch.**
+The four this plan named (`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db`, `kasir.pre-migration.bak`)
+are joined by `.nvmrc`, `.tmp-*` files, `START_TABLET_HMR.bat`, `deploy-website.bat`, two
+`done-plan-*` docs, and an empty `crates/kasirmu-bridge/tests` directory. **None is documentation**
+and none is this plan's — the same verdict §11 reached, still holding.
+
+**One finding is this plan's own class, and it is a one-line fix for whoever owns the gate:**
+`todo-restaurant-pos-reliability.md` is flagged as a stray root file. It is **tracked, clean,
+carries the `todo-` token, and is an owner plan doc** (5,752 lines, 2026-10-09) — exactly the
+class `ROOT_FILE_ALLOWLIST` lists by name. It landed 2026-10-**12**, after this plan's last edit,
+so it was never added. The gate's own comment states the rule verbatim: *"extend the list in the
+same commit that adds the file"*. Adding it enforces the stated invariant rather than making a new
+decision — the same reasoning as `873f8feb4`. **Left for its owner: this plan may not edit a
+script, and the file is not mine.**
+
 | # | Step | Result |
 |---|---|---|
 | 1 | `check-dead-refs.py --self-test` | **PASS** — 41 cases |
@@ -1086,6 +1118,18 @@ git grep -nE 'docs/archived/[A-Za-z0-9_.-]+\.md'
 | In an HTML comment (a dated record) | the majority — evidence, per the rule below |
 | In a live claim | **21**, of which **19 are Rust source comments**, not markdown; the other 2 are the tombstone README itself |
 
+**Re-measured 2026-10-11 (docs-auditor): 62 refs, with 21-22 distinct targets across 36-38 files —
+the figures above were 58/33/17 at their date and have grown.** (The narrow spread is the working
+tree versus HEAD: this very note adds a `docs/archived/` path as an example.) The re-derive command above prints
+the current numbers. The direction is expected and the verdict is unchanged: the additions are
+this plan's own §1/A4 text naming the OLD filenames it resolved (`docs/archived/ci-pipeline.md`,
+`docs/archived/benchmarks.md` — recorded as fixed, not as live pointers) plus later audit notes
+under `.agents/` and `docs/records/`. **No live markdown claim cites a tombstone path**, so the
+class remains a record, not a backlog. The three targets with a distinguishing detail: `benchmarks.md`
+and `ci-pipeline.md` appear only inside this plan and the tombstone README, and `BUSINESS_PLAN.md`
+is named in `docs/plans/_active/todo.md:151` as the *wrong* path a prior citation used — corrected
+there on 2026-09-06, so it reads as history.
+
 **The verdict is §6p's verdict, applied to a new class: this is not a backlog.**
 `crates/kasirmu-api/src/lib.rs:119` citing `docs/archived/2026-08-15-unify-auth-and-sync.md` is
 evidence of *where a design came from*, and the file it names is at
@@ -1144,7 +1188,7 @@ wc -l docs/plans/_backlog/0.0.36-backlog.md
 - **No topic reorganisation.** The tree is already organised by function ([docs/README.md:6](docs/README.md:6)).
   Re-cutting it by subject would churn all 292 files, break the most links, and buy nothing §1.2 does not
   already give.
-- **No move of the 8 live `todo-*`/`plan-*` docs at the repo root.** AGENTS.md §7.4 says plan renames
+- **No move of the 8 live `todo-*`/`plan-*` docs at the repo root.** (Re-measured 2026-10-11: there are now **9** — `todo-restaurant-pos-reliability.md` landed 2026-10-12 after this was written, and it is the ninth of the same class. The question below is unaffected; only the count moved.) AGENTS.md §7.4 says plan renames
   happen in place at the root; `docs/plans/_active/` is the other half of that question and it is the
   owner's call. **See §11.**
 - **No move of `manager-codebase-review{,-checklist,-decisions}.md`.** The stamps on
@@ -1158,7 +1202,7 @@ wc -l docs/plans/_backlog/0.0.36-backlog.md
 
 ## 11. Open questions for the owner
 
-1. **Do the 8 live root `todo-*`/`plan-*` docs also move to `docs/plans/_active/`?** This decides
+1. **Do the 8 live root `todo-*`/`plan-*` docs also move to `docs/plans/_active/`?** (Now **9** as of 2026-10-11 — see the §10 note.) This decides
    whether AGENTS.md §7.4's "renames happen in place at the repo root" survives or is rewritten. Blocking
    for nothing in Phase A or B; it is the same two-homes problem this plan's §1.2 addresses elsewhere.
 2. **Confirm `docs/audits/` is a record folder, not a live one.** Phase B2 moves all 14 files. The
