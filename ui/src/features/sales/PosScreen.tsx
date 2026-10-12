@@ -709,8 +709,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     try {
       localStorage.removeItem(ACTIVE_DRAFT_KEY);
     } catch { /* ignore */ }
-    // Release table if the completed order/bill had one
-    if (tableNumber && sessionToken) {
+    // Release table if the completed order/bill had one — DINE-IN ONLY.
+    //
+    // ⚠️ This is the RELEASE half of the defect fixed on the claim side in
+    // 206462b4d. The cart panel shows the Table number field for the restaurant
+    // POS on EVERY order type (CartPanel.tsx:735-743), so a cashier ringing up a
+    // TAKEAWAY with a number left in that field reached here and freed a real
+    // table: `releaseTableScoped` on whatever `match` the number resolved to.
+    // Blocking the claim alone was therefore only half the fix — a takeaway could
+    // still free an occupied table it had never claimed. A takeaway has no table
+    // to release.
+    if (tableNumber && sessionToken && orderType === 'dine_in') {
       void listTablesScoped(sessionToken)
         .then((tables) => {
           const bareInput = bareTableNumber(tableNumber);
@@ -736,7 +745,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // fire for a sale that failed. `null` means never written, which the setting's own
     // default (true) says should chime.
     if (soundChime !== false) playSuccess();
-  }, [resetCart, tableNumber, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
+    // orderType is read above (the dine-in-only release) and so must be listed:
+    // without it this callback closes over the render-time value and a cashier who
+    // switches Dine-In -> Takeaway after mount would still free the table.
+  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
