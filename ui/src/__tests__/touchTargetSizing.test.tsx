@@ -284,8 +284,60 @@ function collectTags(
     let depth = 0;
     let quote: string | null = null;
     let gt = -1;
+    // ⚠️ Second bug fixed here (round 49): a `//` comment INSIDE a JSX tag.
+    //
+    // `KdsHeaderRight.tsx`'s shift button carries a four-line `//` comment between
+    // its attributes (it documents why the button's accessible name reads
+    // "Start Shift End Shift"). Prose contains apostrophes and quotes, and the
+    // scanner treated them as string delimiters — an odd number of `"` in the comment
+    // left it "inside a string" for the rest of the tag, so the terminating `>` was
+    // never seen at depth 0 and the WHOLE ELEMENT was dropped.
+    //
+    // Effect: `kds-btn--shift` had no element evidence, so the sizing scanner
+    // exempted its 34px rule as a DEAD SELECTOR — the violation became invisible and
+    // the ratchet entry for it was reported as stale, i.e. the guard asked for a true
+    // finding to be deleted.
+    // Brace depth to restore when a TEMPLATE LITERAL's ${ } closes.
+    //
+    // ⚠️ Bug fixed here (round 49). A backtick opened at depth 1 (inside
+    // `className={``) and its ${...} was scanned as ordinary text: the inner `}`
+    // decremented `depth`, the closing backtick never matched because the scan was
+    // inside the "quote", and every remaining character of the tag was swallowed.
+    // `>` was never found at depth 0, so the whole element was DROPPED.
+    //
+    // Concretely: `KdsHeaderRight.tsx`'s shift button has a template-literal
+    // className, so `collectTags` found ZERO tags in that file, `kds-btn--shift` got
+    // no element evidence, and the sizing scanner exempted its 34px rule as a DEAD
+    // SELECTOR. That made the real violation invisible and reported the ratchet
+    // entry for it as stale — the guard telling us to delete a true finding.
+    let templateBrace: number | null = null;
     while (j < n) {
       const c = text[j] ?? '';
+      // Comments inside a JSX tag, BEFORE quote handling: prose contains apostrophes
+      // and quotes, and treating them as delimiters desynced the scan (see below).
+      if (c === '/' && text[j + 1] === '/') {
+        const eol = text.indexOf('\n', j);
+        j = eol === -1 ? n : eol + 1;
+        continue;
+      }
+      if (c === '/' && text[j + 1] === '*') {
+        const end = text.indexOf('*/', j + 2);
+        j = end === -1 ? n : end + 2;
+        continue;
+      }
+      if (quote === '`') {
+        if (c === '\\') { j += 2; continue; }
+        if (c === '${') { templateBrace = depth; depth++; j += 2; continue; }
+        if (c === '}' && templateBrace !== null && depth === templateBrace + 1) {
+          depth = templateBrace;
+          templateBrace = null;
+          j++;
+          continue;
+        }
+        if (c === '`') { quote = null; j++; continue; }
+        j++;
+        continue;
+      }
       if (quote) { if (c === quote) quote = null; j++; continue; }
       if (IS_QUOTE(c)) { quote = c; j++; continue; }
       if (c === '{') depth++;
