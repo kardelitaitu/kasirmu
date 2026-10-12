@@ -55,8 +55,50 @@ remainder.
 - **The grand total in a split always comes from the cart, not the clicked card.**
   Reading it per-iteration was meaningless.
 
+## QRIS — the last unsettled method, driven to a receipt
+
+Split tender shipped alongside a QRIS pass, completing the payment-method set.
+
+Choosing QRIS renders two actions ("Pay with QR", "Pay with dynamic QR") and
+**Complete is correctly disabled** until a reference exists — the settle predicate
+requires `qrReference.length > 0`.
+
+Pressing **Pay with QR** opens the customer-facing screen:
+
+```
+Scan with your payment app
+QRIS
+Amount      45000 IDR
+Reference   QR-1791776183824-B74AS0
+Merchant    kasir.mu Store
+Waiting for payment...
+[ I received the payment ]
+```
+
+with a Close control, and Complete becomes enabled because a reference now exists.
+**No auto-settle on timeout**: the sale waits for the merchant to confirm, which
+is the right shape for a customer-present QR.
+
+The QR itself was verified to be REAL, not a placeholder box. The SVG is
+`viewBox="0 0 45 45"`, 224x224, with a white background path and a black path
+encoding hundreds of modules; rendered and inspected, it shows three finder
+patterns, an alignment pattern and dense data — a scannable code.
+(`scratch-qr.png` was a probe artefact and is not kept.)
+
+Confirming with **"I received the payment"** settled the sale and printed:
+
+```
+TOTAL:  Rp 45.000
+QRIS    Rp 45.000
+```
+
+Zero console or page errors at any step.
+
 ## Not covered
 
 - A split row using QRIS or Other (only cash/card rows were exercised).
 - Removing a row mid-split, and re-adding it.
 - Split + a cart discount or promotion applied at the same time.
+- "Pay with dynamic QR" (only the static QR path was driven).
+- Whether the merchant's confirmation is the ONLY settle path when a payment
+  gateway is configured to auto-confirm — that needs the real bridge.
