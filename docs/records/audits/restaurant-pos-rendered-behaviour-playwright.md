@@ -63,9 +63,51 @@ next pass does not report either as a defect:
    webview carries a persisted cart from earlier manual use; a fresh Playwright
    profile has none, so 0 lines and no Charge button is the right empty state.
 
-## Not covered here
+## Round 33 — all six sidebar screens, and the KDS ticket lifecycle
 
-- The KDS board and its ticket lifecycle (needs an order on the board).
+Every restaurant screen reachable from the POS sidebar was driven and audited
+(controls counted, names computed the way the browser computes them, console and
+page errors captured per screen). Zero unnamed controls, zero errors:
+
+| Screen | Controls | Unnamed | Errors |
+|---|---|---|---|
+| Menu Editor | 214 | 0 | 0 |
+| Kitchen Display | 86 | 0 | 0 |
+| Receipts | 43 | 0 | 0 |
+| Payments | 34 | 0 | 0 |
+| History | 15 | 0 | 0 |
+| Settings | 6 | 0 | 0 |
+
+Total across the six: **398 controls, all named.** The POS and payment modal were
+covered in the previous pass.
+
+### KDS ticket lifecycle — driven buttons, each step read off the board
+
+The board renders real tickets (e.g. #101 T3, #104 T2 Ready, #107 RUSH Served)
+with station-grouped lines (`0/1 MAIN`, `0/2 MAIN`). One ticket was advanced
+through the whole flow by pressing the actual buttons, reading the rendered state
+back after each press:
+
+| Button pressed | #101 rendered state |
+|---|---|
+| (initial) | `Pending` |
+| `Start 101` | `Preparing` |
+| `Mark Ready 101` | `Ready` |
+| `Serve 101` | `Served` |
+
+The action button's own label advances with the state (Start -> Mark Ready ->
+Serve), and no console or page error was raised at any step. The Open tab
+reported `Open 10` throughout, which is correct for a same-session transition.
+
+### Currency scan across every screen
+
+Following the USD seed defect fixed in `7a5f5d2fc`, every screen was scanned for
+currency tokens: **no `$` token appears anywhere**, and `Rp` appears where money
+is shown (POS 27, Menu Editor 27, History 1). The one History row reads
+`Rp 115.000` = 1x LATTE (Rp 45.000) + 2x CROISS (Rp 35.000), which matches the
+menu.
+
+## Not covered here
 - Settling with a split tender, or with a stored card method.
 - Screens reached only through the sidebar (History, Menu Editor, Receipts,
   Payments, Settings) — the harness stops at the POS + payment modal.
