@@ -187,6 +187,12 @@ test.describe('Restaurant POS — payment modal', () => {
     await expect(complete).toBeEnabled({ timeout: 5_000 });
     await complete.click();
 
+    // The completed sale displays receipt preview; dismiss via Skip to return to POS
+    const skip = page.getByRole('button', { name: /Skip/i });
+    const printReceipt = page.getByRole('button', { name: /Print Receipt/i });
+    await expect(skip.or(printReceipt).first()).toBeVisible({ timeout: 10_000 });
+    await skip.click();
+
     await expect(page.locator('[data-testid="payment-modal"]')).toBeHidden({ timeout: 15_000 });
     // A completed sale empties the cart.
     await openCart(page);
