@@ -307,9 +307,24 @@ interface MockSaleDetails extends Omit<MockCompletedSale, 'fakturPajak'> {
 function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<string, MockSaleDetails> } {
   const createdAt = new Date(Date.now() - 3600000).toISOString();
   // Pre-seeded sale so sales history always has at least one row.
+  //
+  // ⚠️ The prices and the currency are READ FROM MOCK_PRODUCTS, not written as
+  // literals. This fixture used to hardcode 'USD' with 100x-small values while
+  // the catalogue's own LATTE/CROISS are IDR — so Sales History rendered
+  // "\$ 12,502" on an Indonesian rupiah POS, and disagreed with the menu about
+  // what a latte costs. Deriving both keeps them tied together in either
+  // direction; pinned by __tests__/dev-mock-seed-sale-currency.test.ts.
+  const priceOf = (sku: string) =>
+    MOCK_PRODUCTS.find((p) => p.sku === sku)?.price ?? { minor_units: 0, currency: 'IDR' };
+  const latte = priceOf('LATTE');
+  const croissant = priceOf('CROISS');
+  const currency = latte.currency;
+  // 1 latte + 2 croissants, the lines listed below.
+  const subtotalMinor = latte.minor_units * 1 + croissant.minor_units * 2;
+
   const seed: MockCompletedSale = {
     id: 'seed-sale-001',
-    total: { minor_units: 1250, currency: 'USD' },
+    total: { minor_units: subtotalMinor, currency },
     lineCount: 2,
     status: 'Completed',
     paymentMethod: 'cash',
@@ -322,13 +337,14 @@ function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
     details: {
       'seed-sale-001': {
         ...seedDetail,
-        subtotal: { minor_units: 1250, currency: 'USD' },
-        taxTotal: { minor_units: 0, currency: 'USD' },
-        tenderedMinor: 2000,
+        subtotal: { minor_units: subtotalMinor, currency },
+        taxTotal: { minor_units: 0, currency },
+        // Tendered over the total, so the receipt's change line is non-zero.
+        tenderedMinor: subtotalMinor + Math.round(subtotalMinor * 0.1),
         fakturPajak: null,
         lines: [
-          { id: 'seed-line-1', sku: 'LATTE', name: 'Caffè Latte', qty: 1, unit_price: { minor_units: 450, currency: 'USD' }, total_minor: 450, tax_amount: null, tax_rate_id: null },
-          { id: 'seed-line-2', sku: 'CROISS', name: 'Butter Croissant', qty: 2, unit_price: { minor_units: 320, currency: 'USD' }, total_minor: 640, tax_amount: null, tax_rate_id: null },
+          { id: 'seed-line-1', sku: 'LATTE', name: 'Caffè Latte', qty: 1, unit_price: latte, total_minor: latte.minor_units * 1, tax_amount: null, tax_rate_id: null },
+          { id: 'seed-line-2', sku: 'CROISS', name: 'Butter Croissant', qty: 2, unit_price: croissant, total_minor: croissant.minor_units * 2, tax_amount: null, tax_rate_id: null },
         ],
       },
     },
