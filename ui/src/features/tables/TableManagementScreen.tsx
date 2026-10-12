@@ -256,7 +256,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       unlistenDeleted?.();
       unlistenTabs?.();
     };
-  }, []);
+    // ⚠️ MUST depend on loadTables. This array was `[]`, so the tabs:changed
+    // handler below kept the mount-time `loadTables` — and with it that render's
+    // `sessionToken` and `section`. A cashier who switched store and then had any
+    // other terminal save a tab got the PREVIOUS store's floor plan written over
+    // the one on screen, silently, on the screen they seat people from. The sibling
+    // effect at :204 already lists loadTables for exactly this reason; this one was
+    // the outlier. Same for `section`: the reload used the section it mounted with.
+    //
+    // Re-subscribing is the point, not a cost: the listeners are cheap, and the
+    // cleanup above unregisters the previous generation before the next registers.
+  }, [loadTables]);
 
   const retry = useCallback(() => setRefreshKey((k) => k + 1), []);
 
