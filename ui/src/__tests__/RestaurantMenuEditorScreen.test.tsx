@@ -141,8 +141,12 @@ describe('RestaurantMenuEditorScreen', () => {
     const searchInput = screen.getByTestId('restaurant-menu-editor-search-input');
     await user.type(searchInput, 'crackers'); // search by note
 
+    // Same race as the category-filter case above: the ABSENCE assertion is the one
+    // that carries the timing, so it gets the retry.
+    await waitFor(() => {
+      expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
+    });
     expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
-    expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
 
     // Clear search
     await user.clear(searchInput);
