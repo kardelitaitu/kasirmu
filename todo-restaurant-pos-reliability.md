@@ -23,6 +23,30 @@
 >    on an IDR store gets paper and preview diverging **by their own choice**. Arguably correct;
 >    nothing pins it either way.
 >
+>    **⚠️ UPDATE 2026-10-12 (round 21 of the current objective) — it IS pinned, in the
+>    deadSettingsKey.test.ts pattern.** `ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts`
+>    records the divergence as a declared entry (`LOCALE_GROUPED_WITHOUT_SETTING`) with its
+>    own `wouldNeed` clause, exactly as `DECLARED_DEAD` does for keys. The suite stays GREEN
+>    (a gate against a red page gets muted — check-api-surface.py sat unwired seven weeks),
+>    but the debt is now stated in code AND self-retiring:
+>      - **fixing it fails** until the entry is deleted — verified by injecting a grouping
+>        flag into `formatMoney` and watching the case go red, then restoring byte-identical;
+>      - a **second** locale-grouped formatter acquiring the same divergence fails immediately;
+>      - the file also asserts the PRINTER still honours the key, so it cannot outlive its own
+>        premise — if the backend stops reading it, that case fails and says to reconsider.
+>
+>    What the sweep established, which the earlier note did not:
+>      - readonly readers of `CURRENCY_THOUSANDS_SEPARATOR`: exactly two, both backend
+>        (`apps/mobile-tauri/src/commands/hardware.rs:373`,
+>        `crates/kasirmu-bridge/src/hardware.rs:429`). Zero UI readers.
+>      - writers: only `crates/kasirmu-core/src/settings.rs:664` and Rust tests. **No UI
+>        writer exists**, which is why the fix is not a localStorage read: the value lives
+>        in the store DB behind IPC, while `formatMoney` is synchronous and called from
+>        149 non-test sites in 40 files.
+>    So the fix is a real design decision (async setting → synchronous formatter), not a
+>    one-line change, and it is left to the owner. The guard exists so the decision cannot
+>    be defaulted into.
+>
 > **Header corrected 2026-10-09 (round 75):** it read *"P6 2 of 3 screens"* and *"P1's last
 > two keys (owner decision: they have no consumer at all)"*. **Both went stale in the same
 > way — the work landed and the summary was not re-read.** P6's third screen was unblocked
