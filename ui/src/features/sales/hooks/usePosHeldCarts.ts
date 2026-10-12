@@ -151,9 +151,9 @@ export function usePosHeldCarts({
         // race during session initialisation. Either way it is not
         // user-actionable, so swallow it silently.
         if (kind === 'invalidSession' || kind === 'permissionDenied' || rawMessage.includes('permission denied') || rawMessage.includes('may not list open bills')) return;
-        addToast({ message: 'Failed to load open bills', type: 'error' });
+        addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-open-bills-failed'), type: 'error' });
       });
-  }, [addToast, sessionToken, isRestaurantPos]);
+  }, [addToast, sessionToken, isRestaurantPos, l10nRef]);
 
   // Real-time tab sync via Tauri events or local DOM events
   useEffect(() => {
@@ -309,11 +309,15 @@ export function usePosHeldCarts({
       setOpenBillName('');
       loadOpenBills();
       addToast({
-        message: wasUpdating ? `Tab for ${label} updated` : `Tab for ${label} saved`,
+        message: requiredLocalized(
+          l10nRef.current,
+          wasUpdating ? 'pos-toast-bill-updated' : 'pos-toast-bill-saved',
+          { label },
+        ),
         type: 'success',
       });
     } catch {
-      addToast({ message: 'Failed to save open bill', type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bill-save-failed'), type: 'error' });
     } finally {
       setOpeningBill(false);
     }
@@ -388,9 +392,9 @@ export function usePosHeldCarts({
       await claimLease(id, data.tableNumber);
       openBillsExit.requestClose();
     } catch {
-      addToast({ message: 'Failed to resume open bill', type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bill-resume-failed'), type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, l10nRef]);
 
   return {
     activeOpenBillId,

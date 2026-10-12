@@ -1144,5 +1144,14 @@ pos-cart-tab-takeover-btn = Ambil Alih
 pos-product-out-of-stock = { $name } habis (86)
 pos-toast-product-not-found = Detail produk gagal dimuat
 pos-toast-no-modifiers = Tidak ada pengubah (modifier) untuk item ini
+pos-toast-cart-create-failed = Gagal memulai penjualan — coba lagi
+pos-toast-override-recorded = Penggantian harga dicatat
+pos-toast-override-failed = Gagal mencatat penggantian harga
+pos-toast-no-active-cart = Tidak ada penjualan aktif untuk diubah harganya
+pos-toast-open-bills-failed = Gagal memuat tagihan terbuka
+pos-toast-bill-save-failed = Gagal menyimpan tagihan
+pos-toast-bill-resume-failed = Gagal membuka kembali tagihan
+pos-toast-bill-saved = Tagihan untuk { $label } disimpan
+pos-toast-bill-updated = Tagihan untuk { $label } diperbarui
 
 

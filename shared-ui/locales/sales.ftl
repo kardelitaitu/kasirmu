@@ -1177,3 +1177,13 @@ pos-cart-tab-takeover-btn = Take Over
 pos-product-out-of-stock = { $name } is out of stock (86)
 pos-toast-product-not-found = Product details could not be loaded
 pos-toast-no-modifiers = No modifiers are configured for this item
+# POS cart/held-cart failures. Every one is an instruction the cashier has to act on.
+pos-toast-cart-create-failed = Could not start the sale — try again
+pos-toast-override-recorded = Price override recorded
+pos-toast-override-failed = Could not record the price override
+pos-toast-no-active-cart = No active sale to price
+pos-toast-open-bills-failed = Failed to load open bills
+pos-toast-bill-save-failed = Failed to save the tab
+pos-toast-bill-resume-failed = Failed to reopen the tab
+pos-toast-bill-saved = Tab for { $label } saved
+pos-toast-bill-updated = Tab for { $label } updated

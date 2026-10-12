@@ -122,10 +122,10 @@ export function usePosCartActions({
       }
       return newCartId;
     } catch {
-      addToast({ message: 'Failed to create sale cart', type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-cart-create-failed'), type: 'error' });
       return null;
     }
-  }, [cartId, addToast, sessionToken]);
+  }, [cartId, addToast, sessionToken, l10nRef]);
 
   const handleAddProduct = useCallback(
     (
@@ -177,11 +177,11 @@ export function usePosCartActions({
     try {
       await overrideCartDeductionLocation(sessionToken, cartId);
       setDeductionOverridden(true);
-      addToast({ message: 'Deduction location override recorded', type: 'success' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-override-recorded'), type: 'success' });
     } catch {
-      addToast({ message: 'Failed to record override', type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-override-failed'), type: 'error' });
     }
-  }, [cartId, sessionToken, addToast]);
+  }, [cartId, sessionToken, addToast, l10nRef]);
 
   const handleDecreaseQty = useCallback((line: CartLine) => {
     updateQty(line.id, line.qty - 1);
@@ -195,7 +195,7 @@ export function usePosCartActions({
     if (!overrideTarget) return;
     const cId = cartId;
     if (!cId) {
-      addToast({ message: 'No active sale cart', type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-no-active-cart'), type: 'error' });
       setOverrideTarget(null);
       return;
     }
@@ -206,12 +206,14 @@ export function usePosCartActions({
         currency: overrideTarget.unit_price.currency,
       });
     } catch (err) {
-      const msg = plainErrorMessage(err, 'Override failed');
+      // The FALLBACK is what the cashier sees when the backend sent no message, so
+      // it is localized too — plainErrorMessage's second argument is user-visible.
+      const msg = plainErrorMessage(err, requiredLocalized(l10nRef.current, 'pos-toast-override-failed'));
       addToast({ message: msg, type: 'error' });
     } finally {
       setOverrideTarget(null);
     }
-  }, [overrideTarget, cartId, addToast, updateLinePrice, sessionToken]);
+  }, [overrideTarget, cartId, addToast, updateLinePrice, sessionToken, l10nRef]);
 
 
     const handleApplyDiscount = useCallback(() => {
