@@ -42,6 +42,9 @@ function collect(dir: string, out: string[] = []): string[] {
 // Names re-assigned every render, so a closure is not stale in them.
 const REF_SAFE = /^(fn)$/;
 
+/** How many empty-deps listener effects the scan actually inspected. */
+let examined = 0;
+
 describe('POS listener effects do not close over a scoped loader', () => {
   it('every empty-deps listener effect calls through a ref, or names its deps', () => {
     const offenders: string[] = [];
@@ -61,9 +64,17 @@ describe('POS listener effects do not close over a scoped loader', () => {
           }
           if (end === -1) return;
           const body = src.slice(i, end + 1).join('\n');
-          const deps = body.match(/\}, \[([^\]]*)\]\);/);
-          if (!deps || (deps[1] ?? '').trim() !== '') return;
+          // The deps array is read as the LAST bracketed group, not by matching
+          // `}, [...]);` — the close brace and the array sit on separate lines
+          // whenever a comment precedes the deps, and a regex keyed to the layout
+          // reports a FIXED guard as a failure. That is the round-8 misfire this
+          // session already made once; it is not repeated here.
+          const open = body.lastIndexOf('[');
+          if (open === -1) return;
+          const deps = body.slice(open, body.indexOf(']', open) + 1);
+          if (deps.trim() !== '[]') return;
           if (!/listen[<(]|addEventListener/.test(body)) return;
+          examined++;
           const bare = [...body.matchAll(/void\s+([a-zA-Z_$][\w$]*)\s*\(/g)]
             .map((m) => m[1] ?? '')
             .filter((c) => !REF_SAFE.test(c));
@@ -82,5 +93,16 @@ describe('POS listener effects do not close over a scoped loader', () => {
       'ExpoScreen.tsx:241 does.',
     ].join(' ');
     expect(offenders, why).toEqual([]);
+    // Non-vacuity, asserted AFTER the offenders so a real finding still fails first.
+    // A scan that matches nothing reports exactly what a clean tree reports, and
+    // this guard scans for a shape (`useEffect` + empty deps + a listener) whose
+    // rename would silently blind it — the file was built without this assertion,
+    // which is the weakness docs/records/audits/guard-authoring-practice.md records.
+    expect(
+      examined,
+      'the scan inspected no empty-deps listener effect at all, so the clean result ' +
+        'above proves nothing. Re-point the scan (a rename of useEffect, of the ' +
+        'listener call, or of the directory list would all do this).',
+    ).toBeGreaterThanOrEqual(1);
   });
 });
