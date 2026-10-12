@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Re-audit of the multi-terminal peer-model record; the 2026-09-29 stamp is merged at the bottom as original evidence. · MAJOR: the Implementation and Test sections named PRE-RESTRUCTURE paths in a present-tense, prescriptive list. All seven backend entries pointed at `crates/oz-core/` and `apps/desktop-client/`, neither of which exists — the crate root is `crates/kasirmu-core/` and the Tauri shells are `apps/desktop-tauri` + `apps/mobile-tauri`. Every one has a verified current equivalent carrying the same code (session.rs, db/terminals.rs, db/shifts.rs, db/sales.rs, state.rs, commands/pos.rs, commands/terminals.rs), and the list is repointed with a dated note. The test file `crates/oz-core/src/db/multi_terminal_tests.rs` is likewise repointed. The two UI entries were already correct. · MINOR: the test count was wrong in TWO places and a third reading was implied. The record said "17 multi-terminal test cases" in Consequences while enumerating 14, and its Context named "15 concrete multi-terminal scenarios". Measured 2026-10-11: the suite holds **22** `#[test]`/`#[tokio::test]` functions. The Consequences and Test Coverage figures are corrected to 22, the eight tests added since the record was written are listed by name so the arithmetic reconciles, and the Context's 15 is annotated as a dated reading rather than rewritten. · ALSO RECORDED: the routing engine `resolve_kds_targets` this ADR describes now lives in `crates/kasirmu-lan/src/kds_sync.rs` and `crates/kasirmu-bridge/src/kds_routing.rs` — the record named no path, so a location note is added rather than a correction. · VERIFIED AND LEFT ALONE: every row of the Key-Facts table still holds at HEAD — `terminals.bound_store_id` present, `shifts.terminal_id TEXT REFERENCES terminals(id)` at 20260813_init.sql:193, `active_carts` uses workspace_instance_id, `inventory` carries no terminal_id, `CHECK (qty >= 0)` present, `SessionContext.terminal_id` real in session.rs, and `staff_login` registered at apps/desktop-tauri/src/lib.rs:1373. The peer_group UI field is real (8 references under ui/src/features/locations). · NOT re-measured: the multi-terminal runtime behaviour the tests assert — that needs a test run, not a doc read — and the "15 scenarios tested" verification session itself, which is a dated record. · Superseded stamp below. -->
+
 ---
 num: 40
 area: topology
@@ -22,7 +24,9 @@ the peer-terminal model was implicit — documented only through code
 conventions rather than an explicit architectural record.
 
 This ADR formalizes the multi-terminal peer model and documents the
-verification results from testing 15 concrete multi-terminal scenarios.
+verification results from testing 15 concrete multi-terminal scenarios at the time of writing
+(the suite has since grown to 22 — see **Test Coverage**; the count is a dated reading, not an
+invariant).
 
 **Key facts verified against the schema and codebase:**
 
@@ -90,7 +94,10 @@ backward-compatible (optional, stored in existing `metadata` JSON).
 
 KDS devices register with `station_ids` mapping to product `kitchen_zone`
 values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
-→ device station_ids using a 3-phase approach:
+→ device station_ids using a 3-phase approach. *(Located at HEAD in
+`crates/kasirmu-lan/src/kds_sync.rs` and `crates/kasirmu-bridge/src/kds_routing.rs`;
+this record named no path, and the engine has since been split across the LAN
+and bridge crates.)*
 1. Station-targeted: only devices whose `station_ids` contain the zone
 2. Broadcast: if no station-targeted device, all active devices
 3. Catch-all: inactive devices excluded
@@ -104,7 +111,8 @@ values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
 - **Zero migration required**: Existing deployments continue unchanged
 - **Proven infrastructure**: Uses existing terminal registration, session
   scoping, and SQLite concurrency
-- **Tested**: 17 multi-terminal test cases covering shift isolation, cash
+- **Tested**: **22** multi-terminal test cases (measured 2026-10-11; the
+  record said 17, and the suite has grown since) covering shift isolation, cash
   drawer isolation, concurrent stock, held cart isolation, reporting, and
   KDS routing
 - **Backward compatible**: peer_group metadata is optional; all existing
@@ -129,15 +137,22 @@ values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
 
 ## Implementation
 
+> **Path correction (2026-10-11).** This section named the pre-restructure crate and app
+> directories (`crates/oz-core/`, `apps/desktop-client/`). Neither exists: the workspace was
+> renamed to `kasirmu-*` and the Tauri shells are `apps/desktop-tauri` and `apps/mobile-tauri`.
+> The list below is repointed to the files that carry the same code today — the decision itself
+> is unchanged, and the entries are the record of where its implementation lives. Re-derive:
+> `ls crates/kasirmu-core/src/{session.rs,db/terminals.rs,db/shifts.rs,db/sales.rs}`.
+
 ### Backend Files
 
-- `crates/oz-core/src/session.rs` — SessionContext with terminal_id
-- `crates/oz-core/src/db/terminals.rs` — Terminal registration, binding
-- `crates/oz-core/src/db/shifts.rs` — Terminal-isolated shifts
-- `crates/oz-core/src/db/sales.rs` — Sale completion with terminal_id
-- `apps/desktop-client/src/state.rs` — Terminal ID resolution at startup
-- `apps/desktop-client/src/commands/pos.rs` — Terminal-scoped POS operations
-- `apps/desktop-client/src/commands/terminals.rs` — Terminal CRUD
+- `crates/kasirmu-core/src/session.rs` — SessionContext with terminal_id
+- `crates/kasirmu-core/src/db/terminals.rs` — Terminal registration, binding
+- `crates/kasirmu-core/src/db/shifts.rs` — Terminal-isolated shifts
+- `crates/kasirmu-core/src/db/sales.rs` — Sale completion with terminal_id
+- `apps/desktop-tauri/src/state.rs` — Terminal ID resolution at startup
+- `apps/desktop-tauri/src/commands/pos.rs` — Terminal-scoped POS operations
+- `apps/desktop-tauri/src/commands/terminals.rs` — Terminal CRUD
 
 ### Frontend Files
 
@@ -146,7 +161,12 @@ values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
 
 ### Test Coverage
 
-17 multi-terminal test cases in `crates/oz-core/src/db/multi_terminal_tests.rs`:
+**22** multi-terminal test cases in `crates/kasirmu-core/src/db/multi_terminal_tests.rs`
+(recounted 2026-10-11: 22 `#[test]`/`#[tokio::test]` functions; the record listed 14 and
+said 17). The fourteen the record enumerated are all still present and still pass by name,
+starting with `two_terminals_bound_to_same_store`; the suite has since gained the
+integration, e2e and edge-case cases named below. Re-derive:
+`grep -c '#\[tokio::test\]\|#\[test\]' crates/kasirmu-core/src/db/multi_terminal_tests.rs`.
 
 1. Two terminals bound to same store
 2. Terminal listing shows all per store
@@ -163,4 +183,10 @@ values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
 13. Same user login on two terminals
 14. Terminal crash loses unsaved cart
 
-> last audited 29-09-26 by docs-auditor
+**Added since the record was written** (present at HEAD, listed so the count reconciles):
+`same_user_opens_shift_on_both_terminals`, `integration_full_multi_terminal_workflow`,
+`integration_kds_routing_from_multiple_terminals`, `integration_held_cart_same_workspace_shared`,
+`integration_terminal_deactivation`, `integration_stock_not_deducted_on_payment_mismatch`,
+`e2e_three_terminal_restaurant`, `e2e_network_partition_stock_visibility`.
+
+> last audited 11-10-26 by docs-auditor

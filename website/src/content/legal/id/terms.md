@@ -4,6 +4,8 @@ version: "1.1"
 effective: "29 September 2026"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major) · Cap audit pertama untuk halaman ini. Ini adalah teks HUKUM, jadi hanya klaim FAKTUAL dan TEKNIS yang diverifikasi; tidak ada kata-kata hukum yang diubah. · MAJOR: §3 menyebut Layanan ditawarkan "dalam beberapa jenjang (misalnya Gratis, Pro, dan Premium)". Susunan resminya adalah Gratis / Plus / Pro / Premium / Enterprise — lima jenjang, sesuai crates/kasirmu-core/src/subscription/tier.rs:22-38 dan halaman harga. Kata "misalnya" tidak memperbaikinya: pembaca paket Plus atau Enterprise tidak akan menemukan jenjangnya disebut dalam perjanjian yang mengaturnya. Kini kelima jenjang disebut. Kembaran bahasa Inggrisnya memuat kekurangan yang sama dan diperbaiki pada pass yang sama, sehingga paritas en/id terjaga. · DIVERIFIKASI, TIDAK DIUBAH: Paddle sebagai pemroses pembayaran; support@kasir.mu alamat kontak yang dipakai di situs ini (28 kemunculan); jendela refund 14 hari; pembagian tagihan USD/IDR; klausa "data Anda milik Anda". · TIDAK diverifikasi, sengaja: akibat hukum tiap klausul dan keberlakuannya di yurisdiksi mana pun. · TIDAK diukur ulang: alur checkout langsung dan konfigurasi merchant Paddle saat ini. -->
+
 Syarat dan Ketentuan Layanan ini ("Ketentuan") merupakan perjanjian yang mengikat secara hukum antara Anda ("Anda" atau "Pelanggan") dan pengoperasi layanan kasir.mu ("Perusahaan", "kami", atau "kita") yang mengatur akses dan penggunaan Anda atas situs web, aplikasi desktop, layanan cloud, server lisensi, dan layanan terkait kasir.mu (secara bersama-sama, "Layanan").
 
 Dengan membuat akun, mengunduh perangkat lunak, mengaktifkan lisensi, atau menggunakan Layanan dengan cara apa pun, Anda menyetujui Ketentuan ini. Jika Anda menggunakan Layanan atas nama suatu usaha/badan usaha, Anda menyatakan bahwa Anda berwenang mengikat badan usaha tersebut, dan "Anda" berarti badan usaha tersebut.
@@ -24,7 +26,7 @@ Kami dapat menambah, mengubah, atau menghapus fitur dari waktu ke waktu. Kami ak
 
 ## 3. Paket, lisensi, dan aktivasi
 
-1. Layanan ditawarkan dalam beberapa jenjang (misalnya Gratis, Pro, dan Premium) sebagaimana dijelaskan pada halaman harga. Setiap paket berbayar memberikan Anda hak non-eksklusif, tidak dapat dialihkan, dan dapat dicabut untuk menggunakan Layanan untuk operasional bisnis Anda sendiri, tunduk pada batasan paket Anda (misalnya jumlah toko, register, gudang, atau instansi POS yang diizinkan oleh paket Anda).
+1. Layanan ditawarkan dalam beberapa jenjang (Gratis, Plus, Pro, Premium, dan Enterprise) sebagaimana dijelaskan pada halaman harga. Setiap paket berbayar memberikan Anda hak non-eksklusif, tidak dapat dialihkan, dan dapat dicabut untuk menggunakan Layanan untuk operasional bisnis Anda sendiri, tunduk pada batasan paket Anda (misalnya jumlah toko, register, gudang, atau instansi POS yang diizinkan oleh paket Anda).
 2. Saat Anda berlangganan atau membeli, kami menerbitkan kunci lisensi yang ditandatangani secara kriptografis dan terikat pada akun Anda. Anda hanya dapat menggunakan perangkat lunak pada perangkat yang Anda miliki atau operasikan, dalam batas paket Anda, dan hanya selama langganan Anda aktif (atau, untuk jenjang gratis, sesuai ketentuannya).
 3. Anda tidak boleh menjual kembali, mensublisensikan, menyewakan, atau mengalihkan perangkat lunak atau kunci lisensi, kecuali Anda dapat memindahkan perangkat lunak ke perangkat lain yang Anda miliki sebagai bagian dari penggantian perangkat yang wajar.
 4. Jenjang gratis disediakan tanpa biaya untuk fitur dan batasan yang dijelaskan pada halaman harga. Kami dapat mengubah ketentuan jenjang gratis dengan pemberitahuan yang wajar.
@@ -131,3 +133,5 @@ Pertanyaan tentang Ketentuan ini: **support@kasir.mu**. Untuk membeli atau menin
 | --- | --- | --- |
 | 1.1 | 29 September 2026 | Jendela pengembalian dana diubah dari 30 hari menjadi 14 hari. |
 | 1.0 | 17 Agustus 2026 | Publikasi awal. |
+
+> last audited 11-10-26 by docs-auditor

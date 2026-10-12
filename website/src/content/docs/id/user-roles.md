@@ -6,7 +6,11 @@ order: 6
 updated: "2026-10-01"
 ---
 
-<!-- Audit stamp: 2026-09-19 · DSH · status: ACCURATE AFTER REPAIR (3 findings) · 2026-09-19 RE-AUDIT: Staff management dan pembuatan peran kini menjadi halaman layar penuh tersendiri — ui/src/features/staff/register.tsx:20-33 mendaftarkan kedua rute dengan fullscreen: true dan tidak lagi memanggil registerNavItem, sehingga AppShell merendernya tanpa AppLayout dan bilah sisi tidak memuat keduanya. Kedua penunjuk "di bagian Alat pada bilah sisi" di halaman ini karena itu salah dan dialihkan ke kartu Staff Management di kisi Tools pemilih ruang kerja dan ke tombol Roles di halaman Staf. Diverifikasi pada aplikasi yang berjalan: seksi Tools di bilah sisi memuat Terminal, Fitur, Data, Log Audit, Security Trail, Antrian Offline, Shift, Memo — tanpa Staf maupun Peran. · 2026-09-08 · DSH · status: PARTIALLY REPAIRED - UNREVIEWED TRANSLATION (2 findings) · Indonesian counterpart of en/user-roles.md, first audit evidence. · Two corrections applied, both factual pointers rather than prose: Pengaturan -> Staf was wrong (Staff is registered in ui/src/features/staff/register.tsx with section: tools, label nav-section-tools = Alat; ui/src/features/settings/ contains no route reference to staff at all), and the Custom bullet read as though custom roles did not exist yet. Role authoring is shipped and routed - route roles, label Peran, gated manager AND staff:manage_roles. Both replacement sentences use the app's own localized labels from shared.id.ftl (Alat, Staf, Peran) rather than invented terms. · CAVEAT, deliberately not hidden: the two replacement sentences are Indonesian I composed from the surrounding text's patterns, NOT a translation by a native speaker or the product's copywriter. The rest of this page is untouched. If a reviewer disagrees with the phrasing, correct the wording - the underlying facts (where Staff lives, that role authoring exists and is gated on staff:manage_roles) are verified against the code and should not be reverted. · NOT ported from the English page: the new Authoring custom roles section (grant registry, the two delete guards, role holders). That is real copywriting and belongs to whoever owns this locale. Page parity is otherwise intact: 17 en, 17 id. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Re-audit of the Indonesian User Roles page, repaired in step with the English twin so the pair stays in parity. MINOR 1: the page described role authoring as a separate screen opened by a Peran button; it is a TAB on the Staff page — staff/register.tsx registers one component at THREE routes (`staff`, `roles`, `trash`, all fullscreen), and the screen picks its tab from the route. MINOR 2: the third tab, **Trash**, was not mentioned; it lists deleted identities and is gated on `staff:delete`, which only the Owner preset holds. Both facts are code-verified, not translation choices — the Indonesian wording follows the page's existing terms (Staf, Peran, kelola peran) and the app's own labels. · NOTE ON PROVENANCE: the Indonesian phrasing is composed to match this page's surrounding register, as the earlier stamp's caveat disclosed; a locale owner may reword it without touching the underlying facts. · VERIFIED: ROLE_PRESETS holds six entries (Owner, Manager, Staff, Admin, Auditor, Custom) in rbac_presets.rs, so "lima preset ditawarkan, yang keenam di bawah" remains right; the three routes and their gates (staff:read, staff:manage_roles, staff:delete) match register.tsx. · NOT re-measured: the live per-role permission matrix. · Superseded 2026-09-19 and 2026-09-08 stamps preserved below as plain te
+
+STAMP MERGED INTO THIS ONE — superseded stamp(s) kept verbatim as plain text (delimiters stripped so they cannot nest):
+
+Audit stamp: 2026-09-19 · DSH · status: ACCURATE AFTER REPAIR (3 findings) · 2026-09-19 RE-AUDIT: Staff management dan pembuatan peran kini menjadi halaman layar penuh tersendiri — ui/src/features/staff/register.tsx:20-33 mendaftarkan kedua rute dengan fullscreen: true dan tidak lagi memanggil registerNavItem, sehingga AppShell merendernya tanpa AppLayout dan bilah sisi tidak memuat keduanya. Kedua penunjuk "di bagian Alat pada bilah sisi" di halaman ini karena itu salah dan dialihkan ke kartu Staff Management di kisi Tools pemilih ruang kerja dan ke tombol Roles di halaman Staf. Diverifikasi pada aplikasi yang berjalan: seksi Tools di bilah sisi memuat Terminal, Fitur, Data, Log Audit, Security Trail, Antrian Offline, Shift, Memo — tanpa Staf maupun Peran. · 2026-09-08 · DSH · status: PARTIALLY REPAIRED - UNREVIEWED TRANSLATION (2 findings) · Indonesian counterpart of en/user-roles.md, first audit evidence. · Two corrections applied, both factual pointers rather than prose: Pengaturan -> Staf was wrong (Staff is registered in ui/src/features/staff/register.tsx with section: tools, label nav-section-tools = Alat; ui/src/features/settings/ contains no route reference to staff at all), and the Custom bullet read as though custom roles did not exist yet. Role authoring is shipped and routed - route roles, label Peran, gated manager AND staff:manage_roles. Both replacement sentences use the app's own localized labels from shared.id.ftl (Alat, Staf, Peran) rather than invented terms. · CAVEAT, deliberately not hidden: the two replacement sentences are Indonesian I composed from the surrounding text's patterns, NOT a translation by a native speaker or the product's copywriter. The rest of this page is untouched. If a reviewer disagrees with the phrasing, correct the wording - the underlying facts (where Staff lives, that role authoring exists and is gated on staff:manage_roles) are verified against the code and should not be reverted. · NOT ported from the English page: the new Authoring custom roles section (grant registry, the two delete guards, role holders). That is real copywriting and belongs to whoever owns this locale. Page parity is otherwise intact: 17 en, 17 id. -->
 
 ## Apa itu peran
 
@@ -16,6 +20,8 @@ preset, yang ditampilkan saat Anda mengubah akun di layar **Staf** — halaman
 layar penuh tersendiri yang Anda buka dari kartu **Staff Management** di kisi Tools
 pemilih ruang kerja, bukan entri bilah sisi. Tabel bawaan sebenarnya memuat enam preset;
 yang ditawarkan di pemilih staf ada lima, dan yang keenam dijelaskan di bawah.
+Halaman ini sendiri adalah tampilan layar penuh dengan tiga tab — **Staf**,
+**Peran**, dan **Trash** — terdaftar pada `#/staff`, `#/roles`, dan `#/trash`.
 
 ## Lima peran
 
@@ -72,12 +78,17 @@ daftar yang berwenang:
 
 ## Menyusun peran kustom
 
-Layar **Peran** — dibuka lewat tombol **Peran** di halaman Staf — adalah
-tempat peran kustom dibangun. Layar ini terpisah dari daftar staf dan
-dijaga lebih ketat: **manajer atau pemilik** *dan* izin
-`staff:manage_roles`. Staf hanya-baca tidak bisa mengaksesnya meski boleh
-melihat daftar staf, karena sebuah peran menentukan hak yang menjadi dasar
-setiap pemeriksaan berikutnya.
+Tampilan **Peran** adalah **tab pada halaman Staf** — buka halaman Staf lalu
+pindah ke **Peran** (baik `#/staff` maupun `#/roles` membuka halaman layar penuh
+yang sama, hanya berbeda tab pertama yang terbuka). Dijaga lebih ketat daripada
+daftar staf: **manajer atau pemilik** *dan* izin `staff:manage_roles`. Staf
+hanya-baca tidak bisa mengaksesnya meski boleh melihat daftar staf, karena
+sebuah peran menentukan hak yang menjadi dasar setiap pemeriksaan berikutnya.
+
+Tab ketiga, **Trash**, menampilkan identitas yang sudah dihapus agar tetap
+terbaca setelah penghapusan. Tab ini dijaga izin `staff:delete`, yang hanya
+dipegang preset **Owner** dan tidak oleh preset lain — jadi manajer yang tidak
+boleh menghapus siapa pun juga tidak melihat siapa yang dihapus.
 
 Peran yang disusun adalah sekumpulan kunci izin yang dipilih dari registri
 yang sama dengan lima preset — tidak ada yang bisa diberikan di sana
@@ -125,4 +136,4 @@ Empat celah dalam rencana telah ditutup:
 > disebut halaman terverifikasi: manager pada pelanggan/riwayat/dashboard,
 > analytics + analytics:view, layar Peran dengan staff:manage_roles
 > (rbac.rs:440).
-> last audited 19-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
