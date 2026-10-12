@@ -165,6 +165,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   }, [onNavigate, setActiveWorkspace]);
 
   // ── Restore locked cart or active draft on mount ────────────────
+  // Declared HERE, above the persistence effects that read it. The active-draft
+  // save, the memory-trim save, the lock save and the restore all carry `orderType`,
+  // and every one of them is hoisted above the later state block — so the
+  // declaration has to come first or the reads land in its temporal dead zone.
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
   const LOCKED_CART_KEY = 'pos-locked-cart';
   const ACTIVE_DRAFT_KEY = 'pos-active-draft';
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
@@ -225,6 +230,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (typeof data.guestCount === 'string') {
         setGuestCount(data.guestCount);
       }
+      // ⚠️ The order type was NOT restored before this, so every restored cart came
+      // back as the dine_in default. A cashier who rang up a takeaway, then had the
+      // tablet reload / the OS trim memory / the till locked for a break, got a
+      // DINE-IN cart back: it carries a table it never had, gates the claim and
+      // release (rounds 40-45), and the kitchen prints the wrong ticket. Validated
+      // against the union of what the three save sites can write, so an older
+      // payload without the field still falls back to the default.
+      if (data.orderType === 'dine_in' || data.orderType === 'takeaway' || data.orderType === 'delivery') {
+        setOrderType(data.orderType);
+      }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
   }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
@@ -275,6 +290,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tableNumber,
           customerName,
           guestCount,
+          // orderType rides with the cart: a takeaway restored as dine_in comes back
+          // with a table it never had, gates a claim/release it should not, and
+          // prints the wrong ticket to the kitchen.
+          orderType,
         };
         localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
       } catch {
@@ -283,7 +302,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     } else {
       localStorage.removeItem(ACTIVE_DRAFT_KEY);
     }
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType]);
 
   // ── Listen for Android OS memory trim callbacks (Phase 2 audit) ─
   useEffect(() => {
@@ -315,6 +334,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             tableNumber,
             customerName,
             guestCount,
+            orderType,
           };
           localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
         } catch { /* ignore */ }
@@ -326,7 +346,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
       window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
     };
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType]);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
@@ -338,7 +358,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // (P1/D2): the control stays visible on restaurant while an explicit stored
   // "false" can finally turn it off.
   const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(activeWorkspace === 'restaurant-pos');
-  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
+  // NOTE: `orderType` is declared ABOVE the restore section (~line 167), not here.
+  // The draft/lock persistence effects and the restore all read it, and they are
+  // hoisted above this point — a `const` declared here would be in its temporal dead
+  // zone for them (TS2448), which is how this surfaced.
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
@@ -1026,6 +1049,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tableNumber,
           customerName,
           guestCount,
+          orderType,
         };
         localStorage.setItem(LOCKED_CART_KEY, JSON.stringify(data));
       } else {
@@ -1033,7 +1057,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, logout]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
