@@ -89,27 +89,30 @@ export function useKdsShortcuts({
       // Guard: never intercept while a modal owns the keyboard.
       if (isAnyAriaModalOpen()) return;
 
-      if (e.key >= '1' && e.key <= '9') {
+      const matchF = /^F([1-9])$/.exec(e.key);
+      const isNum = e.key >= '1' && e.key <= '9';
+      if (isNum || matchF) {
         e.preventDefault();
-        const idx = parseInt(e.key, 10) - 1;
+        const numStr = matchF ? matchF[1] : e.key;
+        const idx = parseInt(numStr, 10) - 1;
         if (idx < filteredOrders.length) {
           setSelectedOrderId(filteredOrders[idx]!.id);
         }
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'PageDown') {
         e.preventDefault();
         setSelectedOrderId((prev) => {
           const currentIdx = prev ? filteredOrders.findIndex((o) => o.id === prev) : -1;
           const nextIdx = Math.min(currentIdx + 1, filteredOrders.length - 1);
           return nextIdx >= 0 ? filteredOrders[nextIdx]!.id : null;
         });
-      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
         setSelectedOrderId((prev) => {
           const currentIdx = prev ? filteredOrders.findIndex((o) => o.id === prev) : filteredOrders.length;
           const nextIdx = Math.max(currentIdx - 1, 0);
           return filteredOrders.length > 0 ? filteredOrders[nextIdx]!.id : null;
         });
-      } else if ((e.key === ' ' || e.key === 'Enter') && selectedRef.current) {
+      } else if ((e.key === ' ' || e.key === 'Enter' || e.key === 'F12') && selectedRef.current) {
         // Skip if a ticket button or interactive button already has focus (its onClick will handle advance).
         //
         // The `instanceof` half is load-bearing, not defensive dressing. The

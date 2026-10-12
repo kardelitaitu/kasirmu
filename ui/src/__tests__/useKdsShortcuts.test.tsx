@@ -140,6 +140,29 @@ describe('useKdsShortcuts — Space, Enter and Escape', () => {
     expect(advanceStatus).toHaveBeenCalledWith(ORDERS[1]);
   });
 
+  it('F12 advances the currently selected order (industrial bump bar BUMP key)', () => {
+    const { advanceStatus } = setup({ selected: 'b' });
+    act(() => { document.dispatchEvent(key('F12')); });
+    expect(advanceStatus).toHaveBeenCalledWith(ORDERS[1]);
+  });
+
+  it('F1-F3 selects orders matching 1-3 keys (industrial bump bar keys)', () => {
+    const { setSelectedOrderId } = setup();
+    act(() => { document.dispatchEvent(key('F2')); });
+    expect(setSelectedOrderId).toHaveBeenCalledWith('b');
+  });
+
+  it('PageDown and PageUp navigate forward and backward', () => {
+    const { setSelectedOrderId } = setup();
+    act(() => { document.dispatchEvent(key('PageDown')); });
+    const nextUpdater = setSelectedOrderId.mock.calls[0]![0] as (p: string | null) => string | null;
+    expect(nextUpdater('a')).toBe('b');
+
+    act(() => { document.dispatchEvent(key('PageUp')); });
+    const prevUpdater = setSelectedOrderId.mock.calls[1]![0] as (p: string | null) => string | null;
+    expect(prevUpdater('b')).toBe('a');
+  });
+
   it('Space and Enter do nothing when no order is selected', () => {
     const { advanceStatus } = setup({ selected: null });
     act(() => { document.dispatchEvent(key(' ')); });
