@@ -18,6 +18,10 @@ const {
   mockCreateTable,
   mockUpdateTable,
   mockDeleteTable,
+  mockGetHeldCart,
+  mockHoldCart,
+  mockDeleteHeldCart,
+  mockPrintSalesReceipt,
 } = vi.hoisted(() => ({
   mockListTables: vi.fn(),
   mockListSections: vi.fn(),
@@ -27,6 +31,10 @@ const {
   mockCreateTable: vi.fn(),
   mockUpdateTable: vi.fn(),
   mockDeleteTable: vi.fn(),
+  mockGetHeldCart: vi.fn(),
+  mockHoldCart: vi.fn(),
+  mockDeleteHeldCart: vi.fn(),
+  mockPrintSalesReceipt: vi.fn(),
 }));
 
 vi.mock('@/api/sales', async (importOriginal) => {
@@ -34,6 +42,10 @@ vi.mock('@/api/sales', async (importOriginal) => {
   return {
     ...actual,
     listOpenBillsScoped: (_token: string) => mockListOpenBills(),
+    getHeldCartScoped: (_token: string, id: string) => mockGetHeldCart(id),
+    holdCartScoped: (_token: string, args: unknown) => mockHoldCart(args),
+    deleteHeldCartScoped: (_token: string, id: string) => mockDeleteHeldCart(id),
+    printSalesReceipt: (_token: string, args: unknown) => mockPrintSalesReceipt(args),
   };
 });
 
@@ -109,9 +121,16 @@ describe('TableManagementScreen', () => {
     mockCreateTable.mockReset();
     mockUpdateTable.mockReset();
     mockDeleteTable.mockReset();
+    mockGetHeldCart.mockReset();
+    mockHoldCart.mockReset();
+    mockDeleteHeldCart.mockReset();
+    mockPrintSalesReceipt.mockReset();
     mockListTables.mockResolvedValue([]);
     mockListSections.mockResolvedValue([]);
     mockListOpenBills.mockResolvedValue([]);
+    mockHoldCart.mockResolvedValue({ id: 'new-held-id' });
+    mockDeleteHeldCart.mockResolvedValue(undefined);
+    mockPrintSalesReceipt.mockResolvedValue({ printed: true });
     mockUpdateTableStatus.mockImplementation((_token: string, id: string, status: string) =>
       Promise.resolve(makeTable({ id, status })),
     );
@@ -775,5 +794,99 @@ describe('TableManagementScreen', () => {
     await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
     expect(screen.getByText('6p')).toBeDefined();
     expect(screen.getByText(/150\.000/)).toBeDefined();
+  });
+
+  it('prints interim bill check when Print Bill is clicked in table detail', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Nasi Goreng', qty: 2, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 2,
+      total_minor: 50000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+
+    await openTableDetail(table);
+    await waitFor(() => expect(screen.getByTestId('tables-print-bill-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-print-bill-btn'));
+    await waitFor(() => {
+      expect(mockPrintSalesReceipt).toHaveBeenCalledTimes(1);
+    });
+    const receiptArg = mockPrintSalesReceipt.mock.calls[0]![0];
+    expect(receiptArg.tableNumber).toBe('Table 1');
+    expect(receiptArg.total.minorUnits).toBe(50000);
+    expect(receiptArg.items).toHaveLength(1);
+  });
+
+  it('moves active tab to another available table when Move Table is confirmed', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+    await waitFor(() => {
+      expect(mockDeleteHeldCart).toHaveBeenCalledWith('bill-1');
+      expect(mockHoldCart).toHaveBeenCalled();
+      expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
+      expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-2', 'occupied');
+    });
   });
 });

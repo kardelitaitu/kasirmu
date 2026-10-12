@@ -516,4 +516,53 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     expect(guest.placeholder).toBe('Tamu');
     expect(guest.placeholder).not.toBe('Pax');
   });
+
+  it('renders Print Bill button when tableNumber and lines exist, invoking handlePrintBill', () => {
+    const handlePrintBill = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng')],
+      subtotal: SUBTOTAL,
+      tableNumber: 'Table 4',
+      printBillEnabled: true,
+      handlePrintBill,
+    });
+
+    const printBtn = screen.getByTestId('pos-cart-print-bill-btn');
+    expect(printBtn).toBeDefined();
+    fireEvent.click(printBtn);
+    expect(handlePrintBill).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders Split Bill button when lines exist, invoking setShowSplitBillModal', () => {
+    const setShowSplitBillModal = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      splitBillEnabled: true,
+      setShowSplitBillModal,
+    });
+
+    const splitBtn = screen.getByTestId('pos-cart-split-bill-btn');
+    expect(splitBtn).toBeDefined();
+    fireEvent.click(splitBtn);
+    expect(setShowSplitBillModal).toHaveBeenCalledWith(true);
+  });
+
+  it('renders SplitBillModal when showSplitBillModal is true', () => {
+    const handleConfirmSplitBill = vi.fn();
+    const setShowSplitBillModal = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      showSplitBillModal: true,
+      setShowSplitBillModal,
+      handleConfirmSplitBill,
+      tableNumber: 'Table 10',
+    });
+
+    const modal = screen.getByTestId('pos-split-bill-modal');
+    expect(modal).toBeDefined();
+    expect(within(modal).getByText('Nasi Goreng')).toBeDefined();
+    expect(within(modal).getByText('Es Teh')).toBeDefined();
+  });
 });

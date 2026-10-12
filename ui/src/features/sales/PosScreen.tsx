@@ -32,6 +32,9 @@ import { formatMoney, getProductModifierGroups, type CartLine, type LineId, type
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
+  holdCartScoped,
+  listOpenBillsScoped,
+  printSalesReceipt,
 } from '@/api/sales';
 import { getReceiptSettingsScoped, getSettingScoped, getStoreSettingsScoped } from '@/api/settings';
 import { useOptionalCurrency } from '@/contexts/CurrencyContext';
@@ -59,7 +62,8 @@ import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
-import { matchesTableBill, bareTableNumber } from './utils/tableLabel';
+import { matchesTableBill, bareTableNumber, heldCartLabel } from './utils/tableLabel';
+import { buildPreCheckoutBillReceipt } from './payment/completedSale';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
@@ -234,6 +238,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
   const [showRestaurantSettings, setShowRestaurantSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [showSplitBillModal, setShowSplitBillModal] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
@@ -721,7 +726,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // to release.
     if (tableNumber && sessionToken && orderType === 'dine_in') {
       void listTablesScoped(sessionToken)
-        .then((tables) => {
+        .then(async (tables) => {
+          const remainingBills = await listOpenBillsScoped(sessionToken).catch(() => []);
+          const stillHasOpenBill = remainingBills.some((b) => matchesTableBill(b, tableNumber));
+          if (stillHasOpenBill) {
+            return;
+          }
           const bareInput = bareTableNumber(tableNumber);
           const match = tables.find(
             (t) =>
@@ -749,6 +759,114 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // without it this callback closes over the render-time value and a cashier who
     // switches Dine-In -> Takeaway after mount would still free the table.
   }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
+
+  const handlePrintBill = useCallback(async () => {
+    if (lines.length === 0 || !total) return;
+    if (!sessionToken) {
+      addToast({ message: 'Authentication required to print bill', type: 'error' });
+      return;
+    }
+    try {
+      const receipt = buildPreCheckoutBillReceipt({
+        billNumber: `BILL-${bareTableNumber(tableNumber) || 'CHECK'}-${Date.now().toString().slice(-4)}`,
+        cartLines: lines,
+        cartCurrency: subtotal?.currency || activeCurrency,
+        subtotal: subtotal ?? { minor_units: 0, currency: activeCurrency },
+        total: total && cartTaxExclusive && cartTax > 0 && cartTaxFresh
+          ? { minor_units: total.minor_units + cartTax, currency: total.currency }
+          : total,
+        taxAmount: cartTax > 0 ? { minor_units: cartTax, currency: activeCurrency } : undefined,
+        tableNumber: tableNumber || undefined,
+        customerName: customerName || undefined,
+      });
+      await printSalesReceipt(sessionToken, receipt);
+      addToast({
+        message: l10n.getString('pos-toast-bill-printed', { table: tableNumber || '' }) || 'Interim bill check printed',
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'pos-toast-bill-print-failed'),
+        type: 'error',
+      });
+    }
+  }, [lines, total, sessionToken, tableNumber, customerName, subtotal, activeCurrency, cartTaxExclusive, cartTax, cartTaxFresh, addToast, l10n]);
+
+  const handleConfirmSplitBill = useCallback(
+    async (selectedLines: CartLine[], remainingLines: CartLine[]) => {
+      if (selectedLines.length === 0) return;
+      if (remainingLines.length > 0 && sessionToken) {
+        try {
+          const trimmedTable = (tableNumber ?? '').trim();
+          const trimmedName = (customerName ?? '').trim();
+          const trimmedGuest = (guestCount ?? '').trim();
+          const cartData = JSON.stringify({
+            lines: remainingLines.map((l) => ({
+              sku: l.sku,
+              name: l.name,
+              qty: l.qty,
+              unit_price: l.unit_price,
+              ...(l.courseId ? { courseId: l.courseId } : {}),
+              ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+              ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+              ...(l.note ? { note: l.note } : {}),
+            })),
+            discountPercent,
+            discountLabel,
+            ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+            ...(trimmedName ? { customerName: trimmedName } : {}),
+            ...(trimmedGuest ? { guestCount: trimmedGuest } : {}),
+            ...(typeof tipPercent === 'number' && tipPercent > 0 ? { tipPercent } : {}),
+            ...(typeof serviceChargeEnabled === 'boolean' ? { serviceChargeEnabled } : {}),
+            ...(typeof serviceChargePercent === 'number' && serviceChargePercent > 0 ? { serviceChargePercent } : {}),
+            ...(orderType ? { orderType } : {}),
+          });
+          const label = heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
+          if (activeOpenBillId) {
+            await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+          }
+          const remSubtotalMinor = remainingLines.reduce(
+            (sum, l) => sum + l.unit_price.minor_units * l.qty,
+            0,
+          );
+          await holdCartScoped(sessionToken, {
+            label,
+            cart_data: cartData,
+            item_count: remainingLines.length,
+            total_minor: remSubtotalMinor,
+            currency: remainingLines[0]?.unit_price.currency || activeCurrency,
+            bill_type: 'open_bill',
+            customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+          });
+          setActiveOpenBillId(null);
+          loadOpenBills();
+        } catch {
+          addToast({ message: 'Failed to update remaining tab balance', type: 'error' });
+        }
+      }
+      setLines(selectedLines);
+      setShowSplitBillModal(false);
+      setShowPayment(true);
+    },
+    [
+      sessionToken,
+      tableNumber,
+      customerName,
+      guestCount,
+      discountPercent,
+      discountLabel,
+      tipPercent,
+      serviceChargeEnabled,
+      serviceChargePercent,
+      orderType,
+      activeOpenBillId,
+      activeCurrency,
+      setActiveOpenBillId,
+      loadOpenBills,
+      addToast,
+      setLines,
+    ],
+  );
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -855,6 +973,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [customerNameEnabled, setCustomerNameEnabled] = useState<boolean | null>(null);
   const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
   const [saveTabEnabled, setSaveTabEnabled] = useState<boolean | null>(null);
+  const [printBillEnabled, setPrintBillEnabled] = useState<boolean | null>(null);
+  const [splitBillEnabled, setSplitBillEnabled] = useState<boolean | null>(null);
 
   // ── Order Sound Notifications (F21) ─────────────────────────────
   //
@@ -924,6 +1044,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     void getSettingScoped(sessionToken, 'restaurant.save_tab')
       .then((raw) => { if (!cancelled) setSaveTabEnabled(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setSaveTabEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.print_bill_action')
+      .then((raw) => { if (!cancelled) setPrintBillEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setPrintBillEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.split_bill_by_item')
+      .then((raw) => { if (!cancelled) setSplitBillEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setSplitBillEnabled(null); });
     // F20: the Auto-Print KOT switch. A failed read keeps `null`, which the modal
     // treats as its default (print) — so a settings outage cannot silently stop a
     // kitchen printing tickets, the direction of failure that goes unnoticed.
@@ -1251,6 +1377,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handlePay, addToast, setShowOpenBillInput, setCartId, resetCart,
     setShowOpenBills, openBills,
     activeOpenBillId, setActiveOpenBillId, handleOpenBill,
+    printBillEnabled: printBillEnabled ?? true,
+    handlePrintBill,
+    splitBillEnabled: splitBillEnabled ?? true,
+    showSplitBillModal,
+    setShowSplitBillModal,
+    handleConfirmSplitBill,
   };
   const cartPanelProps: CartPanelProps = {
     ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,

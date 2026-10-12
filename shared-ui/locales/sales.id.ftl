@@ -1105,4 +1105,17 @@ pos-cart-order-type-takeaway = Bawa Pulang
 pos-cart-order-type-delivery = Antar
 pos-cart-guest-placeholder = Tamu
 edit-modifiers = Ubah
+pos-cart-print-bill = Cetak Bill
+pos-cart-print-bill-aria = Cetak bill sementara untuk diperiksa pelanggan
+pos-cart-split-bill = Pisah Bill
+pos-cart-split-bill-aria = Pisah bill per menu
+pos-split-modal-title = Pisah Tagihan per Menu
+pos-split-modal-pay-now = Bayar Pilihan Sekarang
+pos-split-modal-remaining = Tetap di Tagihan
+pos-split-modal-confirm-pay = Bayar Pilihan ({ $amount })
+pos-split-modal-cancel = Batal
+pos-toast-bill-printed = Bill dicetak untuk { $table }
+pos-toast-bill-print-failed = Gagal mencetak bill
+
+
 

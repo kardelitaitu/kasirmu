@@ -40,6 +40,11 @@ export interface CartActionBarProps {
    * idiom CartPanel uses for the customer/pax gates.
    */
   saveTabEnabled?: boolean | undefined;
+  hasLines?: boolean | undefined;
+  printBillEnabled?: boolean | undefined;
+  handlePrintBill?: (() => Promise<void> | void) | undefined;
+  splitBillEnabled?: boolean | undefined;
+  handleOpenSplitBill?: (() => void) | undefined;
 }
 
 
@@ -59,6 +64,11 @@ export function CartActionBar({
   activeOpenBillId,
   handleOpenBill,
   saveTabEnabled,
+  hasLines,
+  printBillEnabled,
+  handlePrintBill,
+  splitBillEnabled,
+  handleOpenSplitBill,
 }: CartActionBarProps) {
   const { l10n } = useLocalization();
 
@@ -137,6 +147,45 @@ export function CartActionBar({
           ? (l10n.getString('pos-cart-update-tab') || 'Update Tab')
           : (l10n.getString('pos-cart-save-tab') || 'Save Tab')}
       </button>
+      )}
+
+      {/* Print Bill / Check preview button */}
+      {printBillEnabled !== false && hasLines && (Boolean(tableNumber?.trim()) || Boolean(activeOpenBillId)) && handlePrintBill && (
+        <button
+          type="button"
+          className="pos-cart-print-bill-btn"
+          onClick={() => { void handlePrintBill(); }}
+          aria-label={l10n.getString('pos-cart-print-bill-aria') || 'Print Bill'}
+          title={l10n.getString('pos-cart-print-bill-aria') || 'Print Bill'}
+          data-testid="pos-cart-print-bill-btn"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          {l10n.getString('pos-cart-print-bill') || 'Print Bill'}
+        </button>
+      )}
+
+      {/* Split Bill by Item button */}
+      {splitBillEnabled !== false && hasLines && handleOpenSplitBill && (
+        <button
+          type="button"
+          className="pos-cart-split-bill-btn"
+          onClick={handleOpenSplitBill}
+          aria-label={l10n.getString('pos-cart-split-bill-aria') || 'Split Bill'}
+          title={l10n.getString('pos-cart-split-bill-aria') || 'Split Bill'}
+          data-testid="pos-cart-split-bill-btn"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+            <line x1="6" y1="9" x2="6" y2="21" />
+          </svg>
+          {l10n.getString('pos-cart-split-bill') || 'Split Bill'}
+        </button>
       )}
     </div>
   );

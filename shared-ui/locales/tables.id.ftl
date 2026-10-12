@@ -41,5 +41,15 @@ tables-release-confirm-title = Meja memiliki tagihan aktif ({ $amount })
 tables-release-confirm-desc = Melepas meja akan menandainya sebagai tersedia tanpa menutup atau melunasi tagihan yang belum dibayar ini. Anda yakin?
 tables-confirm-release = Konfirmasi Pelepasan
 tables-active-tab-short = Tagihan Aktif
+tables-print-bill = Cetak Bill
+tables-move-table = Pindah Meja
+tables-move-table-title = Pindahkan Meja { $from }
+tables-move-table-select-prompt = Pilih meja tujuan yang tersedia:
+tables-move-table-no-available = Tidak ada meja tersedia untuk dipindahkan.
+tables-move-table-confirm = Pindahkan ke { $to }
+tables-toast-moved = Tagihan dipindahkan dari { $from } ke { $to }
+tables-toast-move-failed = Gagal memindahkan meja
+tables-toast-bill-printed = Bill dicetak untuk { $table }
+tables-toast-bill-print-failed = Gagal mencetak bill
 
 # ── Tax Configuration ──

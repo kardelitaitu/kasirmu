@@ -2,11 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalToast, type ToastContextValue } from '@/components/Toast';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
-import { formatMoney } from '@/types/domain';
-import { listOpenBillsScoped, type HeldCartRow } from '@/api/sales';
+import { formatMoney, type CartLine } from '@/types/domain';
+import {
+  listOpenBillsScoped,
+  getHeldCartScoped,
+  holdCartScoped,
+  deleteHeldCartScoped,
+  printSalesReceipt,
+  type HeldCartRow,
+} from '@/api/sales';
+import { getSettingScoped } from '@/api/settings';
 import {
   listTablesScoped,
   listSectionsScoped,
@@ -18,7 +27,8 @@ import {
   type Table,
 } from '@/api/tables';
 import { listen } from '@/api/tauri';
-import { matchesTableBill } from '@/features/sales/utils/tableLabel';
+import { matchesTableBill, bareTableNumber, heldCartLabel } from '@/features/sales/utils/tableLabel';
+import { buildPreCheckoutBillReceipt } from '@/features/sales/payment/completedSale';
 import './TableManagementScreen.css';
 
 export interface TableModalState {
@@ -67,6 +77,19 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
   const [selected, setSelected] = useState<Table | null>(null);
   const [section, setSection] = useState<string | null>(null);
+  const toastCtx = useOptionalToast();
+  const toastRef = useRef(toastCtx);
+  toastRef.current = toastCtx;
+  const addToast = useCallback<ToastContextValue['addToast']>(
+    (toast) => toastRef.current?.addToast(toast) ?? '',
+    [],
+  );
+  const [printBillEnabled, setPrintBillEnabled] = useState<boolean | null>(null);
+  const [tableTransferEnabled, setTableTransferEnabled] = useState<boolean | null>(null);
+  const [moveTableModal, setMoveTableModal] = useState<Table | null>(null);
+  const [selectedDestTableId, setSelectedDestTableId] = useState<string>('');
+  const [movingTable, setMovingTable] = useState(false);
+  const [printingBill, setPrintingBill] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -120,6 +143,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     return () => {
       cancelled = true;
     };
+  }, [sessionToken]);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    let cancelled = false;
+    void getSettingScoped(sessionToken, 'restaurant.print_bill_action')
+      .then((raw) => { if (!cancelled) setPrintBillEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setPrintBillEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.table_transfer')
+      .then((raw) => { if (!cancelled) setTableTransferEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setTableTransferEnabled(null); });
+    return () => { cancelled = true; };
   }, [sessionToken]);
 
   // TBL-02: durable loading/error/retry with a seq guard. Known-good tables
@@ -377,6 +412,103 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     },
     [activeTableList],
   );
+
+  const handlePrintBillForTable = useCallback(async (t: Table) => {
+    const activeBill = getTableBill(t.name);
+    if (!activeBill || !sessionToken) return;
+    setPrintingBill(true);
+    try {
+      const full = await getHeldCartScoped(sessionToken, activeBill.id);
+      if (!full) throw new Error('Held cart not found');
+      let parsed: { lines?: unknown[] } = {};
+      try {
+        parsed = JSON.parse(full.cart_data);
+      } catch {
+        parsed = {};
+      }
+      const cartLines = (Array.isArray(parsed.lines) ? parsed.lines : []) as CartLine[];
+      const receipt = buildPreCheckoutBillReceipt({
+        billNumber: `CHECK-${bareTableNumber(t.name) || t.name}-${Date.now().toString().slice(-4)}`,
+        cartLines,
+        cartCurrency: full.currency || 'IDR',
+        subtotal: { minor_units: full.total_minor, currency: full.currency || 'IDR' },
+        total: { minor_units: full.total_minor, currency: full.currency || 'IDR' },
+        tableNumber: t.name,
+        customerName: full.customer_name ?? undefined,
+      });
+      await printSalesReceipt(sessionToken, receipt);
+      addToast({
+        message: l10n.getString('tables-toast-bill-printed', { table: t.name }),
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'tables-toast-bill-print-failed'),
+        type: 'error',
+      });
+    } finally {
+      setPrintingBill(false);
+    }
+  }, [getTableBill, sessionToken, addToast, l10n]);
+
+  const handleOpenMoveTable = useCallback((t: Table) => {
+    const available = activeTableList.filter(
+      (tbl) => tbl.id !== t.id && tbl.status === 'available',
+    );
+    setSelectedDestTableId(available[0]?.id ?? '');
+    setMoveTableModal(t);
+  }, [activeTableList]);
+
+  const handleConfirmMoveTable = useCallback(async () => {
+    if (!moveTableModal || !selectedDestTableId || !sessionToken) return;
+    const destTable = activeTableList.find((t) => t.id === selectedDestTableId);
+    if (!destTable) return;
+    const activeBill = getTableBill(moveTableModal.name);
+    if (!activeBill) return;
+
+    setMovingTable(true);
+    try {
+      const full = await getHeldCartScoped(sessionToken, activeBill.id);
+      if (!full) throw new Error('Held cart not found');
+      let parsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
+      try {
+        parsed = JSON.parse(full.cart_data);
+      } catch {
+        parsed = {};
+      }
+      parsed.tableNumber = destTable.name;
+      const newLabel = heldCartLabel(destTable.name, parsed.customerName) ?? `Table ${destTable.name}`;
+
+      await deleteHeldCartScoped(sessionToken, activeBill.id);
+      await holdCartScoped(sessionToken, {
+        label: newLabel,
+        cart_data: JSON.stringify(parsed),
+        item_count: full.item_count,
+        total_minor: full.total_minor,
+        currency: full.currency,
+        bill_type: 'open_bill',
+        customer_name: parsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
+      });
+
+      await releaseTableScoped(sessionToken, moveTableModal.id);
+      await updateTableStatusScoped(sessionToken, destTable.id, 'occupied');
+      await loadTables();
+
+      addToast({
+        message: l10n.getString('tables-toast-moved', { from: moveTableModal.name, to: destTable.name }),
+        type: 'success',
+      });
+      setMoveTableModal(null);
+      closeDetail();
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'tables-toast-move-failed'),
+        type: 'error',
+      });
+    } finally {
+      setMovingTable(false);
+    }
+  }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
 
   const [showLegend, setShowLegend] = useState(false);
 
@@ -717,6 +849,32 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
                     </Localized>
                   </Button>
+                  {activeBill && printBillEnabled !== false && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="tables-print-bill-btn"
+                      disabled={printingBill}
+                      state={printingBill ? 'processing' : 'ready'}
+                      onClick={() => void handlePrintBillForTable(selected)}
+                    >
+                      <Localized id="tables-print-bill">
+                        <span>Print Bill</span>
+                      </Localized>
+                    </Button>
+                  )}
+                  {activeBill && tableTransferEnabled !== false && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="tables-move-table-btn"
+                      onClick={() => handleOpenMoveTable(selected)}
+                    >
+                      <Localized id="tables-move-table">
+                        <span>Move Table</span>
+                      </Localized>
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -869,6 +1027,110 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {moveTableModal && (
+        <div
+          className="tables-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tables-move-modal-title"
+        >
+          <div className="tables-modal-dialog">
+            <div className="tables-modal-header">
+              <h2 id="tables-move-modal-title">
+                <Localized id="tables-move-table-title" vars={{ from: moveTableModal.name }}>
+                  <span>Move Table {moveTableModal.name}</span>
+                </Localized>
+              </h2>
+              <button
+                type="button"
+                className="tables-modal-close-btn"
+                onClick={() => setMoveTableModal(null)}
+                aria-label={l10n.getString('close') || 'Close'}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="tables-modal-form">
+              {(() => {
+                const availableTables = activeTableList.filter(
+                  (t) => t.id !== moveTableModal.id && t.status === 'available',
+                );
+                if (availableTables.length === 0) {
+                  return (
+                    <>
+                      <p className="tables-empty-desc">
+                        <Localized id="tables-move-table-no-available">
+                          <span>No available tables to move to.</span>
+                        </Localized>
+                      </p>
+                      <div className="tables-modal-footer">
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          onClick={() => setMoveTableModal(null)}
+                        >
+                          <Localized id="close">
+                            <span>Close</span>
+                          </Localized>
+                        </Button>
+                      </div>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <div className="tables-modal-field">
+                      <label htmlFor="tables-move-dest-select">
+                        <Localized id="tables-move-table-select-prompt">
+                          <span>Select an available destination table:</span>
+                        </Localized>
+                        <select
+                          id="tables-move-dest-select"
+                          value={selectedDestTableId}
+                          onChange={(e) => setSelectedDestTableId(e.target.value)}
+                        >
+                          {availableTables.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.capacity} seats{t.section ? ` · ${t.section}` : ''})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="tables-modal-footer">
+                      <Button
+                        variant="primary"
+                        type="button"
+                        state={movingTable ? 'processing' : 'ready'}
+                        disabled={!selectedDestTableId || movingTable}
+                        onClick={() => void handleConfirmMoveTable()}
+                        data-testid="tables-move-confirm-btn"
+                      >
+                        <Localized
+                          id="tables-move-table-confirm"
+                          vars={{ to: activeTableList.find((t) => t.id === selectedDestTableId)?.name ?? '' }}
+                        >
+                          <span>Move</span>
+                        </Localized>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        onClick={() => setMoveTableModal(null)}
+                      >
+                        <Localized id="cancel">
+                          <span>Cancel</span>
+                        </Localized>
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}
