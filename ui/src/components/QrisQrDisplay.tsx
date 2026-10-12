@@ -94,6 +94,7 @@ export default function QrisQrDisplay({
     if (!isOpen || status !== 'waiting') return;
     let unlistenTauri: (() => void) | undefined;
     let cancelled = false;
+    let confirmed = false;
 
     const onPaymentReceived = (data?: {
       provider?: string;
@@ -101,9 +102,10 @@ export default function QrisQrDisplay({
       amount?: number;
       rawText?: string;
     }) => {
-      if (!data || status === 'confirmed') return;
+      if (!data || confirmed) return;
       const receivedAmount = data.amountMinor ?? data.amount;
       if (receivedAmount === amount) {
+        confirmed = true;
         setVerifiedProvider(data.provider ?? 'QRIS');
         setStatus('confirmed');
       }

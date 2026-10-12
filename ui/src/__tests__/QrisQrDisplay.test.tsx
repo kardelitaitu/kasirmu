@@ -534,7 +534,7 @@ describe('QrisQrDisplay — Zero-MDR QRIS Notification Listener', () => {
 
   it('verifies payment when notification is received via Tauri event', () => {
     let tauriHandler: ((event: { payload: unknown }) => void) | undefined;
-    vi.mocked(listen).mockImplementation((event: string, handler: any) => {
+    vi.mocked(listen).mockImplementation((event: string, handler: (event: { payload: unknown }) => void) => {
       if (event === 'kasirmu:qrisPaymentNotification') {
         tauriHandler = handler;
       }
