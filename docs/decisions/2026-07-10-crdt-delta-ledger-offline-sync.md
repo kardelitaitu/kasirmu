@@ -4,9 +4,15 @@ area: sync
 title: ADR #6: CRDT Delta Ledger & Offline Sync
 status: Implemented (2026-07-15)
 ---
-<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · all implementation claims verified: stock_movements migration exists; adjust_stock_with_reason (products.rs:1165), get_stock_from_ledger (1250), rebuild_stock_summary (1290), list_stock_movements (1359), archive_stock_movements (1405) all present; platform/sync/src/daemon.rs (start_prune_task) + apps/cloud-server/src/prune.rs (start_prune_loop) exist; ui/src/components/FastPINOverlay.tsx + crates/oz-security/src/terminal.rs present; platform/sync/tests/integration_test.rs present; Uuid::now_v7() adopted + oz_core::new_id() (lib.rs:147) confirmed; stock_movements_archive (migration 072) + stock_summary cache match · Status "Implemented (2026-07-15)" consistent -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Full audit on branch 0.0.41. **Repaired:** (1) a checklist correction note recording that the ledger helper functions were SPLIT — they are now \`crates/kasirmu-core/src/db/products_stock_adjust/{batch,ledger,movements}.rs\` (\`adjust_stock_with_reason\` batch.rs:133, \`get_stock_from_ledger\`/\`rebuild_stock_summary\`/\`rebuild_stock_summary_for\` ledger.rs:22/73/132, \`list_stock_movements\`/\`archive_stock_movements\` movements.rs:19/65) rather than \`products.rs\`; (2) a note that the numeric migration labels (063/065/066/067/072) are HISTORICAL — the directory now holds 75 timestamp-named .sql files with no 06x/07x names, the schema consolidated into \`20260813_init.sql\` where \`stock_movements\` (:712), \`stock_movements_archive\` (:725) and \`stock_summary\` (:739) live; (3) the Related-section paths corrected to current (\`products_stock_adjust/\`, \`kasirmu-security/src/lib.rs\` Keyring + \`foundation/src/terminal.rs\`). **Verified and left alone:** the core design — deltas never overwrite quantity, \`SUM(delta)\` reconstruction, \`VersionVector\`/\`push_stamp\` CONSUMED at apps/cloud-server/src/conflict_resolution.rs + sync_store/conflicts.rs, \`LamportClock\`/\`delta_mutation\` LATENT per the appended 2026-10-04 section; both prune daemons (platform/sync/src/daemon.rs, apps/cloud-server/src/prune.rs); FastPINOverlay at ui/src/components/FastPINOverlay.tsx; Uuid::now_v7() (255 sites in core); platform/sync/tests/integration_test.rs with its 19 tests. **NOT re-measured:** the 158 call-site count and the COR-36 validator fix, both already pinned by their own tests. **Footer repair:** the footer read 04-10-26 under a 2026-09-29 stamp — a legitimate \"re-checked without a new stamp\" state, now unified. · Prior stamps merged below. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, with the implementation surface reorganised under it. Every claim the 2026-07-22 stamp verified still verifies in substance, though several have moved: the stock-ledger helpers that stamp located in `products.rs` at lines 1165/1250/1290/1359/1405 are now split out by concern — `adjust_stock_with_reason` in `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs`, and both `get_stock_from_ledger` and `rebuild_stock_summary` in `crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs`. The same reorganisation is why three separate archived documents in this campaign have cited a path that no longer resolves: `products.rs` was split, not deleted. The `stock_movements` migration, the archive table and the `stock_summary` cache are all still in the schema, and both prune tasks it names (`platform/sync/src/daemon.rs`, `apps/cloud-server/src/prune.rs`) are real. · A CROSS-DOCUMENT NOTE that came out of reading this alongside others in the same pass: this ADR is the origin of the delta-ledger work that the ADR-7 conditional-scoping record and the workspace-settings phase 0d record both build on. Phase 0d names a `write_setting_delta` API that resolves under no spelling, while this document is where the ledger was actually specified. The two records agree on the table (`setting_updated`) and its purpose, so a reader chasing that missing function should start here rather than at the phase spec. · The UUIDv7 adoption and the `new_id()` helper the stamp confirmed are still in place, and the FastPINOverlay and terminal-secret anchors resolve at their current crate paths. · Body left as written with its `crates/oz-core` and `apps/desktop-client` references intact — this is an implemented decision record, and the paths are how the decision was written down. Current equivalents: `crates/kasirmu-core/` and `apps/desktop-tauri/`. The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed. -->
+[[ STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence.
+     Rendered as blockquote text (not nested HTML comments) so the outer comment cannot be closed by their delimiters. ]]
+
+>
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, with the implementation surface reorganised under it. Every claim the 2026-07-22 stamp verified still verifies in substance, though several have moved: the stock-ledger helpers that stamp located in `products.rs` at lines 1165/1250/1290/1359/1405 are now split out by concern — `adjust_stock_with_reason` in `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs`, and both `get_stock_from_ledger` and `rebuild_stock_summary` in `crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs`. The same reorganisation is why three separate archived documents in this campaign have cited a path that no longer resolves: `products.rs` was split, not deleted. The `stock_movements` migration, the archive table and the `stock_summary` cache are all still in the schema, and both prune tasks it names (`platform/sync/src/daemon.rs`, `apps/cloud-server/src/prune.rs`) are real. · A CROSS-DOCUMENT NOTE that came out of reading this alongside others in the same pass: this ADR is the origin of the delta-ledger work that the ADR-7 conditional-scoping record and the workspace-settings phase 0d record both build on. Phase 0d names a `write_setting_delta` API that resolves under no spelling, while this document is where the ledger was actually specified. The two records agree on the table (`setting_updated`) and its purpose, so a reader chasing that missing function should start here rather than at the phase spec. · The UUIDv7 adoption and the `new_id()` helper the stamp confirmed are still in place, and the FastPINOverlay and terminal-secret anchors resolve at their current crate paths. · Body left as written with its `crates/oz-core` and `apps/desktop-client` references intact — this is an implemented decision record, and the paths are how the decision was written down. Current equivalents: `crates/kasirmu-core/` and `apps/desktop-tauri/`. The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed.
+
+
 # ADR #6: CRDT Delta Ledger & Offline Sync
 
 **Status:** Implemented (2026-07-15)
@@ -190,6 +196,27 @@ See `docs/specs/_active/p1-sync-batching-compression-retention.md` for full acce
 
 ## Implementation Checklist
 
+> **Correction note (2026-10-11, docs-auditor).** Every claim in this checklist still verifies
+> in substance, but two of its identifier systems have moved and the numeric migration labels
+> no longer resolve. **(a) The helper functions were split by concern.** The 2026-07-22 stamp
+> located them at `products.rs:1165/1250/1290/1359/1405`; that file was split, not deleted, and
+> the ledger API now lives across `crates/kasirmu-core/src/db/products_stock_adjust/`:
+> `adjust_stock_with_reason` in `batch.rs:133`, and `get_stock_from_ledger` /
+> `rebuild_stock_summary` / `rebuild_stock_summary_for` in `ledger.rs:22/73/132`, with
+> `list_stock_movements` / `archive_stock_movements` in `movements.rs:19/65`. The signatures
+> are as this checklist describes — `adjust_stock_with_reason(sku, delta, reason,
+> source_terminal_id, source_user_id)` — so the audit-field item is confirmed. **(b) The
+> "migration 063/065/066/067/072" labels are historical.** `crates/kasirmu-core/migrations/`
+> now holds 75 **timestamp-named** `.sql` files with no `06x`/`07x` names, and the schema
+> these migrations built is consolidated into `20260813_init.sql` — `stock_movements` (:712),
+> `stock_movements_archive` (:725) and `stock_summary` (:739) are all present there, and
+> `store_id`/`location_id`/`inventory_transaction_id` are on the live table exactly as
+> Phase 2/3 record. The numbers are how the work was tracked, not paths a reader can follow.
+> **(c) The `stock_movements` SQL sketch is a design illustration, not the shipped DDL:** the
+> real table also carries `source_user_id`, `location_id` (a second scope key, with
+> `stock_summary` keyed `(item_id, location_id)`) and `inventory_transaction_id`. Left as
+> written, since the sketch is what the decision specified.
+
 ### Phase 1: Stock Movements Delta Ledger (Done 2026-07-10)
 
 - [x] Create `stock_movements` delta ledger table and `stock_summary` materialized cache (migration 063).
@@ -227,13 +254,13 @@ See `docs/specs/_active/p1-sync-batching-compression-retention.md` for full acce
 - ADR #5 — Subscription Tier & Entitlement
 - ADR #10 — Sync Performance Strategy (compression, batching, backoff, retention)
 - `docs/specs/_active/p1-sync-batching-compression-retention.md` — Ledger retention spec (Q4 implementation plan)
-- `crates/oz-core/src/db/products.rs` (`adjust_stock_with_reason`, `insert_stock_movement`, `rebuild_stock_summary`, `get_stock_from_ledger`, `list_stock_movements`)
-- `crates/oz-security/src/terminal.rs`
+- `crates/oz-core/src/db/products.rs` (`adjust_stock_with_reason`, `insert_stock_movement`, `rebuild_stock_summary`, `get_stock_from_ledger`, `list_stock_movements`) — now `crates/kasirmu-core/src/db/products_stock_adjust/` (`batch.rs` / `ledger.rs` / `movements.rs`)
+- `crates/oz-security/src/terminal.rs` — now `crates/kasirmu-security/src/lib.rs` (`Keyring` trait) + `foundation/src/terminal.rs`
 - `platform/sync/` — Cross-store sync layer
 - `platform/sync/tests/integration_test.rs` — 19 cross-terminal integration tests
 - `ui/src/components/FastPINOverlay.tsx` ✅
 
-> last audited 04-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 
 ---
 

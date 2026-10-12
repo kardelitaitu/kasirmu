@@ -1,4 +1,8 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor — dead coordinates) · Re-audit of the 2026-09-29 pass, merged below. The invariant this card protects is RE-VERIFIED at source: `ExchangeRateRow.rate_millionths: i64` and `display_rate()` at `modules/currency/src/models.rs:31,47`, the six-decimal integer scale documented in the module header, and the SQLite column `rate_millionths INTEGER NOT NULL DEFAULT` at `crates/kasirmu-core/migrations/20260813_init.sql:120` — no `f64` in the FX persistence or transport path. · MINOR 1: the card cites migration `071_exchange_rate_minor_units.sql`, which no longer exists as a standalone file; the schema lives in the consolidated `20260813_init.sql`. · MINOR 2: `crates/kasirmu-core/tests/currency_integration.rs` is gone; the suite is `crates/kasirmu-core/tests/integration/currency.rs`, and it still holds the **38** test functions the card's verification table quotes — so the figure is right and only the path moved. Both repaired by a dated NOTE, not by rewriting the closure record. · LEFT AS WRITTEN: the pre-rebrand `apps/desktop-client`/`apps/tablet-client` names (frozen baseline of a closed card), the `oz-core` crate names, and the commit/branch citations. · NOT re-measured: the original 0.0.5-rc test run, and the follow-up front-end wire-format break, which is another team's ticket. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 145 lines, carrying a structured audit block rather than a narrative stamp — an audit ID, an ISO timestamp, a named auditor, a status and a lint result, a format this campaign has now seen in only one other place and is worth noting as a convention. · THE SUBJECT IS THE REPOSITORY'S HARDEST INVARIANT, and the narrow scope follows from why. Money here is integer minor units, never float, enforced by convention, by a lint, and by the type itself — and the exchange-rate case audited in this document is the one place a float could plausibly enter, because a rate is naturally a fraction. Converting it to integer millionths removes the last obvious door. · A NOTE ON WHY IT IS STILL IN THE ACTIVE DIRECTORY, since a reader may reasonably wonder whether it is finished: it is a closure document for a finding raised in a parent desktop audit, and the numbered C-series in this folder is a set of audit-closure specifications rather than a work backlog — several siblings share that shape. Worth a reader knowing, because the folder name invites the opposite assumption. · The invariant it protects is independently visible: the money type carries minor units rather than a decimal value, and the workspace lint configuration carries an explicit deny list. A float money path is therefore not merely discouraged but lint-rejected. · NOT re-measured: the conversion's own correctness, its rounding behaviour at conversion boundaries, or whether the closure claim is accurate against the parent audit. A rounding boundary needs a test, not an audit. · No machine-readable stamp existed; this is the first, and the existing block is retained as original evidence. -->
+-->
 # C-1 — Money type safety (exchange rates `f64` → `i64` millionths)
 
 ## Audit Stamp
@@ -29,6 +33,13 @@ Exchange rates are now persisted, transported, and validated as integer
 violation has been removed end-to-end; the only remaining `f64` site in
 the FX domain is the `ExchangeRateRow::display_rate()` presentation
 helper, which is documented and non-arithmetic.
+
+> **CORRECTION 2026-10-11 (docs-auditor) — the invariant verifies; two of the coordinates this card cites as delivered have since moved, and the closure is left as the record it is.** Verified at source this pass: `ExchangeRateRow.rate_millionths: i64` and the `display_rate()` helper are still exactly as described, at `modules/currency/src/models.rs:31,47` (the field is documented there as `rate_real * 1_000_000`, six decimals, matching this card's scale), and the SQLite column is `rate_millionths INTEGER NOT NULL DEFAULT` in `crates/kasirmu-core/migrations/20260813_init.sql:120`. Two citations are now **dead** and are recorded rather than rewritten, because this is a closure card:
+>
+> - **The migration is no longer a standalone numbered file.** The card cites `071_exchange_rate_minor_units.sql` (line 54) and the plan cites `20260813_init.sql` (line 70) — the two already disagreed. Today there is no `071_…` file; the schema lives in the consolidated `20260813_init.sql`. This is the same consolidation the sibling C-2 card records for its own paths, not a regression.
+> - **The integration test file moved.** `crates/kasirmu-core/tests/currency_integration.rs` does not exist; the suite is `crates/kasirmu-core/tests/integration/currency.rs` — **still 38 test functions**, so the card's "38 tests" figure remains accurate, only the path changed. `crates/kasirmu-core/tests/` no longer holds loose `.rs` files.
+>
+> Everything else in the card's References that is a live path resolves; the pre-rebrand `apps/desktop-client`/`apps/tablet-client` names throughout the body are the frozen baseline of a closed card and are left as written.
 
 ## Baseline (pre-fix)
 
@@ -145,4 +156,4 @@ helper, which is documented and non-arithmetic.
 - `platform/startup/src/rate_sync.rs`
 - Commit `ac38ab9` on branch `0.0.5`
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

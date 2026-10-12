@@ -4,9 +4,15 @@ area: subscription
 title: ADR #9: License Server Architecture (PocketBase on Northflank)
 status: Implemented (2026-07-15)
 ---
-<!-- Superseded audit marker (2026-07-22 · Hermes-Agent, body kept verbatim) · retained · status: ACCURATE (0 findings) · apps/license-server/ is a Go PocketBase backend exactly as described: main.go + activate.go + renew.go + status.go + expiry.go + ratelimit.go + go.mod (NO Rust Cargo.toml); embedded public key oz-pos-updater.key.pub present at repo root; DEPLOY.md/SCHEMA.md + pb_schema.json + docker-compose.yml present; the RSA signing + /api/v1/license/{activate,renew,status} flow matches the Go code · Status "Implemented (2026-07-15)" consistent · tier/duration/grace model (ADR #5) is the source of truth -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 5 minor, 1 footer) · Full audit on branch 0.0.41. **Repaired (body):** (1) §7's embedded-key name — `oz-pos-updater.key.pub` no longer exists; it is **`kasirmu-updater.key.pub`** at the repo root, with a correction note; (2) Step 3.3's `crates/oz-core/oz-license.key.pub` is now `crates/kasirmu-core/oz-license.key.pub` (present and committed); (3) Step 3.4's Dockerfile stages `golang:1.23-alpine → alpine:3.20` are now `golang:1.25-alpine → alpine:3.22` (Dockerfile:16,36); (4) the endpoint table records that the checklist wrote `GET /api/v1/license/status/:tenant_id` while the shipped route is `POST /api/v1/license/status` (main.go:343); (5) the same key name in Related. **Footer repair:** the file carried THREE stacked `> status: ACCURATE` lines under one footer — collapsed to a single machine-read footer per the no-stacking rule. **Verified and left alone:** `apps/license-server/` is the Go PocketBase backend (activate.go/renew.go/status.go/expiry.go/ratelimit.go/pb_schema.json/Dockerfile/docker-compose.yml present, no Cargo.toml); `OZ_LICENSE_PRIVATE_KEY` is the real env var (docker-compose.yml:51, DEPLOY.md); routes activate/renew/status/recover/attest/crl/pause/resume/enterprise-trial registered in main.go:331-354; the `license.ozpos.my.id` domain is one of the two live branded domains (kasir.mu + ozpos.my.id per DEPLOY.md), so it is NOT dead. **NOT re-measured:** the PocketBase data model, the deployment topology, and whether the embedded backend's upgrade path is current — running the server is the original work. · Prior stamps merged below. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 803 lines, with a prior marker re-verified rather than replaced. It is the decision that put the licence and subscription server on a managed container platform with an embedded backend, and at this length it is an architecture document rather than a decision note — which sets the audit scope, because an architecture document is judged on whether the system it describes still resembles the system that exists. · IT DOES, AND MORE SUBSTANTIVELY THAN MOST, which is the result worth recording. The server is large in the tree rather than a sketch: over a hundred source files under its own application directory, and this campaign has independently verified pieces of it from several directions without ever reading this document — the rate-limit collapse record audited two rounds ago located the client-IP resolvers and the per-IP limiters here, and the licence audit audited earlier reasoned about this same server's enforcement surface. A decision that keeps producing correct operational records years later, on subjects its author never planned, is a decision that described something real. · THE EMBEDDED-BACKEND CHOICE IS THE ONE MOST WORTH A SECOND LOOK, and the document is the right place to look. Choosing an off-the-shelf backend with its own data model and admin surface is a decision that trades control for velocity, and its consequences are mostly operational rather than architectural: the per-IP rate limiting that turned out to key on a reverse proxy's loopback address, and the client-IP resolution that depended on a proxy-trust setting nothing in the repository populated. Both were found by an incident investigation, not by reading the architecture decision — which is the honest way such things are discovered, and a good argument for the record this campaign has now stamped twice. · THE SCOPE NAMES IN THE PRIOR MARKER ARE CURRENT, and for a July document that is worth noting rather than assuming: the server directory and its language are still what the document says they are. · NOT re-measured: the deployment topology, the data model, or whether the embedded backend's own upgrade path has been kept current — a dependency question this campaign has flagged elsewhere for a different component and which applies equally here. Running the server and inspecting its admin surface is the original work. · Prior marker retained; footer re-dated to match the new stamp. -->
+[[ STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence.
+     Rendered as blockquote text (not nested HTML comments) so the outer comment cannot be closed by their delimiters. ]]
+
+>
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 803 lines, with a prior marker re-verified rather than replaced. It is the decision that put the licence and subscription server on a managed container platform with an embedded backend, and at this length it is an architecture document rather than a decision note — which sets the audit scope, because an architecture document is judged on whether the system it describes still resembles the system that exists. · IT DOES, AND MORE SUBSTANTIVELY THAN MOST, which is the result worth recording. The server is large in the tree rather than a sketch: over a hundred source files under its own application directory, and this campaign has independently verified pieces of it from several directions without ever reading this document — the rate-limit collapse record audited two rounds ago located the client-IP resolvers and the per-IP limiters here, and the licence audit audited earlier reasoned about this same server's enforcement surface. A decision that keeps producing correct operational records years later, on subjects its author never planned, is a decision that described something real. · THE EMBEDDED-BACKEND CHOICE IS THE ONE MOST WORTH A SECOND LOOK, and the document is the right place to look. Choosing an off-the-shelf backend with its own data model and admin surface is a decision that trades control for velocity, and its consequences are mostly operational rather than architectural: the per-IP rate limiting that turned out to key on a reverse proxy's loopback address, and the client-IP resolution that depended on a proxy-trust setting nothing in the repository populated. Both were found by an incident investigation, not by reading the architecture decision — which is the honest way such things are discovered, and a good argument for the record this campaign has now stamped twice. · THE SCOPE NAMES IN THE PRIOR MARKER ARE CURRENT, and for a July document that is worth noting rather than assuming: the server directory and its language are still what the document says they are. · NOT re-measured: the deployment topology, the data model, or whether the embedded backend's own upgrade path has been kept current — a dependency question this campaign has flagged elsewhere for a different component and which applies equally here. Running the server and inspecting its admin surface is the original work. · Prior marker retained; footer re-dated to match the new stamp.
+
+
 # ADR #9: License Server Architecture (PocketBase on Northflank)
 
 **Status:** Implemented (2026-07-15)
@@ -185,7 +191,7 @@ CUSTOMER                            POCKETBASE                        POS (LOCAL
 |---|---|---|
 | `POST` | `/api/v1/license/activate` | Activate a license key. Body: `{ key, tenant_id, machine_id }`. Returns signed `tenant_subscription`. |
 | `POST` | `/api/v1/license/renew` | Renew an existing subscription. Body: `{ tenant_id, api_key }`. Returns fresh signed subscription. |
-| `POST` | `/api/v1/license/status` | Check current subscription status. Auth: `Authorization: Bearer <api_key>`. Body: `{ machine_id, revoke }` (optional). Returns tier, active, expires_at. |
+| `POST` | `/api/v1/license/status` | Check current subscription status. Auth: `Authorization: Bearer <api_key>`. Body: `{ machine_id, revoke }` (optional). Returns tier, active, expires_at. *(The implementation checklist below wrote this as `GET /api/v1/license/status/:tenant_id`; the shipped route is `POST /api/v1/license/status` — `apps/license-server/main.go:343`.)* |
 
 These are **custom Go routes** registered via `app.OnServe()`. They bypass PocketBase's collection API to enforce business logic (key validation, RSA signing, machine binding, rate limiting).
 
@@ -376,6 +382,11 @@ Same as original design:
 ### 7. Signing Flow (Custom Go Hook)
 
 The license server holds an RSA-2048 private key. The corresponding public key (`oz-pos-updater.key.pub`) is **embedded in the kasir.mu binary** at build time (unchanged from original design).
+
+> **Correction note (2026-10-11, docs-auditor).** The embedded public key is now
+> **`kasirmu-updater.key.pub`** at the repo root — `oz-pos-updater.key.pub` no longer exists
+> under any path (renamed in the KASIRMU rebrand). The design is unchanged: one key, embedded
+> at build time.
 
 #### PocketBase Go main.go structure
 
@@ -781,8 +792,8 @@ The `api_key` is stored once on activation and reused for all subsequent renew a
 
 - [x] **Step 3.1**: Create Northflank service from PocketBase template.
 - [x] **Step 3.2**: Attach persistent NVMe volume at `/pb/pb_data`.
-- [x] **Step 3.3**: Generate RSA-2048 key pair — public key embedded in `crates/oz-core/oz-license.key.pub`; private key in `crates/oz-core/oz-license-private.pem` (gitignored, to be set as `OZ_LICENSE_PRIVATE_KEY` env var on Northflank). Key generation scripts: `scripts/generate-license-keys.ps1` (Windows) + `scripts/generate-license-keys.sh` (Linux/Mac).
-- [x] **Step 3.4**: Create production Dockerfile (`apps/license-server/Dockerfile`) — multi-stage build (golang:1.23-alpine → alpine:3.20), CGO_ENABLED=1, healthcheck using `/api/` (PocketBase always responds), volume mount. `.dockerignore` excludes test files and build artifacts. `apps/license-server/docker-compose.yml` for local testing. `apps/license-server/DEPLOY.md` is the comprehensive 12-step Northflank deployment guide.
+- [x] **Step 3.3**: Generate RSA-2048 key pair — public key embedded in `crates/oz-core/oz-license.key.pub` (now `crates/kasirmu-core/oz-license.key.pub`, present and committed); private key in `crates/oz-core/oz-license-private.pem` (gitignored, to be set as `OZ_LICENSE_PRIVATE_KEY` env var on Northflank). Key generation scripts: `scripts/generate-license-keys.ps1` (Windows) + `scripts/generate-license-keys.sh` (Linux/Mac).
+- [x] **Step 3.4**: Create production Dockerfile (`apps/license-server/Dockerfile`) — multi-stage build (as written golang:1.23-alpine → alpine:3.20; **now golang:1.25-alpine → alpine:3.22**, bumped for a dependency's Go floor and Alpine EOL — `apps/license-server/Dockerfile:16,36`), CGO_ENABLED=1, healthcheck using `/api/` (PocketBase always responds), volume mount. `.dockerignore` excludes test files and build artifacts. `apps/license-server/docker-compose.yml` for local testing. `apps/license-server/DEPLOY.md` is the comprehensive 12-step Northflank deployment guide.
 - [x] **Step 3.5**: Import `pb_schema.json` collections via admin UI.
 - [x] **Step 3.6**: Configure custom domain (e.g., `license.ozpos.my.id`).
 - [x] **Step 3.V1 (Verification)**: End-to-end test: generate key in admin UI → activate from POS → verify signature → check status.
@@ -793,12 +804,9 @@ The `api_key` is stored once on activation and reused for all subsequent renew a
 
 - ADR #4 — Store-First Tenancy & Workspace Type/Instance Architecture
 - ADR #5 — Subscription Tier & Entitlement (defines `tenant_subscription` schema and `InstanceStatus`)
-- `oz-pos-updater.key.pub` — Public key embedded in POS binary
+- `oz-pos-updater.key.pub` — Public key embedded in POS binary (now `kasirmu-updater.key.pub` at the repo root)
 - `apps/cloud-server/` — Cloud sync server (separate service on separate VPS)
 - [PocketBase Docs](https://pocketbase.io/docs/)
 - [Northflank PocketBase Guide](https://northflank.com/guides/how-to-deploy-pocketbase-step-by-step-deployment-guide)
 
-> last audited 29-09-26 by docs-auditor
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 11-10-26 by docs-auditor

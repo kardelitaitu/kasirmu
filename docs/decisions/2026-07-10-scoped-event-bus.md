@@ -4,9 +4,15 @@ area: module-system
 title: ADR #8: Scoped Real-Time Event Bus
 status: Implemented (2026-07-10)
 ---
-<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · store_id: Option<String> verified on SaleCompleted (crates/oz-core/src/events.rs:27) and CourseFired (events.rs:126); apps/desktop-client/src/lan_server.rs (LAN forwarder, port 9180) exists; complete_sale_scoped emits store_id; tablet complete_sale uses None per the doc · ADR #4/#7 cross-refs valid · Status "Implemented (2026-07-10)" consistent -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Full audit on branch 0.0.41. **Repaired:** one correction note under the Implementation Checklist recording that the tablet does NOT emit `store_id: None` any more — every live `SaleCompleted` sets `Some(session.store_id.clone())` (tablet: apps/mobile-tauri/src/commands/pos.rs:911 and commands/pos/checkout.rs:731; desktop via the bridge: crates/kasirmu-bridge/src/pos/checkout.rs:537); `None` survives only in tests. Also recorded the forwarder's move (`apps/desktop-client/src/lan_server.rs` → a 10-line re-export shim at `apps/desktop-tauri/src/lan_server.rs` over `crates/kasirmu-lan`) and the pre-rebrand core path. **Verified and left alone:** the design is intact — `store_id: Option<String>` on `SaleCompleted` (foundation/src/events.rs:18) and `CourseFired` (crates/kasirmu-core/src/events.rs:35); port **9180** (crates/kasirmu-lan/src/lib.rs); the KDS filter is still permissive about a null store (ui/src/features/kds/ExpoScreen.tsx:188, kdsOrderView.ts:102: `!order.store_id || order.store_id === activeStoreId`), which is exactly what `None` = unscoped requires; the §4 port-collision item is correctly still marked Future. **NOT re-measured:** the LAN handshake payload shape beyond the store field. · Prior stamps merged below. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE — the design holds and the two events it is about are both still carrying the field it added. `store_id: Option<String>` is live at `crates/kasirmu-core/src/events.rs:35`, and `CourseFired` is still defined there. The one structural change is that `SaleCompleted` no longer lives in the core crate at all: it is defined in `foundation/src/events.rs` and re-exported from `crates/kasirmu-core/src/events.rs:16` alongside `ProductCreated`, `SaleCompletedLine` and `StockAdjusted`. The ADR's Related section points at `crates/oz-core/src/events.rs` for "Domain event definitions", which is now a re-export shim over `foundation/` — so a reader looking for the struct definition at the cited file will find a `pub use` line instead. Recorded rather than repaired, since the body is a decision record; the current definition site is `foundation/src/events.rs`. · THE LAN FORWARDER CLAIM VERIFIES EXACTLY, including the part that is easiest to get wrong. §3 says "No changes needed to the forwarder itself — the `store_id` is already in the serialized JSON payload", and the forwarder is real at `apps/desktop-tauri/src/lan_server.rs`. That the forwarder needed NO change is the design claim this ADR is actually about, and it is the kind of claim that silently stops being true when a serialization layer is touched elsewhere; it still holds. The port-9180 collision behaviour in §4 is explicitly marked "Future" and is correctly left as a future item rather than promised. · The ADR #4 / #7 cross-references resolve, and `check-adr-status.py` reports no drift for this row. · Left as written otherwise, with the `apps/desktop-client` / `apps/tablet-client` and `crates/oz-core` references intact as the decision record they are. The prior stamp is retained and the two stacked `> status: ACCURATE` lines are collapsed to a single machine-read footer. -->
+[[ STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence.
+     Rendered as blockquote text (not nested HTML comments) so the outer comment cannot be closed by their delimiters. ]]
+
+>
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE — the design holds and the two events it is about are both still carrying the field it added. `store_id: Option<String>` is live at `crates/kasirmu-core/src/events.rs:35`, and `CourseFired` is still defined there. The one structural change is that `SaleCompleted` no longer lives in the core crate at all: it is defined in `foundation/src/events.rs` and re-exported from `crates/kasirmu-core/src/events.rs:16` alongside `ProductCreated`, `SaleCompletedLine` and `StockAdjusted`. The ADR's Related section points at `crates/oz-core/src/events.rs` for "Domain event definitions", which is now a re-export shim over `foundation/` — so a reader looking for the struct definition at the cited file will find a `pub use` line instead. Recorded rather than repaired, since the body is a decision record; the current definition site is `foundation/src/events.rs`. · THE LAN FORWARDER CLAIM VERIFIES EXACTLY, including the part that is easiest to get wrong. §3 says "No changes needed to the forwarder itself — the `store_id` is already in the serialized JSON payload", and the forwarder is real at `apps/desktop-tauri/src/lan_server.rs`. That the forwarder needed NO change is the design claim this ADR is actually about, and it is the kind of claim that silently stops being true when a serialization layer is touched elsewhere; it still holds. The port-9180 collision behaviour in §4 is explicitly marked "Future" and is correctly left as a future item rather than promised. · The ADR #4 / #7 cross-references resolve, and `check-adr-status.py` reports no drift for this row. · Left as written otherwise, with the `apps/desktop-client` / `apps/tablet-client` and `crates/oz-core` references intact as the decision record they are. The prior stamp is retained and the two stacked `> status: ACCURATE` lines are collapsed to a single machine-read footer.
+
+
 # ADR #8: Scoped Real-Time Event Bus
 
 **Status:** Implemented (2026-07-10)
@@ -97,6 +103,28 @@ A future enhancement (not in this ADR) could add port auto-discovery or a store-
 
 All items completed 2026-07-10.
 
+> **Correction note (2026-10-11, docs-auditor).** The three items below that name an emission
+> site still hold in substance, but one is now **false as a present-tense statement**, and the
+> files have moved. **(a) The tablet does NOT emit `store_id: None`.** Every live emission of
+> `SaleCompleted` today sets `Some(session.store_id.clone())` — the tablet at
+> `apps/mobile-tauri/src/commands/pos.rs:911` and
+> `apps/mobile-tauri/src/commands/pos/checkout.rs:731`, the desktop through the bridge at
+> `crates/kasirmu-bridge/src/pos/checkout.rs:537`. `store_id: None` appears only in test
+> constructions (plus the two live-test pins under `apps/desktop-tauri/src/commands/`), so the
+> "tablet uses None" line recorded a 2026-07-10 state that was later normalised to the scoped
+> value. The design intent is unaffected — `None` still means unscoped and the KDS filter is
+> still permissive about it (`ui/src/features/kds/ExpoScreen.tsx:188`,
+> `kdsOrderView.ts:102`: `!order.store_id || order.store_id === activeStoreId`) — but a
+> reader checking "does the tablet send a store?" would get the wrong answer from this list.
+> **(b) The forwarder moved as a whole.** `apps/desktop-client/src/lan_server.rs` is now
+> `apps/desktop-tauri/src/lan_server.rs`, a 10-line re-export shim over
+> `crates/kasirmu-lan`, where the implementation lives; port **9180** is confirmed there
+> (`crates/kasirmu-lan/src/lib.rs`), so §3–§4's port and statelessness claims hold.
+> **(c) The core-crate path in the checklist is the pre-rebrand spelling** — `crates/oz-core`
+> is `crates/kasirmu-core`, where `CourseFired` (with `store_id`) is still defined
+> (`crates/kasirmu-core/src/events.rs:35`) and `SaleCompleted` (with `store_id`) is re-exported
+> from `foundation/src/events.rs:18`.
+
 - [x] Add `store_id: Option<String>` to `SaleCompleted` and `CourseFired` event structs (in `crates/oz-core/src/events.rs`).
 - [x] Update desktop `complete_sale_scoped` to include `store_id: Some(session.store_id.clone())`; deprecated commands get `store_id: None`.
 - [x] Update tablet `complete_sale` to include `store_id: None`.
@@ -139,4 +167,4 @@ All items completed 2026-07-10.
 - `apps/tablet-client/src/commands/pos.rs` — Tablet sale completion emission
 - `apps/desktop-client/src/commands/products.rs` — Product/stock event emission
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

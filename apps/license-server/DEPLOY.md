@@ -1,4 +1,9 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · Re-audit of the 2026-09-09 pass, whose evidence and two recorded code findings are merged below; this pass re-derived the env-var inventory rather than re-reading the 09-09 claim. · FINDING (minor, §7.7): the live corpus is now 45 names (check-env-docs.py exit 0), and two the binary reads were absent from THIS section despite its opening promise to document every variable in full — `LICENSE_KEY_COOLDOWN` (per-key activation cooldown, ratelimit.go:354) and `PADDLE_WEBHOOK_MAX_AGE` (Paddle webhook replay window, paddle_webhook.go:184). Both are named in .env.example, which is why the checker — whose contract is "documented in ANY of four surfaces" — never flagged them and its exit 0 was never green-on-nothing. Both now tabled in §7.7, and the distinction ("documented somewhere" ≠ "documented here") is written into the baseline note so the next reader does not mistake the checker's scope for this section's. · THE TWO 09-09 CODE FINDINGS STAND, re-confirmed at source: `LOGIN_LOCKOUT_DISABLED=1` is still a production-reachable kill switch whose off state is invisible in logs and /api/health; `OZ_ENTERPRISE_MRR_USD` still parses into a float64 (admin_stats.go), against the AGENTS.md money rule. Neither patched — both are code decisions. · VERIFIED STILL TRUE and left alone: the RSA key paths (`crates/kasirmu-core/oz-license.key.pub` present), the Dockerfile's `golang:1.25-alpine` → `alpine:3.22` two-stage build, `go.mod` at go 1.25.0, `/api/health` in `health.go`, the Northflank combined-service PATCH route note, the Midtrans/Paddle webhook sections, the Brevo/SendGrid/SES SMTP guidance and the boot-time sender-identity gate, and the §7.7.1 `OZ_ADMIN_EMAIL` write-once analysis. · NOT re-measured: the live Northflank deployment's actual environment, and the compliance/security posture of the recorded findings — this audit reads the repository. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
 <!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings, 1 gate added) · Section 7 opens by claiming this section documents every variable in full, and on 09-09-26 that was false: five names the binary reads appeared in no document anywhere in the repo (LOGIN_LOCKOUT_MIN_GAP, LOGIN_LOCKOUT_MAX_COOLDOWN, LOGIN_LOCKOUT_DISABLED, OZ_ADMIN_EMAIL, OZ_ENTERPRISE_MRR_USD). Three are the login lockout, so the only control that slows credential stuffing had no operator-facing description at all; the fourth names a tenant the code deliberately refuses to let be renamed or deleted. Added section 7.7 with defaults, citing source lines. · TWO CODE FINDINGS RECORDED, NOT PATCHED: LOGIN_LOCKOUT_DISABLED is production-reachable and its off state is invisible in both logs and /api/health; OZ_ENTERPRISE_MRR_USD parses a USD price into a float64, against the AGENTS.md money rule. · NEW GATE .agents/skills/docs-auditor/scripts/check-env-docs.py: 27 names scanned, 0 undocumented, 9 self-test cases over synthetic strings only. · Two claims I nearly made and were wrong: four variables looked absent from the code because I scanned only apps/license-server while apps/unified/healthcheck.sh reads them; and OZ_SMTP_STARTTLS / OZ_SMTP_IMPLICIT_TLS appear once in this file precisely to tell the operator NOT to set them, so their absence from the code is the point. This skill own check-dead-refs.py is what caught me publishing a re-derive command for a script that did not exist yet. · SUPERSEDED, kept verbatim (rev 2026-07-22, re-audited 2026-08-31): 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · scripts/generate-license-keys.{ps1,sh} verified; Dockerfile uses golang:1.25-alpine -> alpine:3.22 (was 3.20, bumped for Trivy EOL); health.go (GET /api/health, returns status: ok) + healthcheck.go present; pb_schema.json present; go.mod is go 1.25.0; all build/deploy/env-var claims match the Go code · RE-AUDITED 2026-08-31 by docs-auditor: go.mod still 1.25.0, /api/health present, oz-license.key.pub committed; env-var section confirmed current (Midtrans/ADR #39, PADDLE_PRICE_TIERS six sandbox prices catalogued 08-31); corrected the body's alpine 3.20 -> 3.22 -->
+-->
+
 
 # kasir.mu License Server — Northflank Deployment Guide
 
@@ -431,6 +436,13 @@ Read from `apps/license-server/helpers.go` (client-IP resolution for per-client 
 | `LICENSE_CLIENTIP_MODE` | `xff` | How `normalizeClientIP` resolves the real client IP, case-insensitive (`helpers.go:188`). `off` returns `remoteIP` unchanged (legacy pre-fix behaviour); `xff` (default) takes the hop-correct entry from the LAST `X-Forwarded-For` value; `cf` prefers the single-valued `CF-Connecting-IP` header when it parses as an IP, else falls back to `xff`. Unset or empty → `xff`; any unrecognized value also maps to `xff` (fail-safe, never `off`) so a typo cannot silently collapse every client onto the loopback budget. |
 | `LICENSE_TRUSTED_HOPS` | `2` | How many `X-Forwarded-For` hops to walk back from the right end to reach the real client (`helpers.go:206`). Unset or empty → `2`; a non-integer value → `2`; any value `< 1` is clamped to `1`, so a zero or negative value — which `normalizeClientIP` would otherwise treat as "return `remoteIP`" — still yields a usable hop count rather than silently disabling the fix. |
 
+Read from the rate limiter and the Paddle webhook:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LICENSE_KEY_COOLDOWN` | `15m` | Cooldown applied after three failed attempts against one licence key (`ratelimit.go:354`, default `defaultKeyCooldown`). Go duration string; meant for development so a test can use a much shorter window than the production 15m. Unset or unparseable → the production default, so a typo never weakens the limit implicitly. |
+| `PADDLE_WEBHOOK_MAX_AGE` | `5m` | Replay window for the Paddle webhook `ts` value (`paddle_webhook.go:184`). A signed event whose timestamp is older than this is rejected as a replay. Go duration string; unset or unparseable → `5m`. |
+
 Read from the admin surface:
 
 - **`OZ_ADMIN_EMAIL`** — the email of the admin tenant, falling back to
@@ -474,6 +486,14 @@ Read from the admin surface:
 > variable the code reads that appears in none of `DEPLOY.md`,
 > `go-live-checklist.md`, `.env.example` or `verification-*.md`, and exits 1 when it finds
 > one. Baseline 09-09-26: **27 names scanned, 0 undocumented** — which was 5 undocumented before section 7.7 was written. On 2026-09-28 this audit found `LICENSE_CLIENTIP_MODE` and `LICENSE_TRUSTED_HOPS` (added to `helpers.go` after the baseline) in no document; both are documented above, restoring 0 undocumented.
+>
+> **2026-10-11:** the corpus has grown to **45 names scanned, 0 undocumented**. Two of them —
+> `LICENSE_KEY_COOLDOWN` and `PADDLE_WEBHOOK_MAX_AGE` — the checker counts as *documented because
+> they are named in `.env.example`*, which is one of its four accepted surfaces, so its exit 0 is
+> correct and was never green-on-nothing. They were nonetheless absent from **this** section, which
+> opens by promising to document every variable in full; both are now tabled above. Worth knowing
+> when you read the checker's verdict: "documented somewhere" and "documented here" are different
+> claims, and only the first is what that script grades.
 >
 > Scope is **both apps on purpose**. The healthcheck variables live in `apps/unified/`, not
 > `apps/license-server/`, so scanning only the service directory reported four *false*
@@ -910,4 +930,4 @@ Alternatively, export manually from the admin UI (`/_/` → **Settings** → **E
 
 > 💡 **Tip:** The Dockerfile healthcheck uses the standalone `/pb/healthcheck` Go binary (no curl dependency). It pings `/api/health` which returns `{"status":"ok"}` when PocketBase is healthy. The healthcheck was set up correctly in the Dockerfile.
 
-> last audited 09-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
