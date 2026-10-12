@@ -580,9 +580,16 @@
 }
 
 .pos-cart-order-type-icon {
-  font-size: var(--text-sm);
+  /* Was a font glyph, so `font-size` sized it. The glyph is an inline svg now
+     (stroke: currentColor), so it is sized by its own width/height and the box
+     only has to centre it. `flex: 0 0 auto` keeps it from being squeezed when the
+     label is long in a wider locale. */
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  /* Dimmed with the label on an inactive row rather than staying at full
+     contrast, which is what an emoji did — it ignored `currentColor` entirely. */
+  color: inherit;
 }
 
 .pos-cart-order-type-label {

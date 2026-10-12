@@ -22,13 +22,72 @@ import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
 import { SplitBillModal } from './SplitBillModal';
 
+/**
+ * The order-type slider's glyph, as an inline MONOCHROME svg.
+ *
+ * These were emoji (utensils / bag / scooter). Emoji are not monochrome and not
+ * themeable: each platform renders its own full-colour artwork, so the glyph read
+ * as a different weight from the label beside it, ignored `currentColor` (an
+ * inactive row could not dim it), and changed shape between Windows, macOS and
+ * Android. Stroked paths inherit the text colour instead, so active/inactive and
+ * hover states apply to the icon exactly as they do to the label — which is what
+ * every other icon in this codebase does (see VoidOrdersScreen, SalesHistoryScreen).
+ *
+ * Drawn on the shared 24x24 grid with strokeWidth 2, matching those call sites.
+ */
+function OrderTypeIcon({ id }: { id: (typeof ORDER_TYPES)[number]['id'] }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {id === 'dine_in' && (
+        // Fork and knife: a seated meal served on a plate.
+        <>
+          <path d="M4 3v7a2 2 0 0 0 2 2h1v9" />
+          <path d="M4 3v5M7 3v5" />
+          <path d="M17 3c-1.7 0-3 1.3-3 3v5a2 2 0 0 0 2 2h1v9" />
+          <path d="M17 3v10" />
+        </>
+      )}
+      {id === 'takeaway' && (
+        // A bag with handles: food carried away.
+        <>
+          <path d="M5 8h14l-1 12H6L5 8Z" />
+          <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+        </>
+      )}
+      {id === 'delivery' && (
+        // A scooter: food ridden to the address.
+        <>
+          <circle cx="6" cy="18" r="2.5" />
+          <circle cx="18" cy="18" r="2.5" />
+          <path d="M8.5 18h7M15 4h2l2 14" />
+          <path d="M13 4H9l4 8h5" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 // Each option carries its Fluent KEY rather than a label: the restaurant POS
 // renders these on the shared cart panel, so hardcoding them left the order-type
 // selector in English under every other locale. Resolved at render, below.
+//
+// `icon` is gone: the glyph is now <OrderTypeIcon> below, keyed by `id`, so the
+// option list stays pure data and the artwork cannot be duplicated per entry.
 const ORDER_TYPES = [
-  { id: 'dine_in', labelKey: 'pos-cart-order-type-dine-in', icon: '🍽️' },
-  { id: 'takeaway', labelKey: 'pos-cart-order-type-takeaway', icon: '🛍️' },
-  { id: 'delivery', labelKey: 'pos-cart-order-type-delivery', icon: '🛵' },
+  { id: 'dine_in', labelKey: 'pos-cart-order-type-dine-in' },
+  { id: 'takeaway', labelKey: 'pos-cart-order-type-takeaway' },
+  { id: 'delivery', labelKey: 'pos-cart-order-type-delivery' },
 ] as const;
 
 /**
@@ -751,7 +810,9 @@ export function CartPanel({
                     aria-checked={active}
                     data-testid={`pos-order-type-${opt.id}`}
                   >
-                    <span className="pos-cart-order-type-icon" aria-hidden="true">{opt.icon}</span>
+                    <span className="pos-cart-order-type-icon">
+                      <OrderTypeIcon id={opt.id} />
+                    </span>
                     <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
                   </button>
                 );
