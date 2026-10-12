@@ -1,6 +1,8 @@
 # kasirmu-logging
 
-<!-- Audit stamp: 2026-09-29 · DSH-Agent · status: ACCURATE (0 findings) · re-verified against tree: all 4 init fns present (init, init_json, init_with_file, init_json_with_file) with matching signatures; RUST_LOG default info; retention_days cleanup logic present; hourly rotation; L-1 fix retains the tracing_appender WorkerGuard in a process-global registry. PRIOR STAMP (2026-07-22 · Hermes-Agent; re-audited 2026-08-31 by docs-auditor) also verified "syslog (Linux) + eventlog (Windows) pub mods present" — those modules were DELETED 2026-09-29 (C29 / decision D13) and that claim is removed rather than left stale. The earlier "#![warn(missing_docs)] present" claim was also stale: the lint is inherited via `[lints] workspace = true`. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Re-audit; the 2026-09-29 body is merged below as original evidence. RE-DERIVED at HEAD: all four initialisers exist with the signatures the table gives — `init()`, `init_json()`, and `init_with_file`/`init_json_with_file` each taking `(log_dir: &str, file_prefix: &str, retention_days: u32)` (lib.rs:213, :230, :293, :357); the file appenders really do use `tracing_appender::rolling::hourly` (:325, :383); `cleanup_old_log_files` prunes on `retention_days` and treats 0 as 'keep everything' (:255-259); and the filter reads `RUST_LOG` with an `info` default via `EnvFilter` (:61, :97-103). The syslog/eventlog removal claim holds: the only two occurrences tree-wide are the removal records themselves (the crate header at lib.rs:4 and the module doc at :46), not any surviving module. NOT re-measured: a live log write and the retention sweep against a real log directory. · Superseded 2026-09-29 body follows as plain quoted text:
+
+Audit stamp: 2026-09-29 · DSH-Agent · status: ACCURATE (0 findings) · re-verified against tree: all 4 init fns present (init, init_json, init_with_file, init_json_with_file) with matching signatures; RUST_LOG default info; retention_days cleanup logic present; hourly rotation; L-1 fix retains the tracing_appender WorkerGuard in a process-global registry. PRIOR STAMP (2026-07-22 · Hermes-Agent; re-audited 2026-08-31 by docs-auditor) also verified "syslog (Linux) + eventlog (Windows) pub mods present" — those modules were DELETED 2026-09-29 (C29 / decision D13) and that claim is removed rather than left stale. The earlier "#![warn(missing_docs)] present" claim was also stale: the lint is inherited via `[lints] workspace = true`. -->
 
 Structured logging facade wrapping the `tracing` ecosystem.
 
@@ -34,4 +36,4 @@ crate is now pure safe Rust and denies `unsafe_code` crate-wide.
 - `missing_docs` is warned via `[lints] workspace = true`, inherited from the
   root `[workspace.lints]`.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

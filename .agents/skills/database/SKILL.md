@@ -58,7 +58,7 @@ are named and enforced, and how the PostgreSQL replica is generated.
 Two different resolution stories, and they do not share code:
 
 - **Desktop and tablet clients** — `<app_data_dir>/kasir.db`, unconditionally.
-  `resolve_db_path` (`apps/desktop-tauri/src/state.rs:757-763`) joins the Tauri
+  `resolve_db_path` (`apps/desktop-tauri/src/state.rs:869-875`) joins the Tauri
   app-data directory with the literal file name. The tablet twin is
   `apps/mobile-tauri/src/state.rs`. **There is no env-var override and no dev/prod
   variant on this path** — if you need a different file in a test, construct the state
@@ -78,30 +78,37 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 
 | Opener | PRAGMAs |
 |---|---|
-| `kasirmu_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
-| Desktop `AppState::new` (`apps/desktop-tauri/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| Tablet `AppState::new` (`apps/mobile-tauri/src/state.rs:172-174`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| `platform/startup` (`platform/startup/src/lib.rs:62-63`, `:293-294`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| `kasirmu_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:498-508`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
+| Desktop `AppState::new` (`apps/desktop-tauri/src/state.rs:237-240`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| Tablet `AppState::new` (`apps/mobile-tauri/src/state.rs:175-182`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| `platform/startup` (`platform/startup/src/lib.rs:69-70`, `:540-541`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `Pool::open` (`platform/core/src/database/pool.rs:42-43`) | `journal_mode=WAL`, `foreign_keys=ON` |
 | `Pool::open_in_memory` (`platform/core/src/database/pool.rs:52`) | `foreign_keys=ON` only — no WAL |
-| `StoreDatabaseManager::open_or_create_connection` (`platform/core/src/database/manager.rs:106-111`) | `foreign_keys=ON` always; `journal_mode=WAL` **only when the file is new** |
-| `kasirmu_api::serve` (`crates/kasirmu-api/src/lib.rs:453-456`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| CLI `open_db` (`crates/kasirmu-cli/src/commands/mod.rs:57-60`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| Cloud `DbPool::connect_sqlite` (`apps/cloud-server/src/db.rs:131-133`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| `open_api_store_connection` (`crates/kasirmu-local-api/src/lib.rs:162-167`) | `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout` 5s |
+| `StoreDatabaseManager::open_or_create_connection` (`platform/core/src/database/manager.rs:108-116`) | `foreign_keys=ON` always; `journal_mode=WAL` **only when the file is new** |
+| `kasirmu_api::serve` (`crates/kasirmu-api/src/lib.rs:462-464`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| CLI `open_db` (`crates/kasirmu-cli/src/commands/mod.rs:79-81`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| Cloud `DbPool::connect_sqlite` (`apps/cloud-server/src/db.rs:143-144`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| `open_api_store_connection` (`crates/kasirmu-local-api/src/lib.rs:184-189`) | `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout` 5s |
 
 **The rule that matters: `foreign_keys` is per-connection and SQLite's default is OFF.**
 It is not inherited, not persisted in the file, and not implied by another connection
 having set it. Every opener sets it explicitly, and the reason is written down at
-`crates/kasirmu-core/src/migrations.rs:411-413`. A new connection that forgets it will
+`crates/kasirmu-core/src/migrations.rs:506-507` ("SQLite defaults to OFF — the setting is
+per-connection, so we must set it on every connection open"). A new connection that forgets it will
 silently accept orphaned child rows.
 
-`busy_timeout` is set in only two places (`crates/kasirmu-core/src/migrations.rs:404` and
-`crates/kasirmu-local-api/src/lib.rs:166`). Its absence elsewhere is intentional, not an
+`busy_timeout` is set in only two places (`crates/kasirmu-core/src/migrations.rs:499` and
+`crates/kasirmu-local-api/src/lib.rs:188`). Its absence elsewhere is intentional, not an
 oversight: without it, SQLite fails immediately on write-lock contention instead of
 waiting.
 
-There is **no `cache_size` PRAGMA anywhere** in the repository.
+`cache_size` is set in exactly **two** places, and both are page-count limits rather than
+money- or correctness-bearing: the tablet's `AppState::new`
+(`apps/mobile-tauri/src/state.rs:180`, `-16384`) and the per-store manager
+(`platform/core/src/database/manager.rs:111`, `-8000`, whose return value is deliberately
+discarded). This line previously said there was **no `cache_size` PRAGMA anywhere** — true
+when written, and falsified by a later slice that added both sites. Re-derive with
+`git grep -n 'cache_size' -- '*.rs'` rather than trusting either reading.
 
 ---
 
@@ -115,9 +122,10 @@ There is **no `cache_size` PRAGMA anywhere** in the repository.
 - Per-store: `Arc<std::sync::Mutex<HashMap<String, Arc<Mutex<Connection>>>>>` in
   `platform/core/src/database/manager.rs` — note this one is **`std::sync::Mutex`**,
   not tokio's. Mixing the two up is an easy compile error.
-- `platform/core/src/database/pool.rs` defines a `Pool` type, but it has **no
-  production call site** — it is referenced only by its own tests. Do not treat it as
-  the runtime path.
+- `platform/core/src/database/pool.rs` defines a `Pool` type, but it has **no production
+  call site** — `platform/core/src/database/mod.rs:22` re-exports it, and the only other
+  references in the tree are its own tests. Do not treat it as the runtime path. (`pub use`
+  is not a use, which is why a naive grep for `Pool::open` looks like it finds one.)
 
 Tauri commands receive `State<'_, AppState>` and reach the database through
 `state.db.lock().await`, or through `AppState::resolve_scope` / `resolve_store` when the
@@ -131,9 +139,10 @@ work is store-scoped. Most domain work is then delegated to `kasirmu_bridge`.
 
 Migrations are `.sql` files embedded at compile time and run in **array order, which is
 canonical and deliberately not filename order** (`crates/kasirmu-core/src/migrations.rs:12-15`).
-`pub const ALL` opens at `crates/kasirmu-core/src/migrations.rs:46` and holds **63 entries**
-(re-counted 22-09-26; it was 58 entries at `:43` when this section was written, and the
-array has grown by five migrations since).
+`pub const ALL` opens at `crates/kasirmu-core/src/migrations.rs:50` and holds **74 entries**
+(re-counted 2026-10-11; it was 63 entries at `:46` when this line was re-derived on 22-09-26,
+and 58 at `:43` when the section was first written — the array has grown by eleven migrations
+since that reading).
 Each entry is two fields:
 
 ```rust
@@ -145,19 +154,21 @@ Migration {
 
 There is **no `down` field** — the registry carries no reverse SQL, by design (DB-03).
 
-> **The count trap.** `crates/kasirmu-core/migrations/` contains **64** `*.sql` files but the
-> registry has **63** entries (both re-counted 22-09-26; this note used to say 59 and 58).
+> **The count trap.** `crates/kasirmu-core/migrations/` contains **75** `*.sql` files but the
+> registry has **74** entries (both re-counted 2026-10-11; this note said 64 and 63 on 22-09-26,
+> and 59 and 58 before that).
 > The extra file is the generated `20260813_init.pg.sql`,
 > which is *not* a migration and must never be added to the registry. A doc or gate that
-> quotes "64 migrations" is quoting a **file count**, not a registry count. The parity
+> quotes "75 migrations" is quoting a **file count**, not a registry count. The parity
 > test excludes `.pg.sql` for exactly this reason. The numbers move every time a migration
 > lands, so re-count rather than repeating these figures.
 
 ### The tracking table
 
-`schema_migrations`, created by the runner (`platform/core/src/database/migrations.rs:197-201`;
-re-measured 22-09-26 — the file was split into `migrations.rs` (578 lines) plus `statements.rs`
-and `proofs.rs`, which moved this block down from the `:177-181` this section used to cite):
+`schema_migrations`, created by the runner (`platform/core/src/database/migrations.rs:310-314`;
+re-measured 2026-10-11 — the file is now `migrations.rs` (692 lines) plus `statements.rs` and
+`proofs.rs`, and the block has moved down twice: from the `:177-181` this section first cited,
+to `:197-201` at the 22-09-26 reading, to `:310-314` today):
 
 ```sql
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -238,7 +249,7 @@ looks for a column-name-plus-float-type pair, so naming a float in a comment can
 it. The gate is wired into `.githooks/pre-commit` as the migration column-type lint and
 runs with `--staged-only` there.
 
-Its whitelist (`scripts/verify-migration-column-types.py:142-169`) has **12 entries**,
+Its whitelist (`scripts/verify-migration-column-types.py:143-173`) has **13 `Allowed(` entries**,
 each anchored to a file, table, column *and a reason*:
 
 - `loyalty_tiers.earn_multiplier` — historical column, converted to
@@ -267,8 +278,8 @@ does not exist.
 `docs/records/sqlite-pg-roles.md`; read it before touching anything PG-shaped.
 
 - `crates/kasirmu-core/migrations/20260813_init.pg.sql` is **generated**, by
-  `scripts/generate-pg-migration.py`. Its single output path is fixed at
-  `scripts/generate-pg-migration.py:66`, and the file it writes carries a
+  `scripts/generate-pg-migration.py`. Its single output path is a module constant at
+  `scripts/generate-pg-migration.py:85` (`DST = MIG_DIR / "20260813_init.pg.sql"`), and the file it writes carries a
   `DO NOT EDIT BY HAND` header. **Never hand-edit it.**
 - The generator parses registry order out of `crates/kasirmu-core/src/migrations.rs`, applies
   every migration to a throwaway in-memory SQLite database, dumps the resulting
@@ -279,7 +290,7 @@ does not exist.
 - **It fails closed in both directions on trigger parity** — a trigger with no plpgsql
   entry is an error, and so is an entry with no trigger — and on stale RLS coverage or
   exemption lists.
-- `--check` (branch at `scripts/generate-pg-migration.py:611`) **renders twice and
+- `--check` **renders twice and
   compares the two renders** to prove determinism, then compares the result against the
   committed file and exits non-zero on drift **without touching the working tree**. The
   pre-commit hook runs it whenever a migration, the registry, or the generator is staged.
@@ -362,7 +373,7 @@ logged without masking the original error.
   ```
   Never inline. This is a repository-wide rule, not a database one.
 - **Use `kasirmu_core::migrations::fresh_db()`** for a migrated in-memory database. It builds
-  a `LazyLock` snapshot once, runs all 63 migrations into it, then clones it per test
+  a `LazyLock` snapshot once, runs all 74 migrations into it, then clones it per test
   through the SQLite `backup::Backup` API — orders of magnitude faster than re-running
   `execute_batch` per test. It is `#[doc(hidden)]` and test-only.
 - For a database you intend to migrate yourself, open in memory and run migrations
@@ -406,7 +417,7 @@ staged-scoped form is what the hook uses; the whole-tree form is what CI uses.
 3. **Assuming registry order is filename order.** It is not. Several entries are ordered
    deliberately against their names, and inserting a new migration at the end of the array
    is not always the same as inserting it last in time.
-4. **Quoting "64 migrations".** That is a file count. The registry holds 63.
+4. **Quoting "75 migrations".** That is a file count. The registry holds 74.
 5. **Forgetting `foreign_keys = ON` on a new connection.** SQLite's default is OFF, per
    connection. Nothing else turns it on for you.
 6. **Toggling `PRAGMA foreign_keys` inside a transaction.** It is a silent no-op. This is
