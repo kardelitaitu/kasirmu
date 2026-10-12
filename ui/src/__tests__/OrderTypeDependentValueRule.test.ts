@@ -58,17 +58,52 @@
 // cannot see a new instance of the thing it guards is the round-4 blindness again.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 
-const read = (rel: string) => readFileSync(resolve(__dirname, rel), 'utf-8');
+const UI_SRC = resolve(__dirname, '..');
 
-const SOURCES: Array<[string, string]> = [
-  ['PosScreen.tsx', read('../features/sales/PosScreen.tsx')],
-  ['usePosHeldCarts.ts', read('../features/sales/hooks/usePosHeldCarts.ts')],
-  ['PaymentModal.tsx', read('../features/sales/PaymentModal.tsx')],
-  ['CartPanel.tsx', read('../features/sales/components/CartPanel.tsx')],
+/**
+ * The POS roots the rule governs.
+ *
+ * DISCOVERED, not listed. An earlier version of this file named four sources by
+ * hand and silently missed three more that reference `orderType` —
+ * CartActionBar, SplitBillModal and payment/types. All three turned out to hold a
+ * gate or a type rather than a derivation, so the verdict was right, but it was
+ * right by ACCIDENT of the list: the guard would have stayed green if any of them
+ * had carried an ungated derivation. That is the round-4 blindness (a list cannot
+ * notice what is missing from it) and it is fixed the same way here.
+ */
+const ROOTS = ['features/sales', 'features/restaurant', 'features/tables'];
+
+/**
+ * Sources excluded from the rule, each with EVIDENCE that it is a value-handler
+ * rather than a decision-maker.
+ *
+ * The rule is about a DECISION — does this record/consumer apply to a non-dine-in
+ * order? A pure formatter makes no such decision, so its CALLER owns the rule and
+ * gating it here would gate nothing.
+ *
+ * Declared ABOVE SOURCES because SOURCES filters by it; an evidence entry whose
+ * file gains an `orderType` reference fails the case that reads this list, so the
+ * exclusion cannot silently widen.
+ */
+const VALUE_HANDLERS: Array<{ rel: string; why: string }> = [
+  {
+    rel: 'features/sales/utils/tableLabel.ts',
+    why: 'display-only formatter — takes a table value, returns a label',
+  },
 ];
+
+function collect(dir: string, out: string[] = []): string[] {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (!/__tests__|node_modules/.test(e.name)) collect(full, out);
+    } else if (/\.tsx?$/.test(e.name)) out.push(full);
+  }
+  return out;
+}
 
 /** The dine-in-only state values, and why each is dine-in-only. */
 const DINE_IN_ONLY: Array<{ state: string; why: string }> = [
@@ -119,6 +154,30 @@ function offenders(src: string): string[] {
   });
   return out;
 }
+
+/** Every discovered source that references a protected state, with its text. */
+const SOURCES: Array<[string, string]> = ROOTS.flatMap((root) =>
+  collect(join(UI_SRC, root))
+    .map((abs) => {
+      const text = readFileSync(abs, 'utf-8');
+      const rel = relative(UI_SRC, abs).split('\\').join('/');
+      return [rel, text] as [string, string];
+    })
+    .filter(([, text]) => DINE_IN_ONLY.some((d) => new RegExp('\\b' + d.state + '\\b').test(text)))
+    .filter(([rel]) => !VALUE_HANDLERS.some((v) => v.rel === rel)),
+);
+
+describe('the value-handler exclusions are still true', () => {
+  it.each(VALUE_HANDLERS)('$rel makes no order-type decision', ({ rel, why }) => {
+    const text = readFileSync(join(UI_SRC, rel), 'utf-8');
+    // The reason has to be checkable, or the exclusion is a silent bypass.
+    expect(
+      /\borderType\b/.test(text),
+      rel + ' now references orderType, so it IS a decision site and must not be ' +
+        'excluded. Reason given for excluding it: ' + why,
+    ).toBe(false);
+  });
+});
 
 describe('a dine-in-only value is gated at every derivation', () => {
   it.each(SOURCES)('%s gates every derivation of tableNumber/guestCount', (_name, src) => {
@@ -210,7 +269,7 @@ describe('a dine-in-only value is gated at every derivation', () => {
   it('customerName stays deliberately unrestricted', () => {
     // The counter-case, kept so a tidy pass cannot "fix" it by symmetry: a
     // takeaway still has a customer to name on the ticket.
-    const cartPanel = read('../features/sales/components/CartPanel.tsx');
+    const cartPanel = readFileSync(join(UI_SRC, 'features/sales/components/CartPanel.tsx'), 'utf-8');
     const gate = cartPanel.match(/setCustomerName && customerNameEnabled !== false && \(/g) ?? [];
     expect(gate.length, 'the customer-name render gate must NOT carry an order-type condition').toBe(1);
   });
