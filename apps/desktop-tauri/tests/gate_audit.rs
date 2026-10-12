@@ -263,7 +263,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ),
     (
         "products",
-        10,
+        13,
         &[
             "INVENTORY_ADJUST",
             "PRODUCTS_CREATE",
@@ -493,11 +493,12 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ),
     (
         "products",
-        5,
+        8,
         &[
             "PRODUCTS_CREATE",
             "PRODUCTS_DELETE",
             "PRODUCTS_EDIT_COST",
+            "PRODUCTS_READ",
             "PRODUCTS_UPDATE",
         ],
     ),

@@ -190,7 +190,7 @@ mod debt;
 /// raise consumed three of the nine rows of headroom rather than none. Recorded rather
 /// than smoothed over, because a floor step that also spends debt is the one shape this
 /// ratchet is meant to make visible. Provenance in docs/records/journal/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 494;
+const REGISTERED_FLOOR: usize = 497;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

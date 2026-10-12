@@ -1371,3 +1371,45 @@ neither command is class 1. `REGISTERED_TOTAL` and the two ledger rows were
 written by the generator, not by hand:
 `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib
 drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`.
+
+## 2026-10-12 — Desktop registration floor 494 → 497, and the census pins the recipe commands had stale (`kasirmu-app`)
+
+**Context:** CI on the `0.0.41 → main` PR was red in six jobs, and five of them were
+ Rust. Every one was reproduced locally before anything was touched. The floor leg had
+ been red since `7c00c1281` (`feat(ipc): expose recipe scoped commands in desktop, mobile,
+ and ui api`) registered three commands against a floor that had last been set by
+ `e86a3531b` — the pins were stale in `origin` itself, so 149 further commits landed on a
+ base that was already red.
+
+**The three additions, named as the floor assertion requires:**
+
+- `commands::products::get_recipe_scoped`
+- `commands::products::set_recipe_scoped`
+- `commands::products::delete_recipe_scoped`
+
+**Why they move the floor but no ledger row.** Each shell wrapper takes a `session_token`
+ and forwards to `kasirmu_bridge::products`, which `gated_bridge_stems()` already reads as
+ gated — `crates/kasirmu-bridge/src/products.rs` names `require_session_permission` at 12
+ sites, and the recipe handlers resolve the session and check `permissions::PRODUCTS_READ`
+ / the write equivalent before touching a store db. So the sweep classifies all three as
+ `State::Gated`: the permission lives bridge-side, not in the shell wrapper, which is the
+ same deliberate split the rest of the shell uses. Consequently
+ `drift_pin_generated_ledger_is_the_sweeps_own_output` and the three-way partition are
+ unchanged, and only `REGISTERED_FLOOR` moved: 494 → 497.
+
+**The census pins, same pass, same cause.** `gate_audit`'s desktop `products` row was
+ pinned at 10 against a measured 13, and the tablet's at 5 against 8 — both +3, exactly
+ the recipe commands. The tablet keys row also lacked `PRODUCTS_READ`, which
+ `get_recipe_scoped` names. Both now measure green.
+
+**Also in this pass, from the same red run:** `foundation/src/inventory.rs:344`,
+ `is_in_stock()` was written as `if !x { true } else { y }` and clippy's
+ `-D warnings` rejected it; rewritten `!x || y`, with
+ `inventory::tests::product_with_details_is_in_stock_rules` run afterwards to prove the
+ rewrite is behaviour-identical rather than merely lint-clean.
+
+**Verification:** `cargo nextest run -p kasirmu-app --lib registration_gate_tests` 14/14;
+ `--test gate_audit census` both pins green (12 of 14 in that filter, the two census rows
+ among them); `cargo clippy -p foundation --lib` clean; `cargo nextest run -p foundation
+ --lib is_in_stock` 1/1. The two UI vitest failures in the same red run were already fixed
+ by the unpushed commits — both suites pass 30/30 locally — so nothing was changed there.
