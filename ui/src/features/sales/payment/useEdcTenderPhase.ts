@@ -148,7 +148,16 @@ export function useEdcTenderPhase({
 
   const handleTerminalPay = useCallback(async (targetTerminalId?: string | null) => {
     setProcessing(true);
-    const terminalIdToUse = targetTerminalId !== undefined ? targetTerminalId : selectedTerminalId;
+    // Guard on the TYPE, not on `!== undefined`. CardTenderPanel wires this
+    // straight to `onClick` (CardTenderPanel.tsx:115), so React calls it with a
+    // SyntheticBaseEvent — which is `!== undefined`, so an undefined-check
+    // adopted the EVENT as the terminal id. Measured live: the app logged
+    // `terminalId: SyntheticBaseEvent` and pre-flight failed with
+    // "EDC card terminal '[object Object]' not found", so every card payment
+    // died before reaching the terminal. A non-string argument means "no
+    // explicit terminal" — resolve the selected one instead.
+    const explicitTerminalId = typeof targetTerminalId === 'string' ? targetTerminalId : null;
+    const terminalIdToUse = explicitTerminalId ?? selectedTerminalId;
     try {
       // Preflight is `edc_terminal_status_scoped`: the never-shipped
       // `test_edc_connection_scoped` (agents-2 residual) is decided INTO this
