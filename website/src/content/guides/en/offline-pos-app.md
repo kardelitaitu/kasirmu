@@ -8,6 +8,8 @@ updated: "2026-09-24"
 order: 1
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page, and the first in `website/src/content/guides/` (the directory's sibling guides carry none). This is user-facing marketing content whose claims are about how offline POS *behaviour* works, not about repo paths, so the audit scope is the falsifiable product claims: the page describes the durable-outbox model the code actually implements (a sale is written locally and marked unsent — `ui/src/api/offline.ts`, the outbox the app's own ADR #6 record describes) and it does NOT claim QRIS completes offline, which is correct because QRIS confirmation arrives from the bank. Its five-step self-test is advice to a reader, not a claim about this repository. VERIFIED: the page's own link resolves — `/en/kasir-gratis/` is served by `website/src/pages/[locale]/kasir-gratis.astro`; the `pair:` front matter correctly names the Indonesian sibling `website/src/content/guides/id/aplikasi-kasir-offline.md`, which cross-references back, and `cd website && python3 scripts/check-doc-parity.py` reports 20 page pairs in parity with `check-site-links.py` reporting 46 content docs and every link resolving. LEFT ALONE: the free-plan wording and every behavioural sentence, which are the page's own content. NOT re-measured: the offline flow on a real device, and whether the marketing claims match a shipped build's defaults — the `updated: 2026-09-24` date is the page's own. · Convention note: user-facing Astro page; the footer below is stripped from the built site by `website/src/plugins/rehype-strip-audit-footer.mjs`. -->
+
 Small shops rarely have a connection they can rely on. Heavy rain, a data
 allowance that ran out, a router that restarted itself, or a network that slows
 to nothing at the evening rush — all of it lands on the same day you are busiest.
@@ -99,3 +101,5 @@ mode, and run the five checks above — [kasir.mu is free to start for small sho
 and warungs](/en/kasir-gratis/), and its offline mode is on by default with
 nothing to configure. If it does not convince you, you will know within five
 minutes rather than after a year of subscriptions.
+
+> last audited 11-10-26 by docs-auditor

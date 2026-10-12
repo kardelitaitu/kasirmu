@@ -1,8 +1,10 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 200 lines, with a prominent status block already on it that is the right way to write a blocked plan. It says the plan is blocked on TWO things rather than one, that no code has been changed, and it names both blockers precisely — a pending decision from its own section 7.0 about where the video mounts, and the absence of the video assets themselves. A plan that tells you exactly what it is waiting on is worth more than one that reads as merely unfinished, and the second blocker in particular is the kind that gets lost: a plan blocked on its own unresolved decision is a different problem from a plan blocked on assets, and only one of them is a design question. · IT ALSO RECORDS ITS OWN RE-AUDIT with the specific coordinates verified — `DWELL_MS = 10000`, the 1280/720 aspect ratio, the `SLIDE_IDS` set matching section 5, the immutable `/videos/*` rule, and the existence of the carousel test. Those are the claims a later reader would otherwise have to re-derive, and listing them turns a 200-line plan into something checkable at a glance. · WHAT WAS NOT CHECKED, and the limit is the same one every plan in this campaign carries: the video assets do not exist, so the encoding decisions — codec, bitrate budget, frame rate, container flags — are unfalsifiable from the repository, and the measured size comparison rests on a synthetic proxy clip rather than real footage. That is not a defect; it is what a plan looks like before its inputs arrive, and the status block says so. · The one place a reader should be careful is the status block's own correction: section 7.0 records that the video mounts inside `SlideWindow`'s content slot, whose box is approximately 1280×693 rather than the 1280×720 this plan encodes. That is a design decision with downstream consequences for the capture itself, not only the CSS, and the document correctly flags it as blocking rather than quietly adjusting the number. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Re-audit. THE PLAN'S VERIFIED CLAIMS ALL STILL HOLD, and each was re-derived rather than inherited: DWELL_MS = 10000 is at website/src/lib/hero-carousel.ts:28, the 1280/720 aspect is at website/src/components/HeroCarousel.astro:45, SLIDE_IDS is the five ids (restaurant, retail, kitchen, warehouse, topology) at :24, the /videos/* immutable rule is in website/public/_headers, and the carousel test exists (website/src/lib/__tests__/hero-carousel.test.ts). · THE ONE STRUCTURAL DRIFT, and it is the trap the batch brief names: THE FILE THIS PLAN SCOPES NO LONGER EXISTS. The scope line said website/src/components/HeroCarousel.tsx; the component is now HeroCarousel.astro, and the behaviour was extracted to website/src/lib/hero-carousel.ts (128 lines) with a contract test at website/src/__tests__/hero-carousel-contract.test.ts. The removal is deliberate and documented in that module's own header — rendering the five slides as static markup let the homepage DROP the React renderer ("measured 55 KB gzip of React to animate one CSS transform") while staying unit-testable. Repointed, and the reason recorded, because the design consequence is real: the slide markup the plan wanted to wrap a <video> in is now produced by an Astro component, not a React island. · MINOR: the /videos/* rule is at _headers:38, not :32 (the file grew a caching-comment block above it); the plan's Status block still said "Re-audited against the tree on 2026-09-04", re-dated here; and the two blockers are BOTH STILL OPEN — website/public/videos/ is absent and §7.0's mount-box decision is untaken, so the plan remains correctly marked blocked. · NOT re-measured, unchanged from before: the encoding decisions (codec, bitrate, frame rate, container flags) are unfalsifiable while the video assets do not exist, and the size comparison still rests on a synthetic proxy clip. · Prior stamp merged below as plain text, delimiters stripped:
+
+2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 200 lines, with a prominent status block already on it that is the right way to write a blocked plan. It says the plan is blocked on TWO things rather than one, that no code has been changed, and it names both blockers precisely — a pending decision from its own section 7.0 about where the video mounts, and the absence of the video assets themselves. A plan that tells you exactly what it is waiting on is worth more than one that reads as merely unfinished, and the second blocker in particular is the kind that gets lost: a plan blocked on its own unresolved decision is a different problem from a plan blocked on assets, and only one of them is a design question. · IT ALSO RECORDS ITS OWN RE-AUDIT with the specific coordinates verified — `DWELL_MS = 10000`, the 1280/720 aspect ratio, the `SLIDE_IDS` set matching section 5, the immutable `/videos/*` rule, and the existence of the carousel test. Those are the claims a later reader would otherwise have to re-derive, and listing them turns a 200-line plan into something checkable at a glance. · WHAT WAS NOT CHECKED, and the limit is the same one every plan in this campaign carries: the video assets do not exist, so the encoding decisions — codec, bitrate budget, frame rate, container flags — are unfalsifiable from the repository, and the measured size comparison rests on a synthetic proxy clip rather than real footage. That is not a defect; it is what a plan looks like before its inputs arrive, and the status block says so. · The one place a reader should be careful is the status block's own correction: section 7.0 records that the video mounts inside `SlideWindow`'s content slot, whose box is approximately 1280×693 rather than the 1280×720 this plan encodes. That is a design decision with downstream consequences for the capture itself, not only the CSS, and the document correctly flags it as blocking rather than quietly adjusting the number. · No stamp existed; this is the first. -->
 # Website Hero Carousel — Video Format Plan
 
 > Status: **planned — blocked on two things, not one.** No code has been changed.
-> Scope: `website/src/components/HeroCarousel.tsx` + `website/public/videos/hero/`.
+> Scope: `website/src/components/HeroCarousel.astro` + `website/src/lib/hero-carousel.ts` + `website/public/videos/hero/`. (The React island this plan originally scoped, `HeroCarousel.tsx`, was retired when the homepage dropped the framework renderer — see the module header in `hero-carousel.ts`.)
 >
 > 1. **A decision from §7.0** — the video mounts *inside* `SlideWindow`'s
 >    `content` slot, whose box is ~1280×693, not the 1280×720 this plan encodes
@@ -11,10 +13,10 @@
 >
 > When both are settled, follow §6 (encode) and §7 (integrate) in order.
 >
-> Re-audited against the tree on 2026-09-04. §1 and §7.0 were corrected; §2–§6
-> and §8 were verified accurate (`DWELL_MS = 10000`, `aspectRatio: '1280 / 720'`,
-> `SLIDE_IDS` matching §5, the `/videos/*` immutable rule at `_headers:32`, and
-> `hero-carousel.test.tsx` existing).
+> Re-audited against the tree on 2026-09-04; re-derived again on 2026-10-11. §1 and §7.0 were
+> corrected; §2–§6 and §8 verified accurate (`DWELL_MS = 10000` at `lib/hero-carousel.ts:28`,
+> `aspect-ratio: 1280 / 720` at `HeroCarousel.astro:45`, `SLIDE_IDS` matching §5 at `:24`, the
+> `/videos/*` immutable rule at `_headers:38`, and `hero-carousel.test.ts` existing).
 
 ## 1. Context
 
@@ -82,7 +84,7 @@ website/public/videos/hero/
   <slide>-720.webp      # poster frame per slide (first frame), used by both variants
 ```
 
-Naming = `SlideId` from `HeroCarousel.tsx` (`restaurant|retail|kitchen|warehouse|topology`)
+Naming = `SlideId` from `lib/hero-carousel.ts` (`restaurant|retail|kitchen|warehouse|topology`) — was `HeroCarousel.tsx`, see the §0 note
 so the component can build URLs from the id directly.
 
 ## 6. Encode commands (run when footage is ready)
@@ -116,11 +118,11 @@ ffmpeg -i "$S-720.mp4" -frames:v 1 "$S-720.webp"
 Acceptance per clip: duration `00:00:10.00`, 15 fps, no audio stream, within the
 §2 budget (VP9 ≤ 1.5 MB @720p / ≤ 1 MB @540p; MP4 may exceed — it's the fallback).
 
-## 7. Integration into `HeroCarousel.tsx`
+## 7. Integration into `HeroCarousel.astro` (was `HeroCarousel.tsx`)
 
 ### 7.0 Where the video actually mounts — read `SlideWindow` first
 
-Every slide renders inside `<SlideWindow title content>` (`HeroCarousel.tsx:92`).
+Every slide renders inside `<SlideWindow title content>` (`HeroCarousel.astro:92` — the markup moved to the Astro component when the React island was retired).
 That component's own doc comment already settles the question the rest of §7
 assumed was open:
 
@@ -186,7 +188,7 @@ the crop band. It leaves §6's encode commands unchanged and costs under 4%.
    `aria-label` from the existing slide label.
 6. **Fallback when `.webm` unsupported** — browser walks `<source>` list
    automatically; no JS needed.
-7. **Tests** — extend `hero-carousel.test.tsx`: only active slide mounts a
+7. **Tests** — extend `hero-carousel.test.ts` (the `.tsx` suite was renamed with the extraction): only active slide mounts a
    `<video>`; `preload="none"` present; poster attribute set; reduced-motion path
    renders no autoplaying video.
 
@@ -200,4 +202,4 @@ file). Nothing further to do here.
 If a clip is ever re-encoded after deploy, bump the filename (or a `?v=`
 query) — a year-long immutable TTL means browsers will not re-check.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

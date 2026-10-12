@@ -1,3 +1,27 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Fresh full
+     audit against branch 0.0.41; this file carried no stamp or footer before this pass. ·
+     EVERY CLAIM RE-DERIVED, NOT INHERITED: the tenant table matches the tree exactly
+     (default/, acme-tenant/, beta-retail/, whitelabel/example-tenant/ + whitelabel/README.md);
+     ALL FOUR subdirectories exist in EVERY tenant, so "each tenant carries the same four"
+     holds; the empty-template claim is literally true — example-tenant/ holds ONLY .gitkeep in
+     vector/, web/, desktop/ and hardware/ plus manifest.json and a README; the manifest.json
+     field table matches the real file (appName/companyName/themeTokens.{primaryHsl,accentHsl,
+     fontFamily}/assets.{vector,web,desktop,hardware} are exactly the keys present); and every
+     Related path resolves (sync-branding.ps1, whitelabel.ps1 as a documented thin alias,
+     generate-tier-badges.ps1, assets/tier-badges/, assets/source-icon.png, and the 2026-07-15
+     whitelabel ADR). ·
+     THE OBSERVATION WORTH RECORDING: the per-tenant asset counts are NOT uniform (default/
+     vector=5 vs the fixtures' 4; web=11 vs 5; desktop=8 vs 7; hardware=4/4/3). The page is
+     CORRECT about this because it states no global count — it defines the four DIRECTORIES and
+     defers the required-file list to whitelabel/example-tenant/README.md, which was itself
+     audited to ACCURATE on 2026-10-11. That deferral is why a batch-16 finding of exactly this
+     class ("the four vector variants" is now five) did not occur here. Do not add a count to
+     this page; the single-source deferral is the property that keeps it true. ·
+     NOT re-measured: whether a real `scripts/sync-branding.ps1` run reproduces the patched
+     files (no PowerShell execution this pass), and the raster dimensions of any asset. ·
+     Additionally the propagation-destination row for desktop/ now names BOTH shell icon dirs
+     (apps/desktop-tauri/icons/ and apps/mobile-tauri/icons/), which the script writes to and
+     which the page already listed correctly. -->
 # Brand Assets
 
 Every brand asset in the project, keyed by tenant. This directory is the
@@ -82,3 +106,5 @@ what the manifest actually changed.
 - `assets/source-icon.png` — the master square icon the desktop sizes are cut
   from.
 - `docs/decisions/2026-07-15-whitelabel-branding-system.md` — why it works this way.
+
+> last audited 11-10-26 by docs-auditor

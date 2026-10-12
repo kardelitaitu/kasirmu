@@ -405,6 +405,26 @@ fix for an empty docs category, but that directory became a tombstone and the bu
 already been reworked to copy `docs/guides/` instead — so the flagged defect was RESOLVED and the
 prescribed remedy pointed at nothing. Re-check a correction's remedy, not just its claim.
 
+**13. Writing a stamp is itself a mutation risk — three ways a stamp edit broke a file on
+2026-10-11.** (a) **Unterminated comment**: a new `<!-- Audit stamp:` written without its closing
+`-->` swallows everything after it, including the H1 — the depth check reports 1 and you will not
+see it in a casual read. Two auditors hit this in one batch. (b) **Replaced instead of merged**: a
+rebuild that overwrites the prior stamp body loses the older audit's evidence — re-extract the
+prior body from `git show HEAD:<path>` and rebuild, rather than writing over it. (c) **Merged as
+`>`-quoted blockquotes**: prior text wrapped in `>` renders as visible page text below the
+footer. Merge prior bodies as plain text inside the ONE comment. **Always verify, after writing:
+`d=0 m=1`, one footer as the last non-empty line, and — render-aware — that the file's first
+VISIBLE line is its own H1 and no stamp text leaks.**
+
+**14. A frozen spec's Status line can go stale in the gate's FAVOUR.** A spec that says
+"TODO (not implemented)" may describe a gate that has since shipped, because nothing reads a spec's
+status. Found 2026-10-11: `docs/plans/_done/done-testid-checker-spec.md` read "Status: TODO (not
+implemented)" while the script, its tests, its baseline, its `gates.json` entry (`required`), its
+npm script and its `check-ui.mjs` leg all existed — and running the checker exited 0, satisfying
+the spec's own acceptance row. **Sweep target: any spec or plan with a Status line, cross-checked
+against `scripts/gates.json`.** Note the asymmetry with trap 3: there a guard grew and a doc's
+"it does not check X" went false; here the gate arrived and a doc's "it does not exist" went false.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually

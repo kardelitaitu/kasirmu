@@ -1,4 +1,8 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 126 lines, and its author did something almost no other document in this repository does — made the record REPRODUCIBLE and stated the contract it measures against. The header gives the command (`python scripts/census-sync-ingest-admits.py`, read-only, non-zero exit on self-test failure), the policy commit it measures, and the specific test that forbids the identity lists appearing anywhere but their own functions. A security census a reader cannot re-run is an assertion; this one is a measurement. · RE-VERIFIED EVERY FUNCTION IT CITES, and they all exist: `credential_base` and `device_base` in `platform/core/src/settings/keys.rs` at lines 488 and 512, `normalised_candidate` at 453, and `is_secret_setting_key` at 557. The census script itself, `scripts/census-sync-ingest-admits.py`, is present, so the numbers in the transcript are re-runnable. Line numbers have drifted from those quoted in the companion record, which is ordinary and is the reason this stamp records the current values rather than repeating the old ones. · THE NUMBER IS THE POINT, and the companion record makes that explicit in a sentence worth preserving: 75 declared keys, 21 refused, 54 admitted — from a channel that authenticates nobody. A document that said only that sync ingest is now policy-gated would describe a control refusing 28% of the namespace it governs while implying near-total coverage. Putting the ratio in the document is what stops the next reader from over-reading the policy. · IT ALSO NAMES THE FOUR KEYS THAT MAKE THE GAP URGENT, and the pairing is the useful part rather than the names: `sync_server_url` admitted while the lane refuses credentials, `pg_sync.host` admitted while `pg_sync.password` is refused, `redis.cache_ttl` admitted while `redis.url` is refused. A policy applied per-key without a family concept admits the non-secret half of a secret-bearing pair. That is a structural observation about the design, recorded here as a fact about the census rather than as a fix, because the decision belongs to the owner of ADR #51. · The transcript block is a captured tool run, and captured runs are the strongest evidence format a repository has: it can be re-derived exactly, and any divergence becomes visible rather than arguable. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · COORDINATES REPOINTED, COUNTS RE-DERIVED: the census script still reproduces and is authoritative — `python3 scripts/census-sync-ingest-admits.py` now reports declared=81 admitted=60 refused=21 (the 2026-09-12 reading was 75/54/21; the refused breakdown is unchanged at 17/3/1 and the self-test still passes every known verdict including the suffix-blind probe). Repointed four drifted citations — `transport.rs:433`/`:452`, `daemon_tick.rs:183`, `daemon.rs:339`, and `scoped_setting_key` at `crates/kasirmu-api/src/pg/settings.rs:66` (the `crates/oz-api/src/pg.rs` path was retired by the rebrand; `pg.rs` survives as a partial). THE SECURITY SUBSTANCE RE-VERIFIED UNCHANGED: `421` still appears nowhere in `platform/sync/src/` outside the ISO-4217 doc line (`transport.rs:86`), and every redirect path still turns a non-2xx body into `SyncError::ServerMigrated { new_url }` with no scheme, host or localhost validation — the §3 suffix-blind probe still resolves to `None`. NOT re-measured: the live sync behaviour of a real install.
+
+SUPERSEDED STAMP (kept verbatim, delimiters stripped — one comment, no nesting):
+  Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 126 lines, and its author did something almost no other document in this repository does — made the record REPRODUCIBLE and stated the contract it measures against. The header gives the command (`python scripts/census-sync-ingest-admits.py`, read-only, non-zero exit on self-test failure), the policy commit it measures, and the specific test that forbids the identity lists appearing anywhere but their own functions. A security census a reader cannot re-run is an assertion; this one is a measurement. · RE-VERIFIED EVERY FUNCTION IT CITES, and they all exist: `credential_base` and `device_base` in `platform/core/src/settings/keys.rs` at lines 488 and 512, `normalised_candidate` at 453, and `is_secret_setting_key` at 557. The census script itself, `scripts/census-sync-ingest-admits.py`, is present, so the numbers in the transcript are re-runnable. Line numbers have drifted from those quoted in the companion record, which is ordinary and is the reason this stamp records the current values rather than repeating the old ones. · THE NUMBER IS THE POINT, and the companion record makes that explicit in a sentence worth preserving: 75 declared keys, 21 refused, 54 admitted — from a channel that authenticates nobody. A document that said only that sync ingest is now policy-gated would describe a control refusing 28% of the namespace it governs while implying near-total coverage. Putting the ratio in the document is what stops the next reader from over-reading the policy. · IT ALSO NAMES THE FOUR KEYS THAT MAKE THE GAP URGENT, and the pairing is the useful part rather than the names: `sync_server_url` admitted while the lane refuses credentials, `pg_sync.host` admitted while `pg_sync.password` is refused, `redis.cache_ttl` admitted while `redis.url` is refused. A policy applied per-key without a family concept admits the non-secret half of a secret-bearing pair. That is a structural observation about the design, recorded here as a fact about the census rather than as a fix, because the decision belongs to the owner of ADR #51. · The transcript block is a captured tool run, and captured runs are the strongest evidence format a repository has: it can be re-derived exactly, and any divergence becomes visible rather than arguable. · No stamp existed; this is the first.
+-->
 # Sync settings ingest admits and the redirect that carries them
 
 Date: 2026-09-12 · Type: census / audit · Behaviour changed: **none**
@@ -55,21 +59,21 @@ self-test uses declared spellings only.
 
 An accepted `sync_server_url` is not merely stored; the daemon follows it:
 
-- Obeyed on **any non-2xx** response: `platform/sync/src/transport.rs:355` opens
-  `if !resp.status().is_success()` and at `:374`-`:376` any body that parses via
+- Obeyed on **any non-2xx** response: `platform/sync/src/transport.rs:433` opens
+  `if !resp.status().is_success()` and at `:452` any body that parses via
   `parse_server_migrated` becomes `SyncError::ServerMigrated { new_url }`.
 - **No 421 check.** The named query for that zero is
-  `git grep -n "421" -- platform/sync crates/oz-core/src`; every hit is an
+  `git grep -n "421" -- platform/sync crates/kasirmu-core/src`; every hit is an
   ISO-4217 currency comment.
 - **`new_url` is never validated** - no scheme allow-list, no host comparison,
   no localhost check.
 - Persisted through the **bare** setter: `persist_migration_url`
-  (`platform/sync/src/daemon_tick.rs:77`-`:86`) calls
+  (`platform/sync/src/daemon_tick.rs:183`) calls
   `Settings::set_sync_server_url(store.conn(), &url)` directly, with `let _ =` on
   the join, so the write is **untracked**: no sync delta, no audit row, and a
   failure is invisible.
 - The **next tick** ships the bearer key and the whole pending offline batch to
-  that host, and the escalation at `platform/sync/src/daemon.rs:131`
+  that host, and the escalation at `platform/sync/src/daemon.rs:339`
   (`refresh_persisted_api_key`) POSTs `terminal_id` and `terminal_secret` to it -
   values the ingest lane cannot even *name*, because `sync_terminal_secret` is on
   the credential list and `sync_terminal_id` is on the device list.
@@ -86,7 +90,7 @@ sync_api_key:tenant-a  admitted   is_secret_setting_key=False
 stripe.api_key:0       admitted   is_secret_setting_key=False
 ```
 
-`scoped_setting_key` (`crates/oz-api/src/pg.rs:163`) emits `{base}:{tenant}`, so
+`scoped_setting_key` (`crates/kasirmu-api/src/pg/settings.rs:66`) emits `{base}:{tenant}`, so
 a real install can hold a credential row the equality does not recognise.
 Pinned as `decision_pin_credential_base_is_suffix_blind`, to be **inverted, not
 deleted**, when the suffix arm lands.
@@ -126,4 +130,25 @@ the index unless `node scripts/generate-records-index.mjs` is run after the file
 is added; `e3e5fcf54` made the index scan `docs/records`, and the last record was
 missed for exactly this reason. Committed here as a second commit.
 
-> last audited 29-09-26 by docs-auditor
+## Re-measured 2026-10-11 (coordinates repaired, counts re-derived)
+
+The census script still reproduces, and it is the authority: `python3
+scripts/census-sync-ingest-admits.py` now reports **declared=81, admitted=60, refused=21**
+(the 2026-09-12 reading above was 75 / 54 / 21). The refused breakdown is unchanged —
+credential list 17, device list 3, manager prefix 1 — and the self-test still passes every
+known verdict, including the suffix-blind probe. The guard floor the parser documents has
+moved with it (`floor(70)=81`).
+
+Line numbers in §2 and §3 above were the readings of their day and have been repointed to
+the live values: `transport.rs:433`/`:452` (was `:355`/`:374`-`:376`),
+`daemon_tick.rs:183` (was `:77`-`:86`), `daemon.rs:339` (was `:131`), and
+`scoped_setting_key` is now `crates/kasirmu-api/src/pg/settings.rs:66` (the
+`crates/oz-api/src/pg.rs` path was retired by the rebrand; `pg.rs` survives as a partial).
+
+**The security substance is unchanged and re-verified:** `421` still appears nowhere in
+`platform/sync/src/` outside the ISO-4217 doc line, and every redirect path
+(`:433`/`:452`, `:503`/`:518`, `:587`/`:602`) still turns a non-2xx body into
+`SyncError::ServerMigrated { new_url }` without validating the new URL. The blind spot the
+§3 probe demonstrates still resolves to `None` for a scoped spelling.
+
+> last audited 11-10-26 by docs-auditor
