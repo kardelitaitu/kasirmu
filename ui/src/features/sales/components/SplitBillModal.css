@@ -9,7 +9,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
+  /* Was a hardcoded rgba(0,0,0,0.6). `--color-pos-modal-overlay` is that exact
+     value in the dark theme and 0.50 in the light one, so this was not just an
+     untokenised literal — it was the one overlay in the POS that did not dim with
+     the theme. Every sibling modal uses this token (PriceOverrideModal.css:15,
+     SettingsPopup.css:14, TableManagementScreen.css). */
+  background: var(--color-pos-modal-overlay);
   backdrop-filter: blur(4px);
   padding: var(--space-4);
 }
