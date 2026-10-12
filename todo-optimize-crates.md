@@ -761,6 +761,7 @@ The result is then stamped `Currency(*b"USD")` unconditionally — an IDR store'
 labelled dollars. *Fix:* sargable half-open range (`created_at >= ?1 AND created_at < ?2`), group
 by currency, and resolve the store's currency instead of hard-coding.
 
+**Re-measured 11-10-26:** `modules/reporting/src/repository.rs` NO LONGER EXISTS — the module's `src/` is now `{handlers,lib,lib_tests}.rs`, and `handlers.rs` is 31 lines carrying no `strftime`/`DATE(` call, no `SUM(total_minor)` and no currency aggregation, so this finding's three named defects are not present at HEAD in any file. Read it as a dated reading of a module that has since been reimplemented; do not treat it as a live defect. 
 ```rust
 33               FROM sales WHERE strftime('%Y-%m-%d', created_at) = ?1 AND status = 'completed'",
 ...
@@ -866,6 +867,7 @@ was retired under checklist C29, which took `query_daily_summary`, `query_sales_
 the remaining non-sargable surface is `query_menu_engineering` (`menu_engineering.rs:88-108`) plus
 `margin.rs:76-88`. Scope the fix to those two.
 
+**Re-measured 11-10-26:** `crates/kasirmu-reporting/src/daily_summary.rs` NO LONGER EXISTS (the crate's `src/` is now `{error,lib,margin,menu_engineering}.rs`). The non-sargable-predicate substance DOES still hold, in the surviving files: `menu_engineering.rs` (261 lines) and `margin.rs` (126 lines) both still carry a `DATE(s.created_at)`-style predicate and neither carries a `LIMIT`. Repoint the two query names to those modules when acting on this item; the `daily_summary`/`query_daily_summary` spellings are the retired ones. 
 ```sql
 130           AND DATE(s.created_at) BETWEEN ?1 AND ?2
 ```
@@ -886,6 +888,7 @@ full-frame passes** — `crates/kasirmu-media/src/crop.rs:169-211` ◦ (3C-06). 
 one blocking `libc::syslog()` per record on the emitting thread. *Fix:* `non_blocking`, `write!`
 into a reused buffer.
 
+**Re-measured 11-10-26:** `crates/kasirmu-logging/src/syslog.rs` and `eventlog.rs` NO LONGER EXIST — the crate's own README (audited 2026-10-11) records that the syslog/eventlog FFI modules were REMOVED, leaving `{error,lib,visitor}.rs`. The finding is retired with the code it described. (It also makes the ledger's O-M57-era claim that a syslog layer installs on deployments a dated reading — see the same-named item in `.agents/reviews/crate-review-ledger-24-09-26.md`.) 
 **O-M58 · kasirmu-logging — eventlog layer allocates a `Vec<u16>` and blocks per record** —
 `crates/kasirmu-logging/src/eventlog.rs:108-115` ◦ (3C-08). *Fix:* thread-local scratch buffer,
 worker thread.
@@ -1576,7 +1579,7 @@ and only one third is a one-line fix:
 |---|---|---|---|
 | **A** | **12** | `Connection::open_in_memory()` then `run` | **Yes — `fresh_db()` is a drop-in.** All 12 converted in §11H. *(This read "11 remain" when written; the 12 above was already counted **after** O-T01 landed, so 12 remained, not 11. Corrected by §11H.)* |
 | **C** | **9** | `run` on a connection the test does not own (`state.db.lock().await`) | **No.** `fresh_db()` *returns* a new connection; these tests need the one `AppState` already holds. |
-| **D** | **16** | `Connection::open(&path)` — on-disk databases | **No, and correctly so.** `crates/kasirmu-core/tests/backup_restore_integration.rs:45` already says why: *"`fresh_db()` creates an in-memory DB… For file-based DBs, we run migrations manually."* Includes both `recovery_tests.rs` files and `migrate_sqlite_to_pg_tests.rs`, which exist to exercise on-disk and WAL behaviour. |
+| **D** | **16** | `Connection::open(&path)` — on-disk databases | **No, and correctly so.** the backup/restore test — now `crates/kasirmu-core/tests/integration/backup_restore.rs:45` after the consolidation that moved every top-level test into `tests/integration/` — already says why: *"`fresh_db()` creates an in-memory DB… For file-based DBs, we run migrations manually."* Includes both `recovery_tests.rs` files and `migrate_sqlite_to_pg_tests.rs`, which exist to exercise on-disk and WAL behaviour. |
 
 Remaining class A, all with the same one-line fix:
 `crates/kasirmu-core/src/db/inventory_tests.rs:12`, `settings_tests.rs:7`,

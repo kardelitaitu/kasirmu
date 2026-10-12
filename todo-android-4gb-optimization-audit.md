@@ -1361,7 +1361,7 @@ Modularity and performance regressions must be mechanically prevented.
 ### 25.6 Security Gate
 
 - [x] Fail if PAN-like data appears in logs (regex scan on log outputs).
-- [x] Fail if secrets appear in release assets (`scripts/check-secrets.py`).
+- [x] Fail if secrets appear in release assets. **Audited 11-10-26: the `scripts/check-secrets.py` this row named has NEVER existed** (no such path in the tree at any commit). The secret-scanning artefact that does exist is `.gitleaks.toml`, and a grep finds it referenced by `scripts/verify-root-policy.py:51` only — it is **not wired into any workflow**, so read this row as the intent it records, not as a running gate. Re-derive with `git ls-files | grep -i gitleaks` and `grep -rn gitleaks .github/workflows/`.
 - [x] Fail if plugin capability checks are bypassed (PLG-03 governance test suite).
 - [x] Fail if Argon2id parameters drop below policy without approval (crypto tests).
 

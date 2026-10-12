@@ -425,6 +425,29 @@ the spec's own acceptance row. **Sweep target: any spec or plan with a Status li
 against `scripts/gates.json`.** Note the asymmetry with trap 3: there a guard grew and a doc's
 "it does not check X" went false; here the gate arrived and a doc's "it does not exist" went false.
 
+**15. A checked box can name a gate that NEVER existed.** Distinct from trap 14 (a gate that
+shipped late) and trap 3 (a guard that grew): here the named artifact is not merely stale but was
+never created, so `git log --all -- <path>` is empty. Found 2026-10-11: a plan's `[x]` row claimed
+"Fail if secrets appear in release assets (`scripts/check-secrets.py`)" — no such file at any
+commit; the real artifact is `.gitleaks.toml`, and it is **referenced by one script and wired into
+no workflow at all**, so the row was a green tick over a gate that does not run under either name.
+This is the FOURTH instance of the `[x]`-without-evidence class in this campaign. **For every
+checked row that names a script or a gate: test the path AND test that something invokes it.**
+
+**16. A loose path-extraction regex INVENTS dead paths.** A sweep pattern that stops at the first
+`.` reports `manifest.js` for `manifest.json` and then "finds" that it does not exist. An auditor
+caught this in their own extraction on 2026-10-11 (6 apparent dead paths, 5 real). **Require a
+closing delimiter (`\.(rs|md|json|ts|tsx|toml|sh|py)` at a word boundary) and spot-check one hit
+from each file before reporting a count.**
+
+**17. When a named file is gone, test the SUBSTANCE before annotating it away.** A finding can
+survive a module's deletion under a different name. Found 2026-10-11: an O-M54 item named
+`kasirmu-reporting/src/daily_summary.rs` (deleted) — but the *defect it described* (a non-sargable
+`DATE(col)` predicate with no `LIMIT`) is still live in `menu_engineering.rs` and `margin.rs`, so
+the item stayed actionable under new names. A neighbouring item's module had been reimplemented
+away entirely, carrying none of the named defects. **Repoint when the substance survives; record a
+retirement when it does not.** Same discipline in reverse for trap 12.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually

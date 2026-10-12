@@ -218,4 +218,29 @@ pub fn run() {
             app.manage(DbClient { sender: tx });Ok(())}).invoke_handler(tauri::generate_handler![get_product_by_sku,
                 bulk_sync_inventory,
                 queue_offline_sale]).run(tauri::generate_context!())
-                .expect("Runtime Error: Core instance crashed unexpected");}```        
+                .expect("Runtime Error: Core instance crashed unexpected");}```
+
+<!-- Audited 2026-10-11 by docs-auditor (dated-record scope, no stamp/footer by this directory's convention).
+
+**Verify-and-record result:** a pre-implementation design sketch whose own second line says it is
+"idea to be reviewed". Assessed as a design record, not as a claim about the present, and ONE finding is
+worth carrying forward:
+
+- **The sketch's own concrete API surface was never built, and the shipped system uses a different design.**
+  The three IPC commands its closing `generate_handler!` sketch registers — `get_product_by_sku`,
+  `bulk_sync_inventory`, `queue_offline_sale` — have ZERO matches in the tree except one passing mention in
+  `crates/kasirmu-core/src/db/products_tests.rs`; the `outbox_sales` table it inserts into does not exist in
+  `crates/kasirmu-core/migrations/`; and the `DbMessage` actor mailbox it builds is not the shipped
+  architecture. The real system keeps commands in `apps/desktop-tauri/src/commands/` and
+  `apps/mobile-tauri/src/commands/` (registered in each shell's `lib.rs`), and its offline queue is the
+  `status = 'pending'` column on the `sales` row
+  (`crates/kasirmu-core/src/db/sales_checkout.rs`), reaped by `pending_expires_at`.
+- **What DID survive conceptually:** offline-first local persistence with deferred sync, an async
+  Tokio-backed command layer, and the low-spec-hardware framing. Those became the product; the sketch's
+  specific names did not.
+
+**Why no repair:** the file is a dated design record whose proposals were superseded by implementation, and
+rewriting it would falsify the record. The live successors are `docs/decisions/` (the shipped architecture)
+and `todo-android-4gb-optimization-audit.md` (the hardware work). No dead PATH is cited — the anchors above
+are symbol/table names, so `check-dead-refs` cannot see this class by construction.
+-->
