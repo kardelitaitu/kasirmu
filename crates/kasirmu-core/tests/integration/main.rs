@@ -16,6 +16,7 @@ mod loyalty;
 mod manifest_schema;
 mod offline;
 mod payment_failure;
+mod pilot_merchant_stress;
 mod purchase_order;
 mod refund_tax;
 mod settings;
