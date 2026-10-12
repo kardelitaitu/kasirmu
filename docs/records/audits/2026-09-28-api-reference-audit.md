@@ -150,4 +150,31 @@ The page is **red against `check-api-surface.py` by design** — the checker is 
 - **Did:** full enumeration of all 163 discrepancies by class; spot-validation of every class against client source; historical tracing that reclassifies the 101 phantom entries from "doc invention" to "stale removal/rename drift."
 - **Did not:** edit `api-reference.md`. Patching 163 entries without the per-name tracing in §6 would risk deleting live renames or inventing a new baseline. The remediation is a separate, scoped task.
 
+
+---
+
+## Re-verified 2026-10-11 (docs-auditor) — the RED verdict is SUPERSEDED; the page is CLEAN
+
+This record's §2 result line reads **"BLOCKED — 163 discrepancies; 150 major, 13 minor"** and its
+sections describe a page that is red by design. That was true on 2026-09-28. It is **not true
+now**, and this record carries no correction, so a reader arriving here would treat a remediated
+page as red. Nothing above is rewritten — the enumeration was accurate on its day and it is the
+reason the repair was possible.
+
+| § | As written | State at 2026-10-11 |
+|---|---|---|
+| 2 | 163 discrepancies: 101 `listed_not_defined`, 49 `registered_not_listed`, 10 `marker_wrong`, 3 `listed_not_registered` | **ALL FOUR BUCKETS ARE ZERO.** `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` exits **0** with `CLEAN: doc and registries agree` — marker wrong 0, listed-not-registered 0, listed-not-defined 0, registered-not-listed 0. |
+| 2 | Registered 475 / 343 / **490** distinct; documented **545** entries | Registered **500 / 428 / 519** distinct; documented **519** entries — the page and the registries now agree exactly, and the surface has grown by 29 commands since this audit. |
+| 6 step 6 | "Wire the checker in behind the new baseline … once the page is at zero" | **DONE.** `check-api-surface.py` is registered in `scripts/gates.json` (`:1254`, with its own note) and runs from `scripts/check.sh:927`, so the drift cannot silently return. |
+| 7 | "Did not: edit `api-reference.md`" | The remediation ran as a sequence of scoped commits: `ae48f5d89` and `b7f4c60b7` (2026-10-02), `8c3e86eff` and `4a97bdcad` (2026-10-07), `5535ec01d` and `8875cf5e1` (2026-10-07/08), `c1b2ccd7d` (2026-10-08), and the final reconciliation in `720999a18` (2026-10-13). |
+
+**This record is still worth reading for its method**, which the outcome vindicates: it refused to
+bulk-delete the 101 phantom entries and instead traced each with `git log --all -S "fn <name>"`,
+reclassifying them from "doc invention" to "stale removal/rename drift". That distinction is
+precisely what made a safe repair possible, and §6's sequencing is the plan that was followed.
+
+**NOT re-measured:** whether each of the 29 commands added to the surface since this audit is
+individually correct in the page's prose — the checker reconciles *names and markers*, not
+descriptions. The audits of the surrounding batches covered the page's prose.
+
 > last audited 29-09-26 by docs-auditor

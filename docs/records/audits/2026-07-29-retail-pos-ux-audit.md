@@ -4,7 +4,7 @@
 
 <!-- Original audit marker (2026-07-29, kept verbatim — original finding set, status still OPEN) · Buffy · status: OPEN · branch: 0.0.24 -->
 <!-- Scope: ui/src/features/retail/ (all .tsx + .css) + docs/architecture/UX_GUIDELINES.md -->
-<!-- Prior audit: docs/archived/2026-07-28-retail-pos-theming-audit.md (VERIFIED — fix cycle closed) -->
+<!-- Prior audit: docs/records/audits/2026-07-28-retail-pos-theming-audit.md (VERIFIED — fix cycle closed; was docs/archived/… before the 2026-10-02 retirement of that folder) -->
 
 ## Executive Summary
 

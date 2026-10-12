@@ -8,7 +8,7 @@
 
 - No CSS linter exists in the repo: `ui/package.json` lint is `eslint .`, and neither its scripts nor `devDependencies` name stylelint/postcss/prettier/lint-staged/husky. `ui/eslint.config.js` has no `.css` glob or CSS processor, so ESLint prints "File ignored because no matching configuration was supplied" and exits 0 (measured: `cd ui && npx eslint src/features/sales/VoidOrdersScreen.css`).
 - CI's `UI lint` step (`dev-ci.yml#ui-test`) runs the same `eslint .` and is blind the same way.
-- No hook step sees stylesheets either: steps 2–7 of `.githooks/pre-commit` are extension-locked to `.tsx|.ts`, `*.ftl`, `migrations/*.sql`, `apps/license-server/*.go`; only step 1 (line endings) touches every path and it asserts nothing about content.
+- No hook step sees stylesheets either: steps 2–7 of `.githooks/pre-commit` are extension-locked to `.tsx|.ts`, `*.ftl`, `migrations/*.sql`, `apps/license-server/*.go`; only step 1 (line endings) touches every path and it asserts nothing about content. *Qualified 11-10-26: the hook now has **eight** steps — step 8, "Rust format: staged files only" (check-only `rustfmt --check` over staged `.rs`), landed 2026-10-09 in `e2c3444b9`, after this page's 2026-09-29 pass. It is `.rs`-locked and does not touch `.css`, so the conclusion below stands unchanged; only the enumerated range was understated. `grep -c '^# ── ' .githooks/pre-commit` re-derives the count.*
 - History: since 2026-09-13, dozens of commits touching `.css` named `eslint` in the body — each also carried `.tsx` files where eslint genuinely graded the source. The false part is the reach: one surface verified, a second silently covered by the same clause.
 
 ## The replacement: five walker suites

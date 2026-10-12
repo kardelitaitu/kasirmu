@@ -483,6 +483,36 @@ stamp to a `_done/` plan.** A completed plan is a record of work, and inventing 
 misrepresent it as a live claim doc — the same reasoning as the `.agents/` record corpus, which is
 why the two are separate traps: the `.agents/` rule is by directory, this one is by prefix.
 
+**22. A stamp that records a repair whose before/after paths render IDENTICALLY.** Distinct from
+trap 8 (a repair claimed but absent) and from trap 1 (a path that moved): here the repair WAS made,
+and the sentence describing it is garbled so a reader cannot see what changed. Found 2026-10-11:
+`modal-audit-checklist.md`'s stamp said it fixed pointers aimed at "`ui/src/theme/tokens.css`" because
+"that directory no longer exists. The token sheet is now `ui/src/theme/tokens.css`" — both halves
+the same path, so the sentence proves nothing. The real move was `ui/src/styles/tokens.css` ->
+`ui/src/theme/tokens.css` (six commits under the old path). **When a stamp quotes a before/after
+pair, check the two are actually different** — and recover the truth from `git log -- <oldpath>`.
+
+**23. Counts of HOOK STEPS and GATE SETS rot the same way ceilings do.** The pre-commit hook gained
+an eighth step on 2026-10-09, and a "steps 2–7 are extension-locked" range (or a "seven steps" count)
+was found stale in FOUR separate documents across this campaign. **Trap 20's shape generalizes: any
+doc quoting a step count, a step range, or a suite count should be re-derived against the hook's own
+`# ──` section headings, not read.**
+
+**24. Read a heading's SCOPE before calling a count wrong.** A page headed "five walker suites" whose
+command block names six files is not contradicting itself if it labels the sixth "a separate shape the
+five do not grade". Measured 2026-10-11: the same "five vs six" concern was raised from a batch-16
+reading of the heading alone, and THREE independent auditors re-deriving it in full all concluded NOT A
+DEFECT — the five are one family and the sixth is a deliberately separate run. Its companion complaint
+("the page never mentions orientation") was literally true and beside the point: orientation is graded by
+a different suite outside that page's declared scope. **A page that states its own scope and its own
+boundary is usually right; check whether the thing you are missing is simply out of scope.**
+
+**25. An INCOMPLETE enumerated range is different from a FALSE one — and both differ from a wrong
+count.** The hook gained an eighth step, so "steps 2–7 are extension-locked" understated the range; but
+step 8 is `.rs`-locked, cannot match a `.css` path, and the pre-commit has no `.css` reference, so the
+page's conclusion still held. **Qualify the range in place; do not rewrite the conclusion, and say which
+half changed.** Deciding between "incomplete" and "false" is the whole repair.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually
