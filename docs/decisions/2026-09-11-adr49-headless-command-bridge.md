@@ -4,12 +4,26 @@ area: desktop-client
 title: ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge
 status: Accepted (2026-09-11) — implemented for the desktop shell; the tablet migration has since largely LANDED. Amended 2026-10-07: "tablet client not started" was true on 2026-09-11 and is false now — 53 of the tablet's 60 command files use `kasirmu_bridge::`, and the 2026-10-04 amendments below (`AppState::bridge_ctx()` at `apps/mobile-tauri/src/state.rs:473`) record the migration as mostly done. The 7 that do not delegate are largely tablet-native by design (`sync.rs`, `updater.rs`, `picker_ticket.rs`). What genuinely remains is §"What was NOT done" item 1 — the tablet still keeps its own copy of some bodies.
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 188 lines, no audit stamp, no footer and no marker. Its status line is unusually precise — Accepted, implemented for the DESKTOP shell, tablet client not started — and that precision is the kind that survives a restructure, so it was the first thing checked. · AND IT IS STILL TRUE IN SUBSTANCE, because the bridge it created is the most structurally consequential artefact in the repository. `crates/kasirmu-bridge/src/` carries the shared command bodies this decision moved out of the shells — `ctx.rs`, `lib.rs`, `data.rs`, `features.rs` and `kds.rs` all present. The crate is now `kasirmu-bridge` rather than the `oz-bridge` the title names, but the boundary it established is the one every later document in this campaign has relied on: the platform-core boundary checker enforces a `bridge-toolkit-purity` rule specifically so a second renderer could bind, and ADR-44, audited in the previous round, sits alongside this one as the decision that made design rules enforceable rather than aspirational. · THE SHELL ASYMMETRY IS WORTH RECORDING, because the document is honest about it and the tree kept the shape. The decision moved command bodies into a headless bridge so the shells become delegates — which is exactly why `kasirmu-bridge` can be depended on by something that is not a Tauri app, and why the toolkit-purity gate exists. A reader trying to understand why that crate may not depend on `tauri` will find the answer in the gate definition and the rationale in this ADR. · NOT RE-MEASURED: whether the tablet shell has since been migrated. The status line says not started, and this pass did not walk both clients to confirm or refute it — the desktop-side bridge exists, and that is what the document's own claim rests on. A future pass wanting to close that leg should diff the two handler registries, which is what the ipc-parity gate does. · CLOSED 2026-10-07 (docs-auditor): the leg this stamp left open is now measured, by the diff it names. Both handler registries were walked: the tablet registers 414 commands, 53 of its 60 command files use `kasirmu_bridge::` (the 7 that do not are largely tablet-native by design -- `sync.rs`, `updater.rs`, `picker_ticket.rs`), and `AppState::bridge_ctx()` exists at `apps/mobile-tauri/src/state.rs:473`. So "tablet client not started" is refuted in substance: the migration largely landed after 2026-09-11, and the 2026-10-04 amendments on this file already say as much. The status line and the index row were corrected to say so. The SCALE leg of §"What was NOT done" item 1 remains open and is not claimed otherwise here. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 12 minor) · Re-audit of ADR #49, the headless-bridge decision; the 2026-09-29/2026-10-07 stamp is merged at the bottom as original evidence, delimiters stripped so it cannot nest. · MAJOR (one class, ~30 occurrences): the record was written against the PRE-REBRAND tree and every path in it still named the old roots — crates/oz-bridge/ (13), apps/desktop-client/ (16), apps/tablet-client/ (1), oz_bridge/kasirmu_bridge (6). All are dead; all have exact live equivalents (crates/kasirmu-bridge/, apps/desktop-tauri/ whose Cargo package is kasirmu-app, apps/mobile-tauri/). These are INSTRUCTIONS as much as records — the whole ADR is a map of where each body lives — so a reader following them lands nowhere. Repointed mechanically, with a Path-status note added under the H1 giving the mapping rather than rewriting the title (which is the record's name, not a claim). · THE DECISION ITSELF IS UNCHANGED AND RE-VERIFIED: the bridge crate is headless by dependency (crates/kasirmu-bridge/Cargo.toml [dependencies] carries no tauri/gtk/webkit2gtk/tauri-plugin-*, and no platform-sync — both load-bearing claims hold); BridgeCtx really has the 14 public fields the record enumerates, field-for-field; BridgeError is still #[non_exhaustive] at error.rs:14 and the enum at :15; the From<BridgeError> for AppError seam is at authz.rs:227 and AppError::Core is still preserved variant-for-variant; desktop AppState::bridge_ctx() is at authz.rs:186, exactly as cited; the four test-reached pub fns are at model.rs:27/:35/:55 and default_direction at :250; branding.rs:71-74, health.rs:5-9, data.rs:6-8 and typed.rs:272 are all line-exact; the DriverRegistry::scales() accessor the (a) amendment added is real at kasirmu-hal/src/registry.rs:180; the tablet's scale.rs delegation holds (its sole scale_ids() occurrence is the module doc recording the removal, which is exactly what amendment (b) predicts). · COUNTS THAT ARE READINGS, RECORDED NOT SWAPPED: the tablet figure "53 of 60 command files" is now 56 of 63 non-test files (the suite grew; the four extra non-delegating files are currencies.rs, exchange_rates.rs, features.rs, promotions.rs) — the record now carries both the original reading and the command that re-derives it. The §What was NOT done item 1 is marked CLOSED, and item 2 is CLOSED for the same reason: docs/decisions/README.md DOES carry a ^| 49 | row today and generate-records-index.mjs --check exits 0. · ONE CLAIM IMPROVED, AND SAID SO: the §Costs paragraph recorded a file-size breach RELOCATED into kasirmu-bridge/src/settings.rs at 1,179 lines against AGENTS.md's 1,000 cap. Re-measured: that file is 932 and the desktop twin 361 — the breach was paid down. The paragraph is left as the record of what was true then with the current reading beside it, because a relocated breach later resolved is the more useful fact. The AGENTS.md line reference also moved (:155 -> :245) and is corrected in place. · TWO DEAD SURFACES FIXED: the §What was NOT extracted row for plugins.rs (a 3-line placeholder) is struck through — the file was DELETED by 44e7be9cd (C29, "delete inert surface"), so the row now explains why no plugins command exists rather than pointing at a file; and amendment (a)'s citation of tablet scale.rs:66-73 OVERRUNS the file (now 64 lines) because amendment (b) rewrote that very file, so the range is marked as superseded in place. The findings link text and target also disagreed (text said docs/records/audit-open-findings.md, target ../records/findings/...) — the target is right and the text now matches it. · NOT re-measured: the runtime behaviour of any bridged body; the byte-identical-parity iron rule as an executed check (it is a campaign rule, not a gate); the 28-item visibility widening and the four test-reached helpers beyond confirming their current lines; and the dated measurements carried inside amendments (a)-(f), which are records of their own sessions. · Prior stamp retained verbatim below:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 188 lines, no audit stamp, no footer and no marker. Its status line is unusually precise — Accepted, implemented for the DESKTOP shell, tablet client not started — and that precision is the kind that survives a restructure, so it was the first thing checked. · AND IT IS STILL TRUE IN SUBSTANCE, because the bridge it created is the most structurally consequential artefact in the repository. `crates/kasirmu-bridge/src/` carries the shared command bodies this decision moved out of the shells — `ctx.rs`, `lib.rs`, `data.rs`, `features.rs` and `kds.rs` all present. The crate is now `kasirmu-bridge` rather than the `kasirmu-bridge` the title names, but the boundary it established is the one every later document in this campaign has relied on: the platform-core boundary checker enforces a `bridge-toolkit-purity` rule specifically so a second renderer could bind, and ADR-44, audited in the previous round, sits alongside this one as the decision that made design rules enforceable rather than aspirational. · THE SHELL ASYMMETRY IS WORTH RECORDING, because the document is honest about it and the tree kept the shape. The decision moved command bodies into a headless bridge so the shells become delegates — which is exactly why `kasirmu-bridge` can be depended on by something that is not a Tauri app, and why the toolkit-purity gate exists. A reader trying to understand why that crate may not depend on `tauri` will find the answer in the gate definition and the rationale in this ADR. · NOT RE-MEASURED: whether the tablet shell has since been migrated. The status line says not started, and this pass did not walk both clients to confirm or refute it — the desktop-side bridge exists, and that is what the document's own claim rests on. A future pass wanting to close that leg should diff the two handler registries, which is what the ipc-parity gate does. · CLOSED 2026-10-07 (docs-auditor): the leg this stamp left open is now measured, by the diff it names. Both handler registries were walked: the tablet registers 414 commands, 53 of its 60 command files use `kasirmu_bridge::` (the 7 that do not are largely tablet-native by design -- `sync.rs`, `updater.rs`, `picker_ticket.rs`), and `AppState::bridge_ctx()` exists at `apps/mobile-tauri/src/state.rs:473`. So "tablet client not started" is refuted in substance: the migration largely landed after 2026-09-11, and the 2026-10-04 amendments on this file already say as much. The status line and the index row were corrected to say so. The SCALE leg of §"What was NOT done" item 1 remains open and is not claimed otherwise here. · No stamp existed; this is the first. -->
 # ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge
+
+> **Path status (added 2026-10-11, docs-auditor).** This record was written against the
+> pre-rebrand tree, and its body still names those paths. **Every one of them has a live
+> equivalent**, and the mapping is mechanical:
+> `crates/oz-bridge/` → **`crates/kasirmu-bridge/`** · `apps/desktop-client/` →
+> **`apps/desktop-tauri/`** (its Cargo package is `kasirmu-app`) · `apps/tablet-client/` →
+> **`apps/mobile-tauri/`**. The decision, its rationale and its amendments are unchanged and
+> re-verified; only the coordinates moved. The title is left as written because it is the
+> record's name, not a claim about today's tree.
 
 **Status:** Accepted (2026-09-11). The desktop side is built. **Amended 2026-10-07: the tablet side is
 no longer "not [built]" — it is largely migrated.** Of the tablet's 60 command files, **53 use
-`kasirmu_bridge::`**; the 2026-10-04 amendments below record that "every other tablet command had
+`kasirmu_bridge::`** (**re-measured 2026-10-11: 63 non-test command files, 56 delegating**; the
+four extra non-delegating files are `currencies.rs`, `exchange_rates.rs`, `features.rs` and
+`promotions.rs`, all still tablet-native. A reading with a command, not an invariant:
+`ls apps/mobile-tauri/src/commands/*.rs | grep -v _tests.rs | wc -l`); the 2026-10-04 amendments below record that "every other tablet command had
 been delegating for some time" and that the last holdout (`scale.rs`) was closed by delegating.
 The 7 files with no bridge usage are largely tablet-native by design (`sync.rs`, `updater.rs`,
 `picker_ticket.rs`). The open item is narrower than this line implies: per the §"Still open" note
@@ -37,7 +51,7 @@ can ask the app to do. `crates/oz-bridge` was scaffolded at `de293ff66` (“scaf
 headless oz-bridge crate with BridgeCtx and BridgeError”, 2026-09-10); 130 `bridge`-tagged
 commits had landed by 2026-09-11.
 
-The crate is headless **by dependency, not by convention**: `crates/oz-bridge/Cargo.toml`
+The crate is headless **by dependency, not by convention**: `crates/kasirmu-bridge/Cargo.toml`
 carries no `tauri`, `gtk`, `webkit2gtk` or `tauri-plugin-*` dependency and says so in a
 comment above `[dependencies]`. `platform-sync` is absent from that list too, which is
 load-bearing — see §What was NOT extracted.
@@ -45,10 +59,10 @@ load-bearing — see §What was NOT extracted.
 ## Decision
 
 **1. Move the bodies, keep the surface.** Every `#[tauri::command]` function in
-`apps/desktop-client/src/commands/*.rs` stays in place with its name, attribute set and
+`apps/desktop-tauri/src/commands/*.rs` stays in place with its name, attribute set and
 signature. Its body becomes three moves: obtain a `BridgeCtx`, call the bridge, map the
 error with `.map_err(Into::into)`. The context is built by `AppState::bridge_ctx()`
-(`apps/desktop-client/src/commands/authz.rs:186`), which borrows `AppState` for the
+(`apps/desktop-tauri/src/commands/authz.rs:186`), which borrows `AppState` for the
 lifetime of the call.
 
 The IPC surface is unchanged **by design, and it was measured that way throughout**:
@@ -58,7 +72,7 @@ command-site invariants held too: **488** `pub async fn` at the top level of `co
 **500** recursive; the 12-site difference is `commands/topology/`.
 
 **2. `BridgeCtx` carries services, not paths.** The struct
-(`crates/oz-bridge/src/ctx.rs:59-94`) has **14 public fields** — the global db handle,
+(`crates/kasirmu-bridge/src/ctx.rs:71-106`) has **14 public fields** — the global db handle,
 `db_manager`, `sessions`, `session_ttl_seconds`, `cache`, `kernel`, `terminal_id`,
 `media_cache_dir`, `picker_ticket_secret`, `registry`, `plugins`, `emitter`,
 `scanner_cancel`, `topology_apply_lock` — plus 12 helper methods spanning resolve
@@ -71,7 +85,7 @@ command-site invariants held too: **488** `pub async fn` at the top level of `co
 > Where a body needs a path or a compile-time-constant string, **the shim computes it and
 > passes it as a parameter.** This is not a stylistic preference and not a transitional
 > state to clean up later. The rationale is recorded in code at
-> `crates/oz-bridge/src/settings.rs:20-23`: `BridgeCtx` carries the app *cache* dir, which
+> `crates/kasirmu-bridge/src/settings.rs:34`: `BridgeCtx` carries the app *cache* dir, which
 > is a **different directory** from the `db_path` parent the shell derives, so the shim
 > threads `base_dir` in rather than letting the bridge re-derive it.
 
@@ -80,14 +94,14 @@ move would have shipped:
 
 | Case | What a verbatim move would have changed | Evidence in code |
 |---|---|---|
-| **branding** | `app_data_dir` and `media_cache_dir` are different directories. `validate_logo_path` requires the logo to sit *inside the application data directory*, so the ctx's cache dir would reject or relocate valid logos | `crates/oz-bridge/src/branding.rs:71-74`; `ctx.rs:74-75` |
-| **health** | `env!` / `option_env!` resolve **per crate at compile time**. Moved verbatim, `CARGO_PKG_NAME` answers `"oz-bridge"` instead of `"oz-pos-app"` (`apps/desktop-client/Cargo.toml`: `name = "oz-pos-app"`), and `option_env!("TARGET")` falls to `"unknown"` because `crates/oz-bridge` ships no `build.rs` setting `TARGET` | `crates/oz-bridge/src/health.rs:5-9` (doc); `apps/desktop-client/src/commands/health.rs:26-29` and `:46-49` (the `env!` reads, kept in the shim) |
-| **backup / db_path** | `AppState::db_path` is unreachable from the bridge and the backup target is *derived* from it, so the shim clones it and passes `&Path` to all four commands; `default_backup_path` moved **with** the bodies so the derivation stays shared by all four | `apps/desktop-client/src/commands/data.rs:6-8`; `crates/oz-bridge/src/data.rs:146-148`, `:274`, `:294` |
+| **branding** | `app_data_dir` and `media_cache_dir` are different directories. `validate_logo_path` requires the logo to sit *inside the application data directory*, so the ctx's cache dir would reject or relocate valid logos | `crates/kasirmu-bridge/src/branding.rs:71-74`; `ctx.rs:87-89` |
+| **health** | `env!` / `option_env!` resolve **per crate at compile time**. Moved verbatim, `CARGO_PKG_NAME` answers `"oz-bridge"` instead of `"oz-pos-app"` (at the time of writing; today the names are `"kasirmu-bridge"` and `"kasirmu-app"` — `apps/desktop-tauri/Cargo.toml`: `name = "kasirmu-app"`), and `option_env!("TARGET")` falls to `"unknown"` because `crates/oz-bridge` ships no `build.rs` setting `TARGET` | `crates/kasirmu-bridge/src/health.rs:5-9` (doc); `apps/desktop-tauri/src/commands/health.rs:26-29` and `:46-49` (the `env!` reads, kept in the shim) |
+| **backup / db_path** | `AppState::db_path` is unreachable from the bridge and the backup target is *derived* from it, so the shim clones it and passes `&Path` to all four commands; `default_backup_path` moved **with** the bodies so the derivation stays shared by all four | `apps/desktop-tauri/src/commands/data.rs:6-8`; `crates/kasirmu-bridge/src/data.rs:146-148`, `:274`, `:294` |
 
 **3. Two error types, one conversion seam.** Bridge code returns `BridgeError`
-(`crates/oz-bridge/src/error.rs:15`); desktop code returns `AppError`. The single seam is
+(`crates/kasirmu-bridge/src/error.rs:15`); desktop code returns `AppError`. The single seam is
 `impl From<BridgeError> for AppError` at
-`apps/desktop-client/src/commands/authz.rs:227-258`. It maps variant-for-variant and
+`apps/desktop-tauri/src/commands/authz.rs:227-258`. It maps variant-for-variant and
 critically **preserves `Core`**: `BridgeError::Core { sub_kind, message } => Self::Core { … }`
 (`authz.rs:236`). Tests that match on `AppError::Core` with a message substring therefore
 still pass through the two-hop path
@@ -111,13 +125,13 @@ variants and strings. **Pre-existing defects are PRESERVED AND REPORTED, never f
 inside an extraction** — a bug repaired under a `refactor` commit is an unreviewed
 behaviour change. Gates that are not scope-aware **stay not scope-aware**; an extraction is
 not the place to widen a gate. What the rule preserved is registered, one line per item,
-in [`docs/records/audit-open-findings.md`](../records/findings/audit-open-findings.md)
+in [`docs/records/findings/audit-open-findings.md`](../records/findings/audit-open-findings.md)
 §*Bridge extraction (`crates/oz-bridge`)*.
 
 ## Consequences
 
 **Gained.** Bodies are callable without a shell, and the headless harness
-(`crates/oz-bridge/src/testing.rs`) builds a real `BridgeCtx`. Test relocation followed
+(`crates/kasirmu-bridge/src/testing.rs`) builds a real `BridgeCtx`. Test relocation followed
 the bodies (e.g. `1f7552878` “relocate settings unit tests to oz-bridge”), which is why
 the campaign has been deleting desktop adapters as their tests move out.
 
@@ -127,23 +141,25 @@ the campaign has been deleting desktop adapters as their tests move out.
   landed topology commits (`27621900f`, `01f7b10ae`, `748ef59cd`): **28** items went
   `pub(crate) → pub` in the topology group (11 + 10 + 7). **4 of them exist only because a
   test reaches them** — `ser_f64_finite`, `de_f64_or_null`, `de_direction_or_null`,
-  `default_direction` (`crates/oz-bridge/src/topology/model.rs:27`, `:35`, `:55`, `:250`),
+  `default_direction` (`crates/kasirmu-bridge/src/topology/model.rs:27`, `:35`, `:55`, `:250`),
   referenced nowhere else but `model.rs` and `model_tests.rs`. Those four narrow back to
   `pub(crate)` the moment `model_tests.rs` moves; the other 24 never can. All 28 are now
-  reachable from any crate that depends on `oz-bridge`.
+  reachable from any crate that depends on `kasirmu-bridge`.
 - **Some import lines are load-bearing and must survive a move.** An import that looks
   unused is often a **re-export device** feeding a sibling module or a root `cfg(test)`
-  glob: `pub use oz_bridge::data::{…}` (`apps/desktop-client/src/commands/data.rs:24`),
-  `pub use oz_bridge::browser::urlencoding;` (`…/browser.rs:22`),
+  glob: `pub use kasirmu_bridge::data::{…}` (`apps/desktop-tauri/src/commands/data.rs:24`),
+  `pub use kasirmu_bridge::browser::urlencoding;` (`…/browser.rs:22`),
   `#[allow(unused_imports)] // sibling sync_tests.rs depends on it` (`…/sync.rs:28-29`),
-  and the `use super::*` device lines at `crates/oz-bridge/src/topology/persistence.rs:15-17`
+  and the `use super::*` device lines at `crates/kasirmu-bridge/src/topology/persistence.rs:15-17`
   whose module doc explains they exist so moved `super::` paths still resolve. Delete one
   and what breaks is a *test file that names it*, not the code beside it.
-- **The file-size cap moved; it did not improve.** `AGENTS.md:155` requires production
-  `.rs` files under 1,000 lines. `apps/desktop-client/src/commands/settings.rs` was
-  **1,215** lines at `7360f14eb`; `crates/oz-bridge/src/settings.rs` is **1,179** today
-  (the desktop file is now 375). The breach was **relocated, not resolved** — and it is now
-  *less* visible, because the audit stamp policing it is scoped `crate: desktop-client`.
+- **The file-size cap moved; it did not improve.** `AGENTS.md` (at the time of writing `:155`,
+  today `:245`) requires production `.rs` files under 1,000 lines. `apps/desktop-tauri/src/commands/settings.rs` was
+  **1,215** lines at `7360f14eb`; `crates/kasirmu-bridge/src/settings.rs` became **1,179** at the
+  time of writing (the desktop file fell to 375). **Re-measured 2026-10-11: the bridge file is now
+  `932` lines and the desktop file `361` — the breach has since been RESOLVED, both under the cap.**
+  The paragraph is left as the record of what was true then, with the current reading recorded here
+  rather than swapped in, because the fact worth keeping is that a relocated breach was later paid down.
 
 ## What was NOT extracted — parked, not unfinished
 
@@ -151,19 +167,19 @@ A future reader will otherwise file these as gaps. Each is a boundary decision.
 
 | Surface | Why it stays in the shell |
 |---|---|
-| `pg_sync_status_scoped`, `pg_sync_start_scoped`, `pg_sync_stop_scoped` | They drive the `PgSyncDaemon` handle on `AppState` (`apps/desktop-client/src/state.rs:119`; type at `platform/sync/src/pg_daemon.rs:66`). `oz-bridge` does not and must not depend on `platform-sync`. **Parked owner decision: `BridgeCtx` has no port for long-lived services.** Kept in-file at `apps/desktop-client/src/commands/sync.rs:14-16`, `:194`, `:204`, `:221` |
-| `pick_logo_file`, `pick_logo_file_scoped` | `tauri::dialog`, no seam. Noted at `crates/oz-bridge/src/branding.rs:4-5`; bodies at `apps/desktop-client/src/commands/branding.rs:102`, `:164` |
-| `open_in_browser` | `tauri-plugin-opener`. The bridge took only the URL builder; the open stays with the plugin (`crates/oz-bridge/src/browser.rs:9-12`; `apps/desktop-client/src/commands/browser.rs:9-12`, `:44`). This is the pattern the two pickers cite |
-| `local_api_*` (6 scoped commands) | Device-level lifecycle bound to `AppState::local_api_op` and the shell's own server handle — `apps/desktop-client/src/commands/local_api.rs:14-19` |
-| `plugins.rs` | A 3-line placeholder for a future plugin IPC surface — there is no body to move (`apps/desktop-client/src/commands/plugins.rs:2`) |
-| `settings_changed_sink` | Stays desktop-side because **production calls it**: `apps/desktop-client/src/lib.rs:249` builds the daemon's sink with it. It *implements* the `EventSink` boundary rather than consuming one (`commands/sync.rs:117`) |
-| `recover_pending_topology_apply_at_startup` | Keeps a desktop adapter because `apps/desktop-client/src/lib.rs:135` calls it with `&AppState` (`commands/topology/persistence.rs:38-39`) |
+| `pg_sync_status_scoped`, `pg_sync_start_scoped`, `pg_sync_stop_scoped` | They drive the `PgSyncDaemon` handle on `AppState` (`apps/desktop-tauri/src/state.rs:119`; type at `platform/sync/src/pg_daemon.rs:66`). `kasirmu-bridge` does not and must not depend on `platform-sync`. **Parked owner decision: `BridgeCtx` has no port for long-lived services.** Kept in-file at `apps/desktop-tauri/src/commands/sync.rs:14-16`, `:194`, `:204`, `:221` |
+| `pick_logo_file`, `pick_logo_file_scoped` | `tauri::dialog`, no seam. Noted at `crates/kasirmu-bridge/src/branding.rs:4-5`; bodies at `apps/desktop-tauri/src/commands/branding.rs:102`, `:164` |
+| `open_in_browser` | `tauri-plugin-opener`. The bridge took only the URL builder; the open stays with the plugin (`crates/kasirmu-bridge/src/browser.rs:9-12`; `apps/desktop-tauri/src/commands/browser.rs:9-12`, `:44`). This is the pattern the two pickers cite |
+| `local_api_*` (6 scoped commands) | Device-level lifecycle bound to `AppState::local_api_op` and the shell's own server handle — `apps/desktop-tauri/src/commands/local_api.rs:14-19` |
+| ~~`plugins.rs`~~ | A 3-line placeholder for a future plugin IPC surface — there is no body to move (`apps/desktop-tauri/src/commands/plugins.rs:2`). **DELETED 2026-10-04 by `44e7be9cd`** ("delete inert surface — dead register_scale and empty plugins module", C29): the placeholder never grew a body, so the surface was removed rather than parked. Kept as a row because it explains why no `plugins` command exists today |
+| `settings_changed_sink` | Stays desktop-side because **production calls it**: `apps/desktop-tauri/src/lib.rs:249` builds the daemon's sink with it. It *implements* the `EventSink` boundary rather than consuming one (`commands/sync.rs:117`) |
+| `recover_pending_topology_apply_at_startup` | Keeps a desktop adapter because `apps/desktop-tauri/src/lib.rs:135` calls it with `&AppState` (`commands/topology/persistence.rs:38-39`) |
 
 **The one documented exception to “ctx first”.** The topology helpers above take their
 *parts* — a connection handle, `&StoreDatabaseManager`, the apply-lock
 `&tokio::sync::Mutex<()>` — instead of a `BridgeCtx`, because the caller that needs them
 (`lib.rs:135`) has an `AppState`, not a ctx:
-`crates/oz-bridge/src/topology/persistence.rs:418`
+`crates/kasirmu-bridge/src/topology/persistence.rs:418`
 (`recover_pending_topology_apply_at_startup`), `:440` (`recover_pending_topology_apply`),
 `:493` (`snapshot_workspace_rows`), `:532` (`compensate_workspace_diff`); the module doc at
 that file's `:10-13` names them “the four helpers that took `&AppState`”, with
@@ -174,18 +190,23 @@ line numbers are the merged-tree ones and move with the next topology commit.
 
 **`currency_info` is the in-tree precedent for the opposite choice:** a body that
 genuinely wants no context drops context entirely — `pub fn currency_info(code: &str)`
-(`crates/oz-bridge/src/currency.rs:43`) takes no ctx, while its scoped sibling (`:55`)
+(`crates/kasirmu-bridge/src/currency.rs:43`) takes no ctx, while its scoped sibling (`:55`)
 takes one. “ctx first” is a default, not a mandate; the burden sits on *removing* it.
 
 ## What was NOT done (open as of this record)
 
-1. **The tablet client is untouched.** `apps/tablet-client/src` contains **zero**
-   references to `oz_bridge` across its 95 command files — even though
-   `crates/oz-bridge/Cargo.toml`'s `description` already advertises the crate as shared
+1. **The tablet client is untouched.** [**CLOSED 2026-10-07 / 2026-10-11 — the tablet now
+   delegates in 56 of 63 non-test command files; see the status line and the amendments. Kept as
+   the record of the state this decision was taken against.**] `apps/mobile-tauri/src` contains
+   **zero** references to `kasirmu_bridge` across its 95 command files — even though
+   `crates/kasirmu-bridge/Cargo.toml`'s `description` already advertises the crate as shared
    “by the desktop **and tablet** IPC shims”. Until the tablet migrates, its commands are
    a second, independent copy of every body, divergence there is silent, and the crate
    description overstates current reach.
-2. **Neither ADR index was updated by this commit.** `#49` still needs its row in the
+2. **Neither ADR index was updated by this commit.** [**CLOSED 2026-10-11: `#49` HAS its row in
+   the numbered table of `docs/decisions/README.md` (verified `^\| 49 \|`), and the generated
+   `docs/records/README.md` is fresh — `node scripts/generate-records-index.mjs --check` exits 0 at
+   122 records.**] `#49` still needs its row in the
    numbered table of `docs/decisions/README.md`, and the generated
    `docs/records/README.md` needs `node scripts/generate-records-index.mjs` (per
    `docs/README.md`, nothing regenerates it automatically). Both are shared files in a tree
@@ -240,8 +261,10 @@ guard, not a reachable state. The count invariant and the `scales()` pairing pin
 that made the omission impossible, which is the part a regression would break.
 
 **Still open, and now recorded as the tablet twin's debt.**
-`apps/mobile-tauri/src/commands/scale.rs:66-73` carries the identical `if let Some(..)` swallow and
-does **not** route through the bridge yet (that is this ADR's own §What was NOT done, item 1 — the
+`apps/mobile-tauri/src/commands/scale.rs` carried the identical `if let Some(..)` swallow and
+did **not** route through the bridge yet (at the time of writing, `:66-73`; **the file was REWRITTEN
+by the (b) amendment below, so that line range no longer exists — the file is now 64 lines and the
+sole `scale_ids()` occurrence is the module doc recording its removal**) (that is this ADR's own §What was NOT done, item 1 — the
 tablet is still a second copy of every body). The desktop shell
 (`apps/desktop-tauri/src/commands/scale.rs:19-39`) delegates to the bridge and inherits the fix.
 A future pass closing the tablet migration should fix the twin by delegating, not by re-patching
@@ -422,4 +445,4 @@ swallow restored: a complete `TerminalDto` returned with `code: None`. GREEN wit
 campaign's sweeps had been running one crate at a time. A fix reported as "the code reads" should
 name its crate, because the twin is a separate file that will not inherit it.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

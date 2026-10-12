@@ -5,7 +5,9 @@ title: ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted
 status: Accepted (2026-09-11)
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 156 lines, and it is the POLICY half of a pair audited across two rounds — its companion record, `docs/records/snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md`, was audited last round and exists precisely because this document should not carry a count of what the policy does not cover. Reading the two together is the intended way to read them, and the split is what makes both trustworthy. · EVERY ANCHOR THE COMPANION CITED RESOLVES IN THE CODE THIS ADR DESCRIBES, which closes the loop on last round's verification. The policy's identity functions are where the companion said they were: `is_non_exportable_setting_key` and the credential and device base lookups in `platform/core/src/settings/keys.rs`, and `is_manager_owned_key` plus `set_with_policy` in `platform/core/src/settings/raw.rs`. The companion's central claim — that a policy with 75 declared keys admits 54 and refuses 21, from a channel that authenticates nobody — is therefore measuring this policy, not a document that was superseded since. · THE THREAT MODEL IS THE PART WORTH KEEPING, and this repository had none until this decision wrote one down. The ADR states that sync is device to device, that nothing in the transport or the sync API signs or MACs an item, and therefore that the sender is not an authority — and then draws the consequence most security decisions avoid stating: this policy is NOT a defence against an attacker who can inject. It is a defence against a package or a peer writing a key it has no business writing, naming the ones that matter, `machine_id`, `sync_terminal_id`, `hardware_fingerprint`, device identity and the licence server's one-trial-per-device lock. · IT ALSO REASONS ABOUT THE HALF THAT IS EASY TO FORGET. Refusing on ingest stops a bad key arriving; refusing on EGRESS is what stops a cleartext credential LEAVING the device, and the ADR says so explicitly, noting that the ingest side already refuses on arrival. A policy that only guards one direction reads as complete and is half a policy. · The Context also records the historical shape honestly: the bridge carried its own copy of a deny list plus a prefix rule, the CLI called the shared predicate only so certain keys travelled in packages, and sync ingest applied any key the server sent unchecked. Naming the three prior behaviours is what makes the Decision legible as a change rather than a preference. · NOT re-measured: the per-lane accessors, the egress gate, and the commit-by-commit build sequence, all of which are the document's own content. · No stamp existed; this is the first, and the pair now carries stamps on both sides. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Fresh re-audit; the 2026-09-29 stamp is merged at the bottom as original evidence, delimiters stripped so it cannot nest. · REPAIRED: nine pre-rebrand crate paths, all in the body where a reader follows them as instructions. `crates/oz-core/src/settings.rs` → `crates/kasirmu-core/src/settings.rs` (twice, including the `:796`/`:814` facade delegation the Invariants section leans on); `crates/oz-api/src/pg.rs` → `crates/kasirmu-api/src/pg.rs`; `crates/oz-bridge/src/settings.rs` → `crates/kasirmu-bridge/src/settings.rs` (twice, incl. the `:407` write-path citation); `crates/oz-bridge/src/data.rs:302` → `crates/kasirmu-bridge/src/data.rs:302`; `crates/oz-bridge/src/settings_tests.rs:873-889` → the `kasirmu-` spelling; and `crates/oz-core/src/export/email_report.rs:183-200` → `crates/kasirmu-core/src/export/email_report.rs:183-200`. WHY THESE MATTER MORE THAN COSMETICALLY: this ADR's Invariants section is a list of open hazards whose evidence is those exact lines, so a dead path makes an unresolved risk look unchecked. · A SECOND, DIFFERENT RENAME, and the more interesting one: the ADR cited `crates/kasirmu-cli/src/commands/ozpkg.rs:52` and `ozpkg_tests.rs`. THERE IS NO `ozpkg.rs` — the command was renamed to **`kasirpkg.rs`** when the package extension moved `.ozpkg` → `.kasirpkg`, and the test file is `kasirpkg_tests.rs`. A reader looking for the CLI's policy gate at the named file finds nothing, which reads as "the gate was removed" rather than "the file was renamed". Repointed to `kasirpkg.rs:52` (`.admits(key)` confirmed at that line). · VERIFIED AND LEFT ALONE: all 20 body-cited paths now resolve. The policy symbols are real and where the ADR says — `IngestPolicy` (`platform/core/src/settings/raw.rs:637`), `IngestPolicyKind` with `admits` (:653-655), `is_manager_owned_key` (:782), `is_non_exportable_setting_key` (`keys.rs:577`), the `sealed::Sealed` private-supertrait construction, and the facade re-exports in `crates/kasirmu-core/src/settings.rs` (`pub use platform_core::settings::{IngestPolicy, IngestPolicyKind}` at :33, `load_exportable` at :75, `set_with_policy` at :85). The companion record the ADR names at `docs/records/snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md` EXISTS, as does the second companion `2026-09-13-adr51-admitted-set-and-blind-sides.md`. · LEFT AS WRITTEN: the single `.ozpkg` spelling in the Context, which names the historical package lane — that is the pre-rename format this ADR was written about, not a path. · NOT re-measured: the per-lane accessors' runtime behaviour, the egress gate, and the commit-by-commit build sequence. · Superseded 2026-09-29 body follows as plain quoted text:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 156 lines, and it is the POLICY half of a pair audited across two rounds — its companion record, `docs/records/snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md`, was audited last round and exists precisely because this document should not carry a count of what the policy does not cover. Reading the two together is the intended way to read them, and the split is what makes both trustworthy. · EVERY ANCHOR THE COMPANION CITED RESOLVES IN THE CODE THIS ADR DESCRIBES, which closes the loop on last round's verification. The policy's identity functions are where the companion said they were: `is_non_exportable_setting_key` and the credential and device base lookups in `platform/core/src/settings/keys.rs`, and `is_manager_owned_key` plus `set_with_policy` in `platform/core/src/settings/raw.rs`. The companion's central claim — that a policy with 75 declared keys admits 54 and refuses 21, from a channel that authenticates nobody — is therefore measuring this policy, not a document that was superseded since. · THE THREAT MODEL IS THE PART WORTH KEEPING, and this repository had none until this decision wrote one down. The ADR states that sync is device to device, that nothing in the transport or the sync API signs or MACs an item, and therefore that the sender is not an authority — and then draws the consequence most security decisions avoid stating: this policy is NOT a defence against an attacker who can inject. It is a defence against a package or a peer writing a key it has no business writing, naming the ones that matter, `machine_id`, `sync_terminal_id`, `hardware_fingerprint`, device identity and the licence server's one-trial-per-device lock. · IT ALSO REASONS ABOUT THE HALF THAT IS EASY TO FORGET. Refusing on ingest stops a bad key arriving; refusing on EGRESS is what stops a cleartext credential LEAVING the device, and the ADR says so explicitly, noting that the ingest side already refuses on arrival. A policy that only guards one direction reads as complete and is half a policy. · The Context also records the historical shape honestly: the bridge carried its own copy of a deny list plus a prefix rule, the CLI called the shared predicate only so certain keys travelled in packages, and sync ingest applied any key the server sent unchecked. Naming the three prior behaviours is what makes the Decision legible as a change rather than a preference. · NOT re-measured: the per-lane accessors, the egress gate, and the commit-by-commit build sequence, all of which are the document's own content. · No stamp existed; this is the first, and the pair now carries stamps on both sides. -->
 # ADR #51: Sealed Settings Ingest Policy
 
 **Status:** Accepted (2026-09-11) · branch `0.0.37`. Built across `172f7fe3c` (sealed policy +
@@ -56,17 +58,17 @@ with `local_api.` or `lan_server.`.
 
 Each was found by a worker refuting a premise, not by the design being obvious. **`load_all` stays
 UNFILTERED, on purpose.** It backs `Settings::load_features` and `prune_stale_features`
-(`crates/oz-core/src/settings.rs:796`, `:814`), and feature rows are ordinary settings rows, so
+(`crates/kasirmu-core/src/settings.rs:796`, `:814`), and feature rows are ordinary settings rows, so
 filtering it would re-type a general-purpose whole-table read as an egress read and silently break
 feature pruning. Portable egress is expressed by `load_exportable` and NEVER by narrowing `load_all`;
 the reasoning is in the accessor's own doc comment (`raw.rs:60-66`).
 
 **The facade delegates, so lanes never import `platform_core` directly.**
-`crates/oz-core/src/settings.rs` re-exports the policy (`:33`) and delegates all three accessors (`:75`,
+`crates/kasirmu-core/src/settings.rs` re-exports the policy (`:33`) and delegates all three accessors (`:75`,
 `:85`, `:103`). The delegation was MISSING for a whole wave: `172f7fe3c` re-exported the types and told
 every lane to go through `oz_core` without delegating the methods, and `platform/sync` has no
 `platform-core` edge — which is why two lanes had to gate on `admits()` behind one named boundary
-instead (`queue.rs:54`, `crates/kasirmu-cli/src/commands/ozpkg.rs:52`). Landed in `a0b8af03d`.
+instead (`queue.rs:54`, `crates/kasirmu-cli/src/commands/kasirpkg.rs:52`). Landed in `a0b8af03d`.
 
 **There is no read-only accessor, so the read-only question uses the predicate.** `settings_change_of`
 (`queue.rs:747-759`) must ask whether a key was applied without writing anything, so it gates on
@@ -76,7 +78,7 @@ written.
 
 **The bridge egress gate deliberately does NOT call `set_with_policy`.** That is a write, and the
 enqueue path does not write settings — it queues an item for a later push
-(`crates/oz-bridge/src/settings.rs:440-468`). Calling the accessor there would persist a value as a side
+(`crates/kasirmu-bridge/src/settings.rs:440-468`). Calling the accessor there would persist a value as a side
 effect of deciding whether to replicate it, and would move the write from the store database into the
 global one.
 
@@ -88,11 +90,11 @@ global one.
 
 - A package exported by an OLDER build may legitimately contain a key the new import refuses, so restoring
   an old file now skips those rows with a warning: `local_api.enabled`, `local_api.port`,
-  `local_api.store_id`, `lan_server.bind` (`crates/kasirmu-cli/src/commands/ozpkg_tests.rs:46-51`).
+  `local_api.store_id`, `lan_server.bind` (`crates/kasirmu-cli/src/commands/kasirpkg_tests.rs:46-51`).
 
 - No ordinary setting is caught: `store.name`, `currency.default`, `receipt.footer`,
   `brand.primary_colour`, `ui.locale` and `tax.rounding_mode` are asserted to still travel and still
-  restore (`ozpkg_tests.rs:335-345`, `:365-376`; `crates/oz-bridge/src/settings_tests.rs:873-889`).
+  restore (`kasirpkg_tests.rs:335-345`, `:365-376`; `crates/kasirmu-bridge/src/settings_tests.rs:873-889`).
 
 - The CLI starts refusing four keys its own older packages carried — a behaviour change in a tool, not
   only a library.
@@ -100,7 +102,7 @@ global one.
 ## What this does not do
 
 - **It does not make a backup safe.** `kasir backup` / `kasir restore` (`crates/kasirmu-cli/src/commands/backup.rs`)
-  and the bridge `create_backup` (`crates/oz-bridge/src/data.rs:302`) copy the WHOLE SQLite file with no
+  and the bridge `create_backup` (`crates/kasirmu-bridge/src/data.rs:302`) copy the WHOLE SQLite file with no
   policy at all, so a `.db` still carries `machine_id` and every credential — by design, documented in
   `crates/kasirmu-cli/README.md`. Filtering the package lane does not narrow that door.
 
@@ -109,9 +111,9 @@ global one.
   peer** — see Context.
 
 - **One SMTP exposure survives it.** The settings card writes through the generic setter
-  (`ui/src/features/settings/EmailReportSettings.tsx:163` → `crates/oz-bridge/src/settings.rs:407` →
+  (`ui/src/features/settings/EmailReportSettings.tsx:163` → `crates/kasirmu-bridge/src/settings.rs:407` →
   `Settings::set_tracked`), not the typed one, so its password is stored in plaintext, and the
-  keep-on-blank merge that landed in `07eb48347` (`crates/oz-core/src/export/email_report.rs:183-200`) is
+  keep-on-blank merge that landed in `07eb48347` (`crates/kasirmu-core/src/export/email_report.rs:183-200`) is
   not yet on the destructive path. OPEN ITEM, being fixed separately — recorded, not implied closed.
 
 - **It is not an authority model, and it is nowhere near exhaustive.** `RemoteSync` refuses **21** of the
@@ -125,7 +127,7 @@ global one.
 - **Membership is a whole-name fold, so the scoped spellings the hosted API writes are admitted.
   `normalised_candidate` (`keys.rs:404`) trims and lowercases the ENTIRE name, and `credential_base`
   (`keys.rs:439`) and `is_secret_setting_key` (`keys.rs:508`) compare that fold by equality against the
-  list — so `smtp_config:tenant-a`, the `{base}:{tenant}` form `crates/oz-api/src/pg.rs` writes through
+  list — so `smtp_config:tenant-a`, the `{base}:{tenant}` form `crates/kasirmu-api/src/pg.rs` writes through
   `scoped_setting_key`, resolves to `None` while bare `smtp_config` resolves to a refusal. Both functions
   are deliberately SUFFIX-BLIND and say so at `keys.rs:424-436`; the choice is pinned by
   `decision_pin_credential_base_is_suffix_blind` (`keys_tests.rs:316`) and the file's shape is policed by
@@ -156,4 +158,4 @@ the guard is how next month reads this as done.
 
 Nothing above is verified end to end; every claim traces to a named file or one of the six commits.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

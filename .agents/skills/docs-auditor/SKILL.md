@@ -282,6 +282,44 @@ Before starting any verification:
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
 
+### Two citation traps that survive every automated check
+
+Both were found repeatedly between 2026-10-11 batches (the oldest-markdown campaign):
+two-thirds of the findings in that campaign were coordinates that were *correct when
+written* and moved afterwards, and `check-dead-refs.py` cannot see either of these.
+
+1. **A module that was a FILE is now a DIRECTORY.** `db/tax.rs` -> `db/tax/rates.rs`,
+   `sync_store.rs` -> `sync_store/tenant.rs`, `subscription.rs` ->
+   `subscription/tier.rs`, `pg.rs` -> `pg/users.rs`, `commands/pos.rs` ->
+   `commands/pos/checkout.rs`. The old path resolves to **nothing**, or (worse) the
+   shim file still exists and no longer holds the symbol. Confirmed three times in one
+   batch alone. Sweep target: any doc citing `<module>.rs` where that path is now a
+   directory.
+
+2. **A stale citation that names a REAL file is more dangerous than a dead path,** because
+   a grep finds the file and stops. `docs/security/data-residency-and-retention.md`
+   cited `subscription.rs` for `audit_retention_days`; that file exists and does not
+   hold the function, which actually lives in `subscription/tier.rs`. A reader grepping
+   the named file concludes the claim is unsupported and moves on. **When repairing, check
+   that the cited FILE still contains the cited SYMBOL**, not merely that the path resolves.
+
+A third, related class: **a copy-pasteable command is not the same as a prose reference.**
+An ADR's baseline definition — the line that says no phase starts on a red baseline — carried
+a `cargo test` invocation against a package that no longer exists; it fails with *"package ID
+specification did not match any packages"*. Prior passes logged that as "stale paths left as
+written", which under-states a command a reader runs verbatim. `cargo metadata` is the
+authority on package names (`apps/desktop-tauri` is package **`kasirmu-app`**, not
+`desktop-tauri`).
+
+**And a re-audit rule that follows from all of it:** a prior stamp's *"not found under any
+spelling"* can be a **search-scope error, not a gap** — `Settings::write_delta` was
+recorded as missing while it sat in `platform/core/src/settings/raw.rs`, a file the
+earlier search never opened because the module had split into a directory. Search the whole
+module DIRECTORY, and prefer pinning evidence by TEST NAME over line number when the target
+is a large file.
+
+---
+
 ## 10. Cross-Skill Protocol
 
 When a truth anchor belongs to a domain covered by another skill:
@@ -472,7 +510,6 @@ done
 > Superseded audit stamp: 2026-09-08 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean.
 -->
 
-> last audited 11-10-26 by docs-auditor
 
 ### Merging a stamp must not NEST a comment
 
@@ -536,3 +573,4 @@ non-blank visible line is the document's own title, not a stray `-->` or merge-n
 write a comment-open token literally inside a comment (not even to explain this hazard), and
 never nest a preserved stamp — quote its text, or wrap the whole region in one comment.
 
+> last audited 11-10-26 by docs-auditor

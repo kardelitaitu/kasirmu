@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass on substance, and I checked the part most likely to be wrong first. The record's two load-bearing schema claims are BOTH TRUE, and I confirmed them in the right place rather than assuming: `rounding_mode` and `tax_estimate_note` do NOT appear in the base `20260813_init.sql` — and that is correct, not a gap, because both are additions and live in their own dated migrations, `crates/kasirmu-core/migrations/20260929_tax_rate_rounding_mode.sql` and `20260930_sales_tax_estimate_note.sql`. Searching only the base schema would have produced a false "column missing" finding, which is a good reminder that a migration-aware audit has to look for the dated file too. · Every store API this record names exists and is in the right module: `effective_rounding_for_rate` at `crates/kasirmu-core/src/db/sales_tax.rs:32` (the record cites `:30`, a two-line drift), `sale_tax_estimate_note` at `db/sales_crud.rs:490`, `complete_sale_deduction_with_locations_and_estimate` at `db/sales_checkout.rs:178`, and `list_tax_rate_rounding_modes` — which is now in `db/tax/rates.rs:254` rather than the `db/tax.rs:561` the record cites, because the tax module was split into a directory. The record's central architectural claims hold: one resolution point, per-rate resolution so two rates on a line round independently, a single read door, and freeze-at-write provenance in the breakdown JSON. · §6's warning about migration ordering — that a `20260910_`-dated column was silently erased by a `20260926_` rebuild whose `INSERT INTO tax_rates_new` used an enumerated column list — is the kind of incident note that is worth keeping verbatim, and the fact that `20260929`/`20260930` now sort after that rebuild is why the columns survive. · STALE PATHS left as written: the record cites `crates/oz-core/…` and `crates/oz-api/…` throughout, which are now `crates/kasirmu-core/…` and `crates/kasirmu-api/…`, and `apps/desktop-client`/`apps/tablet-client` for the two IPC arg sites, now `apps/desktop-tauri`/`apps/mobile-tauri`. This is an E1-10 contract record whose value is the RULES, not the paths — the owner ruling (statutory rounding always wins over the store preference; a failed tax IPC warns and flags, never a silent 0) is unaffected — so the paths are recorded as pre-restructure rather than rewritten. · The companion record named in the header, `docs/records/sqlite-pg-roles.md`, exists. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 11 minor) · Re-audit of the E1-10 contract record; the 2026-09-29 stamp is merged at the bottom as original evidence with its delimiters stripped so it cannot nest. · THE ONE MAJOR is a wrong FILE, not a wrong line: §6 cited the SQLite snapshot version to `apps/cloud-server/src/sync_store.rs:526-537`, and `sync_store` is now a DIRECTORY whose `tenant.rs:272-286` holds that code — the cited `.rs` is 430 lines and contains no `updated_at` and no `COUNT(` at all. A reader sent there finds a file that cannot contain the claim. · ELEVEN MINORS, and ten are the SAME two shapes this campaign keeps finding: a module that was a FILE is now a DIRECTORY (`db/tax.rs` → `db/tax/rates.rs`, `sync_store.rs` → `sync_store/`), and pre-rebrand crate/app names (`crates/oz-core`, `crates/oz-api`, `apps/desktop-client`, `apps/tablet-client`) at 13 sites. The eleventh is a genuine RELOCATION: the desktop `tax_estimated` IPC arg is no longer in a shell `commands/pos.rs` at all — it is a field on the bridge's shared checkout args (`crates/kasirmu-bridge/src/pos/checkout.rs:137`), while the tablet's stayed in `apps/mobile-tauri/src/commands/pos/checkout.rs:591`. All are repaired in place and tabulated in a new §7. · WHY §7 EXISTS AND WHY THE TWO STATUTORY PINS ARE NOW BY NAME: the 2026-09-29 stamp itself warned that a migration-aware audit must look for the dated file too. The same lesson applies to line numbers — the two pins that carry the owner ruling cited `:4336`/`:4364` in a 5,000-line test file and now live at `:4869`/`:4899`, so they are re-pointed by TEST NAME (`statutory_truncate_outranks_the_half_up_preference_in_the_sale`, `…_in_the_cart_preview`), which is stable, rather than to a line that moves every slice. · VERIFIED AND LEFT ALONE (all re-derived at HEAD, and every one still holds): `20260929_tax_rate_rounding_mode.sql` really does `ALTER TABLE tax_rates ADD COLUMN rounding_mode TEXT NOT NULL DEFAULT '' CHECK (rounding_mode IN ('', 'half_up', 'truncate'))` — read at the file, and its own header records the 20260926-rebuild hazard in the same words §6 uses; `20260930_sales_tax_estimate_note.sql` and the companion `docs/records/sqlite-pg-roles.md` both exist; the foreign-alphabet skip is real (`sync_pull.rs:438-439`, `skipped_rounding`); `excluded.rounding_mode` is real in both importers; the registry comments carrying the rebuild obligation are at `migrations.rs:268`/`:282`; the test pins `lua_override_applies_the_winning_statutory_directive` (`:4958`), `lua_override_with_no_resolved_rates_falls_back_to_preference` (`:4995`) and `tax_rate_writers_bump_updated_at_for_the_snapshot_fingerprint` (`db/tax_tests.rs:1989`) all exist; and `first_statutory_directive_for_sku` returns ZERO hits, which is the record's own claim that it was DELETED — a correct negative, verified rather than assumed. · NOT re-measured: the runtime arithmetic (the 3335 x 1000bps = 333 pin was read, not executed), the sync round-trip against a live hub, and the Lua plugin path at runtime. · Superseded 2026-09-29 body follows as plain quoted text:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass on substance, and I checked the part most likely to be wrong first. The record's two load-bearing schema claims are BOTH TRUE, and I confirmed them in the right place rather than assuming: `rounding_mode` and `tax_estimate_note` do NOT appear in the base `20260813_init.sql` — and that is correct, not a gap, because both are additions and live in their own dated migrations, `crates/kasirmu-core/migrations/20260929_tax_rate_rounding_mode.sql` and `20260930_sales_tax_estimate_note.sql`. Searching only the base schema would have produced a false "column missing" finding, which is a good reminder that a migration-aware audit has to look for the dated file too. · Every store API this record names exists and is in the right module: `effective_rounding_for_rate` at `crates/kasirmu-core/src/db/sales_tax.rs:32` (the record cites `:30`, a two-line drift), `sale_tax_estimate_note` at `db/sales_crud.rs:490`, `complete_sale_deduction_with_locations_and_estimate` at `db/sales_checkout.rs:178`, and `list_tax_rate_rounding_modes` — which is now in `db/tax/rates.rs:254` rather than the `db/tax.rs:561` the record cites, because the tax module was split into a directory. The record's central architectural claims hold: one resolution point, per-rate resolution so two rates on a line round independently, a single read door, and freeze-at-write provenance in the breakdown JSON. · §6's warning about migration ordering — that a `20260910_`-dated column was silently erased by a `20260926_` rebuild whose `INSERT INTO tax_rates_new` used an enumerated column list — is the kind of incident note that is worth keeping verbatim, and the fact that `20260929`/`20260930` now sort after that rebuild is why the columns survive. · STALE PATHS left as written: the record cites `crates/oz-core/…` and `crates/oz-api/…` throughout, which are now `crates/kasirmu-core/…` and `crates/kasirmu-api/…`, and `apps/desktop-client`/`apps/tablet-client` for the two IPC arg sites, now `apps/desktop-tauri`/`apps/mobile-tauri`. This is an E1-10 contract record whose value is the RULES, not the paths — the owner ruling (statutory rounding always wins over the store preference; a failed tax IPC warns and flags, never a silent 0) is unaffected — so the paths are recorded as pre-restructure rather than rewritten. · The companion record named in the header, `docs/records/sqlite-pg-roles.md`, exists. -->
 # Statutory Rounding & Tax-Estimate Stamps
 
 <!-- 2026-09-10 · DSH · E1-10 contract record · companion to sqlite-pg-roles.md; the landing chain with
@@ -9,7 +11,7 @@ and **a failed tax IPC warns and flags — never a silent 0**.
 
 ## 1. The directive is per rate, and it outranks the preference
 
-`tax_rates.rounding_mode` (`crates/oz-core/migrations/20260929_tax_rate_rounding_mode.sql`) is
+`tax_rates.rounding_mode` (`crates/kasirmu-core/migrations/20260929_tax_rate_rounding_mode.sql`) is
 `TEXT NOT NULL DEFAULT '' CHECK (rounding_mode IN ('', 'half_up', 'truncate'))`. A CHECK can ride a **newly
 added** column directly (SQLite only refuses to ALTER one onto an existing column): no rebuild, no backfill, no index.
 
@@ -17,14 +19,14 @@ added** column directly (SQLite only refuses to ALTER one onto an existing colum
   **zero-behavior-change invariant** — the whole pre-E1 tax suite still passes unmodified. `half_up`/`truncate`
   are `RoundingMode`'s serde `snake_case` names (`modules/tax/src/models.rs:17-41`, mirrored by `wire_name()`),
   so storage, wire and JSON share one spelling with no translation layer.
-- Resolution lives in ONE place: `Store::effective_rounding_for_rate` (`crates/oz-core/src/db/sales_tax.rs:30`)
+- Resolution lives in ONE place: `Store::effective_rounding_for_rate` (`crates/kasirmu-core/src/db/sales_tax.rs:32`)
   = `directive.unwrap_or(preference)`, called **per rate** (`:224`), so two rates on one line each round their
   own contribution. Both compute loops take it (`compute_sale_tax_for_location`,
   `compute_cart_tax_for_location:397`), so the cart preview and the receipt cannot round differently.
-- Read door: `Store::list_tax_rate_rounding_modes` (`db/tax.rs:561`, chunked at 500 ids, live rows only;
+- Read door: `Store::list_tax_rate_rounding_modes` (`db/tax/rates.rs:254`, chunked at 500 ids, live rows only;
   single-id wrapper `:607`). An out-of-alphabet stored value is a **hard Validation error**, not a guess — the
   CHECK makes it hand-edited data. `''` and an unknown id both read `None` — the lookup must never become a
-  second failure mode. The preference is the store KV (`crates/oz-core/src/settings.rs:258`, `:281`).
+  second failure mode. The preference is the store KV (`crates/kasirmu-core/src/settings.rs:258`, `:281`).
 - A Lua `lua_overrides` line REPLACES the DB rate amount but NOT the rounding law (owner ruling D89-1,
   option B): the plugin owns `rate_bps`/`is_inclusive`, while the winning rate's directive — resolved by
   the SAME resolver the DB arm uses and taken FIRST-ROW (`rates.first()`, mirroring the DB arm's
@@ -51,14 +53,15 @@ the only mode that existed (module doc). Lua-override entries additionally carry
 and no backfill**: NULL = unstamped = computed live, and an absent stamp must never read as a claim.
 
 - Composed at insert **inside the checkout transaction** by
-  `Store::complete_sale_deduction_with_locations_and_estimate` (`db/sales_checkout.rs:177`, stamp `:460-473`)
+  `Store::complete_sale_deduction_with_locations_and_estimate` (`db/sales_checkout.rs:205`, stamp `:460-473`)
   as `{"estimated":true,"computed_tax":<i64 minor units>}`. `computed_tax` is **core's own number**; the
   caller supplies only the boolean (`db/sales_tests.rs:2866`; `:2900`: no claim leaves it NULL).
 - IPC: `tax_estimated` on the scoped checkout args of both clients
-  (`apps/desktop-client/src/commands/pos.rs:646`, wire `taxEstimated`;
-  `apps/tablet-client/src/commands/pos.rs:902`), `unwrap_or(false)` at each delegate; the legacy wrapper
+  (`crates/kasirmu-bridge/src/pos/checkout.rs:137`, the shared desktop arg, wire `taxEstimated`;
+  tablet `apps/mobile-tauri/src/commands/pos/checkout.rs:591`), `unwrap_or(false)` at the delegates
+  (bridge `:868`/`:879`); the legacy wrapper
   passes `false` and stamps nothing.
-- Read: `Store::sale_tax_estimate_note` (`db/sales_crud.rs:597`) — a dedicated getter, not a `Sale` field, on
+- Read: `Store::sale_tax_estimate_note` (`db/sales_crud.rs:508`) — a dedicated getter, not a `Sale` field, on
   purpose: ~45 `Sale` literals across 9 files would need it. Do not promote it.
 - Renderer: `ui/src/hooks/useCartTax.ts` caches the last successful `CartTaxResult` per session token, tagged
   with `cartTaxSignature` (`:46`); `cacheFresh` = tender-eligible, `invalidateCartTaxCache()` (`:57`) runs after
@@ -73,16 +76,16 @@ and no backfill**: NULL = unstamped = computed live, and an absent stamp must ne
 
 1. **Absence is the sentinel.** `SnapshotTaxRate.rounding_mode` is `#[serde(default)]` on a plain `String`
    (`platform/sync/src/transport.rs:224`): a payload written before 20260929 carries no key and lands `''`
-   (`sync_pull_tests.rs:8`). The hub PG read is `Option<String>.unwrap_or_default()` (`pg_transport.rs:401`,
+   (`sync_pull_tests.rs:8`). The hub PG read is `Option<String>.unwrap_or_default()` (`pg_transport.rs:477`,
    `:424`), so a hub database predating its own migration keeps pulling instead of erroring.
 2. **Server-authoritative, so the conflict arm assigns unconditionally.**
    `rounding_mode = excluded.rounding_mode` — deliberately NOT `COALESCE(excluded.x, tax_rates.x)` — in both
-   importers, column-for-column with each other (`crates/oz-core/src/sync_pull.rs:385-403`,
+   importers, column-for-column with each other (`crates/kasirmu-core/src/sync_pull.rs:427`,
    `platform/sync/src/lib.rs:342-359`). A directive REMOVED at the hub must clear at the branch; COALESCE
    would keep a dead one alive (`sync_pull_tests.rs:23`). The scope/window columns already follow that rule,
    and a scope this DB cannot honour is refused rather than flattened (`sync_pull.rs:406`).
 3. **A foreign alphabet is refused, never flattened.** A row whose mode is outside the CHECK set is **skipped
-   and logged** (`sync_pull.rs:414`, `:449`; test `sync_pull_tests.rs:77`) — flattening it to `''` would round
+   and logged** (`sync_pull.rs:438-439`, skipped; test `sync_pull_tests.rs:77`) — flattening it to `''` would round
    a statutory rate with the preference. Skipping degrades to "this row says nothing new", the rest of the
    snapshot keeps importing, and the table CHECK cannot abort a pull mid-transaction.
 
@@ -90,12 +93,12 @@ and no backfill**: NULL = unstamped = computed live, and an absent stamp must ne
 
 ## 5. Authoring a directive is hub-only, and byte-exact
 
-`crates/oz-api/src/routes/tax_rates.rs` (`POST /api/v1/tax-rates`, `PUT /api/v1/tax-rates/{id}`) is the only
+`crates/kasirmu-api/src/routes/tax_rates.rs` (`POST /api/v1/tax-rates`, `PUT /api/v1/tax-rates/{id}`) is the only
 surface that may name one — request field `rounding_mode` (`:73`, `:107`, `#[serde(default)]`). The device IPC
 writers (`db/tax.rs::create_tax_rate*`, `update_tax_rate*`) take **no** rounding parameter: that asymmetry IS
 the D8 ruling, not an omission.
 
-- `pg::validate_tax_rate_write` (`crates/oz-api/src/pg.rs:426-444`) maps `None`/`""` to `''` and otherwise
+- `pg::validate_tax_rate_write` (`crates/kasirmu-api/src/pg.rs:426-444`) maps `None`/`""` to `''` and otherwise
   accepts **byte-exact** `half_up` / `truncate`; anything else is a clean 400 naming the expected set — the
   same three values as the branch CHECK, so a hub-authored mode can never carry a spelling the branch refuses
   (`HALF_UP`, `bankers`, `round_half_up` are pinned 400s in `pg_tests.rs:1785`, `routes/tax_rates_tests.rs:297+`).
@@ -110,8 +113,9 @@ the D8 ruling, not an omission.
 ## 6. Invariants that must not regress
 
 - **Every tax-rate writer bumps `updated_at`.** The SQLite snapshot version is the per-table
-  `(COUNT, MAX(updated_at))` triple including `tax_rates` (`apps/cloud-server/src/sync_store.rs:526-537`; PG
-  reads `snapshot_versions`). A writer that stopped bumping would silently stop invalidating branch pull
+  `(COUNT, MAX(updated_at))` triple including `tax_rates` (`apps/cloud-server/src/sync_store/tenant.rs:272-286`; PG
+  reads `snapshot_versions` — a `sync_store.rs` FILE no longer exists, the module is a directory; the
+  2026-09-29 citation `sync_store.rs:526-537` pointed into a 430-line file that never held this code). A writer that stopped bumping would silently stop invalidating branch pull
   caches. Pin: `tax_rate_writers_bump_updated_at_for_the_snapshot_fingerprint` (`db/tax_tests.rs:1989`).
 - **Never date a migration before the LAST DDL WRITER of the touched table.** Proven live: a `20260910_`-dated
   `rounding_mode` was silently **erased** by `20260926_tax_rate_scoped_authoring.sql`, whose rebuild copies an
@@ -121,11 +125,44 @@ the D8 ruling, not an omission.
   obligation (`migrations.rs:243-252`, `:257-266`): **any rebuild of `tax_rates` must carry `rounding_mode`,
   and any rebuild of `sales` must carry `tax_estimate_note`, through BOTH column lists.** Pins:
   `migrations_tests.rs:2110`, `:2179`, `:595-596` (registry tail).
-- **One source for the directive.** `TaxRegimeRate.rounding` (`crates/oz-core/src/regional.rs:427`) is
+- **One source for the directive.** `TaxRegimeRate.rounding` (`crates/kasirmu-core/src/regional.rs:489`) is
   supplied by the caller from the SAME `list_tax_rate_rounding_modes` door the money path uses, via
   `RegionalConfig::tax_regime((rate, scope, rounding))` (`:371`). A second copy on the resolver's candidate
   struct existed for one commit and was **deleted**: provenance and computation must not disagree.
 - **Stamps are the audit trail, not the money:** never let a stamp change an amount, and never trust an
   amount because a stamp claims it. Money itself is pinned by the untouched pre-E1 suite.
 
-> last audited 29-09-26 by docs-auditor
+## 7. Coordinate correction (2026-10-11)
+
+The RULES below are unchanged and every one still holds. What had drifted were the coordinates,
+and two of them in the same way this repo keeps repeating — a module that was a FILE is now a
+DIRECTORY, so the old path resolves to nothing rather than to the wrong thing:
+
+| Claim | Cited 2026-09-29 | At HEAD 2026-10-11 |
+|---|---|---|
+| `effective_rounding_for_rate` | `db/sales_tax.rs:30` | **`:32`** (crate is `kasirmu-core`) |
+| `list_tax_rate_rounding_modes` | `db/tax.rs:561` | **`db/tax/rates.rs:254`** — `db/tax` is a DIRECTORY now |
+| `sale_tax_estimate_note` | `db/sales_crud.rs:597` | **`:508`** |
+| checkout writer | `db/sales_checkout.rs:177` | **`:205`** (def) |
+| desktop `tax_estimated` arg | `apps/desktop-client/…/pos.rs:646` | **`crates/kasirmu-bridge/src/pos/checkout.rs:137`** — the desktop arg moved into the BRIDGE; the tablet one stayed in `apps/mobile-tauri/src/commands/pos/checkout.rs:591` |
+| hub PG read | `pg_transport.rs:401` | **`:477`** |
+| branch importer | `sync_pull.rs:385-403` | **`:427`** |
+| foreign-alphabet skip | `sync_pull.rs:414`, `:449` | **`:438-439`** |
+| `TaxRegimeRate` | `regional.rs:427` | **`:489`** (crate is `kasirmu-core`) |
+| SQLite snapshot version | `apps/cloud-server/src/sync_store.rs:526-537` | **`apps/cloud-server/src/sync_store/tenant.rs:272-286`** — `sync_store` is a DIRECTORY; the cited `sync_store.rs` is 430 lines and never held this code |
+| statutory-beats-preference pins | `db/sales_tests.rs:4336`, `:4364` | **`statutory_truncate_outranks_the_half_up_preference_in_the_sale` (`:4869`)** and `…_in_the_cart_preview` (`:4899`) — cited by NAME, since line numbers in a 5,000-line test file move every slice |
+
+Paths were also still pre-rebrand (`crates/oz-core`, `crates/oz-api`, `apps/desktop-client`,
+`apps/tablet-client`) in 13 places; the body citations now read `kasirmu-*` and
+`desktop-tauri`/`mobile-tauri`, while the 2026-09-29 stamp keeps the old spellings verbatim as
+the record of what that pass saw.
+
+**A note on why the pins are now cited by TEST NAME rather than line:** the two statutory pins are
+the load-bearing evidence for the owner ruling, and a rule whose only pointer is a line number in
+a growing file is one refactor away from pointing at nothing. The test names are stable; the lines
+are not. Registry comments (`migrations.rs:268`, `:282`) still carry the standing rebuild
+obligation and were re-verified.
+
+---
+
+> last audited 11-10-26 by docs-auditor
