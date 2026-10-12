@@ -103,7 +103,6 @@ Cloud sync is a paid feature (ADR sync-plan-gating). When the server has
   `X-Admin-Key` header when `OZ_ADMIN_KEY` is configured) or automatically
   via a paid Stripe subscription.
 
-> last audited 29-09-26 by docs-auditor
 
 <!-- The two blockquote lines that used to sit under the footer — "audit: Phase 1 Core
 Architecture & API Docs Audit" and "status: ACCURATE (0 findings) · verified accurate:
@@ -115,3 +114,4 @@ which reported 1 observation, and its "0 findings" claim is contradicted by the 
 error it sat above. If you want to record an audit pass, write a stamp; a status line in
 the footer is invisible to the stamp checker and misleading to a reader. -->
 
+> last audited 29-09-26 by docs-auditor

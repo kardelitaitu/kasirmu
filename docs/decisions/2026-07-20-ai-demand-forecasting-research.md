@@ -1,4 +1,9 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 198 lines, no audit stamp, no footer, no docs-auditor marker of any kind. It is explicitly "Research (evaluation only)" -- a survey of on-device ML runtimes for Rust, a training pipeline, performance impact and privacy -- so its falsifiable surface is a comparison of EXTERNAL options, not claims about this repository. That is the honest scope of what an audit can establish here, and stating it plainly is more useful than manufacturing findings. What IS checkable, I checked: the document's framing claim that this is evaluation-only is consistent with how the work was actually taken up. `docs/decisions/2026-08-11-adr37-product-popularity-index.md`, audited in round 7, records a prototype-level demand forecast shipping on 2026-08-12 as `Store::category_forecast` -- a linear least-squares fit over each category's recent trend units, with day-of-week de-seasonalisation for daily series, and an explicit note that "the learned on-device model from the 2026-07-20 research remains out of scope". So this research document was read, a deliberately narrow slice of it was adopted, and the ML-runtime question it poses was consciously deferred. That is the correct lifecycle for an evaluation document, and the connection is recorded nowhere else in the repository -- this stamp is the only place it is written down. · NOT re-measured: the runtime comparison, the crate landscape and the performance estimates, which age faster than anything else in this directory and should be re-dated rather than re-verified. A future pass that needs this survey current needs a new survey, not an audit of this one. · Body left entirely as written; no paths inside it resolve to repository files, so there was nothing to repair. Stamp and footer added, which is all this file needed. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Repaired: two pre-rebrand `crates/oz-core/...` citations in Related corrected to `crates/kasirmu-core/...` (both targets verified present). Added a dated path note that also connects this survey to the narrow prototype that WAS adopted — `Store::category_forecast` (ADR #37). Verified and left alone: the document's self-description as evaluation-only is consistent with how the work was taken up (the learned on-device model remains out of scope; a least-squares prototype shipped instead). Body otherwise untouched. NOT re-measured: the runtime comparison, crate landscape and performance estimates, which age faster than anything in this directory and need a new survey, not an audit of this one. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
+> <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 198 lines, no audit stamp, no footer, no docs-auditor marker of any kind. It is explicitly "Research (evaluation only)" -- a survey of on-device ML runtimes for Rust, a training pipeline, performance impact and privacy -- so its falsifiable surface is a comparison of EXTERNAL options, not claims about this repository. That is the honest scope of what an audit can establish here, and stating it plainly is more useful than manufacturing findings. What IS checkable, I checked: the document's framing claim that this is evaluation-only is consistent with how the work was actually taken up. `docs/decisions/2026-08-11-adr37-product-popularity-index.md`, audited in round 7, records a prototype-level demand forecast shipping on 2026-08-12 as `Store::category_forecast` -- a linear least-squares fit over each category's recent trend units, with day-of-week de-seasonalisation for daily series, and an explicit note that "the learned on-device model from the 2026-07-20 research remains out of scope". So this research document was read, a deliberately narrow slice of it was adopted, and the ML-runtime question it poses was consciously deferred. That is the correct lifecycle for an evaluation document, and the connection is recorded nowhere else in the repository -- this stamp is the only place it is written down. · NOT re-measured: the runtime comparison, the crate landscape and the performance estimates, which age faster than anything else in this directory and should be re-dated rather than re-verified. A future pass that needs this survey current needs a new survey, not an audit of this one. · Body left entirely as written; no paths inside it resolve to repository files, so there was nothing to repair. Stamp and footer added, which is all this file needed. -->
+-->
+
 # Research: On-Device ML for Demand Forecasting
 
 **Status:** Research (evaluation only)
@@ -187,10 +192,17 @@ When implemented:
 
 ## Related
 
-- P15-4: Analytics export module (`crates/oz-core/src/export/mod.rs`)
+- P15-4: Analytics export module (`crates/kasirmu-core/src/export/mod.rs`) — path corrected from the pre-rebrand `crates/oz-core/...`
 - P17: Plugin marketplace & DX (model updates via plugin system)
 - `docs/decisions/2026-07-10-crdt-delta-ledger-offline-sync.md`
-- `crates/oz-core/src/db/reports.rs` (data sources)
+- `crates/kasirmu-core/src/db/reports.rs` (data sources) — path corrected from the pre-rebrand `crates/oz-core/...`
 
-> last audited 29-09-26 by docs-auditor
+> **Path note (2026-10-11).** The two `crates/oz-core/...` citations above were the pre-rebrand
+> crate name; the crate is `kasirmu-core`. Both targets exist at the corrected paths
+> (`crates/kasirmu-core/src/export/mod.rs`, `crates/kasirmu-core/src/db/reports.rs`). Also worth
+> knowing for anyone reading this as live intent: the deferred model itself is still deferred, but
+> a narrow prototype shipped — `Store::category_forecast` (ADR #37,
+> `docs/decisions/2026-08-11-adr37-product-popularity-index.md`), a linear least-squares fit with
+> day-of-week de-seasonalisation, explicitly not the learned on-device model this survey evaluates.
 
+> last audited 11-10-26 by docs-auditor

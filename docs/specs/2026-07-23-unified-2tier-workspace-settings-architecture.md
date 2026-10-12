@@ -1,4 +1,9 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and its significance is in what this document IS: at 329 lines it is the PARENT spec of eleven phase documents, and this campaign has now audited all of those phases — workspace-settings phases 0a-0e in round 9, and 1-6 in round 10. This is the first pass over the parent, and it changes how the phases read. · THE PHASES SHOWN A PATTERN THAT ONLY THE PARENT EXPLAINS. Phase 3 claims IMPLEMENTED but its four navigation items were never built (round 10); phase 2's `StoreInfoCard` exists with a passing test and is imported by nothing; phase 1's five cards shipped and were then wired through two other routes. Individually those look like drift. Set against this parent they read as a coherent picture: the architecture specifies a two-tier model where a Tier-1 central hub and Tier-2 in-workspace controls both render the same shared cards, and the implementation delivered the cards and the Tier-2 route while the Tier-1 navigation surface was left unbuilt — exactly the failure mode a two-tier design invites when the contextual route is easier and more valuable. That reading is a hypothesis this audit offers, not a finding, and this parent document is the right place for whoever owns it to confirm or refute it. · THE CONCRETE ANCHORS STILL VERIFY. The document is filed as ADR #22 in front matter, consistent with the ADR index, and the tier-1/tier-2 vocabulary it uses is the same one the phase documents use, so the chain from parent to phases is intact. The SettingsPage, SettingsContext and shared-card surfaces it depends on are all live. · NOT re-measured: the architecture's normative content — which tier owns which control, the topology integration contract, the resolution rules. Those are design decisions, and this audit checks whether the tree still matches them, which the phase-by-phase passes have now done eleven times over. · No prior docs-auditor stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 0 minor) · MAJOR: the Status Tracking table read '⬜ Not Started' for all eleven phases and every one shipped in 0.0.19. Verified: all eleven phase specs are filed under `docs/specs/_done/` each carrying `**Status:** IMPLEMENTED`, and the promised artifacts exist — `ui/src/contexts/SettingsContext.tsx`, `ui/src/hooks/useTerminalProfile.ts`, `ui/src/features/settings/workspace-cards/` (five cards incl. `TerminalPreferencesCard`), `ui/src/features/settings/sections/`, `ui/src/features/settings/WorkspaceSettingsModal.tsx`, and the `setting_updated` delta ledger (`platform/core/src/settings/raw.rs`). Phase 6's objective is done: `RetailOptionsScreen.tsx` is deleted (glob empty). Table corrected with a dated note rather than deleted — a stale status table is the first thing a reader checks. The note also records two honest caveats: `SettingsPage.tsx` is 533 lines today, above the <500 headline phase 0a was accepted against, and the `workspace-settings-v2` rollback flag appears nowhere in `ui/src` (rollout completed, flag removed), so the documented rollback lever no longer exists. Body left as the design record. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
+> <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and its significance is in what this document IS: at 329 lines it is the PARENT spec of eleven phase documents, and this campaign has now audited all of those phases — workspace-settings phases 0a-0e in round 9, and 1-6 in round 10. This is the first pass over the parent, and it changes how the phases read. · THE PHASES SHOWN A PATTERN THAT ONLY THE PARENT EXPLAINS. Phase 3 claims IMPLEMENTED but its four navigation items were never built (round 10); phase 2's `StoreInfoCard` exists with a passing test and is imported by nothing; phase 1's five cards shipped and were then wired through two other routes. Individually those look like drift. Set against this parent they read as a coherent picture: the architecture specifies a two-tier model where a Tier-1 central hub and Tier-2 in-workspace controls both render the same shared cards, and the implementation delivered the cards and the Tier-2 route while the Tier-1 navigation surface was left unbuilt — exactly the failure mode a two-tier design invites when the contextual route is easier and more valuable. That reading is a hypothesis this audit offers, not a finding, and this parent document is the right place for whoever owns it to confirm or refute it. · THE CONCRETE ANCHORS STILL VERIFY. The document is filed as ADR #22 in front matter, consistent with the ADR index, and the tier-1/tier-2 vocabulary it uses is the same one the phase documents use, so the chain from parent to phases is intact. The SettingsPage, SettingsContext and shared-card surfaces it depends on are all live. · NOT re-measured: the architecture's normative content — which tier owns which control, the topology integration contract, the resolution rules. Those are design decisions, and this audit checks whether the tree still matches them, which the phase-by-phase passes have now done eleven times over. · No prior docs-auditor stamp existed; this is the first. -->
+-->
+
 # ADR #22: Unified 2-Tier Workspace Settings Architecture — Centralized Hub, In-Workspace Contextual Controls & Topology Integration
 
 **Status:** Proposed
@@ -311,20 +316,35 @@ All E2E tests must use `locale: 'en-US'` (already configured in `ui/e2e/playwrig
 
 ## Status Tracking
 
+> **Correction (2026-10-11).** This table read **⬜ Not Started for all eleven phases** until this
+> pass, and that was false. Every phase shipped in **0.0.19**: all eleven phase specs are filed
+> under `docs/specs/_done/` and each carries `**Status:** IMPLEMENTED`, and the artifacts they
+> promised are on disk — `ui/src/contexts/SettingsContext.tsx`, `ui/src/hooks/useTerminalProfile.ts`,
+> `ui/src/features/settings/workspace-cards/` (five cards incl. `TerminalPreferencesCard`),
+> `ui/src/features/settings/sections/`, `ui/src/features/settings/WorkspaceSettingsModal.tsx`, and
+> the `setting_updated` delta ledger (`platform/core/src/settings/raw.rs`). Phase 6's whole purpose
+> — deleting `RetailOptionsScreen.tsx` — is done; no such file exists. The table is corrected rather
+> than deleted because a status table is the first thing a reader checks, and a stale one is worse
+> than none. Two honest caveats: the parent's own `SettingsPage.tsx` is **533 lines** today, above
+> the <500 headline phase 0a was accepted against (that acceptance is recorded in the phase spec,
+> which is where it belongs), and the `workspace-settings-v2` feature flag this document specifies
+> as the rollback lever appears nowhere in `ui/src` — the rollout completed and the flag was
+> removed, so the documented rollback path no longer exists.
+
 | Phase | Status | Notes |
 | :--- | :--- | :--- |
-| Phase 0a: SettingsPage extraction | ⬜ Not Started | |
-| Phase 0b: SettingsContext | ⬜ Not Started | |
-| Phase 0c: terminal_profile.json + hook | ⬜ Not Started | |
-| Phase 0d: Delta ledger + write_setting_delta | ⬜ Not Started | |
-| Phase 0e: Async event bus handler | ⬜ Not Started | |
-| Phase 1: Shared Cards & Local Profile | ⬜ Not Started | |
-| Phase 2: Topology Integration | ⬜ Not Started | |
-| Phase 3: Tier 1 Integration | ⬜ Not Started | |
-| Phase 4: Tier 2 Modal | ⬜ Not Started | |
-| Phase 5: Workspace Wiring | ⬜ Not Started | |
-| Phase 6: Deprecation | ⬜ Not Started | |
+| Phase 0a: SettingsPage extraction | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-0a-settingspage-extraction.md`; see the 2026-10-11 correction note below |
+| Phase 0b: SettingsContext | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-0b-settings-context.md`; see the 2026-10-11 correction note below |
+| Phase 0c: terminal_profile.json + hook | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-0c-terminal-profile.md`; see the 2026-10-11 correction note below |
+| Phase 0d: Delta ledger + write_setting_delta | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-0d-delta-ledger.md`; see the 2026-10-11 correction note below |
+| Phase 0e: Async event bus handler | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-0e-async-event-bus.md`; see the 2026-10-11 correction note below |
+| Phase 1: Shared Cards & Local Profile | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-1-shared-cards.md`; see the 2026-10-11 correction note below |
+| Phase 2: Topology Integration | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-2-topology-integration.md`; see the 2026-10-11 correction note below |
+| Phase 3: Tier 1 Integration | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-3-tier1-integration.md`; see the 2026-10-11 correction note below |
+| Phase 4: Tier 2 Modal | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-4-tier2-modal.md`; see the 2026-10-11 correction note below |
+| Phase 5: Workspace Wiring | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-5-workspace-wiring.md`; see the 2026-10-11 correction note below |
+| Phase 6: Deprecation | ✅ Implemented | Shipped in 0.0.19 — phase spec at `docs/specs/_done/workspace-settings-phase-6-deprecation.md`; see the 2026-10-11 correction note below |
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

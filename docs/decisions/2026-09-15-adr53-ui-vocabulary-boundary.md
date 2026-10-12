@@ -15,7 +15,6 @@ status: Adopted (2026-09-15) — Option A implemented as rule `ui-framework-voca
 > **Cite this record by filename, not by number.** `docs/decisions/README.md` documents that
 > numbering has collisions; filename-plus-number is the only safe form.
 
-> last audited 29-09-26 by docs-auditor
 
 ## Context
 
@@ -265,3 +264,5 @@ node --test scripts/__tests__/verify-architecture-boundaries.test.mjs   # 25 tes
 grep -rn "\bReact\b\|\.tsx\b" --include="*.rs" crates modules platform foundation | grep -v "reactivate"
 grep -rnE '\bReact\b|\.tsx|\.css|component to render' --include='*.rs' crates modules platform foundation | wc -l
 ```
+
+> last audited 29-09-26 by docs-auditor

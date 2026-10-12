@@ -4,7 +4,12 @@ area: sync
 title: ADR #21: Sync Conflict Resolution Strategy
 status: Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)
 ---
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Second pass. The 2026-09-29 stamp is merged at the bottom as original evidence. · MAJOR — THE FOOTER WAS STRANDED, and this is the file the docs-auditor skill now cites as the archetype of that class: the `> last audited 29-09-26` line sat at line 328 while **397 further lines rode below it**, in 35 appended sections dated 2026-10-04 (the re-enqueue bound, the CRDT envelope flattening, the quarantine rule, COR-31/COR-32/COR-37 and C64 closures, the clock-must-not-seed-from-zero rule, and the negative-refund credit bug). Every one of those sections is newer and more correct than the body above the footer, and every footer-reading tool — `detect.sh` Checks 9/10 and `.agents/skills/docs-auditor/scripts/check-audit-stamps.py` — was reading this file as a 29-09-26 document. Repaired by MOVING the footer to the true end of file (line 725); not one line of the appended content was deleted, per the §13 rule. · MINOR: the §Related list cited `crates/oz-core/migrations/065_version_optimistic.sql` as an existing file. No `065_*` migration exists — the numbered series was consolidated into `crates/kasirmu-core/migrations/20260813_init.sql`. The claim it supports (a `version` column on `products`/`sales`) is true in that schema; the path is pre-rebrand and dead. Annotated in place rather than deleted, so the citation's history survives. · VERIFIED AND LEFT ALONE, because the prior stamp's central claims still hold and I re-derived them rather than inheriting: `resolve_conflict` is at `platform/sync/src/conflict.rs:329` (the 09-29 stamp said :201 — ordinary drift in a grown file) and `resolve_stock_crdt` at `:235`; `ConflictType`/`ConflictResolution` still return **0 hits** in `platform/sync`, exactly as the prior stamp recorded; `conflict_proptests.rs`, `sync_client_divergence_tests.rs`, `queue.rs`, `daemon.rs`, `pg_daemon.rs` all present; `crates/kasirmu-core/src/db/offline/enqueue.rs:91` carries the `enqueue_offline_preserving_item` the 2026-10-04 section describes, with its identity-preserving test at `db/offline_tests.rs:691`; the renamed pin is real (`crdt_merge_reenqueue_preserves_retry_count_and_tenant`, `sync_client_divergence_tests.rs:331`); `reverse_customer_spend_on_refund` is at `crates/kasirmu-core/src/db/refunds.rs:735` with its negative-refund pin `a_negative_refund_total_does_not_credit_lifetime_spend` (`refunds_tests.rs:778`) and the older `reverse_lifetime_spend_clamps_at_zero` (`customers_tests.rs:526`). · NOT re-measured: the runtime behaviour of the two conflict policies and the divergence suite's verdict — both need a live sync run, and the section's own text already labels the semantics choice UNDECIDED. · Body otherwise left as written: an ADR records the decision, and the decision (entity-aware LWW dispatch, extended by property-based tests) is what shipped. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 327 lines, no audit stamp, no footer, no docs-auditor marker. Its front matter reads "Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)", so a Phase 1 exists, and the resolution function this ADR specifies is live: `resolve_conflict(local, remote) -> ResolvedItem` at `platform/sync/src/conflict.rs:201`, still in the sync crate the ADR names. · WHAT SURVIVED AND WHAT MOVED, precisely. The resolution function is intact, but the surrounding vocabulary the ADR introduces is not findable under its own names -- searching `platform/sync` for `ConflictType` or `ConflictResolution` returns nothing, meaning the entity-type dispatch the companion research document refers to (see `docs/decisions/2026-07-20-crdt-sync-research.md`, audited in the previous round) is keyed differently now. Recorded rather than treated as a finding: an ADR naming a type that was later renamed or inlined is ordinary evolution, and the function carrying the decision is still where the record says. · THIS ADR IS THE DECIDED COUNTERPART to that research document, and reading them together is the useful part. The CRDT survey concluded against a rewrite; this one specifies what shipped instead -- a last-writer-wins hybrid with explicit resolution, extended by property-based tests. Those tests are present (`platform/sync/src/conflict_proptests.rs`), so the strategy this document chose is the one under test. · The status checker reports no drift for this row. Body left entirely as written, including its references to the sync engine's queue and delta surfaces; stamp and footer added, which is all this file needed. -->
+-->
+
 # ADR #21: Sync Conflict Resolution Strategy
 
 **Status:** Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)
@@ -291,7 +296,7 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - `platform/sync/src/conflict.rs` — Current LWW resolver
 - `platform/sync/src/queue.rs` — `ResolvedItem` struct, `apply_resolution()`
 - `platform/sync/src/lib.rs` — `run_sync_cycle()` conflict usage
-- `crates/oz-core/migrations/065_version_optimistic.sql` — Existing version columns on products/sales (renamed from `065_version_columns.sql`)
+- `crates/oz-core/migrations/065_version_optimistic.sql` — ~~Existing version columns on products/sales (renamed from `065_version_columns.sql`)~~ **pre-rebrand and no longer a file**: the numbered migration series was consolidated into `crates/kasirmu-core/migrations/20260813_init.sql`, so no `065_*` exists. The `version` columns it introduced on `products`/`sales` **do** survive there — the claim about the schema is true, only the path is historical.
 
 ---
 
@@ -325,7 +330,6 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 
 > Activation and Ownership appended 09-09-26.
 
-> last audited 29-09-26 by docs-auditor
 
 ---
 
@@ -722,3 +726,5 @@ clamp handles by construction, so it says nothing about the direction that break
 `a_negative_refund_total_does_not_credit_lifetime_spend` supplies the negative total directly, the
 way a corrupt replicated payload would; verified RED with the clamp removed (5000 -> 6000) and GREEN
 with it.
+
+> last audited 11-10-26 by docs-auditor

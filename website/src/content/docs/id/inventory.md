@@ -85,5 +85,4 @@ penjualan, void, refund, transfer, penerimaan pesanan pembelian (PO
 Diterima), stok opname, dan penyesuaian manual — dari mana stok berasal dan
 ke mana perginya.
 
-> last audited 09-09-26 by docs-auditor
-terhubung ke menu navigasi mana pun.)
+> last audited 11-10-26 by docs-auditor

@@ -260,7 +260,6 @@ See `docs/specs/_active/p1-sync-batching-compression-retention.md` for full acce
 - `platform/sync/tests/integration_test.rs` — 19 cross-terminal integration tests
 - `ui/src/components/FastPINOverlay.tsx` ✅
 
-> last audited 11-10-26 by docs-auditor
 
 ---
 
@@ -292,3 +291,5 @@ Four pins in `foundation/src/validation_tests.rs` hold the contract: `max_length
 Reachability: only `validate_min_length` has production callers today, and all four of them pass a staff PIN (min 4, ASCII digits), so no live data was mis-validated — the defect was latent in the shared API. The fix is still the right one for the intended display-name use.
 
 <!-- Audit stamp: 2026-10-04 · COR-36 byte-vs-char length counting fixed. -->
+
+> last audited 11-10-26 by docs-auditor

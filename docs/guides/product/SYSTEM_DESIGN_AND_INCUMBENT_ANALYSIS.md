@@ -155,7 +155,6 @@ The `kasir.mu` server design is not an accidental microservice-versus-monolith d
 * It trades away junior-developer familiarity and rapid throwaway prototyping.
 * In exchange, it achieves **unrivaled operational margins (<1% cloud cost)**, **zero-downtime offline reliability for store owners**, and **massive capital efficiency** that legacy competitors cannot match without destroying their own legacy businesses.
 
-> last audited 07-10-26 by docs-auditor
 
 <!-- Audit 2026-10-07 (docs-auditor): technical claims verified against the tree, not re-read.
      Verified accurate: apps/cloud-server is Rust/Axum on :3099 (63 refs); apps/license-server
@@ -167,3 +166,5 @@ The `kasir.mu` server design is not an accidental microservice-versus-monolith d
      business judgement, outside a docs-vs-code audit's reach.
      Footer added: the file carried a stamp but no machine-readable footer, which
      check-audit-stamps.py reports as a gap. -->
+
+> last audited 07-10-26 by docs-auditor

@@ -1,4 +1,9 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Full pass over the most-cited document in the tree (the 2026-09-29 stamp records nineteen files referencing it); the 2026-09-29, 2026-09-08 and 2026-08-31 bodies are merged at the bottom as original evidence. · MAJOR (a documented response field that does not exist): §1's \`GET /health\` sample and the prose beneath it both named \`db_kind\`. The wire field is **\`db\`** — \`HealthResponse\` is \`struct HealthResponse { ... db: String, ... }\` (\`apps/cloud-server/src/main.rs:630\`, serialized with the derived name \`db\`, and the handler builds it at \`:831\` from a local named \`db_kind\` at \`:693\`). So the page documented the VARIABLE and not the FIELD, which is why it read as authoritative: a reader alerting on \`db_kind\` gets a missing-key error, not a wrong value. The sample and the sentence now say \`db\`, and the sentence names the variable-vs-field trap explicitly so the next editor does not "correct" it back. The other four fields in the sample (\`status\`, \`version\`, \`sync_queue_depth\`, \`last_sync_at\`) are real, and the sample gained \`db_connected\` and \`rls_posture\`, which the response also carries and the page never listed. · MINOR (same class, three occurrences): §11.2's line-number citations had drifted. \`apps/desktop-tauri/src/lib.rs:971-973\` → the registrations are at **\`:1416-1418\`** (\`:971-973\` is now a comment about the LAN PSK tolerance — following it lands in unrelated code); \`apps/mobile-tauri/src/lib.rs:644-656\` (both occurrences) → the \`commands::data::\` block is at **\`:1090-1102\`** (\`:644-656\` is the sync-wakeup loop). Every CLAIM those citations supported is right and was re-verified: desktop registers all three restore commands, tablet registers none, and the three per-permission lines in \`commands/data.rs\` (\`:177\`, \`:196\`, \`:228\`) are still exact. A note recording the correction and the re-derive grep was added to the §10-11 tail blockquote, which is already the section's convention for stating a correction with its command. · VERIFIED AND LEFT ALONE: the §1-2 monitoring surface (\`/health\` fields \`sync_queue_depth\`/\`db_latency_us\`/\`last_sync_at\` are all real per the struct and its OpenAPI schema; \`health_checks_total\`/\`health_check_failures_total\` are real counters in \`metrics.rs:227,235\`; \`apps/unified/healthcheck.sh\` exists; \`/api/sync/status\` is real); the §8 deployment table (service name, the two-name origin model that the 2026-09-29 stamp established is the documented alias rather than rebrand drift, \`ops/docker/Dockerfile.unified\`, single \`/data\` volume); the §8 env table (\`OZ_HEALTH_SMTP_MAX_FAILS\`, \`OZ_HEALTH_PADDLE_MAX_FAILS\`, \`OZ_WEB_SESSION_TTL\`, \`OZ_DISCORD_WEBHOOK\`, \`OZ_WEB_ALLOWED_ORIGINS\` all read by the license server; \`OZ_APPLY_SCHEMA\`/\`OZ_DB_POOL_SIZE\`/\`OZ_REDIRECT_ONLY\` by the cloud server); the ADR #54 route list (\`google/start\`, \`google/callback\`, \`desktop/link/consume\`, \`email/request\`, \`email/consume\` are the registered paths at \`apps/license-server/main.go:392-400\`, so the "404 by design" note is correct); \`scripts/verify-deployment.py\` exists with the documented default base \`https://license.kasir.mu\` (\`:116\`); and the footer, now at line 1809, is the LAST non-empty line of the file (checked per the §13 rule added to the skill this round). · NOT re-measured: any command, probe interval, rollback step, credential procedure or SLA. A runbook is verified by running it against a deployment, which a checkout-based audit cannot do; what this pass establishes is that its load-bearing identifiers, field names and citations still point at the things that exist. · Prior evidence retained verbatim below. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,744 lines, with a prior marker re-verified rather than replaced. It is, by a wide margin, the MOST-CITED DOCUMENT IN THE REPOSITORY — nineteen files reference it, including this campaign's own stamps on the migration record, the ADR-55 origin model, the SQLCipher plan and the licence audit. That citation count is the reason this pass checked its load-bearing claims rather than its content. · THE LOAD-BEARING CLAIM IS ABOUT THE ORIGIN, AND IT IS CORRECT IN A WAY THAT MATTERS. The deployment section names the Northflank service and describes the public URL as "two names, one service": the current domain canonical, with the previous one as an alias. That is exactly the main-plus-fallback pair ADR-55 created and that this campaign verified in the code last round — the main and fallback origin constants in the core crate's server-origin module. So the runbook and the code agree, and the several old-domain references a grep finds in it are the documented ALIAS rather than rebrand drift. Filing them would have been the second false positive of this kind in two rounds, and the stamp says so explicitly so the next auditor does not make it. · THE OTHER CLAIM CHECKS OUT TOO. The build trigger is described as a push to main running Dev CI with a deploy job building the linked branch, and that job is live in the current workflow set — the same live-versus-archived distinction the archived CI dashboard, the SAST audit and the regression tracker all turned on, and here the runbook is on the right side of it. · SCOPE, because a 1,744-line operations runbook is a document class this campaign has audited before under a different name. Its content is procedure, and procedure is verified by running it against a deployment, which a checkout-based audit cannot do. What this pass established is narrower and is what a reader of the index actually needs: that the most-cited document in the tree still describes the deployment that exists, on the two facts most likely to have drifted. · NOT re-measured: any command, probe interval, rollback step or credential procedure. A runbook that is wrong about the world is dangerous; a runbook whose commands are unverified by this audit is merely unaudited, and the stamp distinguishes the two. · Prior marker retained; footer re-dated to match the new stamp. -->
+-->
+
 # Operations Runbook — kasir.mu (unified Northflank deployment)
 
 <!-- Superseded audit marker (2026-09-08 · DSH, body kept verbatim) · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/records/audits/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
@@ -31,13 +36,20 @@ succeeds, `"degraded"` otherwise:
   "sync_queue_depth": 0,
   "db_latency_us": 1200,
   "last_sync_at": "...",
-  "db_kind": "postgres"
+  "db": "postgres",
+  "db_connected": true,
+  "rls_posture": "enforced"
 }
 ```
 
 `sync_queue_depth` is a **JSON field, not a Prometheus gauge** — alert on it by
-polling `/health` (see §5). `db_kind` tells you which backend the server is on
-(`sqlite` during the cutover window, `postgres` after).
+polling `/health` (see §5). The field that tells you which backend the server is on
+(`sqlite` during the cutover window, `postgres` after) is **`db`** — *not* `db_kind`,
+which this page named until 2026-10-11 and which no response carries. The struct
+field is `db` (`apps/cloud-server/src/main.rs:630`); the two are easy to conflate
+because the *local variable* that feeds it is called `db_kind` (`:693`), and the
+variable name is not the wire name. `rls_posture` and `db_connected` ride in the
+same response and are the fields to read for isolation and reachability.
 
 ### `GET /metrics` (Prometheus text)
 
@@ -1586,7 +1598,7 @@ in `crates/kasirmu-core/src/db/staff.rs:388-412`, e.g. `"user is inactive"`,
 earlier and separately, as `AppError::InvalidSession`
 (`apps/desktop-tauri/src/commands/data_tests.rs:135-151`).
 
-**The TABLET registers NONE of the three.** `apps/mobile-tauri/src/lib.rs:644-656` registers
+**The TABLET registers NONE of the three.** `apps/mobile-tauri/src/lib.rs:1090-1102` registers
 `export_data`, `import_preview`, `import_data`, `create_backup_to` and
 `export_data_without_session` from `commands::data` — and nothing else. A tablet operator
 therefore still has **only the CLI path** (§11.8). This is the position this section previously
@@ -1786,10 +1798,10 @@ the swap directly, which is why the app must be closed.
 > previously read that the in-app request trigger "has no registered IPC command today" — true
 > when written, false from the commit that registered them. What is true now: the three
 > commands `list_restore_candidates`, `restore_status` and `restore_prepare` are registered
-> on the **desktop** shell (`apps/desktop-tauri/src/lib.rs:971-973`) and gated in
+> on the **desktop** shell (`apps/desktop-tauri/src/lib.rs:1416-1418`) and gated in
 > `apps/desktop-tauri/src/commands/data.rs` — `SETTINGS_EDIT` for `restore_prepare` (`:228`),
 > `SETTINGS_READ` for the two reads (`:177`, `:196`); the **tablet registers none of the
-> three** (`apps/mobile-tauri/src/lib.rs:644-656`). Re-derive the whole census with
+> three** (`apps/mobile-tauri/src/lib.rs:1090-1102`). Re-derive the whole census with
 > `grep -n 'list_restore_candidates\|restore_prepare\|restore_status' apps/*/src/lib.rs`
 > (expect three hits, all desktop) or `python3 scripts/verify-ipc-parity.py`. This is the
 > second correction to this section in one day, so it is stated with its command rather than
@@ -1798,5 +1810,17 @@ the swap directly, which is why the app must be closed.
 > One step remains deliberately marked rather than asserted: §10.3's literal Windows path is
 > derived from the verified identifier and `app_data_dir()` join, not observed by calling the
 > OS API.
+>
+> **Three line-number citations in this section were stale and were corrected 2026-10-11.**
+> The registrations move when commands are added, which is exactly what happened. The
+> CITATIONS below were wrong while every CLAIM they supported was right — re-verified at
+> HEAD: the desktop shell registers all three (`apps/desktop-tauri/src/lib.rs:1416-1418`,
+> previously cited as `:971-973`), the tablet registers none of them
+> (`apps/mobile-tauri/src/lib.rs:1090-1102` holds the `commands::data::` block and contains no
+> restore command, previously cited as `:644-656`), and the three per-permission line numbers
+> in `apps/desktop-tauri/src/commands/data.rs` (`:177`, `:196`, `:228`) are still exact. A
+> reader who followed the stale pair landed in unrelated code — `:971-973` is a comment about
+> the LAN PSK tolerance, `:644-656` is the sync-wakeup loop — which reads as a contradiction
+> of the sentence rather than a moved citation.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

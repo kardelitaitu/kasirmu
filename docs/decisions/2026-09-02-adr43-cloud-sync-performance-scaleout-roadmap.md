@@ -256,7 +256,6 @@ While designed for horizontal scaling, several items in Tiers 2–4 should **not
 - `docs/records/sqlite-pg-roles.md` — SQLite↔Postgres schema parity & RLS cutover
 - `scripts/rls-cutover.sql` — the pending RLS enforcement cutover (D9)
 
-> last audited 29-09-26 by docs-auditor
 
 
 ---
@@ -272,3 +271,5 @@ Three module `next:` markers claimed that D4/D5/D7 work was still pending. Measu
 Pins: `list_conflicts_route_is_registered_and_empty_by_default` and `resolve_conflict_route_reports_404_for_an_unknown_id` (both in `apps/cloud-server/src/sync_api_tests.rs`) keep the HTTP half of the conflict surface from silently disappearing. The three module headers now read `next: none`.
 
 > D4/D5/D7 status re-measured 2026-10-04.
+
+> last audited 29-09-26 by docs-auditor

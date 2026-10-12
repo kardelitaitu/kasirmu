@@ -4,7 +4,6 @@
 Recorded against: branch `0.0.39` @ `9ac839264` · 2026-09-15
 Scope: sections 1–4 of the root todo, plus its implied Slint/embedded direction.
 
-> last audited 29-09-26 by docs-auditor
 
 ## Verdict
 
@@ -162,3 +161,5 @@ addition. That assumption inverts the priority order:
    not optimistic-rollback.
 5. **Delete §3 and §4** and replace them with: adopt PERF-07 paging; `react-window` only
    where interaction semantics allow; keep business state in `oz-bridge`.
+
+> last audited 29-09-26 by docs-auditor
