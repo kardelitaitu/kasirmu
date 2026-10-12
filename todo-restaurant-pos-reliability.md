@@ -1,6 +1,6 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. F19 and F23/F24 CLOSED. Remaining: one unasserted D6 pairing. P1 is no longer clean: one declared-dead setting key (`restaurant.dispatch_on_tab_save`) — see the round-49 correction below.**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. F19 and F23/F24 CLOSED. Remaining: one unasserted D6 pairing. P1 is clean: all settings keys wired and active (including `restaurant.dispatch_on_tab_save` wired in commit 9377011c6).**
 >
 > **Header corrected again 2026-10-10 (round 115), and the reason it needed correcting is the
 > point.** It read *"Remaining: D6, and the F19/F23/F24 owner calls."* **D6 is now closed** —
@@ -31,25 +31,14 @@
 > `DECLARED_DEAD` list. A header that summarises progress is the easiest thing in a plan to
 > leave behind, which is why each correction here names the round that made it stale.
 >
-> **Header corrected AGAIN 2026-10-12 (round 49) — P1 is no longer clean.** The
-> paragraph above was right when written and is wrong now. The pre-bill / table-transfer /
-> split-bill feature added a `Kitchen Dispatch on Tab Save` toggle writing
-> `restaurant.dispatch_on_tab_save`, which **nothing reads** — so the switch is
-> decorative and saving a tab dispatches nothing.
->
-> `deadSettingsKey.test.ts` caught it (that guard was RED on HEAD from the feature
-> until this round), and the key is now in `DECLARED_DEAD` with what wiring it would
-> need. That is the honest state: the F1 class is not empty, and
-> `planStatusAccuracy.test.ts` asserts the emptiness this paragraph used to claim —
-> so the assertion and the paragraph must be revisited together, never one without the
-> other.
->
-> **NOT wired, deliberately.** Wiring means INVENTING the feature: which items count as
-> "newly added" on an UPDATE rather than a first save, whether an offline printer blocks
-> the save, whether a re-save reprints. Those are product decisions — guessing would ship
-> half-defined behaviour behind a switch that currently does nothing at all, which is
-> worse, because the cashier would start receiving chits. The decision stays with the
-> owner; the key stays pinned until it is made.
+> **Header corrected AGAIN 2026-10-12 (round 50) — P1 is clean again.** In commit
+> `9377011c6`, the owner decision was made and `restaurant.dispatch_on_tab_save` was
+> implemented in `PosScreen.tsx`: uncommitted cart lines are tracked via `dispatchedQty`,
+> delta items are fired to the kitchen on tab save/hold, and subsequent updates fire
+> only new rounds. `deadSettingsKey.test.ts` caught that the key now has an active
+> reader, so its `DECLARED_DEAD` entry was deleted. `DECLARED_DEAD` is empty again and
+> P1 is 100% clean.
+
 >
 > **D1/D2 history:** the provisioning seed was WITHDRAWN after F14 (provisioning
 > writes the global DB, the POS reads the store DB, so a restaurant default for
