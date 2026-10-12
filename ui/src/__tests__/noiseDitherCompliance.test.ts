@@ -60,6 +60,13 @@ const KNOWN_NOISE_SELECTORS = [
   // ui/src/theme/components.css). A large soft --shadow-sm pane in the preview
   // rail: it takes the overlay rather than a small-control exemption.
   '.restaurant-preview-card',
+  // Split-bill modal + table-management modal dialog (2026-10-12): both are
+  // --shadow-* dialog surfaces, wired to ::after in all three components.css
+  // lists (main + both @media parity blocks). Named on both sides for the same
+  // reason as .restaurant-preview-card above: the coverage walk reads CSS
+  // selectors, so the ::after entry alone is not enough.
+  '.pos-split-modal',
+  '.tables-modal-dialog',
   // The mat the thermal roll sits on — same shape as the two above: a
   // full-width stage carrying inset --shadow-inner, named on both sides.
   '.resto-receipt-paper-wrapper',
