@@ -282,7 +282,7 @@ Before starting any verification:
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
 
-### Two citation traps that survive every automated check
+### Citation traps that survive every automated check
 
 Both were found repeatedly between 2026-10-11 batches (the oldest-markdown campaign):
 two-thirds of the findings in that campaign were coordinates that were *correct when
@@ -317,6 +317,49 @@ recorded as missing while it sat in `platform/core/src/settings/raw.rs`, a file 
 earlier search never opened because the module had split into a directory. Search the whole
 module DIRECTORY, and prefer pinning evidence by TEST NAME over line number when the target
 is a large file.
+
+
+**3. A gate that was "wired to nothing" can be PROMOTED later.** A record asserting a gate is
+unwatched must be re-checked against the gate's **status in `scripts/gates.json`**, not just
+against the hook it was missing from. Found 2026-10-11: `.agents/gates/hook-gate-removal-1c59fea5f5.md`
+correctly diagnosed that the `typecheck-tripwire` gate had no runner — and the diagnosis was
+acted on, because the gate is now `status: required` (promoted 2026-09-30) and wired at
+`dev-ci.yml:1314` and `check.sh:1072`. The record's diagnosis stayed true; only its
+present-tense "nothing reads it" half went stale. Repair with a **dated addendum**, not a
+rewrite: the finding was right and the fix is the news.
+
+### The dated-record corpus: default to ZERO edits
+
+Two corpora are **records by convention**, and the correct audit outcome for them is usually
+*verify and report, change nothing*:
+
+| Corpus | Footer convention | Tooling |
+|---|---|---|
+| `.agents/archived/**`, `.agents/reviews/**`, `.agents/planning/**`, `.agents/management-journal/**` | **none** — inline HTML-comment stamps only | `check-dead-refs.py` skips them ("dated records") |
+| `docs/records/**`, `docs/specs/_done/**`, any `todo-`/`plan-`-named file | mixed | skipped or exempt by name |
+
+Do NOT add a `> last audited` footer to these. It would misrepresent a completed record as a
+live claim document. A record citing a pre-rebrand path, a moved corpus, a consolidated
+migration or a pre-reorg `.agents/<name>.md` is **expected drift**: name the live equivalent in
+your report, do not rewrite the record. Edit only when (a) a claim is false **about the
+present**, or (b) an **internal cross-link between records is broken** — and then append a
+dated correction under the corpus's own convention if it has one.
+
+**Three `.agents/` traps found on 2026-10-11:**
+
+- **An internal cross-link is invisible to the checker.** `check-dead-refs.py` treats the
+  corpus as records, so a broken pointer like `.agents/naked-read-sync-conflicts.md` (moved to
+  `.agents/planning/`) passes every automated check. Grep sibling pointers by hand.
+- **A moved target reads as alive.** The checker falls back to whole-tree **basename** matching,
+  so `.agents/egress-surface.md` resolves even though the file is at `.agents/planning/egress-surface.md`.
+  A reader pasting the literal path fails. Any doc citing a sibling by absolute path is a sweep target.
+- **8-hex tokens in these journals are AGENT ROLE IDS, not commit SHAs** (`ops 7cca72fe`,
+  `writer W1 6d5670ed`, `coder C1 737bd54c`). Exclude the 8-hex role-id form from any SHA sweep
+  over `.agents/`, or it reports a dozen false dead commits.
+
+The 2026-09-13 reorg (`edd97e5c0`) moved or deleted 40+ files, including `.agents/AGENTS.md`
+(206 lines, deleted with no rename destination). **Assume a bare `.agents/<name>.md` citation
+has moved until you check.**
 
 ---
 

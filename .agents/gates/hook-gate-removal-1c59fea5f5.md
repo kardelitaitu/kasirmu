@@ -61,3 +61,33 @@ Enforcement is additionally *prohibited by test*: test-typecheck-tripwire.sh:55 
 No hook edited, no variable set, no revert, no CI change, nothing committed under .githooks/** or scripts/**. This is six sessions' toolchain and the removal was deliberate, framed as an optimisation, made 65 minutes before this note. Flipping the watchdog back to exit 1 would turn ci-docs-drift red for every session at once - an owner decision, not a repair to land unasked.
 
 Reproduce: git show 1c59fea5f5 -- scripts/test-typecheck-gate.sh .githooks/pre-commit .githooks/post-commit | grep -n "OZPOS_SKIP_TRIPWIRE" .githooks/post-commit | wc -l .git/typecheck-tripwire.log | git log --since="2026-09-13 07:06" --pretty=%h -- ui/src | wc -l
+
+## ADDENDUM 2026-10-11 — the finding was acted on, and two present-tense claims above are now stale
+
+Appended by docs-auditor; nothing above is retracted. This record is preserved as the dated finding it is
+(its measurements are its own date's), but three statements in it describe the PRESENT and no longer hold.
+Verified against the tree on 2026-10-11:
+
+1. **The gate this record says nothing watches is now watched and required.** `scripts/gates.json:1002`
+   carries `id: typecheck-tripwire`, `status: required`, promoted **2026-09-30** and wired to
+   `dev-ci.yml#static-gates` (step `UI typecheck tripwire self-test`) and to `scripts/check.sh`
+   (`typecheck tripwire`). Its own `_note` explains the promotion in exactly this record's terms: that
+   test "was wired to NO runner at all, in check.sh or in any workflow", so it "policed" a guard with
+   nothing behind it. So line 51's "**Zero hits in .github/workflows/\***" is now false: there is one
+   hit at `dev-ci.yml:1314` (`bash scripts/test-typecheck-tripwire.sh`). The record's *diagnosis* was
+   right and has been fixed; only the present-tense half of the sentence is stale.
+2. **The skip variables were renamed by the rebrand** — line 26's `OZPOS_FAST_HOOKS` / line 47's
+   `OZPOS_SKIP_TYPECHECK` are now `KASIRMU_FAST_HOOKS` and `KASIRMU_SKIP_TRIPWIRE`
+   (`.githooks/post-commit:76`, `:80`). The `:-1` **default-off** behaviour the record measures is
+   UNCHANGED, so its central finding stands: the witness is still opt-in and still records nothing by
+   default. Only the spelling moved.
+3. **The two line citations in §3 drifted** (expected in grown files): `dev-ci.yml:578` is now unrelated
+   matrix text, and `scripts/check.sh:396` is the debt-marker gate; the live wiring is the
+   `typecheck gate` step at `check.sh:1063` plus the tripwire step above.
+
+UNCHANGED AND RE-CONFIRMED: the commit `1c59fea5f5` really is `chore(hooks): optimize pre-commit gates`
+at 2026-09-13 07:06:28 +0700, 8 files, +61/-108 (re-read from the object store); the alarm-replaced-by-PASS
+diff is verbatim; and `scripts/test-typecheck-gate.sh:26-29` STILL prints "TYPECHECK GATE: PASS
+(relocated to pre-push)" when no `STAGED_TS=` step is found — the exact behaviour §3 describes.
+NOT re-measured: `.git/typecheck-tripwire.log` no longer exists in this checkout (the object store was
+rebuilt since), so the 17-line recorder contents cannot be re-read here.

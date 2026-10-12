@@ -140,4 +140,4 @@ appended 09:16 +07. nothing above is retracted; §2 and §3 are now reproduced r
   `drift_pin_debt_ceilings_only_shrink` panicking at `:666` with 70 against a ceiling of 69, and
   `drift_pin_three_way_partition_is_complete_and_sums` at `:603` naming
   `sync::list_sync_conflicts_scoped` as new debt absent from the ledger. both trace to `028056eaa`
-  at 06:43:58, written up in `.agents/naked-read-sync-conflicts.md`.
+  at 06:43:58, written up in `.agents/naked-read-sync-conflicts.md` (moved since by the 2026-09-13 `.agents/` reorg; the live copy is `.agents/planning/naked-read-sync-conflicts.md` — the bare name is left as written because it is this record's own dated pointer).

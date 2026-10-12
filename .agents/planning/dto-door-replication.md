@@ -13,6 +13,17 @@ whether anyone ever wrote down that it is meant to*.
 Method: read-only. No cargo, no git writes, no edits outside `.agents`. Consumer side included
 (Table 3).
 
+
+> **DATED CORRECTION (2026-10-11, docs-auditor).** This file and its named companion were both moved by
+> `a7331612a` (*"docs(agents): restore planning, analysis, and debt records to planning/"*, 2026-09-18):
+> the companion now lives at **`.agents/planning/egress-surface.md`**, not `.agents/egress-surface.md`,
+> which is the path cited three times above (L9, L103, L184). Nothing else in the reference changed — both
+> files moved into the same directory, so the relationship is intact and only the path text is stale.
+> The three citations are left as written because this file's provenance paragraph is a dated record of
+> where things stood on 13-09-26; read them against this note. Re-check the sibling itself before quoting
+> any of its numbers: it carries its own **RE-MEASURED 2026-10-07** block whose door count and line numbers
+> have moved since it was written, and that block, not the body, is the current reading.
+
 ## Legend for the last column — the whole point of the table
 
 * **deliberate** — a comment, ADR, doc or test in-tree states that this door's writes stay local.
