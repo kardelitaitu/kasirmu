@@ -21,6 +21,18 @@ on a setting"). The mistake was never the field being unconditional; it is each
 | 3 | `PaymentModal` open bill | wrote it into the saved tab | `795fc18d4` |
 | 4 | `CartPanel` tab banner | displayed it as this order's table | `547bf031d` |
 | 5 | `CartPanel` pax field | prompted for "seated guests per table" | `54767afa5` |
+| 6 | `PosScreen` split-bill remaining tab | wrote it into the new tab | `e3fa0d176` |
+
+Site 6 arrived LATER, in new code — the split-bill feature (`276d6ce04`) added after
+this series began. Its handler built the remaining tab's `cart_data`, label AND
+`customer_name` from `tableNumber` with no order-type check, while writing
+`orderType` into the same record — so a takeaway could persist the identical
+self-contradicting payload fixed on the PaymentModal path in `795fc18d4`
+(`{"tableNumber":"T99","orderType":"takeaway"}`).
+
+That is the point of the class guard rather than six separate tests: **the rule
+has to be applied by whoever writes the next reader.** The sweep failed the moment
+site 6 existed (asserted 1, found 0), before any live run.
 
 Sites 1-3 were damage (a table wrongly claimed, freed, or persisted). Sites 4-5
 were **misinformation** — the order told the cashier something untrue about
