@@ -89,6 +89,20 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [moveTableModal, setMoveTableModal] = useState<Table | null>(null);
   const [selectedDestTableId, setSelectedDestTableId] = useState<string>('');
   const [movingTable, setMovingTable] = useState(false);
+  const [mergeTableModal, setMergeTableModal] = useState<Table | null>(null);
+  const [selectedMergeDestTableId, setSelectedMergeDestTableId] = useState<string>('');
+  const [mergingTable, setMergingTable] = useState(false);
+  const [arrangeMode, setArrangeMode] = useState(false);
+  const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const floorplanRef = useRef<HTMLDivElement | null>(null);
+  const dragStartPos = useRef<{
+    pointerX: number;
+    pointerY: number;
+    tableX: number;
+    tableY: number;
+  } | null>(null);
+  const tablesRef = useRef<Table[]>([]);
+  tablesRef.current = tables;
   const [printingBill, setPrintingBill] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -289,7 +303,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       if (tableModal.id) {
         const existing = tables.find((t) => t.id === tableModal.id);
         if (!existing) return;
-        const width = shape === 'rectangle' && existing.shape !== 'rectangle' ? Math.max(existing.width, 18) : existing.width;
+        const width = (shape === 'rectangle' || shape === 'booth') && existing.shape !== 'rectangle' && existing.shape !== 'booth'
+          ? Math.max(existing.width, 18)
+          : existing.width;
+        const height = shape === 'booth' && existing.shape !== 'booth' ? Math.max(existing.height, 14) : existing.height;
         const updated = await updateTableScoped(sessionToken, {
           ...existing,
           name: trimmedName,
@@ -297,6 +314,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           capacity,
           shape,
           width,
+          height,
         });
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
@@ -305,8 +323,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         const count = tables.length;
         const pos_x = Math.min(80, 10 + (count % 4) * 22);
         const pos_y = Math.min(80, 10 + Math.floor(count / 4) * 20);
-        const width = shape === 'rectangle' ? 18 : 12;
-        const height = 12;
+        const width = shape === 'rectangle' || shape === 'booth' ? 18 : 12;
+        const height = shape === 'booth' ? 14 : 12;
 
         const created = await createTableScoped(sessionToken, {
           id: '',
@@ -510,6 +528,149 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     }
   }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
 
+  const handleOpenMergeTable = useCallback((t: Table) => {
+    const candidates = activeTableList.filter(
+      (tbl) => tbl.id !== t.id && Boolean(getTableBill(tbl.name)),
+    );
+    setSelectedMergeDestTableId(candidates[0]?.id ?? '');
+    setMergeTableModal(t);
+  }, [activeTableList, getTableBill]);
+
+  const handleConfirmMergeTable = useCallback(async () => {
+    if (!mergeTableModal || !selectedMergeDestTableId || !sessionToken) return;
+    const destTable = activeTableList.find((t) => t.id === selectedMergeDestTableId);
+    if (!destTable) return;
+    const srcBill = getTableBill(mergeTableModal.name);
+    const destBill = getTableBill(destTable.name);
+    if (!srcBill || !destBill) return;
+
+    setMergingTable(true);
+    try {
+      const [srcFull, destFull] = await Promise.all([
+        getHeldCartScoped(sessionToken, srcBill.id),
+        getHeldCartScoped(sessionToken, destBill.id),
+      ]);
+      if (!srcFull || !destFull) throw new Error('Held carts not found');
+
+      let srcParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
+      let destParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
+      try { srcParsed = JSON.parse(srcFull.cart_data); } catch { srcParsed = {}; }
+      try { destParsed = JSON.parse(destFull.cart_data); } catch { destParsed = {}; }
+
+      const srcLines = Array.isArray(srcParsed.lines) ? srcParsed.lines : [];
+      const destLines = Array.isArray(destParsed.lines) ? destParsed.lines : [];
+      const combinedLines = [...destLines, ...srcLines];
+
+      const combinedTotalMinor = destFull.total_minor + srcFull.total_minor;
+      const combinedItemCount = destFull.item_count + srcFull.item_count;
+
+      destParsed.tableNumber = destTable.name;
+      destParsed.lines = combinedLines;
+
+      const newLabel = heldCartLabel(destTable.name, destParsed.customerName) ?? `Table ${destTable.name}`;
+
+      await Promise.all([
+        deleteHeldCartScoped(sessionToken, srcBill.id),
+        deleteHeldCartScoped(sessionToken, destBill.id),
+      ]);
+
+      await holdCartScoped(sessionToken, {
+        label: newLabel,
+        cart_data: JSON.stringify(destParsed),
+        item_count: combinedItemCount,
+        total_minor: combinedTotalMinor,
+        currency: destFull.currency || 'IDR',
+        bill_type: 'open_bill',
+        customer_name: destParsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
+        ...(destFull.deduction_location_id ? { deduction_location_id: destFull.deduction_location_id } : {}),
+      });
+
+      await releaseTableScoped(sessionToken, mergeTableModal.id);
+      await loadTables();
+
+      addToast({
+        message: l10n.getString('tables-toast-merged', { from: mergeTableModal.name, to: destTable.name }),
+        type: 'success',
+      });
+      setMergeTableModal(null);
+      closeDetail();
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'tables-toast-merge-failed'),
+        type: 'error',
+      });
+    } finally {
+      setMergingTable(false);
+    }
+  }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
+
+  const handlePointerDownTable = useCallback((e: React.PointerEvent<HTMLButtonElement>, t: Table) => {
+    if (!arrangeMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setDraggingTableId(t.id);
+    dragStartPos.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      tableX: t.pos_x,
+      tableY: t.pos_y,
+    };
+  }, [arrangeMode]);
+
+  const handlePointerMoveTable = useCallback((e: React.PointerEvent<HTMLButtonElement>, t: Table) => {
+    if (!arrangeMode || draggingTableId !== t.id || !dragStartPos.current || !floorplanRef.current) return;
+    e.preventDefault();
+    const rect = floorplanRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const deltaXPercent = ((e.clientX - dragStartPos.current.pointerX) / rect.width) * 100;
+    const deltaYPercent = ((e.clientY - dragStartPos.current.pointerY) / rect.height) * 100;
+
+    const rawX = dragStartPos.current.tableX + deltaXPercent;
+    const rawY = dragStartPos.current.tableY + deltaYPercent;
+
+    const w = Math.max(t.width, 2);
+    const h = Math.max(t.height, 2);
+
+    const snappedX = Math.max(0, Math.min(100 - w, Math.round(rawX / 5) * 5));
+    const snappedY = Math.max(0, Math.min(100 - h, Math.round(rawY / 5) * 5));
+
+    setTables((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, pos_x: snappedX, pos_y: snappedY } : item)),
+    );
+    setTablePool((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, pos_x: snappedX, pos_y: snappedY } : item)),
+    );
+  }, [arrangeMode, draggingTableId]);
+
+  const handlePointerUpTable = useCallback(async (e: React.PointerEvent<HTMLButtonElement>, t: Table) => {
+    if (!arrangeMode || draggingTableId !== t.id) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setDraggingTableId(null);
+    dragStartPos.current = null;
+
+    const currentTable = tablesRef.current.find((item) => item.id === t.id);
+    if (currentTable && sessionToken) {
+      try {
+        await updateTableScoped(sessionToken, currentTable);
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    }
+  }, [arrangeMode, draggingTableId, sessionToken, addToast, l10n]);
+
   const [showLegend, setShowLegend] = useState(false);
 
   return (
@@ -541,6 +702,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             onClick={() => setShowLegend((v) => !v)}
           >
             <span>Legend</span>
+          </Button>
+          <Button
+            variant={arrangeMode ? 'primary' : 'ghost'}
+            size="sm"
+            className={`tables-arrange-toggle ${arrangeMode ? 'active' : ''}`}
+            data-testid="tables-arrange-mode-btn"
+            onClick={() => setArrangeMode((v) => !v)}
+          >
+            <Localized id={arrangeMode ? 'tables-done-arranging' : 'tables-arrange-mode'}>
+              <span>{arrangeMode ? 'Done Arranging' : 'Arrange Tables'}</span>
+            </Localized>
           </Button>
           <Button
             variant="primary"
@@ -634,7 +806,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         </div>
       )}
 
-      <div className="tables-floorplan" role="list" aria-label={l10n.getString('tables-floorplan-label')}>
+      <div
+        ref={floorplanRef}
+        className={`tables-floorplan${arrangeMode ? ' tables-floorplan--arranging' : ''}`}
+        role="list"
+        aria-label={l10n.getString('tables-floorplan-label')}
+      >
         {loading && tables.length === 0 && (
           <div className="tables-loading" role="status">
             <span className="tables-loading-spinner" aria-hidden="true" />
@@ -678,6 +855,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           const w = Math.max(t.width, 2);
           const h = Math.max(t.height, 2);
           const bill = getTableBill(t.name);
+          const elapsedMinutes = bill?.created_at
+            ? Math.max(0, Math.floor((Date.now() - new Date(bill.created_at).getTime()) / 60000))
+            : null;
+          const isSlaWarn = elapsedMinutes !== null && elapsedMinutes >= 60;
           return (
             // The floor plan is a role="list" (aria-label above), so each table
             // must be wrapped in a list item. It cannot be put ON the button:
@@ -686,14 +867,28 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             // wrapper the container advertised a list whose only children were
             // buttons, and a screen reader announced an empty list.
             <div key={t.id} role="listitem">
-            <Button variant="ghost" size="sm" className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}`}
-              onClick={() => openDetail(t)}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}`}
+              onClick={() => {
+                if (arrangeMode) return;
+                openDetail(t);
+              }}
               // TBL-05: the context-menu shortcut opens the accessible detail
               // panel (the visible, keyboard-operable actions menu) instead of
               // mutating directly, so every operator path goes through the same
               // confirmed, error-aware action.
-              onContextMenu={(e) => { e.preventDefault(); openDetail(t); }}
-              disabled={pendingId === t.id}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (arrangeMode) return;
+                openDetail(t);
+              }}
+              onPointerDown={(e) => handlePointerDownTable(e, t)}
+              onPointerMove={(e) => handlePointerMoveTable(e, t)}
+              onPointerUp={(e) => void handlePointerUpTable(e, t)}
+              onPointerCancel={(e) => void handlePointerUpTable(e, t)}
+              disabled={!arrangeMode && pendingId === t.id}
               style={{
                 left: `${t.pos_x}%`, top: `${t.pos_y}%`,
                 width: `${w}%`, height: `${h}%`,
@@ -715,6 +910,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     {bill.total_minor > 0 && (
                       <span className="tables-table-bill-amount">
                         {formatMoney({ minor_units: bill.total_minor, currency: bill.currency })}
+                      </span>
+                    )}
+                    {elapsedMinutes !== null && (
+                      <span className={`tables-table-timer${isSlaWarn ? ' tables-table-timer--warn' : ''}`}>
+                        ⏱️ {elapsedMinutes}m
                       </span>
                     )}
                   </span>
@@ -746,6 +946,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 </div>
                 <div className="tables-active-bill-meta">
                   {l10n.getString('retail-cart-items', { count: activeBill.item_count }, `${activeBill.item_count} items`)} · {formatMoney({ minor_units: activeBill.total_minor, currency: activeBill.currency })}
+                  {activeBill.created_at && (
+                    <> · ⏱️ {Math.max(0, Math.floor((Date.now() - new Date(activeBill.created_at).getTime()) / 60000))}m</>
+                  )}
                 </div>
               </div>
             )}
@@ -864,16 +1067,28 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     </Button>
                   )}
                   {activeBill && tableTransferEnabled !== false && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid="tables-move-table-btn"
-                      onClick={() => handleOpenMoveTable(selected)}
-                    >
-                      <Localized id="tables-move-table">
-                        <span>Move Table</span>
-                      </Localized>
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid="tables-move-table-btn"
+                        onClick={() => handleOpenMoveTable(selected)}
+                      >
+                        <Localized id="tables-move-table">
+                          <span>Move Table</span>
+                        </Localized>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid="tables-merge-table-btn"
+                        onClick={() => handleOpenMergeTable(selected)}
+                      >
+                        <Localized id="tables-merge-table">
+                          <span>Merge Table</span>
+                        </Localized>
+                      </Button>
+                    </>
                   )}
                   <Button
                     variant="ghost"
@@ -999,6 +1214,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       <option value="circle">{l10n.getString('tables-shape-circle')}</option>
                       <option value="square">{l10n.getString('tables-shape-square')}</option>
                       <option value="rectangle">{l10n.getString('tables-shape-rectangle')}</option>
+                      <option value="booth">{l10n.getString('tables-shape-booth')}</option>
                     </select>
                   </label>
                 </div>
@@ -1121,6 +1337,113 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                         variant="ghost"
                         type="button"
                         onClick={() => setMoveTableModal(null)}
+                      >
+                        <Localized id="cancel">
+                          <span>Cancel</span>
+                        </Localized>
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mergeTableModal && (
+        <div
+          className="tables-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tables-merge-modal-title"
+        >
+          <div className="tables-modal-dialog">
+            <div className="tables-modal-header">
+              <h2 id="tables-merge-modal-title">
+                <Localized id="tables-merge-table-title" vars={{ from: mergeTableModal.name }}>
+                  <span>Merge Table {mergeTableModal.name}</span>
+                </Localized>
+              </h2>
+              <button
+                type="button"
+                className="tables-modal-close-btn"
+                onClick={() => setMergeTableModal(null)}
+                aria-label={l10n.getString('close') || 'Close'}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="tables-modal-form">
+              {(() => {
+                const candidateTables = activeTableList.filter(
+                  (t) => t.id !== mergeTableModal.id && Boolean(getTableBill(t.name)),
+                );
+                if (candidateTables.length === 0) {
+                  return (
+                    <>
+                      <p className="tables-empty-desc">
+                        <Localized id="tables-merge-table-no-occupied">
+                          <span>No other occupied tables with active tabs to merge with.</span>
+                        </Localized>
+                      </p>
+                      <div className="tables-modal-footer">
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          onClick={() => setMergeTableModal(null)}
+                        >
+                          <Localized id="close">
+                            <span>Close</span>
+                          </Localized>
+                        </Button>
+                      </div>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <div className="tables-modal-field">
+                      <label htmlFor="tables-merge-dest-select">
+                        <Localized id="tables-merge-table-select-prompt">
+                          <span>Select an occupied destination table to merge with:</span>
+                        </Localized>
+                        <select
+                          id="tables-merge-dest-select"
+                          value={selectedMergeDestTableId}
+                          onChange={(e) => setSelectedMergeDestTableId(e.target.value)}
+                        >
+                          {candidateTables.map((t) => {
+                            const b = getTableBill(t.name);
+                            return (
+                              <option key={t.id} value={t.id}>
+                                {t.name} ({t.capacity} seats{b ? ` · ${formatMoney({ minor_units: b.total_minor, currency: b.currency })}` : ''})
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="tables-modal-footer">
+                      <Button
+                        variant="primary"
+                        type="button"
+                        state={mergingTable ? 'processing' : 'ready'}
+                        disabled={!selectedMergeDestTableId || mergingTable}
+                        onClick={() => void handleConfirmMergeTable()}
+                        data-testid="tables-merge-confirm-btn"
+                      >
+                        <Localized
+                          id="tables-merge-table-confirm"
+                          vars={{ to: activeTableList.find((t) => t.id === selectedMergeDestTableId)?.name ?? '' }}
+                        >
+                          <span>Merge</span>
+                        </Localized>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        onClick={() => setMergeTableModal(null)}
                       >
                         <Localized id="cancel">
                           <span>Cancel</span>

@@ -93,7 +93,7 @@ export function useKdsShortcuts({
       const isNum = e.key >= '1' && e.key <= '9';
       if (isNum || matchF) {
         e.preventDefault();
-        const numStr = matchF ? matchF[1] : e.key;
+        const numStr = matchF?.[1] ?? e.key;
         const idx = parseInt(numStr, 10) - 1;
         if (idx < filteredOrders.length) {
           setSelectedOrderId(filteredOrders[idx]!.id);

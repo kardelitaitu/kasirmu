@@ -36,6 +36,9 @@ tables-shape-label = Bentuk
 tables-shape-circle = Lingkaran
 tables-shape-square = Kotak
 tables-shape-rectangle = Persegi Panjang
+tables-shape-booth = Booth
+tables-arrange-mode = Atur Tata Letak
+tables-done-arranging = Selesai Mengatur
 tables-save-table = Simpan Meja
 tables-release-confirm-title = Meja memiliki tagihan aktif ({ $amount })
 tables-release-confirm-desc = Melepas meja akan menandainya sebagai tersedia tanpa menutup atau melunasi tagihan yang belum dibayar ini. Anda yakin?
@@ -47,9 +50,17 @@ tables-move-table-title = Pindahkan Meja { $from }
 tables-move-table-select-prompt = Pilih meja tujuan yang tersedia:
 tables-move-table-no-available = Tidak ada meja tersedia untuk dipindahkan.
 tables-move-table-confirm = Pindahkan ke { $to }
+tables-merge-table = Gabung Meja
+tables-merge-table-title = Gabungkan Meja { $from }
+tables-merge-table-select-prompt = Pilih meja terisi untuk digabungkan:
+tables-merge-table-no-occupied = Tidak ada meja terisi lain dengan tagihan aktif untuk digabungkan.
+tables-merge-table-confirm = Gabungkan ke { $to }
 tables-toast-moved = Tagihan dipindahkan dari { $from } ke { $to }
 tables-toast-move-failed = Gagal memindahkan meja
+tables-toast-merged = Menggabungkan Meja { $from } ke { $to }
+tables-toast-merge-failed = Gagal menggabungkan meja
 tables-toast-bill-printed = Bill dicetak untuk { $table }
 tables-toast-bill-print-failed = Gagal mencetak bill
+
 
 # ── Tax Configuration ──

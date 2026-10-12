@@ -889,4 +889,160 @@ describe('TableManagementScreen', () => {
       expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-2', 'occupied');
     });
   });
+
+  it('toggles arrange mode on and off', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1' });
+    mockListTables.mockResolvedValue([table]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    const arrangeBtn = screen.getByTestId('tables-arrange-mode-btn');
+    expect(arrangeBtn.textContent).toContain('Arrange Tables');
+
+    await userEvent.click(arrangeBtn);
+    expect(arrangeBtn.textContent).toContain('Done Arranging');
+    expect(document.querySelector('.tables-floorplan--arranging')).toBeDefined();
+    expect(document.querySelector('.tables-table--arranging')).toBeDefined();
+
+    await userEvent.click(arrangeBtn);
+    expect(arrangeBtn.textContent).toContain('Arrange Tables');
+    expect(document.querySelector('.tables-floorplan--arranging')).toBeNull();
+  });
+
+  it('creates a table with booth shape and appropriate dimensions', async () => {
+    mockListTables.mockResolvedValue([]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-add-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-add-table-btn'));
+    await waitFor(() => expect(screen.getByLabelText(/Table Name/i)).toBeDefined());
+
+    await userEvent.type(screen.getByLabelText(/Table Name/i), 'Booth A');
+    await userEvent.selectOptions(screen.getByLabelText(/Shape/i), 'booth');
+    await userEvent.click(screen.getByText('Save Table'));
+
+    await waitFor(() => {
+      expect(mockCreateTable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Booth A',
+          shape: 'booth',
+          width: 18,
+          height: 14,
+        }),
+      );
+    });
+  });
+
+  it('renders elapsed dining timer and applies SLA warning when over 60 minutes', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const eightyMinsAgo = new Date(Date.now() - 80 * 60 * 1000).toISOString();
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: eightyMinsAgo,
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    const timer = screen.getByText(/⏱️ 80m/);
+    expect(timer).toBeDefined();
+    expect(timer.className).toContain('tables-table-timer--warn');
+
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    expect(tableBtn?.className).toContain('tables-table--sla-warn');
+  });
+
+  it('merges active tabs from two tables when Merge Table is confirmed', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockImplementation((id: string) => {
+      if (id === 'bill-1') {
+        return Promise.resolve({
+          id: 'bill-1',
+          label: 'Table 1',
+          cart_data: JSON.stringify({
+            lines: [{ sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } }],
+          }),
+          item_count: 1,
+          total_minor: 25000,
+          currency: 'IDR',
+          created_at: '2026-10-12T00:00:00Z',
+          bill_type: 'open_bill',
+          customer_name: null,
+          deduction_location_id: null,
+        });
+      }
+      return Promise.resolve({
+        id: 'bill-2',
+        label: 'Table 2',
+        cart_data: JSON.stringify({
+          lines: [
+            { sku: 'SKU-2', name: 'Es Teh', qty: 2, unit_price: { minor_units: 10000, currency: 'IDR' } },
+            { sku: 'SKU-3', name: 'Nasi Goreng', qty: 1, unit_price: { minor_units: 30000, currency: 'IDR' } },
+          ],
+        }),
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+        deduction_location_id: null,
+      });
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-merge-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-merge-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-confirm-btn'));
+    await waitFor(() => {
+      expect(mockDeleteHeldCart).toHaveBeenCalledWith('bill-1');
+      expect(mockDeleteHeldCart).toHaveBeenCalledWith('bill-2');
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 2',
+          item_count: 3,
+          total_minor: 75000,
+        }),
+      );
+      expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
+    });
+  });
 });

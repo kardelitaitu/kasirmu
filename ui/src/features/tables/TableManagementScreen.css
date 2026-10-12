@@ -281,6 +281,23 @@
   min-height: 25rem;
 }
 
+.tables-floorplan--arranging {
+  background-image: 
+    radial-gradient(color-mix(in srgb, var(--color-accent) 60%, transparent) 1.5px, transparent 1.5px),
+    radial-gradient(color-mix(in srgb, var(--color-accent) 60%, transparent) 1.5px, transparent 1.5px) !important;
+  background-size: 5% 5% !important;
+  background-position: 0 0, 2.5% 2.5% !important;
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -4px;
+}
+
+.tables-arrange-toggle.active {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  border-color: var(--color-accent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
 /* Header row. The name existed in the markup with an inline style block and no
    rule behind it, so screenExtraction reported it used-but-undefined. The inline
    values move here as tokens; 12px is --space-3 and the gap was already a token. */
@@ -513,6 +530,64 @@
 
 .tables-table--rectangle {
   border-radius: var(--radius-lg);
+}
+
+.tables-table--booth {
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-sm);
+  border-top-width: 4px;
+}
+
+.tables-table--arranging {
+  cursor: grab !important;
+  touch-action: none;
+  border-style: dashed;
+}
+
+.tables-table--dragging {
+  cursor: grabbing !important;
+  z-index: 100 !important;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-accent) 45%, transparent) !important;
+  transform: scale(1.05) !important;
+}
+
+.tables-table-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0_5);
+  font-size: var(--text-2xs, 0.65rem);
+  font-weight: var(--font-weight-semibold);
+  padding: 1px 4px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-bg-surface) 70%, transparent);
+  color: var(--color-fg-primary);
+  margin-top: 2px;
+  line-height: var(--leading-tight);
+}
+
+.tables-table-timer--warn {
+  background: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  color: var(--color-warning);
+  font-weight: var(--font-weight-bold);
+}
+
+.tables-table--sla-warn {
+  border-color: var(--color-warning) !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-warning) 50%, transparent) !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tables-table--sla-warn {
+    animation: table-sla-pulse var(--duration-2000) infinite var(--ease-in-out);
+  }
+
+  @keyframes table-sla-pulse {
+    0%, 100% {
+      box-shadow: 0 0 8px color-mix(in srgb, var(--color-warning) 30%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 16px color-mix(in srgb, var(--color-warning) 70%, transparent);
+    }
+  }
 }
 
 /* ── Table Status Colors (Gradients & Glowing Shadows) ── */
