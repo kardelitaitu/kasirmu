@@ -5,7 +5,12 @@ title: "ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard
 status: Proposed (2026-09-19) — PARTLY LANDED. Amended 2026-10-07: §2.5 (desktop loopback + PKCE) is implemented — `crates/kasirmu-core/src/desktop_link.rs` (523 lines, `generate_pkce`/`pkce_challenge`), the Go side `apps/license-server/.../desktop_link_google.go` with `/start`, `/callback` and `/consume`, and the Tauri `link_device_google` command. §2.4 (the web server-side redirect) is NOT implemented: the website Worker has no Google path. So "nothing implemented" is false for desktop and true for web.
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 886 lines, no audit stamp, no footer and no marker. It is the largest Proposed decision record audited in this campaign, and its status line is unambiguous and welcome for that reason: Proposed, with an explicit note that NOTHING is implemented. · THAT FRAMING IS WORTH PAUSING ON, because missed status lines are the single most common failure this campaign has found in decision records. Nearly every ADR whose components shipped describes itself as Proposed or Partially Implemented; a reader has to diff status lines against the tree to find out what actually landed. This one states the negative explicitly, which means a reader of the index learns the answer before opening it. In a directory where two architecture documents had to be collapsed for exactly this reason, that is a deliberate and welcome difference. · THE SCOPE IS DELIBERATELY NOT A DESIGN VERDICT, and the stamp should not be read as one. An 886-line proposal for web sign-in and desktop setup-wizard account linking contains an authentication design, and this audit checks documentation accuracy — not whether Google sign-in is the right choice, what the threat model should be, or how much of the setup wizard it should absorb. Those belong to whoever owns the auth decision, and a stamp implying otherwise would be exactly the overreach this campaign has been careful to avoid. · THE ONE THING WORTH NAMING FOR A READER: this proposal touches the setup wizard, and the setup surface in this repository has changed substantially in the last several weeks — the wizard was RETIRED, its component deleted, and the live first-run path is now the provisioning flow. So a design document written against the wizard it existed to link accounts with is describing a surface that has since been replaced. That is not a defect in a document that is explicitly a proposal, but it does mean its premise needs restating before anyone builds it. The replacement, and the preset-derivation fix that came with the retirement, are recorded in the provisioning ADR and the setup-wizard documents audited in recent rounds. · NOT re-measured: the proposed design, its flow, and any Google API specifics. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Fresh full audit; the 2026-09-29 stamp is merged at the bottom as original evidence, delimiters stripped so it cannot nest. · MAJOR — A SPLICED BULLET, the FIFTH instance of a defect class THIS FILE'S OWN HISTORY documents: it has already needed six separate split-repairs (3ded047d2, ab9a41969, 94ad73f62, 87b01f92e, b25b5c1b7, 3f3d1bc88), each commit message naming the same mechanism — an edit that inserted a note in the middle of existing prose. One survived: the §7 P4 bullet read "**P4 — Email variant + tablet exclusion.** The purpose-bound link code (§2.6) and the" and then, after a six-line inserted "As shipped" paragraph, the orphan tail "platform helper that keeps the Google control off Android." The sentence's two halves were on either side of an insert. Repaired by reading the ORIGINAL commit (ac3b2dd4e) to recover the intended two-line bullet and placing the "As shipped" note after it, where a note belongs — not by deleting either half, since both are live content. This is the first repair in this file that did not require re-joining prose: the bullet was a stub by construction, only its order was wrong. · MINOR — four dead citations in §7-P3 and §8, all in the same paragraph family and all naming files that never existed under those names: `crates/kasirmu-bridge/src/oauth.rs` (the module is `desktop_link.rs`, which holds PKCE, URL build and redirect-URI validation), `apps/desktop-tauri/src/commands/account_link.rs` (the command is `desktop_link.rs`, the same basename in both shells), `ui/src/api/account.ts` (the wrapper is `ui/src/api/license.ts`, `linkDeviceGoogle` at :88 invoking `link_device_google`), and `oauth_tests.rs` in §8 (the suite is `desktop_link_tests.rs`). Repaired in place with a dated citation-correction note that RECORDS the wrong names rather than silently swapping them, because a reader who has seen the old spelling in a sibling document needs to know it was never real. · VERIFIED AND LEFT ALONE: the feature itself is shipped and substantial — `ui/src/app/tablet/TabletAppShell.tsx` mounts the same SetupWizard so the tablet exclusion is real code, `crates/kasirmu-core/src/desktop_link.rs`, `apps/{desktop,mobile}-tauri/src/commands/desktop_link.rs`, `ui/src/api/license.ts`, `website/src/lib/safe-next.ts` (the `?next=` origin-comparison guard), `website/worker.ts` and `crates/kasirmu-bridge/src/{browser.rs,desktop_link.rs}` all exist, and `desktop_link_tests.rs` covers PKCE derivation, URL construction and `redirect_uri` validation. · NOT re-measured: the live OAuth round-trip, the Google Console client configuration, and the browser-shaped failure modes §5 records from observation. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 886 lines, no audit stamp, no footer and no marker. It is the largest Proposed decision record audited in this campaign, and its status line is unambiguous and welcome for that reason: Proposed, with an explicit note that NOTHING is implemented. · THAT FRAMING IS WORTH PAUSING ON, because missed status lines are the single most common failure this campaign has found in decision records. Nearly every ADR whose components shipped describes itself as Proposed or Partially Implemented; a reader has to diff status lines against the tree to find out what actually landed. This one states the negative explicitly, which means a reader of the index learns the answer before opening it. In a directory where two architecture documents had to be collapsed for exactly this reason, that is a deliberate and welcome difference. · THE SCOPE IS DELIBERATELY NOT A DESIGN VERDICT, and the stamp should not be read as one. An 886-line proposal for web sign-in and desktop setup-wizard account linking contains an authentication design, and this audit checks documentation accuracy — not whether Google sign-in is the right choice, what the threat model should be, or how much of the setup wizard it should absorb. Those belong to whoever owns the auth decision, and a stamp implying otherwise would be exactly the overreach this campaign has been careful to avoid. · THE ONE THING WORTH NAMING FOR A READER: this proposal touches the setup wizard, and the setup surface in this repository has changed substantially in the last several weeks — the wizard was RETIRED, its component deleted, and the live first-run path is now the provisioning flow. So a design document written against the wizard it existed to link accounts with is describing a surface that has since been replaced. That is not a defect in a document that is explicitly a proposal, but it does mean its premise needs restating before anyone builds it. The replacement, and the preset-derivation fix that came with the retirement, are recorded in the provisioning ADR and the setup-wizard documents audited in recent rounds. · NOT re-measured: the proposed design, its flow, and any Google API specifics. · No stamp existed; this is the first. -->
+
 # ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking
 
 **Status:** Proposed (2026-09-19). **Amended 2026-10-07 — this is no longer true of §2.5.**
@@ -799,18 +804,28 @@ Each phase ships independently.
 - **P2 — Web.** The button and the `next` allowlist on `src/pages/[locale]/login.astro` and
   the signup page; the *Sign-in methods* card on the account portal. **Shippable alone**, and
   the half that converts.
-- **P3 — Desktop.** `crates/kasirmu-bridge/src/oauth.rs` (PKCE, URL build, state validation —
+- **P3 — Desktop.** `crates/kasirmu-bridge/src/desktop_link.rs` (PKCE, URL build, state validation —
   `uuid` + `hex` + `sha2` are already bridge dependencies; the bridge is contractually
-  Tauri-free, `browser.rs:9-14`); `apps/desktop-tauri/src/commands/account_link.rs` (socket
-  + opener) registered in `lib.rs`; `ui/src/api/account.ts`; the wizard step; terminal
+  Tauri-free, `browser.rs:9-14`); `apps/desktop-tauri/src/commands/desktop_link.rs` (socket
+  + opener; the same file name in `apps/mobile-tauri/src/commands/`) registered in `lib.rs`;
+  `ui/src/api/license.ts` (`linkDeviceGoogle`); the wizard step; terminal
   registration on consume.
+
+  **Citation correction 2026-10-11 (docs-auditor):** the three paths this bullet originally
+  named do not exist — `crates/kasirmu-bridge/src/oauth.rs` and
+  `apps/desktop-tauri/src/commands/account_link.rs` were both written as
+  `desktop_link.rs`, and the TypeScript wrapper lives in `ui/src/api/license.ts`, not
+  `ui/src/api/account.ts`. The feature itself is real and shipped: the bridge module holds
+  PKCE, URL build and redirect-URI validation, and `linkDeviceGoogle()` invokes
+  `link_device_google`. The paths above are the live ones; the reasoning is unchanged.
 - **P4 — Email variant + tablet exclusion.** The purpose-bound link code (§2.6) and the
+  platform helper that keeps the Google control off Android.
+
   **As shipped (2026-09-19), which differs from the sketch above:** the HTTP half lives in
   `kasirmu-core/src/desktop_link.rs`, not the bridge — the bridge is contractually free of an HTTP
   stack (its own `browser.rs` says why), so PKCE and the two calls sit beside the attestation client,
   and the bridge owns only the loopback listener. The command is `commands/desktop_link.rs` in BOTH
   shells, and the wrapper sits in `ui/src/api/license.ts`.
-  platform helper that keeps the Google control off Android.
 
 ## 8. Verification
 
@@ -823,7 +838,7 @@ Each phase ships independently.
   separately, so the exemption cannot quietly invert).
 - Go: state single-use and expiry; purpose-bound link codes rejected by `/web/verify-otp`;
   link codes refused when replayed with a different `machine_id`.
-- Bridge: `oauth_tests.rs` for PKCE derivation, URL construction, and `redirect_uri`
+- Bridge: `desktop_link_tests.rs` for PKCE derivation, URL construction, and `redirect_uri`
   validation (loopback only; a non-loopback or non-ephemeral redirect is refused).
 - UI: the wizard step's states (idle, browser opened, awaiting, linked, refused, cancelled,
   timeout) and the tablet exclusion.
@@ -893,4 +908,4 @@ Post-deploy, the runbook's Google sign-in block is the check: one real sign-in i
 - Google: *OAuth 2.0 for Mobile & Desktop Apps*, *OAuth 2.0 Policies*, *App verification to
   use Google Authorization APIs* (retrieved 2026-09-19).
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

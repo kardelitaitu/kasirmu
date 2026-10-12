@@ -197,8 +197,6 @@
 rather than something removed — this audit has **no git access**, so no commit, rename or deletion can be
 confirmed or denied for any claim above. What is asserted is only the tree as measured on 2026-09-14.
 
-> last audited 14-09-26 by DSH
-> (docs subagent); every path, count and symbol re-measured with read/grep against C:/dev/ozpos. No git command was available to this session, so no commit-level claim is made.
 
 ---
 
@@ -627,3 +625,6 @@ the second pass left it, and the open set is still `:111`, `:130`, `:144`, `:147
 > checker coverage is unaffected either way. The prefix therefore decides nothing about which tool
 > reads the file; it is kept only because a second rename would be churn on a settled archive. The refusal above stays as written: it is a dated
 > verdict and rewriting it to match today would falsify it.
+
+> last audited 14-09-26 by DSH
+> (docs subagent); every path, count and symbol re-measured with read/grep against C:/dev/ozpos. No git command was available to this session, so no commit-level claim is made.

@@ -520,8 +520,8 @@ found outside the hook, and `ui/src/features/setup/SetupWizard.tsx` imports no `
 wizard can clobber these rows" is NOT measured and must not be repeated as fact. Cost side: the read-back is
 ~5 extra IPC reads per Save — the last paragraph of that same `SAFETY:` header block — bounded by that one file.
 
-> last audited 14-09-26 by DSH
-> (docs subagent); counts re-measured with read/grep against C:/dev/ozpos
+Sectional measurement note, 2026-09-14 (this line used to be a second `> last audited` footer; it is a dated sectional note, not the file's footer, and having two was a stacking defect):
+counts re-measured with read/grep against `C:/dev/ozpos` — the sibling checkout the 14-09 pass ran in.
 
 ---
 
@@ -574,7 +574,6 @@ allowlist, which is a separate decision the plan owner signs — also not writte
 
 > **ANSWERED-BY-MEASUREMENT (2026-09-15, HEAD f7872bd9a4): STILL OPEN — but now with a named constraint.** A mount-reachability check must NOT be satisfiable by an entry whose companion css is shared across >= 2 entries, because such a case can never fail: `screens/screens-placeholder.css` is the css of **14** entries (`grep -c 'screens-placeholder.css' ui/src/__tests__/screenExtraction.test.ts`) and defines exactly 3 classes (`.settings-screen-placeholder`, `-title`, `-note`), all three used by every one of the 13 placeholder screens — delete 12 of the 13 files and their 13 no-dead-class cases still pass. A check that can only be satisfied by guaranteed-present markup certifies the scaffolds as covered while grading nothing.
 
-> last audited 15-09-26 by DSH
 > (settings lane) · every figure above re-measured against C:/dev/ozpos at f0ad9b170e by the command named in its own row.
 
 ---
@@ -652,3 +651,26 @@ and 1,415 unreachable section lines (`205+156+257+567+176`) sit on opposite side
 > checker coverage is unaffected either way. The prefix therefore decides nothing about which tool
 > reads the file; it is kept only because a second rename would be churn on a settled archive. The refusal above stays as written: it is a dated
 > verdict and rewriting it to match today would falsify it.
+
+---
+
+> **CORRECTION 2026-10-11 — the SetupWizard evidence path is gone, and the caution it supported now points at a live writer.**
+> The §"Limits of this claim" paragraph above says the setup wizard's file `imports no @/api writer`, which is the
+> evidence that "the setup wizard can clobber these rows" is NOT measured. `ui/src/features/setup/SetupWizard.tsx`
+> was **retired** by `badd31d2e` (*refactor(setup): retire the unreachable setup wizard and move its live atoms*), so the
+> cited file no longer exists and the sentence can no longer be checked as written. Its live replacement is
+> `ui/src/features/setup/ProvisioningFlow.tsx`, and **it DOES import `@/api`** (three imports, including
+> `@/api/license` and `getDeviceId` from `@/api/system`). The original caution therefore still stands and is now
+> *stronger*, not weaker: a setup-surface component that calls the api layer exists, so "the setup path cannot
+> touch these rows" remains unmeasured and must not be repeated as fact. Nothing above is rewritten — the
+> 2026-09-14 reading was correct when taken.
+
+
+> **PATH CORRECTION 2026-10-11 — the sibling this section cites has moved.** `.agents/unscoped-caller-map.md` (L257) is
+> now `.agents/planning/unscoped-caller-map.md`: the 2026-09-13 `.agents/` reorg (`edd97e5c0`) moved the planning and
+> review corpora into subdirectories, and the bare name resolves to nothing. The *substance* of the caution is
+> unaffected — the map still records the `set_setting_scoped` citation the way this paragraph describes, and the
+> lesson (cite the page by NAME, not line number) stands. Nothing above is rewritten; the 14-09 path was right then.
+> Note also that this file's own two `> last audited` footers were consolidated to one in the same pass: the first
+> (14-09) was a sectional note, not the file's footer, and having two made the footer non-last.
+> last audited 15-09-26 by DSH

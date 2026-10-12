@@ -175,3 +175,18 @@ Six handler files, six greps (`storeProfileId|store_id|sessionStore|branchLocati
 | Null-branch view | `TopologyScreen.tsx:475/:484` (unfiltered instances) | default slot — LOAD and SAVE agree on that meaning; one source, not two |
 
 No two rows disagree about any scope. **One second-order finding, test-scaffold:** `TopologyRevisionBrowser.test.tsx:74` snapshots `baseRevision` via `api.loadTopology(TOKEN)` with NO branchId while `deploy()` may apply WITH a branchId — against the real backend those are different keys, and the helper would read the wrong slot. It passes only because the mock's envelope is global (exactly the T-1 divergence), so this is live evidence that T-1 has already taught a test to rely on the wrong shape. Not a production defect; it is a consequence of the one open mock ruling — if T-1 is ever fixed, this helper must key by branch in the same commit.
+
+> **PATH CORRECTION 2026-10-11 — two paths in this review have moved since it was written; the measurements stand.**
+> This file now lives at `.agents/reviews/topology-canvas-review.md`, not the `.agents/topology-canvas-review.md` the
+> `:422` box and the Verification transcript (L84, L92-93, L100-101) cite: the 2026-09-13 `.agents/` reorg
+> (`edd97e5c0`) swept 21 plan/review docs into subdirectories in one pass. Those lines are a **dated transcript** —
+> the `ABSENT` → `PRESENT` referee it records was true at tip `1fb8cc643` and is left exactly as printed, because
+> rewriting a captured command output would falsify the read. The one downstream consequence: the
+> **`.agents/planning/manager-journal-open-debt-program-review-waves.md`** path cited in the checker tail at L112 is
+> also post-reorg; the file is live at that planning path today.
+> Separately, `ui/src/__tests__/NodeTopologyEditor.test.tsx` — whose 12,260-line size this review adjudicates at
+> `:418` (L58, L102) — was **split by `20da3835c`** (*test(locations): split the topology editor suite so vitest can
+> parallelise it*); the suite now lives as `NodeTopologyEditorDevMock.test.tsx` plus the `a11y/` and state-machine
+> files, so **the size question this box answered no longer has a single file to answer it about**. That does not
+> invalidate the finding (the vacuous-assertion half is recorded at L62 with its grep), but a reader re-running the
+> cited `wc -l` command will get "No such file". No footer is added: this file has never carried one.

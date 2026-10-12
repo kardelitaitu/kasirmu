@@ -495,3 +495,21 @@ A grow-only document invalidates its own line anchors on every append. Measured 
 **The one thing this pass could not decide, stated as a question rather than a plan.** T4-3 needs the owner to pick the canonical store for terminal hardware: the `settings` KV table (what the tablet reads and writes today, via `Settings::get_printer_*` / `set_printer_*`) or `hardware_profiles` in the global db (what the bridge reads and writes, storing a serialized `TerminalProfile` as `profile_json`). Until that is answered, landing the missing ten keys on the tablet has no correct implementation — and the row's own prohibition still holds, so re-exporting the bridge DTO is not a shortcut around the question but a way of converting ten visible absences into ten silent drops.
 
 > Recorded 2026-09-15 by the T4 implementation lane. Files touched by this pass: the six in the four commits above, plus this file. The four Phase 3.4 rows were read and left alone; nothing outside the T4 block was ticked, opened or reworded.
+
+> **PATH CORRECTION 2026-10-11 — five cross-references in this record point at paths the 2026-10-02 docs restructure
+> and the 2026-09-13 `.agents/` reorg moved. Nothing above is retracted; each was correct at the date it was measured.**
+>
+> | Cited here | Live path today | Moved by |
+> |---|---|---|
+> | `docs/archived/manager-2-journal.md` (L49, L51) | `docs/records/campaigns/manager-2-journal.md` | the 2026-10-02 docs restructure |
+> | `docs/records/JOURNAL.md` (L269, L381) | `docs/records/journal/JOURNAL.md` (an index; the working parts are `JOURNAL-part-{1..8}.md`) | journal split |
+> | `docs/plans/0.0.36-backlog.md` (L304) | `docs/plans/_backlog/0.0.36-backlog.md` | plans/ subfolder split |
+> | `docs/archived/20260822-tests-efficiency-improvement.md` (L304) | `docs/records/superseded/20260822-tests-efficiency-improvement.md` | the 2026-10-02 docs restructure |
+> | `docs/decisions/2026-09-09-timezone-representation.md` (L251, cited as the T20 evidence for ADR #48) | `docs/decisions/2026-09-09-adr48-timezone-representation.md` | the ADR was filed with its `adr48-` prefix; the cited basename was never the filename |
+>
+> The last one is the only entry that was **wrong when written** rather than moved afterwards, and it matters because T20
+> rests on it: the ADR is real and its title matches the record's quotation, but the path as printed resolves to nothing,
+> so a reader checking T20's provenance would conclude the ADR was missing. The other four are ordinary relocation drift in
+> a dated record. The `crates/oz-bridge` citations throughout are the documented pre-rebrand name — `crates/kasirmu-bridge/`
+> is live and this record's own L49 already re-measured it (135 `.rs` files). No footer is added: this corpus keeps its
+> dated-record form, and this file has never carried one.
