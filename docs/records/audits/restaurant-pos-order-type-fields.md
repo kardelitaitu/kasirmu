@@ -100,6 +100,43 @@ file — a failed restore is a silent production regression, not a failed
 experiment. The re-run above mutates in-memory copies only and asserts at the end
 that the live files are byte-identical to what they were.
 
+## A consequence of the round-44 fix, found by following it (4806dc854)
+
+Fixing a defect can leave a second one behind it, and this one was mine.
+
+`795fc18d4` stopped a non-dine-in open bill PERSISTING a table number. But
+`canComplete` for the open_bill tender still read:
+
+```ts
+return customerName.trim().length > 0
+    || (tableNumber != null && tableNumber.trim().length > 0);
+```
+
+so on a TAKEAWAY with a stray table number and **no name**, Complete stayed
+ENABLED — while the payload (correctly) dropped the table. The tab that resulted
+had neither a name nor a table, and `heldCartLabel` fell back to
+**"Open Bill #<timestamp>"**. The cashier returning to /open bills could not tell
+whose bill it was.
+
+Before the fix the tab at least named the table — **wrongly**. After it, the record
+was honest and the path was anonymous. That is a real cost, and the right response
+is to tighten the gate, not to put the wrong table back.
+
+Now: a name identifies the tab on any order type; a table identifies it only on a
+dine-in order.
+
+### The same stale-closure trap, third time
+
+Adding `orderType` to `canComplete` tripped `react-hooks/exhaustive-deps` — the
+identical warning seen on the claim guard (round 40) and the release guard
+(round 41). Without the dependency the gate evaluates a stale order type, so a
+cashier switching Dine-In → Takeaway after mount would still pass. Fixed by adding
+the dep, never by suppressing the warning.
+
+Three occurrences in one area is the argument for the class sweep asserting the
+rule positively: relying on each author to remember the dep array is clearly not
+working.
+
 ## Not verified live
 
 Vite has been down since round 40, and the dev server is not something to restart
