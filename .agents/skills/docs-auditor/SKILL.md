@@ -319,6 +319,14 @@ module DIRECTORY, and prefer pinning evidence by TEST NAME over line number when
 is a large file.
 
 
+> **Discipline for traps 1 and 2: grep the SYMBOL, not the pattern.** A module that split
+> leaves the old file in place as a partial, so the path resolves while the symbol has moved
+> (`subscription.rs` survives but `SubscriptionTier` is at `subscription/tier.rs:20`;
+> `auth.rs` survives as a directory but `invalidate_all_sessions` is at `auth/session.rs:94`).
+> And the reverse error is real: one auditor repointed `payload_feature_grant` to
+> `subscription/quota.rs` on the assumption the split moved it, then found it still at
+> `subscription.rs:677`. Confirm the new file **contains** the symbol before repointing.
+
 **3. A gate that was "wired to nothing" can be PROMOTED later.** A record asserting a gate is
 unwatched must be re-checked against the gate's **status in `scripts/gates.json`**, not just
 against the hook it was missing from. Found 2026-10-11: `.agents/gates/hook-gate-removal-1c59fea5f5.md`
@@ -359,12 +367,15 @@ simply no longer there. Found 2026-10-11: a guide quoted a dev-mock handler "ver
 `handlers/system.ts:661` with a changed body. A path-only check passes and the reader gets the
 wrong code. **For any quoted code block, re-read the quoted lines, not just the file.**
 
-**8. A stamp that CLAIMS a repair the file does not contain.** Twice now on 2026-10-11: an ADR
-stamp asserted it had repointed a crate path, and a guide stamp asserted it had renamed `oz` to
-`kasir` — both claims were absent from the file, which had taken commits since. A stamp is
-evidence of intent, not of outcome. **When you read a stamp, spot-check the one or two repairs it
-names.** Repaired-but-lost happens when a later lane edits the same file or when the write never
-landed.
+**8. A stamp that CLAIMS a repair the file does not contain — in three shapes.** Measured
+2026-10-11: (a) an ADR stamp asserted it had repointed a crate path, and a guide stamp asserted it
+had renamed `oz` to `kasir` — both claims absent from the file; (b) **the stamp is RIGHT ABOUT THE
+CODE and wrong about the file it sits on**: the Windows launch guide's stamp correctly cited
+`build-exe-release.ps1:211` and `kasirmu-app.exe`, while the guide body below it still said
+`kasir.mu.exe` in nine places; (c) **the file's own MATCHED SIBLING disagrees**: the Linux guide
+already used `kasirmu-app` twenty times for the same binary. A stamp is evidence of intent, not of
+outcome. **When you read a stamp, spot-check the repairs it names — and diff the file against its
+matched sibling, which is often the cheapest test that something drifted one-sidedly.**
 
 **9. A guard whose reported number is the DOC'S OWN gate can be red at HEAD.** `check-api-surface.py`
 compares registered IPC commands against the guide's table. Found 2026-10-11: it reported
@@ -377,6 +388,22 @@ word turns two correctness gates red: `check-adr-status.py` (the hand table in
 `docs/decisions/README.md` mirrors the word) and `generate-records-index.mjs --check`
 (`docs/records/README.md` is generated from front matter). Any status edit must be paired with
 the table cell and a regeneration, in the same commit. Measured 2026-10-11.
+
+**11. "Shipped, but not under the name the plan gives."** A plan's work can land in a DIFFERENT
+shell, package, crate or layer than the plan specified, and the plan's own paths are then simply
+absent — so a path-only checker (and `check-dead-refs`, which exempts `docs/plans/`) sees nothing.
+Found 2026-10-11: a QRIS listener plan specified the pre-rename `apps/<tablet>-client` and `mu.kasir.<tablet>` identities while the
+Kotlin service shipped in `apps/mobile-tauri` packaging `mu.kasir.mobile`; a payment-methods plan
+designed a settings-key axis while the shipped form is a rails system plus a
+`local_payment_methods` migration on the regional-configuration track. **Only re-deriving the
+SUBJECT surfaces it** — grep for what the feature DOES, not for where the plan said it would live.
+The repair is a dated STATUS UPDATE naming the shipped home; never rewrite the plan's design.
+
+**12. A plan's own correction block can go wrong in BOTH detail and remedy.** A remedy that copies
+from a directory is only as good as the directory: one plan prescribed `docs/archived/*.md` as the
+fix for an empty docs category, but that directory became a tombstone and the build script had
+already been reworked to copy `docs/guides/` instead — so the flagged defect was RESOLVED and the
+prescribed remedy pointed at nothing. Re-check a correction's remedy, not just its claim.
 
 ### The dated-record corpus: default to ZERO edits
 

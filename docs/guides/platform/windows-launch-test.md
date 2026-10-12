@@ -1,5 +1,10 @@
-<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · Supersedes the 2026-09-29 marker below, kept verbatim. Repaired: the seed-section correction note described the workspace's 11 `[[bin]]` targets as `oz`, `oz-cloud-server`, `oz-pos-app`, `oz-pos-tablet` + seven bins — every one of those names is gone. Measured from every `[[bin]]` block: the targets are `kasir` (the CLI), `kasirmu-cloud`, `kasirmu-app`, `kasirmu-mobile`, and the seven `tools/fuzz` bins. The note now carries the current names, which is what makes its "there is no `seeder` binary" conclusion re-checkable. · Repaired against branch `0.0.41` at `134aaed1b`. -->
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — nine operational steps named a binary that no longer exists, in the document a Windows engineer follows when a build will not start. · WHAT WAS WRONG, AND WHY IT IS THE PRIORITY FINDING IN THIS FILE. The guide told the reader to launch, find in Explorer, redirect output to, search Event Viewer for, and whitelist through Windows Firewall an executable called with the PRE-RESTRUCTURE product name. The Tauri config now declares the product as `kasir.mu`, so the built executable is named accordingly. Every one of those nine steps would have failed at the worst possible moment — during a launch failure, when the reader is already debugging — and none of the failures would have pointed at the document. All nine, plus the log filename that follows the binary, were repaired. · THE MATCHED-SET SIGNAL WORKED EXACTLY AS PREDICTED, which is worth recording as a method result. The stamp on this file's Linux sibling — audited in the previous round — ended by noting that when one document in a launch-test family drifts, the others are worth checking, after the Android guide in the same family was found using a stale artefact name with no caveat. This round that advice was applied to this file and it found drift the Linux sibling did not have. The signal has now held across two independent document families, which is enough to make it a standing practice rather than a coincidence. · WHAT WAS DELIBERATELY NOT CHANGED. The three pre-restructure package names near the top sit inside a dated 2026-09-09 correction block that is itself a record — it corrected a section whose commands were never real, and it describes the binary target list as it stood at that moment. Editing a dated correction block would destroy the record of what was corrected, so those names stay. The result is that exactly one reference to the old name remains in the file, and it is a historical one. · The build commands themselves were already current and were verified: the frontend build runs from the UI project directory and the Tauri build produces the installer. · NOT re-measured: whether the application launches, what the smoke checks assert, or any timing threshold. Launching the application is the original work. What is established is that the artefact a reader is told to interact with now exists under the name the guide gives. · Prior stamp retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 0 minor) · Repaired: NINE operational references to the built executable named `kasir.mu.exe` — the portable EXE path, the log-redirect command, the Task Manager row, the Event Viewer search, the firewall rule and the double-click launch step. The binary target is `kasirmu-app` (`apps/desktop-tauri/Cargo.toml` [[bin]] name), which is what `scripts/build-exe-release.ps1:193/:211` actually produces; `kasir.mu` is the BUNDLE product name (`tauri.conf.json` productName), so it names the installer, not the portable EXE. The Linux sibling in the same matched set already used `kasirmu-app` throughout — the drift was one-sided, which is what the matched-set rule exists to catch. Also repaired: the seed-block comment called the CLI "the oz CLI"; the binary is `kasir` (crates/kasirmu-cli/Cargo.toml [[bin]] name). The prior stamp's own claim that the binary path "matches the script" was TRUE and referred to `kasirmu-app.exe`, but the body below it had never been updated to match. · VERIFIED AND LEFT ALONE: the seed-correction block's dated `[[bin]]` list (11 targets) is exact; `-BuildConfig` (:5) and `-NoInstaller` (:11) params exist; the three pre-restructure package names in the 2026-09-09 block are dated evidence and stay; productName `kasir.mu` / identifier `mu.kasir.app` confirmed; window 1280x800; all related links resolve. · NOT re-measured: whether the app launches, what the smoke checks assert, or any timing threshold.
+
+Prior stamps, retained verbatim (delimiters stripped — a markdown comment cannot nest):
+  Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · Supersedes the 2026-09-29 marker below, kept verbatim. Repaired: the seed-section correction note described the workspace's 11 `[[bin]]` targets as `oz`, `oz-cloud-server`, `oz-pos-app`, `oz-pos-tablet` + seven bins — every one of those names is gone. Measured from every `[[bin]]` block: the targets are `kasir` (the CLI), `kasirmu-cloud`, `kasirmu-app`, `kasirmu-mobile`, and the seven `tools/fuzz` bins. The note now carries the current names, which is what makes its "there is no `seeder` binary" conclusion re-checkable. · Repaired against branch `0.0.41` at `134aaed1b`.
+  Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — nine operational steps named a binary that no longer exists, in the document a Windows engineer follows when a build will not start. · WHAT WAS WRONG, AND WHY IT IS THE PRIORITY FINDING IN THIS FILE. The guide told the reader to launch, find in Explorer, redirect output to, search Event Viewer for, and whitelist through Windows Firewall an executable called with the PRE-RESTRUCTURE product name. The Tauri config now declares the product as `kasir.mu`, so the built executable is named accordingly. Every one of those nine steps would have failed at the worst possible moment — during a launch failure, when the reader is already debugging — and none of the failures would have pointed at the document. All nine, plus the log filename that follows the binary, were repaired. · THE MATCHED-SET SIGNAL WORKED EXACTLY AS PREDICTED, which is worth recording as a method result. The stamp on this file's Linux sibling — audited in the previous round — ended by noting that when one document in a launch-test family drifts, the others are worth checking, after the Android guide in the same family was found using a stale artefact name with no caveat. This round that advice was applied to this file and it found drift the Linux sibling did not have. The signal has now held across two independent document families, which is enough to make it a standing practice rather than a coincidence. · WHAT WAS DELIBERATELY NOT CHANGED. The three pre-restructure package names near the top sit inside a dated 2026-09-09 correction block that is itself a record — it corrected a section whose commands were never real, and it describes the binary target list as it stood at that moment. Editing a dated correction block would destroy the record of what was corrected, so those names stay. The result is that exactly one reference to the old name remains in the file, and it is a historical one. · The build commands themselves were already current and were verified: the frontend build runs from the UI project directory and the Tauri build produces the installer. · NOT re-measured: whether the application launches, what the smoke checks assert, or any timing threshold. Launching the application is the original work. What is established is that the artefact a reader is told to interact with now exists under the name the guide gives. · Prior stamp retained; footer re-dated to match the new stamp.
+-->
+
 # Windows Desktop Launch Test — kasir.mu
 <!-- Superseded audit marker (2026-09-09, body kept verbatim) · DSH · status: ACCURATE (re-verified 2026-09-18: binary path and lib/bin names re-pointed to kasirmu-app / kasirmu_app_lib after the T3-2 rename), 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-tauri/target/release/kasirmu-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName kasir.mu (apps/desktop-tauri/tauri.conf.json) so installer is kasir.mu_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../../records/releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-tauri/Cargo.toml defines only kasirmu-app and kasirmu_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
@@ -29,7 +34,7 @@ Before running the launch test, ensure the database has seed data so
 the login → POS → payment → receipt flow can execute:
 
 ```powershell
-# Option A: demo seeder, from the repo root (the oz CLI)
+# Option A: demo seeder, from the repo root (the kasir CLI)
 cargo run -p kasirmu-cli -- seed-demo --all
 cargo run -p kasirmu-cli -- seed-demo --retail --days 30
 
@@ -108,7 +113,7 @@ The script runs three phases:
 
 Expected output location:
 ```
-apps\desktop-tauri\target\release\kasir.mu.exe           # Portable EXE
+apps\desktop-tauri\target\release\kasirmu-app.exe        # Portable EXE
 apps\desktop-tauri\target\release\bundle\nsis\kasir.mu_0.0.X_x64-setup.exe   # Installer
 ```
 
@@ -133,7 +138,7 @@ cd ..\..
 .\scripts\build-exe-release.ps1 -BuildConfig Release -NoInstaller
 ```
 
-This skips the NSIS installer step and produces just `kasir.mu.exe`.
+This skips the NSIS installer step and produces just `kasirmu-app.exe`.
 
 ---
 
@@ -143,7 +148,7 @@ This skips the NSIS installer step and produces just `kasir.mu.exe`.
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Double-click `kasir.mu.exe` (or launch installed app) | Splash screen appears within **5 seconds** |
+| 1.1 | Double-click `kasirmu-app.exe` (or launch installed app) | Splash screen appears within **5 seconds** |
 | 1.2 | Wait for full load | Main window appears (1280×800 default). Login screen visible. |
 | 1.3 | Check window chrome | Title bar shows **kasir.mu**. Window is centered. |
 | 1.4 | Check taskbar | Icon renders correctly (not broken/blank). |
@@ -264,7 +269,7 @@ This skips the NSIS installer step and produces just `kasir.mu.exe`.
 2. Go to **Details** tab
 3. Right-click column headers → **Select columns**
 4. Enable **Memory (active private working set)**
-5. Sort by name to find `kasir.mu.exe`
+5. Sort by name to find `kasirmu-app.exe`
 
 **Using Tauri DevTools:**
 ```powershell
@@ -299,7 +304,7 @@ cargo tauri dev 2>&1 | tee launch-log.txt
 
 # Release build with RUST_LOG (only info/warn/error visible)
 $env:RUST_LOG = "info"
-.\kasir.mu.exe > launch-log.txt 2>&1
+.\kasirmu-app.exe > launch-log.txt 2>&1
 
 # Check console output for errors
 findstr /I "error panic fail" launch-log.txt
@@ -309,7 +314,7 @@ findstr /I "error panic fail" launch-log.txt
 ```powershell
 # From apps/desktop-tauri
 cargo tauri build --debug
-# EXE at: target\debug\kasir.mu.exe
+# EXE at: target\debug\kasirmu-app.exe
 ```
 
 ### Crash Dumps
@@ -317,7 +322,7 @@ cargo tauri build --debug
 If the app crashes:
 
 1. Open **Event Viewer** → **Windows Logs** → **Application**
-2. Search for `.NET Runtime` or `Application Error` events from `kasir.mu.exe`
+2. Search for `.NET Runtime` or `Application Error` events from `kasirmu-app.exe`
 3. Note the **Faulting module name** and **Exception code**
 
 ---
@@ -332,7 +337,7 @@ If the app crashes:
 | High DPI blurry text | UI renders at wrong scale on 150%+ displays | Tauri v2 handles DPI scaling automatically — if blurry, check `tauri.conf.json` `dpi` settings | Investigate |
 | Antivirus false positive | EXE flagged as suspicious (Rust+Tauri bundle) | Submit to Microsoft Defender portal | Expected |
 | Touch-screen calibration | Touch targets offset on some devices | Check Windows touch calibration. kasir.mu targets are ≥ 44px. | Verify |
-| Network firewall | App can't sync to cloud server | Allow `kasir.mu.exe` through Windows Firewall | Configure |
+| Network firewall | App can't sync to cloud server | Allow `kasirmu-app.exe` through Windows Firewall | Configure |
 
 ---
 
@@ -441,4 +446,4 @@ Notes:
 - [Docker Deployment Guide](../../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../../operations/runbook.md) — Incident response procedures
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

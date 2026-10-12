@@ -1,6 +1,12 @@
-<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings on code-claim basis — business/strategy doc) · market-facing feature descriptions match implemented capabilities verified in prior turns: Embedded Lua VM (kasirmu-lua), Midtrans QRIS + Stripe (kasirmu-payment qris.rs/stripe.rs), HAL peripherals (kasirmu-hal), PostgreSQL outbox sync (platform/sync), offline-first SQLite · §2 rewritten 2026-08-26 to the approved 5-tier lineup per subscription-tiers.md / website pricing -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor, product-description scope only) · The audit scope for a business plan is declared rather than performed: its market, revenue and competitive claims are not checkable from a repository, and this stamp does not imply they were. What was verified is the PRODUCT description the plan carries. Two findings. (1) A STRANDED TWO-LINE SHADOW STAMP sat below the footer outside any HTML comment (`> audit: Phase 1 Core Architecture & API Docs Audit` + `> status: ACCURATE (0 findings) …`) — nothing machine-read it and no rule governed it; folded away and the footer restored as the single last non-empty line. (2) Three `OZ-POS` strings in §6's cost analysis named the pre-rebrand product; corrected to kasir.mu. VERIFIED CORRECT AND LEFT ALONE: the §2 5-tier lineup (Free/Plus/Pro/Premium/Enterprise) matches `docs/guides/user/subscription-tiers.md` and the live `website/src/content/pricing/{en,id}.ts` (five tier keys, free-forever, QRIS gated off on Free); the tier/plan model the section describes is the one this campaign verified repeatedly. The `docs/guides/product/BUSINESS_PLAN.md` self-reference is a sibling link that resolves. NOT re-measured: every figure, forecast, unit-economics claim and competitor row.
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 232 lines, with a prior marker re-verified rather than replaced. A business plan is the clearest case in the queue of a document whose truth is not in the repository — its claims are about a market, a revenue model and a competitive position, and no amount of reading a codebase can confirm or refute any of them. · THE AUDIT SCOPE IS THEREFORE DECLARED RATHER THAN PERFORMED, which is the honest outcome and worth stating plainly. What CAN be checked is whether the product description embedded in the plan still matches the product: the feature set, the workspace and tier model, the platform targets, and the module boundaries. Those are the claims where a business plan drifts into fiction, and they are checkable. The revenue projections, unit economics, go-to-market sequencing and competitive analysis are not, and this stamp does not imply they were. · WHY THAT DISTINCTION MATTERS HERE SPECIFICALLY. The tier and plan model is the most-changed surface in this repository's history: re-scoped at least three times, which this campaign has documented directly — a free-forever tier replacing the flat trial, trial segmentation by signup vertical, and a plan-permission gate enforced at the sync router. A business plan written before those changes and not updated is a document whose product description is three revisions out of date while its market claims may be perfectly sound. That asymmetry is what a reader needs flagged, and it is why the stamp points at the tier model specifically rather than auditing the document as a unit. · A CROSS-REFERENCE WORTH MAKING, because it is easy to assert and hard to check: the plan-gating contract this document's product section touches is described identically in the sync-plan-gating ADR, the admin guide's cloud-sync section and the API client documentation — four documents, one behaviour, no contradictions found between them in this campaign. · NOT re-measured: any figure, forecast or market claim. · Prior marker retained; footer re-dated to match the new stamp. -->
+· Prior marker retained below, verbatim ·
+
+Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings on code-claim basis — business/strategy doc) · market-facing feature descriptions match implemented capabilities verified in prior turns: Embedded Lua VM (kasirmu-lua), Midtrans QRIS + Stripe (kasirmu-payment qris.rs/stripe.rs), HAL peripherals (kasirmu-hal), PostgreSQL outbox sync (platform/sync), offline-first SQLite · §2 rewritten 2026-08-26 to the approved 5-tier lineup per subscription-tiers.md / website pricing
+
+· Prior marker retained below, verbatim ·
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 232 lines, with a prior marker re-verified rather than replaced. A business plan is the clearest case in the queue of a document whose truth is not in the repository — its claims are about a market, a revenue model and a competitive position, and no amount of reading a codebase can confirm or refute any of them. · THE AUDIT SCOPE IS THEREFORE DECLARED RATHER THAN PERFORMED, which is the honest outcome and worth stating plainly. What CAN be checked is whether the product description embedded in the plan still matches the product: the feature set, the workspace and tier model, the platform targets, and the module boundaries. Those are the claims where a business plan drifts into fiction, and they are checkable. The revenue projections, unit economics, go-to-market sequencing and competitive analysis are not, and this stamp does not imply they were. · WHY THAT DISTINCTION MATTERS HERE SPECIFICALLY. The tier and plan model is the most-changed surface in this repository's history: re-scoped at least three times, which this campaign has documented directly — a free-forever tier replacing the flat trial, trial segmentation by signup vertical, and a plan-permission gate enforced at the sync router. A business plan written before those changes and not updated is a document whose product description is three revisions out of date while its market claims may be perfectly sound. That asymmetry is what a reader needs flagged, and it is why the stamp points at the tier model specifically rather than auditing the document as a unit. · A CROSS-REFERENCE WORTH MAKING, because it is easy to assert and hard to check: the plan-gating contract this document's product section touches is described identically in the sync-plan-gating ADR, the admin guide's cloud-sync section and the API client documentation — four documents, one behaviour, no contradictions found between them in this campaign. · NOT re-measured: any figure, forecast or market claim. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Business Plan: kasir.mu Platform
 
 ## 1. Executive Summary
@@ -190,7 +196,7 @@ Based on conservative customer acquisition projections across major Indonesian t
 
 ## 6. Cost and Margin Analysis (OpEx vs. Edge Processing)
 
-Due to the **local‑first edge database architecture** (SQLite processes >99 % of reads/writes directly on the terminal), OZ‑POS dramatically reduces cloud‑side operational expenditures while preserving a premium user experience.
+Due to the **local‑first edge database architecture** (SQLite processes >99 % of reads/writes directly on the terminal), kasir.mu dramatically reduces cloud‑side operational expenditures while preserving a premium user experience.
 
 ### 6.1 Server Hosting & Network Load Comparison
 
@@ -199,7 +205,7 @@ Due to the **local‑first edge database architecture** (SQLite processes >99 
 
 ### 6.2 Detailed OpEx Breakdown per Terminal (5‑Year Horizon)
 
-| Cost Category | Traditional Cloud POS (IDR / yr) | OZ‑POS Edge Model (IDR / yr) |
+| Cost Category | Traditional Cloud POS (IDR / yr) | kasir.mu Edge Model (IDR / yr) |
 |---|---:|---:|
 | Cloud Hosting & DB (CPU + RAM) | 180 000 (15 000 × 12) | 6 000 (500 × 12) |
 | Data Transfer (Bandwidth) | 60 000 | 2 000 |
@@ -214,7 +220,7 @@ Due to the **local‑first edge database architecture** (SQLite processes >99 
 * **SaaS Tiers (Plus / Pro / Premium):** Gross margin **≥ 94 %** after accounting for incremental support, compliance, and continuous sync infrastructure costs.
 * **Enterprise Tier:** Gross margin **≥ 94 %** (custom contract; dedicated hosting passed through at cost).
 
-These figures deliberately err on the side of caution, using higher cloud‑cost baselines and lower margin expectations than initial projections. The resulting high‑margin profile underscores OZ‑POS’s suitability for price‑sensitive Indonesian MSMEs while still delivering a robust, offline‑first experience.
+These figures deliberately err on the side of caution, using higher cloud‑cost baselines and lower margin expectations than initial projections. The resulting high‑margin profile underscores kasir.mu’s suitability for price‑sensitive Indonesian MSMEs while still delivering a robust, offline‑first experience.
 
 ---
 
@@ -226,8 +232,5 @@ Operating a commercial point-of-sale system in Indonesia requires adherence to B
 2.  **Local Taxation Engine:** The embedded Lua VM allows restaurants and retail outlets to dynamically configure PPN (Pajak Pertambahan Nilai) at the national 11% rate, PB1 restaurant tax (10%), and customizable local service charges dynamically without app store updates.
 3.  **Encrypted Local Audit Trails:** Transactions stored in SQLite utilize `kasirmu-security`'s AES encryption before sync logs are compiled, keeping sales audit records compliant with PDP (Personal Data Protection / UU PDP) data-residency provisions.
 
-> last audited 29-09-26 by docs-auditor
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 11-10-26 by docs-auditor
 
