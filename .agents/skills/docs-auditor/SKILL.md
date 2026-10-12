@@ -474,42 +474,54 @@ done
 
 > last audited 11-10-26 by docs-auditor
 
-### Merging a stamp must not NEST a comment
+### Merging a stamp must not NEST a comment — and fixing it is NOT a bulk transform
 
 When you preserve a superseded stamp under a "STAMP MERGED INTO THIS ONE" note, do **not**
-copy the old stamp's delimiters into the new one. The old body starts with an HTML comment
-open token, and placing it inside the merge comment nests the two: the first clobber
-closes only the **inner** comment, so the merge note and everything after it render as
-**visible text** on the page. Found twice on 2026-10-11 (batch 6) — once by an auditor who
-caught it in their own work with a depth-walk rather than by eye, once by the lead in five
-files written by other auditors. Symptoms are invisible to every check this repo runs,
-because the file still contains balanced-looking comment-open and comment-close tokens.
+copy the old stamp's delimiters inside the new comment. The old body opens with a comment
+token, so placing it inside the merge comment nests the two: under real markdown rules
+(comments do **not** nest) the FIRST close ends the comment, and the merge note plus every
+preserved body after it render as **visible page text**.
 
-**Two rules, both learned the hard way:**
+**Measured extent, 2026-10-11 (the campaign that introduced it):** 45 tracked `.md` files
+carry `maxDepth > 1`, and 5 more are unbalanced (`finalDepth != 0`). It is spread across
+`docs/decisions` (20), `docs/specs` (12), `.agents/skills` (7) and several single files —
+i.e. every batch of this campaign, not one author. Severity splits cleanly: 55 of the 58
+render a stray comment-close of their own on the page (cosmetic), and 3 leak real stamp text into the body.
 
-1. **Never write the comment-open token literally inside a comment — not even to explain
-   this hazard.** One auditor's own warning sentence re-opened the comment it was warning
-   about, which is the same failure one level down.
-2. **Verify with a depth walk, never by eye.** A file that "looks right" is exactly the
-   file this trap produces. The check is a fold over the token stream:
+**⚠️ Do NOT "fix" it with a bulk regex.** Two attempts on 2026-10-11 both had to be
+abandoned: de-delimiting the nested opens drives a file to `finalDepth = -1` (a stray close)
+because the preserved body carries its OWN trailing close, and stripping those too over-strips
+the outer comment. The transform is file-specific — the nesting arises from three different
+shapes (a merge marker + one body, a merge marker + two bodies, a marker appended after an
+existing stamp) and each needs its own close-counted repair. **Repair these by hand, one file
+at a time, verifying after each.**
+
+**Rules that ARE mechanical and safe:**
+
+1. **Never write a comment-open token literally inside a comment — not even to explain this
+   hazard.** One attempt's own warning sentence re-opened the comment it warned about.
+2. **Keep machine-read fields before any literal comment example**, per the stamp-shape rule
+   in this file. A stamp that documents delimiter syntax is documented *by* it.
+3. **Verify with a depth walk, never by eye** — a file that "looks right" is exactly what this
+   trap produces, and balanced-looking token counts hide it. `finalDepth == 0` and
+   `maxDepth <= 1` is the only pass; a render simulation's first non-blank line must be the
+   document's own title or frontmatter.
 
 ```bash
 python3 - <<'PY'
 import re, sys, pathlib
 for f in sys.argv[1:]:
     s = pathlib.Path(f).read_text(encoding='utf-8', errors='replace')
-    s = re.sub(r'```.*?```', '', s, flags=re.S)   # ignore fenced code
+    s = re.sub(r'```.*?```', '', s, flags=re.S)
     depth = maxd = 0
     for m in re.finditer(r'<!--|-->', s):
         depth += 1 if m.group() == '<!--' else -1
         maxd = max(maxd, depth)
-    tag = 'OK ' if depth == 0 and maxd <= 1 else '!!'
-    print(f'{tag} {f}  finalDepth={depth} maxDepth={maxd}')
+    print(('OK ' if depth == 0 and maxd <= 1 else '!!'), f, 'finalDepth=%d maxDepth=%d' % (depth, maxd))
 PY
 ```
 
-`finalDepth == 0` and `maxDepth <= 1` is the only pass. A negative final depth means a
-stray close (a quoted body whose trailing comment-close was never stripped); `maxDepth == 2` means
-a nest. **The first visible line of the rendered page must be the document's own title or
-frontmatter** — if a render simulation's first non-blank output is a stray comment-close or the
-merge-note text, the file is broken even though the tokens are balanced.
+**When merging a stamp, the safe form is: one comment, the merge marker and every preserved
+body as PLAIN TEXT inside it, and exactly one closing token.** If a preserved body must keep
+its own delimiters as evidence, do not nest it — quote it in a fenced block or drop the
+delimiters and say so.
