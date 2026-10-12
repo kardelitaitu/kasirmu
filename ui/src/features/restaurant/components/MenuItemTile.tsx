@@ -230,6 +230,7 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
         <span className="restaurant-card-price">{formatMoney(product.price)}</span>
         {!product.inStock && (
           <span className="restaurant-card-status">
+            <span className="restaurant-card-badge-86" data-testid="restaurant-card-86-badge">86</span>
             <Localized id="restaurant-card-unavailable"><span>Unavailable</span></Localized>
           </span>
         )}

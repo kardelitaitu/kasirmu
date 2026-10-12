@@ -523,6 +523,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setDiscountName,
     setShowPromotions,
     setAppliedPromotions,
+    isManager,
   });
   // ── Barcode scanner integration ─────────────────────────────
   // Disabled on restaurant POS workspace (scanners are for retail checkout).

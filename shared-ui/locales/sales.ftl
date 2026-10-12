@@ -1155,3 +1155,4 @@ pos-line-status-sent = Sent
 pos-line-status-new = New
 pos-cart-tab-conflict-warning = { $terminal } is currently editing this tab
 pos-cart-tab-takeover-btn = Take Over
+pos-product-out-of-stock = { $name } is out of stock (86)

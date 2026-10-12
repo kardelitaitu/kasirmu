@@ -1129,4 +1129,6 @@ pos-line-status-sent = Terkirim
 pos-line-status-new = Baru
 pos-cart-tab-conflict-warning = { $terminal } sedang mengedit tagihan ini
 pos-cart-tab-takeover-btn = Ambil Alih
+pos-product-out-of-stock = { $name } habis (86)
+
 

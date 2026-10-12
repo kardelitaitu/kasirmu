@@ -251,6 +251,8 @@ const { sessionToken: rawToken } = useWorkspace();
             <span>{fmtCurrency(row.unit_price_minor, row.currency)}</span>
             <span>{requiredLocalized(l10n, 'menu-eng-tooltip-cost')}:</span>
             <span>{fmtCurrency(row.unit_cost_minor, row.currency)}</span>
+            <span>{requiredLocalized(l10n, 'menu-eng-tooltip-food-cost')}:</span>
+            <span>{row.unit_price_minor > 0 ? `${((row.unit_cost_minor / row.unit_price_minor) * 100).toFixed(1)}%` : '—'}</span>
           </div>
         </div>
       );
@@ -276,7 +278,7 @@ const { sessionToken: rawToken } = useWorkspace();
     // row's own code, so a mixed-currency export cannot be read as one total.
     const headers = [
       'Name', 'SKU', 'Currency', 'Qty', 'Revenue', 'Margin', 'Margin/Unit',
-      'Unit Price', 'Unit Cost', 'Quadrant', 'Recommendation',
+      'Food Cost %', 'Unit Price', 'Unit Cost', 'Quadrant', 'Recommendation',
     ];
     const rows = rowsWithMeta.map((r) => [
       r.name,
@@ -286,6 +288,7 @@ const { sessionToken: rawToken } = useWorkspace();
       fmtCurrency(r.total_revenue_minor, r.currency),
       fmtCurrency(r.total_margin_minor, r.currency),
       fmtCurrency(r.margin_per_unit, r.currency),
+      r.unit_price_minor > 0 ? `${((r.unit_cost_minor / r.unit_price_minor) * 100).toFixed(1)}%` : '—',
       fmtCurrency(r.unit_price_minor, r.currency),
       fmtCurrency(r.unit_cost_minor, r.currency),
       r.quadrant,
@@ -637,6 +640,9 @@ const { sessionToken: rawToken } = useWorkspace();
                 <Localized id="menu-eng-margin-unit-header">Margin/Unit</Localized>
               </span>
               <span role="columnheader">
+                <Localized id="menu-eng-food-cost-header">Food Cost %</Localized>
+              </span>
+              <span role="columnheader">
                 <Localized id="menu-eng-quadrant">Quadrant</Localized>
               </span>
               <span role="columnheader">
@@ -670,6 +676,11 @@ const { sessionToken: rawToken } = useWorkspace();
                 </span>
                 <span role="cell" className="menu-eng-table-mono">
                   {fmtCurrency(row.margin_per_unit, row.currency)}
+                </span>
+                <span role="cell" className="menu-eng-table-mono">
+                  {row.unit_price_minor > 0
+                    ? `${((row.unit_cost_minor / row.unit_price_minor) * 100).toFixed(1)}%`
+                    : '—'}
                 </span>
                 <span role="cell">
                   <span

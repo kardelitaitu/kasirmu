@@ -73,11 +73,16 @@ impl ProductWithDetails {
     /// Whether the product is available for sale.
     ///
     /// Products that do not track inventory (e.g. restaurant menu items, services)
-    /// are orderable by definition (`in_stock = true`).
+    /// are orderable by default (`in_stock = true`), UNLESS they have a recipe whose
+    /// ingredient availability is depleted (`stock_qty = Some(0)`).
     /// Physical retail products depend strictly on available ledger stock (`qty > 0`).
     pub fn is_in_stock(&self) -> bool {
         if !self.product.product_type.tracks_inventory() {
-            true
+            if let Some(qty) = self.stock_qty {
+                qty > 0
+            } else {
+                true
+            }
         } else {
             self.stock_qty.unwrap_or(0) > 0
         }

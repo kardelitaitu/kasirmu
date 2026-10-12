@@ -697,7 +697,7 @@ describe('RestaurantMenu', () => {
     expect(localStorage.getItem('restaurant-user-1-cardsize')).toBe('1');
   });
 
-  it('does not add an unavailable card to the sale', async () => {
+  it('does not add an unavailable card to the sale and displays 86 badge', async () => {
     const unavailableProduct = { ...mockProducts[0]!, inStock: false };
     mockUseProducts.mockReturnValue({
       products: [unavailableProduct, mockProducts[1]!],
@@ -709,6 +709,7 @@ describe('RestaurantMenu', () => {
     renderMenu({ onAddProduct });
     const user = userEvent.setup();
 
+    expect(screen.getByTestId('restaurant-card-86-badge')).toHaveTextContent('86');
     await user.click(screen.getByText('Nasi Goreng'));
 
     expect(onAddProduct).not.toHaveBeenCalled();

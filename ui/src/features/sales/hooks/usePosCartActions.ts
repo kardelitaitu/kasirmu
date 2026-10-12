@@ -52,6 +52,8 @@ export interface UsePosCartActionsParams {
   setDiscountName: Dispatch<SetStateAction<string>>;
   setShowPromotions: Dispatch<SetStateAction<boolean>>;
   setAppliedPromotions: Dispatch<SetStateAction<Promotion[]>>;
+  /** Supervisor / manager role override for ringing up 86/out-of-stock items. */
+  isManager?: boolean;
 }
 
 /**
@@ -82,6 +84,7 @@ export function usePosCartActions({
   setDiscountName,
   setShowPromotions,
   setAppliedPromotions,
+  isManager,
 }: UsePosCartActionsParams) {
   const [overrideTarget, setOverrideTarget] = useState<CartLine | null>(null);
   const [showFastPINOverlay, setShowFastPINOverlay] = useState(false);
@@ -141,6 +144,14 @@ export function usePosCartActions({
         });
         return;
       }
+      // Check stock availability (Automated 86 / Out-of-Stock)
+      if (product.inStock === false && !isManager) {
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'pos-product-out-of-stock', { name: product.name }),
+          type: 'warning',
+        });
+        return;
+      }
       // ADR-19 §5.1: reject add_line when cart exists but has no deduction location
       if (cartId && !deductionLocationIdRef.current) {
         addToast({ message: requiredLocalized(l10nRef.current, 'pos-cart-unbound-error'), type: 'error' });
@@ -150,7 +161,7 @@ export function usePosCartActions({
       const meta = typeof qtyOrMeta === 'object' && qtyOrMeta !== null ? qtyOrMeta : maybeMeta;
       addProduct(product, qty, meta);
     },
-    [addProduct, addToast, cartId, activeShiftRef, shiftUnavailableRef, l10nRef], // refs stable; identity of the wrapped value must not enter deps
+    [addProduct, addToast, cartId, activeShiftRef, shiftUnavailableRef, l10nRef, isManager], // refs stable; identity of the wrapped value must not enter deps
   );
 
   // ADR-19 §17: badge click → FastPINOverlay for manager override

@@ -523,3 +523,68 @@ fn delete_recipe_removes_all_rows() {
     let ingredients = store.get_recipe_ingredients("burger").unwrap();
     assert!(ingredients.is_empty());
 }
+
+#[test]
+fn test_recipe_bottleneck_stock_and_automated_86() {
+    let conn = fresh();
+    seed_products(&conn);
+    seed_recipe(&conn);
+
+    // Mark burger and salad as restaurant product type
+    conn.execute(
+        "UPDATE products SET product_type = 'restaurant' WHERE id IN ('burger', 'salad')",
+        [],
+    )
+    .unwrap();
+
+    let store = Store::new(&conn);
+
+    // Initial state: ingredients have no stock rows -> available is 0 -> 0 servings
+    let products = store.list_products().unwrap();
+    let burger = products.iter().find(|p| p.product.id == "burger").unwrap();
+    assert_eq!(burger.stock_qty, Some(0));
+    assert!(!burger.is_in_stock());
+
+    // Simple product without recipe remains in stock
+    let salad = products.iter().find(|p| p.product.id == "salad").unwrap();
+    assert_eq!(salad.stock_qty, None);
+    assert!(salad.is_in_stock());
+
+    // Restock ingredients: bun=10, patty=5, cheese=8 (cheese needs 2 per burger => 4 servings)
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO inventory_locations (id, name, type, created_at, updated_at)
+         VALUES ('loc-1', 'Store Loc', 'store', ?1, ?1)",
+        params![now],
+    )
+    .unwrap();
+    conn.execute_batch(&format!(
+        "INSERT INTO stock_summary (item_id, location_id, qty, updated_at) VALUES
+            ('bun', 'loc-1', 10, '{now}'),
+            ('patty', 'loc-1', 5, '{now}'),
+            ('cheese', 'loc-1', 8, '{now}');"
+    ))
+    .unwrap();
+
+    let products = store.list_products().unwrap();
+    let burger = products.iter().find(|p| p.product.id == "burger").unwrap();
+    assert_eq!(burger.stock_qty, Some(4));
+    assert!(burger.is_in_stock());
+
+    // Get single product also attaches recipe stock
+    let single = store.get_product("BURGER").unwrap().unwrap();
+    assert_eq!(single.stock_qty, Some(4));
+    assert!(single.is_in_stock());
+
+    // Deplete one ingredient: patty stock down to 0
+    conn.execute(
+        "UPDATE stock_summary SET qty = 0 WHERE item_id = 'patty'",
+        [],
+    )
+    .unwrap();
+
+    let products = store.list_products().unwrap();
+    let burger = products.iter().find(|p| p.product.id == "burger").unwrap();
+    assert_eq!(burger.stock_qty, Some(0));
+    assert!(!burger.is_in_stock());
+}

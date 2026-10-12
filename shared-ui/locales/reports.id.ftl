@@ -205,3 +205,7 @@ sales-report-total-gross-profit = Laba Kotor:
 sales-report-export-csv = Ekspor CSV
 sales-report-revenue-label = Pendapatan
 sales-report-rank = #
+
+# Menu Engineering
+menu-eng-food-cost-header = Biaya Bahan %
+menu-eng-tooltip-food-cost = Biaya Bahan %
