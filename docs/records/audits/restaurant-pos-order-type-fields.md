@@ -56,6 +56,38 @@ the restaurant cart exposes, ask: *does this mean anything for a takeaway?* The
 cart's identity fields are the whole population today (Table, Customer, Guests);
 every consumer of the first and third has now been walked and fixed.
 
+## The class now has ONE guard instead of five (`9cee8e8a9`)
+
+Five behavioural tests prove each site works. `RestaurantOrderTypeFieldConsumers.test.ts`
+additionally asserts, in one place, that the rule is applied at EVERY consumer —
+because the failure mode of this class is **partial** application, which is exactly
+how the series went (#1 fixed while #2 was live, #2 while #3 was, and so on).
+
+It checks: both claim paths (2, not 1), the release, the open-bill payload, the
+display predicate, the pax render condition, that no consumer uses the negative
+form `!== 'dine_in'` (which would wrongly admit delivery), and that the
+customer-name field is NOT restricted. A sixth consumer, or a dropped guard,
+fails it immediately instead of waiting for someone to think of looking.
+
+Verified by mutation on COPIES of the sources (never the live files): dropping any
+one guard moves exactly the field that asserts it, and restricting the customer
+field moves `customer` 1 -> 0.
+
+## A harness mistake worth recording
+
+The first attempt at those kill-tests mutated the LIVE files — and because another
+agent was concurrently editing `PosScreen.tsx`, the restore write failed and
+**left the release guard removed in a production file**. It was caught by
+re-reading the guard (not by trusting the script) and restored, then confirmed by
+the sweep and the 135-case PosScreen suite.
+
+The lesson is narrow and worth keeping: **mutate a copy, not the working tree.**
+A kill-test's whole purpose is to put a file into a broken state, and on a tree
+that several agents edit concurrently that is a dangerous thing to do to the real
+file — a failed restore is a silent production regression, not a failed
+experiment. The re-run above mutates in-memory copies only and asserts at the end
+that the live files are byte-identical to what they were.
+
 ## Not verified live
 
 Vite has been down since round 40, and the dev server is not something to restart
