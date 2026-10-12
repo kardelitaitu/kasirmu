@@ -48,6 +48,27 @@ as wrapped — so a rename fails the guard instead of passing vacuously.
 COPIES only: removing the boundary drops `KdsMainContent` to nesting depth 0 and
 fails the guard, with the live file verified byte-identical.
 
+## A SECOND routed KDS screen had the same gap (efcd01a7a)
+
+Round 52's pass started from `grep LocalizedErrorBoundary ui/src/features/kds` and
+found nothing to look at, so it fixed `KdsScreen` and stopped. That grep could not
+have found the second screen's problem, because the problem was the ABSENCE.
+
+`ExpoScreen` — 594 lines, registered as route `kds-expo` with its own nav item
+(features/kds/register.tsx:20-28) — also had no boundary. The shell wraps every
+fullscreen page in `<LazyBoundary>`, and that is a **`<Suspense>`, not an error
+boundary** (components/LazyBoundary.tsx:20-33), so a throw on the expo pass reached
+AppProviders' app-level boundary and its full reload — blanking the pass mid-service
+exactly as it would the kitchen board.
+
+The method that found it is the round-51 one, applied properly this time: compare
+what the ROUTES render against what is GUARDED, rather than grepping for the thing
+whose absence is the bug. Walking the page registry found both KDS routes; the
+boundary grep had only ever been able to find the one that already had some.
+
+Guard: `StationSelectorModal` added to `kdsCrashIsolation.test.ts`. Kill-tested on
+a copy — removing the wrapper drops it to nesting depth 0.
+
 ## Left as-is, deliberately
 
 The KDS's remaining ~11 components (header, tabs, footer, the modals) are **not**
