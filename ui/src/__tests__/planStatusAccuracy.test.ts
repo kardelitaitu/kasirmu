@@ -122,22 +122,54 @@ describe('the plan status header matches the tree (F32)', () => {
       .not.toMatch(/P1's[^\n]*owner decision/i);
   });
 
-  it('the dead-key guard really is empty, which is what makes P1 complete', () => {
-    // The load-bearing fact behind the claim above. If a new dead key is
-    // declared, this fails and the header line above must be revisited too.
+  // ── P1 is NOT complete, and this asserts the pair stays in step ──────────
+  //
+  // This test used to assert `DECLARED_DEAD` was EMPTY, which was true from
+  // rounds 57-58 (when the last two keys were wired) until the pre-bill /
+  // table-transfer / split-bill feature added `restaurant.dispatch_on_tab_save`
+  // — a toggle that writes a key nothing reads.
+  //
+  // The old assertion was the RIGHT question asked at the wrong time: the moment a
+  // dead key was declared it failed, correctly, and the old fix was to re-word the
+  // header. That re-wording is what makes a plan untrustworthy — the summary drifts
+  // and nothing makes it come back.
+  //
+  // So the invariant is inverted rather than deleted. P1's state is now "one
+  // declared-dead key", and what must stay true is that the HEADER SAYS SO: the
+  // declared set and the header is a pair, and neither may move alone.
+  it('the header and the dead-key guard agree on whether P1 is clean', () => {
     const src = read(DEAD_GUARD);
     const list = src.slice(src.indexOf('const DECLARED_DEAD'));
     const body = list.slice(list.indexOf('[') + 1, list.indexOf('];'));
-    // Strip comments; only real entries count.
     const entries = body
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n');
+    const declaredCount = (entries.match(/\{\s*key:/g) ?? []).length;
+
+    // The header must own the fact, in the same round that changed it.
+    if (declaredCount === 0) {
+      expect(
+        header,
+        'DECLARED_DEAD is empty again, but the header still describes a dead key — ' +
+          're-measure it, the same way the round-75 correction did.',
+      ).not.toMatch(/P1 is no longer clean/i);
+    } else {
+      expect(
+        header,
+        'DECLARED_DEAD holds ' +
+          declaredCount +
+          ' key(s), so P1 is NOT complete — the header must say so. A plan whose ' +
+          'summary disagrees with its own guard is the failure this pair exists to catch.',
+      ).toMatch(/P1 is no longer clean/i);
+    }
+
+    // And every declared key must still record what wiring it would need, so the
+    // entry is a debt with a shape rather than a shrug.
     expect(
       entries,
-      'DECLARED_DEAD gained an entry — a restaurant setting has no reader again, and the ' +
-        "plan's P1-complete claim needs re-measuring",
-    ).not.toMatch(/\{\s*key:/);
+      'every DECLARED_DEAD entry needs a wouldNeed clause describing the work',
+    ).not.toMatch(/key:\s*'[^']+',\s*\}/);
   });
 
   it("F1's evidence row does not claim its keys are unread", () => {
