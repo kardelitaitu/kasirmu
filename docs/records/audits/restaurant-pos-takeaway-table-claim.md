@@ -135,6 +135,55 @@ because the cart panel offers the field on every order type. Worth remembering
 that the FIELD being unconditional is deliberate (CartPanel.tsx:735-743) — it is
 each READER that has to apply the order-type rule.
 
+## Fourth site: the DISPLAY half (`547bf031d`)
+
+The three fixes above stop a stray table number DOING damage. None of them
+stopped it being SHOWN. The cart panel renders the table name in its active-tab
+banner with no order-type check:
+
+```tsx
+// CartPanel.tsx:669 — before this fix
+{tableNumber ? `Table ${bareTableNumber(tableNumber)}` : ''}
+```
+
+So after switching Dine-In -> Takeaway the cashier still read **"Table 12"** on a
+takeaway order, and the field was still offered. Measured in jsdom: the banner's
+text was `"Table 12Active Tab"` for a takeaway.
+
+The field itself is deliberately unconditional — the cart offers it for the
+restaurant POS on every order type (CartPanel.tsx:735-743, "does not depend on a
+setting"), and that is a reasonable choice. It is each READER that owes the rule.
+
+Fixed with a single `showTableForOrder = orderType === 'dine_in' && !!tableNumber`
+predicate used by both the table name and its `(customer)` suffix, so the banner
+cannot half-render.
+
+**Guard**: CartPanel.test — "shows a table name for a dine-in order" and "does
+NOT show a table name for a takeaway or delivery order" (both non-dine-in types).
+Kill-tested: reverting the predicate fails the second.
+
+## Four sites, one reading of the same field
+
+| Site | What a stray table number did |
+|---|---|
+| PaymentModal claim (`206462b4d`) | attached a real table to the sale |
+| PosScreen release (`035d1d01b`) | freed that table on completion |
+| PaymentModal open bill (`795fc18d4`) | wrote it into the saved tab |
+| CartPanel banner (`547bf031d`) | displayed it as this order's table |
+
+Three were damage; the fourth was a lie to the cashier. All four are the same
+mistake: reading a field whose MEANING is order-type-dependent as though it were
+unconditional.
+
+## A negative result worth recording
+
+`guestCount` (pax) is written into the same held-cart payloads
+(`PosScreen.tsx:818`, `usePosHeldCarts.ts:199`) with no order-type check either.
+It was **not** fixed, because it is harmless: `grep guestCount crates/` returns
+nothing — the backend never reads it, so it is opaque cart data that cannot
+corrupt a table, a ledger or a receipt. Recording the decision so a later pass
+does not "fix" it by symmetry with the table cases.
+
 ## Not verified live
 
 The browser pass that found this could not be repeated after the fix — the Vite
