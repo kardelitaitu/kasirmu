@@ -1128,7 +1128,17 @@ retryCurrencyLoad,
     if (rateUnknown) return false;
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
-    if (method === 'open_bill') return customerName.trim().length > 0 || (tableNumber != null && tableNumber.trim().length > 0);
+    if (method === 'open_bill') {
+      // ⚠️ The table arm is DINE-IN ONLY. It was unconditional, so on a takeaway a
+      // stray table number alone armed Complete — and since 795fc18d4 the payload
+      // no longer carries that table (correctly), leaving a tab with NO name and
+      // NO table: `heldCartLabel` falls back to "Open Bill #<timestamp>" and the
+      // cashier cannot tell whose bill it is. That fix made the record honest and
+      // this path anonymous, so the gate has to require something the tab can
+      // actually be identified by. A customer name still works on any order type.
+      if (customerName.trim().length > 0) return true;
+      return orderType === 'dine_in' && tableNumber != null && tableNumber.trim().length > 0;
+    }
     if (method === 'credit') {
       if (!customerName.trim().length) return false;
       if (!creditOffered) return false;
@@ -1152,7 +1162,13 @@ retryCurrencyLoad,
     // of a failure, so a cashier recording an off-POS card payment still can.
     if (method === 'card' && edcTerminalFailed) return false;
     return true;
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed]);
+    // orderType is read above (the open-bill dine-in table arm) and so must be
+    // listed: without it this memo closes over the render-time value, and a cashier
+    // who switches Dine-In -> Takeaway after mount would still be allowed to open a
+    // bill on a table number. THIRD occurrence of this exact trap in this area
+    // (see PosScreen's release guard and PaymentModal's claim guard), which is why
+    // the class sweep asserts the rule positively rather than trusting each site.
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
