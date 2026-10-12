@@ -125,6 +125,9 @@ payment-qris-amount = Amount
 payment-qris-reference = Reference
 payment-qris-merchant = Merchant
 payment-qris-merchant-name = kasir.mu Store
+payment-qris-listener-listening = Auto-verifying via bank push notifications...
+payment-qris-listener-enable-hint = Enable instant auto-verification
+payment-qris-listener-verified = Payment verified via { $provider }!
 
 # Price Override Modal
 price-override-dialog-aria = Price override

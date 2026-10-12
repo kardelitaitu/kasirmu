@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Kasir.mu</string>
     <string name="main_activity_title">Kasir.mu</string>
+    <string name="qris_listener_label">Kasir.mu QRIS Listener</string>
 </resources>

@@ -35,6 +35,9 @@ export interface KasirmuNativeBridge {
   canRequestPackageInstalls?: () => boolean;
   openInstallPermissionSettings?: () => void;
   launchPackageInstaller?: (apkFilePath: string) => boolean;
+  isQrisNotificationListenerEnabled?: () => boolean;
+  openNotificationListenerSettings?: () => void;
+  getRecentQrisPayments?: () => string;
 }
 
 declare global {

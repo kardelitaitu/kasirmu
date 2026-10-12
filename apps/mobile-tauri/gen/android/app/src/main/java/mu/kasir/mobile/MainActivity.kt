@@ -56,6 +56,7 @@ import org.json.JSONObject
 class MainActivity : TauriActivity() {
   private var backPressedAtMs = 0L
   private var bridgeInstalled = false
+  private var qrisSubscription: (() -> Unit)? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -63,8 +64,35 @@ class MainActivity : TauriActivity() {
     hideSystemBars()
     keepScreenOn()
     installBackGuard()
+    setupQrisNotificationForwarding()
     window.decorView.post {
       attachBridgeIfFound()
+    }
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    qrisSubscription?.invoke()
+  }
+
+  private fun setupQrisNotificationForwarding() {
+    qrisSubscription = QrisNotificationBus.subscribe { event ->
+      runOnUiThread {
+        val webView = findWebView(window.decorView) ?: return@runOnUiThread
+        val json = JSONObject().apply {
+          put("provider", event.provider)
+          put("amountMinor", event.amountMinor)
+          put("amountFormatted", event.amountFormatted)
+          put("rawText", event.rawText)
+          put("packageName", event.packageName)
+          put("timestamp", event.timestamp)
+        }.toString()
+
+        webView.evaluateJavascript(
+          "(function() { window.dispatchEvent(new CustomEvent('kasirmu:qrisPaymentNotification', { detail: $json })); })()",
+          null
+        )
+      }
     }
   }
 
@@ -323,6 +351,39 @@ class MainActivity : TauriActivity() {
       } catch (e: Exception) {
         false
       }
+    }
+
+    @JavascriptInterface
+    fun isQrisNotificationListenerEnabled(): Boolean {
+      val enabled = Settings.Secure.getString(
+        activity.contentResolver,
+        "enabled_notification_listeners"
+      ) ?: return false
+      return enabled.contains(activity.packageName)
+    }
+
+    @JavascriptInterface
+    fun openNotificationListenerSettings() {
+      val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      activity.startActivity(intent)
+    }
+
+    @JavascriptInterface
+    fun getRecentQrisPayments(): String {
+      val list = JSONArray()
+      for (event in QrisNotificationBus.getRecent()) {
+        val obj = JSONObject()
+        obj.put("provider", event.provider)
+        obj.put("amountMinor", event.amountMinor)
+        obj.put("amountFormatted", event.amountFormatted)
+        obj.put("rawText", event.rawText)
+        obj.put("packageName", event.packageName)
+        obj.put("timestamp", event.timestamp)
+        list.put(obj)
+      }
+      return list.toString()
     }
   }
 

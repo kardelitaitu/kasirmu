@@ -109,6 +109,9 @@ payment-qris-amount = Jumlah
 payment-qris-reference = Referensi
 payment-qris-merchant = Pedagang
 payment-qris-merchant-name = kasir.mu Store
+payment-qris-listener-listening = Verifikasi otomatis aktif lewat notifikasi bank...
+payment-qris-listener-enable-hint = Aktifkan verifikasi otomatis instan
+payment-qris-listener-verified = Pembayaran terverifikasi via { $provider }!
 
 # Price Override Modal
 price-override-dialog-aria = Override harga
