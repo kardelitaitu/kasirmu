@@ -635,6 +635,7 @@ payment-qris-cancel = Batalkan pembayaran
 payment-qris-auto-charge-failed = Penagihan QRIS Otomatis gagal: { $reason }
 payment-qris-auto-no-payload = Gerbang pembayaran tidak mengembalikan muatan QR
 payment-qris-auto-cancelled = Pembayaran QRIS dibatalkan — penjualan tertunda dibatalkan
+payment-qris-gateway-failed = Pembayaran QR gagal — periksa terminal dan coba lagi
 
 # Aliran kartu EDC (agents-3 3.2)
 payment-edc-description = Tagih total pada terminal kartu yang terhubung — tempel, masukkan, atau gesek.

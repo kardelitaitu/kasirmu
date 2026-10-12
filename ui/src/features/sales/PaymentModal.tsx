@@ -1028,6 +1028,7 @@ retryCurrencyLoad,
     classifyError,
     setProcessing,
     setPaymentError,
+    l10nRef,
     addToast,
   });
 

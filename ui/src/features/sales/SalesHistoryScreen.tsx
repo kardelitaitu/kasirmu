@@ -752,7 +752,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } finally {
       setIssuingInvoice(false);
     }
-  }, [detail, sessionToken, invalidateCache, load, addToast]);
+    // l10n is read by the e-Faktur outcome toasts this handler raises.
+  }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {

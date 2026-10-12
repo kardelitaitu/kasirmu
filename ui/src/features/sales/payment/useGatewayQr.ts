@@ -34,7 +34,7 @@ import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { useToast } from '@/components/Toast';
 import type { CompleteSaleResult } from '@/api/sales';
-import { plainErrorMessage } from '@/utils/app-error';
+import { requiredLocalized } from '@/components';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
@@ -48,6 +48,9 @@ type GatewaySaleSplit = {
   gatewayResponse: string;
 };
 
+/** The localized-bundle ref, same alias useAutoQr uses (see that file's header). */
+type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
+
 export interface UseGatewayQrParams {
   /** Shared gateway-tender front half — shell-owned, passed to every tender. */
   buildGatewaySale: (split: GatewaySaleSplit) => Promise<CompleteSaleResult>;
@@ -57,6 +60,12 @@ export interface UseGatewayQrParams {
   classifyError: (err: unknown) => PaymentErrorState;
   setProcessing: Dispatch<SetStateAction<boolean>>;
   setPaymentError: Dispatch<SetStateAction<PaymentErrorState | null>>;
+  /**
+   * The localized bundle, BY REF. A ref rather than the bundle itself because these
+   * callbacks are long-lived and would otherwise close over the mount-time locale —
+   * the same reason useAutoQr takes one.
+   */
+  l10nRef: L10nRef;
   addToast: AddToast;
 }
 
@@ -70,6 +79,7 @@ export function useGatewayQr({
   classifyError,
   setProcessing,
   setPaymentError,
+  l10nRef,
   addToast,
 }: UseGatewayQrParams) {
   const [showQr, setShowQr] = useState(false);
@@ -93,7 +103,7 @@ export function useGatewayQr({
       });
       await settleGatewaySale(saleResult, true);
     } catch (err) {
-      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'payment-qris-gateway-failed'), type: 'error' });
       const classified = classifyError(err);
       setPaymentError(classified);
     } finally {
@@ -101,7 +111,7 @@ export function useGatewayQr({
     }
     // setProcessing / setPaymentError are shell useState dispatchers listed here
     // only because they are now hook parameters; see the module doc.
-  }, [buildGatewaySale, settleGatewaySale, qrReference, classifyError, addToast, setProcessing, setPaymentError]);
+  }, [buildGatewaySale, settleGatewaySale, qrReference, classifyError, addToast, setProcessing, setPaymentError, l10nRef]);
 
   // The two dispatchers travel back up because their call sites predate this
   // slice and stay untouched: the shell's open-reset effect clears both, and

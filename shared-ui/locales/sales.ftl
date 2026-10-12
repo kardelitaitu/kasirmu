@@ -100,6 +100,9 @@ payment-qris-cancel = Cancel payment
 payment-qris-auto-charge-failed = QRIS Auto charge failed: { $reason }
 payment-qris-auto-no-payload = The payment gateway returned no QR payload
 payment-qris-auto-cancelled = QRIS payment cancelled — pending sale voided
+# Gateway (manual/EDC-asserted) QR failure. The cause is logged, not interpolated:
+# it arrives from the gateway in English and cannot be localized here.
+payment-qris-gateway-failed = QR payment failed — check the terminal and retry
 
 # EDC card-present flow (agents-3 3.2)
 payment-edc-description = Charge the total on the connected card terminal — tap, insert or swipe.

@@ -150,7 +150,8 @@ export function useAutoQr({
         try {
           await voidPendingSale(sessionToken!, createdSaleId);
         } catch (voidErr) {
-          addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+          console.error('voidPendingSale failed', voidErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-void-failed'), type: 'error' });
         }
       }
       addToast({
@@ -201,9 +202,12 @@ export function useAutoQr({
           type: 'info',
         }),
       )
-      .catch((voidErr) =>
-        addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' }),
-      );
+      .catch((voidErr: unknown) => {
+        // The cause is logged, not shown: it arrives in English and cannot be
+        // localized here, and the cashier needs the instruction.
+        console.error('voidPendingSale failed', voidErr);
+        addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-void-failed'), type: 'error' });
+      });
   }, [autoQr, sessionToken, addToast, l10nRef]);
 
   const handleAutoConfirmed = useCallback(async () => {
@@ -217,13 +221,13 @@ export function useAutoQr({
       // queued finalize_sale instead of voiding a PAID sale.
       await settleGatewaySale(saleResult, false);
     } catch (err) {
-      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'payment-qris-gateway-failed'), type: 'error' });
       const classified = classifyError(err);
       setPaymentError(classified);
     } finally {
       setProcessing(false);
     }
-  }, [autoQr, settleGatewaySale, classifyError, addToast, setProcessing, setPaymentError]);
+  }, [autoQr, settleGatewaySale, classifyError, addToast, setProcessing, setPaymentError, l10nRef]);
 
   const handleAutoPoll = useCallback(async () => {
     if (!autoQr || !sessionToken) return false;

@@ -935,6 +935,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills,
       addToast,
       setLines,
+      // l10n is read by the failure toasts this handler raises (round 15's
+      // localization pass), so it must be listed or the toast renders in the
+      // locale the cashier was NOT using after a switch.
+      l10n,
     ],
   );
 
@@ -1341,7 +1345,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       setEditingCartLine(line);
       setEditingProduct(prod);
     },
-    [products, sessionToken, addToast],
+    [products, sessionToken, addToast, l10n],
   );
 
   const handleConfirmEditModifiers = useCallback(
