@@ -147,9 +147,9 @@
 }
 
 .pos-cart-send-kitchen-btn {
-  color: var(--color-warning-fg, #b45309);
-  background: var(--color-warning-bg, rgba(245, 158, 11, 0.08));
-  border-color: var(--color-warning-border, rgba(245, 158, 11, 0.3));
+  color: var(--color-warning-fg);
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
 }
 
 .pos-cart-print-bill-btn:hover,

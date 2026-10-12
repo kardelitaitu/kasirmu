@@ -950,12 +950,12 @@ body.is-resizing .restaurant-card * {
   align-items: center;
   justify-content: center;
   padding: 0 var(--space-1);
-  border-radius: var(--radius-xs, 2px);
-  background: var(--color-danger, #ef4444);
-  color: #fff;
+  border-radius: var(--radius-sm);
+  background: var(--color-danger);
+  color: var(--color-accent-fg);
   font-size: 10px;
   font-weight: var(--font-weight-bold);
-  line-height: 1.2;
+  line-height: var(--leading-condensed);
 }
 
 /* Add badge — icon-only circle centred in the accent strip.
