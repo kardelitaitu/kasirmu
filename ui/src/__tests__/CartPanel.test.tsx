@@ -138,6 +138,54 @@ function renderPanelId(overrides: Partial<CartPanelProps> = {}) {
   return { ...result, props };
 }
 
+describe('CartPanel — order type vs the table field', () => {
+  // ⚠️ Rounds 40-42 fixed three READERS of `tableNumber` (the claim, the release,
+  // the open-bill payload) that ignored the order type. Those guards stop the
+  // damage, but the FIELD itself is still offered and still honoured for DISPLAY
+  // on every order type: the panel renders the bare table name in the active-tab
+  // banner (CartPanel.tsx:669) with no orderType check. So a cashier who switches
+  // Dine-In -> Takeaway keeps a Table badge on an order that has no table.
+  //
+  // This pins the DISPLAY half, which the earlier fixes did not touch.
+  const restaurant = { activeWorkspace: 'restaurant-pos' as const };
+
+  it('shows a table name for a dine-in order', () => {
+    const { panel } = renderPanel({
+      ...restaurant,
+      lines: [makeLine('Espresso')],
+      tableNumber: 'Table 12',
+      orderType: 'dine_in',
+      activeOpenBillId: 'tab-1',
+    });
+    expect(
+      panel.querySelector('.pos-cart-active-tab-text')?.textContent,
+      'the active-tab banner names the table on a dine-in order',
+    ).toContain('Table 12');
+  });
+
+  it('does NOT show a table name for a takeaway or delivery order', () => {
+    for (const orderType of ['takeaway', 'delivery'] as const) {
+      const { panel, unmount } = renderPanel({
+        ...restaurant,
+        lines: [makeLine('Espresso')],
+        tableNumber: 'Table 12',
+        orderType,
+        activeOpenBillId: 'tab-1',
+      });
+      const text = panel.querySelector('.pos-cart-active-tab-text')?.textContent ?? '';
+      expect(
+        text.includes('Table 12'),
+        'a ' +
+          orderType +
+          ' order has no table, so the banner must not name one — a stray value ' +
+          'in the Table field would otherwise read as this order\'s table. banner was: ' +
+          text,
+      ).toBe(false);
+      unmount();
+    }
+  });
+});
+
 describe('CartPanel (smoke)', () => {
   it('renders the resizable cart as a named region carrying the header, width, and delegated key handler', () => {
     const handleCartPanelKeyDown = vi.fn();

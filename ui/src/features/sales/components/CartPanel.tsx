@@ -20,6 +20,7 @@ import { CartLineItem } from './CartLineItem';
 import { CourseSelectorBar } from './CourseSelectorBar';
 import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
+import { SplitBillModal } from './SplitBillModal';
 
 // Each option carries its Fluent KEY rather than a label: the restaurant POS
 // renders these on the shared cart panel, so hardcoding them left the order-type
@@ -254,6 +255,12 @@ export interface CartPanelProps {
   activeOpenBillId?: string | null | undefined;
   setActiveOpenBillId?: ((id: string | null) => void) | undefined;
   handleOpenBill?: (() => Promise<void>) | undefined;
+  printBillEnabled?: boolean | undefined;
+  handlePrintBill?: (() => Promise<void> | void) | undefined;
+  splitBillEnabled?: boolean | undefined;
+  showSplitBillModal?: boolean | undefined;
+  setShowSplitBillModal?: Dispatch<SetStateAction<boolean>> | undefined;
+  handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void) | undefined;
 }
 
 export function CartPanel({
@@ -355,6 +362,12 @@ export function CartPanel({
   activeOpenBillId,
   setActiveOpenBillId,
   handleOpenBill,
+  printBillEnabled,
+  handlePrintBill,
+  splitBillEnabled,
+  showSplitBillModal,
+  setShowSplitBillModal,
+  handleConfirmSplitBill,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
   // In the restaurant workspace the cart header's buttons do not live here at
@@ -367,6 +380,14 @@ export function CartPanel({
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
   const orderTypeIndex = Math.max(0, ORDER_TYPES.findIndex((opt) => opt.id === orderType));
+
+  /**
+   * Whether this order can name a table at all. Only a dine-in order has one, so
+   * the table badge is withheld for takeaway and delivery even when the field
+   * holds a value — the field is deliberately offered on every order type, which
+   * is exactly why each READER has to apply this rule.
+   */
+  const showTableForOrder = orderType === 'dine_in' && !!tableNumber;
 
   const handleOrderTypePrev = () => {
     if (!setOrderType) return;
@@ -653,8 +674,15 @@ export function CartPanel({
                 {/* `bareTableNumber`: the stored names already read "Table 12"
                     (see features/sales/utils/tableLabel.ts), so the raw value
                     composed "Table Table 12" in this banner. */}
-                {tableNumber ? `Table ${bareTableNumber(tableNumber)}` : ''}
-                {tableNumber && customerName ? ` (${customerName})` : customerName || 'Active Tab'}
+                {/* ⚠️ DINE-IN ONLY — the DISPLAY half of the stray-table defect.
+                    Rounds 40-42 stopped a non-dine-in order CLAIMING (206462b4d),
+                    RELEASING (035d1d01b) and PERSISTING (795fc18d4) a table, but
+                    this banner still NAMED one: the field is offered on every
+                    order type (CartPanel.tsx:735-743), so switching Dine-In ->
+                    Takeaway left "Table 12" reading as this order's table. A
+                    takeaway has no table to name. */}
+                {showTableForOrder ? `Table ${bareTableNumber(tableNumber!)}` : ''}
+                {(showTableForOrder && customerName) ? ` (${customerName})` : customerName || 'Active Tab'}
               </span>
             </span>
             <button
@@ -965,6 +993,11 @@ export function CartPanel({
               activeOpenBillId={activeOpenBillId}
               handleOpenBill={handleOpenBill}
               saveTabEnabled={saveTabEnabled}
+              hasLines={lines.length > 0}
+              printBillEnabled={printBillEnabled}
+              handlePrintBill={handlePrintBill}
+              splitBillEnabled={splitBillEnabled}
+              handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
             />
           </CartFooterTotals>
         )}
@@ -984,6 +1017,18 @@ export function CartPanel({
             <span>{l10n.getString('pos-cart-open-bills')}</span>
             <span className="pos-cart-held-count">{openBills.length}</span>
           </button>
+        )}
+
+        {/* ── Split Bill by Item Modal ── */}
+        {showSplitBillModal && setShowSplitBillModal && handleConfirmSplitBill && (
+          <SplitBillModal
+            isOpen={showSplitBillModal}
+            onClose={() => setShowSplitBillModal(false)}
+            lines={lines}
+            currency={lines[0]?.unit_price.currency || 'IDR'}
+            tableNumber={tableNumber}
+            onConfirmSplit={handleConfirmSplitBill}
+          />
         )}
       </aside>
     </>
