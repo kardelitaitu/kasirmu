@@ -473,3 +473,43 @@ done
 -->
 
 > last audited 11-10-26 by docs-auditor
+
+### Merging a stamp must not NEST a comment
+
+When you preserve a superseded stamp under a "STAMP MERGED INTO THIS ONE" note, do **not**
+copy the old stamp's delimiters into the new one. The old body starts with an HTML comment
+open token, and placing it inside the merge comment nests the two: the first clobber
+closes only the **inner** comment, so the merge note and everything after it render as
+**visible text** on the page. Found twice on 2026-10-11 (batch 6) — once by an auditor who
+caught it in their own work with a depth-walk rather than by eye, once by the lead in five
+files written by other auditors. Symptoms are invisible to every check this repo runs,
+because the file still contains balanced-looking comment-open and comment-close tokens.
+
+**Two rules, both learned the hard way:**
+
+1. **Never write the comment-open token literally inside a comment — not even to explain
+   this hazard.** One auditor's own warning sentence re-opened the comment it was warning
+   about, which is the same failure one level down.
+2. **Verify with a depth walk, never by eye.** A file that "looks right" is exactly the
+   file this trap produces. The check is a fold over the token stream:
+
+```bash
+python3 - <<'PY'
+import re, sys, pathlib
+for f in sys.argv[1:]:
+    s = pathlib.Path(f).read_text(encoding='utf-8', errors='replace')
+    s = re.sub(r'```.*?```', '', s, flags=re.S)   # ignore fenced code
+    depth = maxd = 0
+    for m in re.finditer(r'<!--|-->', s):
+        depth += 1 if m.group() == '<!--' else -1
+        maxd = max(maxd, depth)
+    tag = 'OK ' if depth == 0 and maxd <= 1 else '!!'
+    print(f'{tag} {f}  finalDepth={depth} maxDepth={maxd}')
+PY
+```
+
+`finalDepth == 0` and `maxDepth <= 1` is the only pass. A negative final depth means a
+stray close (a quoted body whose trailing comment-close was never stripped); `maxDepth == 2` means
+a nest. **The first visible line of the rendered page must be the document's own title or
+frontmatter** — if a render simulation's first non-blank output is a stray comment-close or the
+merge-note text, the file is broken even though the tokens are balanced.

@@ -6,6 +6,8 @@ order: 4
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · First audit stamp on this page. MINOR, FIXED: the §Callouts list documented five labels (Note, Info, Tip, Warning, Danger) but the renderer accepts SIX — `caution` is in its `KINDS` map, aliased to the warning style (website/src/plugins/rehype-callouts.mjs, KINDS = {note, info, tip, warning, caution, danger}). A writer reading only this guide would not know `Caution` works. Added as an explicit alias, with the note that it is not a distinct color, since a label list that under-reports the accepted set is the one kind of omission a styling guide cannot afford. · VERIFIED AND LEFT ALONE: the doc-parity instruction is correct as written — `python3 scripts/check-doc-parity.py` must run FROM website/ (from the repo root it fails with "can't open file .../scripts/check-doc-parity.py"; from website/ it exits 0 with "OK: 20 page pairs in parity"); Mermaid is genuinely wired (website/astro.config.mjs:8-10,44-50 imports rehype-mermaid + rehype-mermaid-class, and the caveat that an unwired renderer would show plain text is exactly the inert-control framing this repo uses elsewhere); the branded-diagram rules match the working examples — `class="docs-flow"` rule at global.css:382 and a real ARIA-labelled inline SVG in offline-mode.md; every design token the section names (--color-accent, --color-surface, --color-ink, --color-muted) is a live token. · NOT re-measured: the build-time SVG output of a Mermaid block (needs a site build with .astro wiped, per that plugin's own warning). · Footer is an internal marker, stripped from the built site. -->
+
 ## Callouts
 
 Callouts highlight important information. Write a blockquote whose first line
@@ -20,6 +22,9 @@ starts with a bold label — the label picks the color:
 > **Warning:** Something to be careful about — it may not do what you expect.
 
 > **Danger:** An action that can cause data loss or break an installation.
+
+> **Caution:** An alias for **Warning** — the renderer maps `caution` to the same
+> style, so the two are interchangeable and neither is a distinct color.
 
 Any text after the bold label is the callout body:
 
@@ -133,3 +138,5 @@ It fails when a counterpart is missing, and warns on heading-count or
 `updated` drift between locales. The `updated` frontmatter of both locales
 moves together whenever content changes — it is the page's freshness
 signal, so editing a page without bumping it is itself drift.
+
+> last audited 11-10-26 by docs-auditor

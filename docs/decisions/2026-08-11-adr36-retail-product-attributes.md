@@ -4,7 +4,10 @@ area: products
 title: ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns
 status: Implemented (2026-08-12)
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 295 lines, with no prior stamp, footer or marker. It is a small, specific product decision, and its status line is unqualified — Implemented, with a date — which is the clearest signal a decision record can give and therefore the easiest to check. · IT CHECKS OUT, IN THE PLACE A READER WOULD LOOK. The schema's product definition carries exactly the attributes the title names: a brand column, a rack-location column, and a notes column, sitting together in the product table rather than in a side table. A decision that says a product has a rack location and a schema where that column lives on the product is a decision that landed; the more common failure is the attribute ending up in a related table with a join, which is a different design with different query costs and a different migration story. · THE SCOPING IS WHAT MAKES IT READABLE, and it is worth naming because a retail point-of-sale product has an enormous possible attribute set — colour, size, expiry, batch, serial, allergen, origin, weight, dimensions — and a decision that tried to cover them would be neither implementable nor reviewable. This one names four and adds a configurable-columns concept, which is the escape hatch: the fixed columns are the ones every shop needs and the system must know the meaning of, and the configurable ones are everything else. That is a maintainable shape, and it is the same instinct the boundary checker used when it named a small set of mechanically enforced invariants instead of a large set of aspirational ones. · A NOTE ON WHAT THIS DECISION SITS ON TOP OF, because the cost attribute is not a neutral addition. The repository treats money as integer minor units, never floating point, and a cost price added to a product is money. A reader implementing against this decision should be pairing it with the money-closure specification audited in this campaign rather than treating it as a plain text column, because the type discipline is enforced by a lint and by convention rather than by the database. That connection is not made in this document and is worth the reader knowing. · NOT re-measured: whether the configurable-columns mechanism is implemented as described, or whether the cost attribute round-trips through the pricing path correctly. Those are the implementation; the status line and the schema are the claim of record, and both hold. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · First re-audit since 2026-09-29; the prior stamp is merged below. MINOR 1 — seven pre-rebrand PATHS in prescriptive positions, corrected in place: the D1/D2/D3 sections instructed a reader to edit `crates/oz-core/src/{migrations.rs,sync_client.rs,db/mod.rs,db/products.rs}` and `crates/oz-reporting/src/menu_engineering.rs`, and D3 named `apps/desktop-client/…` / `apps/tablet-client/…` for the copy-nowhere Tauri commands. None of the old paths exist; every one has a `kasirmu-*` equivalent that does (`crates/kasirmu-core/…`, `crates/kasirmu-reporting/src/menu_engineering.rs`, `apps/desktop-tauri/src/commands/products.rs`, `apps/mobile-tauri/src/commands/products.rs`). Repointed, because these are instructions rather than evidence. MINOR 2 — a line-number citation inside the 2026-10-04 sweep section drifted: it cited `sales_crud.rs:399` for the strict `version` read; that read is at `:417` today, the mapper moved to `:202` and its four-line doc to `:157`, so the sentence's own coordinates had moved under it. Corrected with all three noted. · VERIFIED AND LEFT ALONE — both 2026-10-04 amendment claims hold precisely: `row_to_product_fails_when_a_read_column_is_missing` is pinned at `crates/kasirmu-core/src/db/mod_tests.rs:197`, and the sweep's own closure claim is TRUE — `grep -rn 'row\.get(..)\.unwrap_or' crates/kasirmu-core/src/db` returns 0 production hits. The attribute columns are real in the shipped schema: `products` carries brand, rack_location, notes, unit, is_active, default_supplier_id and `cost_minor INTEGER NOT NULL DEFAULT 0` (`crates/kasirmu-core/migrations/20260813_init.sql:452-457`), so the decision landed. · NOT re-measured: whether the configurable-columns mechanism behaves as described at runtime, and the cost round-trip through the pricing path. · HISTORICAL, left as the record: the numbered migrations `054_product_cost.sql`, `038_user_preferences.sql`, `132_product_attributes.sql` and `117` — the sequential series is retired into the date-stamped `20260813_init.sql`, so those numbers are labels in a dated decision rather than live file pointers. -->
+
+STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 295 lines, with no prior stamp, footer or marker. It is a small, specific product decision, and its status line is unqualified — Implemented, with a date — which is the clearest signal a decision record can give and therefore the easiest to check. · IT CHECKS OUT, IN THE PLACE A READER WOULD LOOK. The schema's product definition carries exactly the attributes the title names: a brand column, a rack-location column, and a notes column, sitting together in the product table rather than in a side table. A decision that says a product has a rack location and a schema where that column lives on the product is a decision that landed; the more common failure is the attribute ending up in a related table with a join, which is a different design with different query costs and a different migration story. · THE SCOPING IS WHAT MAKES IT READABLE, and it is worth naming because a retail point-of-sale product has an enormous possible attribute set — colour, size, expiry, batch, serial, allergen, origin, weight, dimensions — and a decision that tried to cover them would be neither implementable nor reviewable. This one names four and adds a configurable-columns concept, which is the escape hatch: the fixed columns are the ones every shop needs and the system must know the meaning of, and the configurable ones are everything else. That is a maintainable shape, and it is the same instinct the boundary checker used when it named a small set of mechanically enforced invariants instead of a large set of aspirational ones. · A NOTE ON WHAT THIS DECISION SITS ON TOP OF, because the cost attribute is not a neutral addition. The repository treats money as integer minor units, never floating point, and a cost price added to a product is money. A reader implementing against this decision should be pairing it with the money-closure specification audited in this campaign rather than treating it as a plain text column, because the type discipline is enforced by a lint and by convention rather than by the database. That connection is not made in this document and is worth the reader knowing. · NOT re-measured: whether the configurable-columns mechanism is implemented as described, or whether the cost attribute round-trips through the pricing path correctly. Those are the implementation; the status line and the schema are the claim of record, and both hold. · No stamp existed; this is the first.
 # ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns
 
 Date: 2026-08-11
@@ -27,7 +30,7 @@ columns expose:
    The column already exists in the schema (`products.cost_minor`, migration
    `054_product_cost.sql`) but is **not surfaced** in the core `Product` reads,
    the DTOs, the Tauri commands, or any UI. It is only consumed by the
-   menu-engineering report (`crates/oz-reporting/src/menu_engineering.rs`).
+   menu-engineering report (`crates/kasirmu-reporting/src/menu_engineering.rs`).
 2. **Brand** — no column exists anywhere.
 3. **Rack position code** — no column exists; staff currently cannot see where
    a product lives in the store. The retail POS **Stock Inquiry** sub-view
@@ -64,7 +67,7 @@ app.
 ### D1 — Product attribute model (schema)
 
 One new forward-only migration, `132_product_attributes.sql`, registered in the
-compile-time `ALL` array in `crates/oz-core/src/migrations.rs` (unique prefix
+compile-time `ALL` array in `crates/kasirmu-core/src/migrations.rs` (unique prefix
 after 131; the registry↔filesystem parity and monotonic-prefix tests enforce
 this):
 
@@ -97,7 +100,7 @@ orders and future reorder/analytics.
 
 `cost_minor` is **excluded from the cloud sync snapshot and the cloud server**.
 The sync surface (`platform/sync/src/transport.rs` `SnapshotProduct`,
-`crates/oz-core/src/sync_client.rs` product upsert/import,
+`crates/kasirmu-core/src/sync_client.rs` product upsert/import,
 `platform/sync/src/pg_transport.rs` / `pg_daemon.rs`,
 `apps/cloud-server/src/sync_api.rs`, and
 `platform/sync/tests/pg_integration.rs`) gains the catalog fields `brand`,
@@ -112,11 +115,11 @@ because it is read from the local store DB, not the cloud.
 
 ### D3 — Backend plumbing
 
-- **Core model** (`crates/oz-core/src/db/mod.rs` `row_to_product`, the
+- **Core model** (`crates/kasirmu-core/src/db/mod.rs` `row_to_product`, the
   `Product` struct): add `cost_minor: i64`, `brand`, `rack_location`, `notes`,
   `unit` (`Option<String>`), `is_active: bool`, `default_supplier_id`
   (`Option<String>`).
-- **`crates/oz-core/src/db/products.rs`**: add the six new columns to every
+- **`crates/kasirmu-core/src/db/products.rs`**: add the six new columns to every
   `SELECT` (list/get/lookup/update re-read), to `create_product` and
   `create_product_if_absent_in_tx` INSERTs, and to `update_product` UPDATEs
   (brand/rack/notes/unit/default_supplier_id clearable via `NULL`; cost always
@@ -138,8 +141,8 @@ because it is read from the local store DB, not the cloud.
   `Option<Option<String>>` for brand/rack/notes/unit/default_supplier_id —
   `null` clears, absent is a no-op (the existing `deserialize_optional_field`
   pattern is reused).
-- **Tauri commands** (`apps/desktop-client/src/commands/products.rs`,
-  `apps/tablet-client/src/commands/products.rs`): list/get/create/update
+- **Tauri commands** (`apps/desktop-tauri/src/commands/products.rs`,
+  `apps/mobile-tauri/src/commands/products.rs`): list/get/create/update
   (scoped + unscoped) carry the four fields in both directions. Cost is not
   written by the sync path (D2).
 
@@ -346,7 +349,7 @@ records, with no error anywhere.
 **And the mapper's own doc already forbade it.** `row_to_sale_header`'s doc records that
 `list_sales_by_user` "deliberately keeps its own strict variant (propagating rather than defaulting
 a NULL discount/version)" — and that strict variant reads `version` with `?` at
-`sales_crud.rs:399`. Four lines of documentation explaining exactly why the shared mapper must not
+`sales_crud.rs:417` today — the strict variant's `version` read; the mapper itself moved to `:202`, and its four-line doc to `:157`, so all three coordinates in this sentence drifted. Four lines of documentation explaining exactly why the shared mapper must not
 default, directly above a mapper that did.
 
 **The sweep is now closed for this crate**, which is the useful outcome beyond these four lines:
@@ -356,4 +359,4 @@ getter that owns it, never in the mapper that reads the row.** Written one layer
 that already owns it, an `unwrap_or` is not a default — it is a swallow wearing a default's
 clothes, and it fires on precisely the reads you most want to hear about.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

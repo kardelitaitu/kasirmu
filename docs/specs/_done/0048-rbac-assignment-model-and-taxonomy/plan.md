@@ -1,11 +1,20 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. This slice's schema and evaluation API are all real and were located rather than assumed: `assignments`, `assignment_branches` and `assignment_workspaces` are `crates/kasirmu-core/migrations/20260813_init.sql:27`, `:15` and `:21`; `ScopeMode` is `crates/kasirmu-core/src/db/assignments.rs:27`; the fail-closed matcher `matches_scope` is `:198`; `assignment_for_user` is `:242`; `set_assignment` is `:430`; and `require_permission_scoped` — the assignment-aware gate this plan's Cycle 2b added — is documented in that same module at `:360`. The plan's central security invariant, that an empty list never means "all", is exactly what `matches_scope` is described as enforcing, so the code still carries the rule the plan was written to protect. The `modules/staff/src/models.rs` role consts and the `platform/core` / `platform/kernel` paths this plan cites were unaffected by the restructure and still resolve. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 3 minor) · Fresh full audit; the 2026-09-29 stamp is merged below. MAJOR (a stale status line, and the one a reader acts on): the header read "Status: IN PROGRESS — 2026-08-11" and named cycles 2c and 3 as "remaining", while §10 of the SAME FILE records all five cycles shipped and the move to `_done/` — which is where the file lives. A reader who trusted the header would think work was open that is not. Corrected to IMPLEMENTED with a dated note. MINOR 1: the plan's §10 cites migrations `128_assignments.sql` and `129_retire_cashier_kitchen.sql`; NEITHER FILE EXISTS — the numbered series was retired and migrations are date-stamped. The substance is intact (the `assignments` table with `scope_mode`/`assignment_branches`/`assignment_workspaces` is in `crates/kasirmu-core/migrations/20260813_init.sql`; the scope axis arrived later in `20260916_role_assignment_scopes.sql` with the org-wide backfill in `20260917_assignment_backfill_org_wide.sql`, both registered at `crates/kasirmu-core/src/migrations.rs:200/204`). Annotated as historical labels, with a re-derive command. MINOR 2: the §2 baseline named `modules/staff/src/models.rs` for the six roles — that file does not exist; the taxonomy now has ONE home at `platform_core::rbac::builtin_roles`, re-exported by `modules/staff/src/lib.rs`. Repointed. MINOR 3: the §6 sweep named `crates/kasirmu-core/tests/staff_integration.rs`, `settings_integration.rs`, `shift_integration.rs` and `crates/kasirmu-cli/src/commands.rs` — all four paths are gone (the integration suites consolidated into `tests/integration/{staff,settings,shift}.rs` under one binary; the CLI grew a `commands/` module with the role-seed fixtures in `commands_tests.rs`). Repointed, each verified present. · VERIFIED LIVE: `ScopeMode`, `Assignment::matches_scope` and `Store::assignment_for_user` are real (`crates/kasirmu-core/src/db/assignments_tests.rs` exercises all three, incl. `matches_scope_global_ignores_dimensions` at :211); the backfill test is `migration_backfills_existing_assignments_to_organization` (`assignments_tests.rs:437`); no `role-cashier`/`role-kitchen` persists in `crates/kasirmu-core/src` or `modules/staff/src` (the single remaining mention is a historical comment at `crates/kasirmu-core/src/db/workspaces_tests.rs:105`). · NOT re-measured: the scope-evaluation matrix at runtime and the migration round-trip (need a DB run). -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+
+> Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. This slice's schema and evaluation API are all real and were located rather than assumed: `assignments`, `assignment_branches` and `assignment_workspaces` are `crates/kasirmu-core/migrations/20260813_init.sql:27`, `:15` and `:21`; `ScopeMode` is `crates/kasirmu-core/src/db/assignments.rs:27`; the fail-closed matcher `matches_scope` is `:198`; `assignment_for_user` is `:242`; `set_assignment` is `:430`; and `require_permission_scoped` — the assignment-aware gate this plan's Cycle 2b added — is documented in that same module at `:360`. The plan's central security invariant, that an empty list never means "all", is exactly what `matches_scope` is described as enforcing, so the code still carries the rule the plan was written to protect. The `platform/core/src/rbac.rs + rbac_presets.rs` role consts and the `platform/core` / `platform/kernel` paths this plan cites were unaffected by the restructure and still resolve. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass.
+-->
+
 # RBAC assignment model and role taxonomy alignment
 
-> **Status: IN PROGRESS — 2026-08-11.** Cycles 1 (assignment schema +
-> evaluation API), 2a (five-role taxonomy seeds), and 2b (assignment-aware
-> gate) are implemented and committed. Cycle 2c (retirement + seed sweep)
-> and cycle 3 (UI) remain. See §10 for the running progress record; the
-> sections below are the original plan as approved.
+> **Status: IMPLEMENTED — 2026-08-11.** All five cycles (1, 2a, 2b, 2c, 3) are
+> implemented and committed; the file was moved to `_done/`. See §10 for the completion
+> record; the sections below are the original plan as approved.
+>
+> *(Corrected 2026-10-11: this header read "IN PROGRESS" and listed cycles 2c and 3 as
+> remaining. §10 below — the newer text in the same file — records all five cycles shipped
+> and the move to `_done/`, which is where the file actually lives. The header was simply
+> never updated when the spec closed.)*
 
 ## 1. Decision requested
 
@@ -17,7 +26,9 @@ Auditor; fold cashier/kitchen into Staff + workspace assignments; retire
 
 ## 2. Evidence baseline
 
-- `modules/staff/src/models.rs` defines the six today roles: `role-owner`,
+- The role definitions live in `platform/core/src/rbac.rs` and `platform/core/src/rbac_presets.rs`
+  (this line named `modules/staff/src/models.rs` until 2026-10-11, which no longer exists). The six
+  roles at the time of writing were:: `role-owner`,
   `role-manager`, `role-cashier`, `role-kitchen`, `role-staff`, `role-custom`.
 - `users.role_id` is a single global column (migration `007_customers.sql`);
   tests seed `('user-cashier', ..., 'role-cashier')` rows throughout
@@ -112,11 +123,17 @@ unchanged:
   `tax.rs`, `topology.rs`, `workspaces.rs`.
 - Tablet commands: `auth.rs`, `authz.rs`, `categories.rs`, `customers.rs`,
   `loyalty.rs`, `pos.rs`, `settings.rs`, `tax.rs`, `workspaces.rs`.
-- Integration/other: `crates/kasirmu-core/tests/staff_integration.rs`,
-  `settings_integration.rs`, `shift_integration.rs`,
-  `crates/kasirmu-cli/src/commands.rs`.
-- Role sources: `modules/staff/src/models.rs` (consts),
-  `modules/staff/src/lib.rs` (`Role::new("role-cashier")`),
+- Integration/other: `crates/kasirmu-core/tests/integration/{staff,settings,shift}.rs`
+  (the flat `*_integration.rs` filenames were consolidated into one `tests/integration/`
+  binary — see `tests/integration/main.rs`),
+  `crates/kasirmu-cli/src/commands_tests.rs` (this line named `crates/kasirmu-cli/src/commands.rs`
+  until 2026-10-11; the CLI now has a `commands/` module and the role-seed fixtures live in
+  `commands_tests.rs`).
+- Role sources: `platform/core/src/rbac.rs` + `platform/core/src/rbac_presets.rs` (consts) —
+  moved from `modules/staff/src/models.rs`,
+  `modules/staff/src/lib.rs` (re-exports `builtin_roles` / `Role` from `platform_core::rbac`;
+  the inline `Role::new("role-cashier")` this line originally cited is gone — the taxonomy now has
+  ONE home),
   `apps/cloud-server/src/openapi.rs` (docs and examples),
   `apps/desktop-tauri/src/state.rs` (session resolution).
 
@@ -168,7 +185,7 @@ acceptance criteria are met (see validation.md). Moved to `_done/` on
 
 ### Cycle 1 — assignment schema + explicit-all scope evaluation (DONE)
 
-- Migration `128_assignments.sql`: `assignments` (user_id PK, role_id,
+- Migration `128_assignments.sql` *(the numbered series was retired — see the 2026-10-11 note below)*: `assignments` (user_id PK, role_id,
   `scope_mode` global|scoped, explicit `branch_scope`/`workspace_scope`
   all|list — two columns beyond the spec's listed set, required by the
   "empty lists never mean all" invariant), `assignment_branches`,
@@ -203,7 +220,7 @@ acceptance criteria are met (see validation.md). Moved to `_done/` on
 
 ### Cycle 2c — retirement + seed sweep (DONE)
 
-- Migration `129_retire_cashier_kitchen.sql` re-points `users.role_id` and
+- Migration `129_retire_cashier_kitchen.sql` *(retired numbering — see note)* re-points `users.role_id` and
   `assignments.role_id` from cashier/kitchen → `role-staff` and deletes the
   two role rows (lands with the gate already assignment-aware, so no
   behavior gap). CASHIER/KITCHEN presets + constants removed from
@@ -232,4 +249,16 @@ acceptance criteria are met (see validation.md). Moved to `_done/` on
   `api-staff-contract` test pins the assignment wire shape; screen tests
   cover the taxonomy, pre-fill, save, and empty-list block.
 
-> last audited 29-09-26 by docs-auditor
+### Audit note (2026-10-11) — migration filenames are historical labels
+
+This record cites migrations `128_assignments.sql` and `129_retire_cashier_kitchen.sql`.
+**Neither file exists**: the numbered migration series was consolidated, and migrations are
+date-stamped today. The *substance* of both is intact — the `assignments` table exists with
+`scope_mode`, `assignment_branches` and `assignment_workspaces` columns
+(`crates/kasirmu-core/migrations/20260813_init.sql`), and the later scope axis was added by
+`crates/kasirmu-core/migrations/20260916_role_assignment_scopes.sql` with the org-wide backfill in
+`20260917_assignment_backfill_org_wide.sql`, both registered in
+`crates/kasirmu-core/src/migrations.rs:200/204`. The migration number is a historical label here,
+not a pointer; re-derive with `git grep -l 'assignments' -- 'crates/kasirmu-core/migrations/*.sql'`.
+
+> last audited 11-10-26 by docs-auditor
