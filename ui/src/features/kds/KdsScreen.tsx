@@ -19,6 +19,12 @@ import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
 import { minutesToSlaThresholds, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
+// Scoped crash isolation. The KDS had NONE: every fault under it reached
+// AppProviders' app-level boundary, whose recovery is a FULL RELOAD — the wrong
+// trade for a wall-mounted kitchen display, where a reload blanks the board and
+// every cook loses the queue at once. Same reasoning as the restaurant POS, whose
+// comment puts it as "a scoped failure never reloads the whole POS".
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
@@ -446,6 +452,7 @@ export default function KdsScreen() {
       </div>
 
       {/* ── Zone chips — secondary filter row below the header ────── */}
+      <LocalizedErrorBoundary resetKeys={[zones.join(','), prefs.kdsZone]}>
       <KdsZoneChips
         zones={zones}
         activeZone={prefs.kdsZone}
@@ -453,7 +460,9 @@ export default function KdsScreen() {
         onKeyDown={handleZoneTablistKeyDown}
         zoneTabRefs={zoneTabRefs}
       />
+      </LocalizedErrorBoundary>
 
+      <LocalizedErrorBoundary resetKeys={[String(error ?? ''), String(deadLetterLength)]}>
       <KdsNoticeBanners
         error={error}
         onRetryError={() => {
@@ -495,6 +504,7 @@ export default function KdsScreen() {
         }}
         onDismissOffline={() => setOfflineDismissed(true)}
       />
+      </LocalizedErrorBoundary>
 
       {/* P7-3: Pull-to-refresh indicator */}
       {pullState !== 'idle' && (
@@ -512,6 +522,12 @@ export default function KdsScreen() {
       )}
 
       {/* ── Main content: loading skeleton, history panel, or layout ── */}
+      {/* Crash isolation: the board is driven entirely by LIVE server data
+          (filteredOrders, slaThresholds, per-order line items), which is where a
+          malformed payload throws. Wrapped so that fault costs the board, not the
+          whole screen and not the shift. resetKeys on the tab and the order count,
+          so reopening or the queue changing clears a caught error. */}
+      <LocalizedErrorBoundary resetKeys={[activeTab, String(filteredOrders.length)]}>
       <KdsMainContent
         initialLoading={initialLoading}
         activeTab={activeTab}
@@ -532,6 +548,7 @@ export default function KdsScreen() {
         slaThresholds={slaThresholds}
         completedFilter={completedFilter}
       />
+      </LocalizedErrorBoundary>
 
       {/* 3f: Product picker modal for adding items mid-preparation */}
       <KdsProductPickerModal
