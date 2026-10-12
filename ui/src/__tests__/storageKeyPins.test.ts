@@ -59,6 +59,11 @@ const EXPECTED_KEYS: Record<string, string> = {
   // POS / retail
   'pos-cart-width': 'features/sales/hooks/useCartResize.ts',
   'pos-locked-cart': 'features/sales/posScreenHooks.ts',
+  // The cash-tender quick-button amounts. READ-ONLY here: PosScreen parses it on
+  // mount and falls back to a hardcoded preset list when absent or malformed, so a
+  // rename would silently reset every cashier's custom denominations rather than
+  // crash — the silent-orphan case this file exists to catch.
+  'restaurant-tender-presets': 'features/sales/PosScreen.tsx',
   'oz-retail-cols-': 'features/retail/hooks/useRetailColumnPrefs.ts',
   'retail-cart-width': 'features/retail/RetailPosScreen.tsx',
   'retail-sound-enabled': 'features/retail/RetailPosScreen.tsx',
@@ -143,6 +148,7 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:kds': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:login-attempts': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:sales': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:settings': 'dev-mock/handlers/settings.ts',
   'oz-dev-mock:shift-history': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:topology': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:topology-revisions': 'dev-mock/core/mockDatabase.ts',
