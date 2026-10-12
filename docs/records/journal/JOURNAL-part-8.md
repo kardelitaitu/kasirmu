@@ -1413,3 +1413,48 @@ drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`.
  among them); `cargo clippy -p foundation --lib` clean; `cargo nextest run -p foundation
  --lib is_in_stock` 1/1. The two UI vitest failures in the same red run were already fixed
  by the unpushed commits — both suites pass 30/30 locally — so nothing was changed there.
+
+## 2026-10-12 — The CI red list under-reports: `.config/nextest.toml` sets `fail-fast = { max-fail = 1 }` (`kasirmu-core`)
+
+**What was found while clearing the six-job red run.** Every job that failed was
+ reproduced locally first, and that is the only reason this was seen: the
+ repo's nextest profile stops at the first failure, so a CI job's report is the
+ first red it hit, not the full set. Measured concretely — the Coverage Floors
+ job reported two `corruption_recovery` failures; the same command run locally
+ with `--no-fail-fast` found a third (`inventory::products_without_stock_show_
+ none_in_list`), and Nextest (1)'s `desktop_command_census_matches_pin` was
+ likewise the first of an unknown remainder. **A green nextest job therefore
+ means "at most one failure," and a red one means "at least one"** — the number
+ of tests still failing is unknown from either.
+
+**The three core tests, all pinned behaviour `c07279f02` deliberately changed:**
+
+- `corruption_recovery` × 2 — each forged a corrupt `product_type` with a raw
+  UPDATE that the 20261020 CHECK constraint now rejects, so the fixture could
+  not be built at all. The read-path coercion they covered is already pinned
+  four ways by `foundation/src/inventory_tests.rs`
+  (`parse_stored_or_default_*`), and the migration's own write invariant by
+  `db/products_tests.rs`. The replacement forges the row with SQLite's own
+  escape hatch, `PRAGMA ignore_check_constraints = ON`, which is what a value
+  written outside the constraint (external edit, restored file) looks like;
+  removing the pragma fails the test, so it is load-bearing.
+- `integration/inventory` — pinned `stock_qty: None` for a product with no
+  inventory row. `c07279f02` made the zero-stock ledger row the rule precisely
+  so `stock_qty` returns `0` rather than NULL, and that behaviour is identical
+  between the origin tip and HEAD. Rewritten to pin both directions: `Some(0)`
+  for retail at zero stock, `None` for a restaurant item that does not track
+  inventory.
+- **+1 `migrations_tests`** — the backfill, the part of `20261020_product_type_
+  check.sql` that actually retires a legacy database, had **no test anywhere**;
+  the migration file was referenced zero times in the repo. The new test splits
+  the registry at the migration, rebuilds `products` in its pre-migration shape
+  (free-text, nullable `product_type`), seeds `'both'` (the removed variant),
+  free-text garbage and NULL, then asserts all three read back `'retail'`, that a
+  fresh bad write is now rejected, and that all six indexes survived the
+  rebuild.
+
+**Verification:** `cargo nextest run -p kasirmu-core --no-fail-fast` — 4169
+ passed, 1 skipped, exit 0. Every new or mutated test was mutation-checked
+ before being restored: flipping the backfill expectation to `'restaurant'`,
+ removing the pragma, and flipping both `stock_qty` expectations each produce a
+ failure. `cargo fmt -- --check` clean.
