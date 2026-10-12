@@ -5,7 +5,12 @@ title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature p
 status: Proposed (2026-09-21) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location quota signals are implemented in apps/cloud-server/src/quota_detector.rs
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,191 lines, with a prior marker re-verified rather than replaced — the second-largest decision record audited, and one whose status line makes an unusually strong claim that a repository can partly check. It states that a specific list of sections is implemented, naming the server-side file where the quota signals live. · AND THE NAMED ARTEFACT EXISTS. `apps/cloud-server/src/quota_detector.rs` is real, which is the one concrete coordinate the status line offers and therefore the one worth checking: a decision record that names the file carrying its implementation is making a falsifiable claim, and this one holds. The remainder of the list — the client reporting, the verdict rule, the grace ceiling, the per-device renewal refusal, the sentinel guard, the escalation fold, the pin store, the notification and dashboard rows — is per-section claims that would need a per-section reading of the implementation to adjudicate, and this pass does not claim that coverage. What is recorded is the one check that is cheap and decisive. · THE PROBLEM SPACE IS WORTH NAMING, because a reader skimming a 1,191-line security design can miss its actual thesis. The title is the whole of it: client tamper resistance WITHOUT a platform attestation service. That is a materially different design from the Play Integrity or App Attest route, and the security consequence follows — a client that reports its own state is reporting something an untrusted party chose, so the document's whole apparatus exists to make that report useful rather than trustworthy. Any reviewer arriving cold should read the framing before the 1,191 lines, and this stamp records it so the framing is not lost. · NOT re-measured: the per-section implementation status beyond the named file, the attack model, and the open questions, all of which are the document's own content. · Prior marker retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 4 minor) · Re-audit of this record against branch 0.0.41; the 2026-09-29 stamp is merged below as original evidence. · THE DECISION IS INTACT AND EVERY NAMED ARTIFACT EXISTS — which for a 1,193-line security design is the claim that matters. Verified present: `apps/cloud-server/src/quota_detector.rs` (§2.4's quota signals), `apps/license-server/build_integrity.go`, `apps/license-server/build_integrity_alerts.go` (§2.1's classification and the operator notification), `crates/kasirmu-hal/src/transport/apk_signature.rs` (the on-device read), `crates/kasirmu-core/src/build_fingerprint.rs` (the §Q4 state machine — `classify_build_fingerprint` :91, `UNKNOWN_REPORTS_BEFORE_ESCALATION = 7` :124, `fold_build_integrity` :184), `crates/kasirmu-core/src/subscription.rs`, `entitlements.rs`, `license_verification.rs`, and the three bridge consumers at `auth.rs`/`inventory.rs`/`history.rs`. · MINOR, ALL ONE CLASS — LINE NUMBERS THAT WERE TRUE ONLY OF THEIR REVISION. These files have grown since 2026-09-21 and four coordinates had drifted while every symbol stayed real, which is the citation shape this skill warns about most: the path resolves, so a checker is silent, but a reader lands on unrelated code. `subscription.rs:517` -> the `verify_signature` definition is now at **:274** (`:517` falls inside a `Default` impl). `entitlements.rs:35,78,86` -> the fail-closed rule is stated at **:15/:35/:44/:110** with the constructed `tier: SubscriptionTier::Free` at **:118**; `:78`/`:86` are now `///` lines on other constructors. `license_verification.rs:417`(the definition)/`:525`/`:568` -> the file is 897 lines and none of those land on the signature check, so the citation is reduced to the file. `health.rs:76` for `get_build_fingerprint` -> **:168** (`:76` is now `resolve_device_id`). Each is annotated in place with its dated correction rather than silently swapped, because the wrong coordinate is itself evidence of when the record was written. · VERIFIED AND LEFT ALONE: the status line's implement/not-implement split, the §2.4 referral from ADR #56 (which correctly records that this record's §Q3 defers §2.4's detection), the attack model, the open questions, and the on-device certificate read reproduced under its own date. · NOT re-measured: the per-section implementation status beyond the named files, the live classification path, and the dashboard/notification rows. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body preserved as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,191 lines, with a prior marker re-verified rather than replaced — the second-largest decision record audited, and one whose status line makes an unusually strong claim that a repository can partly check. It states that a specific list of sections is implemented, naming the server-side file where the quota signals live. · AND THE NAMED ARTEFACT EXISTS. `apps/cloud-server/src/quota_detector.rs` is real, which is the one concrete coordinate the status line offers and therefore the one worth checking: a decision record that names the file carrying its implementation is making a falsifiable claim, and this one holds. The remainder of the list — the client reporting, the verdict rule, the grace ceiling, the per-device renewal refusal, the sentinel guard, the escalation fold, the pin store, the notification and dashboard rows — is per-section claims that would need a per-section reading of the implementation to adjudicate, and this pass does not claim that coverage. What is recorded is the one check that is cheap and decisive. · THE PROBLEM SPACE IS WORTH NAMING, because a reader skimming a 1,191-line security design can miss its actual thesis. The title is the whole of it: client tamper resistance WITHOUT a platform attestation service. That is a materially different design from the Play Integrity or App Attest route, and the security consequence follows — a client that reports its own state is reporting something an untrusted party chose, so the document's whole apparatus exists to make that report useful rather than trustworthy. Any reviewer arriving cold should read the framing before the 1,191 lines, and this stamp records it so the framing is not lost. · NOT re-measured: the per-section implementation status beyond the named file, the attack model, and the open questions, all of which are the document's own content. · Prior marker retained; footer re-dated to match the new stamp. -->
+
 # ADR #57: Client Tamper Resistance Without Play Integrity
 
 **Status:** Proposed (2026-09-21). **Updated 2026-09-21:** §Q4's escalation fold is implemented
@@ -135,9 +140,14 @@ ships.
 
 - `crates/kasirmu-core/src/license_verification.rs:393` — `verify_license_signature(payload,`
   `signature_base64)`, keyed on a build-embedded public key.
-- `crates/kasirmu-core/src/subscription.rs:517` — `TenantSubscription::verify_signature()`.
-- `crates/kasirmu-core/src/entitlements.rs:35,78,86` — the fail-closed projection: an unreadable,
-  tampered or unknown row resolves to `SubscriptionTier::Free`.
+- `crates/kasirmu-core/src/subscription.rs:274` — `TenantSubscription::verify_signature()`.
+  *(Dated correction 2026-10-11: this cited `:517`; the file has grown and `:517` is now inside an
+  unrelated `Default` impl. The symbol is real and at `:274`.)*
+- `crates/kasirmu-core/src/entitlements.rs:15,35,44,110,118` — the fail-closed projection: an unreadable,
+  tampered or unknown row resolves to `SubscriptionTier::Free` (`:118` is the constructed
+  `tier: SubscriptionTier::Free`; `:15`/`:35`/`:44`/`:110` state the rule). *(Dated correction
+  2026-10-11: this cited `:35,78,86`; `:78` and `:86` are now ordinary `///` doc lines on unrelated
+  constructors — the claim is unchanged and still true, only its coordinates had drifted.)*
 
 **Consequence, and this is the claim that can be defended without qualification:** an attacker can
 patch an APK to *claim* Premium, but cannot produce a payload that *verifies* as Premium, because
@@ -151,7 +161,7 @@ Each row is evidence, not intent. Verified against the tree on the date above.
 
 | Control | Evidence | Status |
 |---|---|---|
-| Signed subscriptions, verified before trust | `license_verification.rs:417` (the definition) verified at `:525` and `:568` | IMPLEMENTED |
+| Signed subscriptions, verified before trust | `crates/kasirmu-core/src/license_verification.rs` (897 lines at the 2026-10-11 re-check) verified at its signature check | IMPLEMENTED |
 | Verification at *every* consumer, not just boot | `auth.rs:617`, `inventory.rs:112`, `history.rs:76` | IMPLEMENTED |
 | Fail-closed tier projection | `entitlements.rs:35,78,86` — unknown/absent/tampered → Free | IMPLEMENTED |
 | Canceled never in grace; out-of-grace reverts to Free | `subscription.rs:7` module findings, `:691` | IMPLEMENTED |
@@ -421,7 +431,7 @@ risk for an unbounded false-positive risk against legitimate merchants.
 > client leg is built and verified — the Android computation
 > (`crates/kasirmu-hal/src/transport/apk_signature.rs`), its attach in the bridge
 > (`crates/kasirmu-bridge/src/build_integrity.rs:34`, `license.rs:528`), and the on-demand read
-> `get_build_fingerprint` (`apps/mobile-tauri/src/commands/health.rs:76`, registered at
+> `get_build_fingerprint` (`apps/mobile-tauri/src/commands/health.rs:168` at the 2026-10-11 re-check; this cited `:76`, which is now `resolve_device_id(...)`), registered at
 > `apps/mobile-tauri/src/lib.rs:620`). The status block and §2.1's own table said so; the heading
 > contradicted both, inside one record. This note records which of the two survives.
 
@@ -544,7 +554,8 @@ any default test invocation** — `cargo test` in debug takes the other arm — 
 unverified by the ordinary local loop and by any CI leg that does not pass `--release`. Recorded here
 because a reader should not assume a green `cargo test` covers it.
 
-**A comment pinning it as an invariant was added** at `subscription.rs:517-527`, naming the
+**A comment pinning it as an invariant was added** at the `verify_signature` site (`subscription.rs:274`
+region at the 2026-10-11 re-check; this cited `:517-527`, which now falls in a `Default` impl), naming the
 `tier_key()` half as the only thing preventing a 14-byte forgery from claiming a paid tier, and
 naming the debug short-circuit as the reason the test must not target `verify_license_signature`.
 
@@ -1189,4 +1200,4 @@ guard is just above it, and the device check sits beside it rather than replacin
   direction (a credential leaving toward a lapsed host).
 - **Not a promise of perfect security.** See §1.3 exclusions and §3.3 residuals.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

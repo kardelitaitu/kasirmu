@@ -352,6 +352,32 @@ audited in one pass, FOUR had 59–379 lines of dated content below their footer
 part is always the newest. One file carried **two** footers. Any record with a `> last audited`
 line is worth the same one-line check.
 
+**7. A "verbatim from <file>:<line>" quote can go wrong while the PATH still resolves.** If the
+file was split into a directory, the old path survives as a router or a partial and the quote is
+simply no longer there. Found 2026-10-11: a guide quoted a dev-mock handler "verbatim from
+`tauri-api.ts:2089`" — that file is now a 369-line router and the handler moved to
+`handlers/system.ts:661` with a changed body. A path-only check passes and the reader gets the
+wrong code. **For any quoted code block, re-read the quoted lines, not just the file.**
+
+**8. A stamp that CLAIMS a repair the file does not contain.** Twice now on 2026-10-11: an ADR
+stamp asserted it had repointed a crate path, and a guide stamp asserted it had renamed `oz` to
+`kasir` — both claims were absent from the file, which had taken commits since. A stamp is
+evidence of intent, not of outcome. **When you read a stamp, spot-check the one or two repairs it
+names.** Repaired-but-lost happens when a later lane edits the same file or when the write never
+landed.
+
+**9. A guard whose reported number is the DOC'S OWN gate can be red at HEAD.** `check-api-surface.py`
+compares registered IPC commands against the guide's table. Found 2026-10-11: it reported
+`DRIFT: 6` — six registered commands had no row, three of them in a section that did not exist.
+The dev-guides audit restored it to CLEAN (519 documented / 519 distinct, all buckets zero). **Run
+a guide's own gate before auditing the prose; the number it prints is a finding, not a nuisance.**
+
+**10. A status WORD in an ADR front matter is shared state with two generated files.** Changing the
+word turns two correctness gates red: `check-adr-status.py` (the hand table in
+`docs/decisions/README.md` mirrors the word) and `generate-records-index.mjs --check`
+(`docs/records/README.md` is generated from front matter). Any status edit must be paired with
+the table cell and a regeneration, in the same commit. Measured 2026-10-11.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually

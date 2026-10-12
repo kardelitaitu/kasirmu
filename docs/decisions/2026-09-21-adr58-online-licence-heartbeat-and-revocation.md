@@ -2,10 +2,12 @@
 num: 58
 area: licensing
 title: "ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State"
-status: Partially implemented (2026-09-21; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product
+status: Implemented, with one residual (2026-09-21; status re-audited 2026-09-22, re-verified 2026-10-11) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; and the 2026-09-22 qualifier that "the export twin has NO UI caller, so §2.6's promise is not reachable" is NO LONGER TRUE — `ui/src/features/auth/RevokedScreen.tsx:54` calls `exportDataWithoutSession`, which `AppShell.tsx:579` and `TabletAppShell.tsx:449` render when the subscription state is revoked. §2.6 is reachable in the product
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and at 1,337 lines it is the LARGEST single file this campaign has audited — larger than ADR-45, larger than the setup working notes, larger than the Fluent journal. It carried a prior marker, re-verified rather than replaced. · ITS STATUS LINE IS THE FINDING. It does not claim the work is done. It enumerates what is implemented — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the Rust-side pre-expiry re-auth obligation in session creation — and then states the part that is not: the export twin has NO UI CALLER, so the promise the decision makes is not reachable in the product. That is a status line written by someone who finished the backend and was unwilling to let the document imply the feature works. It is the most valuable kind of sentence in a 1,337-line security design, and the opposite of the pattern this campaign has documented elsewhere in `docs/decisions/`, where a status line is often either absent or several months optimistic. · WHY THE SCOPE IS STRUCTURAL, for the same reason as the other documents over a thousand lines: re-deriving a licence-locking protocol is re-designing it. What a documentation audit can establish is whether the tree carries the machinery the decision describes, and this pass recorded the substrate that matters — the session-creation path where the re-auth obligation is enforced, the revocation state the lock depends on, and the per-device renewal refusal that the sync-plan-gating ADR also specifies. Those are the load-bearing pieces a reader would need in order to use this document. · THE DESIGN ITSELF carries one idea worth surfacing, because a reader arriving at 1,337 lines can miss it: the title is not primarily about licences but about LOCKING. Pre-expiry re-authentication, manual revocation, and the locked state are three faces of a single commitment — a terminal which cannot prove it is still entitled must be prevented from continuing to trade — and the interesting work is in the states between entitled and locked rather than at either end. · NOT re-measured: the protocol details, the session-state machine and the wire formats, all of which are the document's own content. · Prior marker retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 3 minor) · Re-audit, and THE MAJOR IS A NEGATIVE CLAIM THAT HAS BECOME FALSE — the one class a re-audit exists to catch. Both the front-matter status and §1's status paragraph said "the export twin has NO UI caller, so §2.6's promise is not reachable in the product", and §4a Q-A carried a blockquote calling that "the one thing that can produce a merchant-visible incident", with the grep that returned zero hits quoted as the evidence. THAT GREP NOW RETURNS A CALLER: `ui/src/features/auth/RevokedScreen.tsx:54` invokes `exportDataWithoutSession` (`ui/src/api/data.ts:318` → `export_data_without_session`); both shells render that screen when the state is revoked (`ui/src/app/AppShell.tsx:579`, `ui/src/app/tablet/TabletAppShell.tsx:449`) with coverage at `ui/src/__tests__/RevokedScreen.test.tsx` and a render assertion in `AppShell.test.tsx:1235`; and the command is registered on BOTH shells (`apps/desktop-tauri/src/lib.rs:1414`, `apps/mobile-tauri/src/lib.rs:1102`) with the bridge entry at `crates/kasirmu-bridge/src/data.rs:269`. So the sequencing gap §2.5 needed is DISCHARGED and §2.6 IS reachable in the product. Repaired in three places (front matter, §1 row 2, §4a Q-A) — the 2026-09-22 reading and its grep are KEPT as the record of what the gap looked like, because a corrected blockquote whose evidence is deleted cannot be re-checked. · F2 (a NEW instance of the "file became a DIRECTORY" trap, inside a file the earlier pass cited by line): `crates/kasirmu-bridge/src/auth.rs` is now a DIRECTORY — the `Revoked` arm is `auth.rs:855` (cited `:645`) and `invalidate_all_sessions` lives at `auth/session.rs:94` (cited `auth.rs:883`), where the old path resolves to nothing. `create_session` is `auth.rs:560`. Repointed in both places. · F3: two generated-file coordinates drifted — the gated export wrapper is `ui/src/api/data.ts:298` (cited `:283`, twice) and the tablet's gated registration is `apps/mobile-tauri/src/lib.rs:1090` (cited `:585`). · F4: the front-matter status was restated so it no longer asserts a gap that closed; the wording now names the residual instead of the retired one. · VERIFIED UNCHANGED AND LEFT ALONE: the `Revoked` lifecycle state exists and is genuinely distinct (`crates/kasirmu-core/src/subscription.rs`; `availability_tests.rs:353`/`:514` pin it and `entitlements_tests.rs:282` records that `new` maps to its own variant rather than `Canceled`); `useExportWizard.ts:104` still calls the GATED `exportData` for the normal path, which is correct and not a defect; the appended 2026-10-04 amendment on the unreadable clock is present with its own H2; and the file's own "cite by filename, not by number" banner is honoured here. · NOT re-measured: the live heartbeat, revocation and lock behaviour against a running licence server, and the three-day pre-expiry window's timing. · Prior 2026-09-29 stamp merged below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, and at 1,337 lines it is the LARGEST single file this campaign has audited — larger than ADR-45, larger than the setup working notes, larger than the Fluent journal. It carried a prior marker, re-verified rather than replaced. · ITS STATUS LINE IS THE FINDING. It does not claim the work is done. It enumerates what is implemented — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the Rust-side pre-expiry re-auth obligation in session creation — and then states the part that is not: the export twin has NO UI CALLER, so the promise the decision makes is not reachable in the product. That is a status line written by someone who finished the backend and was unwilling to let the document imply the feature works. It is the most valuable kind of sentence in a 1,337-line security design, and the opposite of the pattern this campaign has documented elsewhere in `docs/decisions/`, where a status line is often either absent or several months optimistic. · WHY THE SCOPE IS STRUCTURAL, for the same reason as the other documents over a thousand lines: re-deriving a licence-locking protocol is re-designing it. What a documentation audit can establish is whether the tree carries the machinery the decision describes, and this pass recorded the substrate that matters — the session-creation path where the re-auth obligation is enforced, the revocation state the lock depends on, and the per-device renewal refusal that the sync-plan-gating ADR also specifies. Those are the load-bearing pieces a reader would need in order to use this document. · THE DESIGN ITSELF carries one idea worth surfacing, because a reader arriving at 1,337 lines can miss it: the title is not primarily about licences but about LOCKING. Pre-expiry re-authentication, manual revocation, and the locked state are three faces of a single commitment — a terminal which cannot prove it is still entitled must be prevented from continuing to trade — and the interesting work is in the states between entitled and locked rather than at either end. · NOT re-measured: the protocol details, the session-state machine and the wire formats, all of which are the document's own content. · Prior marker retained; footer re-dated to match the new stamp. -->
 # ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State
 
 **Status: Partially implemented** (2026-09-21; status re-audited 2026-09-22). **Updated
@@ -17,15 +19,20 @@ all IMPLEMENTED.**
 
 1. **§2.5 IS built.** §4a Q-A's implementation note claimed *"§2.5 remains unbuilt, so no merchant
    is locked out of anything today"*; that was false. `create_session` refuses a `Revoked`
-   subscription (`crates/kasirmu-bridge/src/auth.rs:645`) and `invalidate_all_sessions` (`:883`)
+   subscription (`crates/kasirmu-bridge/src/auth.rs:855`) and `invalidate_all_sessions` (`crates/kasirmu-bridge/src/auth/session.rs:94` — the module became a DIRECTORY; `:883` was the pre-split location)
    sweeps live ones. §2.5's own note and this status line were right; Q-A's was stale, and is
    corrected there.
-2. **The export twin has no UI caller, so §2.6's promise is NOT yet reachable.** The command exists
-   and is registered, but nothing in `ui/` invokes it — the export wizard still uses the gated
-   `export_data` (`ui/src/features/settings/hooks/useExportWizard.ts:104` →
-   `ui/src/api/data.ts:283`) — and the tablet registers only the gated command
-   (`apps/mobile-tauri/src/lib.rs:585`). Recorded as an **open gap** at §4a Q-A: §2.5's
-   prerequisite is not discharged in product terms until the twin is reachable with no session.
+2. **The export twin's UI caller LANDED — §2.6 is reachable.** *(Re-verified 2026-10-11; this row
+   read "no UI caller… NOT yet reachable" from the 2026-09-22 pass.)* `ui/` now calls it:
+   `ui/src/features/auth/RevokedScreen.tsx:54` invokes `exportDataWithoutSession`
+   (`ui/src/api/data.ts:318`, which calls `export_data_without_session`), and both shells render
+   that screen when the subscription state is revoked — `ui/src/app/AppShell.tsx:579` and
+   `ui/src/app/tablet/TabletAppShell.tsx:449` (lazy). It has dedicated coverage at
+   `ui/src/__tests__/RevokedScreen.test.tsx` and a render assertion in `AppShell.test.tsx`.
+   The twin is also registered on the tablet (`apps/mobile-tauri/src/lib.rs:1102`). The export
+   wizard still uses the gated `export_data` (`ui/src/features/settings/hooks/useExportWizard.ts:104`
+   → `ui/src/api/data.ts:298`) for the NORMAL path, which is correct — the no-session twin exists
+   precisely for the locked state. **The open gap at §4a Q-A is discharged.**
 3. **§2.3's window is now implemented both as a UI poll gate and as a Rust-side session obligation.**
    `shouldPollLicense` (`ui/src/features/settings/LicenseSettings.tsx:109`) arms the timer in settings,
    and `crates/kasirmu-bridge/src/auth.rs` (`create_session`) now enforces the §2.3 / §2.5 obligation:
@@ -1147,19 +1154,32 @@ while the session lock removes one §2.6 explicitly grants.
 
 `export_data_without_session` exists and is registered — and **§2.5's enforcement also shipped**,
 so this block's original claim (*"§2.5 remains unbuilt… no merchant is locked out of anything
-today"*) was false when it was written. §2.5 is enforced at `crates/kasirmu-bridge/src/auth.rs:645`
-(the `Revoked` arm), with `invalidate_all_sessions` (`:883`) sweeping live sessions.
+today"*) was false when it was written. §2.5 is enforced at `crates/kasirmu-bridge/src/auth.rs:855`
+(the `Revoked` arm), with `invalidate_all_sessions` (`crates/kasirmu-bridge/src/auth/session.rs:94`)
+sweeping live sessions. *(`auth.rs` was a file at `:645`/`:883` when this was written; it is now a
+directory and those anchors moved. `create_session` is at `auth.rs:560`.)*
 
-**That makes the sequencing gap real rather than avoided, and it is OPEN:**
+**That made the sequencing gap real rather than avoided. IT HAS SINCE BEEN CLOSED — corrected
+2026-10-11 (the block below is the 2026-09-22 reading, kept because it is what the gap looked
+like, and because its own grep is the evidence that the search was sound):**
 
 > **The twin is a Tauri command with no UI caller, so §2.6's promise is not reachable in the
 > product.** Nothing in `ui/` invokes it — a grep for
 > `export_data_without_session`/`exportDataWithoutSession`/`without_session` under `ui/` returns
 > zero hits, and the export wizard still calls the gated path
-> (`ui/src/features/settings/hooks/useExportWizard.ts:104` → `ui/src/api/data.ts:283`). The tablet
-> registers only the gated command (`apps/mobile-tauri/src/lib.rs:585`). So with §2.5 locking
+> (`ui/src/features/settings/hooks/useExportWizard.ts:104` → `ui/src/api/data.ts:298`). The tablet
+> registers only the gated command (`apps/mobile-tauri/src/lib.rs:1090`). So with §2.5 locking
 > sessions, **no export is reachable by any user** — precisely the state the table above labels
 > "Wrong order" and this section calls the one thing that can produce a merchant-visible incident.
+
+**Re-measured 2026-10-11: the caller exists and the incident state is gone.**
+`ui/src/features/auth/RevokedScreen.tsx:54` calls `exportDataWithoutSession`; the screen is
+rendered by both shells at `AppShell.tsx:579` and `TabletAppShell.tsx:449` when
+`subscriptionState === 'revoked'`; `export_data_without_session` is registered on desktop
+(`apps/desktop-tauri/src/lib.rs:1414`) and tablet (`apps/mobile-tauri/src/lib.rs:1102`); and the
+bridge entry is `crates/kasirmu-bridge/src/data.rs:269` (`data_tests.rs:482` pins it). The same
+grep that returned zero hits now returns the caller, so the sequencing prerequisite §2.5 needed
+is discharged. §2.6's promise is reachable in the product.
 
 **Commit order did honour the constraint; order alone was not the requirement.** The twin landed
 before §2.5's enforcement, but the constraint exists so that a revoked merchant can still retrieve
@@ -1372,4 +1392,4 @@ case *look* safe by adjusting the comparison instead of removing the default. Ve
 the comparison with `|| now_ts == 0`: the pin fails. Measured, not assumed — it is stated this way
 because four earlier pins in this campaign passed against the defect they were written for.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
