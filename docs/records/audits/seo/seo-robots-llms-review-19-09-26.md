@@ -590,5 +590,27 @@ rebrand pass, not here.
 **Nothing is deployed.** Every change is local to this checkout; the live site still serves the state
 described in §1 and §2. Deploying is a separate, explicitly-authorised step.
 
+### Re-verified 2026-10-11 — this record's own path moved
+
+**This file no longer lives where the citations inside it say.** It moved in `d1af0895f`
+(2026-09-23, "remove old flat paths after restructuring moves") from `docs/records/<name>.md`
+into `docs/records/audits/seo/` — the same restructure that produced the
+`docs/records/<name>.md` → `docs/records/snapshots/<name>.md` class. The record is otherwise
+intact: its directives still match what the site serves, its `robots.txt` §5.1 quote is
+**byte-for-byte what `website/public/robots.txt` still ships**, and its §7.3 implementation
+findings all still hold.
+
+**The stale path is not confined to this file.** Seven live references to the pre-move
+location remain, six of them in shipped code rather than prose:
+
+| Where | Count | Status |
+|---|---|---|
+| `website/public/robots.txt:13`, `website/public/_headers:49,:59`, `website/worker.ts:147,:164,:261`, `website/src/components/SiteHead.astro:134` | 6 | **code comments** — a code owner's call, outside a documentation audit |
+| this file §5.1, inside the verbatim `robots.txt` quote at L345 | 1 | reproducing the file it quotes, so correct as written |
+
+**Do not "fix" the §5.1 line** — it is a quotation of a shipped file, and rewriting it would make
+the quote false. The six code comments name a rationale path a reader cannot open; repointing them
+is a one-line change each, for whoever owns `website/`.
+
 > last audited 29-09-26 by docs-auditor
 

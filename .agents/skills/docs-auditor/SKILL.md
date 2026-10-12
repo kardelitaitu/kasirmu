@@ -428,7 +428,7 @@ against `scripts/gates.json`.** Note the asymmetry with trap 3: there a guard gr
 **15. A checked box can name a gate that NEVER existed.** Distinct from trap 14 (a gate that
 shipped late) and trap 3 (a guard that grew): here the named artifact is not merely stale but was
 never created, so `git log --all -- <path>` is empty. Found 2026-10-11: a plan's `[x]` row claimed
-"Fail if secrets appear in release assets (`scripts/check-secrets.py`)" — no such file at any
+"Fail if secrets appear in release assets (naming a check-secrets script)" — that script never existed at any
 commit; the real artifact is `.gitleaks.toml`, and it is **referenced by one script and wired into
 no workflow at all**, so the row was a green tick over a gate that does not run under either name.
 This is the FOURTH instance of the `[x]`-without-evidence class in this campaign. **For every
@@ -488,7 +488,7 @@ trap 8 (a repair claimed but absent) and from trap 1 (a path that moved): here t
 and the sentence describing it is garbled so a reader cannot see what changed. Found 2026-10-11:
 `modal-audit-checklist.md`'s stamp said it fixed pointers aimed at "`ui/src/theme/tokens.css`" because
 "that directory no longer exists. The token sheet is now `ui/src/theme/tokens.css`" — both halves
-the same path, so the sentence proves nothing. The real move was `ui/src/styles/tokens.css` ->
+the same path, so the sentence proves nothing. The real move was the old styles-directory token sheet -> 
 `ui/src/theme/tokens.css` (six commits under the old path). **When a stamp quotes a before/after
 pair, check the two are actually different** — and recover the truth from `git log -- <oldpath>`.
 
@@ -512,6 +512,42 @@ count.** The hook gained an eighth step, so "steps 2–7 are extension-locked" u
 step 8 is `.rs`-locked, cannot match a `.css` path, and the pre-commit has no `.css` reference, so the
 page's conclusion still held. **Qualify the range in place; do not rewrite the conclusion, and say which
 half changed.** Deciding between "incomplete" and "false" is the whole repair.
+
+**26. A RECORDS RELOCATION invalidates the LOCATION SENTENCES inside old stamps.** When a batch of
+records moves directory, every stamp written before the move that names **its own location** becomes
+false — while every path in the BODY still resolves, so no checker sees anything. The tell is a stamp
+saying "this file lives in X", "the only such record in Y", or "placed among Z". Measured 2026-10-11:
+`cd8d671a6` (2026-10-02) moved nine security audits from `docs/security/` to
+`docs/records/audits/security/`, four days AFTER their 2026-09-29 stamps were written — and
+`docs/security/` still EXISTS holding three entirely different files, so the claim named the wrong
+directory's contents rather than merely a stale path. **Sweep target: grep a corpus for stamps naming
+a DIRECTORY, then confirm the file is still there.** Distinct from trap 8 (a repair claimed but
+absent) and trap 22 (a before/after pair that renders identically).
+
+**27. A relocation commit can repoint SOME references and miss others in the same corpus.** The same
+class of move leaves internal cross-links dead: `a0c4f7b90` (2026-10-02, "move 14 audit reports …
+and repoint 11 references") listed and fixed eleven, and missed at least one more
+(the setup-wizard audit, cited by its OWN companion plan under its pre-move audit path, and the journal's
+mentions, which are historical and correctly left). **When a commit's subject says "repoint N
+references", verify N covered the corpus — the misses are the ones left behind.** This is why the
+by-hand sibling grep is mandatory for these corpora: `check-dead-refs` exempts them outright.
+
+**28. A live-set COUNT with no owner rots at every value.** Found 2026-10-11 in a skill audit that
+had already recorded the same claim rotting TWICE: "N active workflows" read one, then two, then three
+— and `ls .github/workflows/*.yml` now returns **four** (`android.yml`, `dev-ci.yml`, `release.yml`,
+`website.yml`; 11 more sit under `attic/`). Every restoration and retirement moves the total, and no
+commit owns it. **The durable row names each member and its trigger; the total is the part that rots.**
+Sweep target: any "there are N active <live set>" claim — re-derive with the lister, not the prose.
+
+**29. A quotation of a file is not a claim BY the document — check the FENCE before repointing.** A
+record that quotes a shipped file verbatim will contain that file's own paths, including any that have
+since moved. Found 2026-10-11: a review's §5.1 reproduced `website/public/robots.txt` exactly,
+carrying its `# Rationale: docs/records/<name>.md` comment — and the record itself had moved into
+`docs/records/audits/seo/`. **The fenced line is correct as written and must NOT be repointed;
+rewriting it would make the quotation false.** Repair by adding a dated note that names the real
+location, and report the genuine stale citations separately — here six of the seven were in shipped
+**code comments** (`robots.txt`, `_headers`, `worker.ts`, `SiteHead.astro`), which is a code owner's
+call, not a documentation edit.
 
 ### The dated-record corpus: default to ZERO edits
 

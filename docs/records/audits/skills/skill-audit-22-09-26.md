@@ -78,6 +78,15 @@ and `workflow_dispatch`, and deliberately has **no** `pull_request` trigger.
 | `project-scaffold` | checklist | "one of the **two active workflows**" | three |
 | `skill-drift-guard` | CI section | "**two active workflows**" | three, with `android.yml` recorded |
 
+**Re-measured 2026-10-11 — the count has rotted a THIRD time.** `ls .github/workflows/*.yml`
+now returns **four** live workflows: `android.yml`, `dev-ci.yml`, `release.yml`, `website.yml`
+(plus 11 `.bak` files under `attic/`; `check-ci-claims.py` confirms 23 live jobs across 4
+workflows). `release.yml` and `website.yml` are both live and both archive a `.bak` sibling, so
+the "N active workflows" claim has now been wrong at three different values in three weeks —
+one, two, three, now four. **A count of a live workflow set is a moving number with no owner;
+the row to keep is the one naming each workflow and its triggers, not the total.** The three
+repairs above are left as the readings they are; only this note is new.
+
 This is the **second** time this claim has rotted — 18-09-26 caught "the ONE active
 workflow" when `release.yml` was restored. It is exactly the class Check 14 exists to catch,
 and Check 14 exists because the class keeps recurring.
