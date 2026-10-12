@@ -2196,12 +2196,39 @@ retryCurrencyLoad,
                         ))}
                         <div
                           className={`payment-method-label payment-method-label--other${method === 'other' ? ' payment-method-label--active' : ''}`}
+                          // This row is a div, not a label, because it holds two controls —
+                          // the radio and the name field — so it cannot use a label's native
+                          // click forwarding, and nothing in the row names the radio (the
+                          // inaccessible-name case the aria-label below covers).
+                          //
+                          // ⚠️ Being a div costs the row its click target: the radio is
+                          // `pointer-events: none` (PaymentModal.css:346) and the name field
+                          // is a DISABLED input while unselected, so a pointer landed on the
+                          // disabled field and did nothing. Measured: elementFromPoint at the
+                          // row's centre returned the disabled input, a real mouse click left
+                          // the radio unchecked, and only focus()+Space selected it — so a
+                          // touchscreen cashier could not charge an unlisted method at all.
+                          // The handler restores what <label> would have done. Pinned by
+                          // __tests__/PaymentModalOtherTender.test.tsx.
+                          //
+                          // onPointerDown ONLY, and it is the whole fix. A DISABLED input
+                          // fires no click at all, so a click aimed at the row's centre —
+                          // exactly where that field sits — never reached a click handler on
+                          // the row (measured: the row responded at its 5px padding, not at
+                          // its centre). Pointerdown fires on the row whatever child is
+                          // underneath, for mouse and touch alike.
+                          //
+                          // Deliberately NO onClick counterpart: the row is a plain div, and
+                          // jsx-a11y/no-static-element-interactions rightly forbids a click
+                          // handler on one without a role and keyboard support — which this
+                          // row cannot take, because the radio inside it is already the
+                          // keyboard-reachable control. Keyboard users use that radio's own
+                          // onChange; the row handler exists solely to forward a POINTER.
+                          onPointerDown={() => setMethod('other')}
                         >
-                          {/* This row is a div, not a label, because it holds two controls —
-                              the radio and the name field. Nothing in the row therefore names the
-                              radio, and an unselected "Other" shows an empty DISABLED input, so the
-                              accessible name has to come from here or the radio announces as bare
-                              "radio button". */}
+                          {/* An unselected "Other" shows an empty DISABLED input, so the
+                              accessible name has to come from here or the radio announces as
+                              bare "radio button". */}
                           <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
                           <input
                             type="radio"
