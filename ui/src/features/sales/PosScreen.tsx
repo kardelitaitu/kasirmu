@@ -963,7 +963,22 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       setLines(updatedLines);
 
       // Persist to open bill if active or table assigned
-      const trimmedTable = (tableNumber ?? '').trim();
+      //
+      // ⚠️ DINE-IN ONLY — the SEVENTH site of this rule (see
+      // RestaurantOrderTypeFieldConsumers.test.ts and
+      // docs/records/audits/restaurant-pos-order-type-fields.md). It was written
+      // unconditionally while the split-bill handler 110 lines above already applied
+      // the rule, which is how the series went: the rule is right, and it gets
+      // applied one site at a time.
+      //
+      // `trimmedTable` is used twice below, so an unguarded value does two things on
+      // a takeaway with a stray number in the Table field:
+      //   * `if (activeOpenBillId || trimmedTable)` is TRUE, so the whole open-bill
+      //     block runs and the kitchen dispatch is persisted into a tab;
+      //   * that tab's cart_data carries tableNumber AND orderType, contradicting
+      //     itself, and its customer_name is overwritten with "Table N".
+      // A takeaway has no table to open a tab against.
+      const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
       const trimmedName = (customerName ?? '').trim();
       const trimmedGuest = (guestCount ?? '').trim();
       if (activeOpenBillId || trimmedTable) {

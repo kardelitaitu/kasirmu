@@ -22,6 +22,38 @@ on a setting"). The mistake was never the field being unconditional; it is each
 | 4 | `CartPanel` tab banner | displayed it as this order's table | `547bf031d` |
 | 5 | `CartPanel` pax field | prompted for "seated guests per table" | `54767afa5` |
 | 6 | `PosScreen` split-bill remaining tab | wrote it into the new tab | `e3fa0d176` |
+| 7 | `PosScreen` send-to-kitchen open bill | ran the whole block + named the tab | (this round) |
+| 8 | `usePosHeldCarts` saved tab | the path that actually saves a tab | (this round) |
+
+### Sites 7 and 8, and why the class guard was blind to them
+
+Found 2026-10-12 by asking which OTHER payloads build a `cart_data`. Two more did, and
+both were unguarded:
+
+- **`handleSendToKitchen`** derives `trimmedTable` unconditionally and then uses it
+  twice. On a takeaway with a stray number in the Table field, `if (activeOpenBillId ||
+  trimmedTable)` is **true**, so the entire open-bill block runs: the kitchen dispatch
+  is persisted into a tab, that tab's `cart_data` carries `tableNumber` **and**
+  `orderType` (contradicting itself), and its `customer_name` is overwritten with
+  `"Table N"`.
+- **`usePosHeldCarts`** is the hook that actually saves a tab, and it had the same
+  unconditional derivation beside the same `orderType` write.
+
+**The guard did not catch either, and the reason is worth recording.** It asserted the
+rule appears **exactly once**:
+
+```ts
+expect(guards.length, ...).toBe(1);
+```
+
+so it pinned the *count* rather than the *rule*. Sites 7 and 8 were added by the same
+feature that produced site 6 (`276d6ce04`), and the count assertion stayed green the
+whole time. It now asserts **at least 2** in PosScreen **plus** a named check on the
+hook, because a count cannot express "wherever this field is derived".
+
+That is the same lesson the file already carries for a different guard: a check keyed
+to the shape of the bug reports a fix as a failure, and a check keyed to a number
+cannot see a new instance of the thing it is counting.
 
 Site 6 arrived LATER, in new code — the split-bill feature (`276d6ce04`) added after
 this series began. Its handler built the remaining tab's `cart_data`, label AND

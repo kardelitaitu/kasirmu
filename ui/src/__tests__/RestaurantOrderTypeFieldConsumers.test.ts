@@ -34,6 +34,7 @@ const read = (rel: string) => readFileSync(resolve(__dirname, rel), 'utf-8');
 const PAYMENT_MODAL = read('../features/sales/PaymentModal.tsx');
 const POS_SCREEN = read('../features/sales/PosScreen.tsx');
 const CART_PANEL = read('../features/sales/components/CartPanel.tsx');
+const HELD_CARTS_HOOK = read('../features/sales/hooks/usePosHeldCarts.ts');
 
 const DINE_IN = "orderType === 'dine_in'";
 
@@ -126,12 +127,51 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     const guards = POS_SCREEN.match(
       /const trimmedTable = orderType === 'dine_in' \? \(tableNumber \?\? ''\)\.trim\(\) : ''/g,
     ) ?? [];
+    // ⚠️ At least TWO, not exactly one. Pinning the count is what made this guard
+    // BLIND to the seventh site: the rule was asserted as "appears once" rather than
+    // "appears wherever the field is derived", so the pre-bill / send-to-kitchen
+    // handler added in the same feature landed unguarded and this stayed green.
     expect(
       guards.length,
-      'the split-bill handler must derive its table under the dine-in rule — ' +
-        'found ' + guards.length + ' of 1. Without it a takeaway split persists a ' +
-        'table number it does not own.',
-    ).toBe(1);
+      'every handler that derives a table for a saved tab must apply the dine-in ' +
+        'rule — found ' + guards.length + ' of at least 2 in PosScreen (the split-bill ' +
+        'tab and the send-to-kitchen open bill), plus a third in the held-carts hook. ' +
+        'Without it a takeaway persists a table number it does not own.',
+    ).toBeGreaterThanOrEqual(2);
+    // The third builder lives in the hook, and it is the path that actually saves a
+    // tab — so it is asserted by name rather than left to the count above.
+    expect(
+      HELD_CARTS_HOOK,
+      'usePosHeldCarts builds the saved tab and must apply the same dine-in rule; it ' +
+        'writes tableNumber and orderType into one record.',
+    ).toContain("const trimmedTable = orderType === 'dine_in'");
+  });
+
+  it('send-to-kitchen OPEN BILL — the table it writes when persisting the tab', () => {
+    // The SEVENTH site, same feature as the sixth, found 2026-10-12 by asking which
+    // OTHER payloads build a cart_data. handleSendToKitchen derives `trimmedTable`
+    // unconditionally and then uses it twice:
+    //
+    //   if (activeOpenBillId || trimmedTable) { ... }   // the whole block runs
+    //   cart_data: { tableNumber: trimmedTable, orderType }   // self-contradicting
+    //   customer_name: ... || `Table ${bareTableNumber(trimmedTable)}`
+    //
+    // so a takeaway with a stray number in the Table field opened a tab named after
+    // a table it does not own, and wrote the kitchen dispatch into it. The
+    // order-type field itself rode along, which is what makes the payload
+    // contradict itself rather than merely being wrong.
+    const kitchen = POS_SCREEN.slice(
+      POS_SCREEN.indexOf('const handleSendToKitchen'),
+      POS_SCREEN.indexOf('const handleSendToKitchen') + 3000,
+    );
+    expect(kitchen.length, 'handleSendToKitchen moved — re-point this guard').toBeGreaterThan(0);
+    expect(
+      /const trimmedTable = orderType === 'dine_in'/.test(kitchen),
+      'handleSendToKitchen derives its table unconditionally, so a takeaway with a ' +
+        'stray table number opens an open bill it does not own and names it after ' +
+        "that table. It must derive the table under the same dine-in rule as the " +
+        'split-bill handler.',
+    ).toBe(true);
   });
 
   it('the customer-name field is deliberately NOT restricted', () => {

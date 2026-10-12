@@ -227,7 +227,16 @@ export function usePosHeldCarts({
         ? lines.map((l) => ({ ...l, dispatchedQty: l.qty }))
         : lines;
 
-      const trimmedTable = (tableNumber ?? '').trim();
+      // ⚠️ DINE-IN ONLY — the EIGHTH site of this rule. The sibling builders in
+      // PosScreen (split-bill and send-to-kitchen) were both fixed; this hook, which
+      // is the path that actually saves a tab, still derived the table
+      // unconditionally while writing `orderType` into the same record — so a
+      // takeaway with a stray number in the Table field persisted
+      // {"tableNumber":"T99","orderType":"takeaway"} and was labelled after a table
+      // it does not own. `orderType` is a parameter of this hook (defaulting to
+      // dine_in) and the recall path at :356 already restores it, so the rule has
+      // everything it needs here.
+      const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
       const trimmedName = (customerName || openBillName || '').trim();
       const trimmedGuest = (guestCount ?? '').trim();
       const cartData = JSON.stringify({
