@@ -27,6 +27,50 @@ on a setting"). The mistake was never the field being unconditional; it is each
 | 9 | `CartActionBar` print-bill gate + `handlePrintBill` payload | printed a check naming the wrong table | (this round) |
 | 10 | `RestaurantFloatingCartBar` table pill | advertised a table on the always-visible bar | (this round) |
 | 11 | `RestaurantCartSheet` table chip | same, on the sheet holding the sale | (this round) |
+| 12 | `PosScreen` kitchen CHIT | **sent the pass a ticket naming a table that did not order** | (this round) |
+| 13 | `SplitBillModal` header | announced a table on the split dialog | (this round) |
+
+### Sites 12 and 13 — the rule-shaped sweep the previous round asked for
+
+Round 7 closed by noting that a NAME LIST is exactly what went blind in round 4, and
+that a rule-shaped check would be more durable. So this round swept **every file
+referencing `tableNumber`** — 15 files, 8 unguarded — instead of walking a known list.
+Two were real:
+
+**Site 12 is the first with a PHYSICAL consequence.** `handleDispatchKitchenDelta`
+passed `tableNumber` straight into `buildKitchenChitReceipt`, which turns it into
+**both** the ticket number and a payload field:
+
+```ts
+receiptNumber: chitNumber ?? \`KOT-${bareTableNumber(tableNumber) || 'ORDER'}-…\`
+...(tableNumber ? { tableNumber } : {})
+```
+
+Every earlier site mislabelled a **record**. This one misdirects **food**: a takeaway
+with a stray number sent the pass a chit reading `KOT-99-…` for table 99, and the
+kitchen plated for a table that did not order.
+
+The builder's `|| 'ORDER'` fallback is *not* the guard — it handles a MISSING table
+(correctly) and says nothing about a table that should never have been sent. That is
+why the defect was invisible from inside the builder.
+
+**Site 13** — `SplitBillModal` rendered `(tableNumber)` in its header, and the dialog
+is reachable on any order type (`CartActionBar` gates its button on
+`splitBillEnabled + hasLines` alone).
+
+### The eight unguarded files, and why six were left alone
+
+| File | Verdict |
+|---|---|
+| `utils/tableLabel.ts` | formatter — takes a value, decides nothing |
+| `payment/types.ts`, `completedSale.ts` (types) | type declarations only |
+| `TableManagementScreen.tsx` | the floor plan itself — a table IS its subject |
+| `KdsTicketCard.tsx` | renders what the backend sent, after `createKdsOrderFromSaleScoped` |
+| `useTabLeases.ts` | keyed by tab id; the table is passed by the caller that already guards |
+
+Restricting any of those would be the *wrong* fix — they are the layers that handle a
+table for a caller which has already decided. Recorded so a future sweep does not
+"fix" them.
 
 ### Sites 10 and 11 — the PORTRAIT path, which is the tablet
 

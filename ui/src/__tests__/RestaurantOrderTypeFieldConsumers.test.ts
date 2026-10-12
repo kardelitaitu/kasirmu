@@ -37,6 +37,7 @@ const CART_PANEL = read('../features/sales/components/CartPanel.tsx');
 const HELD_CARTS_HOOK = read('../features/sales/hooks/usePosHeldCarts.ts');
 const FLOATING_CART_BAR = read('../features/restaurant/components/RestaurantFloatingCartBar.tsx');
 const CART_SHEET = read('../features/restaurant/components/RestaurantCartSheet.tsx');
+const SPLIT_BILL_MODAL = read('../features/sales/components/SplitBillModal.tsx');
 
 const DINE_IN = "orderType === 'dine_in'";
 
@@ -236,6 +237,34 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     }
   });
 
+  it('the kitchen CHIT carries no table for a non-dine-in order', () => {
+    // The TWELFTH site, and the only one with a physical consequence: every other
+    // mislabelled a record, this one misdirects FOOD. handleDispatchKitchenDelta
+    // passed tableNumber straight into buildKitchenChitReceipt, which turns it into
+    // both the ticket number (KOT-99-...) and a payload field -- so a takeaway with
+    // a stray number sent the pass a chit naming a table that did not order.
+    const dispatch = POS_SCREEN.slice(
+      POS_SCREEN.indexOf('const handleDispatchKitchenDelta'),
+      POS_SCREEN.indexOf('const handleSendToKitchen'),
+    );
+    expect(dispatch.length, 'handleDispatchKitchenDelta moved - re-point this guard').toBeGreaterThan(0);
+    expect(
+      dispatch,
+      'the kitchen chit must derive its table under the dine-in rule. The builder ' +
+        'fallback to ORDER is not the guard: it handles a MISSING table, not a ' +
+        'table that should never have been sent.',
+    ).toContain("const chitTable = orderType === 'dine_in'");
+  });
+
+  it('the split dialog names no table for a non-dine-in order', () => {
+    // The THIRTEENTH site. The modal header rendered the table from the field alone
+    // and the dialog is reachable on any order type.
+    expect(
+      SPLIT_BILL_MODAL,
+      'SplitBillModal must gate its header table on the order type; a takeaway ' +
+        'with a stray number announced a table on the split dialog.',
+    ).toContain("orderType === 'dine_in'");
+  });
   it('the customer-name field is deliberately NOT restricted', () => {
     // A takeaway still has a customer to name on the ticket, so restricting it
     // would be a regression introduced by symmetry with the table/pax cases.

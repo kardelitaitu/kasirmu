@@ -12,6 +12,14 @@ export interface SplitBillModalProps {
   lines: CartLine[];
   currency: string;
   tableNumber?: string | undefined;
+  /**
+   * The order's type. The header names the table, and a table only identifies a
+   * DINE-IN order — the Table field renders on restaurant POS unconditionally
+   * (CartPanel.tsx:864), so a takeaway with a stray number announced a table on
+   * the split dialog. Optional with a dine-in default so existing renders are
+   * unchanged.
+   */
+  orderType?: 'dine_in' | 'takeaway' | 'delivery' | undefined;
   onConfirmSplit: (selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void;
 }
 
@@ -21,6 +29,7 @@ export function SplitBillModal({
   lines,
   currency,
   tableNumber,
+  orderType = 'dine_in',
   onConfirmSplit,
 }: SplitBillModalProps) {
   const { l10n } = useLocalization();
@@ -130,7 +139,10 @@ export function SplitBillModal({
             <Localized id="pos-split-modal-title">
               <span>Split Bill by Item</span>
             </Localized>
-            {tableNumber && <span style={{ fontWeight: 400, marginLeft: '6px' }}>({tableNumber})</span>}
+            {/* DINE-IN ONLY — a table only identifies a dine-in order; see the prop doc. */}
+            {orderType === 'dine_in' && tableNumber && (
+              <span style={{ fontWeight: 400, marginLeft: '6px' }}>({tableNumber})</span>
+            )}
           </h2>
           <button
             type="button"

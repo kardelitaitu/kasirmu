@@ -566,6 +566,44 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     expect(within(modal).getByText('Es Teh')).toBeDefined();
   });
 
+  it('hides the split modal table header on a NON-dine-in order', () => {
+    // The THIRTEENTH consumer of the stray-table rule. The modal header renders
+    // `(tableNumber)` from the field alone, and the dialog is reachable on any
+    // order type (CartActionBar gates its button on splitBillEnabled + hasLines
+    // only), so a takeaway with a stray number announced a table on the split
+    // dialog. Hidden here rather than left to the caller, because the modal is the
+    // only place that knows what it is displaying.
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      showSplitBillModal: true,
+      setShowSplitBillModal: vi.fn(),
+      handleConfirmSplitBill: vi.fn(),
+      tableNumber: '99',
+      orderType: 'takeaway',
+    });
+
+    const modal = screen.getByTestId('pos-split-bill-modal');
+    expect(
+      within(modal).queryByText('(99)'),
+      'a takeaway must not announce a table on the split dialog; it has none.',
+    ).toBeNull();
+  });
+
+  it('still shows the split modal table header on a dine-in order', () => {
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      showSplitBillModal: true,
+      setShowSplitBillModal: vi.fn(),
+      handleConfirmSplitBill: vi.fn(),
+      tableNumber: '7',
+      orderType: 'dine_in',
+    });
+    const modal = screen.getByTestId('pos-split-bill-modal');
+    expect(within(modal).getByText('(7)')).toBeDefined();
+  });
+
   it('renders Send to Kitchen button when hasUndispatchedItems is true and invokes handleSendToKitchen', () => {
     const handleSendToKitchen = vi.fn();
     renderPanel({

@@ -943,16 +943,31 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     async (deltaLines: CartLine[]) => {
       if (deltaLines.length === 0 || !sessionToken) return;
       if (autoPrintKitchen !== false) {
+        // ⚠️ DINE-IN ONLY — the TWELFTH site of this rule, and the one with a
+        // physical consequence: every other site mislabelled a RECORD, this one
+        // misdirects FOOD. `tableNumber` was passed straight through, so a takeaway
+        // with a stray number in the Table field (the field renders on restaurant POS
+        // unconditionally — CartPanel.tsx:864) sent the pass a chit numbered
+        // `KOT-99-…` carrying `tableNumber: 99`, and the kitchen plated for a table
+        // that did not order.
+        //
+        // The builder's `|| 'ORDER'` fallback is NOT the guard: it handles a MISSING
+        // table, which is the right default, but says nothing about a table that
+        // should never have been sent.
+        const chitTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
         const chit = buildKitchenChitReceipt({
           cartLines: deltaLines,
           cartCurrency: subtotal?.currency || activeCurrency,
-          tableNumber: tableNumber || undefined,
+          tableNumber: chitTable || undefined,
           customerName: customerName || undefined,
         });
         await printSalesReceipt(sessionToken, chit);
       }
     },
-    [sessionToken, autoPrintKitchen, subtotal, activeCurrency, tableNumber, customerName],
+    // orderType gates the table the chit carries, so it must be listed: without it
+    // the chit closes over the mount-time order type and a mid-sale switch to
+    // Takeaway still prints a table.
+    [sessionToken, autoPrintKitchen, subtotal, activeCurrency, tableNumber, orderType, customerName],
   );
   dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
 

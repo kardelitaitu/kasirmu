@@ -1131,6 +1131,7 @@ export function CartPanel({
             lines={lines}
             currency={lines[0]?.unit_price.currency || 'IDR'}
             tableNumber={tableNumber}
+            orderType={orderType}
             onConfirmSplit={handleConfirmSplitBill}
           />
         )}
