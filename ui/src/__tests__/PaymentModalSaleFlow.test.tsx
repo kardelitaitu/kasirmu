@@ -551,6 +551,79 @@ describe('PaymentModal — sale flow', () => {
     }
   });
 
+  it('does NOT persist a table number on an OPEN BILL that is not dine-in', async () => {
+    // ⚠️ Sibling of the claim/release defect fixed in 206462b4d and 035d1d01b,
+    // on the OPEN BILL path. `complete` builds the held cart from
+    // `(tableNumber ?? '').trim()` and writes it into BOTH the saved cart_data and
+    // the tab's label (PaymentModal.tsx:1178, 1194, 1202) without consulting
+    // `orderType`. The cart panel shows the Table field for the restaurant POS on
+    // every order type (CartPanel.tsx:735-743), so a cashier ringing up a
+    // TAKEAWAY who left a number there saves a tab that claims a table it has no
+    // business owning — and the value is PERSISTED, so it outlives the screen.
+    //
+    // An open bill is a table's running tab; a takeaway has no table.
+    invokeMock.mockClear();
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    let heldPayload: Record<string, unknown> | null = null;
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === 'hold_cart_scoped') {
+        heldPayload = (args as { args?: Record<string, unknown> })?.args ?? (args as Record<string, unknown>);
+        return Promise.resolve({ id: 'tab-1' });
+      }
+      return prev(cmd);
+    });
+
+    try {
+      await renderWithFluent(
+        <PaymentModal
+          open
+          lineItems={[lineItem()]}
+          total={usd(700)}
+          userId="test-user-id"
+          sessionToken="mock-token"
+          tableNumber="T99"
+          orderType="takeaway"
+          onComplete={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      // Choose the Open Bill tender, type the customer (the modal owns this state
+      // — it is NOT a prop; `customerName` is internal and cleared on open), then
+      // save the tab.
+      const openBill = await screen.findByRole('radio', { name: /open bill/i });
+      await userEvent.click(openBill);
+      const nameField = document.querySelector<HTMLInputElement>('.payment-customer-input');
+      expect(nameField, 'the open-bill customer field must render').not.toBeNull();
+      await userEvent.type(nameField!, 'Walk-in');
+      await waitFor(() =>
+        expect(screen.getByTestId('settle-button')).not.toBeDisabled(),
+      );
+      await userEvent.click(screen.getByTestId('settle-button'));
+
+      await waitFor(() => expect(heldPayload).not.toBeNull());
+      const payload = heldPayload as unknown as Record<string, unknown>;
+      const cartData = String(payload['cart_data'] ?? '');
+
+      expect(
+        cartData.includes('T99'),
+        'a takeaway open bill must not persist the cart\'s stray table number — ' +
+          'cart_data was: ' +
+          cartData.slice(0, 220),
+      ).toBe(false);
+      expect(
+        String(payload['label'] ?? '').includes('T99'),
+        'the tab LABEL must not claim a table either — it is saved and outlives ' +
+          'the screen. label was: ' +
+          String(payload['label']),
+      ).toBe(false);
+      // It is still a usable tab: identified by the customer instead.
+      expect(String(payload['label'] ?? '')).toContain('Walk-in');
+    } finally {
+      invokeMock.mockImplementation(prev);
+    }
+  });
+
   it('serializes line note into modifiersJson as Note for kitchen tickets', async () => {
     kdsOrderImpl();
     await renderWithFluent(

@@ -1175,7 +1175,15 @@ retryCurrencyLoad,
       // ── Open Bill: save cart without payment ──────────────
       if (method === 'open_bill') {
         const trimmedName = customerName.trim();
-        const trimmedTable = (tableNumber ?? '').trim();
+        // ⚠️ DINE-IN ONLY, the same guard the table CLAIM (206462b4d) and RELEASE
+        // (035d1d01b) had to gain. The cart panel renders the Table field for the
+        // restaurant POS on every order type (CartPanel.tsx:735-743), so a stray
+        // number there reached this path and was written into the saved cart_data
+        // AND the tab's label. Measured: a takeaway tab persisted
+        // `{"discountPercent":0,"tableNumber":"T99","orderType":"takeaway"}` — a
+        // record that contradicts itself, and the label outlives the screen.
+        // An open bill is a table's running tab; a takeaway has no table.
+        const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
         const cartData = JSON.stringify({
           lines: lineItems.map((l) => ({
             sku: l.sku,
