@@ -1688,12 +1688,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             lines={lines}
             total={total}
             tableNumber={tableNumber}
+            orderType={orderType}
             onOpenCart={() => setCartSheetOpen(true)}
           />
           <RestaurantCartSheet
             open={cartSheetOpen}
             onClose={() => setCartSheetOpen(false)}
             tableNumber={tableNumber}
+            orderType={orderType}
           >
             <LocalizedErrorBoundary resetKeys={[String(lines.length)]}>
               <CartPanel

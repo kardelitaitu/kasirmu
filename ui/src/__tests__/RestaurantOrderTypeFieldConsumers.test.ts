@@ -35,6 +35,8 @@ const PAYMENT_MODAL = read('../features/sales/PaymentModal.tsx');
 const POS_SCREEN = read('../features/sales/PosScreen.tsx');
 const CART_PANEL = read('../features/sales/components/CartPanel.tsx');
 const HELD_CARTS_HOOK = read('../features/sales/hooks/usePosHeldCarts.ts');
+const FLOATING_CART_BAR = read('../features/restaurant/components/RestaurantFloatingCartBar.tsx');
+const CART_SHEET = read('../features/restaurant/components/RestaurantCartSheet.tsx');
 
 const DINE_IN = "orderType === 'dine_in'";
 
@@ -209,6 +211,29 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
         'otherwise a takeaway with a stray number prints a check naming that table, ' +
         'and completedSale.ts derives the receipt number from it.',
     ).toBe(true);
+  });
+
+  it('portrait cart bar and sheet — the table they show on the TABLET', () => {
+    // The TENTH and ELEVENTH consumers, found 2026-10-12 by walking the portrait
+    // path rather than the desktop one. The tablet is where a restaurant POS
+    // actually runs, and both of these are always in view: the bar sits pinned at
+    // the bottom all service, and the sheet holds the whole sale.
+    //
+    // Both derived their table chrome from `tableNumber` alone. Combined with the
+    // field rendering unconditionally (CartPanel.tsx:864), a takeaway with a stray
+    // number advertised a table it does not have on the surface the cashier looks
+    // at continuously.
+    for (const [label, src] of [
+      ['RestaurantFloatingCartBar', FLOATING_CART_BAR],
+      ['RestaurantCartSheet', CART_SHEET],
+    ] as Array<[string, string]>) {
+      expect(
+        src,
+        label + ' must gate its table chrome on the order type; it renders the ' +
+          'table from tableNumber alone, which the Table field populates on every ' +
+          'order type.',
+      ).toContain("orderType === 'dine_in'");
+    }
   });
 
   it('the customer-name field is deliberately NOT restricted', () => {

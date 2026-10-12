@@ -37,6 +37,39 @@ describe('RestaurantCartSheet', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('hides the table chip on a NON-dine-in order, even with a table number set', () => {
+    // Same rule as the floating bar beside it, and the same tenth-consumer reason:
+    // the chip renders from `tableNumber` alone, and the Table field renders on
+    // restaurant POS unconditionally (CartPanel.tsx:864), so a takeaway with a
+    // stray number showed a table on the sheet that holds the whole sale.
+    render(
+      withFluent(
+        <RestaurantCartSheet open={true} onClose={vi.fn()} tableNumber="99" orderType="takeaway">
+          <div data-testid="cart-contents">Inner Cart Contents</div>
+        </RestaurantCartSheet>,
+        productsFtl,
+      ),
+    );
+    expect(
+      screen.queryByTestId('restaurant-cart-sheet-table-chip'),
+      'a takeaway must not show a table chip; it has no table.',
+    ).toBeNull();
+  });
+
+  it('still shows the chip on a dine-in order', () => {
+    render(
+      withFluent(
+        <RestaurantCartSheet open={true} onClose={vi.fn()} tableNumber="7" orderType="dine_in">
+          <div data-testid="cart-contents">Inner Cart Contents</div>
+        </RestaurantCartSheet>,
+        productsFtl,
+      ),
+    );
+    expect(
+      screen.getByTestId('restaurant-cart-sheet-table-chip').textContent?.trim(),
+    ).toBe('Table 7');
+  });
+
   it('closes on Escape key press', () => {
     const onClose = vi.fn();
 

@@ -25,6 +25,28 @@ on a setting"). The mistake was never the field being unconditional; it is each
 | 7 | `PosScreen` send-to-kitchen open bill | ran the whole block + named the tab | (this round) |
 | 8 | `usePosHeldCarts` saved tab | the path that actually saves a tab | (this round) |
 | 9 | `CartActionBar` print-bill gate + `handlePrintBill` payload | printed a check naming the wrong table | (this round) |
+| 10 | `RestaurantFloatingCartBar` table pill | advertised a table on the always-visible bar | (this round) |
+| 11 | `RestaurantCartSheet` table chip | same, on the sheet holding the sale | (this round) |
+
+### Sites 10 and 11 — the PORTRAIT path, which is the tablet
+
+Found 2026-10-12 by walking the portrait render block instead of the desktop one.
+`PosScreen` renders both under `isPortraitRestaurant`, and **neither received
+`orderType` at all** — the prop did not exist on either component. Both derived their
+table chrome from `tableNumber` alone.
+
+The consequence is worse here than on the desktop because of *dwell*: the floating bar
+is pinned at the bottom of the screen for the whole service, and the sheet holds the
+entire sale. A takeaway with a stray number in the Table field advertised
+"Table 99" continuously, on the form factor a restaurant actually runs.
+
+Fixed by adding the optional `orderType` prop (dine-in default, so retail and every
+existing render are unchanged) to both components and gating the pill/chip.
+
+**Why the sweep in round 5 did not catch these:** it covered the files that build a
+PERSISTED payload. These two only RENDER — nothing is written to disk — so a sweep
+looking for `cart_data` could not see them. The class is "every consumer of table
+identity", which includes pure display, and the guard now asserts it on both.
 
 ### Site 9 — the one that reaches PAPER
 
