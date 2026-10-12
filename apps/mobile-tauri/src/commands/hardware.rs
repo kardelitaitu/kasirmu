@@ -96,6 +96,12 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Optional statutory rounding mode.
     pub statutory_rounding: Option<String>,
+    #[serde(default)]
+    /// Optional document kind (e.g. "receipt", "kitchen", "kot").
+    pub document_kind: Option<String>,
+    #[serde(default)]
+    /// Optional printer target instance ID (e.g. "kitchen", "default").
+    pub printer_target: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -263,11 +269,32 @@ pub async fn print_sales_receipt_scoped(
     args: PrintSalesReceiptArgs,
     state: State<'_, AppState>,
 ) -> Result<PrintSalesReceiptResult, AppError> {
-    let printer = state
-        .registry
-        .printer("default")
-        .await
-        .ok_or_else(|| AppError::Invalid("no receipt printer registered".into()))?;
+    let target = args.printer_target.as_deref().or_else(|| {
+        if args.document_kind.as_deref() == Some("kitchen")
+            || args.document_kind.as_deref() == Some("kot")
+        {
+            Some("kitchen")
+        } else {
+            None
+        }
+    });
+
+    let printer = if let Some(target_id) = target {
+        match state.registry.printer(target_id).await {
+            Some(p) => p,
+            None => state.registry.printer("default").await.ok_or_else(|| {
+                AppError::Invalid(format!(
+                    "no printer registered for '{target_id}' or 'default'"
+                ))
+            })?,
+        }
+    } else {
+        state
+            .registry
+            .printer("default")
+            .await
+            .ok_or_else(|| AppError::Invalid("no receipt printer registered".into()))?
+    };
 
     // Load store info + display settings from the DB in a block
     // so the MutexGuard is dropped before any .await point.

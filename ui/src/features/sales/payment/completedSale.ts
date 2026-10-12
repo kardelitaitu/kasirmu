@@ -283,7 +283,8 @@ export function buildKitchenChitReceipt({
     payments: [],
     ...(tableNumber ? { tableNumber } : {}),
     ...(customerName ? { customerName } : {}),
-    documentKind: 'receipt',
+    documentKind: 'kitchen',
+    printerTarget: 'kitchen',
   };
 }
 

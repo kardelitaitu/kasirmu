@@ -945,11 +945,12 @@ export interface PrintSalesReceiptArgs {
   taxIdLabel?: string | null | undefined;
   taxRegime?: string | null | undefined;
   statutoryRounding?: string | null | undefined;
-  documentKind?: 'receipt' | 'invoice' | undefined;
+  documentKind?: 'receipt' | 'invoice' | 'kitchen' | 'kot' | undefined;
   isInvoice?: boolean | undefined;
   statutoryNumber?: string | null | undefined;
   customerName?: string | null | undefined;
   customerTaxId?: string | null | undefined;
+  printerTarget?: string | null | undefined;
 }
 
 /** Result of a receipt print request. */

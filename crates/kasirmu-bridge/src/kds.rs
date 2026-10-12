@@ -159,7 +159,13 @@ async fn print_kds_chit_with_printer(
     emitter: Option<&Arc<dyn EventSink>>,
     target_instance_id: Option<&str>,
 ) -> bool {
-    let chit = kasirmu_hal::drivers::kds_chit::format_kds_chit(
+    let info = printer.device_info();
+    let paper_width = if info.model.contains("58") {
+        kasirmu_hal::drivers::receipt::PaperWidth::Narrow
+    } else {
+        kasirmu_hal::drivers::receipt::PaperWidth::Standard
+    };
+    let chit = kasirmu_hal::drivers::kds_chit::format_kds_chit_with_width(
         order.display_number,
         order.table_number.as_deref(),
         &order.items_summary,
@@ -167,6 +173,7 @@ async fn print_kds_chit_with_printer(
         &order.notes,
         &order.received_at,
         &order.ticket_prefix,
+        paper_width,
     );
 
     match printer.print_raw(&chit.data).await {
