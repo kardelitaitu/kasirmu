@@ -3,8 +3,16 @@
 > Status: RETIRED 2026-10-01 · was COMPLETED · last reviewed 2026-09-24 · branch 0.0.40
 >
 > **Everything this plan delivered was deleted on 2026-10-01**, in the setup-wizard
-> convergence (`6ad643471`): the five screens, the orchestrator, the route
-> `mobile-setup`, and every `setup-mobile-*` FTL key. Two findings forced it:
+> convergence (`40f06d688` — *"refactor(setup): keep one setup wizard for every surface"*,
+> 19 files): the five screens, the orchestrator, the route
+> `mobile-setup`, and every `setup-mobile-*` FTL key (0 remain). Two findings forced it:
+>
+> *(Commit corrected 11-10-26: this line named `6ad643471`, which is a later commit on
+> the same day — *"fix(setup): give the mobile wizard a way back to the surface that
+> opened it"* — whose diff **modifies** `MobileWelcomeFlow.tsx` and
+> `MobileWelcomeScreen.tsx` rather than deleting them. `git log --diff-filter=D --
+> ui/src/features/setup/mobile/MobileWelcomeFlow.tsx` names `40f06d688`. The retirement
+> date and every other claim here were already correct.)*
 >
 > 1. The wizard made **zero backend calls**. It fired `onProvisioned?.()` the moment
 >    a Google account was "selected" or an email "submitted", and both shells wired

@@ -37,6 +37,19 @@
 > `payments` without updating the checker's `TABLE_OWNERS`) in `42788cf3d` — whose `--emit-ownership`
 > repair was itself broken in two independent ways and had clearly never been run.
 >
+> **Re-measured 11-10-26.** `core-size-ratchet` is **RED again**: `scripts/verify-core-size.py`
+> reports *"measured 38703 vs ceiling 37176 (+1527 lines)"*, exit 1. The ceiling below is unchanged and
+> the baseline file is committed-clean, so this is post-plan work in `crates/kasirmu-core` that never got
+> the deliberate ceiling edit the gate's own message asks for ("lower the ceiling deliberately … in a
+> commit that says why"). Everything else this pass certified still holds: `namespace-governance --strict`
+> exits 0, `sales_lifecycle_tests.rs` still declares `FOREIGN_WRITES = ["customers"]`, `sales_lifecycle.rs`
+> still carries **0** foreign `FROM products`/`FROM stock_summary`, and `Kernel::verify_namespace_grants`
+> is still at `platform/kernel/src/kernel/lifecycle.rs:191`, called at `:180`. The same red gate is
+> recorded on `docs/architecture/module-namespace-firewall.md`; **lowering a ceiling is a code owner's
+> act, not a documentation repair.** The "handler classification `--check`" gate named below has no
+> script of that name — it is `scripts/verify-namespace-governance.py` Rule 2 against
+> `scripts/handler-classification.json`, as this file's own §P5 notes say.
+
 > **Correction (2026-10-02, from the Phase 0 census).** One factual claim in this plan was
 > falsified against the working tree: `InventoryStockHandler` was described as active (is not orphaned /
 > performs BOM deduction / must be retained). It is in fact **dead/test-only** — never registered or

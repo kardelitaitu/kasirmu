@@ -466,6 +466,23 @@ owner's act, not a documentation repair.** Report it with the exact command and 
 the baseline. This is the same red-gate class as a guard that grew (trap 4), but the fix belongs to
 someone else.
 
+**20. "Green at a NUMBER" is the row that rots — and one gate can be cited by many docs.**
+A plan or architecture page that certifies a gate green **with a specific ceiling or count** is
+falsified the moment the number moves, while every path in it still resolves. Measured 2026-10-11:
+`scripts/verify-core-size.py` is RED (38,703 vs a 37,176 ceiling) and TWO separate documents still
+certify it green — `docs/architecture/module-namespace-firewall.md` §6 (batch 21) and
+`docs/plans/_done/done-todo-modular-scaffolding.md` Phase 5 (batch 22). **Sweep target: grep for a
+quoted ceiling/count attached to a gate name; re-run the gate, not just the path check.** When one
+red gate is found, search the tree for other docs quoting the same number — the second doc is
+cheap to find and expensive to miss.
+
+**21. `_done/` plans have TWO conventions and neither is the footer.** Of four `docs/plans/_done/`
+files audited together, two carried an inline `<!-- Audit stamp:` comment and two carried no stamp
+at all (0 of 4 had a `> last audited` footer). **Match the file as found; do not add a footer or a
+stamp to a `_done/` plan.** A completed plan is a record of work, and inventing a footer would
+misrepresent it as a live claim doc — the same reasoning as the `.agents/` record corpus, which is
+why the two are separate traps: the `.agents/` rule is by directory, this one is by prefix.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually

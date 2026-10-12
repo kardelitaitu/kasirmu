@@ -1,5 +1,5 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-**Siblings:** `done-todo-open-debt-agents-1.md`, `todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`, `done-todo-open-debt-agents-5.md`.
+**Siblings:** `done-todo-open-debt-agents-1.md`, `done-todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`, `done-todo-open-debt-agents-5.md`. **Sibling names re-derived 11-10-26: all five phase files now carry the `done-` prefix, so the pre-rename spellings above are corrected here rather than rewritten in place — the earlier forms were right when each list was written (this phase earned `done-` on its own acceptance date, and the lists were not refreshed afterwards).**
 
 **Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
 - `cargo test -p kasirmu-payment` → **PASS** (`69 passed; 0 failed; 0 ignored`).
@@ -46,6 +46,8 @@ wc -l crates/kasirmu-hal/src/drivers/edc/wired.rs crates/kasirmu-hal/src/drivers
       crates/kasirmu-hal/src/drivers/edc/protocol/{pax,ingenico,verifone}.rs
 #  112 / 132 / 46 / 46 / 46   ← the line counts reproduce exactly
 ```
+
+**Re-measured 11-10-26:** the three protocol stubs still reproduce exactly (`pax.rs`, `ingenico.rs`, `verifone.rs` are each **46** lines), but the two driver files have GROWN since this measurement — `wired.rs` is **124** and `wireless.rs` is **144**, because `656f109a0` (2026-10-07) added invoice reference, batch settlement and transaction inquiry to the EDC surface. The reading above is left as the dated measurement it is; only the two driver counts have moved, and the anchor correction this block makes — that the paths are correct only relative to `crates/kasirmu-hal/src/` — still holds unchanged.
 
 `crates/kasirmu-payment/src/drivers/` contains `mock.rs`, `paddle.rs`, `qris.rs`, `square.rs`, `stripe.rs` — **no `edc/` and no `protocol/` directory**, and `grep -rn "HalError::Unsupported" crates/kasirmu-payment` → **0**. The stubs moved into `kasirmu-hal` during the HAL unification; `crates/kasirmu-hal/src/drivers/edc/wired.rs:2` says so in its own header: *"moved in from oz-payment during the HAL unification"*. A worker who greps the recorded path finds nothing and may conclude the stub is gone. Both files fail closed with `HalError::Unsupported` (2 occurrences in `wired.rs`, 2 in `wireless.rs`, 1 in `pax.rs`, measured).
 

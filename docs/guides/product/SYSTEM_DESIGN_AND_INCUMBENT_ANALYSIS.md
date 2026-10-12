@@ -1,6 +1,7 @@
 # Architecture Analysis: System Design, Trade-offs & Incumbent Dynamics
 
 <!-- Audit stamp: 2026-10-02 · Product & Systems Architecture Review -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE (0 findings) · Re-audit of a product/architecture analysis; the 2026-10-07 stamp below is preserved verbatim. RE-DERIVED AT HEAD rather than inherited, and every technical claim holds: `apps/cloud-server` is the Rust/Axum cloud server and really is on :3099 (the port appears in its `config.rs`, `main.rs` and `Dockerfile.unified`); `apps/license-server` is the Go/PocketBase plane on :8080; `apps/unified` exists and carries BOTH `Caddyfile` and `supervisord.conf`, exactly as §2 states; and the coverage figure matches `scripts/coverage-floors.json:13` (`"measured_workspace_pct": 73.9`) character for character. Two dependency claims that would be defects elsewhere are TRUE here: `redis` IS a real dependency (`apps/cloud-server/Cargo.toml:50` and the optional `cache-redis` feature in `crates/kasirmu-core/Cargo.toml:35/:41`), and PostgreSQL is the cloud store, so §2's stack list is not aspirational — contrast the WHITEPAPER's retired Redis/CockroachDB rows, corrected in a 2026-10-11 sibling batch. The page names no repository PATHS (its code references are inline `apps/<name>` prose, all of which resolve), so there is no path surface to drift. · AMBIGUOUS BY SCOPE, not reviewed: the sections 4-5 market and incumbent analysis (business judgement), and the two figures the prior stamp already declines to certify — the 1.33M+ LOC claim and the 9,000+ test count, neither of which has a machine-readable source in this tree (a tracked-source line count of .rs/.ts/.tsx/.go reads 39,297, which measures a different population and is NOT evidence for or against the 1.33M figure). · NOT re-measured: the runtime behaviour of the unified container, the cloud-cost ratio (<1% of ARR), and every latency/memory figure. · Prior stamp retained verbatim above. -->
 
 ## 1. Executive Summary & Architectural Thesis
 
@@ -167,4 +168,4 @@ The `kasir.mu` server design is not an accidental microservice-versus-monolith d
      Footer added: the file carried a stamp but no machine-readable footer, which
      check-audit-stamps.py reports as a gap. -->
 
-> last audited 07-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

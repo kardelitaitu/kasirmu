@@ -788,6 +788,19 @@ all do a *root lookup by filename*: `Cargo.toml`, `Cargo.lock`, `rust-toolchain.
 `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE`, `AGENTS.md` and `.env.example`.
 "Clutter" in this pile is load-bearing; moving `.trivyignore` or `deny.toml` breaks those tools silently.
 
+> **Re-measured 11-10-26.** The policy below is now *enforced*, not a census: it landed as
+> `scripts/verify-root-policy.py` with a `ROOT_FILE_ALLOWLIST` that already carries this plan's
+> `DSH.md` reasoning (a name-resolved contract has a *zero-reference* count by construction) and the
+> owner's `.md` working files. The count has moved **29 → 51 tracked root files**, but that growth is
+> NOT a regression in this plan: the additions are other lanes' `todo-*`/`done-*`/`manager-*` working
+> files — exactly the class §5 says stays at the root — plus untracked local artifacts. The checker
+> reports 32 stray entries; **none is a file this plan moved.** Re-run it with
+> `python3 scripts/verify-root-policy.py`. The plan's own §7 fact-log values are readings of
+> 2026-09-17 and have all moved with the tree, as that section warns; the structural outcome is
+> intact: `ui/src/frontend/` is **gone**, `@/frontend/shared`, `@/frontend/shell` and `@/platform/ui`
+> importers are **0** (the consolidation succeeded), and `kasirmu-updater.key.pub` carries the
+> renamed key while `oz-pos-updater.key.pub` is absent.
+
 **Pile B — at root by accident; move.** The 7 docker files (→ P3).
 
 The root **`.md` files are the owner's working files and stay at the root** — not moved, not renamed,

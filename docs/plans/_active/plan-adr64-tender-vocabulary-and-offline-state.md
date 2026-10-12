@@ -11,7 +11,7 @@
 
 ## 1. Goal
 
-Implement the technical decisions of **ADR-64 (D1–D6)** to turn payment methods into an enforceable closed set, decouple presentation enums from database persistence, eliminate the dual-meaning boolean `PaymentResult`, and establish a 7-stage state machine for offline electronic tenders.
+Implement the technical decisions of **ADR-64 (D1–D6)** to turn payment methods into an enforceable closed set, decouple presentation enums from database persistence, eliminate the dual-meaning boolean `PaymentResult`, and establish a state machine for offline electronic tenders. *(The word "7-stage" was wrong when written and is corrected here: ADR-64 D4 decides **nine** tender states — `pending | authorized | confirmed | settled | failed | voided | refunded | disputed | unconfirmed` — the same nine this plan's Phase 4 later enumerates under `TenderState`. ADR-65 §3 inherited the same "seven-value" slip and was corrected in the same pass.)*
 
 ---
 
@@ -65,6 +65,8 @@ Implement the technical decisions of **ADR-64 (D1–D6)** to turn payment method
 - [x] Document `kasirmu_payment::PaymentMethod` as a processor driver interface, not a DB persistence authority (landed `e2a323dfa`).
 
 ### Phase 4: Two-Phase PaymentResult & Gateway Fallback Fix (ADR-64 D3 & D4)
+> **Re-measured 2026-10-11 — every box in Phases 1–4 verifies, with two caveats the plan's own Goal states too strongly.** All three landing commits resolve (`925f3316b`, `4de069c47`, `e2a323dfa`), the acceptance test named in §3 exists at `migrations_tests.rs:3706`, and every cited artefact is real. **Caveat 1: the boolean was not eliminated, it was supplemented.** `PaymentResult.success: bool` is still present (`types.rs:108`) *alongside* the new `phase: PaymentPhase` (`:110`) — so "eliminate the dual-meaning boolean" over-states what landed. ADR-64 D3 is itself careful here ("keeps its current shape in this decision"); this plan's Goal line is the looser of the two. **Caveat 2: `TenderState` is defined and unit-tested but nothing in the product constructs one** — its only non-test reference is the crate re-export at `kasirmu-payment/src/lib.rs:84`. The state machine exists as a *type*, not as a *lifecycle*, which is the same distinction ADR-65 §1.5 draws. ADR-64 §2.2 tabulates both.
+
 - [x] **Refactor `PaymentResult` in `crates/kasirmu-payment/src/types.rs`** (landed `e2a323dfa`):
   - Added `phase: PaymentPhase`:
     - `Issued` (e.g. Dynamic QR generated, awaiting customer scan).

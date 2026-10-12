@@ -5,7 +5,7 @@ section, and Phase 1 THREE dated history blocks (pre-split :711, :728, :775). Ga
 here because a phase record belongs with the phase, not with the program. -->
 
 **Program:** `todo-open-debt-program.md` -- rules, dispatch order, rotted claims, rename audits.
-**Siblings:** `todo-open-debt-agents-2.md` .. `todo-open-debt-agents-5.md`.
+**Siblings:** `done-todo-open-debt-agents-2.md` .. `done-todo-open-debt-agents-5.md`. **Sibling names re-derived 11-10-26: all five phase files now carry the `done-` prefix, so the pre-rename spellings above are corrected here rather than rewritten in place — the earlier forms were right when each list was written (this phase earned `done-` on its own acceptance date, and the lists were not refreshed afterwards).**
 
 **Why this file carries the `done-` prefix.** Its acceptance command
 `cargo test -p kasirmu-bridge --release` was RUN and PASSED on 2026-09-24
