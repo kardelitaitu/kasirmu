@@ -1089,6 +1089,7 @@ export function CartPanel({
               setDeductionOverridden={setDeductionOverridden}
               resetCart={resetCart}
               tableNumber={tableNumber}
+              orderType={orderType}
               customerName={customerName}
               activeOpenBillId={activeOpenBillId}
               handleOpenBill={handleOpenBill}

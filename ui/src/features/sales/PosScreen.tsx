@@ -816,9 +816,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       addToast({ message: 'Authentication required to print bill', type: 'error' });
       return;
     }
+    // ⚠️ DINE-IN ONLY — the NINTH site of this rule. Same derivation as the saved-tab
+    // builders, but the consequence is on PAPER: completedSale.ts puts this value in
+    // the printed args (:232) and derives the receipt NUMBER from it (:212), so a
+    // takeaway with a stray number in the Table field printed a check naming a table
+    // it does not have. The button gate in CartActionBar now agrees with this.
+    const billTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
     try {
       const receipt = buildPreCheckoutBillReceipt({
-        billNumber: `BILL-${bareTableNumber(tableNumber) || 'CHECK'}-${Date.now().toString().slice(-4)}`,
+        billNumber: `BILL-${bareTableNumber(billTable) || 'CHECK'}-${Date.now().toString().slice(-4)}`,
         cartLines: lines,
         cartCurrency: subtotal?.currency || activeCurrency,
         subtotal: subtotal ?? { minor_units: 0, currency: activeCurrency },
@@ -826,12 +832,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           ? { minor_units: total.minor_units + cartTax, currency: total.currency }
           : total,
         taxAmount: cartTax > 0 ? { minor_units: cartTax, currency: activeCurrency } : undefined,
-        tableNumber: tableNumber || undefined,
+        tableNumber: billTable || undefined,
         customerName: customerName || undefined,
       });
       await printSalesReceipt(sessionToken, receipt);
       addToast({
-        message: l10n.getString('pos-toast-bill-printed', { table: tableNumber || '' }) || 'Interim bill check printed',
+        message: l10n.getString('pos-toast-bill-printed', { table: billTable }) || 'Interim bill check printed',
         type: 'success',
       });
     } catch (err) {
@@ -840,7 +846,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         type: 'error',
       });
     }
-  }, [lines, total, sessionToken, tableNumber, customerName, subtotal, activeCurrency, cartTaxExclusive, cartTax, cartTaxFresh, addToast, l10n]);
+      // orderType gates the table this prints, so it must be listed.
+  }, [lines, total, sessionToken, tableNumber, orderType, customerName, subtotal, activeCurrency, cartTaxExclusive, cartTax, cartTaxFresh, addToast, l10n]);
 
   const handleConfirmSplitBill = useCallback(
     async (selectedLines: CartLine[], remainingLines: CartLine[]) => {

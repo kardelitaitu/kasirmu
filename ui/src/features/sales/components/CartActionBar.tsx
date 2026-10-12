@@ -30,6 +30,15 @@ export interface CartActionBarProps {
   setDeductionOverridden: Dispatch<SetStateAction<boolean>>;
   resetCart: () => void;
   tableNumber?: string | undefined;
+  /**
+   * The order's type. Read by the Print Bill gate below: a table number only
+   * identifies a check on a DINE-IN order, and the table field renders on
+   * restaurant POS unconditionally (CartPanel.tsx:864), so a takeaway with a
+   * stray number would otherwise be offered an interim check naming a table it
+   * does not have. Optional with a dine-in default so retail and every existing
+   * test render are unchanged.
+   */
+  orderType?: 'dine_in' | 'takeaway' | 'delivery' | undefined;
   customerName?: string | undefined;
   activeOpenBillId?: string | null | undefined;
   handleOpenBill?: (() => Promise<void>) | undefined;
@@ -63,6 +72,7 @@ export function CartActionBar({
   setDeductionOverridden,
   resetCart,
   tableNumber,
+  orderType = 'dine_in',
   customerName,
   activeOpenBillId,
   handleOpenBill,
@@ -155,7 +165,11 @@ export function CartActionBar({
       )}
 
       {/* Print Bill / Check preview button */}
-      {printBillEnabled !== false && hasLines && (Boolean(tableNumber?.trim()) || Boolean(activeOpenBillId)) && handlePrintBill && (
+      {/* The table arm is DINE-IN ONLY, the same rule the open-bill handlers apply.
+          An interim check is a table's check; a takeaway gets a receipt. Without
+          this the button appeared for a takeaway whose Table field held a stray
+          number, and printing it produced a check naming that table. */}
+      {printBillEnabled !== false && hasLines && ((orderType === 'dine_in' && Boolean(tableNumber?.trim())) || Boolean(activeOpenBillId)) && handlePrintBill && (
         <button
           type="button"
           className="pos-cart-print-bill-btn"

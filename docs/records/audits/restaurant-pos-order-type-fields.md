@@ -24,6 +24,33 @@ on a setting"). The mistake was never the field being unconditional; it is each
 | 6 | `PosScreen` split-bill remaining tab | wrote it into the new tab | `e3fa0d176` |
 | 7 | `PosScreen` send-to-kitchen open bill | ran the whole block + named the tab | (this round) |
 | 8 | `usePosHeldCarts` saved tab | the path that actually saves a tab | (this round) |
+| 9 | `CartActionBar` print-bill gate + `handlePrintBill` payload | printed a check naming the wrong table | (this round) |
+
+### Site 9 — the one that reaches PAPER
+
+Found by sweeping every *derivation* rather than the payloads alone, which is what the
+previous round's note suggested. Two halves, both unguarded, and the consequence is the
+first one a CUSTOMER sees:
+
+- `CartActionBar.tsx` gated the Print Bill button on
+  `Boolean(tableNumber?.trim()) || Boolean(activeOpenBillId)` — the **same condition**
+  that let site 7's whole open-bill block run. The table field renders on restaurant POS
+  unconditionally (`CartPanel.tsx:864`), so a takeaway with a stray number was offered
+  an interim check.
+- `handlePrintBill` then passed that number into the printed args, and
+  `completedSale.ts:232` renders it while `:212` **derives the receipt number from
+  it** — so the check handed over named a table the order did not have.
+
+Fixed by threading `orderType` into `CartActionBar` (new optional prop, dine-in
+default so retail and existing tests are untouched), guarding the gate, and deriving a
+`billTable` in the handler for the number, the payload and the toast.
+
+**Sweep result, stated for the record:** after this fix the exhaustive sweep finds
+**three** guarded derivations in `PosScreen` plus one in `usePosHeldCarts` plus the
+gate in `CartActionBar`, and **no bare derivation that is persisted or printed**. The
+remaining bare hits are display-only (`bareTableNumber(tableNumber)` inside a
+`<Localized>` label, `matchesTableBill`, an input value) and are correct: they render
+what the cashier typed, which is the field's job.
 
 ### Sites 7 and 8, and why the class guard was blind to them
 

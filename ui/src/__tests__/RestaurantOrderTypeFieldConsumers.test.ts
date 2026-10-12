@@ -174,6 +174,43 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     ).toBe(true);
   });
 
+  it('print-bill GATE and PAYLOAD — the table it names on an interim check', () => {
+    // The NINTH site, found 2026-10-12 by sweeping every derivation rather than the
+    // payloads alone. Two halves, both unguarded:
+    //
+    //   CartActionBar gates the button on `Boolean(tableNumber?.trim()) ||
+    //   Boolean(activeOpenBillId)` — the SAME condition that made site 7's whole
+    //   open-bill block run. The table field renders on restaurant POS
+    //   unconditionally (CartPanel.tsx:864), so on a takeaway with a stray number
+    //   the button APPEARS.
+    //
+    //   handlePrintBill then puts that table into the printed args, and
+    //   completedSale.ts:212 derives the receipt NUMBER from it too — so the check
+    //   handed to the customer names a table the order does not have.
+    //
+    // An interim bill is a table's check. A takeaway gets a receipt, not a check
+    // for table 99.
+    const actionBar = read('../features/sales/components/CartActionBar.tsx');
+    expect(
+      actionBar,
+      'the Print Bill button must not treat a bare table number as a reason to show ' +
+        'itself on a non-dine-in order; the button gates on the same unguarded ' +
+        'condition that let site 7 run its open-bill block.',
+    ).toContain("orderType === 'dine_in'");
+
+    const printHandler = POS_SCREEN.slice(
+      POS_SCREEN.indexOf('const handlePrintBill'),
+      POS_SCREEN.indexOf('const handleConfirmSplitBill'),
+    );
+    expect(printHandler.length, 'handlePrintBill moved — re-point this guard').toBeGreaterThan(0);
+    expect(
+      /const billTable = orderType === 'dine_in'/.test(printHandler),
+      'handlePrintBill must derive the table it prints under the dine-in rule; ' +
+        'otherwise a takeaway with a stray number prints a check naming that table, ' +
+        'and completedSale.ts derives the receipt number from it.',
+    ).toBe(true);
+  });
+
   it('the customer-name field is deliberately NOT restricted', () => {
     // A takeaway still has a customer to name on the ticket, so restricting it
     // would be a regression introduced by symmetry with the table/pax cases.
