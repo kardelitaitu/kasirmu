@@ -805,7 +805,14 @@ export function CartPanel({
                 />
               </div>
             )}
-            {setGuestCount && guestCountEnabled !== false && (
+            {/* ⚠️ DINE-IN ONLY. products.ftl:105 defines pax as "party size and
+                number of SEATED GUESTS PER TABLE", so a takeaway or delivery order
+                has nothing to answer it with — yet the field was offered on every
+                order type, the same mistake the table DISPLAY had (547bf031d).
+                The setting gate below is unchanged: an unset key still SHOWS the
+                field for a dine-in order, which retail and the restaurant default
+                both rely on. */}
+            {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
               <div className="pos-cart-guest-field">
                 <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
