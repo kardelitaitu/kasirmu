@@ -37,6 +37,35 @@
 
 ---
 
+
+> ⚠️ **CORRECTION 2026-10-11 (docs-auditor, batch 15) — THE ACCEPTANCE COMMAND IN THIS FILE IS
+> UNRUNNABLE, because the crate was renamed one day after this record's last pass.**
+> The package at `apps/cloud-server/` is **`kasirmu-cloud`** today, not `oz-cloud-server`.
+> `apps/cloud-server/Cargo.toml:2` reads `name = "kasirmu-cloud"`, and `oz-cloud-server` returns
+> **0 hits** anywhere under `apps/`. The rename landed in **`83180fd68`, 2026-09-17**,
+> `refactor(workspace): rename the app and CLI binary and lib targets` — the day after this file's
+> final (2026-09-16) pass, which is why no pass inside it caught the change.
+>
+> **What this affects.** Every one of the **13** `oz-cloud-server` spellings in this file, of which
+> four matter to a reader who acts on them:
+> `cargo test -p oz-cloud-server sync` (the stated **acceptance command**, at the §"acceptance"
+> bullets and in the EOF reproduction blocks), `cargo check -p oz-cloud-server --all-targets`,
+> `python scripts/verify-pg-tests-ran.py --crate oz-cloud-server`, and the claim at the Target
+> Crate line that `Cargo.toml:2` declares that name. Run verbatim today, the `cargo` forms fail
+> with *"package ID specification `oz-cloud-server` did not match any packages"* — they do not
+> merely point at a moved file, they cannot run.
+>
+> **The live spelling is `kasirmu-cloud`:** `cargo test -p kasirmu-cloud sync`.
+>
+> **What this does NOT change.** The record's substantive findings all stand — the zero-skip
+> condition, the deliberate refusal to rename to `done-`, the sizing measurement, and the §9
+> ruling. Only the package token moved. Per this corpus's convention the dated prose above is left
+> verbatim; a 2026-09-16 measurement is evidence of that day, and the rename is the news.
+>
+> NOTE for the campaign: this is the **copy-pasteable-command** class — a `cargo -p` invocation is
+> different from a prose path reference, because a reader runs it and it fails hard. `cargo metadata`
+> is the authority on package names; `apps/desktop-tauri` is likewise package `kasirmu-app`.
+
 ## 🔒 Coordination & Path Fencing Rules
 
 1. **Commit Subject Convention:** `refactor(cloud-sync): ...`

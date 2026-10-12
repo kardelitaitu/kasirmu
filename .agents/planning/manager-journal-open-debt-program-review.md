@@ -203,3 +203,25 @@ same duplication retired at c8efd4b2a. HANDED-OFF-BUT-STILL-OPEN: debt :315 says
 elsewhere, yet todo-tools.md:443 is still '- [ ]'; and done-todo-tools-agents-3.md:68/:84 shows a '- [ ]' box
 while its own line records check:all GREEN — a tick that contradicts its own evidence.
 CROSS-LISTED FENCE: todo-operational-integrity.md:173 fences todo-payment-agents-4.md — a SECOND plan licensed to
+
+
+---
+
+## ADDENDUM 2026-10-11 — three sibling pointers moved under this note (dated correction, nothing above retracted)
+
+This note was written 2026-09-13 and the whole `.agents/` tree was reorganised hours later by
+`edd97e5c0` ("refactor(agents): reorganize .agents/ into logical sandbox subdirectories"), which moved
+40+ files. Three pointers in the body above now name a path that does not exist. The FINDINGS they
+carry are unaffected — only the address moved:
+
+| pointer above | line | live path today |
+|---|---|---|
+| `.agents/...-ownership.md` | :5 | `.agents/planning/manager-journal-open-debt-program-review-ownership.md` |
+| `.agents/manager-journal-open-debt-program-review-waves.md` | :49 | `.agents/planning/manager-journal-open-debt-program-review-waves.md` |
+| `.agents/manager-wave4-rules.md` | :171 | `.agents/reviews/manager-wave4-rules.md` |
+
+Read the three citations as evidence of where the work was filed on the day, and follow the table for
+the current address. `check-dead-refs.py` does not see this break: it treats this corpus as dated
+records and skips it, and its whole-tree basename fallback would have read `...-ownership.md` as alive
+a directory away had it not been skipped. Recorded rather than repointed because the body is a dated
+journal and rewriting its addresses would falsify the record of where things were.

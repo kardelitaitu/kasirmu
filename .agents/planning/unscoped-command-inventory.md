@@ -1,5 +1,8 @@
 # Unscoped IPC command inventory — the gate gap the orphan was built to measure
 
+> **PATH CORRECTION 2026-10-11 (docs-auditor).** The sibling records cited above by `.agents/<name>.md` were moved into `.agents/planning/` by `a7331612a` (2026-09-18, *"restore planning, analysis, and debt records to planning/"*), so the bare `.agents/<name>.md` form resolves to nothing and a reader pasting it fails. The links are left as written — this is a dated record and the paths were correct when measured — with the mapping below. `.agents/planning/` is the live parent for every file named in this note.
+> - `.agents/registration-gate-audit-findings.md` -> `.agents/planning/registration-gate-audit-findings.md`
+
 > **CORRECTION 2026-09-13 ~05:30, anchor HEAD `e046e2f26` — the DESKTOP `gated` column here is
 > not a permission-check claim.** These classifications came from the registration-gate predicate,
 > whose marker vocabulary is four substrings (`require_permission`, `permissions::`,

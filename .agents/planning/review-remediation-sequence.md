@@ -1,5 +1,9 @@
 # Remediation Sequence - Codebase Review, 2026-09-12
 
+> **PATH CORRECTION 2026-10-11 (docs-auditor).** The sibling records cited above by `.agents/<name>.md` were moved into `.agents/planning/` by `a7331612a` (2026-09-18, *"restore planning, analysis, and debt records to planning/"*), so the bare `.agents/<name>.md` form resolves to nothing and a reader pasting it fails. The links are left as written — this is a dated record and the paths were correct when measured — with the mapping below. `.agents/planning/` is the live parent for every file named in this note.
+> - `.agents/review-backlog-codebase-review.md` -> `.agents/planning/review-backlog-codebase-review.md`
+> - `.agents/manager-journal-codebase-review.md` -> **gitignored by design** (`.gitignore:275`), never tracked; its absence is expected, not drift, and the sentence above already says it is cited by location rather than as repo history.
+
 Derived from the review's own findings plus a sequencing pass by spawn_thinker (f05fe3dc). Every claim below carries the
 evidence in `.agents/manager-journal-codebase-review.md` (3,897 lines; kept on disk and gitignored, not a tracked path — it is
 cited here by location, not as repo history) and the report in

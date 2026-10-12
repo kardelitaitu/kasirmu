@@ -218,6 +218,27 @@ each of the three ticks cites this same block, so the sharing is on the record r
    modulo the refused noun** (merged `:175`); `:94`/`:118` milestones → **CANCELLED** /
    **LANDED-UNDER-THE-`refactor(kds)`-SERIES** (merged `:171`/`:177`). The source-doc glyphs stay as
    they are by design: dispositions live once, in the merged plan.
+
+> ⚠️ **CORRECTION 2026-10-11 (docs-auditor, batch 15) — item 2 above is FALSE ABOUT THE PRESENT for
+> the first of the three dispositions it lists.** `KdsTicketLineItem` and `KdsTimerBadge` DID
+> ship, the day after the rejection was written. Both files exist at HEAD —
+> `ui/src/features/kds/components/KdsTicketLineItem.tsx` and `.../KdsTimerBadge.tsx` — and
+> `git log --diff-filter=A` dates both to **`622a33bfb`, 2026-09-16 11:16:43 +0700**,
+> `refactor(kds-ui): relocate line-item row and SLA badge out of KdsTicketCard — Phase 2.1
+> extraction, 1308 green, registered in screenExtraction` (4 files, +165/−75). The merged plan's
+> rejection (its `:168`/`:169` and the `:290`/`:291` ruling table) therefore records a decision
+> that **the next day's commit overrode in substance**, and it was not re-ruled: the two components
+> shipped as the behaviour-preserving relocation this file's own Phase 2.1 boxes describe, with the
+> SLA rule staying single-sited in `useTicketSla.ts` — which is the objection the rejection was
+> actually about. **Read the two verdicts together and prefer the commit:** "REJECTED" was a decision
+> about duplicating logic, and `622a33bfb` honoured it (view-only wrapper, zero logic copied) while
+> still creating the files. `KdsHeaderToolbar` — the third disposition — remains correct: it is
+> absent from the tree, and that rejection stands.
+>
+> The dated block above stays verbatim, as this corpus's convention requires; a verdict is not
+> rewritten to match a later tree. This note exists so a reader of item 2 does not conclude that two
+> files which are present do not exist.
+
 3. **The one finding this lane filed without a fix — the SLA clamp disagreement (UI 30/60 min vs
    engine 14/15 min, no test pinning them together) — landed fixed today: `3df117977`.** Engine
    ceiling wins by owner ruling; the minute ceilings now DERIVE from it, the hamburger sliders offer

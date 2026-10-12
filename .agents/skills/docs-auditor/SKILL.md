@@ -335,8 +335,18 @@ Two corpora are **records by convention**, and the correct audit outcome for the
 
 | Corpus | Footer convention | Tooling |
 |---|---|---|
-| `.agents/archived/**`, `.agents/reviews/**`, `.agents/planning/**`, `.agents/management-journal/**` | **none** — inline HTML-comment stamps only | `check-dead-refs.py` skips them ("dated records") |
-| `docs/records/**`, `docs/specs/_done/**`, any `todo-`/`plan-`-named file | mixed | skipped or exempt by name |
+| `.agents/planning/**`, `.agents/reviews/**` | **none** — inline HTML-comment stamps only | `check-dead-refs.py` lists these in its `SCRATCH` tuple (not `HIST_DIR_PREFIXES`) and skips them |
+| `.agents/archived/**`, `.agents/management-journal/**`, `.agents/gates/**`, `.agents/incidents/**` | **none** | skipped by the dated-record rules |
+| `docs/records/**`, `docs/specs/_done/**`, `docs/plans/**`, any `todo-`/`plan-`-named file | mixed | in `HIST_DIR_PREFIXES`, skipped |
+| `.agents/skills/**`, `.agents/management/` | the SKILL footer convention | **SCANNED** — deliberately not exempt, because these are live contracts |
+
+**Do not read a scoped checker run on this corpus as coverage.** Running
+`check-dead-refs.py <an .agents/planning file>` prints `scanned 0 markdown files` and
+`dated records skipped: 0` while the file is in fact exempt via the `SCRATCH` list — the
+counter tracks the other list. A real blind spot follows from that: verify `cargo -p` package
+names in these records with `cargo metadata`, not with the checker's exit code. Measured
+2026-10-11: a record cited `-p oz-cloud-server` 25 times (the package is `kasirmu-cloud`) and
+the scoped run still exited 0.
 
 Do NOT add a `> last audited` footer to these. It would misrepresent a completed record as a
 live claim document. A record citing a pre-rebrand path, a moved corpus, a consolidated
@@ -355,7 +365,13 @@ dated correction under the corpus's own convention if it has one.
   A reader pasting the literal path fails. Any doc citing a sibling by absolute path is a sweep target.
 - **8-hex tokens in these journals are AGENT ROLE IDS, not commit SHAs** (`ops 7cca72fe`,
   `writer W1 6d5670ed`, `coder C1 737bd54c`). Exclude the 8-hex role-id form from any SHA sweep
-  over `.agents/`, or it reports a dozen false dead commits.
+  over `.agents/`, or it reports a dozen false dead commits. Measured on one 6,495-line journal:
+  42 of 247 hex tokens were role ids.
+- **32-hex and 12-hex tokens can be md5/sha1 CHECKSUMS**, not commits — and some journals cite
+  non-resolving SHAs **on purpose** (a superseded round-log tip, a documented typo, or a token
+  carrying its own `dead-ref: ok` pragma). Before reporting a non-object as drift, read the
+  surrounding line: in the same 6,495-line file all six odd-length non-objects were self-explained
+  by the record's own text, giving **0 unexplained dead SHAs** out of 247.
 
 The 2026-09-13 reorg (`edd97e5c0`) moved or deleted 40+ files, including `.agents/AGENTS.md`
 (206 lines, deleted with no rename destination). **Assume a bare `.agents/<name>.md` citation
