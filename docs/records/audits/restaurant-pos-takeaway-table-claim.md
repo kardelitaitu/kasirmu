@@ -7,7 +7,7 @@ audited for accessible NAMES but never for BEHAVIOUR.
 
 The cart panel renders the **Table number** field for the restaurant POS on
 **every** order type. Its comment says that is deliberate
-(`CartPanel.tsx:735-743`: table capture "does not depend on a setting"), and that
+(`CartPanel.tsx:855-862`: table capture "does not depend on a setting"), and that
 is fine on its own.
 
 What was not fine is that the table CLAIM did not check the order type either:
@@ -132,7 +132,7 @@ tab is still usable by customer name. Kill-tested: restoring the unguarded
 
 All three read `tableNumber` as though it were meaningful on every order type,
 because the cart panel offers the field on every order type. Worth remembering
-that the FIELD being unconditional is deliberate (CartPanel.tsx:735-743) — it is
+that the FIELD being unconditional is deliberate (CartPanel.tsx:855-862) — it is
 each READER that has to apply the order-type rule.
 
 ## Fourth site: the DISPLAY half (`547bf031d`)
@@ -151,7 +151,7 @@ takeaway order, and the field was still offered. Measured in jsdom: the banner's
 text was `"Table 12Active Tab"` for a takeaway.
 
 The field itself is deliberately unconditional — the cart offers it for the
-restaurant POS on every order type (CartPanel.tsx:735-743, "does not depend on a
+restaurant POS on every order type (CartPanel.tsx:855-862, "does not depend on a
 setting"), and that is a reasonable choice. It is each READER that owes the rule.
 
 Fixed with a single `showTableForOrder = orderType === 'dine_in' && !!tableNumber`
@@ -183,6 +183,22 @@ It was **not** fixed, because it is harmless: `grep guestCount crates/` returns
 nothing — the backend never reads it, so it is opaque cart data that cannot
 corrupt a table, a ledger or a receipt. Recording the decision so a later pass
 does not "fix" it by symmetry with the table cases.
+
+## Coordinate re-verified (2026-10-11, docs-auditor)
+
+The comment this record quotes — table capture "does not depend on a setting" — is still in
+`CartPanel.tsx`, but it is at **`:855-862`**, not `:735-743`. It did not change or get deleted:
+the DISPLAY fix in this very record (`547bf031d`) added the active-tab banner **above** the
+table-number field, pushing the field and its comment down by 120 lines. The three citations
+above were repointed to the live coordinate; the original `:735-743` was a correct reading of
+the revision the record measured.
+
+Everything else in this record was re-derived at HEAD and holds: all four guard sites
+(`PaymentModal.tsx:922`, `:1469`, `:1212`, `PosScreen.tsx:766`) carry the `orderType === 'dine_in'`
+condition with the comments this record quotes; `showTableForOrder` is at `CartPanel.tsx:458`;
+`heldCartLabel` is at `features/sales/utils/tableLabel.ts:64`; all four named guard tests exist with
+their exact titles; and the negative claim about `guestCount` still holds — `grep guestCount crates/`
+returns **0** hits, so it remains opaque cart data on the backend.
 
 ## Not verified live
 

@@ -7,11 +7,17 @@ split into four files plus a shared harness:
 
 | File | Lines | Describes | Time |
 |---|---|---|---|
-| `nodeTopologyEditorCore.test.tsx` | 3,021 | 30 | 9.4s |
-| `nodeTopologyEditorWiresAndShortcuts.test.tsx` | 2,926 | 26 | 9.4s |
-| `nodeTopologyEditorWarehouseAndCanvas.test.tsx` | 2,597 | 25 | 9.6s |
-| `nodeTopologyEditorSweepsAndExport.test.tsx` | 3,782 | 13 | 10.5s |
+| `nodeTopologyEditorCore.test.tsx` | 3,004 | 30 | 9.4s |
+| `nodeTopologyEditorWiresAndShortcuts.test.tsx` | 2,908 | 26 | 9.4s |
+| `nodeTopologyEditorWarehouseAndCanvas.test.tsx` | 2,580 | 25 | 9.6s |
+| `nodeTopologyEditorSweepsAndExport.test.tsx` | 3,767 | 13 | 10.5s |
 | `topologyEditorTestHarness.tsx` | 431 | — | (shared) |
+
+**Line counts corrected 2026-10-11 (docs-auditor).** The four per-file line numbers above
+were drafted before the final edit and were never true: each file has exactly ONE revision
+(`20da3835c`) and has not changed since, so `wc -l` on the committed blob gives 3,004 / 2,908 /
+2,580 / 3,767 rather than the 3,021 / 2,926 / 2,597 / 3,782 first written. The describe counts
+(30/26/25/13 = 94), the `it()` count (549) and the timings are unaffected and verified exact.
 
 Balanced against the MEASURED per-describe durations, not line counts.
 

@@ -615,6 +615,21 @@ Same batch: a plan dated 2026-10-05 recorded chain-hash tamper detection as "DEF
 first plan would conclude the feature does not exist.** When two sibling plans cover the same milestone,
 diff their status words — the disagreement localises the stale one.
 
+**36. Discriminating "never true" from "dated drift": count the named file's REVISIONS.** A table
+whose rows name files that still EXIST is a present-tense claim, unlike a reading of a since-changed tree.
+The test is one command per row: if the named file has exactly ONE revision and its value never matched,
+the number was **never true** (case (a) — repair it); if the file gained revisions after the record's date,
+the number is **dated drift** (name the new value, leave the old). Measured 2026-10-11: a split table's
+four line counts (3,021/2,926/2,597/3,782) were never true at any commit — each file had one revision and
+the real values are 3,004/2,908/2,580/3,767 — while the SAME table's describe and it() counts were exact.
+**Without this discriminator, a "never true" number gets excused as dated drift forever.**
+
+**37. A doc's own fix can invalidate the citations beneath it.** Trap 7 (a "verbatim" quote whose path
+resolves but whose content moved) fired from inside a single record: its display fix added a banner ABOVE a
+cited block, pushing a cited comment from `:735-743` to `:855-862` — 120 lines. **A record whose remedy
+adds or removes markup deserves a re-read of every line citation below the change**, because the fix and
+the citation rot are the same edit.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually
