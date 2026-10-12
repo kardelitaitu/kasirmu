@@ -308,6 +308,7 @@ export default function PaymentModal({
     addSplit,
     removeSplit,
     updateSplit,
+    splitWays,
   } = useSplitTenderState();
 
   const { isEnabled } = useFeatures();
@@ -1116,6 +1117,15 @@ retryCurrencyLoad,
   // the hook - so listing it cannot re-fire this callback on any render; the value
   // and the identity of the array are unchanged in behaviour.
   }, [splits.length, effectiveTotalInCartCurrency, cartCurrency, setSplits]);
+
+  const handleSplitWays = useCallback((ways: number) => {
+    const literals = distributeEvenly(
+      effectiveTotalInCartCurrency,
+      ways,
+      minorUnitExponent(cartCurrency),
+    );
+    splitWays(ways, literals);
+  }, [effectiveTotalInCartCurrency, cartCurrency, splitWays]);
 
   const canComplete = useMemo(() => {
     // CUR-02: settling in a charge currency records `tender_rate_millionths`
@@ -2428,6 +2438,7 @@ retryCurrencyLoad,
               onRemoveSplit={removeSplit}
               onUpdateSplit={updateSplit}
               onAutoSplitEvenly={autoSplitEvenly}
+              onSplitWays={handleSplitWays}
             />
 
             {loyaltyLicensed && loyaltyAccount && (

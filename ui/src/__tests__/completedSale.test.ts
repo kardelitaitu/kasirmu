@@ -229,7 +229,7 @@ describe('buildKitchenChitReceipt', () => {
         courseId: 'main',
         note: 'Pedas level 3, tanpa timun',
         modifiers: [
-          { modifierId: 'mod-1', modifierName: 'Extra Telur', priceDeltaMinor: 5000 },
+          { groupId: 'grp-1', groupName: 'Add-ons', modifierId: 'mod-1', modifierName: 'Extra Telur', priceMinor: 5000 },
         ],
       },
       {
@@ -251,13 +251,14 @@ describe('buildKitchenChitReceipt', () => {
     expect(chit.customerName).toBe('Bpk. Ahmad');
     expect(chit.items).toHaveLength(2);
 
-    expect(chit.items[0].name).toBe('[Main Course] Nasi Goreng Spesial');
-    expect(chit.items[0].quantity).toBe(2);
-    expect(chit.items[0].note).toBe('Extra Telur | Pedas level 3, tanpa timun');
+    const [first, second] = chit.items ?? [];
+    expect(first?.name).toBe('[Main Course] Nasi Goreng Spesial');
+    expect(first?.quantity).toBe(2);
+    expect(first?.note).toBe('Extra Telur | Pedas level 3, tanpa timun');
 
-    expect(chit.items[1].name).toBe('[Beverage] Es Teh Manis');
-    expect(chit.items[1].quantity).toBe(1);
-    expect(chit.items[1].note).toBeUndefined();
+    expect(second?.name).toBe('[Beverage] Es Teh Manis');
+    expect(second?.quantity).toBe(1);
+    expect(second?.note).toBeUndefined();
   });
 
   it('generates a fallback receiptNumber when chitNumber is omitted', () => {
@@ -270,7 +271,7 @@ describe('buildKitchenChitReceipt', () => {
 
     expect(chit.receiptNumber).toMatch(/^KOT-5-\d+$/);
     expect(chit.items).toHaveLength(1);
-    expect(chit.items[0].quantity).toBe(1);
+    expect(chit.items?.[0]?.quantity).toBe(1);
   });
 });
 

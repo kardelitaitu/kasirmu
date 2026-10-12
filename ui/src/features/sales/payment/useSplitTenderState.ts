@@ -79,6 +79,8 @@ export interface UseSplitTenderStateResult {
   removeSplit: (id: number) => void;
   /** Patches one row by id, so method and otherLabel survive an amount edit. */
   updateSplit: (id: number, patch: Partial<SplitRow>) => void;
+  /** Re-allocates rows to exact count (e.g. party split), populating amounts and keeping existing methods. */
+  splitWays: (ways: number, literals: string[]) => void;
 }
 
 export function useSplitTenderState(): UseSplitTenderStateResult {
@@ -107,6 +109,23 @@ export function useSplitTenderState(): UseSplitTenderStateResult {
     setSplits((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }, []);
 
+  const splitWays = useCallback((ways: number, literals: string[]) => {
+    if (ways <= 0) return;
+    setSplits((prev) => {
+      const result: SplitRow[] = [];
+      for (let i = 0; i < ways; i++) {
+        const existing = prev[i];
+        result.push({
+          id: existing ? existing.id : nextSplitId.current++,
+          method: existing ? existing.method : (i === 1 ? 'card' : 'cash'),
+          otherLabel: existing ? existing.otherLabel : '',
+          amountMinor: literals[i] ?? '',
+        });
+      }
+      return result;
+    });
+  }, []);
+
   return {
     splitMode,
     setSplitMode,
@@ -115,5 +134,6 @@ export function useSplitTenderState(): UseSplitTenderStateResult {
     addSplit,
     removeSplit,
     updateSplit,
+    splitWays,
   };
 }

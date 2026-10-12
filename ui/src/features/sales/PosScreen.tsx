@@ -1183,6 +1183,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => { cancelled = true; };
   }, [sessionToken]);
 
+  const tenderPresets = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('restaurant-tender-presets');
+      if (saved) {
+        const parsed = JSON.parse(saved) as number[];
+        const filtered = parsed.filter((n) => Number.isFinite(n) && n > 0);
+        if (filtered.length > 0) return filtered;
+      }
+    } catch { /* ignore */ }
+    return [5000, 10000, 20000, 50000, 100000, 200000, 500000];
+  }, []);
+
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {
       handleCloseShiftClick();
@@ -1661,6 +1673,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
           orderType={orderType}
+          tenderPresets={tenderPresets}
           // F20: undefined means "not loaded / never written", which the modal
           // resolves to its default (print). Passing `null` through would make an
           // unread setting indistinguishable from an explicit false.

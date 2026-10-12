@@ -313,4 +313,27 @@ describe('PaymentModal split-tender state transitions (characterization)', () =>
     expect(document.querySelectorAll('.payment-split-section input[type="number"]').length).toBe(0);
     expect(Array.from(document.querySelectorAll('.payment-split-amount-input')).every((el) => el.getAttribute('inputmode') === 'decimal')).toBe(true);
   });
+  it('T19 1-tap party split (Bagi Rata): clicking 3x directly creates 3 rows and distributes evenly', async () => {
+    await openModal(usd(10000));
+    await toggleOn();
+    const btn3x = document.querySelector('[data-testid="payment-split-ways-3"]') as HTMLButtonElement | null;
+    expect(btn3x).not.toBeNull();
+    fireEvent.click(btn3x!);
+    await expectRowCount(3);
+    await waitFor(() => expect(values()).toEqual([lit(3333, 'USD'), lit(3333, 'USD'), lit(3334, 'USD')]));
+  });
+  it('T20 1-tap party split (Bagi Rata): clicking 4x and 5x re-allocates row count and preserves integer totals', async () => {
+    await openModal(idr(100000));
+    await toggleOn();
+    const btn4x = document.querySelector('[data-testid="payment-split-ways-4"]') as HTMLButtonElement | null;
+    fireEvent.click(btn4x!);
+    await expectRowCount(4);
+    await waitFor(() => expect(values()).toEqual(['25000', '25000', '25000', '25000']));
+
+    const btn5x = document.querySelector('[data-testid="payment-split-ways-5"]') as HTMLButtonElement | null;
+    fireEvent.click(btn5x!);
+    await expectRowCount(5);
+    await waitFor(() => expect(values()).toEqual(['20000', '20000', '20000', '20000', '20000']));
+  });
 });
+
