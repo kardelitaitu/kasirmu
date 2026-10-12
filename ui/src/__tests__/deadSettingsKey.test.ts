@@ -43,6 +43,28 @@ const DECLARED_DEAD: Array<{ key: string; wouldNeed: string }> = [
   // the shared `useSound` hook unless the merchant switched it off. The note above was
   // also slightly wrong — `useSound` was never KDS-only (the retail POS uses it too),
   // the RESTAURANT path simply never called it.
+  {
+    // Added by the pre-bill / table-transfer / split-bill feature. The toggle says
+    // "Send newly added items to kitchen printer and KDS when saving or updating a
+    // tab" and NOTHING reads it, so saving a tab dispatches nothing: the switch is
+    // decorative, which is precisely the F1 defect this file exists to catch.
+    //
+    // DECLARED rather than wired, for the reason the file header gives: wiring it
+    // means INVENTING a KOT-send path on tab save (which items count as "newly
+    // added" on an UPDATE, what happens when the printer is offline, whether a
+    // re-save reprints). That is a feature, not a repair, and guessing at it here
+    // would ship a half-defined behaviour behind a switch that currently does
+    // nothing at all - worse, because the cashier would start getting chits.
+    //
+    // The pin keeps it visible: this entry FAILS the second case below the moment
+    // the key gains a reader, so it cannot outlive the debt it records.
+    key: 'restaurant.dispatch_on_tab_save',
+    wouldNeed:
+      'a KOT-send path on tab save/update: PaymentModal/usePosHeldCarts would have ' +
+      'to read this key and dispatch the items added since the tab was last saved, ' +
+      'with decisions about offline printers and whether a re-save reprints. Until ' +
+      'then the toggle promises dispatch that does not happen.',
+  },
 ];
 
 /** Production source under src/, minus tests and dev mocks. */
