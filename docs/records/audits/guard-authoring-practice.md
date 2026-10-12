@@ -148,11 +148,23 @@ already have, because the misfire is usually a property of the AUTHOR's habits, 
 one file. Two of the four above were in the same guard, and neither would have been
 noticed without the sweep.
 
-**Coverage at the time of writing: 10 guards, 13 mutations, 0 blind** (round 19).
+**Coverage at the time of writing: 10 guards, 16 mutations, 0 blind.**
 
-By guard: `PosScreenOrderTypePersistence` 5 (three payload keys, the restore condition,
-the restore apply), `PosScreenKitchenChitTable` 1, `PosScreenTableSyncReporting` 1,
-`PosListenerScopeClass` 1, `PosToastLocalization` 1, `OrderTypeDependentValueRule` 1,
-`TableManagementFloorSyncScope` 1, plus the guards whose subjects were mutated
-incidentally while another case was probed. Re-measure rather than trusting this line:
-a count copied forward is how the round-4 count misfire started.
+Every guard this session wrote is now mutation-verified, one mutation at minimum:
+
+| Guard | Mutations |
+|---|---|
+| `PosScreenOrderTypePersistence` | 5 — three payload keys, the restore condition, the restore apply |
+| `PosScreenKitchenChitTable` | 1 |
+| `PosScreenTableSyncReporting` | 1 |
+| `PosListenerScopeClass` | 1 |
+| `PosToastLocalization` | 1 |
+| `OrderTypeDependentValueRule` | 1 |
+| `TableManagementFloorSyncScope` | 1 |
+| `RestaurantOrderTypeFieldConsumers` | 1 |
+| `RestaurantPaxPersistenceOrderType` | 1 |
+| `PaymentHookLocalizationScope` | 1 |
+| (incidental subjects mutated while probing another case) | 2 |
+
+Re-measure rather than trusting this table: a count copied forward is how the round-4
+count misfire started, and this file has already carried one wrong number.
