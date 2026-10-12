@@ -1118,6 +1118,29 @@ describe('RestaurantReceiptsScreen — printer-hardware i18n sweep (no hardcoded
       'these lines hardcode user-visible English again — route them through l10n.getString',
     ).toEqual([]);
   });
+
+  it('switches between Customer Receipt and Kitchen Chit preview', async () => {
+    await renderScreen();
+    const customerTab = screen.getByTestId('restaurant-preview-tab-customer');
+    const kitchenTab = screen.getByTestId('restaurant-preview-tab-kitchen');
+    expect(customerTab).toBeInTheDocument();
+    expect(kitchenTab).toBeInTheDocument();
+
+    // Default is customer receipt
+    expect(customerTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('receipt-preview-kitchen-chit')).not.toBeInTheDocument();
+
+    // Click Kitchen Chit tab
+    fireEvent.click(kitchenTab);
+    expect(kitchenTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('receipt-preview-kitchen-chit')).toBeInTheDocument();
+
+    // Click Customer tab back
+    fireEvent.click(customerTab);
+    expect(customerTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('receipt-preview-kitchen-chit')).not.toBeInTheDocument();
+  });
 });
+
 
 

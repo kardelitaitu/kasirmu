@@ -153,6 +153,7 @@ export default function RestaurantReceiptsScreen({
   const [headerTitle, setHeaderTitle] = useState('');
   const [headerLine1, setHeaderLine1] = useState('');
   const [headerLine2, setHeaderLine2] = useState('');
+  const [previewMode, setPreviewMode] = useState<'customer' | 'kitchen'>('customer');
 
   // ── Paper margins state (mm) ────────────────────────────────
   const [marginTop, setMarginTop] = useState(5);
@@ -1466,9 +1467,28 @@ export default function RestaurantReceiptsScreen({
         >
           <div className="restaurant-preview-card noise-dither">
             <div className="restaurant-preview-header-bar">
-              <span className="restaurant-preview-title">
-                <Localized id="restaurant-preview-title">Print Preview</Localized>
-              </span>
+              <div className="restaurant-preview-tabs" role="tablist" aria-label={l10n.getString('restaurant-preview-title') || 'Receipt preview tabs'}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={previewMode === 'customer'}
+                  className={`restaurant-preview-tab ${previewMode === 'customer' ? 'active' : ''}`}
+                  onClick={() => setPreviewMode('customer')}
+                  data-testid="restaurant-preview-tab-customer"
+                >
+                  <Localized id="restaurant-preview-tab-customer">Customer Receipt</Localized>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={previewMode === 'kitchen'}
+                  className={`restaurant-preview-tab ${previewMode === 'kitchen' ? 'active' : ''}`}
+                  onClick={() => setPreviewMode('kitchen')}
+                  data-testid="restaurant-preview-tab-kitchen"
+                >
+                  <Localized id="restaurant-preview-tab-kitchen">Kitchen Chit (KOT)</Localized>
+                </button>
+              </div>
               <span className="restaurant-preview-badge">
                 <Localized id="restaurant-preview-live-badge">Live Preview</Localized>
               </span>
@@ -1486,6 +1506,59 @@ export default function RestaurantReceiptsScreen({
                 }}
               >
                 <div className="resto-receipt-printable-area">
+                  {previewMode === 'kitchen' ? (
+                    <div className="resto-receipt-kitchen-chit" data-testid="receipt-preview-kitchen-chit">
+                      <div className="resto-receipt-center resto-receipt-kot-header">
+                        <div className="resto-receipt-kot-badge">
+                          <Localized id="restaurant-preview-kot-title">*** KITCHEN ORDER TICKET (KOT) ***</Localized>
+                        </div>
+                        <div className="resto-receipt-table-large">
+                          {tablesEnabled && showTableNumber ? 'TABLE 1' : 'ORDER #42'}
+                        </div>
+                        <div className="resto-receipt-kot-meta">
+                          <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>·</span>
+                          <span>{staffDisplayName}</span>
+                          <span>·</span>
+                          <span>Pax: 3</span>
+                        </div>
+                        <div className="resto-receipt-divider" />
+                      </div>
+
+                      <div className="resto-receipt-kot-course">
+                        <div className="resto-receipt-kot-course-title">-- APPETIZER --</div>
+                        <div className="resto-receipt-kot-item">
+                          <span className="resto-receipt-kot-qty">1x</span>
+                          <span className="resto-receipt-kot-name">Lumpia Goreng</span>
+                        </div>
+                      </div>
+
+                      <div className="resto-receipt-kot-course">
+                        <div className="resto-receipt-kot-course-title">-- MAIN COURSE --</div>
+                        <div className="resto-receipt-kot-item">
+                          <span className="resto-receipt-kot-qty">2x</span>
+                          <span className="resto-receipt-kot-name">Nasi Goreng Spesial</span>
+                        </div>
+                        {showItemNotes && (
+                          <div className="resto-receipt-kot-note">* Pedas level 3, tanpa timun</div>
+                        )}
+                      </div>
+
+                      <div className="resto-receipt-kot-course">
+                        <div className="resto-receipt-kot-course-title">-- BEVERAGE --</div>
+                        <div className="resto-receipt-kot-item">
+                          <span className="resto-receipt-kot-qty">2x</span>
+                          <span className="resto-receipt-kot-name">Es Teh Manis</span>
+                        </div>
+                      </div>
+
+                      <div className="resto-receipt-divider" />
+                      <div className="resto-receipt-center resto-receipt-kot-footer">
+                        <Localized id="restaurant-preview-kot-end">*** END OF KOT ***</Localized>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Store Header with Logo */}
                   {businessLogo ? (
                     logoPosition === 'top' ? (
@@ -1665,6 +1738,8 @@ export default function RestaurantReceiptsScreen({
                       <span>kasir.mu</span>
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1708,6 +1783,40 @@ export default function RestaurantReceiptsScreen({
                   <rect x="6" y="14" width="12" height="8" />
                 </svg>
                 <Localized id="restaurant-test-print">Test Print Receipt</Localized>
+              </span>
+            </button>
+
+            {/* Test Kitchen Chit Button under preview */}
+            <button
+              type="button"
+              className={`resto-test-print-btn resto-anim-btn ${testingKitchenChit ? 'resto-anim-btn--loading' : ''}`}
+              disabled={testingKitchenChit}
+              aria-busy={testingKitchenChit || undefined}
+              onClick={handleTestKitchenChit}
+              data-testid="restaurant-receipts-preview-test-chit-btn"
+            >
+              <span className="resto-anim-btn__spinner-wrap" aria-hidden="true">
+                <span className="resto-anim-btn__spinner" />
+              </span>
+              <span className="resto-anim-btn__content resto-test-print-label">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                <Localized id="restaurant-test-kitchen-chit">Print Test Chit</Localized>
               </span>
             </button>
 
