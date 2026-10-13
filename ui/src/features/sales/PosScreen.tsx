@@ -1196,6 +1196,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // `courseFiringEnabled !== false` (:631, :669), so a stale read carrying the
   // PREVIOUS store's setting forward would hide course firing on a store that has
   // it enabled -- a POS capability disappearing across a store switch.
+  //
+  // ⚠️ UNPINNED, and the attempt is recorded so it is not repeated blindly (round 82,
+  // 2026-10-13). The sibling `receiptSettingsSeq` above IS pinned
+  // (PosScreenCoreFlow.test.tsx:~496) by switching the token and letting the stale read
+  // land; this one was tried the same way and the mutation SURVIVED -- removing the
+  // `if (stale()) return;` below still left the course bar hidden.
+  //
+  // Instrumented, and the reason is observable: with the guard removed and the stale
+  // read released LAST carrying 'true', `setCourseFiringEnabled(true)` ran but the bar
+  // did not come back. The read that matters re-runs at seq=3 against a SHARED ref=3
+  // while the stale one holds seq=1 -- so the guard WOULD fire -- yet the DOM is
+  // unchanged either way. The bar's gate also needs `lines.length > 0`, and the cart
+  // line was present at the assertion (verified), so the cart is not the explanation.
+  //
+  // The sibling's own comment (:490) names the constraint: "Unlike the course-firing
+  // flag, this one has a cart-FREE observable." So the next attempt needs an observable
+  // that reads `courseFiringEnabled` directly rather than through CartPanel's compound
+  // gate -- not another rewrite of this test.
   const courseFiringSeq = useRef(0);
   useEffect(() => {
     const seq = ++courseFiringSeq.current;
