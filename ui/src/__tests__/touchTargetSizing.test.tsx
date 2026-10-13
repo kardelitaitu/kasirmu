@@ -506,9 +506,6 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
  * it first.
  */
 const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
-  { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-height: 1.75rem', why: "Stock-count row remove control; 28px floor." },
-  { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-width: 1.75rem', why: "Stock-count row remove control; 28px floor." },
-  { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn::min-height: 34px', why: "KDS routing action button; 34px floor." },
   { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
   { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
   // The former `.pos-cart-order-type-btn::min-height: 2rem` entry is GONE, and the
@@ -644,12 +641,19 @@ function loadCoarseOverrides(tokens: Map<string, string>): Set<string> {
     const stripped = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
     for (const rule of parseRules(stripped, [])) {
       if (!rule.inPointerCoarse) continue;
-      const subject = subjectOfSelector(rule.selectors);
-      for (const decl of rule.body.split(';')) {
-        const m = SIZING_PROP_RE.exec(decl.trim());
-        if (!m) continue;
-        const px = parsePxValue(m[3]!.trim(), tokens);
-        if (px !== null && px >= MIN_TARGET_PX) raised.add(rel + '::' + subject);
+      // EVERY selector the rule names, not just the first. A coarse block that
+      // raises five controls writes them as one comma-separated rule, and
+      // subjectOfSelector reads only the first -- so the other four were never
+      // registered and kept being graded on their fine-pointer sizes. The
+      // multi-selector case below pins this.
+      for (const sel of rule.selectors.split(',')) {
+        const subject = subjectOfSelector(sel);
+        for (const decl of rule.body.split(';')) {
+          const m = SIZING_PROP_RE.exec(decl.trim());
+          if (!m) continue;
+          const px = parsePxValue(m[3]!.trim(), tokens);
+          if (px !== null && px >= MIN_TARGET_PX) raised.add(rel + '::' + subject);
+        }
       }
     }
   }
@@ -819,6 +823,52 @@ beforeAll(() => {
 /* ── Tests ───────────────────────────────────────────────────────── */
 
 describe('Touch target sizing compliance', () => {
+  it('a MULTI-SELECTOR coarse override exempts every selector it names, not only the first', () => {
+    // Found 2026-10-13 (round 35). KdsRoutingRulesEditor.css raises five controls to
+    // the floor in ONE coarse block:
+    //
+    //     @media (pointer: coarse) {
+    //       .kds-routing-section-btn,
+    //       .kds-routing-retry,
+    //       .kds-routing-switch,
+    //       .kds-routing-icon-btn,
+    //       .kds-routing-btn { min-height: var(--touch-target-min); }
+    //     }
+    //
+    // subjectOfSelector reads only the FIRST selector of a rule, so the override was
+    // registered as .kds-routing-section-btn alone. The other four were still graded
+    // on their fine-pointer min-*, which is why .kds-routing-btn's 34px stayed in
+    // KNOWN_VIOLATIONS even though the sheet raises it on a tablet -- a ratchet entry
+    // describing a control that is NOT a violation. A stale entry reads as a fresh
+    // regression, which is the exact failure this list's history warns about.
+    //
+    // Every selector a coarse rule names is a tap target raised by that rule.
+    const raised = new Set<string>();
+    for (const file of discoverCssFiles()) {
+      const rel = relative(UI_SRC, file).replace(/\\/g, '/');
+      const stripped = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const rule of parseRules(stripped, [])) {
+        if (!rule.inPointerCoarse) continue;
+        for (const sel of rule.selectors.split(',')) {
+          const subject = subjectOfSelector(sel);
+          for (const decl of rule.body.split(';')) {
+            const m = SIZING_PROP_RE.exec(decl.trim());
+            if (!m) continue;
+            const px = parsePxValue(m[3]!.trim(), loadTokens());
+            if (px !== null && px >= MIN_TARGET_PX) raised.add(rel + '::' + subject);
+          }
+        }
+      }
+    }
+    const routing = 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn';
+    expect(
+      raised.has(routing),
+      'the coarse rule raises this selector but the override set does not carry it -- ' +
+        'only the rule first selector is registered, so the other four controls in ' +
+        'that block are still graded on their fine-pointer sizes.',
+    ).toBe(true);
+    expect(raised.has('features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-icon-btn')).toBe(true);
+  });
   it('scans every stylesheet under ui/src, derived from the filesystem', () => {
     // A hardcoded list is the drift this suite exists to prevent; if the walk
     // ever returns a token set, fail loudly rather than pass vacuously.
@@ -911,7 +961,25 @@ describe('Touch target sizing compliance', () => {
     // control surfaced as a NEW violation. CartPanel.css now floors it at
     // --touch-target-min inside its own @media (pointer: coarse) block, which is
     // the state this guard grades as compliant, so there is no debt to record.
-    expect(KNOWN_VIOLATIONS.length).toBe(5);
+    // 5 -> 2 on 2026-10-13 (round 35), and NOT by fixing anything: three of the
+    // five were FALSE ENTRIES the gate could not see were false.
+    //
+    // THE GATE BUG. A coarse override written as one comma-separated rule was
+    // registered only for its FIRST selector, because subjectOfSelector reads
+    // `selectors.split(',')[0]`. KdsRoutingRulesEditor.css raises FIVE controls in
+    // one block and StockCountDetail.css raises three; in both, the entries below
+    // named a selector that was not first, so those controls were graded on their
+    // fine-pointer min-* even though the sheet already raises them on a tablet.
+    //
+    // The ratchet therefore held debt that had been PAID. loadCoarseOverrides now
+    // walks every selector of the rule, the ratchet immediately reported these
+    // three as no-longer-violating, and they are deleted as it instructs. The
+    // multi-selector case above pins the fix.
+    //
+    // Kept honest: removing an entry is sanctioned only after reading the sheet
+    // and confirming the violation is really gone, which is what the two blocks
+    // at KdsRoutingRulesEditor.css:482-490 and StockCountDetail.css:254-260 show.
+    expect(KNOWN_VIOLATIONS.length).toBe(2);
   });
 
   it('every exemption is justified, and none is a silent bypass', () => {
