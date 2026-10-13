@@ -12,8 +12,9 @@
 // (`1234567` minor USD is `$ 12,345.67`, not a seven-digit major) and produced a
 // green suite asserting nothing. Every string here was copied from a real run.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { formatMoney } from '@/types/domain';
+import { setThousandsSep } from '@/utils/storage';
 
 const money = (minor_units: number, currency: string) => ({ minor_units, currency });
 
@@ -21,6 +22,9 @@ const money = (minor_units: number, currency: string) => ({ minor_units, currenc
 const USD_7 = 123456789;
 
 describe('formatMoney: thousands separator', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
   it('groups the integer part and leaves the fraction alone', () => {
     // The separator never reaches the fraction: exactly one mark survives.
     const out = formatMoney(money(USD_7, 'USD'), 'en-US', 'dot', 'comma');
@@ -48,6 +52,31 @@ describe('formatMoney: thousands separator', () => {
     expect(formatMoney(money(USD_7, 'USD'), 'en-US', 'dot', sep)).toBe(expected);
   });
 
+  it('reads the bridge when the caller passes no separator', () => {
+    // The SYMMETRY case, and the one that makes the fix reach the operator.
+    //
+    // `decimalSep` already defaults through `getDecimalSep()` (domain.ts:477), so a
+    // store's decimal setting applies to every call site without any of them asking.
+    // The thousands separator defaulted to a literal 'none' instead, which meant the
+    // setting reached ONLY a caller that passed it — and no call site does.
+    //
+    // Consequence of the asymmetry: an operator sets the separator, SettingsContext
+    // seeds the bridge, and every screen still groups by locale. The setting appears
+    // to do nothing.
+    setThousandsSep('space');
+    expect(formatMoney(money(123456789, 'USD'), 'en-US', 'dot')).toBe('$ 1 234 567.89');
+    setThousandsSep('comma');
+    expect(formatMoney(money(123456789, 'USD'), 'en-US', 'dot')).toBe('$ 1,234,567.89');
+    setThousandsSep('none');
+    // 'none' falls back to the locale's own grouping, which is the pre-fix behaviour.
+    expect(formatMoney(money(123456789, 'USD'), 'en-US', 'dot')).toBe('$ 1,234,567.89');
+  });
+
+  it('an explicit argument still wins over the bridge', () => {
+    setThousandsSep('space');
+    expect(formatMoney(money(123456789, 'USD'), 'en-US', 'dot', 'dot')).toBe('$ 1.234.567.89');
+    setThousandsSep('none');
+  });
   it('defaults to locale grouping when the caller passes nothing', () => {
     // The default must not restyle a caller that never asked. The existing call
     // sites pass at most three arguments, and stay on the locale's own grouping.

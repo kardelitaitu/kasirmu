@@ -11,7 +11,7 @@ export type LineId = string & { readonly __brand: 'LineId' };
 /** Branded string type for stock-keeping unit codes. */
 export type Sku = string & { readonly __brand: 'Sku' };
 
-import { getDecimalSep } from '@/utils/storage';
+import { getDecimalSep, getThousandsSep } from '@/utils/storage';
 
 /** Money in minor units, paired with a 3-letter ISO-4217 code. */
 export interface Money {
@@ -488,9 +488,13 @@ export const formatMoney = (
   // store asked for. Passing `useGrouping: false` and grouping the integer part
   // ourselves is the only way to express a separator the locale does not choose.
   //
-  // `'none'` (the reader's default) keeps the previous locale-driven behaviour
-  // untouched, so no existing caller changes output unless a store set a value.
-  const tsep = thousandsSep ?? 'none';
+    // Defaults through the localStorage bridge, exactly as `decimalSep` does on the
+  // line above. The two settings are the printer's own pair — `ReceiptConfig` carries
+  // `decimal_separator` (:181) and `grouping` (:193) — so the preview must resolve both
+  // the same way or it can only ever agree with the paper on half the figures.
+  //
+  // An explicit argument still wins, so a caller with a reason can override.
+  const tsep = thousandsSep ?? getThousandsSep();
   const groupChar = tsep === 'comma' ? ',' : tsep === 'dot' ? '.' : tsep === 'space' ? ' ' : null;
   const fmt = new Intl.NumberFormat(locale, {
     style: 'decimal',
