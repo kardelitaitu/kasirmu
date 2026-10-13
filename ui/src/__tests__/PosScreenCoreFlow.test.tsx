@@ -485,10 +485,25 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     //
     // Reset to the factory's own default explicitly. Only the mocks a case replaces need
     // this; resetting all of them would drop the factory defaults and break every case.
+    // mockReset(), not just mockImplementation(): a queued `mockResolvedValueOnce` from a
+    // case that never consumed it SURVIVES both clearAllMocks() and a later
+    // mockImplementation. Probed on vitest (round 99): case A queues a once-value, case B
+    // calls the mock after clearAllMocks + mockImplementation and still receives A's value.
+    //
+    // The effect here was visible in the log: TWO scans of 'BARCODE-002' answered
+    // `ITEM-002` then `ITEM-001` -- the second got a leftover queued value intended for a
+    // different barcode. That is what failed `adds multiple products` (it got 1 line, not
+    // 2) and `persists active draft` (its scan answered a product it did not expect) under
+    // `--sequence.shuffle.tests`.
+    //
+    // mockReset() clears the implementation AND the once-queue, so the default must be
+    // re-installed straight after. Only the mocks cases queue values on need this.
+    vi.mocked(settingsApi.getSettingScoped).mockReset();
     vi.mocked(settingsApi.getSettingScoped).mockImplementation(() => Promise.resolve(null));
-    // Same rule for the product lookup: cases key it on their own barcode, and an
-    // implementation left behind answers \`null\` for every other code -- which is how the
-    // trimMemory case was silently depending on a neighbour (found by shuffling, round 93).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    // Cases key the lookup on their own barcode; an implementation left behind answers
+    // \`null\` for every other code, which is how the trimMemory case was silently
+    // depending on a neighbour (round 93).
     vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
       code: string) => mockLookupByBarcode(code)) as never);
     localStorage.clear();
