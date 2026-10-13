@@ -17,6 +17,7 @@ import PaymentModal from '@/features/sales/PaymentModal';
 import ItemModifierModal from '@/features/sales/components/ItemModifierModal';
 import { overrideLinePriceScoped, startSaleScoped, getProductTrackSerialBatchScoped, lookupSaleByReceiptBarcodeScoped } from '@/api/sales';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
+import { useInvalidSession } from '@/hooks/useInvalidSession';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
@@ -106,6 +107,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { goToWorkspacePicker } = useWorkspaceNav();
+  // A session that expires MID-SHIFT. AppShell's banner covers a REJECTED
+  // `createSession` at boot; this covers `invalidSession` answering a later command,
+  // which would otherwise leave the operator unable to take payment with nothing said.
+  const showSessionBanner = useInvalidSession();
   const { addToast } = useToast();
   const { session, isManager } = useAuth();
   // ADR #36 D7: cost editing is manager+ only (products:edit_cost). The
@@ -1609,6 +1614,21 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   return (
     <>
+    {/* Session died MID-SHIFT — see the hook above for why AppShell's banner does not
+        cover this. Styled by RetailPosScreen.css so the desktop shell, which does not
+        load AnalyticsScreen.css, gets a styled alert rather than a bare one. */}
+    {showSessionBanner && (
+      <div className="retail-session-banner" role="alert" data-testid="retail-session-banner">
+        <span>{requiredLocalized(l10nRef.current, 'analytics-session-expired-message')}</span>
+        <button
+          type="button"
+          className="retail-session-banner-action"
+          onClick={goToWorkspacePicker}
+        >
+          {requiredLocalized(l10nRef.current, 'analytics-sign-in-again')}
+        </button>
+      </div>
+    )}
     <div className="retail-pos" data-theme={theme}>
       {/* ── F2-3: cart-tax watcher — the key-bump remount below is the
            banner retry; the banner itself renders in RetailCartPanel ── */}

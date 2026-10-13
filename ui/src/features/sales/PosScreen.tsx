@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
+import { useInvalidSession } from '@/hooks/useInvalidSession';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,7 +27,6 @@ import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSe
 import { RestaurantFloatingCartBar } from '@/features/restaurant/components/RestaurantFloatingCartBar';
 import { RestaurantCartSheet } from '@/features/restaurant/components/RestaurantCartSheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useOrientation } from '@/hooks/useOrientation';
 
 import { formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
@@ -137,6 +138,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     resetCart,
     setLines,
   } = usePosState();
+  // A session that expires MID-SHIFT. AppShell's banner covers a REJECTED
   const { addToast } = useToast();
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
@@ -365,6 +367,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
+  // A session that expires MID-SHIFT. AppShell's banner covers a REJECTED
+  // `createSession` at boot; this covers `invalidSession` answering a later command,
+  // which used to be swallowed silently so the cashier could not take payment.
+  const showSessionBanner = useInvalidSession();
   const { orientation } = useOrientation();
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const isPortraitRestaurant = activeWorkspace === 'restaurant-pos' && !orientation.isLandscape;
@@ -1689,6 +1695,30 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   return (
     <>
+    {/* ── Session died MID-SHIFT ──────────────────────────────────────────
+        The AppShell banner keys on `sessionError`, which is set only when a REJECTED
+        `createSession` fails at boot. A session that expires during a shift never sets
+        it — an IPC command answers `invalidSession` instead, and this screen used to
+        swallow that kind silently (`if (kind === 'invalidSession') return;`), which is
+        right for a per-card settings read and wrong as the ONLY handling. The cashier
+        could not take payment and nothing said why.
+
+        Styled by PosScreen.css rather than importing the analytics component: its class
+        names are `analytics-session-banner*`, and AnalyticsScreen.css reaches the tablet
+        shell via tablet.css but NOT the desktop shell, so reusing it would render an
+        unstyled alert there. */}
+    {showSessionBanner && (
+      <div className="pos-session-banner" role="alert" data-testid="pos-session-banner">
+        <span>{requiredLocalized(l10nRef.current, 'analytics-session-expired-message')}</span>
+        <button
+          type="button"
+          className="pos-session-banner-action"
+          onClick={goToWorkspacePicker}
+        >
+          {requiredLocalized(l10nRef.current, 'analytics-sign-in-again')}
+        </button>
+      </div>
+    )}
     <div
       className="pos-screen"
       ref={posScreenRef}
