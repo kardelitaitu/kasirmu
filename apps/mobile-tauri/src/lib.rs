@@ -864,6 +864,7 @@ pub fn run() {
                                 match event {
                                     kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::StatusChanged(sc)) => {
                                         let _ = lan_app_handle.emit("tables:status-changed", &sc.table);
+                                        let _ = lan_app_handle.emit("tabs:changed", serde_json::Value::Null);
                                     }
                                     // Lease traffic. TableSyncEvent gained these three
                                     // variants in 9d46d3912 while this match kept only

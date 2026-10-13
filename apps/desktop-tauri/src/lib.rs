@@ -1233,10 +1233,12 @@ pub fn run() {
                                 }
                                 crate::lan_server::TableSyncEvent::StatusChanged(_) => {
                                     let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                                    let _ = uplink_app_handle.emit("tabs:changed", serde_json::Value::Null);
                                 }
                             }
                         } else {
                             let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                            let _ = uplink_app_handle.emit("tabs:changed", serde_json::Value::Null);
                         }
                     }
                 });
