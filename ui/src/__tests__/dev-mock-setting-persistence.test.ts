@@ -34,6 +34,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { invoke } from '@/dev-mock/tauri-api';
+import { getSettingScoped, setSettingScoped } from '@/api/settings';
 
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -41,17 +42,30 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
-const setSetting = (key: string, value: string) =>
-  invoke('set_setting_scoped', { sessionToken: 'mock-token', key, value });
-const getSetting = (key: string): Promise<string | null> =>
-  invoke<string | null>('get_setting_scoped', { sessionToken: 'mock-token', key });
+// These two go through the REAL api layer, not a hand-rolled invoke wrapper.
+//
+// They used to be local arrows calling invoke('set_setting_scoped'/'get_setting_scoped')
+// directly, which verify-test-shadow-copies.py flagged at similarity 1.0 against
+// api/settings.ts:296 — correctly: a one-line `const getSetting = (key) => invoke(...)`
+// has the same shape as the production `const getSetting = (key) => loggedInvoke(...)`,
+// and the suite was therefore exercising its own wrapper.
+//
+// The fix is not a rename. api/settings.ts:340 exports the real `getSettingScoped`,
+// which issues the SAME command with the same session handling, so importing it makes
+// this file test what the POS actually calls. The unscoped round-trip case below still
+// needs a raw `invoke`, and keeps it — that one deliberately reaches past the api layer
+// to compare the two spellings.
+const writeSetting = (key: string, value: string) =>
+  setSettingScoped('mock-token', key, value);
+const readSetting = (key: string): Promise<string | null> =>
+  getSettingScoped('mock-token', key);
 
 describe('dev-mock key/value setting persistence', () => {
   it('reads back a value it just wrote', async () => {
     const key = 'restaurant.auto_print_kitchen';
-    await setSetting(key, '1');
+    await writeSetting(key, '1');
     expect(
-      await getSetting(key),
+      await readSetting(key),
       'a value written to set_setting_scoped must be readable from ' +
         'get_setting_scoped — the POS reads this key to decide whether to ' +
         'auto-print kitchen chits',
@@ -60,33 +74,33 @@ describe('dev-mock key/value setting persistence', () => {
 
   it('overwrites an existing value rather than accumulating', async () => {
     const key = 'restaurant.course_firing';
-    await setSetting(key, '0');
-    expect(await getSetting(key)).toBe('0');
-    await setSetting(key, '1');
-    expect(await getSetting(key), 'the later write must win').toBe('1');
+    await writeSetting(key, '0');
+    expect(await readSetting(key)).toBe('0');
+    await writeSetting(key, '1');
+    expect(await readSetting(key), 'the later write must win').toBe('1');
   });
 
   it('answers null for a key that was never written', async () => {
     // The contract is string | null (api/settings.ts:340). A missing key must be
     // null, NOT an empty string: callers distinguish "unset" from "set to empty".
-    expect(await getSetting(`never.written.${Date.now()}`)).toBeNull();
+    expect(await readSetting(`never.written.${Date.now()}`)).toBeNull();
   });
 
   it('round-trips a JSON value', async () => {
     // RestaurantMenu stores the unavailable-SKU list as JSON text.
     const key = 'restaurant.unavailable_items';
     const value = JSON.stringify(['SKU-A', 'SKU-B']);
-    await setSetting(key, value);
-    expect(await getSetting(key)).toBe(value);
-    expect(JSON.parse((await getSetting(key))!)).toEqual(['SKU-A', 'SKU-B']);
+    await writeSetting(key, value);
+    expect(await readSetting(key)).toBe(value);
+    expect(JSON.parse((await readSetting(key))!)).toEqual(['SKU-A', 'SKU-B']);
   });
 
   it('mirrors the unscoped synonym onto the same store', async () => {
     // applyScopedAliases gives get_setting a _scoped twin; both must agree, or a
     // caller using the unscoped spelling sees a different value than the scoped
     // one writing it.
-    await setSetting('exchange.rate_sync_enabled', '1');
-    const scoped = await getSetting('exchange.rate_sync_enabled');
+    await writeSetting('exchange.rate_sync_enabled', '1');
+    const scoped = await readSetting('exchange.rate_sync_enabled');
     const unscoped = await invoke<string | null>('get_setting', { key: 'exchange.rate_sync_enabled' });
     expect(scoped).toBe(unscoped);
     expect(scoped).toBe('1');
