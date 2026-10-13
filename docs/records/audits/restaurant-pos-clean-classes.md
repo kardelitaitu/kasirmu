@@ -13,10 +13,10 @@ measured and what the measurement does NOT cover.
 |---|---|---|
 | Refund allocation rounding | swept the invariant the doc comment claims, 36k + 110k combinations | correct, and now pinned by `refundAllocationInvariant.test.ts` |
 | i18n on POS screens (plan F10) | 11 raw-English candidates across PaymentModal / PosScreen; all are the 3-arg `getString(key, null, 'fallback')` idiom, comments, or ISO country codes | clean |
-| Fallback keys resolve | every one of the 23 `getString(…, null, …)` sites has its key defined in a bundle | clean — the fallback is genuinely a fallback |
+| Fallback keys resolve | every one of the **28** `getString(…, null, …)` sites has its key defined in a bundle | clean — the fallback is genuinely a fallback |
 | Fire-and-forget writes | 5 in `features/restaurant`; the two destructive ones discard the promise, not the reporting | clean — their `try/catch` toasts on every path |
 | Tauri event subscriptions | 2 `listen(` call sites in the whole feature tree; both unlisten | clean |
-| Tablet vs desktop CSS scoping | 3 viewport-width `@media` (all in `responsive.css`), 25 `html[data-shell='tablet']` sites | correct by design |
+| Tablet vs desktop CSS scoping | 3 viewport-width `@media` (all in `responsive.css`), **23** `html[data-shell='tablet']` sites | correct by design |
 
 ## What each row does NOT say
 
@@ -36,6 +36,24 @@ loud-but-non-fatal), but it was not re-swept line by line.
 tablet-only rule uses it — a width-query mistake inside a component sheet would not
 appear in `theme/`.
 
+## Two counts corrected, 2026-10-14 (docs-auditor)
+
+Both figures in the table were wrong when this note was written, not stale: the trees
+at `d31ec537f` and at HEAD return the same numbers, so nothing drifted underneath them.
+
+- **`getString(…, null, …)` sites: 23 -> 28.** Measured over `ui/src` excluding
+  `__tests__` and `dev-mock`: 28 sites, 28 distinct keys, **0 missing from the en
+  bundles** (5,557 defined keys across the 27 en `.ftl` files under
+  `shared-ui/locales/`). The verdict was right and the number was not.
+- **`html[data-shell='tablet']`: 25 -> 23.** `git grep -c` over `ui/src` returns 23 at
+  both `d31ec537f` and HEAD.
+
+The class this belongs to is the one the docs-auditor skill calls *a count is not
+evidence*: a hand tally in a table reads as measured, and the two ways it can be wrong
+— the tally was careless, or the tree moved — look identical to a later reader. The
+	extbf{verdict} in both rows survives re-measurement, which is why this is a corrected
+number rather than a withdrawn finding.
+
 ## The refund row is the odd one
 
 It is listed as clean because the CODE is correct, but it started as a suspected defect.
@@ -48,3 +66,4 @@ hand-picked examples.
 # Re-verify with: cd ui && npx vitest run refundAllocationInvariant.test.ts i18nBundle.test.tsx
 #               lint-i18n.sh; and grep for `listen(` in ui/src/features
 
+> last audited 14-10-26 by docs-auditor
