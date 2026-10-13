@@ -554,6 +554,11 @@ eod-summary-voided-sales = Penjualan Dibatalkan
 eod-summary-voided-value = Nilai Pembatalan
 eod-summary-discounts = Penjualan dengan Diskon
 eod-summary-payment-methods = Metode Pembayaran Digunakan
+eod-csv-col-metric = Metrik
+eod-csv-col-value = Nilai
+eod-csv-row-date = Tanggal
+eod-csv-row-payment = Pembayaran — { $method }
+eod-csv-row-hour = Jam { $hour }:00
 
 # ── Cart ──
 cart-title = Keranjang

@@ -485,26 +485,35 @@ export default function EodReportScreen() {
       const cur = r.currency ?? 'USD';
       const money = (minor: number) => formatMoney({ minor_units: minor, currency: cur });
 
+      // Every label comes from the bundle. These were raw English literals while the
+      // screen beside them rendered the same facts through eod-summary-* / eod-* keys,
+      // so the file a restaurant hands its accountant was English-only in every locale
+      // -- and the two surfaces could disagree on wording that is meant to be one
+      // string. The row VALUES reuse those existing keys; only the four column and
+      // label keys above are new.
+      const t = (id: string, args?: Record<string, string | number>) =>
+        requiredLocalized(l10n, id, args);
+
       const headers = [
-        'Metric', 'Value',
+        t('eod-csv-col-metric'), t('eod-csv-col-value'),
       ];
       const rows: string[][] = [
-        ['Date', lastRefresh.toISOString().slice(0, 10)],
-        ['Total Revenue', money(r.total_revenue)],
-        ['Completed Sales', String(r.total_sales)],
-        ['Voided Sales', String(r.void_count)],
-        ['Voided Value', money(r.void_total)],
-        ['Discounts Applied', String(r.discount_count)],
+        [t('eod-csv-row-date'), lastRefresh.toISOString().slice(0, 10)],
+        [t('eod-summary-revenue'), money(r.total_revenue)],
+        [t('eod-summary-completed'), String(r.total_sales)],
+        [t('eod-summary-voided-sales'), String(r.void_count)],
+        [t('eod-summary-voided-value'), money(r.void_total)],
+        [t('eod-kpi-discounts'), String(r.discount_count)],
       ];
 
       // Payment breakdown
       for (const pmt of r.payment_breakdown) {
-        rows.push([`Payment - ${pmt.method}`, money(pmt.total)]);
+        rows.push([t('eod-csv-row-payment', { method: pmt.method }), money(pmt.total)]);
       }
 
       // Hourly breakdown
       for (const h of r.hourly_breakdown) {
-        rows.push([`Hour ${String(h.hour).padStart(2, '0')}:00`, money(h.total_minor)]);
+        rows.push([t('eod-csv-row-hour', { hour: String(h.hour).padStart(2, '0') }), money(h.total_minor)]);
       }
 
       const csv = buildCsv(headers, rows);
@@ -512,7 +521,7 @@ export default function EodReportScreen() {
     } finally {
       setCsvExporting(false);
     }
-  }, [lastRefresh]);
+  }, [lastRefresh, l10n]);
 
   const load = useCallback(async () => {
     setLoading(true);

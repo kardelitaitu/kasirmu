@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // renderWithProviders* (not renderWithFluentSync): the EOD screen's print button now
@@ -445,6 +447,43 @@ describe('EodReportScreen', () => {
     const [csv, filename] = mockDownloadCsv.mock.calls[0] as [string, string];
     expect(filename).toMatch(/^end-of-day-\d{4}-\d{2}-\d{2}\.csv$/);
     expect(csv).toContain(',');
+  });
+
+
+  it('labels every CSV row from the bundle, not with a raw English literal', async () => {
+    // The export wrote its Metric column as bare literals ('Total Revenue',
+    // 'Voided Sales', `Payment - ${method}`, `Hour 09:00`) while the screen beside it
+    // rendered the same facts through eod-summary-* / eod-* keys. So the file a
+    // restaurant hands its accountant was English-only in every locale, and the two
+    // surfaces could drift apart on wording that is meant to be one string.
+    //
+    // The keys already existed; the export simply did not use them.
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Export CSV')).toBeTruthy();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Export CSV'));
+    await waitFor(() => {
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
+    }, { timeout: 2000 });
+
+    const [csv] = mockDownloadCsv.mock.calls[0] as [string, string];
+    // The English values are what the bundle renders, so the assertion is on the
+    // IDIOM: every row label must come from a resolved key. A raw literal is
+    // indistinguishable in the OUTPUT, which is why this checks the source instead.
+    expect(csv, 'the Metric column must render the bundle value, not a literal').toContain('Total Revenue');
+    // And the export must not carry a label the bundle does not define.
+    const src = readFileSync(resolve(__dirname, '../features/sales/EodReportScreen.tsx'), 'utf-8');
+    const exportBody = src.slice(src.indexOf('const exportCsv'), src.indexOf('}, [lastRefresh]);'));
+    const literals = [...exportBody.matchAll(/\[\s*'([A-Z][A-Za-z ]{3,})'\s*,/g)].map((m) => m[1]);
+    expect(
+      literals,
+      'CSV row labels must be built from l10n lookups, not typed as English.',
+    ).toEqual([]);
   });
 
   // ── Shift summary with diff tags ──

@@ -642,6 +642,14 @@ eod-summary-voided-sales = Voided Sales
 eod-summary-voided-value = Voided Value
 eod-summary-discounts = Sales with Discounts
 eod-summary-payment-methods = Payment Methods Used
+# CSV export labels. The export wrote these as raw English literals while the screen
+# beside it rendered the same facts through eod-summary-* keys; the row VALUES reuse
+# those keys, and only these four have no screen equivalent.
+eod-csv-col-metric = Metric
+eod-csv-col-value = Value
+eod-csv-row-date = Date
+eod-csv-row-payment = Payment — { $method }
+eod-csv-row-hour = Hour { $hour }:00
 
 pos-cart-add-discount = + Add Discount
 pos-cart-add-promotion = + Promotions
