@@ -1197,23 +1197,22 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // PREVIOUS store's setting forward would hide course firing on a store that has
   // it enabled -- a POS capability disappearing across a store switch.
   //
-  // ⚠️ UNPINNED, and the attempt is recorded so it is not repeated blindly (round 82,
-  // 2026-10-13). The sibling `receiptSettingsSeq` above IS pinned
-  // (PosScreenCoreFlow.test.tsx:~496) by switching the token and letting the stale read
-  // land; this one was tried the same way and the mutation SURVIVED -- removing the
-  // `if (stale()) return;` below still left the course bar hidden.
+  // PINNED (round 83, 2026-10-13) by switching the token and letting the stale read land,
+  // the same way as its sibling above. Removing `if (stale()) return;` below now fails
+  // PosScreenCoreFlow.test.tsx -> 'ignores a slower course-firing read from the previous
+  // store' with `expected <div class="pos-cart-course-bar"></div> to be null`.
   //
-  // Instrumented, and the reason is observable: with the guard removed and the stale
-  // read released LAST carrying 'true', `setCourseFiringEnabled(true)` ran but the bar
-  // did not come back. The read that matters re-runs at seq=3 against a SHARED ref=3
-  // while the stale one holds seq=1 -- so the guard WOULD fire -- yet the DOM is
-  // unchanged either way. The bar's gate also needs `lines.length > 0`, and the cart
-  // line was present at the assertion (verified), so the cart is not the explanation.
+  // The first attempt at this pin was worth documenting because it LOOKED pinned and was
+  // not: it asserted on the bar's "Fire All" text, which CourseSelectorBar renders only
+  // when a line carries `coursingStatus === 'hold'` (:41). A barcode-scanned line has no
+  // course, so the text was absent whether or not the bar mounted -- an assertion that
+  // could not fail. The observable is the CONTAINER `div.pos-cart-course-bar`, which
+  // mounts on exactly this guard's condition (CartPanel.tsx:961); asserting on it is the
+  // established idiom (CartPanel.test.tsx:316/:324).
   //
-  // The sibling's own comment (:490) names the constraint: "Unlike the course-firing
-  // flag, this one has a cart-FREE observable." So the next attempt needs an observable
-  // that reads `courseFiringEnabled` directly rather than through CartPanel's compound
-  // gate -- not another rewrite of this test.
+  // Also note the argument order in that test: `getSettingScoped(token, key)`, so the key
+  // is SECOND. Reading it from the first parameter answers `null` for every read and makes
+  // the mutation appear to survive.
   const courseFiringSeq = useRef(0);
   useEffect(() => {
     const seq = ++courseFiringSeq.current;

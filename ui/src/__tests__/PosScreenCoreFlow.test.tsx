@@ -189,11 +189,16 @@ vi.mock('@/contexts/AuthContext', async () => {
 // Mutable so a test can SWITCH STORES. The receipt-settings read depends on
 // sessionToken, so changing it starts a second read while the first is in flight.
 // Reset in beforeEach so the token cannot leak between cases.
-const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' as string }));
+const wsState = vi.hoisted(() => ({
+  sessionToken: 'mock-session-token' as string,
+  // Mutable for the course-firing case below: the course bar only renders on
+  // `restaurant-pos`, and a store switch is what re-runs the read being raced.
+  activeWorkspace: 'store-pos' as string,
+}));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
-    activeWorkspace: 'store-pos',
+    activeWorkspace: wsState.activeWorkspace,
     setActiveWorkspace: vi.fn(),
     activeInstance: null,
     setActiveInstance: vi.fn(),
@@ -473,8 +478,9 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.clearAllMocks();
     localStorage.clear();
     mockedBarcode.reset();
-    // A store-switching test mutates this, so later cases need it restored.
+    // A store-switching test mutates these, so later cases need them restored.
     wsState.sessionToken = 'mock-session-token';
+    wsState.activeWorkspace = 'store-pos';
   });
 
   afterEach(() => {
@@ -524,6 +530,109 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // The guard held: the stale `true` did not land, so the table-number input
     // stays absent exactly as the CURRENT store configured it.
     expect(document.querySelector('#pos-table-number')).toBeNull();
+  });
+
+  // ── The SAME race on the course-firing flag, which had NO pin ──────────────
+  //
+  // `courseFiringSeq` (PosScreen.tsx:1199) guards this read exactly as the receipt
+  // one above does, and its comment names the consequence: "a stale read carrying
+  // the PREVIOUS store's setting forward would hide course firing on a store that
+  // has it enabled -- a POS capability disappearing across a store switch."
+  //
+  // It was UNPINNED. Measured 2026-10-13: removing `if (stale()) return;` before
+  // `setCourseFiringEnabled` left this file, PosScreen.test.tsx,
+  // PosScreen.integration.test.tsx and restaurantToggleFailDirection.test.ts at
+  // 144 passed, 0 failed.
+  //
+  // ── The observable is the CONTAINER, not the buttons ──
+  //
+  // A first attempt asserted on "Fire All" and was worthless. CourseSelectorBar
+  // renders per-course buttons only when a line carries that course, and the
+  // "Fire All" button only when a line has `coursingStatus === 'hold'`
+  // (CourseSelectorBar.tsx:25, :41). A barcode-scanned line has neither, so the
+  // text was absent whether or not the bar mounted -- the assertion could not fail.
+  //
+  // The container `div.pos-cart-course-bar` mounts whenever
+  // `lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled
+  // !== false` (CartPanel.tsx:961), which is this guard's own condition. It is the
+  // observable, and asserting on it is the established idiom here
+  // (CartPanel.test.tsx:316/:324).
+  it('ignores a slower course-firing read from the previous store', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // Read 1 is held open and will answer ENABLED -- the previous store's setting.
+    // NOTE the argument order: `getSettingScoped(token, key)`, so the key is SECOND.
+    // Reading it from the first parameter made every read answer `null` and the
+    // mutation "survive" for the wrong reason.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+      if (key !== 'restaurant.course_firing') return Promise.resolve(null);
+      return stalePending;
+    }) as never);
+
+    const courseFiringCalls = () =>
+      vi.mocked(settingsApi.getSettingScoped).mock.calls.filter(
+        (c) => c[1] === 'restaurant.course_firing',
+      ).length;
+
+    const view = renderWithProvidersSync(<PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(courseFiringCalls()).toBe(1));
+
+    // Give the cart a line: the container also needs `lines.length > 0`.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'ITEM-CF',
+      name: 'Course Item',
+      category: 'Main',
+      price: { minor_units: 15000, currency: 'USD' },
+      barcode: 'BARCODE-CF',
+      in_stock: true,
+      stock_qty: 10,
+      tax_rate_ids: [],
+      product_type: 'restaurant',
+      created_at: '',
+      price_updated_at: '',
+    } as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
+
+    // With the PREVIOUS store's read still pending and the state at its `null`
+    // initial value, the container is present -- `null !== false`.
+    expect(
+      document.querySelector('.pos-cart-course-bar'),
+      'the cart has a line and course firing is unread (null), which SHOWS it',
+    ).not.toBeNull();
+
+    // The store switches. The NEW read answers DISABLED at once.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+      if (key !== 'restaurant.course_firing') return Promise.resolve(null);
+      return Promise.resolve('false');
+    }) as never);
+    await act(async () => {
+      wsState.sessionToken = 'mock-session-token-2';
+    });
+    rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(courseFiringCalls()).toBe(2));
+
+    // The CURRENT store disabled course firing, so the bar is gone.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-cart-course-bar')).toBeNull();
+    });
+
+    // The superseded read now lands with ENABLED.
+    await act(async () => {
+      releaseStale('true');
+      await stalePending;
+    });
+
+    // The guard held: the stale 'true' did not bring the bar back.
+    expect(
+      document.querySelector('.pos-cart-course-bar'),
+      "the superseded course_firing read restored the course bar after the current " +
+        "store's read had already disabled it -- this store shows a POS capability " +
+        'it does not have.',
+    ).toBeNull();
   });
 
   it('adds product to cart, opens payment, completes cash sale, resets cart', async () => {
