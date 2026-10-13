@@ -630,6 +630,45 @@ cited block, pushing a cited comment from `:735-743` to `:855-862` — 120 lines
 adds or removes markup deserves a re-read of every line citation below the change**, because the fix and
 the citation rot are the same edit.
 
+**38. A NUMBER in a table can be wrong WHEN WRITTEN, and that is a different repair from dated
+drift.** Trap 36 separates "never true" from "drift" by counting revisions; this is the same
+discriminator applied to a figure that names no file, so there is nothing to count. The test is the
+count itself **at the record's own commit**: `git grep -c <pattern> <record-commit> -- <path>`.
+Measured 2026-10-14, auditing `docs/records/audits/restaurant-pos-clean-classes.md`: it claimed 23
+`getString(…, null, …)` sites and 25 `html[data-shell='tablet']` sites. The tree at the record's
+commit returns **28 and 23** — identical to HEAD, because only four commits had landed in between.
+So both figures were miscounts at write time, not drift, and the **verdicts survived** (all 28
+fallback keys do resolve against 5,557 en bundle keys). Repair the NUMBER and record that the
+verdict held; do not withdraw the row. **The reason this needs saying: a hand tally in a table
+reads exactly like a measured value**, and a reader with no discriminator has only two options —
+believe it forever, or re-measure every number in the corpus. The one-command test above is what
+makes "it was careless" distinguishable from "the tree moved", and the answer changes the repair:
+drift earns a dated addendum, a miscount earns a corrected figure plus the method.
+
+**39. An owner decision recorded as OPEN after it was TAKEN.** A record's final section that names
+two candidate fixes ("what is left for an owner") is a present-tense claim about the repo's state,
+and it goes stale the moment either candidate ships — with no path, symbol or count changing, so
+every automated check stays green. Measured 2026-10-14: `receipt-grouping-two-settings.md` closed
+with two candidates for connecting two grouping settings; **candidate 1 had already been
+implemented** across three commits (`e84ccdc62` DTO field, `e0ffa8213` bridge, `443349a60` second
+load path) and the pin recording the divergence was retired by `e295a13f0`. A reader would have
+spent a round re-deciding a settled question. **Sweep pattern: any record whose last section offers
+options — grep for "left for an owner", "two candidates", "either … or", "the decision is" — then
+check whether either option is already in the tree.** Repair by recording which candidate WON and
+naming the commits, keeping both candidates as the history that produced the choice.
+
+**40. A negative result is the most perishable claim a record can carry, and it has TWO failure
+modes.** Trap 32 names the first: a grep that returned nothing goes stale as soon as
+something appears. The second is that the NEGATIVE may never have been established at all — the
+sweep found nothing because the search was mis-scoped, not because the tree was clean. Measured
+2026-10-14: a "negative grep" sweep over 12 root plans produced 66 raw hits, and the filter that
+mattered was not the pattern but **the tense**. Dated records that also state their own resolution in
+the same paragraph ("✅ And the break is now CLOSED") are history and need nothing; a clause in the
+PRESENT tense about current state — "another session currently has uncommitted work in X, Y, Z" —
+is a live claim, and all four named files were `clean` when checked. **Filter by tense, then
+re-measure only the present-tense residue**, and prefer recording the measurement's SCOPE over its
+sign: "0 hits in <these paths>" survives; "there are none" does not.
+
 ### The dated-record corpus: default to ZERO edits
 
 Two corpora are **records by convention**, and the correct audit outcome for them is usually
