@@ -398,6 +398,45 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('prints when the setting was never loaded, which is the fail-safe direction', async () => {
+    // The OMITTED prop, which is the route PosScreen takes when its settings read
+    // fails: it keeps `autoPrintKitchen` null and spreads nothing
+    // (PosScreen.tsx:1795), leaving this component's default (`= true`, :111) to
+    // apply.
+    //
+    // Untested until now, and worth a case because THREE routes reach "print": an
+    // explicit true, an omitted prop, and the null that a failed read produces. Only
+    // the first had coverage, so the difference between "the cashier switched it on"
+    // and "we could not find out" was unpinned — and a kitchen that silently stops
+    // receiving chits during a settings outage is the failure that goes unnoticed
+    // until food does not arrive.
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        // autoPrintKitchen deliberately NOT passed.
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      const printed = calls
+        .filter((c) => c[0] === 'print_kds_chit_scoped')
+        .map((c) => (c[1] as { orderId: string }).orderId);
+      expect(
+        printed.sort(),
+        'an unloaded setting must PRINT: the direction that loses an order is the one ' +
+          'that cannot be noticed from the till.',
+      ).toEqual(['kds-1', 'kds-2']);
+    });
+  });
   it('creates the KDS order but prints NO chit when auto_print_kitchen is off', async () => {
     kdsOrderImpl();
     await renderWithFluent(
