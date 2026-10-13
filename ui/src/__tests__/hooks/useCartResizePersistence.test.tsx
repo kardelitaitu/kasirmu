@@ -117,6 +117,27 @@ describe('useCartResize persists the width', () => {
     expect(document.body.classList.contains('is-resizing')).toBe(false);
   });
 
+  // Ported from the dead file's `cleans up on mouseup`, which asserted something my
+  // cursor/class case above does NOT: that a mousemove AFTER the drag ends changes
+  // nothing. The resize handler is registered for the drag's lifetime, so a handler that
+  // outlives its mouseup would keep writing widths from a stray pointer.
+  it('ignores mousemoves once the drag has ended', () => {
+    localStorage.setItem(KEY, '500');
+    const { current } = renderResize();
+
+    act(() => { current.startResize({ cancelable: false } as never); });
+    act(() => { window.dispatchEvent(new MouseEvent('mousemove', { clientX: 600 })); });
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { clientX: 600 })); });
+    const settled = localStorage.getItem(KEY);
+    expect(settled, 'the drag did not persist at all, so this case is vacuous').not.toBeNull();
+
+    act(() => { window.dispatchEvent(new MouseEvent('mousemove', { clientX: 200 })); });
+    expect(
+      localStorage.getItem(KEY),
+      'a mousemove after mouseup still wrote a width: the drag handler outlived its own end.',
+    ).toBe(settled);
+  });
+
   it('persists a RE-CLAMP on window resize', () => {
     localStorage.setItem(KEY, '900');
     renderResize();

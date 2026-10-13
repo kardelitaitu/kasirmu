@@ -58,7 +58,10 @@ const EXPECTED_KEYS: Record<string, string> = {
 
   // POS / retail
   'pos-cart-width': 'features/sales/hooks/useCartResize.ts',
-  'pos-locked-cart': 'features/sales/posScreenHooks.ts',
+  // `pos-locked-cart` is NOT listed: round 104 store-scoped it to
+  // 'pos-locked-cart:${resolvedStoreId}', and this scanner reads quoted LITERALS. A key
+  // behind an interpolation cannot be pinned by literal, so it is covered by
+  // `posDraftStoreScoping.test.ts` instead -- which asserts the interpolation itself.
   // The cash-tender quick-button amounts. READ-ONLY here: PosScreen parses it on
   // mount and falls back to a hardcoded preset list when absent or malformed, so a
   // rename would silently reset every cashier's custom denominations rather than
@@ -247,7 +250,6 @@ describe('localStorage key registry', () => {
       .sort();
     expect(shared).toEqual([
       'current-username -> contexts/AuthContext.tsx, features/auth/SessionLockScreen.tsx',
-      'pos-cart-width -> features/sales/hooks/useCartResize.ts, features/sales/posScreenHooks.ts',
     ]);
   });
 });

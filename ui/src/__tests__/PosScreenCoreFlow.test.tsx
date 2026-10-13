@@ -2038,6 +2038,47 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // A corrupt draft is reachable: the key is written by `JSON.stringify`, but a partial
   // write, a storage-quota failure mid-set, or a tampered value all produce unparseable
   // content — and the till must still boot to a usable POS rather than an error screen.
+  // The companion to the case below, and the second thing the dead
+  // `useLockedCartPersistence` tests pinned: a draft carrying ONLY `lines` must restore,
+  // because every other field is optional. The live restore type-guards each one
+  // (`typeof data.discountPercent === 'number'`, `Array.isArray(data.appliedPromotions)`, ...),
+  // so a minimal payload is handled by construction — but nothing asserted that.
+  it('restores a draft that carries only lines, since every other field is optional', async () => {
+    localStorage.setItem(
+      `pos-active-draft:${STORE_ID}`,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'MIN-1',
+            name: 'Minimal Item',
+            qty: 1,
+            unit_price: { minor_units: 250, currency: 'USD' },
+          },
+        ],
+      }),
+    );
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    await waitFor(() => {
+      const lines = screen.queryAllByTestId('cart-panel-line-item');
+      expect(
+        lines.some((l) => l.textContent?.includes('Minimal Item')),
+        'a draft with only `lines` did not restore: every other field is optional and the ' +
+          'restore type-guards each one, so a minimal payload must survive.',
+      ).toBe(true);
+    });
+
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+  });
+
   it('boots to a usable POS when the draft is unparseable', async () => {
     localStorage.setItem(`pos-active-draft:${STORE_ID}`, '{not valid json');
 
