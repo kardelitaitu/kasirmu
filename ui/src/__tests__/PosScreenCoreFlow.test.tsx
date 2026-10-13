@@ -599,9 +599,16 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // flushes the click, NOT the async lookup: without this the add landed after the test
     // and the line was still on the board for the NEXT case to find (suite-order flake,
     // measured round 89 -- the file-only run passes either way).
-    await waitFor(() => {
-      expect(screen.getByTestId('cart-panel-line-item').textContent).toContain('Course Item');
-    });
+    // Generous timeout, and on the test id: under a verbose/loaded reporter the default
+    // 1000ms was not enough here, the wait resolved on an intermediate render, and the
+    // add then landed AFTER the case ended -- still on the board for the next case.
+    // Measured twice (rounds 88, 90) before the timeout was raised.
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('cart-panel-line-item').textContent).toContain('Course Item');
+      },
+      { timeout: 5000 },
+    );
 
     // With the PREVIOUS store's read still pending and the state at its `null`
     // initial value, the container is present -- `null !== false`.
