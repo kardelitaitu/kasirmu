@@ -1735,7 +1735,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // `handleNavigate` uses (`isPageAccessible`), so the row is visible exactly
     // when the navigation would succeed — a second predicate would be free to
     // disagree with the thing it is predicting.
-    showKitchenDisplay: isPageAccessible(getPage('kds'), session?.role_name ?? '', session?.permissions),
+    //
+    // THAT PREDICATE ALONE IS INERT FOR THIS ROUTE (round 128). `getPage('kds')`
+    // is `{ route: 'kds', feature: 'kitchen-display' }` — no `requiredRole`, no
+    // `requiredPermission` — and `isPageAccessible` -> `passesGate` reads only
+    // those two, returning true when neither is set (`page-registry/index.ts:181`).
+    // So it answered `true` for Owner, Cashier, an empty role and a garbage role
+    // alike, and the row never hid. The feature flag is the gate that actually
+    // varies, which is how its sibling `showTables` has always been written.
+    // Kept AND-ed with `isPageAccessible` rather than replacing it: the role and
+    // permission axes still apply the moment this route gains one.
+    showKitchenDisplay:
+      isEnabled(FEATURES.KITCHEN_DISPLAY) &&
+      isPageAccessible(getPage('kds'), session?.role_name ?? '', session?.permissions),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
     onOpenMenuEditor: () => setShowMenuEditor(true),
     onOpenReceipts: () => setShowReceiptsSettings(true),
