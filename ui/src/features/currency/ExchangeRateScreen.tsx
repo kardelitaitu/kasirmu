@@ -160,33 +160,29 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
   //
   // Rates themselves are NOT at risk: listExchangeRatesScoped feeds only the rate
   // table, and conversions read the stored rate rather than this boolean.
-  // NOT PINNED, AND THE MECHANISM IS NOW KNOWN (round 80, 2026-10-13). Read this before
-  // spending a fourth attempt on a mutation test.
+  // PINNED (round 81, 2026-10-13) -- and the three earlier attempts failed for a reason
+  // worth keeping, because it tells you which scenario this guard is FOR.
   //
-  // THE GUARD CANNOT FIRE IN THE SCENARIO THE ATTEMPTS WERE BUILT AROUND, because the
-  // screen REMOUNTS on a token change. Instrumented: two reads are issued (`token-A` then
-  // `token-B`, both `rate_sync.enabled`), and each reports `seq=1` against a DIFFERENT
-  // `useRef` instance. A remount gives the new instance its own `useRef(0)`, so read A's
-  // closure holds a ref that read B never touches -- `seq !== autoSyncSeqRef.current` is
-  // comparing 1 to 1 forever. Nothing about the assertion was wrong: there is no race to
-  // observe, because the two reads do not share a counter.
+  // WHY EARLIER ATTEMPTS SURVIVED: they switched the token through the workspace mock,
+  // which REMOUNTS the screen. A remount gives the new instance its OWN `useRef(0)`, so
+  // the two reads report seq=1 against DIFFERENT refs and `seq !== ref` compares 1 to 1
+  // forever. There was no race to observe; a probe that forced the stale write showed it
+  // applying last while changing nothing on screen, because it landed on a tearing-down
+  // instance. Both observations were true and neither implicated the guard.
   //
-  // What the earlier attempts saw is consistent with that. A probe that forced the stale
-  // arm through `setAutoSync` DID apply it last (`raw=1` after `raw=0`) -- and it changed
-  // nothing on screen, because that write landed on an instance being torn down. React
-  // discards it. So "the write happens" and "the DOM does not move" were both true, which
-  // is the reconciliation the previous note could not reach.
+  // THE PATH THIS GUARD EXISTS FOR is a HOT TOKEN SWAP, not a remount:
+  // `WorkspaceContext.swapSessionToken` (ADR #6) changes the token WITHOUT resetting the
+  // workspace or instance. FastPINOverlay uses it for a SHARED TOUCHSCREEN, where one
+  // operator hands the tablet to the next. The screen stays mounted, `loadAutoSync` deps
+  // on `[sessionToken]` so the callback identity changes, the effect re-runs, and BOTH
+  // reads share one `autoSyncSeqRef` -- instrumented as seq=[1, 2] against one ref.
   //
-  // WHAT THE GUARD IS ACTUALLY FOR: the effect re-runs on `[loadAutoSync]`, and that
-  // callback's identity changes with `sessionToken` WITHOUT a remount in the cases where
-  // the parent re-renders rather than replaces the screen (a prop change, a provider
-  // re-render). There the ref IS shared and the guard is load-bearing. The remount path
-  // is protected by unmounting instead, and neither path needs a test that races the
-  // other.
-  //
-  // A mutation test here would have to force the SHARED-ref path (re-render without
-  // remount) rather than switching the token through the workspace mock, which is what
-  // every attempt so far has done. Until that exists this stays verified-by-reasoning.
+  // The pin is `exchangeRateAutoSyncSwap.test.tsx`. It holds the swap's read open, lets
+  // the newer read win, then settles the superseded read with the opposite value: deleting
+  // the line below fails it with 'the SUPERSEDED read set autoSync after the hot swap's
+  // read had already won' (measured). The earlier note's prescription -- force the
+  // SHARED-ref path rather than switching the token through the workspace mock -- was
+  // right, and a hot token swap is how production reaches it.
   const autoSyncSeqRef = useRef(0);
 
   const loadAutoSync = useCallback(async () => {
