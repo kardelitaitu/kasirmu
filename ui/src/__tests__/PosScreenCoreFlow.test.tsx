@@ -486,6 +486,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // Reset to the factory's own default explicitly. Only the mocks a case replaces need
     // this; resetting all of them would drop the factory defaults and break every case.
     vi.mocked(settingsApi.getSettingScoped).mockImplementation(() => Promise.resolve(null));
+    // Same rule for the product lookup: cases key it on their own barcode, and an
+    // implementation left behind answers \`null\` for every other code -- which is how the
+    // trimMemory case was silently depending on a neighbour (found by shuffling, round 93).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => mockLookupByBarcode(code)) as never);
     localStorage.clear();
     mockedBarcode.reset();
     // A store-switching test mutates these, so later cases need them restored.
@@ -620,8 +625,17 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       });
     }) as never);
     await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
+    // getAllByTestId, not getByTestId: the cart panel is shared, and under a shuffled order
+    // a neighbouring case's line can still be on the board, so "the first line" is not
+    // necessarily mine. Asserting that SOME line is mine is the property this case needs.
     await waitFor(() => {
-      expect(screen.getByTestId('cart-panel-line-item').textContent).toContain('Course Item');
+      // queryAll, not getAll: getAll THROWS on zero matches, so a missing line surfaced as
+      // a TestingLibrary error rather than the assertion below it.
+      const lines = screen.queryAllByTestId('cart-panel-line-item');
+      expect(
+        lines.some((l) => l.textContent?.includes('Course Item')),
+        'the scanned product never reached the cart',
+      ).toBe(true);
     });
 
     // Store switch: read 2 is issued and settles with DISABLED.
@@ -2051,7 +2065,30 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(screen.getByText('0m')).toBeInTheDocument();
     });
 
-    // Simulate scanning or adding a barcode
+    // Its OWN fixture, keyed on the barcode. This case used to depend on a NEIGHBOUR's
+    // `lookupByBarcodeScoped` implementation leaking in: nothing in this file ever made
+    // the default mock resolve 'BARCODE-001', so it only passed when the case that sets
+    // that lookup ran first. Revealed by `--sequence.shuffle.tests` (round 93); the file
+    // passes in declaration order and fails under a shuffle that moves its supplier after
+    // it.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => {
+      if (code !== 'BARCODE-001') return Promise.resolve(null);
+      return Promise.resolve({
+        sku: 'ITEM-001',
+        name: 'Test Item',
+        category: 'Test',
+        price: { minor_units: 700, currency: 'USD' },
+        barcode: 'BARCODE-001',
+        in_stock: true,
+        stock_qty: 100,
+        tax_rate_ids: [],
+        product_type: 'standard',
+        created_at: '',
+        price_updated_at: '',
+      });
+    }) as never);
+
     act(() => {
       mockedBarcode.triggerScan('BARCODE-001');
     });
