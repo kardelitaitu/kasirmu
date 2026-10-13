@@ -38,6 +38,35 @@
 >    is a design decision: the value is behind IPC and `formatMoney` is synchronous, called
 >    from 149 non-test sites in 40 files.
 >
+>    **MEASURED 2026-10-13 (rounds 39, 45) — the item above is half the picture, and the
+>    half it omits is the one an operator actually touches.**
+>    (`docs/records/audits/receipt-grouping-two-settings.md`)
+>
+>    There are TWO grouping settings and they have never been connected:
+>
+>      `currency.thousands_separator` — typed setting, read by the bridge (:429) and turned
+>        into `ReceiptConfig.grouping`, but written by **no UI screen at all**.
+>      `resto_rcpt_thousands_sep` — the TOGGLE the receipt settings screen offers (:1139),
+>        saved, mirrored to localStorage, and driving the PREVIEW. Read by **no Rust**.
+>
+>    So the operator's experience is the MIRROR IMAGE of the wording above: they flip the
+>    toggle that exists, the preview changes, and the paper does not. And the wording above
+>    ("an operator who sets comma on an IDR store") describes a screen that does not exist.
+>
+>    Two things that narrowed this, both measured:
+>
+>      `receiptLogic.formatPrice` — the formatter the receipt SETTINGS screen uses — takes
+>        `showThousandsSeparator` and honours it. Its doc claimed a blanket "cannot silently
+>        diverge" while its body capped the fraction; corrected in round 45 to the measured
+>        table, now pinned by `ReceiptPreviewPrinterKnobs.test.ts`. Of the three knobs,
+>        `grouping` and `decimal_separator` ARE on `ReceiptConfig`; only fraction digits are
+>        preview-only.
+>      IDR cannot hit the coupling, because that screen pins the separator to `comma`
+>        for IDR. Non-IDR with an explicit separator CAN diverge — but nothing writes it.
+>
+>    Wiring the toggle means deciding which of the two keys is the real one, and that
+>    changes what prints — still an owner decision, now a *bounded* one.
+>
 > **Why the header went stale, again.** It has now been corrected five times (rounds 74, 75,
 > twice in `planStatusAccuracy.test.ts`, and here) and every correction names the round that
 > made it stale, because the mechanism is always the same: a pin lands, the summary is not
