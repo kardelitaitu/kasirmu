@@ -432,8 +432,57 @@ if should_run paths; then
           # bare `src/...` token has no such prefix and falls through to print.
           pre = substr(line, 1, RSTART - 1)
           tok = substr(line, RSTART, RLENGTH)
+          # `post` is captured BEFORE the residual is advanced, because the marker
+          # can sit on EITHER side of the token: "the old path was `X`" names it dead
+          # before, while "`X` is untracked" and "a `X` hit that is a dated note"
+          # name it dead after.
+          post = substr(line, RSTART + RLENGTH)
           line = substr(line, RSTART + RLENGTH)
           if (pre ~ /[a-zA-Z0-9_.-]+-[0-9]+(\.[0-9]+)+\/$/) continue
+          # A path NAMED AS DEAD is a correction record, not a claim that it exists.
+          #
+          # Three live examples were reported as drift on 2026-10-13, none a claim:
+          # docs-auditor "the true old path was `ui/src/styles/tokens.css`" (it moved
+          # to ui/src/theme/), deploy-cloudflare "deliberately does NOT build the
+          # portal (`docs/book` is untracked)", and figma-bridge "a deploy-cloudflare
+          # `docs/book` hit that is a dated note". The last one RECORDS that the guard
+          # reports it and calls it a false positive -- so the finding had become
+          # accepted noise, which is how a gate stops being read.
+          #
+          # Decided on the TOKEN own surrounding text, like the vendored case above:
+          # a bare token cannot say whether the sentence around it is a claim or a
+          # correction, and the extractor is the only place the offset is known.
+          #
+          # THE MARKER MUST BE ADJACENT, AND THE CLAUSE IS THE UNIT.
+          #   * `{0,25}$` / `^[^.;]{0,25}` -- not a paragraph-wide window. "old" in an
+          #     earlier sentence does not excuse a path named in a later one; case 6 of
+          #     tests/check1-dead-path-note.bats pins exactly that.
+          #   * the clause is split on `.` and `;`, so a SECOND path on the same line
+          #     does not inherit the excuse of the first. Case 7 pins that, because a
+          #     context test that reaches across a clause is one step from silencing
+          #     real drift -- and an earlier revision of THIS rule did silence cases
+          #     5-8, caught by those negative cases before it shipped.
+          #
+          # awk has no `split`-to-last-element, so the clause is taken with `sub`:
+          # `before` keeps the text after the last `.`/`;`, `after` the text before the
+          # next one.
+          before = pre; after = post
+          sub(/.*[.;]/, "", before)
+          sub(/[.;].*/, "", after)
+          # `\y` (awk word boundary) rather than a `[^a-zA-Z]|$` alternation: the
+          # trailing `$` anchor is fragile across the shell/awk quoting layers, and an
+          # earlier revision of this rule silently never matched because of it -- the
+          # check kept reporting the three known-good lines while looking correct.
+          # A STRING, not a regex literal: in awk `d = /re/` assigns the RESULT of
+          # matching $0 against /re/ -- a 0 or 1 -- so `$0 ~ d` becomes `$0 ~ 0` and is
+          # always false. An earlier revision of this rule was written that way and
+          # silently never matched: the check kept reporting the three known-good lines
+          # while looking correct, and only the bats probes below exposed it.
+          #
+          # `\y` (awk word boundary) rather than a `[^a-zA-Z]|$` alternation: the
+          # trailing `$` anchor is fragile across the shell/awk quoting layers.
+          deadmark = "\\y(old|gone|untracked|dead|superseded|deprecated|removed|note)\\y"
+          if (before ~ deadmark || after ~ deadmark || before ~ /not build/ || after ~ /not build/) continue
           print NR "\t" tok
         }
       }' "$skill" 2>/dev/null)
