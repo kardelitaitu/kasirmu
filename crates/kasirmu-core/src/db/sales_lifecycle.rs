@@ -727,33 +727,31 @@ impl Store<'_> {
 
                         // 2. Credit the dish itself ONLY IF tracks_inventory is true
                         let tracks_inv = line["tracks_inventory"].as_bool().unwrap_or(true);
-                        if tracks_inv {
-                            if let Some(deductions) = line["deductions"].as_array() {
-                                for d in deductions {
-                                    let loc_id = d["location_id"].as_str().ok_or_else(|| {
-                                        CoreError::Validation {
-                                            field: "location_id",
-                                            message: "missing location_id in deductions".into(),
-                                        }
+                        if tracks_inv && let Some(deductions) = line["deductions"].as_array() {
+                            for d in deductions {
+                                let loc_id = d["location_id"].as_str().ok_or_else(|| {
+                                    CoreError::Validation {
+                                        field: "location_id",
+                                        message: "missing location_id in deductions".into(),
+                                    }
+                                })?;
+                                let qty =
+                                    d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                                        field: "qty",
+                                        message: "missing qty in deductions".into(),
                                     })?;
-                                    let qty =
-                                        d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
-                                            field: "qty",
-                                            message: "missing qty in deductions".into(),
-                                        })?;
 
-                                    // Credit stock back (positive delta)
-                                    self.adjust_stock_at_location_with_reason(
-                                        &tx,
-                                        sku,
-                                        qty,
-                                        &crate::inventory::LocationId::from(loc_id),
-                                        Some("void_pending"),
-                                        None,
-                                        None,
-                                        None,
-                                    )?;
-                                }
+                                // Credit stock back (positive delta)
+                                self.adjust_stock_at_location_with_reason(
+                                    &tx,
+                                    sku,
+                                    qty,
+                                    &crate::inventory::LocationId::from(loc_id),
+                                    Some("void_pending"),
+                                    None,
+                                    None,
+                                    None,
+                                )?;
                             }
                         }
                     }

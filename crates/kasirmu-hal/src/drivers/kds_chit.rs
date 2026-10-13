@@ -25,6 +25,7 @@ pub struct KdsChit {
 /// Format a KDS order into a printable kitchen chit with explicit paper width.
 ///
 /// Designed for 58mm (Narrow, 32 cols) and 80mm (Standard, 48 cols) thermal paper.
+#[allow(clippy::too_many_arguments)] // 8 fields make up the chit; a struct would obscure them
 pub fn format_kds_chit_with_width(
     display_number: Option<i64>,
     table_number: Option<&str>,

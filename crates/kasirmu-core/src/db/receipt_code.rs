@@ -269,14 +269,14 @@ impl crate::db::Store<'_> {
         &self,
         tx: &rusqlite::Transaction<'_>,
     ) -> Result<(), CoreError> {
+        // Clippy pedantic: `map(|..| ..).unwrap_or(false)` is `is_ok_and`.
         let has_tenant_id: bool = tx
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('receipt_number_counters') WHERE name = 'tenant_id'",
                 [],
                 |r| r.get::<_, i64>(0),
             )
-            .map(|c| c > 0)
-            .unwrap_or(false);
+            .is_ok_and(|c| c > 0);
 
         if !has_tenant_id {
             tx.execute_batch(

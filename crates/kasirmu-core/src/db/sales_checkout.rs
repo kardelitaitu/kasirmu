@@ -260,14 +260,15 @@ impl Store<'_> {
 
             let max_limit_minor = crate::Settings::get_credit_max_limit(&tx)?;
             if max_limit_minor > 0 {
-                let credit_requested: i64 = if !payment_splits.is_empty() {
+                // Clippy `if_not_else`: an `if !X { A } else { B }` reads better inverted.
+                let credit_requested: i64 = if payment_splits.is_empty() {
+                    sale.total.minor_units
+                } else {
                     payment_splits
                         .iter()
                         .filter(|s| s.method.eq_ignore_ascii_case("credit"))
                         .map(|s| s.amount_minor)
                         .sum()
-                } else {
-                    sale.total.minor_units
                 };
 
                 let cust_id = sale.customer_id.as_deref().unwrap_or("");
@@ -298,8 +299,7 @@ impl Store<'_> {
                     return Err(CoreError::Validation {
                         field: "credit_limit",
                         message: format!(
-                            "credit limit exceeded: outstanding balance {} + attempted credit {} exceeds ceiling {}",
-                            outstanding_minor, credit_requested, max_limit_minor
+                            "credit limit exceeded: outstanding balance {outstanding_minor} + attempted credit {credit_requested} exceeds ceiling {max_limit_minor}",
                         ),
                     });
                 }
