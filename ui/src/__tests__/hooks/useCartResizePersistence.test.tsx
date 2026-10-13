@@ -15,7 +15,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCartResize } from '@/features/sales/hooks/useCartResize';
-import { CART_WIDTH_DEFAULT, clampCartWidth } from '@/features/sales/utils/cartCalculations';
+import {
+  CART_WIDTH_DEFAULT,
+  CART_WIDTH_MAX_CAP,
+  CART_WIDTH_MIN,
+  clampCartWidth,
+} from '@/features/sales/utils/cartCalculations';
 
 const KEY = 'pos-cart-width';
 
@@ -67,6 +72,49 @@ describe('useCartResize persists the width', () => {
     // (600) = 400, then clamps. Asserting the CLAMPED geometry rather than the state,
     // which updates on the next render.
     expect(Number(localStorage.getItem(KEY))).toBe(clampCartWidth(400, window.innerWidth));
+  });
+
+  // ── Ported from `hooks/useCartWidth.test.tsx` (round 108) ─────────────
+  //
+  // That file drove the DEAD `posScreenHooks.ts` copy. These are its clamping cases,
+  // re-pointed at the live hook before the dead file is removed, so the coverage survives
+  // the deletion.
+  //
+  // Its own note is worth keeping: the bounds must be asserted against the CONSTANTS.
+  // The old case read `toBe(320)` and kept passing after the floor moved to 400, because
+  // the hook carried a private copy of the bounds — "the test and the code agreed with
+  // each other and neither agreed with the shipped value".
+  it('clamps a saved value up to the minimum', () => {
+    localStorage.setItem(KEY, '100');
+    const { current } = renderResize();
+    expect(current.cartWidth).toBe(CART_WIDTH_MIN);
+  });
+
+  it('clamps a saved value down to the viewport half', () => {
+    localStorage.setItem(KEY, '2000');
+    const { current } = renderResize();
+    // jsdom's innerWidth is 1024, so the cap is half of that unless CART_WIDTH_MAX_CAP
+    // is smaller. Asserted through the same helper the hook uses.
+    expect(current.cartWidth).toBe(clampCartWidth(2000, window.innerWidth));
+  });
+
+  it('settles between the shipped bounds when nothing is saved', () => {
+    const { current } = renderResize();
+    expect(current.cartWidth).toBeGreaterThanOrEqual(CART_WIDTH_MIN);
+    expect(current.cartWidth).toBeLessThanOrEqual(CART_WIDTH_MAX_CAP);
+  });
+
+  it('startResize sets the resize cursor and body class, and cleans both up', () => {
+    const { current } = renderResize();
+    const baseline = document.body.style.cursor;
+    act(() => { current.startResize({ cancelable: false } as never); });
+    expect(document.body.style.cursor).toBe('col-resize');
+    expect(document.body.style.userSelect).toBe('none');
+    expect(document.body.classList.contains('is-resizing')).toBe(true);
+
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup')); });
+    expect(document.body.style.cursor).toBe(baseline === '' ? '' : baseline);
+    expect(document.body.classList.contains('is-resizing')).toBe(false);
   });
 
   it('persists a RE-CLAMP on window resize', () => {
