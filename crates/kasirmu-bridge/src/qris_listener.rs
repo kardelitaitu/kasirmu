@@ -5,9 +5,19 @@
 //! notifications in test and development environments.
 //!
 //! Key types:
-//! - [`QrisListenerStatusDto`]: Status of the platform's notification listener.
-//! - [`QrisRecentPaymentDto`]: Parsed incoming payment event data.
-//! - [`SimulateQrisNotificationArgs`]: Input payload for testing/simulation.
+//! - [`QrisListenerStatusDto`](crate::qris_listener::QrisListenerStatusDto): Status of the
+//!   platform's notification listener.
+//! - [`QrisRecentPaymentDto`](crate::qris_listener::QrisRecentPaymentDto): Parsed incoming
+//!   payment event data.
+//! - [`SimulateQrisNotificationArgs`](crate::qris_listener::SimulateQrisNotificationArgs):
+//!   Input payload for testing/simulation.
+//!
+//! The links are QUALIFIED on purpose. The bare short form does not resolve here even
+//! though all three types are declared in THIS file -- an outer doc on one of them
+//! referencing another fails the same way, and neither `self::` nor moving the list to a
+//! struct-level doc changes that. Every other module doc in this crate already writes the
+//! qualified form (diagnostics.rs:9, qris_auto.rs:5, lib.rs:9), so this is the crate's own
+//! convention rather than a workaround invented here.
 
 use kasirmu_core::permissions;
 use serde::{Deserialize, Serialize};
