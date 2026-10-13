@@ -166,6 +166,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [POS-family shuffle sweep, second pass (round 102)](audits/pos-family-shuffle-sweep-2.md) | — |
 | general | [Shuffling the POS-family suites: one more leak found (round 100)](audits/pos-family-shuffle-sweep.md) | — |
 | general | [Production module-level state in the POS: three audits, no defect (round 103)](audits/pos-module-state-audit.md) | — |
+| payments | [QRIS and split-tender driven live — the last two gaps closed (round 119)](audits/pos-qris-and-split-live.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
 | general | [The POS localStorage sweep, and a currency-sensitivity gap (round 105)](audits/pos-storage-key-sweep.md) | — |
 | money | [A USD store was offered a $10,000 quick-tender shortcut on a $7 sale (round 106)](audits/quick-tender-ladder-currency.md) | — |
