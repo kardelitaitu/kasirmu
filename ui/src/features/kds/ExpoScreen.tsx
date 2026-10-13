@@ -272,6 +272,16 @@ export default function ExpoScreen() {
   );
   const stations = useMemo(() => groupByStation(visibleOrders), [visibleOrders]);
 
+  // Signature of the board's IDENTITY, not just the station count. The boundary
+  // below keyed on `stations.length` alone, so a malformed payload that threw left
+  // the fallback up until the operator navigated away and back: the corrected
+  // payload arrives, the station count is unchanged, and the resetKey never moved.
+  // Same repair as KdsScreen's queueSignature; see the note there.
+  const boardSignature = useMemo(
+    () => visibleOrders.map((o) => o.id).join(','),
+    [visibleOrders],
+  );
+
   const changeStation = useCallback((zone: string) => {
     setStation(zone);
     writeExpoStation(userId, zone);
@@ -505,7 +515,7 @@ export default function ExpoScreen() {
         {/* Crash isolation — see the import note. resetKeys on the station filter
             and the station list, so a caught error clears when its input changes
             rather than leaving a dead dialog for the pass. */}
-        <LocalizedErrorBoundary resetKeys={[station, String(stations.length)]}>
+        <LocalizedErrorBoundary resetKeys={[station, boardSignature]}>
         <StationSelectorModal
           isOpen={stationPickerOpen}
           options={stationOptions}

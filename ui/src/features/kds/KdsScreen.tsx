@@ -311,6 +311,19 @@ export default function KdsScreen() {
     [orders, filterMode, filterCats],
   );
 
+  // Signature of the queue's IDENTITY, not just its size.
+  //
+  // The board's ErrorBoundary uses this as a resetKey, and a malformed payload is the
+  // failure it exists for: one ticket throws, the board falls back, and the backend
+  // re-sends that ticket corrected. Keying on the COUNT alone meant that correction
+  // left the fallback in place — same number of tickets, so the key never moved — and
+  // the cook saw a broken board until they navigated out and back, mid-service. The
+  // ids change on any membership change, so the correction now clears it.
+  const queueSignature = useMemo(
+    () => filteredOrders.map((o) => o.id).join(','),
+    [filteredOrders],
+  );
+
   // H3: the settings sliders are now wired — thresholds flow into every
   // card's useTicketSla. Memoized so KdsTicketCard's memo still holds when
   // unrelated state re-renders the screen.
@@ -525,9 +538,11 @@ export default function KdsScreen() {
       {/* Crash isolation: the board is driven entirely by LIVE server data
           (filteredOrders, slaThresholds, per-order line items), which is where a
           malformed payload throws. Wrapped so that fault costs the board, not the
-          whole screen and not the shift. resetKeys on the tab and the order count,
-          so reopening or the queue changing clears a caught error. */}
-      <LocalizedErrorBoundary resetKeys={[activeTab, String(filteredOrders.length)]}>
+          whole screen and not the shift. resetKeys on the tab and the queue
+          SIGNATURE — identity, not just count — so a corrected payload for the
+          same ticket clears a caught error instead of leaving the fallback up
+          until the operator navigates away and back. See queueSignature above. */}
+      <LocalizedErrorBoundary resetKeys={[activeTab, queueSignature]}>
       <KdsMainContent
         initialLoading={initialLoading}
         activeTab={activeTab}
