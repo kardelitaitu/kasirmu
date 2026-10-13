@@ -863,15 +863,20 @@ describe('PaymentModal — rendering & fast interaction', () => {
     // other amount in this modal. Asserted by property rather than by a pasted string:
     // a symbol prefix (not the ISO code) and the two decimal digits a cents currency
     // actually has. Both separators are `[.,]` so this survives a locale switch --
-    // `id` renders "$ 10.000,00", `en` renders "$ 10,000.00" -- where a literal would
+    // `id` renders "$ 10,00", `en` renders "$ 10.00" -- where a literal would
     // fail the day the resolved locale changes, which is how the old assertion went
     // stale: `/USD 10\.000/` pinned the float-era hybrid of an American code, id-ID
     // grouping and no decimals on a 2-decimal currency.
-    const presetBtn = screen.getByText(/^\$ 10[.,]000[.,]00$/);
+    // `$ 10.00`, NOT `$ 10,000.00`. This assertion used to pin the latter, and that WAS
+    // the defect: the quick-tender ladder was IDR-shaped major units whatever the session
+    // currency, so a $7 sale offered a $10,000 shortcut. The ladder is now chosen per
+    // exponent (`defaultTenderPresets`), and the matcher keeps its separators-agnostic
+    // shape so a locale switch cannot make it stale.
+    const presetBtn = screen.getByText(/^\$ 10[.,]00$/);
     await userEvent.click(presetBtn);
 
     const tenderInput = screen.getByLabelText(/amount tendered/i) as unknown as HTMLInputElement;
-    expect(tenderInput.value).toBe('10000.00');
+    expect(tenderInput.value).toBe('10.00');
   });
 
   it('clicking exact tender sets the exact total amount', async () => {

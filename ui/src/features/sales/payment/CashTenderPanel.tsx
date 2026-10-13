@@ -40,7 +40,7 @@
  * same arrangement QrisTenderPanel relies on.
  */
 import { Localized, useLocalization } from '@fluent/react';
-import { formatMoney, minorUnitExponent, type Money } from '@/types/domain';
+import { defaultTenderPresets, formatMoney, minorUnitExponent, type Money } from '@/types/domain';
 import { minorUnitsToInputString } from './moneyFormat';
 
 export interface CashTenderPanelProps {
@@ -81,7 +81,7 @@ export default function CashTenderPanel({
   const exp = minorUnitExponent(total.currency);
   const payableMinor = Number(total.minor_units);
   const payableMinorBig = BigInt(payableMinor);
-  const quickTenderAmounts = (tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).reduce<
+  const quickTenderAmounts = (tenderPresets ?? defaultTenderPresets(total.currency)).reduce<
     { minorUnits: number; input: string }[]
   >((acc, amount) => {
     const denomMinor = BigInt(amount) * 10n ** BigInt(exp);

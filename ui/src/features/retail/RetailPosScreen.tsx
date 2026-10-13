@@ -33,7 +33,7 @@ import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { recordMark } from '@/utils/perf-metrics';
-import { DEFAULT_LOW_STOCK_THRESHOLD, parseMoneyInput, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
+import { defaultTenderPresets, DEFAULT_LOW_STOCK_THRESHOLD, parseMoneyInput, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/components/useSound';
 import { useOptionalTheme } from '@/app/ThemeProvider';
 import RetailFnBar from './RetailFnBar';
@@ -158,18 +158,6 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   }, [setSoundEnabled]);
 
   // ── Tender presets from options ───────────────────────────────
-  const tenderPresets = useMemo(() => {
-    try {
-      const saved = localStorage.getItem('retail-tender-presets');
-      if (saved) {
-        const parsed = JSON.parse(saved) as number[];
-        // Filter out zero/NaN values to avoid division-by-zero in PaymentModal
-        const filtered = parsed.filter((n) => Number.isFinite(n) && n > 0);
-        if (filtered.length > 0) return filtered;
-      }
-    } catch { /* ignore */ }
-    return [5000, 10000, 20000, 50000, 100000];
-  }, []);
 
   const { isEnabled } = useFeatures();
 
@@ -851,6 +839,19 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // ── Store settings ──────────────────────────────────────────
 
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto>({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
+
+  const tenderPresets = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('retail-tender-presets');
+      if (saved) {
+        const parsed = JSON.parse(saved) as number[];
+        // Filter out zero/NaN values to avoid division-by-zero in PaymentModal
+        const filtered = parsed.filter((n) => Number.isFinite(n) && n > 0);
+        if (filtered.length > 0) return filtered;
+      }
+    } catch { /* ignore */ }
+    return defaultTenderPresets(storeSettings.currency);
+  }, [storeSettings.currency]);
   // A `mounted` flag is the WRONG GUARD here and this used to have one. It only
   // tracks unmount, so it stays true across a store switch -- exactly like
   // SettingsContext.mountedRef, which needed this same correction in 09ac4df43.

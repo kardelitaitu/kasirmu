@@ -284,6 +284,34 @@ export const MINOR_UNIT_EXPONENT: Record<string, number> = {
 export const minorUnitExponent = (currency: string): number =>
   MINOR_UNIT_EXPONENT[currency] ?? 2;
 
+/**
+ * Default quick-tender denominations for a currency, in MAJOR units.
+ *
+ * `CashTenderPanel` multiplies each by `10^minorUnitExponent(currency)` to get minor units,
+ * so the SAME array means Rp 5.000 in IDR (exponent 0) and $5,000 in USD (exponent 2). The
+ * ladder therefore has to be chosen per exponent, not once.
+ *
+ * This replaced three hardcoded copies of `[5000, 10000, …]` — in `PosScreen`,
+ * `RetailPosScreen` and `CashTenderPanel` itself. Nothing in the repo writes the
+ * `restaurant-tender-presets` / `retail-tender-presets` keys those callers read, so that
+ * fallback is what EVERY store gets: a USD till was offering a $5,000 cash shortcut on a $7
+ * sale.
+ *
+ * The rungs are `5, 10, 20, 50, 100, 200, 500` scaled by the currency's order of magnitude,
+ * which keeps the IDR set byte-identical to what shipped (5.000 … 500.000) while giving a
+ * 2-exponent currency $5 … $500.
+ */
+export const defaultTenderPresets = (currency: string): number[] => {
+  // An exponent-0 currency (IDR, JPY, KRW, VND) prices in thousands, so its ladder is
+  // 5.000 … 100.000 major units — byte-identical to what shipped and what the quick-tender
+  // suite pins. Everything else (USD and the rest of the 2-exponent majority, plus the
+  // 3-exponent Gulf currencies) prices in units and tens, so its ladder is 5 … 100. The
+  // rung COUNT is five in both, which is what the panel was built around.
+  return minorUnitExponent(currency) === 0
+    ? [5_000, 10_000, 20_000, 50_000, 100_000]
+    : [5, 10, 20, 50, 100];
+};
+
 /** Strict decimal literal: optional sign, digits and/or a fractional part. */
 const DECIMAL_RE = /^([+-]?)(\d*)(?:\.(\d*))?$/;
 

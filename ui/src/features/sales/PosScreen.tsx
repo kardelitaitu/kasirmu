@@ -29,7 +29,7 @@ import { RestaurantCartSheet } from '@/features/restaurant/components/Restaurant
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useOrientation } from '@/hooks/useOrientation';
 
-import { formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
+import { defaultTenderPresets, formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -1360,8 +1360,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         if (filtered.length > 0) return filtered;
       }
     } catch { /* ignore */ }
-    return [5000, 10000, 20000, 50000, 100000, 200000, 500000];
-  }, []);
+    return defaultTenderPresets(activeCurrency);
+  }, [activeCurrency]);
 
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {
