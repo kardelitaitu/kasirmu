@@ -668,7 +668,14 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const stampExit = useExitAnimation(showStampModal, handleCloseStamp);
 
   const handleConfirmStamp = useCallback(async () => {
-    if (!detail || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. `!detail` below stays silent — the screen renders its own
+      // empty state — but a missing token means the stamp cannot be recorded, and the
+      // operator has to know or they retry the same 13 digits.
+      setStampError(requiredLocalized(l10n, 'pos-toast-auth-required'));
+      return;
+    }
+    if (!detail) return;
     const cleanNsfp = stampNsfp.replace(/\D/g, '');
     if (cleanNsfp.length !== 13) {
       setStampError('NSFP must be exactly 13 digits (PER-11/PJ/2025)');
@@ -703,7 +710,12 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
 
   const handleCreatePengganti = useCallback(async () => {
-    if (!detail || !sessionToken || !detail.fakturPajak) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleConfirmStamp above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!detail || !detail.fakturPajak) return;
     setPenggantiLoading(true);
     try {
       const updated = await createFakturPenggantiScoped(sessionToken, detail.id);
@@ -732,7 +744,12 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const [issuingInvoice, setIssuingInvoice] = useState(false);
 
   const handleIssueTaxInvoice = useCallback(async () => {
-    if (!detail || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleConfirmStamp above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!detail) return;
     setIssuingInvoice(true);
     try {
       const invNumber = await issueTaxInvoiceScoped(sessionToken, detail.id);

@@ -66,6 +66,9 @@ const files = walk(SRC);
  * list is the honest unit: each file either still has the shape or does not, and a
  * fix deletes its row.
  */
+// SHRINKS BY HAND. 63 -> 62 (round 67, RestaurantMenuEditorScreen) and 62 -> 61 (round 69,
+// SalesHistoryScreen's three invoice actions). The second entry is the same loop: the
+// guard failed on the stale row and named the file.
 // SHRINKS BY HAND. 63 -> 62 on 2026-10-13 (round 67), when RestaurantMenuEditorScreen's
 // three handlers were given a reporting guard and this ledger told me to delete the row.
 // That is the intended loop: the guard fails on a stale entry, so a fix cannot leave the
@@ -101,7 +104,6 @@ const DECLARED: string[] = [
   'features/retail/hooks/useRetailColumnPrefs.ts',
   'features/sales/PaymentModal.tsx',
   'features/sales/PosScreen.tsx',
-  'features/sales/SalesHistoryScreen.tsx',
   'features/sales/hooks/usePosCartActions.ts',
   'features/sales/hooks/usePosHeldCarts.ts',
   'features/sales/payment/useAutoQr.ts',
