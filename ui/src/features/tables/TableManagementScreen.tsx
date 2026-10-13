@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { requiredLocalized } from '@/components';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -314,7 +315,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tableModal || !sessionToken || !tableModal.name.trim()) return;
+    if (!sessionToken) {
+      // Reported, not dropped: the operator presses Save and nothing happens.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!tableModal || !tableModal.name.trim()) return;
     setTableModalSaving(true);
     setTableModalError(null);
     try {
@@ -380,7 +386,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   }, [tableModal, sessionToken, tables, sections, l10n]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
-    if (!sessionToken || pendingRef.current) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleSaveTableModal above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (pendingRef.current) return;
     pendingRef.current = tableId;
     setPendingId(tableId);
     try {
@@ -501,7 +512,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   }, [activeTableList]);
 
   const handleConfirmMoveTable = useCallback(async () => {
-    if (!moveTableModal || !selectedDestTableId || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped: the Move dialog would otherwise sit there mute.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!moveTableModal || !selectedDestTableId) return;
     const destTable = activeTableList.find((t) => t.id === selectedDestTableId);
     if (!destTable) return;
     const activeBill = getTableBill(moveTableModal.name);
@@ -560,7 +576,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   }, [activeTableList, getTableBill]);
 
   const handleConfirmMergeTable = useCallback(async () => {
-    if (!mergeTableModal || !selectedMergeDestTableId || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleConfirmMoveTable above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!mergeTableModal || !selectedMergeDestTableId) return;
     const destTable = activeTableList.find((t) => t.id === selectedMergeDestTableId);
     if (!destTable) return;
     const srcBill = getTableBill(mergeTableModal.name);
