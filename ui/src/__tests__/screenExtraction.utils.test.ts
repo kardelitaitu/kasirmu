@@ -9,12 +9,20 @@
  * Do not copy this directive onto a file that renders or touches browser state —
  * it will fail with "document is not defined" rather than silently degrade.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, it, expect } from 'vitest';
 import {
   extractClassSelectors,
   extractUsedClassNames,
   resolveComposedClassNames,
 } from './screenExtraction.utils';
+
+// This file is ESM (`.mts`/`ts` under vitest), which has no `__dirname`; the pin below
+// reads a production file by path, so it derives one the way the rest of the suite does.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── extractClassSelectors ───────────────────────────────────────────
 
@@ -409,6 +417,44 @@ describe('resolveComposedClassNames', () => {
     // a value that is not a single quoted literal is refused alongside the bare
     // reference above, which is what the shape was always meant to do.
     expect(got.has('ws-color-admin')).toBe(false);
+  });
+
+  // ── SHAPE 4 HAS NO LIVE SITE, AND THAT IS ASSERTED (RULED 2026-10-14). ────────────
+  //
+  // `todo-open-debt-program.md` box 4 records that shape 4 -- an UPPER_SNAKE map
+  // indexed in a template -- is exercised only by the synthetic case above, because
+  // the tree's one such map, WS_COLORS, is read into a LOCAL and the local is applied, so
+  // no ${MAP[key]} interpolation reaches it. The owner's ruling was to KEEP the mechanism
+  // and pin the absence rather than delete the arm or bend a production component to
+  // satisfy a guard.
+  //
+  // Why this is a test and not a comment: a synthetic case proves the mechanism WORKS and
+  // says nothing about whether the tree still contains a live one. Both directions matter.
+  // If a real interpolation appears, this fires and the synthetic case stops being the only
+  // coverage, which is a reason to celebrate; if the map is deleted, the census silently
+  // loses arm-4's whole subject.
+  it('shape 4 has no live site in the tree -- the absence is pinned, not merely noted', () => {
+    const WH = readFileSync(join(__dirname, '..', 'features', 'workspaces', 'WorkspaceHome.tsx'), 'utf8');
+    // The map must still EXIST with its entries, so the pin is about reachability and
+    // not about a file somebody renamed.
+    expect(WH).toContain('const WS_COLORS: Record<string, string> = {');
+    expect(WH).toContain("'ws-color-restaurant-pos'");
+    // And no template interpolation may read it. `WS_COLORS[` indexed inside a
+    // ${...} is the shape the arm credits; anything else is not it.
+    const interpolated = /\$\{[^}]*WS_COLORS\[/i.test(WH);
+    expect(
+      interpolated,
+      'a live shape-4 site exists in WorkspaceHome.tsx: WS_COLORS is now indexed inside a template interpolation. ' +
+        'That is the first real site for this arm -- extend the census to credit it and re-rule this pin, ' +
+        'because the synthetic case is no longer the only coverage.',
+    ).toBe(false);
+    // The consumption the box names is still a LOCAL assignment, applied as a variable.
+    // Asserted so the pin and the code cannot disagree about the mechanism of exemption.
+    const localRead = /const colorClass = WS_COLORS\[ws\.type_key\] \?\? ''/.test(WH);
+    expect(
+      localRead,
+      'WorkspaceHome.tsx no longer reads WS_COLORS through a local assignment -- re-read WorkspaceHome.tsx and update this pin, because the shape that exempts it may have changed.',
+    ).toBe(true);
   });
 
   it('refusal: the className prop pass-through credits nothing, even when the sheet holds the word', () => {
