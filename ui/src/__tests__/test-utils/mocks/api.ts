@@ -134,6 +134,7 @@ export interface SettingsApiOverrides {
   getPresetFeatures?: ReturnType<typeof vi.fn>;
   getStoreSettingsScoped?: ReturnType<typeof vi.fn>;
   getSettingScoped?: ReturnType<typeof vi.fn>;
+  setSettingScoped?: ReturnType<typeof vi.fn>;
   setReceiptSettingsScoped?: ReturnType<typeof vi.fn>;
   setStoreSettingsScoped?: ReturnType<typeof vi.fn>;
   setCreditSettingsScoped?: ReturnType<typeof vi.fn>;
@@ -213,6 +214,18 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
     // pass an override -- this default deliberately models the successful-read path.
     getSettingScoped: vi.fn((_token: string | null, _key: string) =>
       Promise.resolve<string | null>(null),
+    ),
+    // Missed when getSettingScoped was added (2026-09-16). Eight production files call
+    // this -- RestaurantMenu among them -- and a suite that mocked the module without it
+    // threw '[vitest] No "setSettingScoped" export is defined' at the CALL SITE. In
+    // PosScreenCoreFlow that error was uncaught during a DOM event dispatch, which put
+    // the screen into its error boundary and made a LATER case fail for reasons unrelated
+    // to what it tested. Found by --sequence.shuffle (round 94).
+    //
+    // Resolves void, matching the real signature; the real one REJECTS on a null token
+    // (api/settings.ts:342), and a test that needs that passes an override.
+    setSettingScoped: vi.fn((_token: string | null, _key: string, _value: string) =>
+      Promise.resolve<void>(undefined),
     ),
     getReceiptSettingsScoped: vi.fn((_token: string) => Promise.resolve({
       showCurrency: true, decimalSeparator: 'dot', showTax: true,

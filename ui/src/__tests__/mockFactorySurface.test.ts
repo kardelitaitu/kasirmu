@@ -231,10 +231,15 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // with `getFirstRunState`/`provisionDevice`, and the factory was brought
   // forward in the same pass, so those two are mocked rather than listed here —
   // the deletion direction this map is designed to force a visible edit for.
+  // 7 names. `setSettingScoped` left this list in round 94: the factory now defines it,
+  // because a suite that mocked the module without it threw at the CALL SITE and in
+  // PosScreenCoreFlow that error was uncaught during a DOM event dispatch, putting the
+  // screen into its error boundary. Removing it here is the deletion direction this map
+  // forces a visible edit for.
   '@/api/settings <- createSettingsApiMock': [
     'getDeploymentInfo', 'getHardwareSettingsScoped',
     'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',
-    'setSetting', 'setSettingScoped', 'setSettingsScoped',
+    'setSetting', 'setSettingsScoped',
   ],
   // 10 names.
   '@/api/products <- createProductsApiMock': [
