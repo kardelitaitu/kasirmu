@@ -219,12 +219,11 @@ fn resolve_provider(pkg: &str, content: &str) -> String {
 pub fn extract_amount(text: &str) -> Option<i64> {
     // Regex for: Rp 50.000, Rp. 50.000,00, Rp50000, IDR 1,500,000.00
     let prefix_re = Regex::new(r"(?i)(?:rp\.?|idr)\s*([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]+(?:[.,][0-9]{2})?)").ok()?;
-    if let Some(caps) = prefix_re.captures(text) {
-        if let Some(m) = caps.get(1) {
-            if let Some(num) = parse_idr_amount_str(m.as_str()) {
-                return Some(num);
-            }
-        }
+    if let Some(caps) = prefix_re.captures(text)
+        && let Some(m) = caps.get(1)
+        && let Some(num) = parse_idr_amount_str(m.as_str())
+    {
+        return Some(num);
     }
 
     // Suffix regex for: 50.000 Rp, 50000 IDR
@@ -232,12 +231,11 @@ pub fn extract_amount(text: &str) -> Option<i64> {
         r"(?i)([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]+(?:[.,][0-9]{2})?)\s*(?:rp|idr)",
     )
     .ok()?;
-    if let Some(caps) = suffix_re.captures(text) {
-        if let Some(m) = caps.get(1) {
-            if let Some(num) = parse_idr_amount_str(m.as_str()) {
-                return Some(num);
-            }
-        }
+    if let Some(caps) = suffix_re.captures(text)
+        && let Some(m) = caps.get(1)
+        && let Some(num) = parse_idr_amount_str(m.as_str())
+    {
+        return Some(num);
     }
 
     None
@@ -253,7 +251,7 @@ fn parse_idr_amount_str(raw: &str) -> Option<i64> {
     // Strip trailing ,00 or .00 (cents)
     if clean.ends_with(",00") || clean.ends_with(".00") {
         clean = &clean[..clean.len() - 3];
-    } else if let Some(last_delim) = clean.rfind(|c| c == '.' || c == ',') {
+    } else if let Some(last_delim) = clean.rfind(['.', ',']) {
         // If there's a 2-digit decimal suffix like .50 or ,50 following a 3-digit thousand
         let suffix = &clean[last_delim + 1..];
         let prefix = &clean[..last_delim];
@@ -269,15 +267,15 @@ fn parse_idr_amount_str(raw: &str) -> Option<i64> {
 /// Extract sender / payer name from notification body if present.
 pub fn extract_sender_name(text: &str) -> Option<String> {
     let re = Regex::new(r"(?i)\bdari\s+([A-Za-z0-9\s\.\-_]+?)(?:\s+(?:telah|berhasil|pada|sebesar|\d{2}/\d{2})|[\.,;\|]|\s*$)").ok()?;
-    if let Some(caps) = re.captures(text) {
-        if let Some(m) = caps.get(1) {
-            let candidate = m.as_str().trim();
-            if !candidate.is_empty()
-                && candidate.len() <= 60
-                && !candidate.eq_ignore_ascii_case("pelanggan")
-            {
-                return Some(candidate.to_string());
-            }
+    if let Some(caps) = re.captures(text)
+        && let Some(m) = caps.get(1)
+    {
+        let candidate = m.as_str().trim();
+        if !candidate.is_empty()
+            && candidate.len() <= 60
+            && !candidate.eq_ignore_ascii_case("pelanggan")
+        {
+            return Some(candidate.to_string());
         }
     }
     None
@@ -406,13 +404,13 @@ impl QrisMatchEngine {
         }
 
         // 4. Unique code (*kode unik*) match
-        if let Some(max_offset) = self.unique_code_max {
-            if notif.amount_minor > target_amount_minor {
-                let offset = notif.amount_minor - target_amount_minor;
-                if offset > 0 && offset <= max_offset {
-                    self.record(notif);
-                    return MatchResult::UniqueCode { offset };
-                }
+        if let Some(max_offset) = self.unique_code_max
+            && notif.amount_minor > target_amount_minor
+        {
+            let offset = notif.amount_minor - target_amount_minor;
+            if offset > 0 && offset <= max_offset {
+                self.record(notif);
+                return MatchResult::UniqueCode { offset };
             }
         }
 
