@@ -35,15 +35,24 @@ function rustField(name: string): string {
   return m![0];
 }
 
-/** The TS property block for a camelCase name, including its doc comment. */
+/**
+ * The TS property line for a camelCase name, INSIDE the \`SaleDetail\` interface.
+ *
+ * Scoped to the interface rather than searched file-wide, and that scoping is the
+ * whole point: three interfaces in this file carry a \`tipMinor\` — \`SaleDetail\`
+ * (required) and two CompleteSale arg shapes (nullable). A file-wide search finds
+ * whichever comes first and reports on the wrong struct, which is the mistake this
+ * guard exists to catch being made by hand.
+ */
 function tsProperty(name: string): string {
-  // Matches either spelling, so the assertion below reports WHICH one is present
-  // rather than failing on a lookup miss. Searching only for \`?:\` would make a
-  // fixed field look like a missing one.
-  const at = TS.search(new RegExp('\\n  ' + name + '\\??:'));
-  expect(at, 'no TS property ' + name + ' — repoint this guard').toBeGreaterThan(-1);
-  const line = TS.slice(at, TS.indexOf(';', at) + 1);
-  return line;
+  const ifaceAt = TS.indexOf('export interface SaleDetail ');
+  expect(ifaceAt, 'no SaleDetail interface — repoint this guard').toBeGreaterThan(-1);
+  const body = TS.slice(ifaceAt, TS.indexOf('\n}', ifaceAt));
+  // Matches either spelling, so the assertion reports WHICH is present rather than
+  // failing on a lookup miss.
+  const at = body.search(new RegExp('\\n  ' + name + '\\??:'));
+  expect(at, 'SaleDetail has no property ' + name + ' — repoint this guard').toBeGreaterThan(-1);
+  return body.slice(at, body.indexOf(';', at) + 1);
 }
 
 const PAIRS: Array<[rust: string, ts: string]> = [
