@@ -52,10 +52,25 @@ Only the two POS SCREENS. The same `seq`-ref shape appears in 57 files under `ui
 (`Contexts`, `KdsScreen`, `ShiftBar`, `TableManagementScreen`, the connection hooks…). Each
 needs its own kill-test; this census says nothing about them.
 
-The guards are pinned against a TOKEN CHANGE (a store switch). Round 81 showed that a HOT
-token swap is a different path with different ref-sharing behaviour, and that at least one
-guard (`ExchangeRateScreen`) needed the hot-swap path specifically. Neither POS belt above
-was checked against a hot swap.
+**Resolved in round 86 — the POS belts ARE hot-swap safe, but not by the mechanism you
+might assume.**
+
+Round 81 showed a hot token swap is a different path with different ref-sharing behaviour,
+and that `ExchangeRateScreen` needed the hot-swap path specifically because it REMOUNTS on
+a token change. The two POS belts do not.
+
+Instrumented on the existing receipt case (round 86): the two reads report
+`seq=1 refId=58k8` and `seq=3 refId=58k8` — the SAME ref. The existing test already
+exercises the hot-swap shape: it changes `sessionToken` while leaving `activeWorkspace`
+untouched and rerenders, so the screen stays mounted.
+
+The `1 -> 3` jump is the second finding: it shows the CLEANUP bump ran (`1 -> 2`) before
+the re-run effect (`2 -> 3`). Both mechanisms are live, and killing only the cleanup bump
+still passes the case — so on this path the GUARD is what drops the stale read, and the
+cleanup is belt-and-braces for the ordering the test does not happen to produce.
+
+So the earlier caveat was overcautious: no extra hot-swap test is needed for these belts.
+The thing that made `ExchangeRateScreen` different was the REMOUNT, not the swap.
 
 ## Re-verify with
 
