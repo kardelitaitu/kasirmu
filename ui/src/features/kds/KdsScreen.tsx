@@ -162,8 +162,9 @@ export default function KdsScreen() {
     const filtered = filterKdsOrdersByScope(fetchedOrders, activeStoreId);
 
     // Track new ticket IDs for arrival animation. The diff is named in
-    // kdsOrdersDiff so it can be tested; it had none before (the two suites that
-    // mention newOrderIds pass an empty Set as a prop and never exercise it).
+    // kdsOrdersDiff so it can be tested, and it is: kdsArrivalDiff.test.ts (11 cases).
+    // Before the extraction the loop lived inline here and NOTHING exercised it --
+    // the two suites that mention newOrderIds pass an empty Set as a prop.
     const currentIds = orderIdSet(filtered);
     const arrivedIds = arrivedOrderIds(prevOrderIdsRef.current, filtered);
     prevOrderIdsRef.current = currentIds;

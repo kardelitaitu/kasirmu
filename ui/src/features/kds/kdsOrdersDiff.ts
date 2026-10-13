@@ -56,13 +56,27 @@ export function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
  * The ids present in \`next\` that were NOT in \`previous\` — the set that drives
  * the arrival animation.
  *
- * Extracted from KdsScreen.tsx:159-165 AS OF 1d0be5fdf^, the loop that built \`arrivedIds\` inside
+ * Extracted from KdsScreen.tsx:159-165 AS OF 1d0be5fdf^, the loop that built `arrivedIds` in
  * fetchOrders. Those numbers now hold the extracted call itself, so read them
  * as the ORIGINAL range rather than a pointer.
- * It had no test of its own: the two suites that mention
- * \`newOrderIds\` (KdsLayoutMasonry, emptyStateCompliance) pass an empty Set as a
- * prop, so neither exercises the diff. Naming it here is what makes it testable —
- * the same move as sameOrders above.
+ *
+ * COVERED, and the earlier note that said otherwise is corrected here (round 88,
+ * 2026-10-13). It used to read "It had no test of its own … Naming it here is what
+ * makes it testable", which was true when written and stopped being true the same week:
+ * `kdsArrivalDiff.test.ts` (2026-10-07) is the coverage that followed, with eleven cases.
+ * It pins the parts that are easy to get wrong and expensive to guess:
+ *
+ *   - identity, not content — a ticket moving preparing -> ready keeps its id and must
+ *     NOT animate in again;
+ *   - a cleared board reports nothing, so the caller's 3s highlight timer never starts;
+ *   - a ticket that REAPPEARS after a zone filter excluded it DOES report again, because
+ *     `previous` is the immediately prior board and not an accumulated history. That is
+ *     deliberate and the case says so rather than asserting the other behaviour;
+ *   - the input set is not mutated.
+ *
+ * The extraction is what made it reachable — the two suites that mention `newOrderIds`
+ * (KdsLayoutMasonry, emptyStateCompliance) pass an empty Set as a PROP, so neither
+ * exercises the diff itself.
  *
  * New means "not in the previous board", not "recently fetched": a ticket that
  * was pushed to a different zone filter and came back is NOT new, because it was
