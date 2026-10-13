@@ -143,12 +143,14 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
+| general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | general | [The once-queue survives clearAllMocks() (round 99)](audits/once-queue-survives-clear.md) | — |
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
+| general | [A POS cart could follow the operator to another store (round 104)](audits/pos-draft-store-scoping.md) | — |
 | general | [POS-family shuffle sweep, second pass (round 102)](audits/pos-family-shuffle-sweep-2.md) | — |
 | general | [Shuffling the POS-family suites: one more leak found (round 100)](audits/pos-family-shuffle-sweep.md) | — |
 | general | [Production module-level state in the POS: three audits, no defect (round 103)](audits/pos-module-state-audit.md) | — |
