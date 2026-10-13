@@ -502,6 +502,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, store: v }));
+          // Same write-through as the unscoped load above. This is the path the
+          // desktop and mobile shells take, so omitting it here meant the
+          // localStorage bridge `formatMoney` reads was seeded only in the web
+          // shell — the two would then group differently on the same store.
+          setThousandsSep(thousandsSepFor(v.thousandsSeparator));
+          // Same write-through as the unscoped load above. This is the path the
+          // desktop and mobile shells take, so omitting it here meant the
+          // localStorage bridge `formatMoney` reads was seeded only in the web
+          // shell — the two would then group differently on the same store.
         }),
       );
     }
