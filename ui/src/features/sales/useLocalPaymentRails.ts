@@ -93,6 +93,47 @@ export function coreRailWithheld(
  * turn off behaviour for every store that predates the toggle, which is precisely the
  * direction that goes unnoticed.
  */
+/**
+ * The cash quick-tender DENOMINATIONS the operator picked, in MAJOR units.
+ *
+ * `RestaurantPaymentsScreen.tsx:1114` writes these as
+ * `updateRailParams('cash', { presets: next })` from a chip row whose values are STRINGS —
+ * `'exact'`, `'1000'`, `'2000'`, … — and nothing read them back for the rail's whole life
+ * (rounds 120-121). This is the read side.
+ *
+ * The contract with the caller is the same one `railParam` keeps: **null means "the
+ * operator expressed no preference"**, so the caller keeps its own default. An empty array
+ * must never be returned, or the quick-tender row renders with nothing in it.
+ *
+ * `'exact'` is DROPPED, not surfaced: exact-tender already exists as its own button
+ * (`CashTenderPanel`'s `.payment-quick-btn--exact`), and the consumer wants only the
+ * denominations to round up to. Junk entries are dropped rather than surfaced as `NaN`,
+ * which would render a button labelled "NaN".
+ */
+export function cashTenderPresets(rails: LocalPaymentRail[] | null): number[] | null {
+  if (rails === null || rails.length === 0) return null;
+  const wanted = 'cash';
+  const rail = rails.find((r) => r.rail_code.toLowerCase() === wanted);
+  if (!rail?.parameters) return null;
+  let bag: unknown;
+  try {
+    bag = JSON.parse(rail.parameters);
+  } catch {
+    return null; // a malformed bag is saved state being unreadable, not a preference
+  }
+  if (bag === null || typeof bag !== 'object') return null;
+  const raw = (bag as Record<string, unknown>)['presets'];
+  if (!Array.isArray(raw)) return null;
+  const out: number[] = [];
+  for (const entry of raw) {
+    const n = typeof entry === 'string' ? Number(entry) : entry;
+    if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) continue;
+    if (!Number.isInteger(n)) continue;
+    out.push(n);
+  }
+  return out.length > 0 ? out : null;
+}
+
 export function railParam(
   rails: LocalPaymentRail[] | null,
   railCode: string,

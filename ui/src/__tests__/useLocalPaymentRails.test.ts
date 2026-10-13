@@ -5,6 +5,7 @@ import {
   railOffered,
   visibleMethods,
   resolveTenderDisplayName,
+  cashTenderPresets,
 } from '@/features/sales/useLocalPaymentRails';
 import type { LocalPaymentRail } from '@/api/local-payment';
 import type { ActiveMarketProfile } from '@/api/regional';
@@ -225,5 +226,50 @@ describe('useLocalPaymentRails helpers', () => {
       expect(resolveTenderDisplayName('cash', null, profile, 'Cash')).toBe('Cash');
       expect(resolveTenderDisplayName('card', null, profile, 'Card')).toBe('Card');
     });
+  });
+});
+
+describe('cashTenderPresets — the reader the payments screen never had', () => {
+  // Round 120/121: `RestaurantPaymentsScreen.tsx:1114` writes
+  // `updateRailParams('cash', { presets: next })` and NOTHING read it back — the till's
+  // quick-tender amounts came from `PosScreen`'s dead `localStorage` key instead. Round 121
+  // confirmed 14 of 15 rail parameters had no reader. This is the reader for the cash one.
+  //
+  // The shape it must tolerate, in the operator's own terms: the chips row offers
+  // `['exact', '1000', '2000', ...]` — strings, one of which is the literal 'exact' meaning
+  // "also offer an Exact-tender button". The consumer wants `number[]` of MAJOR units,
+  // which `CashTenderPanel` multiplies by 10^exp. So 'exact' is dropped here and the rest
+  // parsed.
+  const rail = (parameters: unknown): LocalPaymentRail[] => [
+    { ...makeRail('cash', true, 'Cash'), parameters: JSON.stringify(parameters) },
+  ];
+
+  it('reads the DENOMINATIONS, dropping the literal exact chip', () => {
+    expect(cashTenderPresets(rail({ presets: ['exact', '1000', '2000'] }))).toEqual([
+      1000, 2000,
+    ]);
+  });
+
+  it('returns null when the operator expressed no preference', () => {
+    // no key at all, an empty list, and a non-array value must all be null — NOT [] — so the
+    // caller keeps its own default rather than an empty quick-tender row.
+    expect(cashTenderPresets(rail({}))).toBeNull();
+    expect(cashTenderPresets(rail({ presets: [] }))).toBeNull();
+    expect(cashTenderPresets(rail({ presets: '1000' }))).toBeNull();
+  });
+
+  it('returns null for a missing or unparseable bag, like its siblings', () => {
+    expect(cashTenderPresets(null)).toBeNull();
+    expect(cashTenderPresets([])).toBeNull();
+    expect(
+      cashTenderPresets([{ ...makeRail('cash', true, 'Cash'), parameters: '{nope' }]),
+    ).toBeNull();
+  });
+
+  it('drops junk entries instead of rendering a NaN button', () => {
+    // Values the chips UI cannot produce but a hand-edited bag can. Zero, negatives and
+    // non-numerics are dropped; a list that is entirely junk reads as no preference.
+    expect(cashTenderPresets(rail({ presets: ['100', 'abc', '0', '-5'] }))).toEqual([100]);
+    expect(cashTenderPresets(rail({ presets: ['abc', '0'] }))).toBeNull();
   });
 });
