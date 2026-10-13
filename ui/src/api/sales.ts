@@ -87,10 +87,14 @@ export interface CompleteSaleArgs {
   baseTotalMinor?: number;
   /** CUR-02: fixed-point rate (millionths) baseCurrency → sale currency. */
   tenderRateMillionths?: number;
-  /** Tip amount in minor units collected at checkout (default 0). */
-  tipMinor?: number;
-  /** Service-charge amount in minor units collected at checkout (default 0). */
-  serviceChargeMinor?: number;
+  /** Tip amount in minor units collected at checkout (default 0).
+   *  Non-optional: the bridge sends a bare `i64` with `#[serde(default)]`
+   *  (history.rs:194-196), so the key is always present. */
+  tipMinor: number;
+  /** Service-charge amount in minor units collected at checkout (default 0).
+   *  Non-optional: the bridge sends a bare `i64` with `#[serde(default)]`
+   *  (history.rs:197-199), so the key is always present. */
+  serviceChargeMinor: number;
   /**
    * PROMO-3 checkout integration: promotions to engine-apply against the
    * post-tax sale. Each reduces the payable total (stacking); the application
@@ -565,8 +569,10 @@ export interface SaleDetail {
   tenderRateMillionths?: number | null;
   /** Statutory document number (e.g. Tax Invoice number) stamped on the sale. */
   statutoryNumber?: string | null;
-  /** Discount percentage applied (0-100). */
-  discountPercent?: number;
+  /** Discount percentage applied (0-100). 0 means no discount.
+   *  Non-optional: the bridge sends a bare `i64` with `#[serde(default)]`
+   *  (history.rs:188-190), so the key is always present. */
+  discountPercent: number;
   /** Human-readable discount label (e.g. "Senior 10%"). */
   discountLabel?: string | null;
   /** Tip amount in minor units collected at checkout (default 0). */

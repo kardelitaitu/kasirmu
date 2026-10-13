@@ -434,6 +434,10 @@ async function renderPosScreenWithShift(openedAt?: Date) {
     total: { minor_units: 1000, currency: 'USD' },
     taxTotal: { minor_units: 0, currency: 'USD' },
     lineCount: 1,
+    // Always on the wire; see completedSale.test.ts for why the type is now required.
+    discountPercent: 0,
+    tipMinor: 0,
+    serviceChargeMinor: 0,
     status: 'completed',
     paymentMethod: 'cash',
     tenderedMinor: 1000,

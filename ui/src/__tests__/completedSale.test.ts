@@ -34,6 +34,12 @@ const makeSaleDetail = (overrides: Partial<SaleDetail> = {}): SaleDetail => ({
   subtotal: makeMoney(9000),
   taxTotal: makeMoney(1000),
   lineCount: 1,
+  // The bridge sends these unconditionally (`#[serde(default)]` on a bare i64,
+  // history.rs:188-199), so a fixture omitting them is not a sale the wire can
+  // produce. Added when the TS type stopped claiming they were optional.
+  discountPercent: 0,
+  tipMinor: 0,
+  serviceChargeMinor: 0,
   status: 'completed',
   paymentMethod: 'cash',
   tenderedMinor: 10000,
