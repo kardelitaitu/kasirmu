@@ -147,6 +147,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A flaky test on HEAD, and the shape that causes it (2026-10-12)](audits/restaurant-menu-editor-flaky-filter-test.md) | — |
 | payments | [Every card payment failed, then settled anyway (2026-10-12)](audits/restaurant-pos-card-settlement-defects.md) | — |
 | general | [Restaurant POS cart footer — live control-by-control pass (2026-10-12)](audits/restaurant-pos-cart-footer-live-controls.md) | — |
+| general | [Restaurant POS: what rounds 72-73 measured clean (2026-10-13)](audits/restaurant-pos-clean-classes.md) | — |
 | general | [A guard list that was short again — the portrait cart surfaces (2026-10-12)](audits/restaurant-pos-crash-isolation-list-gap.md) | — |
 | kds | [Restaurant POS ↔ KDS link: found broken in the dev-mock (2026-10-12)](audits/restaurant-pos-kds-link-investigation.md) | — |
 | general | [Restaurant POS — live accessible-name audit (2026-10-12)](audits/restaurant-pos-live-accessible-names.md) | — |
