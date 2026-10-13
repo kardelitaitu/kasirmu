@@ -1286,6 +1286,16 @@ branches.** I did not switch; another session did.
   edited by this work** — the bump belongs to the concurrent session.
 - **Another session currently has uncommitted work** in `modules/inventory/src/repository{,_tests}.rs`,
   `scripts/bump-version.ps1`, `ui/src/app/tablet/tablet.css`. Do not sweep these into a docs commit.
+
+  **Re-measured 2026-10-14 (docs-auditor): all four are CLEAN.** The line above is written in the
+  present tense inside a dated incident record, and trap 32 of the docs-auditor skill names exactly
+  that shape: *a negative grep is the most perishable evidence a doc can carry*. The named files
+  were checked with `git status --porcelain` — repository{,__tests}.rs, bumper script and the tablet
+  stylesheet all read clean, so the warning "do not sweep these" now warns about nothing. Retained
+  as written because the clause is a dated reading of a 2026-10-09 incident, and deleting it would
+  hide the hazard the section exists to record; corrected in place because a reader following it
+  today would skip four paths for no reason. The still-live half of the incident is section 12's
+  own point: the shared index is a racing value, and the *rule* it states does not expire.
 - **Standing rule adopted:** if the branch moves mid-plan, re-verify the reachability of the plan's own
   commits before continuing, and **never switch branches to recover them** (§7.1).
 
