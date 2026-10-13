@@ -559,16 +559,22 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // (CartPanel.test.tsx:316/:324).
   it('ignores a slower course-firing read from the previous store', async () => {
     wsState.activeWorkspace = 'restaurant-pos';
-    let releaseStale: (v: unknown) => void = () => {};
-    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
 
-    // Read 1 is held open and will answer ENABLED -- the previous store's setting.
-    // NOTE the argument order: `getSettingScoped(token, key)`, so the key is SECOND.
-    // Reading it from the first parameter made every read answer `null` and the
-    // mutation "survive" for the wrong reason.
-    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+    // NO never-resolving promise. The first version held read 1 open with a pending
+    // promise and released it by hand at the end; that promise outlived the case whenever
+    // anything short-circuited, and leaked into the next case's module state -- which is
+    // why the FULL suite failed four times across rounds 88, 90 and 91 while this file
+    // passed alone. Measured decisively: with this case SKIPPED, the full suite is green.
+    //
+    // Read 1 now resolves late but on its own -- after read 2 has been issued and settled.
+    let releaseFirst: (v: string | null) => void = () => {};
+    const firstRead = new Promise<string | null>((resolve) => { releaseFirst = resolve; });
+    let readNo = 0;
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null,
+      key: string) => {
       if (key !== 'restaurant.course_firing') return Promise.resolve(null);
-      return stalePending; // ONLY this key hangs; every other key resolves.
+      readNo += 1;
+      return readNo === 1 ? firstRead : Promise.resolve('false');
     }) as never);
 
     const courseFiringCalls = () =>
@@ -580,67 +586,50 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       settingsFtl);
     await waitFor(() => expect(courseFiringCalls()).toBe(1));
 
-    // Give the cart a line: the container also needs `lines.length > 0`.
-    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
-      sku: 'ITEM-CF',
-      name: 'Course Item',
-      category: 'Main',
-      price: { minor_units: 15000, currency: 'USD' },
-      barcode: 'BARCODE-CF',
-      in_stock: true,
-      stock_qty: 10,
-      tax_rate_ids: [],
-      product_type: 'restaurant',
-      created_at: '',
-      price_updated_at: '',
-    } as never);
-    await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
-    // Wait for the line to LAND, on the same test id the case below uses. A bare act()
-    // flushes the click, NOT the async lookup: without this the add landed after the test
-    // and the line was still on the board for the NEXT case to find (suite-order flake,
-    // measured round 89 -- the file-only run passes either way).
-    // Generous timeout, and on the test id: under a verbose/loaded reporter the default
-    // 1000ms was not enough here, the wait resolved on an intermediate render, and the
-    // add then landed AFTER the case ended -- still on the board for the next case.
-    // Measured twice (rounds 88, 90) before the timeout was raised.
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('cart-panel-line-item').textContent).toContain('Course Item');
-      },
-      { timeout: 5000 },
-    );
-
-    // With the PREVIOUS store's read still pending and the state at its `null`
-    // initial value, the container is present -- `null !== false`.
-    expect(
-      document.querySelector('.pos-cart-course-bar'),
-      'the cart has a line and course firing is unread (null), which SHOWS it',
-    ).not.toBeNull();
-
-    // The store switches. The NEW read answers DISABLED at once.
-    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
-      if (key !== 'restaurant.course_firing') return Promise.resolve(null);
-      return Promise.resolve('false');
+    // Give the cart a line: the container needs `lines.length > 0` too.
+    // An IMPLEMENTATION keyed on the barcode, not a `mockResolvedValueOnce`. Under load a
+    // stray earlier call consumed the once-value and the scan answered `null` -- "Unable to
+    // find [data-testid=cart-panel-line-item]" was the real failure text, not a leaked line.
+    // Keyed this way the value cannot be consumed by anyone else.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => {
+      if (code !== 'BARCODE-CF') return Promise.resolve(null);
+      return Promise.resolve({
+        sku: 'ITEM-CF',
+        name: 'Course Item',
+        category: 'Main',
+        price: { minor_units: 15000, currency: 'USD' },
+        barcode: 'BARCODE-CF',
+        in_stock: true,
+        stock_qty: 10,
+        tax_rate_ids: [],
+        product_type: 'restaurant',
+        created_at: '',
+        price_updated_at: '',
+      });
     }) as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
+    await waitFor(() => {
+      expect(screen.getByTestId('cart-panel-line-item').textContent).toContain('Course Item');
+    });
+
+    // Store switch: read 2 is issued and settles with DISABLED.
     await act(async () => {
-      wsState.sessionToken = 'mock-session-token-2';
+      wsState.sessionToken = 'mock-session-token-course';
     });
     rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
       settingsFtl);
     await waitFor(() => expect(courseFiringCalls()).toBe(2));
-
-    // The CURRENT store disabled course firing, so the bar is gone.
     await waitFor(() => {
       expect(document.querySelector('.pos-cart-course-bar')).toBeNull();
     });
 
-    // The superseded read now lands with ENABLED.
+    // Read 1 settles NOW -- after read 2 already won -- with the opposite value.
     await act(async () => {
-      releaseStale('true');
-      await stalePending;
+      releaseFirst('true');
+      await firstRead;
     });
 
-    // The guard held: the stale 'true' did not bring the bar back.
     expect(
       document.querySelector('.pos-cart-course-bar'),
       "the superseded course_firing read restored the course bar after the current " +
@@ -648,6 +637,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         'it does not have.',
     ).toBeNull();
 
+    // Settle what this case started, then unmount. Both matter: the case adds a cart LINE
+    // and replaces the shared settings lookup, and leaving either behind is what made the
+    // next four cases fail under load.
+    await act(async () => { await Promise.resolve(); });
     view.unmount();
   });
 
