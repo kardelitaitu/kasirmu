@@ -143,3 +143,15 @@ settle.
 | parameters with a writer but no `railParam` reader | 14 of 15 |
 | Credential fields render live | yes, including a password field |
 | Full suite | 12,657 passed, 0 failed (no source changed) |
+## RETRACTED (round 125): the credential claim in this file is wrong
+
+This record's *"Why I did not fix it"* said the screen writes gateway credentials to a bag the
+backend rejects. **It does not.** `updateRailParams` merges into LOCAL component state
+(`RestaurantPaymentsScreen.tsx:565-580`); the single backend call is `handleSave`, and it
+SANITIZES first (`:746-777`) — midtrans submits `channels` only, stripe `reader` and
+`currency` only. Credentials go to `setPaymentGatewayConfigScoped` (`:789-809`), the gateway
+axis, encrypted at rest.
+
+The error was mine: I matched `updateRailParams` calls and never followed the value to the
+wire. See `rail-credential-sanitizer.md` (round 125). The CONSUMPTION finding in this file
+stands; only the security framing is retracted.
