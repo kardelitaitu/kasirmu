@@ -506,8 +506,6 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
  * it first.
  */
 const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
-  { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
-  { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
   // The former `.pos-cart-order-type-btn::min-height: 2rem` entry is GONE, and the
   // history is the reason to leave it that way rather than re-add it:
   //
@@ -979,7 +977,22 @@ describe('Touch target sizing compliance', () => {
     // Kept honest: removing an entry is sanctioned only after reading the sheet
     // and confirming the violation is really gone, which is what the two blocks
     // at KdsRoutingRulesEditor.css:482-490 and StockCountDetail.css:254-260 show.
-    expect(KNOWN_VIOLATIONS.length).toBe(2);
+    // 2 -> 0 on 2026-10-13 (round 36): the ratchet is EMPTY, and the last two were
+    // both covered rather than reclassified.
+    //
+    //   * the kiosk load-error retry -- raised from var(--space-10) = 40px to the
+    //     floor. It is a CUSTOMER control: the single button on the screen an
+    //     ordering kiosk shows when the catalog fails to load, so the moment is
+    //     already a frustrating one.
+    //   * the topology canvas zoom rail -- given this sheet's FIRST (pointer: coarse)
+    //     block, because the sheet had none. NOT a raised base: 28px is correct for a
+    //     floating canvas zoom cluster on a desktop editor, where three 44px circles
+    //     in a 4px rail is visibly wrong. The tablet gets the floor; the desktop stays
+    //     compact. This is the mechanism this suite grades as compliant.
+    //
+    // An empty list is the state the sweep in round 34 was aiming at and the count
+    // assertion is what proves it was reached deliberately rather than by deletion.
+    expect(KNOWN_VIOLATIONS.length).toBe(0);
   });
 
   it('every exemption is justified, and none is a silent bypass', () => {

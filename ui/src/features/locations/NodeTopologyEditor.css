@@ -1758,6 +1758,23 @@
   outline-offset: 1px;
 }
 
+/* R4 touch-target follow-up (2026-10-13). This sheet had NO (pointer: coarse) block
+   at all, so the zoom rail kept its 28px fine-pointer size on a tablet.
+
+   Deliberately an OVERRIDE rather than a raised base: 28px is the right size for a
+   floating canvas zoom cluster on a desktop editor — the standard compact − / % / +
+   pattern, sitting in a 4px-padded rail with a 2px gap. Raising the base would make
+   three 44px circles in that rail, which is visibly wrong where precision, not
+   thumb size, is the constraint. A tablet is not a desktop, so it gets the floor and
+   the desktop stays compact. This is the mechanism touchTargetSizing grades as
+   compliant for exactly this case. */
+@media (pointer: coarse) {
+  .canvas-zoom-btn {
+    min-width: var(--touch-target-min);
+    height: var(--touch-target-min);
+  }
+}
+
 .canvas-zoom-picker {
   position: relative;
   display: inline-flex;

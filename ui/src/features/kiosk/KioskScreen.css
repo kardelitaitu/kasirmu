@@ -320,7 +320,11 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
   cursor: pointer;
-  min-height: var(--space-10);
+  /* R4 touch-target follow-up (2026-10-13): was var(--space-10) = 40px, 4px under
+     the floor, on the button a CUSTOMER presses when the ordering kiosk fails to
+     load. It is the only control on that screen and the moment the customer is
+     already frustrated, so the floor is the minimum here, not a target. */
+  min-height: var(--touch-target-min);
 }
 
 .kiosk-load-error button:focus-visible {
