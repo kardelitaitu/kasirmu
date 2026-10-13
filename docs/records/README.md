@@ -154,6 +154,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | general | [The once-queue survives clearAllMocks() (round 99)](audits/once-queue-survives-clear.md) | — |
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
+| general | [The plan's last claim verified at HEAD, and its one open item (round 113)](audits/plan-claims-and-f40-blocker.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
 | general | [A POS cart could follow the operator to another store (round 104)](audits/pos-draft-store-scoping.md) | — |
