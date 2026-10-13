@@ -130,6 +130,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Two gates that stop the course bar rendering under test (round 97)](audits/course-bar-render-gates.md) | — |
 | general | [courseFiringEnabled: checked, and NOT a defect (round 98)](audits/course-firing-default-verdict.md) | — |
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
+| general | [A dead hook's tests were covering the live hook's behaviour (round 107)](audits/dead-hook-tests-mask-live-gap.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
