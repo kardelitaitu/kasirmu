@@ -566,7 +566,21 @@ if should_run versions; then
         if ! grep -q "$v" Cargo.toml; then
           FINDINGS[versions]+="${skill}: quoted version ${ver} not in Cargo.toml"$'\n'
         fi
-      done < <(grep -hoE '"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null | sort -u)
+      # Exclude a version that is a JSON FIELD VALUE rather than a dependency claim.
+      #
+      # This check is "Dependency version drift": it exists so a skill quoting
+      # `rusqlite = { version = "0.31" }` or `rust-version = "1.88"` is caught when the
+      # real Cargo.toml moves. A quoted version following a JSON-style key is a
+      # different thing: desktop-ui-automation quotes the CDP banner
+      # `{ "Browser": "Edg/...", "Protocol-Version": "1.3", ... }`, where 1.3 is the
+      # browser protocol version and can never appear in Cargo.toml.
+      #
+      # Narrow on purpose: a match is dropped only when the version is IMMEDIATELY
+      # preceded by a `"key":` pair, so project-scaffold's four genuine claims
+      # (rust-version "1.88", rusqlite version "0.31", tracing "0.1",
+      # tracing-subscriber "0.3") are all still checked.
+      done < <(grep -hoE '"[^"]*"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+(\.[0-9]+)?"|"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null \
+        | grep -vE '^"[^"]*"[[:space:]]*:' | sort -u)
     done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
 fi
@@ -656,8 +670,17 @@ if should_run fluent; then
         if ! grep -rqE "^${ftl_id}\s*=" shared-ui/locales/ 2>/dev/null; then
           FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in shared-ui/locales/"$'\n'
         fi
-      done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
-        sed 's/id="//;s/"$//')
+      # Skip PLACEHOLDER ids. A skill documenting an error message must write a
+      # stand-in for the value it cannot know: desktop-ui-automation lists
+      # `element data-testid="X" is disabled -- refusing to click` and four siblings,
+      # where X is the testid a reader substitutes. Requiring an FTL key for it is
+      # unsatisfiable -- the skill would have to name a real id the message does not
+      # have. Same shape as the dead-path note in Check 1: a template is not a claim.
+      #
+      # Narrow on purpose: only single-uppercase-letter and angle-bracket placeholders
+      # are dropped, so a real FTL id is still checked.
+      done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u \
+        | sed 's/id="//;s/"$//' | grep -vE '^[A-Z]$|^<[^>]*>$')
     done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
   # else: no front-end yet, silently skip
