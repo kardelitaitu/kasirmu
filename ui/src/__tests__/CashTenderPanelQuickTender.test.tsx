@@ -35,6 +35,8 @@ const presetLabels = () =>
     .map((button) => button.textContent ?? '')
     .filter((text) => text !== 'Exact');
 
+const usd = (minorUnits: number): Money => ({ minor_units: minorUnits, currency: 'USD' });
+
 const idr = (minorUnits: number): Money => ({ minor_units: minorUnits, currency: 'IDR' });
 
 describe('CashTenderPanel quick-tender shortcuts', () => {
@@ -70,6 +72,38 @@ describe('CashTenderPanel quick-tender shortcuts', () => {
     renderPanel(idr(3_500), [10_000, 10_000, 20_000]);
     const labels = presetLabels();
     expect(labels).toEqual([formatMoney(idr(10_000), 'id-ID'), formatMoney(idr(20_000), 'id-ID')]);
+  });
+
+  // ── The same presets in a 2-exponent currency ─────────────────────────
+  //
+  // Every case above is IDR (exponent 0), where the preset value and the major
+  // units coincide. They do NOT in a 2-exponent currency: the panel computes
+  // `denomMinor = amount * 10^exp` (CashTenderPanel.tsx:87), so the built-in
+  // 5000 means Rp 5.000 in IDR and $5,000 in USD.
+  //
+  // This pins the USD rendering so the default set's currency sensitivity is
+  // visible. The defaults are not currency-tuned — a USD store is offered
+  // $5,000-$500,000 shortcuts — which is a product decision to make deliberately
+  // rather than discover in the field.
+  it('renders the built-in presets at the currency exponent, not as minor units', () => {
+    // $7.00 payable, below every built-in, so all five render.
+    renderPanel(usd(700));
+    const labels = presetLabels();
+    expect(labels).toHaveLength(5);
+    expect(labels[0]).toBe(formatMoney(usd(500_000), 'id-ID')); // 5000 * 10^2
+    expect(labels[4]).toBe(formatMoney(usd(10_000_000), 'id-ID')); // 100000 * 10^2
+  });
+
+  it('a USD store may supply its own presets, which are honoured unchanged', () => {
+    // The escape hatch: the presets key is per-device localStorage, so a USD
+    // store can replace the IDR-shaped defaults.
+    renderPanel(usd(700), [10, 20, 50]);
+    const labels = presetLabels();
+    expect(labels).toEqual([
+      formatMoney(usd(1_000), 'id-ID'),
+      formatMoney(usd(2_000), 'id-ID'),
+      formatMoney(usd(5_000), 'id-ID'),
+    ]);
   });
 
   it('renders Exact button with payment-quick-btn--exact class', () => {
