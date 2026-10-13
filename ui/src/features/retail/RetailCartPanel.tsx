@@ -14,9 +14,26 @@ import type { CartTaxSeverity } from '@/hooks/useCartTax';
  * The amount the customer pays: the pre-tax cart total PLUS the tax when
  * the applied tax is exclusive (added on top of prices). Inclusive tax is
  * already embedded in the prices, so it is NOT added again.
+ *
+ * Takes the NULLABLE total and returns null for it, rather than asserting it non-null.
+ * The assertion was true at the one call site — which guards with `totals.total ?` 370
+ * lines away — and that is the shape that breaks silently: a second caller (a receipt
+ * line, an export, a new total row) would compile and then throw inside render, which
+ * React retries. The type carries the fact now, so the caller's ternary is the only
+ * place the null is handled.
+ *
+ * Exported for its contract test; the arithmetic it performs is what the customer pays
+ * and was the one money computation in this cart with no direct test.
  */
-function grandTotal(totals: CartTotalsData): Money {
-  const base = totals.total!;
+/** The grand total as rendered: the figure, or an em dash when the cart has none. */
+function displayGrandTotal(totals: CartTotalsData): string {
+  const grand = grandTotal(totals);
+  return grand ? formatMoney(grand) : '—';
+}
+
+export function grandTotal(totals: CartTotalsData): Money | null {
+  const base = totals.total;
+  if (!base) return null;
   if (!totals.cartTaxExclusive || totals.cartTax <= 0) return base;
   return { minor_units: base.minor_units + totals.cartTax, currency: base.currency };
 }
@@ -391,7 +408,7 @@ export default function RetailCartPanel({
               )}
               <div className="retail-total-row retail-total-row--grand" aria-live="polite" aria-atomic="true">
                 <span>{l10n.getString('cart-total-label')}</span>
-                <span>{totals.total ? formatMoney(grandTotal(totals)) : '—'}</span>
+                <span>{displayGrandTotal(totals)}</span>
               </div>
             </div>
             {selectedCustomer && (
