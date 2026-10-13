@@ -176,6 +176,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
+| general | [Staleness-guard census, restaurant POS (round 85, 2026-10-13)](audits/staleness-guard-census-restaurant-pos.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
 | general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
