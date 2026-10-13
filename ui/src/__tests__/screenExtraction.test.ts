@@ -2839,10 +2839,12 @@ function ownSheetSelectors(entry: ScreenEntry): Set<string> {
 const CENSUS: {
   dead: Array<[string, string]>;
   credit: Array<[string, string, string]>;
+  /** Names the WIDENING excuses, counted apart from prefix credits (RULED 2026-10-14). */
+  widened: Array<[string, string]>;
   undefined: Array<[string, string]>;
   seen: Set<string>;
   runs: number;
-} = { dead: [], credit: [], undefined: [], seen: new Set(), runs: 0 };
+} = { dead: [], credit: [], widened: [], undefined: [], seen: new Set(), runs: 0 };
 
 describe.each(SCREENS)(
   'CSS class integrity — $name',
@@ -3009,6 +3011,18 @@ describe.each(SCREENS)(
       // entry (p === cls) is not a credit here: it is graded by name in the
       // externalClasses/ledger cases instead. UNIT: name-and-entry pairs.
       for (const [cls] of ownIndex) {
+        // THE WIDENING'S OWN BILL, counted here rather than argued (RULED 2026-10-14,
+        // ruling 3 of todo-open-debt-program.md box 3: "THE WIDENING IS PERMISSIVE, SAY IT
+        // IN THE SAME BREATH AS THE DROP"). resolveComposedClassNames is a PERMISSIVE
+        // change -- it can only remove a dead-class finding, never create one -- so every
+        // name it rescues is coverage the guard no longer exercises. Counted SEPARATELY
+        // from the prefix credits because they are different claims: a prefix credit rests
+        // on a legal dynamicClassPrefixes entry; a widened credit on a template literal
+        // with no rule behind it. Before this the only record was prose in
+        // screenExtraction.utils.ts:301-303.
+        if (composed.has(cls) && !used.has(cls) && !external.has(cls)) {
+          CENSUS.widened.push([name, cls]);
+        }
         if (used.has(cls) || composed.has(cls) || external.has(cls)) continue;
         const by = prefixes.find((p) => p !== cls && cls.startsWith(p));
         if (by) CENSUS.credit.push([name, cls, by]);
@@ -3037,15 +3051,36 @@ it('dead-class census: what the guard calls dead, and what a prefix rescues', ()
   ).toBe(SCREENS.length);
   const distinct = new Set(CENSUS.dead.map(([, cls]) => cls));
   const rescued = new Set(CENSUS.credit.map(([, cls]) => cls));
+  
+  for (const [entry, cls] of CENSUS.dead) console.log(`  DEAD  ${entry}: ${cls}`);
+  const widened = new Set(CENSUS.widened.map(([, cls]) => cls));
   console.log(
     `dead-class census (${CENSUS.runs} graded entries / ${CENSUS.seen.size} distinct names): ` +
       `DEAD ${CENSUS.dead.length} pair(s) / ${distinct.size} distinct name(s); ` +
       `PREFIX-RESCUED ${CENSUS.credit.length} pair(s) / ${rescued.size} distinct name(s); ` +
+      `WIDENING-RESCUED ${CENSUS.widened.length} pair(s) / ${widened.size} distinct name(s); ` +
       `USED-BUT-NOT-DEFINED ${CENSUS.undefined.length} pair(s)`,
   );
-  for (const [entry, cls] of CENSUS.dead) console.log(`  DEAD  ${entry}: ${cls}`);
   for (const [entry, cls, by] of CENSUS.credit)
     console.log(`  RESCUED  ${entry}: ${cls} (only claim: prefix '${by}')`);
+  for (const [entry, cls] of CENSUS.widened)
+    console.log(`  WIDENING  ${entry}: ${cls} (only claim: resolveComposedClassNames -- a permissive rescue with no rule behind it)`);
+  // The widening's bill is ASSERTED, not merely printed (RULING 3, 2026-10-14).
+  // Two properties, both one-directional: the bucket must not be silent (a permissive
+  // arm that stops rescuing anything has stopped working or been wired out from under
+  // its census -- both need a re-rule, not a quiet zero), and it must stay DISJOINT from
+  // the prefix bucket (merging them would hide 38 permissive rescues inside 65 rule-backed
+  // credits, which is exactly the quiet loss of coverage box 3 was written to prevent).
+  expect(
+    CENSUS.widened.length,
+    `the permissive widening rescued nothing, so its bill reads zero. Measured 38 of 152 graded pairs at 2026-10-14, across 37 distinct names (StaffManagementScreen, PaymentModal, GiftCardsScreen, RestaurantMenu, WorkspaceHome, MemosScreen, MemoBanner, KdsScreen, OfflineQueueScreen, ProductLookupScreen, StockCountsScreen, StaffLoginScreen). A zero here is not a clean tree.`,
+  ).toBeGreaterThan(0);
+  for (const [entry, cls] of CENSUS.widened) {
+    expect(
+      CENSUS.credit.some(([e, c]) => e === entry && c === cls),
+      `${entry}: ${cls} is counted as BOTH a widening rescue and a prefix rescue -- the two buckets are different claims and must stay disjoint, or the widening's cost hides inside the prefix arm's.`,
+    ).toBe(false);
+  }
   for (const [entry, cls] of CENSUS.undefined)
     console.log(`  UNDEFINED  ${entry}: ${cls}`);
 });
