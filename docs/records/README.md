@@ -145,6 +145,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
+| general | [The once-queue survives clearAllMocks() (round 99)](audits/once-queue-survives-clear.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
