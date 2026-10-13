@@ -288,6 +288,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     // The QRIS auto-rail command gates with SALES_PROCESS (3d50b3ac5/903b30a71);
     // row added at the round-14 review, count measured from source.
     ("qris_auto", 1, &["SALES_PROCESS"]),
+    ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     // 4 -> 5 in d635b58f0 "feat(regional): register get_active_market_profile_scoped
@@ -517,6 +518,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     // Tablet mirrors the QRIS auto-rail landing with two gated calls; same
     // key, reviewed at the round-14 census repair.
     ("qris_auto", 2, &["SALES_PROCESS"]),
+    ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 2, &["SETTINGS_EDIT"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     // 2 -> 3 by the same d635b58f0 as the desktop row.
