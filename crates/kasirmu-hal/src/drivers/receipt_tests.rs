@@ -517,10 +517,13 @@ fn strip_esc(s: &str) -> String {
     let mut it = s.chars().peekable();
     while let Some(c) = it.next() {
         if c == '\x1b' {
-            if let Some(cmd) = it.next() {
-                if matches!(cmd, 'E' | 'a' | 'd' | '3' | '!') {
-                    it.next();
-                }
+            // Clippy pedantic: the nest and the guard are one condition, and the merge is
+            // semantics-preserving here — both arms fall through to the same no-op, unlike
+            // the products.rs merge that had to be suppressed.
+            if let Some(cmd) = it.next()
+                && matches!(cmd, 'E' | 'a' | 'd' | '3' | '!')
+            {
+                it.next();
             }
         } else if c == '\x1d' {
             it.next();
