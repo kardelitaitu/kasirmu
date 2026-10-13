@@ -129,6 +129,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
 | general | [Two gates that stop the course bar rendering under test (round 97)](audits/course-bar-render-gates.md) | — |
 | general | [courseFiringEnabled: checked, and NOT a defect (round 98)](audits/course-firing-default-verdict.md) | — |
+| general | [Correcting round 114: the credit guard is UNREACHABLE, and the withdrawal was untested (round 115)](audits/credit-guard-unreachable.md) | — |
 | general | [The credit rail's canComplete guard is unpinned — and unreachable in the suite (round 114)](audits/credit-rail-guard-unpinned.md) | — |
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
 | general | [Round 107's follow-up: one real gap, and two guards that were not guards (round 108)](audits/dead-hook-follow-up.md) | — |
