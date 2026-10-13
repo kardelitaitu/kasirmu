@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
@@ -710,7 +711,13 @@ export function RestaurantPaymentsScreen({
 
   // ── Test EDC Terminal ───────────────────────────────────────
   const handleTestEdc = useCallback(async () => {
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reports rather than dropping: the operator presses Test Terminal and
+      // nothing happens, with no clue that the session is the reason. Both
+      // outcomes below already toast.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
     setTestingEdc(true);
     try {
       const res = await edcTerminalStatusScoped(sessionToken, defaultEdcTerminalId || null);

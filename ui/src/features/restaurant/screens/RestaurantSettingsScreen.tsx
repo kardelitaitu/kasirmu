@@ -28,6 +28,7 @@
 // provisioning fact — see finding F14 in the plan doc.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
@@ -306,7 +307,21 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
 
   // Save handler
   const handleSave = useCallback(async () => {
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. This screen writes thirteen restaurant settings; an
+      // operator who presses Save with a lapsed session saw the button do nothing —
+      // no toast, no error, and the "Unsaved changes" banner still up, so the
+      // reasonable reading was that the save had been accepted.
+      //
+      // Same repair as StockShortfallDialog (0b9e88694) and the same class
+      // WorkspaceContext.tsx:76-84 names: a rejected session that is "a console.warn
+      // only" leaves every downstream command no-opping with nothing on screen.
+      addToastRef.current({
+        message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'),
+        type: 'warning',
+      });
+      return;
+    }
     setSaving(true);
     try {
       const tasks: Promise<unknown>[] = [];

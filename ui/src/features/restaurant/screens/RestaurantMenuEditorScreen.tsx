@@ -27,6 +27,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties }
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { requiredLocalized } from '@/components';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
@@ -692,7 +693,14 @@ export default function RestaurantMenuEditorScreen({
 
   const handleDeleteItem = useCallback(
     async (sku: string) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Reported, not dropped: the operator taps Delete, the item stays, and
+        // nothing says why. Reachable when the session lapses while the editor is
+        // open. Same repair as StockShortfallDialog (0b9e88694) and
+        // RestaurantSettingsScreen; every other outcome here already toasts.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       try {
         await deleteProductScoped(sessionToken, sku);
         invalidateCatalog(sessionToken);
@@ -801,7 +809,11 @@ export default function RestaurantMenuEditorScreen({
 
   const handleDeleteCategory = useCallback(
     async (category: CategoryDto) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Same repair as handleDeleteItem above; see the note there.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       try {
         const res = await deleteCategoryScoped(sessionToken, category.id);
         invalidateCatalog(sessionToken);
