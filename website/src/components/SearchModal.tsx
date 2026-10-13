@@ -50,15 +50,31 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
   const filteredItems = useMemo(() => filterSearch(searchItems, query), [query, searchItems]);
 
   useEffect(() => {
+    // Deferred so the field is focusable: the portal mounts on the same tick the
+    // dialog opens, and focusing a node that has not been laid out yet is a no-op
+    // in some engines.
+    let focusTimer: ReturnType<typeof setTimeout> | undefined;
     if (isOpen) {
       previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
       setQuery('');
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
     } else if (previouslyFocusedRef.current) {
       previouslyFocusedRef.current.focus?.();
       previouslyFocusedRef.current = null;
     }
+    // Clear the deferred focus on the way out. Not tidiness: the timer outlives
+    // the state that scheduled it, so a dialog opened and closed inside 50ms still
+    // fires a focus() into a tree the user has already left. Measured 2026-10-14 —
+    // a close-and-reopen inside the window leaves the STALE timer pending while a
+    // second one is scheduled, so the field can be focused 50ms after the caller has
+    // moved focus on. Clearing it costs nothing and makes the effect self-contained.
+    //
+    // What this deliberately does NOT claim: it is not a demonstrated fix for the
+    // intermittent pre-push failure in `search-modal.test.tsx`. That failure could
+    // not be reproduced in 70+ local runs; this cleanup is correct on its own terms
+    // and the ordering guarantee it gives is what the test now relies on.
+return () => clearTimeout(focusTimer);
   }, [isOpen]);
 
   useEffect(() => {
