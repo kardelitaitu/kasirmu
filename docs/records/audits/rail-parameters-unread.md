@@ -30,8 +30,17 @@ Enumerating every parameter they write and searching for a reader:
 **`railParam` has exactly ONE call site in the entire codebase**
 (`PaymentModal.tsx:1392`), and it reads `autoKick`. Every other parameter is write-only.
 
-Checked two ways so the answer is not a regex artefact: through `railParam(...)` and through
-any quoted occurrence of the key outside the writer. `presets`, `nmid`, `surcharge`,
+> **CORRECTED in round 123 (`rail-params-roundtrip-not-consumed.md`).** This record's
+> phrase "write-only" is wrong: `RestaurantPaymentsScreen.tsx:418-455` reads every one of
+> these back as FORM STATE, so the settings screen round-trips correctly. The accurate
+> statement is **13 parameters have no BEHAVIOURAL consumer** — nothing outside the writing
+> screen acts on them. The two conclusions name different defects and this file's wording
+> should not be relied on for the distinction. `presets` was wired in round 122.
+
+Checked three ways so the answer is not a regex artefact: through `railParam(...)`, through any
+quoted occurrence of the key outside the writer, and against the two OTHER consumers of the
+parameters bag — `LocalPaymentSettingsCard.tsx` and the `readStaticQrPayload` reader. None of
+them reads any of these 14 keys. **The conclusion was re-verified rather than assumed.** `presets`, `nmid`, `surcharge`,
 `defaultTerminalId`, `env`, `merchantId`, `clientKey`, `serverKey`, `channels`,
 `publishableKey`, `secretKey` and `reader` have **no production reference at all**. Rust has
 two hits, both inside a `payment_gateways_tests.rs` fixture for a different table.
@@ -65,6 +74,44 @@ Those credential inputs carry **no `aria-label`** — only a `placeholder` (`""`
 screen reader announces the field as unlabelled. `AGENTS.md` §6.3 requires ARIA labels and
 `eslint-plugin-jsx-a11y` passes because a placeholder technically satisfies the rule it can
 see. This is a genuine a11y gap, not a lint failure.
+
+## Correction to this record's own method (2026-10-14, same round)
+
+The first pass missed a reader. `readStaticQrPayload` / `writeStaticQrPayload`
+(`api/local-payment.ts:81-110`) is a **typed key-specific reader/writer pair** for the QRIS
+static payload, consumed at `useLocalPaymentRails.ts:225` and at
+`LocalPaymentSettingsCard.tsx:266`. A search for `railParam(` alone does not find it, which is
+how the first version of this record over-claimed by one.
+
+The over-claim did not change the CONCLUSION — re-running the 14 keys against all three
+consumers still finds no reader — but it did change the ACTION, because that pair is a
+working template for the repair:
+
+* the QRIS rail IS wired end to end, through TWO editing surfaces (the payments screen and
+  Settings -> Business Defaults, which imports `LocalPaymentSettingsCard` at
+  `BusinessDefaultsScreen.tsx:12`) and one read side;
+* `writeStaticQrPayload` preserves every other key in the bag, deletes the key on an empty
+  value, and returns the input unchanged on a malformed bag rather than silently replacing it;
+* `readStaticQrPayload` returns null for a missing, non-string or empty value.
+
+So the pattern to copy exists, is tested (`LocalPaymentSettingsCard.test.tsx`), and is localised
+to one rail. The unread parameters are unread because no one wrote the second half of that
+pair for them — not because the architecture cannot express it.
+
+## A limitation of `railParam` that the repair must clear
+
+`railParam` (`useLocalPaymentRails.ts:96-101`) is **boolean-only**:
+
+```ts
+export function railParam(rails, railCode, key, fallback: boolean): boolean {
+  ... return typeof value === 'boolean' ? value : fallback;
+}
+```
+
+`presets` is a string array containing the literal `'exact'`, and `nmid`/`surcharge`/`env` are
+strings. None of them can be read through it. A repair needs a typed reader per shape — the
+`readStaticQrPayload` template — not a widening of `railParam` to `unknown`, which would move
+the parsing problem to every caller.
 
 ## Why I did not fix it
 
