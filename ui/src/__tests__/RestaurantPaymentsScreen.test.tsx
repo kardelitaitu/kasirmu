@@ -27,6 +27,20 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 
 const FTL = [productsFtl, settingsFtl];
 
+/**
+ * Read a message's ENGLISH value out of a raw FTL bundle.
+ *
+ * For assertions about copy whose exact wording is not what is under test. Pinning
+ * such an assertion to a typed literal is how this file went stale once already
+ * (round 15 localized the Midtrans string and the test kept asserting the literal);
+ * reading the bundle means the assertion tracks the copy instead of duplicating it.
+ */
+function productsFtlLine(id: string): string {
+  const line = productsFtl.split('\n').find((l: string) => l.startsWith(id + ' = '));
+  if (!line) throw new Error('no FTL entry for ' + id + ' — the key was renamed or removed');
+  return line.slice((id + ' = ').length).trim();
+}
+
 // ── Mocks ─────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
   getPrimary: vi.fn(),
@@ -760,7 +774,21 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
 
     const testKeysBtn = screen.getByTestId('midtrans-test-api-btn');
     await user.click(testKeysBtn);
-    expect(screen.getByText(/Midtrans credentials format verified/i)).toBeInTheDocument();
+    // Assert the copy the BUNDLE renders, not a literal typed here.
+    //
+    // This line used to read /Midtrans credentials format verified/i. That string was
+    // a raw literal in the screen until round 15 of the current objective localized it
+    // to `restaurant-payment-midtrans-keys-valid` ("Midtrans keys format valid
+    // ({ $env })"). The test kept asserting the old English, so it failed — correctly,
+    // and for a reason worth keeping: a test pinned to a literal the source no longer
+    // contains is a stale test, and the localization pass is exactly the change that
+    // makes literals disappear.
+    //
+    // Derived from the FTL so this cannot drift again: if the copy changes, this reads
+    // the new value and only fails if the SCREEN stops rendering it.
+    const midtransVerified = productsFtlLine('restaurant-payment-midtrans-keys-valid')
+      .replace('{ $env }', 'SANDBOX');
+    expect(screen.getByText(midtransVerified)).toBeInTheDocument();
 
     // Expand Stripe
     const stripeToggle = screen.getByTestId('payment-card-toggle-stripe');

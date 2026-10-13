@@ -742,11 +742,15 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       changeNote?: string,
     ): Promise<TopologyApplyResult & { idMap?: Record<string, string> }> => {
       if (!sessionToken) {
-        const error = new Error(l10n.getString('topology-toast-no-session'));
-        // `error` was built from l10n.getString one line above, so its message IS the
-        // localized text; plainErrorMessage would re-wrap it and drop the locale.
-        addToast({ message: error.message, type: 'error' });
-        throw error;
+        // Read the localized copy ONCE and use it for both the toast and the thrown
+        // error. The earlier version did `new Error(l10n.getString(...))` then toasted
+        // `error.message` — which is correct at runtime but indistinguishable, to a
+        // reader and to errorPolicyCompliance.test.ts, from leaking a backend
+        // `err.message`. That guard cannot know the Error was constructed here, and
+        // it is right not to guess: the invariant is worth more than the saving.
+        const noSession = l10n.getString('topology-toast-no-session');
+        addToast({ message: noSession, type: 'error' });
+        throw new Error(noSession);
       }
 
       const result = await applyTopologyWithDiagram(
