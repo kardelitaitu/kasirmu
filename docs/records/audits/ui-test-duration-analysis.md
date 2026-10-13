@@ -103,3 +103,5 @@ Measure with `--reporter=json --outputFile=...` and read
 `endTime - startTime` per file. The default reporter's phase totals are
 misleading on their own - `environment: 684s` is summed across 16 workers, so it
 reads as a bottleneck when the real constraint is the longest single file.
+
+> last audited 14-10-26 by docs-auditor

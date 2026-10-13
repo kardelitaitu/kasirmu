@@ -85,3 +85,5 @@ The remaining environment cost is ~488s across 525 jsdom files, and it is now kn
 to be mostly irreducible without either a new dependency (happy-dom) or a worker
 change that measurement refuses. The honest position: the cheap wins are taken, and
 the next one requires a decision rather than a technique.
+
+> last audited 14-10-26 by docs-auditor

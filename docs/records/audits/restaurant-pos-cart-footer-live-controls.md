@@ -69,3 +69,5 @@ taken before React re-rendered — my timing, not a defect.
 - A settlement completed through Card or QRIS (the panels render; the charge was
   not driven to a receipt).
 - The split-tender arithmetic against a real backend.
+
+> last audited 14-10-26 by docs-auditor

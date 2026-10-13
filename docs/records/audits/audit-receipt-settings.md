@@ -106,3 +106,30 @@ per-user finding is unchanged.
 `handleSave` (§3), the preview geometry heuristics (§6), and whether a statutory
 `required_fields` element now actually appears on a printed receipt — establishing that the
 resolver is *called* is not the same as observing the printer consume it.
+
+### Re-measured 2026-10-14 (docs-auditor): §4's remaining item is NOT a gap
+
+The re-verification above called §4 "PARTLY CLOSED — this is the one item still live",
+on the evidence that the mount site omits the prop. The prop is still omitted at
+`ui/src/features/sales/PosScreen.tsx:1518-1521` (`onBack` and `tablesEnabled` only), so
+that reading was correct. **But omitting it costs nothing, because the screen already
+resolves a terminal id from the workspace context:**
+
+- `RestaurantReceiptsScreen.tsx:121` — `const effectiveTerminalId = propTerminalId || contextTerminalId || ''`
+- `:117` — `const { sessionToken, terminalId: contextTerminalId } = useWorkspace()`
+- `ui/src/contexts/WorkspaceContext.tsx:263` — `getDeviceId().then(setTerminalId)`, the
+  ADR #22 device id resolved once on mount.
+
+So the per-terminal layout scope IS reachable from the restaurant flow; the prop is an
+override for callers that already hold a specific terminal, not a prerequisite. The
+fallback arrived in `b3e68d5c7` (2026-09-29) — *before* this record was written — which
+is why the original §4 read "no `terminalId` prop" as a defect: the prop genuinely was
+absent, and the compensating line was never read. **This is the shape trap 2 warns about
+one level up: a value can be genuinely missing from the place you looked and still be
+supplied elsewhere, so a "not passed" finding needs the consumer traced, not just the
+call site grepped.**
+
+Net: §4 is CLOSED, and the record's own §2/§3 caveats stand unchanged (the legacy keys
+are still read as fallback, and `resto_rcpt_*` keys are still per-user).
+
+> last audited 14-10-26 by docs-auditor

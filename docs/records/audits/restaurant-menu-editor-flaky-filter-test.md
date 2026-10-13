@@ -72,3 +72,5 @@ The restaurant POS surface is 1251 tests. One of them could go red on any CI run
 for no reason — and the round-49 finding showed CI is already the place genuine
 problems surface (a settings key read by nothing was failing a guard). A flake
 sitting in the same suite makes that signal harder to trust.
+
+> last audited 14-10-26 by docs-auditor

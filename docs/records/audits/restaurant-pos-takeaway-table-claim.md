@@ -207,3 +207,5 @@ dev server went down mid-round and restarting it is not something to do
 unprompted. The jsdom test and the kill-test both pass, and the guard is a
 one-clause condition over a value the component already reads, so the fix is not
 in doubt; a live re-run is simply the stronger confirmation and is outstanding.
+
+> last audited 14-10-26 by docs-auditor

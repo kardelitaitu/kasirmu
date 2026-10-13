@@ -113,3 +113,5 @@ menu.
 - Settling with a stored card method, or a QRIS/EDC rail end to end.
 - Anything requiring the real Rust bridge: this drives the dev-mock, so the five
   persistence fixes from rounds 24-30 are exercised here but NOT against SQLite.
+
+> last audited 14-10-26 by docs-auditor

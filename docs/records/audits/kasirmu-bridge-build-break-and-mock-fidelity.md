@@ -54,3 +54,5 @@ Consequently the five order-type-field fixes (`206462b4d`, `035d1d01b`,
 Their guards are additionally swept by
 `RestaurantOrderTypeFieldConsumers.test.ts`, which fails if any consumer is
 dropped or written in the negative form.
+
+> last audited 14-10-26 by docs-auditor

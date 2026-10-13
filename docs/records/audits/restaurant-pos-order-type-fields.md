@@ -312,3 +312,5 @@ would be the stronger confirmation and is outstanding for all five.
 Two of the five (#1 claim, #5 pax) were originally FOUND in the browser, so the
 harness does catch this class — it is the re-verification that is missing, not the
 detection.
+
+> last audited 14-10-26 by docs-auditor

@@ -112,3 +112,5 @@ unpaid path has no equivalent guard.
 2. Choose Card. Press "Pay on card terminal" and let it fail.
 3. Observe the failure toast, the method still Card, and Complete still enabled.
 4. Press Complete — a receipt prints with the method recorded as CARD.
+
+> last audited 14-10-26 by docs-auditor

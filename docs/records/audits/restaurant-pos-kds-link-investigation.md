@@ -95,3 +95,5 @@ confirming the real path logs and toasts rather than trusting the comment.
 
 Shipping a change here would be a guess. The symptom is documented so the next
 pass starts from the narrowed evidence instead of rediscovering it.
+
+> last audited 14-10-26 by docs-auditor

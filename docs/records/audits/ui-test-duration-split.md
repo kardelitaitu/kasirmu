@@ -15,8 +15,17 @@ split into four files plus a shared harness:
 
 **Line counts corrected 2026-10-11 (docs-auditor).** The four per-file line numbers above
 were drafted before the final edit and were never true: each file has exactly ONE revision
-(`20da3835c`) and has not changed since, so `wc -l` on the committed blob gives 3,004 / 2,908 /
-2,580 / 3,767 rather than the 3,021 / 2,926 / 2,597 / 3,782 first written. The describe counts
+(`20da3835c`) and has not changed since, so the committed blob gives 3,004 / 2,908 /
+2,580 / 3,767 rather than the 3,021 / 2,926 / 2,597 / 3,782 first written.
+
+  **Method corrected 2026-10-14 (docs-auditor): the figures are right and `wc -l` was the wrong
+tool to name.** Re-measured: the file's single revision still ends at byte `.` with **no trailing
+newline**, so `wc -l` reports 3,003 for it, not 3,004 — and did so at `20da3835c` too. The four
+values above are correct; they come from counting lines, not newlines. Two of the five files
+(`Core` 3,003/3,004 and `WarehouseAndCanvas` 2,579/2,580) show the `+1` gap; on the other three a
+blank final line makes both tools agree. **The lesson is narrower than a wrong number: naming a
+command as the SOURCE of a figure is itself a claim, and it needs the same check as the figure.**
+`grep -c ''` or a splitlines count is the right citation here. The describe counts
 (30/26/25/13 = 94), the `it()` count (549) and the timings are unaffected and verified exact.
 
 Balanced against the MEASURED per-describe durations, not line counts.
@@ -105,3 +114,5 @@ Two further traps, both hit and fixed:
 The extraction script first OVERWROTE the original file, destroying it. It was
 recovered with `git checkout --` because the file was committed — worth remembering
 that the recovery existed only because the work had been committed first.
+
+> last audited 14-10-26 by docs-auditor

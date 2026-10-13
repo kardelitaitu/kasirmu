@@ -77,3 +77,5 @@ dev server hot-reloads edits, so a fix can be re-measured without a restart.
   sweep that returned zero).
 - **Focus order** and **keyboard reachability** — names only.
 - Live regions / announcements.
+
+> last audited 14-10-26 by docs-auditor

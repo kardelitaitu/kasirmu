@@ -102,3 +102,5 @@ Zero console or page errors at any step.
 - "Pay with dynamic QR" (only the static QR path was driven).
 - Whether the merchant's confirmation is the ONLY settle path when a payment
   gateway is configured to auto-confirm — that needs the real bridge.
+
+> last audited 14-10-26 by docs-auditor

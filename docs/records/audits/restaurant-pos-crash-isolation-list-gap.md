@@ -67,3 +67,5 @@ Worth doing after any shell change that adds a surface: the list cannot notice
 itself. This is the third time this file's coverage has been the defect (round 18,
 then round 20's "boundary around a child says nothing about the parent", now this),
 which is the argument for the render-vs-guard diff rather than another manual pass.
+
+> last audited 14-10-26 by docs-auditor

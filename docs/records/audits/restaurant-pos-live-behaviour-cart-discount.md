@@ -122,3 +122,5 @@ and the "dialog still open" reading was the *receipt* modal, which also carries
   end to end against a settled total.
 - KDS ticket lifecycle (accept → ready → served) on a live ticket.
 - Void / refund of a settled sale.
+
+> last audited 14-10-26 by docs-auditor

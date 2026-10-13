@@ -83,3 +83,5 @@ feature behind a dead toggle, recorded the debt, and the pin failed the moment t
 reader arrived — forcing the entry's removal. Nothing in the record's method is retracted;
 only its present-tense state is dated. The Fluent keys it names still exist at
 `shared-ui/locales/products.ftl:120-121`, with the same promise text it quotes.
+
+> last audited 14-10-26 by docs-auditor

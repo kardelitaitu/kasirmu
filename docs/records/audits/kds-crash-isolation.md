@@ -76,3 +76,5 @@ wrapped. They render local or props state rather than server data, so they are n
 where a malformed payload throws, and wrapping everything is a larger change than
 this finding warrants. The three worst are guarded; the guard file lists them, so
 adding a fourth is a one-line change when a reason appears.
+
+> last audited 14-10-26 by docs-auditor

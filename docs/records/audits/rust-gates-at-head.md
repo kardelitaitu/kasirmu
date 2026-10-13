@@ -54,3 +54,5 @@ The UI gates (tsc, eslint, vitest, i18n) are separate and recorded elsewhere. `c
 --workspace` was not run as one command: the bridge suite alone takes ~17 minutes, so the
 crates were checked individually. A workspace-wide run is the thing this note approximates,
 not the thing it performed.
+
+> last audited 14-10-26 by docs-auditor

@@ -92,3 +92,5 @@ Fixed in `165b16304`; the guard went 3 failed -> 4 passed.
 2. **Merge the ~15 tiny files** (0.0-0.1s each) that still pay full setup.
 3. **Raise `maxWorkers`** — the largest single lever, but the config documents
    measuring the CONTENDED pair first, and that has not been done.
+
+> last audited 14-10-26 by docs-auditor
