@@ -146,6 +146,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A committed build break in kasirmu-bridge, and what it reveals (2026-10-12)](audits/kasirmu-bridge-build-break-and-mock-fidelity.md) | — |
 | general | [The kasirmu-bridge suite does not fail — it does not finish (2026-10-13)](audits/kasirmu-bridge-suite-runtime.md) | — |
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
+| general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
