@@ -476,6 +476,16 @@ async function renderPosScreenWithShift(openedAt?: Date) {
 describe('PosScreen — Core Sale Flow (TDD)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // ⚠️ clearAllMocks() clears CALLS but KEEPS IMPLEMENTATIONS, and restoreAllMocks() in
+    // afterEach does not restore a vi.fn() that a vi.mock factory created. Measured on
+    // vitest (round 92): a mockImplementation set in one case is still in force for the
+    // next. The cases here that replace `getSettingScoped` therefore leaked their
+    // behaviour into every later case, which is what made the full suite fail while this
+    // file passed alone.
+    //
+    // Reset to the factory's own default explicitly. Only the mocks a case replaces need
+    // this; resetting all of them would drop the factory defaults and break every case.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(() => Promise.resolve(null));
     localStorage.clear();
     mockedBarcode.reset();
     // A store-switching test mutates these, so later cases need them restored.
@@ -595,6 +605,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       code: string) => {
       if (code !== 'BARCODE-CF') return Promise.resolve(null);
       return Promise.resolve({
+        
         sku: 'ITEM-CF',
         name: 'Course Item',
         category: 'Main',
