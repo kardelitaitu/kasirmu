@@ -51,7 +51,13 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 VENDORED = ("node_modules", ".git", "target", "dist", "build", ".venv", "vendor",
-             ".next", "out", "coverage", "__pycache__", ".cache", ".pnpm-store")
+             ".next", "out", "coverage", "__pycache__", ".cache", ".pnpm-store",
+             # "scratch" is untracked debris (537 files, 0 tracked: 211 png, 171 py,
+             # logs, sqlite). The git path never sees it because scope is TRACKED
+             # files; the fallback walked it and found 67 where git finds 60. The
+             # self-test caught the divergence, because it forces this branch and
+             # asserts the two agree -- the only check able to see a scope bug here.
+             "scratch")
 
 
 def is_shell(path: Path) -> bool:
