@@ -95,6 +95,14 @@ const { invokeMock } = vi.hoisted(() => ({
   }),
 }));
 
+// The factory's own default, captured once so a case that replaces the implementation can
+// be undone. `beforeEach` used `mockClear()`, which keeps IMPLEMENTATIONS (round 92) -- so
+// several cases' `invokeMock.mockImplementation(...)` (lines 754, 794, 960, 1009, ...) stayed
+// in force for every case after them. Under `--sequence.shuffle.tests` that surfaced as four
+// failures in this file. Captured here because the block's own `defaultInvokeImpl` is
+// declared much later and is not in scope from every case.
+const DEFAULT_INVOKE_IMPL = invokeMock.getMockImplementation() as (cmd: string) => Promise<unknown>;
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: null,
@@ -146,7 +154,12 @@ vi.mock('@/components/QrisQrDisplay', () => ({
 }));
 
 beforeEach(() => {
-  invokeMock.mockClear();
+  // mockReset(), not mockClear(): clear() keeps IMPLEMENTATIONS, so a case that replaced
+  // the invoke implementation leaked it into every later case (round 92's rule, measured
+  // again here in round 100). mockReset() clears the implementation AND any once-queue, so
+  // the factory default is re-installed immediately after.
+  invokeMock.mockReset();
+  invokeMock.mockImplementation(DEFAULT_INVOKE_IMPL);
   // The modal is shared by both POS terminals, and the Open Bill tender is now
   // gated on the workspace type: an open bill is the restaurant terminal's own
   // concept, and `hold_cart_scoped` refuses it from anywhere else. The global
