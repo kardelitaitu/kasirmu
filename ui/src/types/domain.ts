@@ -495,13 +495,30 @@ export const formatMoney = (
   //
   // An explicit argument still wins, so a caller with a reason can override.
   const tsep = thousandsSep ?? getThousandsSep();
-  const groupChar = tsep === 'comma' ? ',' : tsep === 'dot' ? '.' : tsep === 'space' ? ' ' : null;
-  const fmt = new Intl.NumberFormat(locale, {
+  const wanted = tsep === 'comma' ? ',' : tsep === 'dot' ? '.' : tsep === 'space' ? ' ' : null;
+  // A fraction-bearing locale mark is only needed when there IS a fraction to mark.
+  const hasFraction = decimals > 0;
+  const localeFmt = new Intl.NumberFormat(locale, {
     style: 'decimal',
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-    ...(groupChar ? { useGrouping: false } : {}),
   });
+  // Which mark does THIS locale use between integer and fraction? It varies (en-US
+  // '.', de-DE ','), and it is the one thing the grouping character must not equal.
+  const decimalMark = hasFraction
+    ? localeFmt.formatToParts(1.5).find((x) => x.type === 'decimal')?.value
+    : undefined;
+  // THE COLLISION RULE. The grouping character comes from the store SETTING and the
+  // decimal mark from the LOCALE. For de-DE and id-ID the locale's decimal mark is a
+  // comma, so a store that sets `comma` produced:
+  //
+  //     $ 1,234,567,89      three commas, no way to tell where the integer ends
+  //
+  // The printer cannot reach this: both its marks come from `ReceiptConfig` and are
+  // resolved together (receipt.rs:360-365). A formatter taking one from each source must
+  // check they differ, and when they do not, grouping by that character is worse than
+  // not grouping at all — the fraction stops being parsable.
+  const groupChar = wanted && wanted !== decimalMark ? wanted : null;
   // Known currency → symbol mapping
   const symbols: Record<string, string> = {
     USD: '$', IDR: 'Rp', EUR: '€', GBP: '£', JPY: '¥', KRW: '₩',
@@ -509,12 +526,22 @@ export const formatMoney = (
     AUD: 'A$', CAD: 'C$', HKD: 'HK$', TWD: 'NT$', INR: '₹',
   };
   const prefix = symbols[m.currency] ?? m.currency;
-  const formatted = fmt.format(major);
-  if (!groupChar) return `${prefix} ${formatted}`;
+  if (!groupChar) return `${prefix} ${localeFmt.format(major)}`;
   // Group the INTEGER part only, so a separator can never split the fraction.
-  // `fmt.format` already emitted the digits with the locale's own grouping
-  // suppressed, and the decimal mark is whatever `Intl` chose for `locale`.
-  const [intPart, fracPart] = formatted.split(/(?=[.,])/);
-  const grouped = (intPart ?? '').replace(/\B(?=(\d{3})+(?!\d))/g, groupChar);
-  return `${prefix} ${grouped}${fracPart ?? ''}`;
+  // Group the INTEGER part only, so a separator can never split the fraction.
+  // `useGrouping: false` is load-bearing: without it Intl has ALREADY grouped the
+  // integer with the locale's character, and re-grouping an already-grouped string
+  // leaves both separators in place (`1,234,567` + a space setting stayed
+  // `1,234,567`). The locale's mark is still needed to find the fraction boundary.
+  const plain = new Intl.NumberFormat(locale, {
+    style: 'decimal',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: false,
+  }).format(major);
+  const cut = decimalMark ? plain.lastIndexOf(decimalMark) : -1;
+  const intPart = cut === -1 ? plain : plain.slice(0, cut);
+  const fracPart = cut === -1 ? '' : plain.slice(cut);
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, groupChar);
+  return `${prefix} ${grouped}${fracPart}`;
 };
