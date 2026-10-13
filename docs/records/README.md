@@ -142,6 +142,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
 | general | [A flaky test on HEAD, and the shape that causes it (2026-10-12)](audits/restaurant-menu-editor-flaky-filter-test.md) | — |
 | payments | [Every card payment failed, then settled anyway (2026-10-12)](audits/restaurant-pos-card-settlement-defects.md) | — |
