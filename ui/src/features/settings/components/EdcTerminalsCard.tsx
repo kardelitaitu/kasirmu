@@ -4,6 +4,7 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { plainErrorMessage } from '@/utils/app-error';
@@ -85,7 +86,13 @@ export function EdcTerminalsCard({
 
   const handleTestConnection = useCallback(
     async (id: string) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Reported: the operator presses Test on a terminal row and, with a lapsed
+        // session, previously got no status change and no message — while the
+        // failure path below does toast.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       setTestingId(id);
       try {
         const result = await edcTerminalStatusScoped(sessionToken, id);
@@ -141,16 +148,22 @@ export function EdcTerminalsCard({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reported through the form's own error slot, which is where every other
+      // refusal in this handler goes. Silently returning from a Submit left the
+      // dialog open with nothing highlighted, which reads as a dead Save button.
+      setFormError(requiredLocalized(l10n, 'pos-toast-auth-required'));
+      return;
+    }
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setFormError('Terminal name is required');
+      setFormError(requiredLocalized(l10n, 'settings-edc-err-name-required'));
       return;
     }
     const trimmedAddress = address.trim();
     if (!trimmedAddress) {
-      setFormError('Device address / port is required');
+      setFormError(requiredLocalized(l10n, 'settings-edc-err-address-required'));
       return;
     }
 

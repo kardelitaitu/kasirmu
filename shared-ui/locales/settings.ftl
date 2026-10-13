@@ -1213,6 +1213,10 @@ settings-edc-delete = Delete
 settings-edc-test = Test Connection
 settings-edc-testing = Testing…
 settings-edc-empty = No EDC card terminals configured yet.
+# Form-validation copy. These two were raw English literals at EdcTerminalsCard.tsx's
+# handleSubmit (:160, :165) while every other message in that card came from the bundle.
+settings-edc-err-name-required = Terminal name is required
+settings-edc-err-address-required = Device address / port is required
 settings-edc-status-ready = Ready
 settings-edc-status-busy = Busy
 settings-edc-status-offline = Offline

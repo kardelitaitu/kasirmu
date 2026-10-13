@@ -117,7 +117,14 @@ export function TerminalPreferencesCard({
   }, [hw]);
 
   const handleTestEdc = useCallback(async () => {
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reports rather than dropping. This is the same handler as
+      // RestaurantPaymentsScreen's, kept in step deliberately: the operator presses
+      // Test Terminal and, with a lapsed session, formerly saw nothing at all while
+      // both other outcomes below do toast.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
     setTestingEdc(true);
     try {
       const res = await edcTerminalStatusScoped(sessionToken, defaultEdcTerminalId || null);
