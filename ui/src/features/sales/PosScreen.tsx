@@ -1274,6 +1274,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
   // what the module's own default says a kitchen expects.
 
+  // PINNED (round 84, 2026-10-13). Removing the success-path `if (stale()) return;`
+  // below fails PosScreenCoreFlow.test.tsx -> 'ignores a slower order-type-prompt read
+  // from the previous store', on `div.pos-cart-order-type-row` (CartPanel.tsx:804).
+  //
+  // It went unnoticed because the round-82 sweep removed ALL THREE guards of this
+  // shape at once and failed on the receipt case alone -- so this one and the
+  // course-firing one both looked pinned. A blanket kill-test cannot say WHICH guard
+  // is load-bearing; each needs its own run.
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
     const seq = ++orderTypePromptSeq.current;

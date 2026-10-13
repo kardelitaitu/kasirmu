@@ -635,6 +635,81 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     ).toBeNull();
   });
 
+  // ── The THIRD guard of this shape, and the only one still unpinned ─────────
+  //
+  // `orderTypePromptSeq` (PosScreen.tsx:1277) guards `restaurant.order_type_prompt`
+  // exactly as the two above guard their keys. Measured 2026-10-13 by removing only
+  // its guard: PosScreen.test.tsx + this file + PosScreen.integration.test.tsx stayed
+  // at 126 passed, 0 failed.
+  //
+  // That round-82 measurement is why this case exists separately: killing all three
+  // guards AT ONCE fails on the receipt case, so the other two looked pinned when
+  // only one was. A blanket kill-test cannot tell you WHICH guard is load-bearing.
+  //
+  // The consequence is the one its own comment documents: the fallback is computed
+  // FROM the workspace (`raw === null ? activeWorkspace === 'restaurant-pos' : ...`),
+  // so a stale read carries the PREVIOUS workspace's answer. On restaurant-pos that
+  // is the order-type selector (Dine-in / Takeaway / Delivery) surviving a switch
+  // away from the workspace it belongs to.
+  //
+  // Observable: `div.pos-cart-order-type-row` (CartPanel.tsx:804), gated on
+  // `orderTypePromptEnabled && setOrderType` -- the same container idiom as the
+  // course bar above, and unlike the course bar it has no per-item early return.
+  it('ignores a slower order-type-prompt read from the previous store', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // Read 1 is held open and will answer ENABLED.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+      if (key !== 'restaurant.order_type_prompt') return Promise.resolve(null);
+      return stalePending;
+    }) as never);
+
+    const promptCalls = () =>
+      vi.mocked(settingsApi.getSettingScoped).mock.calls.filter(
+        (c) => c[1] === 'restaurant.order_type_prompt',
+      ).length;
+
+    const view = renderWithProvidersSync(<PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(promptCalls()).toBe(1));
+
+    // The selector is present while the read is unread: the `null` initial state
+    // resolves to `activeWorkspace === 'restaurant-pos'`, which is true here.
+    expect(document.querySelector('.pos-cart-order-type-row')).not.toBeNull();
+
+    // The store switches. The NEW read answers DISABLED at once.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+      if (key !== 'restaurant.order_type_prompt') return Promise.resolve(null);
+      return Promise.resolve('false');
+    }) as never);
+    await act(async () => {
+      wsState.sessionToken = 'mock-session-token-2';
+    });
+    rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(promptCalls()).toBe(2));
+
+    // The CURRENT store disabled the prompt, so the selector is gone.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-cart-order-type-row')).toBeNull();
+    });
+
+    // The superseded read now lands with ENABLED.
+    await act(async () => {
+      releaseStale('true');
+      await stalePending;
+    });
+
+    expect(
+      document.querySelector('.pos-cart-order-type-row'),
+      "the superseded order_type_prompt read restored the order-type selector after " +
+        "the current store's read had already disabled it -- the operator sees a " +
+        'control this store turned off.',
+    ).toBeNull();
+  });
+
   it('adds product to cart, opens payment, completes cash sale, resets cart', async () => {
     // 1. Render with active shift
     await renderPosScreenWithShift();
