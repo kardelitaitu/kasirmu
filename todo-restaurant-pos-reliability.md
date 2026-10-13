@@ -1,6 +1,37 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. F19 and F23/F24 CLOSED. Remaining: one unasserted D6 pairing. P1 is clean: all settings keys wired and active (including `restaurant.dispatch_on_tab_save` wired in commit 9377011c6).**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. F19 and F23/F24 CLOSED. P1 is clean:
+> all settings keys wired and active (including `restaurant.dispatch_on_tab_save` wired in
+> commit 9377011c6).**
+>
+> **TWO open items are PINNED, not fixed — the earlier "NO open code defects" was false and
+> the header has been corrected (2026-10-12, round 22 of the current objective). Pinned means
+> the defect is stated in code with a `wouldNeed` clause and deliberately left to an owner;
+> it does NOT mean resolved. The pair is enforced:**
+> `ui/src/__tests__/planHeaderMatchesPinnedDefects.test.ts` fails if this header claims there
+> are no open defects while these guards still declare them.
+>
+> 1. **Three INERT core-rail toggles** — `cash`, `card`, `credit`. An operator switches one
+>    off in `RestaurantPaymentsScreen` and the charge modal keeps offering the tender.
+>    Pinned by `ui/src/__tests__/coreRailToggleReach.test.ts`, which records the per-rail
+>    mapping and says INVERT, DO NOT DELETE. `cash`/`card` are UNIVERSAL by design (a site
+>    with no EDC still takes a card by hand, so the rail models the TERMINAL); `credit` is a
+>    parked owner question. Wiring any of them changes checkout behaviour — a product
+>    decision, not a reliability repair.
+>
+> 2. **The receipt preview cannot express `currency.thousands_separator`** — the printer
+>    honours it (two backend readers), `formatMoney` groups by locale only, so an operator
+>    who sets `comma` on an IDR store prints `Rp 15,000` beside a preview reading
+>    `Rp 15.000`. Pinned by `ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts`. The fix
+>    is a design decision: the value is behind IPC and `formatMoney` is synchronous, called
+>    from 149 non-test sites in 40 files.
+>
+> **Why the header went stale, again.** It has now been corrected five times (rounds 74, 75,
+> twice in `planStatusAccuracy.test.ts`, and here) and every correction names the round that
+> made it stale, because the mechanism is always the same: a pin lands, the summary is not
+> re-read. The earlier wording was written when the pins did not exist and was never
+> revisited. A summary that denies the debt its own guards record is worse than no summary —
+> it is the first thing a reader sees and it sends them away from the work.
 >
 > **Header corrected again 2026-10-10 (round 115), and the reason it needed correcting is the
 > point.** It read *"Remaining: D6, and the F19/F23/F24 owner calls."* **D6 is now closed** —
