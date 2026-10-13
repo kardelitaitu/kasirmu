@@ -31,12 +31,32 @@
 >    five times; the three prose sites were fixed together. No code changed here: the wiring
 >    landed in `abb1c324b` and this is the summary catching up to it.
 >
-> 2. **The receipt preview cannot express `currency.thousands_separator`** — the printer
->    honours it (two backend readers), `formatMoney` groups by locale only, so an operator
->    who sets `comma` on an IDR store prints `Rp 15,000` beside a preview reading
->    `Rp 15.000`. Pinned by `ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts`. The fix
->    is a design decision: the value is behind IPC and `formatMoney` is synchronous, called
->    from 149 non-test sites in 40 files.
+> 2. ~~**The receipt preview cannot express `currency.thousands_separator`**~~ — **CLOSED
+>    2026-10-13 (round 50, `d42d1e833`).** The printer honours the setting (two backend
+>    readers) and `formatMoney` now does too.
+>
+>    **What the fix needed, and why it took 30 rounds.** The prose above was right that
+>    `formatMoney` groups by locale only and that the value is behind IPC — and wrong that
+>    this made it a design decision, because the obstacle was one hop wide:
+>
+>      1. `e84ccdc62` put `thousands_separator` on `StoreSettingsDto`, reading the core
+>         accessor that already existed with **no caller in `ui/src`**.
+>      2. `utils/storage.ts` gained `getThousandsSep` / `setThousandsSep` /
+>         `thousandsSepFor` — the synchronous localStorage bridge `formatMoney` needs, the
+>         same shape `getDecimalSep` already had for the decimal separator — and
+>         `SettingsContext` writes through from the DTO on every store load.
+>      3. `formatMoney` takes a `thousandsSep` argument and groups the integer part
+>         itself, with `useGrouping: false` so `Intl` cannot also group.
+>
+>    The 149-call-site synchronous formatter was never the blocker; no value reached it.
+>
+>    `ReceiptPreviewGroupingParity.test.ts` retired its own ledger entry the moment the
+>    change landed — "formatMoney no longer groups by locale alone — delete its
+>    LOCALE_GROUPED_WITHOUT_SETTING entry" — and its assertion was flipped rather than
+>    deleted, so a future locale-only formatter still fails. Two new suites pin it:
+>    `formatMoneyThousandsSeparator.test.ts` (11 cases, incl. the separator never reaching
+>    the fraction) and `thousandsSeparatorStorage.test.ts` (6 cases).
+>
 >
 >    **MEASURED 2026-10-13 (rounds 39, 45) — the item above is half the picture, and the
 >    half it omits is the one an operator actually touches.**
