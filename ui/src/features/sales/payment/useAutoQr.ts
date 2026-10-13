@@ -166,7 +166,14 @@ export function useAutoQr({
   }, [sessionToken, buildGatewaySale, issueAutoQr, addToast, setProcessing, attemptIdRef, l10nRef]);
 
   const handleAutoReissue = useCallback(async () => {
-    if (!autoQr || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. `!autoQr` stays silent — there is no auto-QR panel to
+      // act on — but a missing token means the reissue cannot be attempted, and this
+      // hook toasts on its other paths.
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!autoQr) return;
     try {
       autoIssueSeq.current += 1;
       const charge = await issueAutoQr(autoQr.saleResult);
@@ -192,7 +199,12 @@ export function useAutoQr({
   }, [autoQr, sessionToken, issueAutoQr, addToast, l10nRef]);
 
   const handleAutoCancel = useCallback(() => {
-    if (!autoQr || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleAutoReissue above.
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!autoQr) return;
     const { saleResult } = autoQr;
     setAutoQr(null);
     voidPendingSale(sessionToken, saleResult.saleId)

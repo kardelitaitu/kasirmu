@@ -173,7 +173,13 @@ export function usePosCartActions({
 
   const handleDeductionPinVerified = useCallback(async () => {
     if (!cartId) return;
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. This handler toasts on both of its other paths
+      // (`pos-toast-override-recorded` / `-failed`), so the token branch was the one
+      // silent outcome: the manager enters the PIN, nothing is recorded, nothing says so.
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
     try {
       await overrideCartDeductionLocation(sessionToken, cartId);
       setDeductionOverridden(true);

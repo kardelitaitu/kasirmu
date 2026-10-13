@@ -66,6 +66,8 @@ const files = walk(SRC);
  * list is the honest unit: each file either still has the shape or does not, and a
  * fix deletes its row.
  */
+// SHRINKS BY HAND. 61 -> 59 (round 71) when usePosCartActions and useAutoQr had their
+// last token guards fixed; the ledger failed on two stale rows and named both.
 // SHRINKS BY HAND. 63 -> 62 (round 67, RestaurantMenuEditorScreen) and 62 -> 61 (round 69,
 // SalesHistoryScreen's three invoice actions). The second entry is the same loop: the
 // guard failed on the stale row and named the file.
@@ -104,9 +106,7 @@ const DECLARED: string[] = [
   'features/retail/hooks/useRetailColumnPrefs.ts',
   'features/sales/PaymentModal.tsx',
   'features/sales/PosScreen.tsx',
-  'features/sales/hooks/usePosCartActions.ts',
   'features/sales/hooks/usePosHeldCarts.ts',
-  'features/sales/payment/useAutoQr.ts',
   'features/sales/payment/useEdcTenderPhase.ts',
   'features/sales/useBarcodeScanner.ts',
   'features/sales/useCustomerDisplay.ts',
