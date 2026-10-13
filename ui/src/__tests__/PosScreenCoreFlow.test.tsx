@@ -595,10 +595,12 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       price_updated_at: '',
     } as never);
     await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
-    // Wait for the line to LAND. A bare act() flushes the click, not the async lookup,
-    // so the container assertion below raced it and the line leaked into the next case.
+    // Wait for the line to LAND, on the same test id the case below uses. A bare act()
+    // flushes the click, NOT the async lookup: without this the add landed after the test
+    // and the line was still on the board for the NEXT case to find (suite-order flake,
+    // measured round 89 -- the file-only run passes either way).
     await waitFor(() => {
-      expect(document.querySelector('.pos-cart-lines')?.textContent).toContain('Course Item');
+      expect(screen.getByTestId('cart-panel-line-item').textContent).toContain('Course Item');
     });
 
     // With the PREVIOUS store's read still pending and the state at its `null`
@@ -639,8 +641,6 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         'it does not have.',
     ).toBeNull();
 
-    // Unmount: this case leaves a cart LINE behind, and the cart panel is global to
-    // the document, so a later case querying .pos-cart-lines would find THIS product.
     view.unmount();
   });
 
@@ -717,6 +717,15 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         "the current store's read had already disabled it -- the operator sees a " +
         'control this store turned off.',
     ).toBeNull();
+
+    // Unmount, for the reason the course-firing case above does: the cart panel is global
+    // to the document, so a render left mounted can be found by the NEXT case's queries.
+    // Added round 89 after the sibling leaked its cart line.
+    //
+    // NOT asserted afterwards. `expect(querySelector(...)).toBeNull()` here passes with
+    // or without this line -- RTL's auto-cleanup removes the tree between cases either
+    // way -- so such an assertion would look like a guard and protect nothing. Measured.
+    view.unmount();
   });
 
   it('adds product to cart, opens payment, completes cash sale, resets cart', async () => {
