@@ -155,6 +155,13 @@ pub fn build_deployment_info() -> DeploymentInfo {
 }
 
 pub mod core;
+
+// AGENTS.md 6.2: unit tests for `core.rs` live in a sibling `*_tests.rs`, never
+// inside the production file.
+#[cfg(test)]
+#[path = "settings/core_tests.rs"]
+mod core_tests;
+
 pub use core::{
     enqueue_settings_updates, run_get_receipt_settings, run_get_setting, run_get_store_settings,
     run_list_credit_sales, run_set_setting, run_set_setting_for_user, run_set_settings_batch,

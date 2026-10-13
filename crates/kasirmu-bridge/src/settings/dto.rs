@@ -64,6 +64,16 @@ pub struct StoreSettingsDto {
     pub branch: String,
     /// Logo.
     pub logo: String,
+    /// Thousands-separator vocabulary the store configured: `"comma"`, `"dot"`,
+    /// `"space"` or `"none"`.
+    ///
+    /// The store setting `currency.thousands_separator` had working storage and
+    /// accessors in core (`settings.rs:659`) and was already honoured by the printer
+    /// through `ReceiptConfig.grouping` (`kasirmu-hal/src/drivers/receipt.rs:193`), but
+    /// nothing exposed it to the front end — so the one formatter a customer-facing
+    /// screen could call (`formatMoney`) grouped by locale and could not agree with the
+    /// paper. Defaults to `"none"` so a store that never set one is unchanged.
+    pub thousands_separator: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

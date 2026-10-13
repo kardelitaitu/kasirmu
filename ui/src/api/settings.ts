@@ -39,6 +39,20 @@ export interface StoreSettingsDto {
   currency: string;
   branch: string;
   logo?: string;
+  /**
+   * The store's configured thousands-separator vocabulary: `'comma' | 'dot' |
+   * 'space' | 'none'`.
+   *
+   * Added 2026-10-13 so a customer-facing formatter CAN agree with the paper. The
+   * printer has honoured `currency.thousands_separator` since D6
+   * (`ReceiptConfig.grouping`, receipt.rs:193) while `formatMoney` grouped by
+   * locale and could not read it — see
+   * docs/records/audits/receipt-grouping-two-settings.md.
+   *
+   * NOTE the store's default is `'comma'`, not unset: a brand-new store carries
+   * it, so a consumer must not read a present value as "the operator chose this".
+   */
+  thousandsSeparator?: string | null;
 }
 
 /** Get store settings resolved from a session token. ADR #7. */
