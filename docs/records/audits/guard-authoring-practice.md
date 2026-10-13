@@ -44,7 +44,10 @@ they were wrong. The third reached 8/8.
 The cases now live **in the test file**, so the detector cannot silently regress:
 
 ```
-ui/src/__tests__/OrderTypeDependentValueRule.test.ts   -> 8 detector cases + 6 source cases
+ui/src/__tests__/OrderTypeDependentValueRule.test.ts   -> 8 detector cases + 17 source cases
+(includes 1 value-handler case; 26 total. Re-measured 2026-10-14: the source side has grown
+from the 6 this note recorded as more files acquired a dine-in-only gate — the DETECTOR
+side is unchanged at 8, which is the half that cannot silently regress.)
 ```
 
 That file is the worked example. Two details from it generalise:
@@ -168,3 +171,5 @@ Every guard this session wrote is now mutation-verified, one mutation at minimum
 
 Re-measure rather than trusting this table: a count copied forward is how the round-4
 count misfire started, and this file has already carried one wrong number.
+
+> last audited 14-10-26 by docs-auditor

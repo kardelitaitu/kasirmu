@@ -81,3 +81,5 @@ reproduced locally in one step. Two things work:
 **Not measured here:** where the 17.3 minutes goes. The pass/fail state is settled —
 1509/0. Optimising the runtime is the open question, and it is an efficiency task, not a
 reliability one.
+
+> last audited 14-10-26 by docs-auditor

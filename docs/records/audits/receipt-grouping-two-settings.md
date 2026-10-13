@@ -49,13 +49,29 @@ Every `resto_rcpt_*` value is a UI-only preference, which is why a crude "is it 
 Rust?" check cannot distinguish a genuinely unwired control from a deliberately
 client-side one — twelve receipt keys share that property.
 
-## What is left for an owner
+## What was left for an owner — and the owner chose, 2026-10-13
 
-Wiring the toggle means deciding **which of the two keys is the real one**, and that
-changes what prints. It is a product decision, not a reliability repair. Two candidates:
+Wiring the toggle meant deciding **which of the two keys is the real one**. Two candidates
+were named; **candidate 1 was chosen and implemented**, in three commits:
 
-1. Point the toggle at `currency.thousands_separator` (one setting, one behaviour).
-2. Keep both and have the print path read `resto_rcpt_thousands_sep` as an override.
+1. **`e84ccdc62`** put `thousandsSeparator` on `StoreSettingsDto`.
+2. **`e0ffa8213`** resolved the separator through the same localStorage bridge
+   `decimalSeparator` already used — `utils/storage.ts` gained `getThousandsSep` /
+   `setThousandsSep` / `thousandsSepFor`, and `SettingsContext` writes through from the
+   DTO on **both** store-load paths (`443349a60` added the second).
+3. **`formatMoney`** now takes a `thousandsSep` argument and groups the integer part
+   itself, with `useGrouping: false` so `Intl` cannot also group
+   (`ui/src/types/domain.ts:497`).
+
+**So the two settings are now connected in the direction this note identified.** The
+restaurant toggle (`resto_rcpt_thousands_sep`) still exists and is still UI-only — that
+is candidate 2's territory and was deliberately not taken: the note's own measurement
+showed every `resto_rcpt_*` value is a client-side preference, so folding it into the
+store setting would change what prints for a key the printer never read.
+
+The pin that recorded the divergence was retired by `e295a13f0`, and the guard's ledger
+is now empty — see `ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts`, which asserts
+that emptiness rather than a count.
 
 ## Why there is no guard here
 
@@ -64,3 +80,5 @@ Rust — wrong, because every receipt key is client-side. The second tried to ca
 *second* unwired toggle and could not separate "unwired" from "client-side by design"
 without a per-key expectation table, which would be the same maintenance burden as the
 bug. Recorded here instead of pinned by a test that would have proved nothing.
+
+> last audited 14-10-26 by docs-auditor

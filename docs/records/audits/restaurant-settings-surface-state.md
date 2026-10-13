@@ -60,7 +60,8 @@ label/description keys referenced by the screen resolve in both `products.ftl` a
  1. Auditing whether that single reader actually *consumes* the value nearly recorded a
 false F4: every other mention of the name lives in the settings screen or the model.
 
-It is consumed. `PosScreen:1608` puts it in `checkoutRow`
+It is consumed. `PosScreen:1627` puts it in `checkoutRow` (was `:1608` when this
+note was written; re-measured 2026-10-14)
 (`splitBillEnabled: splitBillEnabled ?? true`), which flows to `CartPanel:430` and on to
 `CartActionBar:211`, where it gates the Split Bill button (`splitBillEnabled !== false`).
 The finding was a blind spot in a name-only search, not a defect.
@@ -70,3 +71,5 @@ The finding was a blind spot in a name-only search, not a defect.
 Behavioural correctness of each setting — this is a wiring and copy audit only. A toggle
 that is read but mis-handled (the rail-toggle class pinned in the plan) is a different
 defect and is tracked there.
+
+> last audited 14-10-26 by docs-auditor

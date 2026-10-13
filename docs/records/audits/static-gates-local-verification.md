@@ -33,7 +33,7 @@ Every `- name:` in the job at `dev-ci.yml:1036-1471`, executed locally:
 | Replay fork control set | PASS |
 | Gate roster runners / completeness (+ self-tests) | PASS - every `check.sh` step named |
 | Release workflow validation (+ self-test) | PASS |
-| Conventional-commit subjects | PASS - **285 commits, 0 non-conforming** |
+| Conventional-commit subjects | PASS - **285 commits, 0 non-conforming** (re-measured 2026-10-14: **328 commits, still 0 non-conforming**) |
 | i18n bundle parity (+ self-test) | PASS - 0 missing keys |
 | FTL attribute requests (+ self-test) | PASS - 5 cases |
 | PG schema drift / migration column types | PASS - 75 migrations |
@@ -69,7 +69,10 @@ Every `- name:` in the job at `dev-ci.yml:1036-1471`, executed locally:
 ## What this does not say
 
 A green static-gates job does not mean CI is green. As of this record the branch is
-**285 commits ahead of `origin/main`**, so CI has never run against any of them; the
+**328 commits ahead of `origin/main`** (285 when this record was written), so CI has
+never run against any of them; the
 local runs above are the only evidence. The Rust legs need their own runs
 (`cargo clippy --workspace`, the nextest suites), and the bridge suite alone takes 17.3
 minutes - see `kasirmu-bridge-suite-runtime.md`.
+
+> last audited 14-10-26 by docs-auditor
