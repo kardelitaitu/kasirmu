@@ -364,9 +364,9 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   cartId: string;
   paymentMethod: string;
   tenderedMinor: number | null;
-  customerId?: string;
+  customerId?: string | null;
   paymentSplits?: PaymentSplitArg[];
-  customerName?: string;
+  customerName?: string | null;
   serialNumbers?: SerialNumberArg[];
   /** Cart line data reconstructed from the in-memory cart (original was deleted). */
   lines: CartLineData[];
@@ -377,7 +377,7 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   /** Discount percentage (0-100). */
   discountPercent: number;
   /** Optional discount label. */
-  discountLabel?: string;
+  discountLabel?: string | null;
   /** Cashier-resolved shortfalls: per-SKU allocation to specific locations. */
   resolutions: ResolvedShortfall[];
   /** CUR-02: tip collected at checkout.
@@ -387,11 +387,11 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   /** CUR-02: service charge collected at checkout. See `tipMinor`. */
   serviceChargeMinor?: number | null;
   /** CUR-02: original sale currency when multi-currency checkout is used. */
-  baseCurrency?: string;
+  baseCurrency?: string | null;
   /** CUR-02: original sale total in `baseCurrency` minor units. */
-  baseTotalMinor?: number;
+  baseTotalMinor?: number | null;
   /** CUR-02: fixed-point rate (millionths) `baseCurrency → sale currency`. */
-  tenderRateMillionths?: number;
+  tenderRateMillionths?: number | null;
   /**
    * The SAME value the original `complete_sale_scoped` submission carried.
    *

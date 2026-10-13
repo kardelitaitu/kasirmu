@@ -45,15 +45,15 @@ export interface StockShortfallDialogProps {
   discountLabel?: string | null;
   /** CUR-02: tip collected at checkout (FRONTEND-04 — forwarded so the
    *  retry records what the customer actually paid; backend defaults 0). */
-  tipMinor?: number;
+  tipMinor?: number | null;
   /** CUR-02: service charge collected at checkout. */
-  serviceChargeMinor?: number;
+  serviceChargeMinor?: number | null;
   /** CUR-02: original sale currency when multi-currency checkout is used. */
-  baseCurrency?: string;
+  baseCurrency?: string | null;
   /** CUR-02: original sale total in `baseCurrency` minor units. */
-  baseTotalMinor?: number;
+  baseTotalMinor?: number | null;
   /** CUR-02: fixed-point rate (millionths) `baseCurrency → sale currency`. */
-  tenderRateMillionths?: number;
+  tenderRateMillionths?: number | null;
   /**
    * Called when the sale completes successfully after resolution — with
    * the committed sale's result so the caller can build the receipt
@@ -370,11 +370,11 @@ export default function StockShortfallDialog({
         // FRONTEND-04: forward the CUR-02 tender snapshot collected at
         // checkout. Without these the backend records tip/service as 0 and
         // loses the base-currency audit trail on the retry sale.
-        ...(tipMinor != null ? { tipMinor } : {}),
-        ...(serviceChargeMinor != null ? { serviceChargeMinor } : {}),
-        ...(baseCurrency != null ? { baseCurrency } : {}),
-        ...(baseTotalMinor != null ? { baseTotalMinor } : {}),
-        ...(tenderRateMillionths != null ? { tenderRateMillionths } : {}),
+        ...(tipMinor !== undefined ? { tipMinor } : {}),
+        ...(serviceChargeMinor !== undefined ? { serviceChargeMinor } : {}),
+        ...(baseCurrency !== undefined ? { baseCurrency } : {}),
+        ...(baseTotalMinor !== undefined ? { baseTotalMinor } : {}),
+        ...(tenderRateMillionths !== undefined ? { tenderRateMillionths } : {}),
         resolutions: resolvedShortfalls,
       };
 
