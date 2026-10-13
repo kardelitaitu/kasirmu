@@ -140,6 +140,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The dead hook's LAST masked behaviour: corrupt-draft resilience (round 110)](audits/dead-hook-third-export.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
+| ui | [The dev-mock answers get_enabled_features with a list matching no preset (round 129)](audits/dev-mock-feature-answer.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
