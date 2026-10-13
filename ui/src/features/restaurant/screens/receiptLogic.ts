@@ -64,15 +64,27 @@ export type DecimalSeparator = 'dot' | 'comma' | 'none';
 /**
  * Format a price for receipt display.
  *
- * Mirrors the ESC/POS renderer (kasirmu-hal `format_amount`): the major part
- * is rendered WITHOUT thousands grouping, an optional fractional part is joined
- * by the configured separator, and the currency prefix (`Rp ` for IDR, the raw
- * code otherwise — or nothing when `showCurrency` is false) is prepended.
+ * ⚠️ WHAT THIS MIRRORS, AND WHAT IT DOES NOT (corrected 2026-10-13, round 45).
  *
- * `decimalSeparator` is the SAME setting the printer resolves: `dot`/`comma`
- * choose the fractional separator and `none` truncates fractional digits, so
- * the preview cannot silently diverge from what actually prints. An integer
- * (`frac === 0`) renders identically under all three, as it does on paper.
+ * This doc used to say "so the preview cannot silently diverge from what actually
+ * prints" — a flat claim contradicted 30 lines later by this function's own body,
+ * which caps the fraction and admits the printer has no decimals field. Both
+ * halves were half-truths. The measured contract, per ReceiptConfig:
+ *
+ * | knob            | ReceiptConfig field            | this fn arg            |
+ * |-----------------|-------------------------------|------------------------|
+ * | grouping        | :193 `grouping` (since D6)     | `showThousandsSeparator` |
+ * | decimal sep     | :181 `decimal_separator`       | `decimalSeparator`    |
+ * | fraction digits | **NONE — the printer cannot**  | `fractionDigits`       |
+ *
+ * So grouping and the separator ARE the printer's settings, and the master toggle
+ * default is what makes the symmetry hold. `fractionDigits` is preview-ONLY:
+ * against the printer an IDR amount renders its bare major regardless of what the
+ * caller asks for, because `format_money` (receipt.rs:333-365) takes the fraction
+ * from `foundation::format_minor`'s canonical exponent and drops `frac` when
+ * that currency has none. An integer renders identically under all three
+ * separators, as it does on paper, so the knob only diverges where an
+ * exp-0 currency is rendered against a finer request — which is the cap below.
  */
 export const formatPrice = (
   amount: number,
@@ -90,18 +102,21 @@ export const formatPrice = (
   const major = showThousandsSeparator
     ? rawMajor.replace(/\B(?=(\d{3})+(?!\d))/g, thousandChar)
     : rawMajor;
-  // ⚠️ The fraction is capped by the CURRENCY'S canonical exponent, because that is the
+  // The fraction is capped by the CURRENCY'S canonical exponent, because that is the
   // only thing the printer can render. `format_money`
-  // (kasirmu-hal/src/drivers/receipt.rs:251) delegates the decimal math to
-  // `foundation::format_minor`, which uses the currency's exponent — IDR is exp-0, so it
-  // yields a bare major part and `fraac` is None. The renderer then falls to its
+  // (kasirmu-hal/src/drivers/receipt.rs:333-365) delegates the decimal math to
+  // `foundation::format_minor`, which uses the currency's exponent — IDR is exp-0, so
+  // it yields a bare major part and `frac` is None. The renderer then falls to its
   // `(_, _)` arm and prints the major ALONE, whatever `decimal_separator` says.
   //
   // Without this cap, a caller passing `showDecimals ? 2 : 0` (as
-  // `RestaurantReceiptsScreen.tsx:1210` does) made the IDR preview render
-  // `Rp 1.500,00` while the paper printed `Rp 1500` — the exact divergence this
-  // function's header promises cannot happen. The setting cannot reach the printer at
-  // all: `ReceiptConfig` (receipt.rs:98-117) has no decimals field.
+  // `RestaurantReceiptsScreen.tsx` does) made the IDR preview render
+  // `Rp 1.500,00` while the paper printed `Rp 1500`. The decimals knob is
+  // preview-only by construction: `ReceiptConfig` (receipt.rs:175-198) has no
+  // fraction-digits field, so no value for it can reach the printer. Verified
+  // 2026-10-13: the OTHER two knobs ARE on ReceiptConfig — `grouping` (:193,
+  // since D6) and `decimal_separator` (:181) — so only this one is preview-only,
+  // and the header above now says so instead of claiming a blanket symmetry.
   const exponent = minorUnitExponent(currency);
   const effectiveDigits = Math.min(fractionDigits, exponent);
   const showFrac = decimalSeparator !== 'none' && effectiveDigits > 0;
