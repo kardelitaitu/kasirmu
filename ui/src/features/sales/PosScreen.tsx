@@ -390,7 +390,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   }, [sessionToken]);
 
   const handleChangePhoto = useCallback(async () => {
-    if (!sessionToken || !session?.user_id || avatarBusy) return;
+    if (!sessionToken) {
+      // Reported, not dropped. The browser-preview refusal three lines below already
+      // carries a message for exactly this reason; a missing session is the same kind
+      // of fact and was the one left mute.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!session?.user_id || avatarBusy) return;
     if (!isTauriWebview()) {
       // The browser dev preview has no dialog plugin, so `pickImageFile`
       // returns null there — indistinguishable from a cancel. Say so rather
@@ -951,7 +958,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   const handleDispatchKitchenDelta = useCallback(
     async (deltaLines: CartLine[]) => {
-      if (deltaLines.length === 0 || !sessionToken) return;
+      if (!sessionToken) {
+        // Reported, not dropped: this function is what puts food on the pass. With no
+        // session the chit is never sent, and silence leaves the operator unable to
+        // tell "not sent" from "sent and ignored".
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      if (deltaLines.length === 0) return;
       if (autoPrintKitchen !== false) {
         // ⚠️ DINE-IN ONLY — the TWELFTH site of this rule, and the one with a
         // physical consequence: every other site mislabelled a RECORD, this one
@@ -1001,7 +1015,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
 
   const handleSendToKitchen = useCallback(async () => {
-    if (lines.length === 0 || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleDispatchKitchenDelta above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (lines.length === 0) return;
     const deltaLines = lines
       .filter((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0)
       .map((l) => ({ ...l, qty: l.qty - (l.dispatchedQty ?? 0) }));
