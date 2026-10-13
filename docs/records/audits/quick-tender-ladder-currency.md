@@ -65,3 +65,23 @@ behaviour round 105's other cases already pin for IDR.
 The ladder's VALUES are a product choice. This fix makes the ladder suit the currency's
 order of magnitude; it does not claim 5/10/20/50/100 is the right spread for every
 business, and the consumer key remains read-only for a deployment that wants its own.
+## Commit-subject correction (2026-10-13, same round)
+
+The commit that added this file carries a MANGLED subject:
+
+```
+docs(audit): a USD till offered a ,000 shortcut on a  sale, and the fix
+```
+
+PowerShell interpolated `$10,000` and `$7` in the `-m` argument as variables and substituted
+empty strings. The commit's CONTENT is correct; only its subject is wrong.
+
+Per the repo's commit policy (`AGENTS.md` §7.3) an amend is not permitted on this shared
+branch, so the correct subject is recorded here instead:
+
+```
+docs(audit): a USD till offered a 10,000-dollar shortcut on a 7-dollar sale, and the fix
+```
+When substituting a dollar amount into a commit subject on Windows, use a single-quoted
+POWERSHELL here-string, or spell the amount out. A double-quoted `-m` with `$` in it is a
+silent edit: the commit succeeds and the message loses the figure.
