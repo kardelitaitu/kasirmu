@@ -3,6 +3,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { completeSaleWithResolvedShortfalls, type CompleteSaleResult, type CompleteSaleWithResolvedShortfallsArgs, type ResolvedShortfall, type LocationAllocation, type PartialStockResult, type CartLineData, type PaymentSplitArg, type SerialNumberArg } from '@/api/sales';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { requiredLocalized } from '@/components';
 import { Button } from '@/components/Button';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './StockShortfallDialog.css';
@@ -261,7 +262,15 @@ export default function StockShortfallDialog({
 
   const handleConfirm = useCallback(async () => {
     if (!sessionToken) {
+      // Reported to the CASHIER, not just the console. This is the point in the
+      // flow where money has already been taken at the till: returning silently
+      // left the operator clicking Confirm with nothing happening and no error
+      // anywhere on screen. Every other failure below routes through setError,
+      // which renders in the role="alert" block, so this one does too.
+      //
+      // Reachable whenever the session expires while the dialog is open.
       console.warn('[ShortfallDialog] No session token — cannot complete sale');
+      setError(requiredLocalized(l10n, 'pos-toast-auth-required'));
       return;
     }
     setLoading(true);

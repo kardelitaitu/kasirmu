@@ -29,10 +29,14 @@ vi.mock('@/api/sales', () => ({
   completeSaleWithResolvedShortfalls: mockCompleteSaleWithResolvedShortfalls,
 }));
 
+// A hoisted holder so a case can render WITHOUT a session token. The hook returns an
+// object literal, not a vi.fn(), so vi.mocked(...).mockReturnValueOnce cannot reach it.
+const { wsState } = vi.hoisted(() => ({
+  wsState: { sessionToken: 'mock-session-token' as string | null },
+}));
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
-  useWorkspace: () => ({
-    sessionToken: 'mock-session-token',
-  }),
+  useWorkspace: () => ({ sessionToken: wsState.sessionToken }),
 }));
 
 // ── Test data factories ────────────────────────────────────────────
@@ -780,5 +784,39 @@ describe('StockShortfallDialog', () => {
       // already holds NULL rows which SQLite considers mutually distinct.
       expect('attemptId' in payload).toBe(false);
     });
+  });
+
+  it('reports a missing session token instead of returning silently', async () => {
+    // handleConfirm began:
+    //   if (!sessionToken) { console.warn(...); return; }
+    // So a dialog opened without a token DROPPED the sale with no visible sign —
+    // the cashier clicks Complete, nothing happens, and no error appears anywhere.
+    // Every other failure in this file routes through setError -> role="alert".
+    //
+    // Reachable in practice: the token comes from useWorkspace, so a session that
+    // expires while this dialog is open leaves it falsy.
+    wsState.sessionToken = null;
+    try {
+      await renderWithFluent(<StockShortfallDialog {...defaultProps} />);
+
+      const user = userEvent.setup();
+      const confirm = screen
+        .getAllByRole('button')
+        // The label is shortfall-confirm-btn = "Confirm & Continue".
+        .find((b) => /confirm/i.test(b.textContent ?? ''));
+      expect(confirm, 'a confirm button must exist').toBeDefined();
+      await user.click(confirm!);
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('alert'),
+          'a silent refusal is invisible at the till',
+        ).not.toBeNull();
+      });
+      // And the sale must NOT be submitted.
+      expect(mockCompleteSaleWithResolvedShortfalls).not.toHaveBeenCalled();
+    } finally {
+      wsState.sessionToken = 'mock-session-token';
+    }
   });
 });
