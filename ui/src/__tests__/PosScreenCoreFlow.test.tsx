@@ -575,13 +575,23 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   it('ignores a slower course-firing read from the previous store', async () => {
     wsState.activeWorkspace = 'restaurant-pos';
 
-    // NO never-resolving promise. The first version held read 1 open with a pending
-    // promise and released it by hand at the end; that promise outlived the case whenever
-    // anything short-circuited, and leaked into the next case's module state -- which is
-    // why the FULL suite failed four times across rounds 88, 90 and 91 while this file
-    // passed alone. Measured decisively: with this case SKIPPED, the full suite is green.
+    // This case asserted on `.pos-cart-course-bar` for nine rounds and could never pass.
+    // THREE gates each independently make that element unreachable, and all three had to
+    // be identified before it could be written correctly:
     //
-    // Read 1 now resolves late but on its own -- after read 2 has been issued and settled.
+    //   1. the barcode scanner is DISABLED on this workspace
+    //      (`PosScreen.tsx:567`, enabled: activeWorkspace !== 'restaurant-pos'), so the
+    //      cart line cannot be created by scanning -- it was created by seeding the
+    //      mount-time restore key instead;
+    //   2. the bar lives in CartPanel, and portrait skips it (`:1789`). jsdom's 1024x768
+    //      is landscape, so the harness answers the orientation query and this one holds;
+    //   3. `courseFiringEnabled !== false` (`CartPanel.tsx:961`), and an UNSET key resolves
+    //      to false (`:1223`). So read 1 must answer 'true' or the bar is hidden by design.
+    //
+    // The case only ever appeared to pass because a RETAIL case earlier in the file left
+    // its scanner registration in the mock's single slot. See
+    // docs/records/audits/scanner-disabled-on-restaurant-pos.md and
+    // course-bar-render-gates.md.
     let releaseFirst: (v: string | null) => void = () => {};
     const firstRead = new Promise<string | null>((resolve) => { releaseFirst = resolve; });
     let readNo = 0;
@@ -589,6 +599,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       key: string) => {
       if (key !== 'restaurant.course_firing') return Promise.resolve(null);
       readNo += 1;
+      // Read 1 (held) answers ON; read 2 answers OFF after the store switch.
       return readNo === 1 ? firstRead : Promise.resolve('false');
     }) as never);
 
@@ -597,45 +608,30 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         (c) => c[1] === 'restaurant.course_firing',
       ).length;
 
+    // The cart line, seeded BEFORE the render: the restore effect runs on mount.
+    localStorage.setItem(
+      'pos-active-draft',
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'ITEM-CF',
+            name: 'Course Item',
+            category: 'Main',
+            qty: 1,
+            unit_price: { minor_units: 15000, currency: 'USD' },
+          },
+        ],
+        orderType: 'dine_in',
+      }),
+    );
+
     const view = renderWithProvidersSync(<PosScreen />, salesFtl, productsFtl, inventoryFtl,
       settingsFtl);
     await waitFor(() => expect(courseFiringCalls()).toBe(1));
 
-    // Give the cart a line: the container needs `lines.length > 0` too.
-    // An IMPLEMENTATION keyed on the barcode, not a `mockResolvedValueOnce`. Under load a
-    // stray earlier call consumed the once-value and the scan answered `null` -- "Unable to
-    // find [data-testid=cart-panel-line-item]" was the real failure text, not a leaked line.
-    // Keyed this way the value cannot be consumed by anyone else.
-    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
-      code: string) => {
-      if (code !== 'BARCODE-CF') return Promise.resolve(null);
-      return Promise.resolve({
-        
-        sku: 'ITEM-CF',
-        name: 'Course Item',
-        category: 'Main',
-        price: { minor_units: 15000, currency: 'USD' },
-        barcode: 'BARCODE-CF',
-        in_stock: true,
-        stock_qty: 10,
-        tax_rate_ids: [],
-        product_type: 'restaurant',
-        created_at: '',
-        price_updated_at: '',
-      });
-    }) as never);
-    await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
-    // getAllByTestId, not getByTestId: the cart panel is shared, and under a shuffled order
-    // a neighbouring case's line can still be on the board, so "the first line" is not
-    // necessarily mine. Asserting that SOME line is mine is the property this case needs.
+    // Read 1 answers ON, and the seeded line satisfies the container's own gate.
     await waitFor(() => {
-      // queryAll, not getAll: getAll THROWS on zero matches, so a missing line surfaced as
-      // a TestingLibrary error rather than the assertion below it.
-      const lines = screen.queryAllByTestId('cart-panel-line-item');
-      expect(
-        lines.some((l) => l.textContent?.includes('Course Item')),
-        'the scanned product never reached the cart',
-      ).toBe(true);
+      expect(document.querySelector('.pos-cart-course-bar')).not.toBeNull();
     });
 
     // Store switch: read 2 is issued and settles with DISABLED.
@@ -662,10 +658,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         'it does not have.',
     ).toBeNull();
 
-    // Settle what this case started, then unmount. Both matter: the case adds a cart LINE
-    // and replaces the shared settings lookup, and leaving either behind is what made the
-    // next four cases fail under load.
-    await act(async () => { await Promise.resolve(); });
+    localStorage.removeItem('pos-active-draft');
     view.unmount();
   });
 
