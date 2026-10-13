@@ -76,3 +76,23 @@ and the editor shows `All changes saved`.
 | Empty non-restaurant categories shown | 7 |
 | Source of those categories | dev-mock retail seed + RetailPosScreen fixtures |
 | Tree | no source changed this round |
+## CORRECTED (round 127): this is a recorded deferral, not a discovered defect
+
+This record's framing — "the defect is in the mock's shape" — presents the seven retail
+categories as something found. **They were deferred deliberately, in writing, by the commit that
+added the restaurant half.** `dev-mock/core/mockSeedData.ts:122-127` reads:
+
+> *The retail entries still carry ids that set does not define (`cpu-1`, `gpu-1`…), so they
+> render as no glyph at all... They are left as they are here because changing them is a*
+> ***separate decision about the retail demo, not a side effect of adding the restaurant***
+> ***half.***
+
+Both repairs this record proposed also fail against the code: `RetailPosScreen.tsx:559/:611/:639`
+joins products to categories from the SAME `list_categories` result, so serving
+restaurant-only categories breaks the retail grid; and filtering the editor's rail by item
+count would hide `cat-snack` — seeded, restaurant-owned, 0 items, and MUST stay visible.
+
+The observation stands (seven clickable, permanently empty rows; a rail twice the size of the
+menu). The attribution and the priority do not: this is dev-only fidelity, not a merchant-facing
+defect. See `menu-editor-categories-deferred.md` (round 127) for the least-blast-radius option —
+scoping `MOCK_CATEGORIES` by workspace in the router rather than in the editor.
