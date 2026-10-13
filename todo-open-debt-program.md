@@ -808,6 +808,73 @@ What landed, each with its own commit and its own measuring box: `30c2470e9` nar
 - [ ] **Figures this append refuses.** The deletion lane that owns the guard file and a stylesheet has landed nothing on top of `34d2007f3` as of tip d5d7b9d61 — `git log --oneline -6 -- ui/src/__tests__/screenExtraction.test.ts` still ends at that commit, and `git --no-optional-locks status --porcelain -- ui/src/__tests__/ ui/src/features` returned nothing at all — so no post-wiring census is quoted here as current, and 111 → 84 is attributed to `34d2007f3` and its tip, not to the tree a reader opens.
 
 **This file's own census, by both forms the Counting method section names, measured before this append:** `grep -cE '^[[:space:]]*[-*][[:space:]]+\[ \]' todo-open-debt-program.md` = **22** open and its `\[[xX]\]` counterpart = **3** ticked; the anchored forms `grep -c '^- \[ \]'` and `grep -c '^- \[[xX]\]'` give the same **22 / 3**, because this file has no indented checkbox rows. Note that `:349` records 24 open / 1 ticked for an earlier pass and that figure no longer reproduces — which is the law above applying to this page, and the reason the four rows added here are un-ticked: none of them is completed work, and a retired row is not a completion.
+## THE FOUR RULINGS, MADE 2026-10-14, AND WHAT EACH ONE CLOSED
+
+The owner ruled on the five dead-class boxes. Four of the five are now closed by an
+enforcement change rather than by prose; the fifth (box 1) is closed by a MEASUREMENT that
+overturned the box's own reading. Nothing above this line was edited.
+
+**Ruling 1D — shape 4 stays, and its zero live sites are now ASSERTED.**
+The box's subject was that shape 4 (an UPPER_SNAKE map indexed in a template) is exercised
+only by a synthetic fixture. Ruled: keep the mechanism, and pin the absence. `ui/src/__tests__/screenExtraction.utils.test.ts`
+now carries `shape 4 has no live site in the tree -- the absence is pinned, not merely noted`,
+which reads `WorkspaceHome.tsx` and asserts three things: the map still exists with its
+entries, no `${WS_COLORS[...]}` interpolation appears, and the consumption is still the
+local-assignment shape that exempts it. Kill-tested both directions — wiring a real
+interpolation fails the pin, and deleting the map fails it too. So the arm can no longer rot
+in either direction without a red test.
+
+**Ruling 2C+A — `parentCss` IS authoritative, and the split is now ASSERTED.**
+The two halves of the prefix arm resolve against different sheet sets (used-vs-defined reads
+`css ∪ parentCss`; the dead-class walk reads `css` alone), so a value can be credited by one
+and dead-blind to the other in the same run. Ruled: `parentCss` is authoritative, because
+`960d00568` hoisted the badge family into one imported sheet deliberately and crediting
+through the import follows the code. What makes that enforceable rather than stated is in
+`ui/src/__tests__/screenExtraction.test.ts`: the `PARENT-ONLY-CREDITED` print had been a
+`console.log` since `1264c943a` that no `expect()` read, and now three assertions read it —
+the sum closes (`parentOnly + own-credited = credited`), the split is not empty, and
+`credited` is larger than the split. **Measured at the tip that made this ruling: the split
+is 5, not the 4 the record carried**, because it gained `SettingsPage: memo-stack` crediting
+only `SettingsNavTree.css`. The 4 is dated and the growth is the direction of travel; an
+EMPTY split is what fails.
+
+**Ruling 3B — the widening's bill is now counted and asserted.**
+Box 3 asked that the permissive widening be said in the same breath as the drop. It is now.
+`resolveComposedClassNames` is permissive by construction (it can only remove a dead-class
+finding), so every name it rescues is coverage the guard no longer exercises, and until now
+the only record was prose. The census gained a third bucket, `WIDENING-RESCUED`, counted
+apart from `PREFIX-RESCUED` because the two are different claims — a prefix credit rests on
+a legal `dynamicClassPrefixes` entry, a widened credit on a template literal with no rule
+behind it. Two assertions make it bite: the bucket must not read zero, and it must stay
+disjoint from the prefix bucket. **The number the record never had: 38 pairs / 37 distinct
+names, against 65 prefix-rescued pairs.** A real bill, at last.
+
+**Ruling 4 — MEASURED THE 66, AND THE ANSWER OVERTURNS THE BOX'S FRAMING.**
+Box 1 says 84 names survive on a `dynamicClassPrefixes` entry alone, and its own sub-note says
+the 18 `PREFIX-RESCUED` names are *"a literal in a file the entry's own `tsx` cites, so an
+extractor with no composition support at all would credit all 18"* — which reads as: the
+prefix rules buy zero. **That reading is false at this tip, and the correction is the
+useful half.** Measured per name:
+
+- **15 of the 18 have NO source literal anywhere.** They exist in the cited `.css` sheet and
+  in the guard's own ledger, and nowhere else — `grep` finds `kds-ticket--green`,
+  `kds-ticket-number`, `kds-ticket-course-group`, the five `kds-ticket-item-status-dot--*`,
+  and `feature-toggle-item--flash-enabled/--disabled` in CSS and `screenExtraction.test.ts`
+  only. None of them is in `KdsScreen.tsx`.
+- **They are produced by COMPOSITION, and the sites are real.**
+  `ui/src/features/kds/components/KdsTicketCard.tsx:314` builds
+  `kds-ticket kds-ticket--${level}` plus eight further `kds-ticket--*` variants in one
+  template; `ui/src/features/settings/FeatureToggleScreen.tsx:484` builds
+  `feature-toggle-item--flash-${flashKind}`. So the prefix rules are not covering for the
+  extractor — they are the only thing standing between those names and a dead-class finding.
+
+So the prefix arm is load-bearing for these 15, and the box's implied remedy (retire the rule,
+lose nothing whole names would not catch) is exactly backwards. **The consequence recorded
+rather than acted on: a deletion lane must NOT start by retiring the `kds-ticket` family
+rule.** The 66 unmeasured names remain unmeasured — this pass resolves 18 of 84 and reverses
+the reading for those 18, which is why it is a correction and not a close of the remaining
+population.
+
 
 **CORRECTION TO THE BODY OF `e94a98b4f`, where a reader hits it.** That message's last paragraph says the animation walker never read the declaration this commit removed. It did, and the two harvest lines are the retraction: before the deletion the walker printed `316 animation declarations = 142 graded (44.9%) + 44 excused-by-essential + 56 excused-by-value + 74 swallowed-by-file-wide-reduce`; after it, `315 = 141 graded (44.8%) + 44 + 56 + 74`. One declaration left the **graded** bucket and the swallowed bucket did not move, because a rule inside a `prefers-reduced-motion: no-preference` block is honoured by that walker's own no-preference pattern (`ui/src/__tests__/animationCompliance.test.ts:73-76`) even in a sheet that also opens a reduce block: the file-wide amnesty is a true statement about this repo's sheets and was a FALSE statement about this rule. So the pair is certified by two independent prints, not one -- the census moved 23 to 22 and the walker's graded denominator moved 142 to 141. Attribution, because only one of those lines can be re-run today: the after-line is `npx vitest run src/__tests__/animationCompliance.test.ts` at this tip (2 passed), the before-line is the same command run at `2ddaab108`, one commit earlier, and re-deriving it now would mean restoring the CSS of a sheet this box does not own.
 **THE FALSIFICATION THAT DID NOT HOLD, and it is the more useful of the two findings.** Striking a surviving whole name from the narrowed family -- `restaurant-card--pinned`, then `restaurant-card--disabled` -- still prints `DEAD 0 pair(s)` and `Tests 269 passed (269)`, because both names are held alive by the extractor at `ui/src/features/restaurant/components/MenuItemTile.tsx:190-191` (`if (pinned) cardClass += ' restaurant-card--pinned'`, `if (!product.inStock) cardClass += ' restaurant-card--disabled'`) and not by the mute. That is the `settings-license-value--tier-plus` asymmetry in a new costume, and it says the property this programme asks a narrowing to prove -- strike the entry, watch the name go dead -- is the WRONG property for a family whose members are genuinely composed: there, a whole name and a catch-all are equally unfalsifiable from the entry side. The asymmetry that does hold is on the other side: the catch-all restored on top of the already-deleted CSS printed `DEAD 0, PREFIX-RESCUED 22, 269 passed`, green and blind, which is why `2ddaab108` and `e94a98b4f` are one sequence and neither is a deletion by itself.
