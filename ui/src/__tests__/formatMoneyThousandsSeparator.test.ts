@@ -163,6 +163,44 @@ describe('formatMoney: thousands separator', () => {
     expect(formatMoney(money(123456789, 'USD'), 'en-US', 'dot')).toBe('$ 1 234 567.89');
     setThousandsSep('none');
   });
+  it('an exp-0 currency has no decimal mark, so its grouping never collides', () => {
+    // The collision rule is gated on `hasFraction` (decimals > 0), and this is why that
+    // gate is correct rather than an oversight.
+    //
+    // IDR is exp-0, so the formatter renders NO fraction and therefore emits NO decimal
+    // mark. A collision needs two marks in one figure, so with one mark absent the
+    // store's character is always safe to use — even in a locale whose decimal mark
+    // happens to be the same character, which is exactly the id-ID + 'comma' case that
+    // the primary market uses.
+    //
+    // Measured, not reasoned: every exp-0 combination emits the store character alone.
+    setThousandsSep('comma');
+    expect(formatMoney(money(1350000, 'IDR'), 'de-DE', 'comma')).toBe('Rp 1,350,000');
+    setThousandsSep('dot');
+    expect(formatMoney(money(1350000, 'IDR'), 'de-DE', 'comma')).toBe('Rp 1.350.000');
+    setThousandsSep('space');
+    expect(formatMoney(money(1350000, 'IDR'), 'de-DE', 'comma')).toBe('Rp 1 350 000');
+    setThousandsSep('none');
+  });
+
+  it('the store setting wins for every locale/currency pair that does not collide', () => {
+    // The full measured matrix for one exp-2 currency, so a change to either the rule
+    // or the fallback has to face all eight cells rather than the one it was written
+    // against. 'en-US' + 'comma' equals its own 'none' because en-US groups by comma.
+    setThousandsSep('none');
+    expect(formatMoney(money(1350000, 'IDR'), 'id-ID', 'comma')).toBe('Rp 1.350.000');
+    expect(formatMoney(money(1350000, 'IDR'), 'en-US', 'comma')).toBe('Rp 1,350,000');
+    setThousandsSep('comma');
+    expect(formatMoney(money(1350000, 'IDR'), 'id-ID', 'comma')).toBe('Rp 1,350,000');
+    expect(formatMoney(money(1350000, 'IDR'), 'en-US', 'comma')).toBe('Rp 1,350,000');
+    setThousandsSep('dot');
+    expect(formatMoney(money(1350000, 'IDR'), 'id-ID', 'comma')).toBe('Rp 1.350.000');
+    expect(formatMoney(money(1350000, 'IDR'), 'en-US', 'comma')).toBe('Rp 1.350.000');
+    setThousandsSep('space');
+    expect(formatMoney(money(1350000, 'IDR'), 'id-ID', 'comma')).toBe('Rp 1 350 000');
+    expect(formatMoney(money(1350000, 'IDR'), 'en-US', 'comma')).toBe('Rp 1 350 000');
+    setThousandsSep('none');
+  });
   it('keeps the sign outside the grouping', () => {
     expect(formatMoney(money(-USD_7, 'USD'), 'en-US', 'dot', 'comma')).toBe('$ -1,234,567.89');
   });
