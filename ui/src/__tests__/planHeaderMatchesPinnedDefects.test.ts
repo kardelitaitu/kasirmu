@@ -8,8 +8,10 @@
 // Two guards written INTO this repo disagree with "NO open code defects":
 //
 //   ui/src/__tests__/coreRailToggleReach.test.ts
-//       records three INERT core-rail toggles (cash, card, credit) — an operator
-//       switches one off and the charge modal keeps offering the tender.
+//       records two INERT core-rail toggles (cash, card) — an operator switches one
+//       off and the charge modal keeps offering the tender. (`credit` was the third
+//       until `abb1c324b` wired it into the modal; the guard moved it to WIRED and so
+//       did this entry.)
 //   ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts
 //       records that formatMoney groups by locale and cannot express
 //       currency.thousands_separator, so paper and preview diverge.
@@ -58,7 +60,7 @@ const PLAN = 'todo-restaurant-pos-reliability.md';
 const DECLARED_LIVE_DEFECTS: Array<{ guard: string; what: string }> = [
   {
     guard: 'ui/src/__tests__/coreRailToggleReach.test.ts',
-    what: 'three INERT core-rail toggles (cash, card, credit)',
+    what: 'two INERT core-rail toggles (cash, card)',
   },
   {
     guard: 'ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts',

@@ -11,13 +11,25 @@
 > `ui/src/__tests__/planHeaderMatchesPinnedDefects.test.ts` fails if this header claims there
 > are no open defects while these guards still declare them.
 >
-> 1. **Three INERT core-rail toggles** — `cash`, `card`, `credit`. An operator switches one
+> 1. **Two INERT core-rail toggles** — `cash`, `card`. An operator switches one
 >    off in `RestaurantPaymentsScreen` and the charge modal keeps offering the tender.
 >    Pinned by `ui/src/__tests__/coreRailToggleReach.test.ts`, which records the per-rail
->    mapping and says INVERT, DO NOT DELETE. `cash`/`card` are UNIVERSAL by design (a site
->    with no EDC still takes a card by hand, so the rail models the TERMINAL); `credit` is a
->    parked owner question. Wiring any of them changes checkout behaviour — a product
->    decision, not a reliability repair.
+>    mapping and says INVERT, DO NOT DELETE. Both are UNIVERSAL by design (a site
+>    with no EDC still takes a card by hand, so the rail models the TERMINAL, not the
+>    tender). Wiring either changes checkout behaviour — a product decision, not a
+>    reliability repair.
+>
+>    **`credit` was the third member and is now WIRED — corrected 2026-10-13.** The owner
+>    answered the parked question by wiring it, in `abb1c324b` `feat(sales): enforce credit
+>    ceiling and prune inert payment toggles`. `PaymentModal` now applies
+>    `!coreRailWithheld(paymentRails, 'credit')` in three places: the tender-list filter
+>    (`:2251`), a redirect that returns a withheld selection to cash (`:370`), and the
+>    Complete guard (`:1160`). Verified by running the guard — 3 tests pass — and by reading
+>    the four `creditOffered` sites. **This header, the guard's file comment and
+>    `useLocalPaymentRails.ts`'s `TENDER_RAILS` note all still called it "parked" AFTER the
+>    code stopped agreeing**, which is the same header-lag mechanism this file has corrected
+>    five times; the three prose sites were fixed together. No code changed here: the wiring
+>    landed in `abb1c324b` and this is the summary catching up to it.
 >
 > 2. **The receipt preview cannot express `currency.thousands_separator`** — the printer
 >    honours it (two backend readers), `formatMoney` groups by locale only, so an operator
@@ -5218,6 +5230,7 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | dead control | same, kill-test v2 | **FAIL (killed)** | names `SalesHistoryScreen.tsx :: _refundsLoading` |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 12) | exit 0 | **678 files, 11389 passed / 24 skipped / 3 todo** |
 | 2026-10-09 | F11 | `cd ui && npx vitest run RestaurantReceiptsScreen -t 'when remote preferences resolve'` (kill-test) | **FAIL (killed)** | asserted WRONG TITLE -> expected 'REMOTE RESTO'; restored, passes (39 tests) |
+| 2026-10-13 | credit rail | `cd ui && node_modules/.bin/vitest run coreRailToggleReach planHeaderMatchesPinnedDefects` | exit 0 | credit confirmed WIRED in `abb1c324b`; header + 2 guard comments + `TENDER_RAILS` note corrected to match. Kill-test: deleting the gate fails the WIRED case, restored byte-identical |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:

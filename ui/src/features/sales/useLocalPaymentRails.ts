@@ -131,10 +131,17 @@ export type TenderMethod = 'cash' | 'card' | 'qris' | 'credit';
  *    hand. Folding `edcOffered` in here would be a behaviour change.
  *  · `qris` is the one rail-gated tab, and `railOffered` is the gate —
  *    including its fail-open rule for a null or empty list.
- *  · `credit` carries NO gate. Whether it is a tender tab or a facility
- *    orthogonal to tender (todo-payment.md :887) is a parked owner
- *    question; until it is answered, the derivation renders exactly what
- *    renders today, which is: always.
+ *  · `credit` carries NO gate HERE, and that is deliberate: the rail is
+ *    applied one level up, in `PaymentModal`, which filters this list with
+ *    `creditOffered` before rendering the tabs (PaymentModal.tsx:2251). The
+ *    owner question that used to block it — is credit a tender tab or a
+ *    facility orthogonal to tender (todo-payment.md :887) — was answered by
+ *    `abb1c324b`, which wired `coreRailWithheld(paymentRails, 'credit')` into
+ *    the modal alongside a method redirect (:370) and a Complete guard
+ *    (:1160). So the derivation stays rail-free on purpose: adding
+ *    `railCode: 'credit'` here would gate the tab EARLIER than the modal can
+ *    report why, and would double-gate it. `coreRailToggleReach.test.ts`
+ *    records `credit` as WIRED against the modal, not against this table.
  *
  * Subscription caps are deliberately absent too: `caps.supportsQris` gates
  * what the QRIS panel lets you DO, not whether the tab is listed.

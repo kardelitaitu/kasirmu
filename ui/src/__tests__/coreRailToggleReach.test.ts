@@ -19,16 +19,23 @@
 //
 //   qris       -> railOffered(paymentRails, 'qris')        WIRED
 //   open_bill  -> !coreRailWithheld(...)                   WIRED (round 52)
+//   credit     -> !coreRailWithheld(...)                   WIRED (abb1c324b)
 //   cash       -> (nothing)                                INERT
 //   card       -> (nothing)                                INERT
-//   credit     -> (nothing)                                INERT, parked
 //
-// WHY THE THREE ARE STILL INERT, and why this is a pin and not a fix: the modal's
+// WHY THE TWO REMAINING ARE INERT, and why this is a pin and not a fix: the modal's
 // `TENDER_RAILS` documents the reasoning for each (useLocalPaymentRails.ts:127-137).
 // `cash` and `card` are described as UNIVERSAL — a site with no EDC terminal still takes
-// a card by hand, so the `card` rail models the TERMINAL, not the tender. `credit` is
-// explicitly a parked owner question. Wiring any of them changes checkout behaviour and
-// is a product decision, not a reliability repair.
+// a card by hand, so the `card` rail models the TERMINAL, not the tender. Wiring either
+// changes checkout behaviour and is a product decision, not a reliability repair.
+//
+// `credit` WAS the third member of this list and is no longer INERT. `abb1c324b` wired
+// `coreRailWithheld(paymentRails, 'credit')` into `PaymentModal`, which applies it in
+// three places — the tender-list filter (:2251), a method redirect that moves a withheld
+// selection back to cash (:370), and the Complete guard (:1160) — so switching the rail
+// off now genuinely withholds the tender. This comment kept saying "parked" for one
+// commit after the code stopped agreeing; moving the entry to WIRED is what made the
+// file and the tree say the same thing.
 //
 // INVERT, DO NOT DELETE. When a rail is wired, move its entry from INERT to WIRED and
 // this file keeps telling the truth. Deleting a case hides the gap.
