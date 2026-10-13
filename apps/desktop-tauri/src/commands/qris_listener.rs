@@ -5,7 +5,9 @@ use tauri::State;
 use kasirmu_bridge::qris_listener::{
     QrisListenerStatusDto, QrisRecentPaymentDto, SimulateQrisNotificationArgs,
 };
+use kasirmu_core::permissions;
 
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -24,9 +26,12 @@ pub async fn get_qris_listener_status_scoped(
 /// Open notification listener settings in the OS (no-op on desktop).
 #[tauri::command]
 pub async fn open_qris_listener_settings_scoped(
-    _session_token: String,
-    _state: State<'_, AppState>,
+    session_token: String,
+    state: State<'_, AppState>,
 ) -> Result<(), AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+
     Ok(())
 }
 

@@ -87,7 +87,7 @@ describe('RestaurantMenuEditorScreen', () => {
   });
 
   it('renders categories and items successfully', async () => {
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('filters items when a category is selected', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -127,12 +127,14 @@ describe('RestaurantMenuEditorScreen', () => {
     await waitFor(() => {
       expect(screen.queryByText('Es Teh Manis')).not.toBeInTheDocument();
     });
-    expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
+    });
   });
 
   it('filters items by real-time search query', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -155,7 +157,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('toggles item availability quickly without opening edit form', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -176,7 +178,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('allows adding a new menu item with notes and productType restaurant', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
@@ -208,7 +210,7 @@ describe('RestaurantMenuEditorScreen', () => {
   });
 
   it('labels the add-category action so it reads as a create button', async () => {
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
@@ -226,7 +228,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('opens category modal to create a new category', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
@@ -252,7 +254,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('prevents creating a category with duplicate name client-side', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
@@ -271,7 +273,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('prompts confirmation dialog before deleting an item and executes delete on confirm', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-del-MN001')).toBeInTheDocument();
@@ -293,7 +295,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('cancels item deletion without calling API when cancel is clicked in confirm dialog', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-del-MN001')).toBeInTheDocument();
@@ -310,7 +312,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('prompts confirmation dialog before deleting a category and executes delete on confirm', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-cat-del-cat-mains')).toBeInTheDocument();
@@ -332,7 +334,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('duplicates an existing menu item with 1-click clone and pre-filled draft', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-dup-MN001')).toBeInTheDocument();
@@ -369,7 +371,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('sorts menu items dynamically via sort selector', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -393,7 +395,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('updates availability in bulk for category items', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-bulk-avail')).toBeInTheDocument();
@@ -415,7 +417,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('builds and saves modifier groups for dish variations', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-edit-MN001')).toBeInTheDocument();
@@ -452,7 +454,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('supports adding and removing modifier options and groups interactively in the draft form', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
@@ -490,7 +492,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('supports configuring optional multi-select modifier variants with presets', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
@@ -536,7 +538,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('filters dishes by availability status tabs', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -564,7 +566,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('clears search via the search clear button', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByText('Nasi Goreng Kampung')).toBeInTheDocument();
@@ -586,7 +588,7 @@ describe('RestaurantMenuEditorScreen', () => {
   it('guards unsaved draft changes when back button is pressed', async () => {
     const user = userEvent.setup();
     const handleBack = vi.fn();
-    renderWithProviders(<RestaurantMenuEditorScreen onBack={handleBack} />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen onBack={handleBack} />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
@@ -612,7 +614,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('allows editing an existing category from the category rail', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-cat-edit-cat-mains')).toBeInTheDocument();
@@ -645,7 +647,7 @@ describe('RestaurantMenuEditorScreen', () => {
   it('closes category modal when Escape key is pressed', async () => {
     const user = userEvent.setup();
     const handleBack = vi.fn();
-    renderWithProviders(<RestaurantMenuEditorScreen onBack={handleBack} />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen onBack={handleBack} />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
@@ -660,7 +662,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('renders saved categories immediately on initial load without adding new category', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     // Verify categories loaded from backend are rendered in the category rail immediately
     await waitFor(() => {
@@ -684,7 +686,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('invalidates catalog cache when creating a new menu item', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
@@ -705,7 +707,7 @@ describe('RestaurantMenuEditorScreen', () => {
 
   it('invalidates catalog cache when creating and deleting categories', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
     await waitFor(() => {
       expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
