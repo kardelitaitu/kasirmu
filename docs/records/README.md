@@ -155,6 +155,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Shuffling the POS-family suites: one more leak found (round 100)](audits/pos-family-shuffle-sweep.md) | — |
 | general | [Production module-level state in the POS: three audits, no defect (round 103)](audits/pos-module-state-audit.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
+| general | [The POS localStorage sweep, and a currency-sensitivity gap (round 105)](audits/pos-storage-key-sweep.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
 | general | [A flaky test on HEAD, and the shape that causes it (2026-10-12)](audits/restaurant-menu-editor-flaky-filter-test.md) | — |
