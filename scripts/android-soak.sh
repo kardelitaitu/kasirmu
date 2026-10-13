@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/android-soak.sh
 #
-# R5 (todo-android-4gb-optimization-audit.md §3): the soak leg, as a script.
+# R5 (done-todo-android-4gb-optimization-audit.md §3): the soak leg, as a script.
+# Renamed 2026-10-14 when the plan earned its `done-` prefix.
 #
 # Samples the tablet app's resident set over adb across a background/doze cycle
 # and reports min / mean / max. Fails only when a threshold is given and a

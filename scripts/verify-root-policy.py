@@ -77,13 +77,17 @@ ROOT_FILE_ALLOWLIST = frozenset({
 
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
-    "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
+    "done-todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
     # Added 2026-10-02. Both were committed to the repo without the list being
     # extended, which is the oversight the comment at the top of this file
     # describes: the rule is "extend the list in the same commit that adds the
     # file". The decision to have them at the root was made when each landed,
     # so adding them here enforces the stated invariant rather than making a
-    # new one. Both are tracked, clean, carry the `todo-` token AGENTS.md 7.4
+    # new one. Both are tracked and clean. One carries the `todo-` token AGENTS.md 7.4
+    # requires; the other was renamed to `done-todo-` on 2026-10-14 once its §29
+    # acceptance criteria were all evidenced and the three gates it names (android-soak.sh,
+    # bundle:check:mobile, clippy/test) were confirmed to exist. See its own §31.
+    # (original line: "both carry the `todo-` token AGENTS.md 7.4" -- true when written)
     # gives plan docs, and are plans in substance (20 and 36 open checkboxes).
     # `todo-android-updater.md` was here and is GONE: renamed to
     # `done-todo-android-updater.md` when its acceptance was met, and listed in the
