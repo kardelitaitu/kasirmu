@@ -477,6 +477,8 @@ pub async fn run_print_receipt_inner(
             || args.document_kind.as_deref() == Some("kot")
         {
             Some("kitchen")
+        } else if args.document_kind.as_deref() == Some("bar") {
+            Some("bar")
         } else {
             None
         }

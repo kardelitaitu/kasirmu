@@ -63,7 +63,7 @@ import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
 import { matchesTableBill, bareTableNumber, heldCartLabel } from './utils/tableLabel';
-import { buildPreCheckoutBillReceipt, buildKitchenChitReceipt } from './payment/completedSale';
+import { buildPreCheckoutBillReceipt, buildKitchenChitReceipt, isBeverageItem } from './payment/completedSale';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
@@ -965,13 +965,32 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         // table, which is the right default, but says nothing about a table that
         // should never have been sent.
         const chitTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
-        const chit = buildKitchenChitReceipt({
-          cartLines: deltaLines,
-          cartCurrency: subtotal?.currency || activeCurrency,
-          tableNumber: chitTable || undefined,
-          customerName: customerName || undefined,
-        });
-        await printSalesReceipt(sessionToken, chit);
+        const foodLines = deltaLines.filter((l) => !isBeverageItem(l));
+        const drinkLines = deltaLines.filter((l) => isBeverageItem(l));
+
+        if (foodLines.length > 0) {
+          const foodChit = buildKitchenChitReceipt({
+            cartLines: foodLines,
+            cartCurrency: subtotal?.currency || activeCurrency,
+            tableNumber: chitTable || undefined,
+            customerName: customerName || undefined,
+            printerTarget: 'kitchen',
+            documentKind: 'kitchen',
+          });
+          await printSalesReceipt(sessionToken, foodChit);
+        }
+
+        if (drinkLines.length > 0) {
+          const barChit = buildKitchenChitReceipt({
+            cartLines: drinkLines,
+            cartCurrency: subtotal?.currency || activeCurrency,
+            tableNumber: chitTable || undefined,
+            customerName: customerName || undefined,
+            printerTarget: 'bar',
+            documentKind: 'bar',
+          });
+          await printSalesReceipt(sessionToken, barChit);
+        }
       }
     },
     // orderType gates the table the chit carries, so it must be listed: without it

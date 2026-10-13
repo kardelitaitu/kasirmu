@@ -242,6 +242,19 @@ export interface KitchenChitReceiptInput {
   cartCurrency: string;
   tableNumber?: string | undefined;
   customerName?: string | undefined;
+  printerTarget?: string | undefined;
+  documentKind?: 'receipt' | 'invoice' | 'kitchen' | 'kot' | 'bar' | undefined;
+}
+
+/**
+ * Determine whether a cart item represents a drink/beverage destined for the bar.
+ */
+export function isBeverageItem(line: CartLine): boolean {
+  if (line.courseId === 'beverage' || (line.courseId as string) === 'drinks') {
+    return true;
+  }
+  const cat = (line.category || '').toLowerCase();
+  return cat.includes('beverage') || cat.includes('drink') || cat.includes('minuman') || cat.includes('bar');
 }
 
 /**
@@ -254,6 +267,8 @@ export function buildKitchenChitReceipt({
   cartCurrency,
   tableNumber,
   customerName,
+  printerTarget,
+  documentKind,
 }: KitchenChitReceiptInput): PrintSalesReceiptArgs {
   return {
     date: new Date().toISOString(),
@@ -283,8 +298,8 @@ export function buildKitchenChitReceipt({
     payments: [],
     ...(tableNumber ? { tableNumber } : {}),
     ...(customerName ? { customerName } : {}),
-    documentKind: 'kitchen',
-    printerTarget: 'kitchen',
+    documentKind: documentKind ?? 'kitchen',
+    printerTarget: printerTarget ?? 'kitchen',
   };
 }
 

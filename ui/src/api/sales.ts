@@ -945,7 +945,7 @@ export interface PrintSalesReceiptArgs {
   taxIdLabel?: string | null | undefined;
   taxRegime?: string | null | undefined;
   statutoryRounding?: string | null | undefined;
-  documentKind?: 'receipt' | 'invoice' | 'kitchen' | 'kot' | undefined;
+  documentKind?: 'receipt' | 'invoice' | 'kitchen' | 'kot' | 'bar' | undefined;
   isInvoice?: boolean | undefined;
   statutoryNumber?: string | null | undefined;
   customerName?: string | null | undefined;

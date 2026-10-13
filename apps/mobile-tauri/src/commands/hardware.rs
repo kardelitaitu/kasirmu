@@ -274,6 +274,8 @@ pub async fn print_sales_receipt_scoped(
             || args.document_kind.as_deref() == Some("kot")
         {
             Some("kitchen")
+        } else if args.document_kind.as_deref() == Some("bar") {
+            Some("bar")
         } else {
             None
         }

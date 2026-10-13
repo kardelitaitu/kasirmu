@@ -10,7 +10,7 @@
  * it will fail with "document is not defined" rather than silently degrade.
  */
 import { describe, expect, it } from 'vitest';
-import { buildCompletedSaleReceipt, buildKitchenChitReceipt } from '@/features/sales/payment/completedSale';
+import { buildCompletedSaleReceipt, buildKitchenChitReceipt, isBeverageItem } from '@/features/sales/payment/completedSale';
 import type { CartLine, Money } from '@/types/domain';
 import type { SaleDetail, PaymentDto } from '@/api/sales';
 import type { ActiveMarketProfile } from '@/api/regional';
@@ -283,6 +283,39 @@ describe('buildKitchenChitReceipt', () => {
     expect(chit.receiptNumber).toMatch(/^KOT-5-\d+$/);
     expect(chit.items).toHaveLength(1);
     expect(chit.items?.[0]?.quantity).toBe(1);
+  });
+
+  it('honours explicit printerTarget and documentKind for bar routing', () => {
+    const lines: CartLine[] = [makeCartLine('Es Kopi Susu', 2, 20000)];
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: '4',
+      printerTarget: 'bar',
+      documentKind: 'bar',
+    });
+
+    expect(chit.printerTarget).toBe('bar');
+    expect(chit.documentKind).toBe('bar');
+  });
+});
+
+describe('isBeverageItem', () => {
+  it('identifies items with beverage or legacy drinks courseId', () => {
+    expect(isBeverageItem({ ...makeCartLine('Item 1', 1, 10000), courseId: 'beverage' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 2', 1, 10000), courseId: 'drinks' as never })).toBe(true);
+  });
+
+  it('identifies items with beverage-related category names', () => {
+    expect(isBeverageItem({ ...makeCartLine('Item 3', 1, 10000), category: 'Hot Beverages' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 4', 1, 10000), category: 'Cold Drinks' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 5', 1, 10000), category: 'Aneka Minuman' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 6', 1, 10000), category: 'Bar Station' })).toBe(true);
+  });
+
+  it('returns false for food items', () => {
+    expect(isBeverageItem({ ...makeCartLine('Item 7', 1, 10000), courseId: 'main', category: 'Main Course' })).toBe(false);
+    expect(isBeverageItem({ ...makeCartLine('Item 8', 1, 10000), courseId: 'appetizer', category: 'Starters' })).toBe(false);
   });
 });
 
