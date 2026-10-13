@@ -31,6 +31,7 @@ const read = (rel: string) => readFileSync(resolve(REPO, rel), 'utf-8');
 const POS = read('ui/src/features/sales/PosScreen.tsx');
 const HELD = read('ui/src/features/sales/hooks/usePosHeldCarts.ts');
 const ACTION_BAR = read('ui/src/features/sales/components/CartActionBar.tsx');
+const CART_PANEL = read('ui/src/features/sales/components/CartPanel.tsx');
 
 /**
  * Toggles whose OFF state costs the kitchen something it cannot recover from.
@@ -95,6 +96,37 @@ const FAIL_SAFE: Array<{
     why: 'a missing Split Bill cannot be told apart from a feature that was never ' +
       'implemented',
   },
+  {
+    // The last three, and the reason this table grew past the kitchen gates.
+    //
+    // These decide whether a FIELD is offered on the cart, not whether a job runs.
+    // The direction is the same and for the same reason: hiding a customer-name field
+    // because a settings read timed out leaves the cashier unable to record who the
+    // order is for, with nothing on screen to explain the missing input.
+    key: 'customer_name',
+    file: POS,
+    declare: 'customerNameEnabled',
+    consume: POS,
+    pattern: /customerNameEnabled \?\? true/,
+    why: 'a hidden customer field loses information the operator can only recover by ' +
+      'noticing it was supposed to be there',
+  },
+  {
+    key: 'guest_count',
+    file: POS,
+    declare: 'guestCountEnabled',
+    consume: POS,
+    pattern: /guestCountEnabled \?\? true/,
+    why: 'same as customer_name: an absent input is not a decision anyone made',
+  },
+  {
+    key: 'save_tab',
+    file: POS,
+    declare: 'saveTabEnabled',
+    consume: POS,
+    pattern: /saveTabEnabled \?\? true/,
+    why: 'a missing Save Tab button strands the cashier mid-service with a full cart',
+  },
 ];
 
 describe('restaurant toggles fail safe when their setting cannot be read', () => {
@@ -138,18 +170,27 @@ describe('restaurant toggles fail safe when their setting cannot be read', () =>
     // CHILD receives; the child's `!== false` decides what it renders. Both must be
     // fail-open, and a child written as `if (printBillEnabled)` would undo the parent's
     // default by inventing a third state.
-    for (const flag of ['printBillEnabled', 'splitBillEnabled']) {
+    for (const flag of ['printBillEnabled', 'splitBillEnabled', 'saveTabEnabled']) {
       expect(
         ACTION_BAR,
         flag + ' is not rendered with the fail-open form: a bare truthiness test would ' +
           'hide the button when the setting is merely unknown.',
       ).toMatch(new RegExp(flag + ' !== false'));
     }
+    // CartPanel renders the two field gates. Same form, different file — and a file the
+    // parent's default cannot protect on its own.
+    for (const flag of ['customerNameEnabled', 'guestCountEnabled']) {
+      expect(
+        CART_PANEL,
+        flag + ' is not rendered with the fail-open form: hiding an input because a read ' +
+          'timed out leaves the operator unable to record what the order needs.',
+      ).toMatch(new RegExp(flag + ' !== false'));
+    }
   });
 
   it('the guard is not vacuous', () => {
     // A renamed form must fail loudly rather than match nothing.
-    expect(FAIL_SAFE.length).toBe(5);
+    expect(FAIL_SAFE.length).toBe(8);
     expect(POS.length).toBeGreaterThan(10_000);
   });
 });
