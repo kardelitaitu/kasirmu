@@ -149,6 +149,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
+| general | [POS-family shuffle sweep, second pass (round 102)](audits/pos-family-shuffle-sweep-2.md) | — |
 | general | [Shuffling the POS-family suites: one more leak found (round 100)](audits/pos-family-shuffle-sweep.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
