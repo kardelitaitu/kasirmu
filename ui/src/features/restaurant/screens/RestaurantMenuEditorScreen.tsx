@@ -430,7 +430,11 @@ export default function RestaurantMenuEditorScreen({
 
   const handleToggleItemAvailability = useCallback(
     async (p: ProductDto) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Reported, not dropped: the toggle would flip back with nothing said.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       const nextActive = p.is_active === false;
       // Optimistic update
       setItems((prev) =>
@@ -469,7 +473,12 @@ export default function RestaurantMenuEditorScreen({
 
   const handleBulkSetAvailability = useCallback(
     async (targetActive: boolean) => {
-      if (!sessionToken || bulkUpdating) return;
+      if (!sessionToken) {
+        // Reported, not dropped. See handleToggleItemAvailability above.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      if (bulkUpdating) return;
       const targetItems = filteredItems.filter((p) => (p.is_active !== false) !== targetActive);
       if (targetItems.length === 0) return;
 
@@ -737,7 +746,12 @@ export default function RestaurantMenuEditorScreen({
   }, []);
 
   const handleSaveCategory = useCallback(async () => {
-    if (!categoryModal || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped: the category modal would otherwise sit there mute.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!categoryModal) return;
     const trimmedName = categoryModal.name.trim();
     if (!trimmedName) return;
 

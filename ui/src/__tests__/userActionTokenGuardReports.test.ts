@@ -66,6 +66,10 @@ const files = walk(SRC);
  * list is the honest unit: each file either still has the shape or does not, and a
  * fix deletes its row.
  */
+// SHRINKS BY HAND. 63 -> 62 on 2026-10-13 (round 67), when RestaurantMenuEditorScreen's
+// three handlers were given a reporting guard and this ledger told me to delete the row.
+// That is the intended loop: the guard fails on a stale entry, so a fix cannot leave the
+// count wrong.
 const DECLARED: string[] = [
   'components/OrgSwitcher.tsx',
   'components/StockAlertBell.tsx',
@@ -89,7 +93,6 @@ const DECLARED: string[] = [
   'features/memo/useMemos.ts',
   'features/products/RecipeEditorModal.tsx',
   'features/restaurant/RestaurantMenu.tsx',
-  'features/restaurant/screens/RestaurantMenuEditorScreen.tsx',
   'features/restaurant/screens/RestaurantPaymentsScreen.tsx',
   'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
   'features/restaurant/screens/RestaurantSettingsScreen.tsx',
