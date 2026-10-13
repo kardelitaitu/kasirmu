@@ -2028,6 +2028,40 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
   // ── Android Low-Memory & Draft Resilience (Phase 2 Audit) ───────────
 
+  // ── The restore survives a corrupt draft ─────────────────────────────
+  //
+  // The mount effect wraps its `JSON.parse` in a try/catch. That resilience was pinned
+  // ONLY by `hooks/useLockedCartPersistence.test.tsx`, which drives the DEAD
+  // `posScreenHooks.ts` copy — round 107's pattern. Measured in round 110: the live
+  // restore does survive it (probed: no error boundary), but nothing asserted so.
+  //
+  // A corrupt draft is reachable: the key is written by `JSON.stringify`, but a partial
+  // write, a storage-quota failure mid-set, or a tampered value all produce unparseable
+  // content — and the till must still boot to a usable POS rather than an error screen.
+  it('boots to a usable POS when the draft is unparseable', async () => {
+    localStorage.setItem(`pos-active-draft:${STORE_ID}`, '{not valid json');
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector('.pos-screen')).not.toBeNull();
+    });
+    expect(
+      document.querySelector('.error-boundary'),
+      'a corrupt draft put the POS into its error boundary: the restore threw instead of ' +
+        'falling back to an empty cart.',
+    ).toBeNull();
+
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+  });
+
   it('restores active draft cart from pos-active-draft on mount', async () => {
     const draftData = {
       lines: [
