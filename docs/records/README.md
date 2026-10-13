@@ -176,6 +176,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
+| general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
 | general | [UI test duration: where the 108s actually goes (2026-10-12)](audits/ui-test-duration-analysis.md) | — |
 | general | [UI test duration: the split, and the ceiling I got wrong (2026-10-12)](audits/ui-test-duration-split.md) | — |
