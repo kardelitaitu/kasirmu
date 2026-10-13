@@ -162,6 +162,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A takeaway order could claim a table (2026-10-12)](audits/restaurant-pos-takeaway-table-claim.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
+| general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
 | general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
 | general | [Security Audit: Admin Dashboard Login Flow](audits/security/audit-admin-login-flow.md) | — |
 | security | [Login Flow Audit — Admin + User Dashboard (Final Pass)](audits/security/audit-login-flow-final.md) | — |
