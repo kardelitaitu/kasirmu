@@ -132,6 +132,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
 | general | [Round 107's follow-up: one real gap, and two guards that were not guards (round 108)](audits/dead-hook-follow-up.md) | — |
 | general | [A dead hook's tests were covering the live hook's behaviour (round 107)](audits/dead-hook-tests-mask-live-gap.md) | — |
+| general | [The dead hook's LAST masked behaviour: corrupt-draft resilience (round 110)](audits/dead-hook-third-export.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
