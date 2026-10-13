@@ -142,6 +142,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
 | ui | [The mock's feature answer: why it cannot be fixed by pointing at a preset (round 130)](audits/dev-mock-feature-answer-options.md) | — |
 | ui | [The dev-mock answers get_enabled_features with a list matching no preset (round 129)](audits/dev-mock-feature-answer.md) | — |
+| ui | [The mock's feature vocabulary is wrong, and the cost is now measured (round 131)](audits/dev-mock-feature-vocabulary.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
