@@ -357,10 +357,17 @@ describe('RestaurantPosSidebar', () => {
       within(sidebar).getByTestId('restaurant-sidebar-open-shift').textContent,
     ).toContain('Open a new shift');
 
-    // The row is the header's old button, not a stub: it drives the same
-    // navigation and closes the popover like every other item in it.
-    await user.click(within(sidebar).getByTestId('restaurant-sidebar-kds'));
-    expect(onNavigate).toHaveBeenCalledWith('kds');
+    // Kitchen Display is feature-gated for the same reason Table Management is, and
+    // this harness enables no features — so the row is ABSENT, not rendered-and-disabled.
+    // (Round 128: the row used to be computed with `isPageAccessible` alone, and the
+    // `kds` page carries only a FEATURE gate, which that predicate does not read — so
+    // it returned true for every role and the row never hid. It is now AND-ed with
+    // `FEATURES.KITCHEN_DISPLAY`, which is what makes it hidden here.)
+    expect(within(sidebar).queryByTestId('restaurant-sidebar-kds')).toBeNull();
+
+    // The row is the header's old button, not a stub: it drives the same navigation
+    // and closes the popover. Asserted in its own case, where the feature is on.
+    await user.click(within(sidebar).getByTestId('restaurant-sidebar-history'));
     await waitFor(() => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
     });
