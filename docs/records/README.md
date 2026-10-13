@@ -159,6 +159,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | general | [The plan's last claim verified at HEAD, and its one open item (round 113)](audits/plan-claims-and-f40-blocker.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| payments | [A real Card settlement driven to a receipt, live (round 118)](audits/pos-card-settlement-live.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
 | general | [A POS cart could follow the operator to another store (round 104)](audits/pos-draft-store-scoping.md) | — |
 | general | [The POS family's remaining sequence guards are all pinned (round 117)](audits/pos-family-guards-pinned.md) | — |
