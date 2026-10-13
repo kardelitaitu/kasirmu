@@ -516,12 +516,29 @@ export default function EodReportScreen() {
         rows.push([t('eod-csv-row-hour', { hour: String(h.hour).padStart(2, '0') }), money(h.total_minor)]);
       }
 
+      // ── Cash reconciliation ─────────────────────────────────────────────
+      // The screen renders this section and the PRINT path reconciles it from the
+      // same filter below, with a comment saying so. The CSV omitted it, which made
+      // the one export a restaurant hands its accountant the only surface that did
+      // not reconcile the drawer. The data was already in scope: the parent derives
+      // `todayClosed` for print at :429, and this reuses closedShiftsOnStoreDay so
+      // the CSV cannot reconcile a different set of drawers than the sheet.
+      const closed = closedShiftsOnStoreDay(shiftsRef.current, storeTz);
+      if (closed.length > 0) {
+        const sum = (pick: (s: (typeof closed)[number]) => number | null) =>
+          closed.reduce((acc, s) => acc + (pick(s) ?? 0), 0);
+        rows.push([t('eod-cash-total-opening'), money(sum((s) => s.openingBalanceMinor))]);
+        rows.push([t('eod-cash-total-counted'), money(sum((s) => s.closingBalanceMinor))]);
+        rows.push([t('eod-cash-total-expected'), money(sum((s) => s.expectedCashMinor))]);
+        rows.push([t('eod-cash-net-diff'), money(sum((s) => s.cashDifferenceMinor))]);
+      }
+
       const csv = buildCsv(headers, rows);
       downloadCsv(csv, `end-of-day-${lastRefresh.toISOString().slice(0, 10)}.csv`);
     } finally {
       setCsvExporting(false);
     }
-  }, [lastRefresh, l10n]);
+  }, [lastRefresh, l10n, storeTz]);
 
   const load = useCallback(async () => {
     setLoading(true);

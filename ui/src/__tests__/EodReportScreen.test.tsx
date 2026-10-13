@@ -486,6 +486,57 @@ describe('EodReportScreen', () => {
     ).toEqual([]);
   });
 
+
+  it('includes the cash reconciliation, which the screen and the printed sheet both show', async () => {
+    // Found 2026-10-13 (round 38). The screen renders a Cash Reconciliation section
+    // (opening / counted / expected / net difference) and the PRINT path reconciles the
+    // same totals from closedShiftsOnStoreDay(shiftsRef.current, storeTz) -- with a
+    // comment saying it uses 'the SAME filter the on-screen section uses'. The CSV
+    // omitted the whole section, so the one export a restaurant hands its accountant
+    // was also the only one that did not reconcile the drawer.
+    //
+    // The data was already in scope: the parent holds `shifts` and already derives
+    // todayClosed for PRINT at EodReportScreen.tsx:429. No new fetch, no API change --
+    // the export simply was not reading it.
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([
+      makeShift({
+        openedAt: `${today}T08:00:00.000Z`,
+        closedAt: `${today}T18:00:00.000Z`,
+        openingBalanceMinor: 100000,
+        closingBalanceMinor: 250000,
+        expectedCashMinor: 240000,
+        cashDifferenceMinor: 10000,
+      }),
+    ]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Export CSV')).toBeTruthy();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Export CSV'));
+    await waitFor(() => {
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
+    }, { timeout: 2000 });
+
+    const [csv] = mockDownloadCsv.mock.calls[0] as [string, string];
+    for (const label of ['Total opening', 'Total counted', 'Total expected', 'Net difference']) {
+      expect(csv, `the CSV must carry the reconciliation row "${label}"`).toContain(label);
+    }
+    // The VALUES, not just the labels: a row written with the wrong field, or a
+    // reduce over the wrong array, would still emit four correct-looking labels.
+    // The fixture is 100000 opening / 250000 closing / 240000 expected / +10000 diff.
+    // IDR renders with a DOT as the thousands separator ("Rp 100.000"), not as a
+    // decimal point, so the assertion is on the exact rendered strings -- a locale
+    // whose grouping differs would have to change this fixture deliberately.
+    expect(csv).toContain('Total opening,Rp 100.000');
+    expect(csv).toContain('Total counted,Rp 250.000');
+    expect(csv).toContain('Total expected,Rp 240.000');
+    expect(csv).toContain('Net difference,Rp 10.000');
+  });
+
   // ── Shift summary with diff tags ──
   it('shows over/short tags for shift cash differences', async () => {
     const today = new Date().toISOString().slice(0, 10);
