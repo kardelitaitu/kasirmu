@@ -160,29 +160,33 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
   //
   // Rates themselves are NOT at risk: listExchangeRatesScoped feeds only the rate
   // table, and conversions read the stored rate rather than this boolean.
-  // UNPINNED, AND THE REASON IS RECORDED RATHER THAN LEFT AS A PUZZLE.
+  // NOT PINNED, AND THE MECHANISM IS NOW KNOWN (round 80, 2026-10-13). Read this before
+  // spending a fourth attempt on a mutation test.
   //
-  // Three attempts to pin this by mutation all SURVIVED (removing the line below and
-  // re-running ExchangeRateScreen.test.tsx stayed green), so there is currently no test
-  // that distinguishes guarded from unguarded here. Two causes were isolated:
+  // THE GUARD CANNOT FIRE IN THE SCENARIO THE ATTEMPTS WERE BUILT AROUND, because the
+  // screen REMOUNTS on a token change. Instrumented: two reads are issued (`token-A` then
+  // `token-B`, both `rate_sync.enabled`), and each reports `seq=1` against a DIFFERENT
+  // `useRef` instance. A remount gives the new instance its own `useRef(0)`, so read A's
+  // closure holds a ref that read B never touches -- `seq !== autoSyncSeqRef.current` is
+  // comparing 1 to 1 forever. Nothing about the assertion was wrong: there is no race to
+  // observe, because the two reads do not share a counter.
   //
-  //   1. A timing-only test can release the stale promise BEFORE the second read is
-  //      issued, so nothing is actually raced. Fixed by waiting on the call count.
-  //   2. With the ordering enforced, a probe that replaced this guard with a
-  //      console.log DID show the stale arm reaching setAutoSync -- DIAG apply 0 after
-  //      DIAG apply 1. So on that reading the write does happen when unguarded.
+  // What the earlier attempts saw is consistent with that. A probe that forced the stale
+  // arm through `setAutoSync` DID apply it last (`raw=1` after `raw=0`) -- and it changed
+  // nothing on screen, because that write landed on an instance being torn down. React
+  // discards it. So "the write happens" and "the DOM does not move" were both true, which
+  // is the reconciliation the previous note could not reach.
   //
-  // Those two facts do not reconcile: aria-checked is a CONTROLLED attribute fed
-  // straight from autoSync, so a state change should surface in the DOM, yet the
-  // assertion kept reading true. Later probes of that same assertion gave
-  // contradictory results, so those probe edits were not landing where they were
-  // believed to be, and no conclusion drawn from them is trustworthy -- including the
-  // DIAG line above.
+  // WHAT THE GUARD IS ACTUALLY FOR: the effect re-runs on `[loadAutoSync]`, and that
+  // callback's identity changes with `sessionToken` WITHOUT a remount in the cases where
+  // the parent re-renders rather than replaces the screen (a prop change, a provider
+  // re-render). There the ref IS shared and the guard is load-bearing. The remount path
+  // is protected by unmounting instead, and neither path needs a test that races the
+  // other.
   //
-  // WHAT TO DO INSTEAD: do not retry this from outside the component. Observe the
-  // effect directly (renderHook on the callback, or a logger inside the component
-  // render) so the state transition is READ rather than inferred from the DOM. Until
-  // then, treat this guard as verified-by-reasoning and NOT verified-by-test.
+  // A mutation test here would have to force the SHARED-ref path (re-render without
+  // remount) rather than switching the token through the workspace mock, which is what
+  // every attempt so far has done. Until that exists this stays verified-by-reasoning.
   const autoSyncSeqRef = useRef(0);
 
   const loadAutoSync = useCallback(async () => {
