@@ -189,6 +189,20 @@ vi.mock('@/hooks/useFeatures', () => ({
 beforeEach(() => {
   mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 10000000 };
   invokeMock.mockClear();
+  // `useSubscription` is set PER CASE (`:232` free/no-QRIS, `:254` plus/QRIS) and nothing
+  // restored it, so whichever case ran last left its caps in force. Under
+  // `--sequence.shuffle.tests --sequence.seed=13` that failed 'shows Pay with QR button for
+  // QRIS method' -- a case that assumes nothing about the tier and was handed one anyway.
+  // Restore the harness's neutral default (test-setup.ts:195): caps null, gates open.
+  vi.mocked(useSubscription).mockImplementation(
+    () =>
+      ({
+        caps: null,
+        state: 'active',
+        loading: false,
+        refresh: vi.fn(),
+      }) as never,
+  );
   mockListCurrenciesScoped.mockClear();
   mockListExchangeRates.mockClear();
     // Reset, not clear: the store-default tests make this REJECT rather than
