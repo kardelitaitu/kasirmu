@@ -863,32 +863,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // for USD, so a stale currency misreads those amounts by a factor of 100. That is
   // the failure mode the MONEY-02 / MONEY-05 notes at :902 protect against -- they
   // fixed the hardcoded x100 and left the currency itself able to go stale.
-  // UNPINNED, AND THE TRAP IS TEST ORDER, NOT THE GUARD.
   //
-  // Rounds 113 and 114 both attempted a mutation test for this effect and both were
-  // reverted rather than shipped. The diagnostics are reproducible and worth having:
+  // PINNED, and the two attempts to pin it are worth reading before touching this.
   //
-  //   ALONE  -- the test PASSES, and a probe confirms both reads are issued
-  //             (PROBE settings=2 shifts=2, and the badge renders 'Shift . $ 990,00').
-  //   IN SUITE -- it FAILS with 'expected vi.fn() to be called 2 times, but got 1'.
+  // The trap was TEST ORDER, not the guard. `9bba6975e` did the bisect and found the
+  // cause: the store-switch cases MUTATE `wsState.sessionToken` and nothing restored it
+  // between tests, so an earlier case left the token already at the value this case
+  // switches TO. The switch was then a no-op, the effect never re-ran, and the assertion
+  // passed while racing nothing. Resetting the token in beforeEach was the fix.
+  // `4ccb51020` then pinned the guard: deleting `if (!stale()) setStoreSettings(s)` fails
+  // `RetailPosScreen.test.tsx` -> 'ignores a slower earlier store-settings read after a
+  // token change', measured again on 2026-10-13 (kill-test, 1 failed / 35 passed).
   //
-  // So the second store-settings read is NOT issued when the suite runs, though it is
-  // when the file runs that test alone. The guard is not implicated: nothing about this
-  // effect behaves differently, the RE-RENDER does.
-  //
-  // WHAT WAS RULED OUT, so the next attempt does not repeat it:
-  //   - persistent mock leakage. Swapping both arms to once-only did not fix it, and
-  //     the two neighbouring cases that DID break from a persistent implementation
-  //     were fixed by resetting them in beforeEach -- after which only this test failed.
-  //   - the premise. Round 111's method (probe before asserting) is what produced the
-  //     'alone' numbers above; the premise holds in isolation and fails in company.
-  //
-  // WHERE TO START: bisect the suite. Run this test with only the first N cases ahead
-  // of it and find the one that changes the outcome; that case's leftover state is the
-  // cause. Do NOT retry by adding more mock resets -- two attempts have shown that the
-  // cause survives them, so the next step is to identify the specific predecessor.
-  //
-  // The guard itself is unchanged and correct; only its test is missing.
+  // Rounds 113 and 114 were reverted because each tried the assertion FIRST. The bisect
+  // was the missing step, and it is the reason this is now covered.
   const storeSettingsSeq = useRef(0);
   useEffect(() => {
     if (!sessionToken) return;
