@@ -34,6 +34,13 @@ export function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
       x.item_count !== y.item_count ||
       x.display_number !== y.display_number ||
       x.received_at !== y.received_at ||
+      // `served_at` is RENDERED, so it must be compared. Added round 87: it orders the
+      // Expo recall strip (ExpoScreen.recallCandidates sorts by it, :134), it is the
+      // completion time on KdsCompletedView (:151, :225) and the clock reference for
+      // `minutesSinceServed` (:116). Without it a refetch in which only `served_at`
+      // moved compared EQUAL, state was not replaced, and a ticket bumped at the pass
+      // kept its old slot in the recall strip until some other field happened to move.
+      x.served_at !== y.served_at ||
       x.kitchen_zone !== y.kitchen_zone ||
       x.table_number !== y.table_number ||
       x.notes !== y.notes ||
