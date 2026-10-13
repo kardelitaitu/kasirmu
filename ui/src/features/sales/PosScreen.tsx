@@ -59,6 +59,7 @@ import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
 import { useCartResize } from './hooks/useCartResize';
+import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
@@ -1351,7 +1352,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => { cancelled = true; };
   }, [sessionToken]);
 
+  // The same rails the payment modal consults for `autoKick` (PaymentModal:131).
+  // Needed here so the till can honour the cash presets the operator configures.
+  const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+
+  // Precedence, highest first:
+  //   1. the Cash rail's `presets` parameter — what the operator picked in
+  //      Settings -> Payments (round 122 read side; the chips at
+  //      RestaurantPaymentsScreen.tsx:1102 write it). THIS used to be skipped:
+  //      the screen saved the choice and the till never saw it.
+  //   2. `localStorage['restaurant-tender-presets']` — retained, but nothing in the repo
+  //      writes it (round 105), so an external provisioner can still override.
+  //   3. `defaultTenderPresets(activeCurrency)` — the currency ladder (round 106).
   const tenderPresets = useMemo(() => {
+    const fromRail = cashTenderPresets(paymentRails);
+    if (fromRail) return fromRail;
     try {
       const saved = localStorage.getItem('restaurant-tender-presets');
       if (saved) {
@@ -1361,7 +1376,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* ignore */ }
     return defaultTenderPresets(activeCurrency);
-  }, [activeCurrency]);
+  }, [activeCurrency, paymentRails]);
 
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {
