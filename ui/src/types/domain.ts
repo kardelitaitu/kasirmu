@@ -469,6 +469,7 @@ export const formatMoney = (
   m: Money,
   locale: string = 'id-ID',
   decimalSep?: 'dot' | 'comma' | 'none',
+  thousandsSep?: 'comma' | 'dot' | 'space' | 'none',
 ): string => {
   if (!m || typeof m !== 'object' || typeof m.currency !== 'string') {
     return 'Rp 0';
@@ -478,10 +479,24 @@ export const formatMoney = (
   const exp = minorUnitExponent(m.currency);
   const major = m.minor_units / 10 ** exp;
   const decimals = hideDecimals || exp === 0 ? 0 : exp;
+  // The store's thousands separator, when one is configured.
+  //
+  // `Intl.NumberFormat` derives grouping from the LOCALE, so before this the
+  // preview could not agree with the paper: the printer honours
+  // `currency.thousands_separator` through `ReceiptConfig.grouping`
+  // (receipt.rs:193) while this formatter grouped the Indonesian way whatever the
+  // store asked for. Passing `useGrouping: false` and grouping the integer part
+  // ourselves is the only way to express a separator the locale does not choose.
+  //
+  // `'none'` (the reader's default) keeps the previous locale-driven behaviour
+  // untouched, so no existing caller changes output unless a store set a value.
+  const tsep = thousandsSep ?? 'none';
+  const groupChar = tsep === 'comma' ? ',' : tsep === 'dot' ? '.' : tsep === 'space' ? ' ' : null;
   const fmt = new Intl.NumberFormat(locale, {
     style: 'decimal',
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+    ...(groupChar ? { useGrouping: false } : {}),
   });
   // Known currency → symbol mapping
   const symbols: Record<string, string> = {
@@ -490,5 +505,12 @@ export const formatMoney = (
     AUD: 'A$', CAD: 'C$', HKD: 'HK$', TWD: 'NT$', INR: '₹',
   };
   const prefix = symbols[m.currency] ?? m.currency;
-  return `${prefix} ${fmt.format(major)}`;
+  const formatted = fmt.format(major);
+  if (!groupChar) return `${prefix} ${formatted}`;
+  // Group the INTEGER part only, so a separator can never split the fraction.
+  // `fmt.format` already emitted the digits with the locale's own grouping
+  // suppressed, and the decimal mark is whatever `Intl` chose for `locale`.
+  const [intPart, fracPart] = formatted.split(/(?=[.,])/);
+  const grouped = (intPart ?? '').replace(/\B(?=(\d{3})+(?!\d))/g, groupChar);
+  return `${prefix} ${grouped}${fracPart ?? ''}`;
 };

@@ -48,13 +48,29 @@ const BRIDGE = readFileSync(resolve(REPO, 'crates/kasirmu-bridge/src/hardware.rs
  * what would fix each. One entry today; a second fails the guard below.
  */
 const LOCALE_GROUPED_WITHOUT_SETTING: Array<{ symbol: string; wouldNeed: string }> = [
-  {
-    symbol: 'formatMoney',
-    wouldNeed:
-      'a grouping argument (or a UI-side read of currency.thousands_separator) so the ' +
-      'preview can express what the printer already honours. The value is behind IPC ' +
-      'and this function is synchronous, so it is a design decision, not a edit.',
-  },
+  // ── EMPTIED 2026-10-13: the fix landed, and the guard retired its own entry. ──
+  //
+  // `formatMoney` was the one entry, and the guard below told me to delete it the moment
+  // the function stopped grouping by locale alone:
+  //
+  //   "formatMoney no longer groups by locale alone — either the fix landed or the
+  //    implementation moved. Delete its LOCALE_GROUPED_WITHOUT_SETTING entry so the
+  //    ledger stays true."
+  //
+  // It landed, in three parts across rounds 49-50:
+  //   1. e84ccdc62 put `thousands_separator` on `StoreSettingsDto`, read from
+  //      `Settings::get_currency_thousands_separator` — the accessor that existed in
+  //      core with no caller in `ui/src`.
+  //   2. `utils/storage.ts` gained `getThousandsSep` / `setThousandsSep` /
+  //      `thousandsSepFor`, the synchronous localStorage bridge `formatMoney` needs (the
+  //      same shape `getDecimalSep` already had), and `SettingsContext` writes through
+  //      from the DTO on every store load.
+  //   3. `formatMoney` takes a `thousandsSep` argument and groups the integer part
+  //      itself, with `useGrouping: false` so `Intl` cannot also group.
+  //
+  // The guard is NOT weakened by this: it still fails for any formatter that groups by
+  // locale alone and is not declared here. An empty list means there are none — the state
+  // this file was written to reach.
 ];
 
 /** Does this file's formatMoney still group only through Intl/locale? */
@@ -78,18 +94,26 @@ describe('the receipt preview and the printer agree on thousands grouping', () =
     ).toBe(true);
   });
 
-  it('every locale-grouped formatter is a DECLARED entry, not a surprise', () => {
-    const undeclared = LOCALE_GROUPED_WITHOUT_SETTING.filter(
-      (e) => e.symbol === 'formatMoney',
-    ).length;
-    // The declared list is the ledger. This asserts it is non-empty AND that the
-    // defect it names is real, so the entry cannot rot into a comment.
-    expect(undeclared, 'the declared list lost its entry').toBe(1);
+  it('no formatter groups by locale alone any more — the ledger is empty', () => {
+    // This case used to require a DECLARED entry (`toBe(1)`), which was right while
+    // the defect existed and is now the opposite of right. Two assertions flip:
+    //
+    //   was: the ledger has exactly the formatMoney entry, and the defect is real
+    //   now: the ledger is EMPTY, and formatMoney really does honour the setting
+    //
+    // Flipping rather than deleting is deliberate. Deleting would leave nothing
+    // pinning the fix, and the next formatter to group by locale alone would be
+    // noticed by nobody. The second assertion below is the one that keeps working:
+    // it fails if `formatMoney` regresses to locale-only grouping.
+    expect(
+      LOCALE_GROUPED_WITHOUT_SETTING,
+      'the ledger is empty; an entry here means a formatter still cannot express the ' +
+        'store setting, and it must be declared rather than discovered.',
+    ).toEqual([]);
     expect(
       groupsByLocaleOnly(DOMAIN),
-      'formatMoney no longer groups by locale alone — either the fix landed or the ' +
-        'implementation moved. Delete its LOCALE_GROUPED_WITHOUT_SETTING entry so the ' +
-        'ledger stays true.',
-    ).toBe(true);
+      'formatMoney has gone back to grouping by locale alone, which is the divergence ' +
+        'ac8d82fd0 closed on the printer side and rounds 49-50 closed here.',
+    ).toBe(false);
   });
 });
