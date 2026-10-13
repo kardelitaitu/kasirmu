@@ -85,7 +85,16 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   }, [isOpen, canEditImages, loadImages]);
 
   const handleSetImage = useCallback(async (slot: number) => {
-    if (!sessionToken || !product?.id) return;
+    if (!sessionToken) {
+      // Reported, not dropped. The `!product?.id` half of this condition stays silent
+      // — an editor with no product renders its own empty state — but a missing TOKEN
+      // means the click cannot be attempted, and the operator has to be told or they
+      // retry the same slot. This handler already reports through `setImageError`
+      // below, for the non-Tauri preview.
+      setImageError(requiredLocalized(l10n, 'pos-toast-auth-required'));
+      return;
+    }
+    if (!product?.id) return;
     // This guard is new with the content-URI bridge, and it closes a wart that
     // predates it: without it the browser dev preview reached `open()` and threw
     // `__TAURI_INTERNALS__.invoke is not a function` out of the partial stub
@@ -117,7 +126,12 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   }, [sessionToken, product?.id, loadImages, l10n]);
 
   const handleClearImage = useCallback(async (slot: number) => {
-    if (!sessionToken || !product?.id) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleSetImage above.
+      setImageError(requiredLocalized(l10n, 'pos-toast-auth-required'));
+      return;
+    }
+    if (!product?.id) return;
     // Menu items must always have exactly 1 image — the backend refuses
     // clearing slot 1; surface the note here as well.
     if (isMenu && slot === 1) {
