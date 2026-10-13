@@ -144,7 +144,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { session, logout, isManager, hasPermission } = useAuth();
-  const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
+  const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken, resolvedStoreId } =
+    useWorkspace();
   const sessionToken = rawToken || '';
   const { products, reload: reloadPosProducts } = useProducts(sessionToken || undefined);
   const [menuRevision, setMenuRevision] = useState(0);
@@ -172,8 +173,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // and every one of them is hoisted above the later state block — so the
   // declaration has to come first or the reads land in its temporal dead zone.
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
-  const LOCKED_CART_KEY = 'pos-locked-cart';
-  const ACTIVE_DRAFT_KEY = 'pos-active-draft';
+  // ⚠️ STORE-SCOPED. These were plain constants (`pos-locked-cart`, `pos-active-draft`),
+  // and the payload they carry is entirely store-specific: the lines, `tableNumber`,
+  // `customerName`, `guestCount` and `orderType`. A store switch remounts the POS —
+  // `WorkspaceContext.switchStore` sets `setActiveWorkspace(null)` (:363) — and the mount
+  // effect below restores whatever this key holds, so the operator who rang up a cart at
+  // one store and moved to another was shown the FIRST store's cart and table number.
+  //
+  // The store id goes in the KEY rather than in the payload because the restore has to
+  // reject a foreign draft before parsing it; a field would still have to be validated, and
+  // a key cannot be forgotten. `resolvedStoreId` is '' before the store resolves, which
+  // yields a distinct key rather than a collision with a real store.
+  const LOCKED_CART_KEY = `pos-locked-cart:${resolvedStoreId || 'unresolved'}`;
+  const ACTIVE_DRAFT_KEY = `pos-active-draft:${resolvedStoreId || 'unresolved'}`;
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend

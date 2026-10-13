@@ -473,6 +473,9 @@ async function renderPosScreenWithShift(openedAt?: Date) {
 
 // ── TEST: Core Sale Flow (RED - should fail initially) ─────────────────
 
+// The suites mock `resolvedStoreId: 'default'`, and the POS keys are store-scoped.
+const STORE_ID = 'default';
+
 describe('PosScreen — Core Sale Flow (TDD)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -625,7 +628,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // The cart line, seeded BEFORE the render: the restore effect runs on mount.
     localStorage.setItem(
-      'pos-active-draft',
+      `pos-active-draft:${STORE_ID}`,
       JSON.stringify({
         lines: [
           {
@@ -673,7 +676,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         'it does not have.',
     ).toBeNull();
 
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
     view.unmount();
   });
 
@@ -1756,7 +1759,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await userEvent.click(lockBtn);
 
     // Cart data should be in localStorage
-    const lockedCart = localStorage.getItem('pos-locked-cart');
+    const lockedCart = localStorage.getItem(`pos-locked-cart:${STORE_ID}`);
     expect(lockedCart).not.toBeNull();
     const data = JSON.parse(lockedCart!);
     expect(data.lines.length).toBe(1);
@@ -2038,7 +2041,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       discountPercent: 10,
       tableNumber: 'Table 5',
     };
-    localStorage.setItem('pos-active-draft', JSON.stringify(draftData));
+    localStorage.setItem(`pos-active-draft:${STORE_ID}`, JSON.stringify(draftData));
 
     await renderWithProviders(
       <PosScreen />,
@@ -2053,11 +2056,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(screen.getByText('Recovered Draft Item')).toBeInTheDocument();
     });
 
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
   });
 
   it('persists active draft when kasirmu:trimMemory event is dispatched', async () => {
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
 
     await renderWithProviders(
       <PosScreen />,
@@ -2110,11 +2113,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       window.dispatchEvent(new CustomEvent('kasirmu:trimMemory', { detail: { level: 80 } }));
     });
 
-    const stored = localStorage.getItem('pos-active-draft');
+    const stored = localStorage.getItem(`pos-active-draft:${STORE_ID}`);
     expect(stored).not.toBeNull();
     const parsed = JSON.parse(stored!);
     expect(parsed.lines.some((l: { sku: string }) => l.sku === 'ITEM-001')).toBe(true);
 
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
   });
 });

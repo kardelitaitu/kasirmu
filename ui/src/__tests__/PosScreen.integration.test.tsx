@@ -435,6 +435,9 @@ async function addProductToCart() {
 
 // ── TEST SUITES ──────────────────────────────────────────────────────
 
+// The suites mock `resolvedStoreId: 'default'`, and the POS keys are store-scoped.
+const STORE_ID = 'default';
+
 describe('PosScreen — Cart panel width persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -543,7 +546,7 @@ describe('PosScreen — Cart locked persistence', () => {
       serviceChargeEnabled: true,
       serviceChargePercent: 10,
     };
-    localStorage.setItem('pos-locked-cart', JSON.stringify(savedCart));
+    localStorage.setItem(`pos-locked-cart:${STORE_ID}`, JSON.stringify(savedCart));
 
     vi.mocked(shiftsApi.getActiveShiftScoped).mockResolvedValueOnce(shiftFixture());
     vi.mocked(settingsApi.getReceiptSettingsScoped).mockResolvedValueOnce(receiptSettingsFixture);
@@ -574,7 +577,7 @@ describe('PosScreen — Cart locked persistence', () => {
       serviceChargeEnabled: false,
       serviceChargePercent: 0,
     };
-    localStorage.setItem('pos-locked-cart', JSON.stringify(savedCart));
+    localStorage.setItem(`pos-locked-cart:${STORE_ID}`, JSON.stringify(savedCart));
 
     vi.mocked(shiftsApi.getActiveShiftScoped).mockResolvedValueOnce(shiftFixture());
     vi.mocked(settingsApi.getReceiptSettingsScoped).mockResolvedValueOnce(receiptSettingsFixture);
@@ -590,7 +593,7 @@ describe('PosScreen — Cart locked persistence', () => {
     );
 
     await waitFor(() => {
-      expect(localStorage.getItem('pos-locked-cart')).toBeNull();
+      expect(localStorage.getItem(`pos-locked-cart:${STORE_ID}`)).toBeNull();
     });
   });
 });
