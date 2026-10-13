@@ -568,7 +568,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // mutation "survive" for the wrong reason.
     vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
       if (key !== 'restaurant.course_firing') return Promise.resolve(null);
-      return stalePending;
+      return stalePending; // ONLY this key hangs; every other key resolves.
     }) as never);
 
     const courseFiringCalls = () =>
@@ -595,6 +595,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       price_updated_at: '',
     } as never);
     await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
+    // Wait for the line to LAND. A bare act() flushes the click, not the async lookup,
+    // so the container assertion below raced it and the line leaked into the next case.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-cart-lines')?.textContent).toContain('Course Item');
+    });
 
     // With the PREVIOUS store's read still pending and the state at its `null`
     // initial value, the container is present -- `null !== false`.
@@ -633,6 +638,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         "store's read had already disabled it -- this store shows a POS capability " +
         'it does not have.',
     ).toBeNull();
+
+    // Unmount: this case leaves a cart LINE behind, and the cart panel is global to
+    // the document, so a later case querying .pos-cart-lines would find THIS product.
+    view.unmount();
   });
 
   // ── The THIRD guard of this shape, and the only one still unpinned ─────────
