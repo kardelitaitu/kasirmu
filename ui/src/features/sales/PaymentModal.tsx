@@ -1656,7 +1656,7 @@ retryCurrencyLoad,
       // Reported, not dropped. The other two halves of this condition stay silent —
       // no completed sale or no receipt args is a screen state — but a missing token
       // means the invoice cannot be issued and the operator has to know.
-      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!completedSaleId || !receiptArgs) return;

@@ -1010,7 +1010,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // orderType gates the table the chit carries, so it must be listed: without it
     // the chit closes over the mount-time order type and a mid-sale switch to
     // Takeaway still prints a table.
-    [sessionToken, autoPrintKitchen, subtotal, activeCurrency, tableNumber, orderType, customerName],
+    [sessionToken, autoPrintKitchen, subtotal, activeCurrency, tableNumber, orderType, customerName, addToast, l10n],
   );
   dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
 

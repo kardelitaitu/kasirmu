@@ -84,6 +84,7 @@ fn set_store_settings_persists() {
         currency: "USD".into(),
         branch: "Downtown".into(),
         logo: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAA".into(),
+        thousands_separator: None,
     };
 
     run_set_store_settings(&conn, &dto).unwrap();
@@ -167,6 +168,7 @@ fn set_store_settings_overwrites_previous() {
             currency: "USD".into(),
             branch: "".into(),
             logo: "".into(),
+            thousands_separator: None,
         },
     )
     .unwrap();
@@ -180,6 +182,7 @@ fn set_store_settings_overwrites_previous() {
             currency: "IDR".into(),
             branch: "Mall".into(),
             logo: "logo_data".into(),
+            thousands_separator: None,
         },
     )
     .unwrap();
@@ -255,6 +258,7 @@ fn store_settings_dto_debug() {
         currency: "USD".into(),
         branch: "Main".into(),
         logo: "abc123".into(),
+        thousands_separator: None,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("My Store"));
@@ -270,6 +274,7 @@ fn store_settings_dto_serialize() {
         currency: "IDR".into(),
         branch: "Mall".into(),
         logo: "".into(),
+        thousands_separator: None,
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "Cafe");
@@ -373,6 +378,7 @@ fn store_settings_dto_serde_roundtrip() {
         currency: "EUR".into(),
         branch: "Main".into(),
         logo: "logo_data".into(),
+        thousands_separator: None,
     };
     let json = serde_json::to_value(&dto).unwrap();
     let back: StoreSettingsDto = serde_json::from_value(json).unwrap();

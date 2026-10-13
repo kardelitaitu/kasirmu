@@ -383,7 +383,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } finally {
       setTableModalSaving(false);
     }
-  }, [tableModal, sessionToken, tables, sections, l10n]);
+  }, [tableModal, sessionToken, tables, sections, l10n, addToast]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
     if (!sessionToken) {
@@ -406,7 +406,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       pendingRef.current = null;
       setPendingId(null);
     }
-  }, [sessionToken, l10n]);
+  }, [sessionToken, l10n, addToast]);
 
   // TBL-03: async, pending-guarded, error-aware status mutation. The affected
   // table is disabled while persisting; the panel stays open with a localized
