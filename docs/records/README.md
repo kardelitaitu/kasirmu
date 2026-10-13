@@ -138,10 +138,12 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A committed build break in kasirmu-bridge, and what it reveals (2026-10-12)](audits/kasirmu-bridge-build-break-and-mock-fidelity.md) | — |
 | general | [The kasirmu-bridge suite does not fail — it does not finish (2026-10-13)](audits/kasirmu-bridge-suite-runtime.md) | — |
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
+| general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
+| general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
@@ -170,6 +172,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | security | [kasir.mu Security Audit — Completion Summary](audits/security/security-audit-completion.md) | — |
 | general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](audits/seo/seo-audit-19-09-26.md) | — |
 | general | [SEO review — robots.txt and llms.txt (kasir.mu)](audits/seo/seo-robots-llms-review-19-09-26.md) | — |
+| general | [createSettingsApiMock was missing setSettingScoped (round 94)](audits/settings-mock-missing-setter.md) | — |
 | general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
 | general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
 | general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
