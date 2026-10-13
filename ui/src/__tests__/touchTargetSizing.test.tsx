@@ -486,6 +486,18 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
  * suite fails if it grows OR if an entry is fixed and left here. The list can
  * only shrink. Fixing them is the R4 follow-up.
  *
+ * Shrank again 13 -> 5 on 2026-10-13 (round 34 of the restaurant-POS objective):
+ * the KDS was 8 of the 13 entries and is the surface a kitchen actually operates, so
+ * it was taken to the floor rather than left for R4. `.kds-btn` was the worst at 22px
+ * and the one that cascaded -- every variant inherited it. The others were 28-38px
+ * overrides that outranked it (`--filter`, `--shift`, `--status-btn`, `--tab`,
+ * `--reset-btn`, the modal-actions override and the offline retry). `.kds-item-row`
+ * was not in this list because the scanner did not see it; it carried :hover and
+ * :active at 28px, so it is an interactive control styled as one, and it was raised
+ * in the same pass. The three remaining KDS declarations below the floor
+ * (`.kds-card-header-meta` 22px, `.kds-category-header` 30px, `.kds-item-row-inner`
+ * 20px) are NOT touch targets -- two are layout rows and the third is the flex box
+ * INSIDE the row that now enforces the floor -- so they were left, with a comment.
  * It has begun shrinking: 15 -> 13 on 2026-10-07, when the SegmentedTabs and
  * KdsRoutingRulesEditor sheets were both brought to the floor by later touch
  * work and their two entries became obsolete. Removing an entry is sanctioned
@@ -496,14 +508,6 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
 const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
   { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-height: 1.75rem', why: "Stock-count row remove control; 28px floor." },
   { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-width: 1.75rem', why: "Stock-count row remove control; 28px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-btn--filter::min-height: 34px', why: "KDS filter button; 34px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-btn--shift::min-height: 34px', why: "KDS shift button; 34px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-btn::min-height: 22px', why: "KDS base button; 22px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-modal-actions .kds-btn::min-height: 28px', why: "KDS modal action button; 28px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-offline-retry-btn::min-height: 1.75rem', why: "KDS offline retry control; 28px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-reset-btn::min-height: 38px', why: "KDS reset button; 38px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-status-btn::min-height: 34px', why: "KDS status button; 34px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-tab::min-height: 34px', why: "KDS tab strip; 34px floor." },
   { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn::min-height: 34px', why: "KDS routing action button; 34px floor." },
   { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
   { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
@@ -907,7 +911,7 @@ describe('Touch target sizing compliance', () => {
     // control surfaced as a NEW violation. CartPanel.css now floors it at
     // --touch-target-min inside its own @media (pointer: coarse) block, which is
     // the state this guard grades as compliant, so there is no debt to record.
-    expect(KNOWN_VIOLATIONS.length).toBe(13);
+    expect(KNOWN_VIOLATIONS.length).toBe(5);
   });
 
   it('every exemption is justified, and none is a silent bypass', () => {
