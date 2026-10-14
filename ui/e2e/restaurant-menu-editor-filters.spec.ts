@@ -110,3 +110,37 @@ test('the item form fields accept a price and an availability toggle', async ({ 
     timeout: 8_000,
   });
 });
+
+test('the category select and notes field edit the draft', async ({ page }) => {
+  await openMenuEditor(page);
+
+  await page.locator('.restaurant-menu-editor-card-body').first().click();
+  const form = page.locator('.restaurant-menu-editor-form');
+  await expect(form).toBeVisible({ timeout: 8_000 });
+
+  // CATEGORY. Moving an item between sections is what decides which filter chip finds it, so
+  // the select must actually change the draft — and its options must be the real categories.
+  const category = page.locator('[data-testid="restaurant-menu-editor-draft-category"]');
+  await expect(category).toBeVisible({ timeout: 5_000 });
+  const options = await category.locator('option').allTextContents();
+  expect(options.length, 'the category select needs real options').toBeGreaterThan(0);
+
+  const current = await category.inputValue();
+  const other = options.find((o) => o.trim() !== current.trim());
+  expect(other, 'an item should have more than one category to move to').toBeTruthy();
+  await category.selectOption({ label: other!.trim() });
+  expect(await category.inputValue()).not.toBe(current);
+
+  // NOTES. This is the description the kitchen chit prints, so it must round-trip through the
+  // textarea rather than being dropped on input.
+  const notes = page.locator('[data-testid="restaurant-menu-editor-notes"]');
+  await expect(notes).toBeVisible({ timeout: 5_000 });
+  const marker = 'E2E note — tidak pedas';
+  await notes.fill(marker);
+  await expect(notes).toHaveValue(marker);
+
+  // Both edits together must leave the form saveable.
+  await expect(page.locator('[data-testid="restaurant-menu-editor-save-btn"]')).toBeEnabled({
+    timeout: 8_000,
+  });
+});
