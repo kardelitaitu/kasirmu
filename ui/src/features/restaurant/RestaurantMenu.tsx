@@ -62,21 +62,33 @@ function key(uid: string, name: string) {
 //   Written by `persistMenuPreference` → `setUserPreferencesScoped`,
 //   rehydrated from `getUserPreferencesScoped` on mount (see the effect
 //   below). These follow the user to another terminal.
+//   `unavailable` reaches the server by a different route — see below.
 //
 // Tier 2 — localStorage only:
-//   `pinned`, `colors`, `unavailable`, `pop`.
-//   Namespaced per user through `key()` above but never sent to the server,
-//   so they do NOT follow the user across terminals. `pinned` and `colors`
-//   are personal curation and read as defensibly terminal-local.
-//   `unavailable` is the odd one out: it is an operational flag (86 an
-//   item), so a waiter marking an item unavailable on one terminal does not
-//   propagate to the others, which looks more like a gap than a choice.
+//   `pinned`, `colors`, `pop`.
+//   Namespaced per user through `key()` above and never sent to the server,
+//   so they do NOT follow the user across terminals. These are personal
+//   curation and usage counts, and read as defensibly terminal-local.
 //
-// This split is recorded in code but is NOT backed by an ADR or product
-// decision — treat it as unresolved rather than settled. If `unavailable`
-// (or the rest of Tier 2) should be shared, promote it to Tier 1; note the
-// preference store is generic string KV (api/settings.ts:198-202), so a set
-// or map needs serialising first. Raised by .agents/resto-pos-ui-review.md §F5.
+// ── UNAVAILABLE IS SHARED, AND THIS NOTE USED TO SAY OTHERWISE ──────────
+//
+// An earlier revision of this block filed `unavailable` under Tier 2 and
+// marked the cross-terminal gap "unresolved and not backed by an ADR" — the
+// .agents/resto-pos-ui-review.md §F5 finding. The sharing has since been
+// built, and the note was never updated:
+//
+//   * the server key is `restaurant.unavailable.<locationId>` (`unavailableSettingKey`);
+//   * the fetch effect below rehydrates from it and flips `unavailableLoadedRef` ONLY
+//     on a successful read, so a failed read leaves the gate shut and the write effect
+//     cannot push `[]` over the real list (the guard at :488);
+//   * `refetchUnavailable` re-polls on tab visibility, so another terminal's 86 turns
+//     up within a second or two of refocusing;
+//   * localStorage (`saveUnavailable`) is now the offline write-through cache.
+//
+// Measured 2026-10-14 in the browser against the dev mock: 86'ing a tile ran
+// `set_setting_scoped` with `["LATTE"]` for `restaurant.unavailable.store-1`, and the
+// mock's settings slice held that value afterwards. So §F5 is closed by
+// implementation; the residual latency is the visibility re-poll, not the scope.
 
 // Sort options in menu order. Exported, and SortMode derived from it rather
 // than written out separately, so the two cannot drift: the hamburger renders
