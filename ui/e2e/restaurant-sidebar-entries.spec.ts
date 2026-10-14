@@ -92,7 +92,12 @@ test('Menu Editor replaces the sale and offers a way back', async ({ page }) => 
   await openSidebar(page);
   await clickRow(page, 'restaurant-sidebar-menu-editor');
 
-  await expect(page.locator('[data-testid="restaurant-menu-editor-header"]')).toBeVisible({
+  // WAIT ON DATA, NOT ON THE HEADER. `restaurant-menu-editor-header` and the back button
+  // render unconditionally (`RestaurantMenuEditorScreen.tsx:913`, before the loading branch),
+  // so a header wait passes against a screen whose items have not loaded — round 185's trap,
+  // which this case fell into until round 186. `bulk-avail` only renders with items present,
+  // so it is the signal the load finished.
+  await expect(page.locator('[data-testid="restaurant-menu-editor-bulk-avail"]')).toBeVisible({
     timeout: TIMEOUT,
   });
   // The product grid is gone: the screen REPLACES the sale rather than overlaying it.
