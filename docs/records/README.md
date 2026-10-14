@@ -148,6 +148,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Course firing: the half round 205 left (round 206)](audits/course-firing.md) | — |
 | general | [The hold-to-fired transition on the line chip (round 208)](audits/course-hold-fired-badges.md) | — |
 | quality | [Re-deriving the coverage claims, and a key I invented (round 189)](audits/coverage-claims-rederived.md) | — |
+| quality | [The coverage scan could not see templated testids (round 224)](audits/coverage-scan-templated-testids.md) | — |
 | general | [Correcting round 114: the credit guard is UNREACHABLE, and the withdrawal was untested (round 115)](audits/credit-guard-unreachable.md) | — |
 | general | [The credit rail's canComplete guard is unpinned — and unreachable in the suite (round 114)](audits/credit-rail-guard-unpinned.md) | — |
 | general | [The custom payment rail form, on the screen with the lowest coverage (round 190)](audits/custom-rail-form-covered.md) | — |
