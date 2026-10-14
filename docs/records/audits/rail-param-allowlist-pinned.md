@@ -57,3 +57,5 @@ Round 159 found the same pattern on a different screen: **a rule that matters li
 component body, unreachable by a unit test, with the guard beside it instead of in it.** Both
 times the fix was to move the rule into the logic module its screen already owns and pin it
 there. Worth looking for a third.
+
+> last audited 14-10-26 by docs-auditor
