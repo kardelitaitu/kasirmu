@@ -1335,10 +1335,12 @@ export default function RestaurantReceiptsScreen({
       showThousandsSeparator,
     );
 
-  // Sample gross prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar (42.000)
-  // When showTax is true, line items show net price = 100/(100 + taxRatePercent) of gross,
-  // rounded for display (e.g. 16.000 * 100 / 110 = 14545.4545... -> shown as 14.545),
-  // while exact fractional parts are preserved in the subtotal and raw tax inside
+  // Sample gross UNIT prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar
+  // (42.000), with quantities 1 / 2 / 1. When showTax is true, each row shows its LINE
+  // TOTAL net of tax — unit * 100/(100 + taxRatePercent) * qty — which is the same
+  // convention the real receipt uses (`completedSale.ts:132`, `:221`). Rounded for
+  // display (2x Es Teh: 16.000 * 100/110 * 2 = 29.090.90... -> shown as 29.091), while
+  // the exact fractional parts are preserved in the subtotal and raw tax inside
   // computeReceiptPreview.
   const preview = computeReceiptPreview({ taxRatePercent, showTax, taxRoundingMode });
   const [sampleItem1Price, sampleItem2Price, sampleItem3Price] = preview.itemPrices;

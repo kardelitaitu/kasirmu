@@ -155,11 +155,15 @@ export interface ReceiptPreviewResult {
 /**
  * Compute the thermal-preview sample totals.
  *
- * The three sample gross prices (35.000 / 16.000 / 42.000) are netted to
- * `100/(100+rate)` when tax is shown; subtotal is the rounded net sum, tax is
- * derived from the unrounded net subtotal and rounded per the rounding mode, and
- * the grand total is subtotal + tax. With tax hidden, gross prices are used and
- * the subtotal is a flat 93.000. Change is floored at zero.
+ * The three sample unit prices (35.000 / 16.000 / 42.000) are netted to
+ * `100/(100+rate)` when tax is shown. Quantities (1 / 2 / 1) are then applied, so
+ * `itemPrices` holds LINE TOTALS — exactly the convention the real receipt uses
+ * (`completedSale.ts:132` and `:221` both compute `unit_price.minor_units * qty`).
+ * The preview labels its rows by those same quantities, so a row reading `2x` now
+ * carries twice the unit figure. subtotal is the rounded net sum, tax is derived
+ * from the unrounded net subtotal and rounded per the rounding mode, and the grand
+ * total is subtotal + tax. With tax hidden, gross prices are used and the subtotal
+ * is the rounded gross line sum. Change is floored at zero.
  */
 export const computeReceiptPreview = ({
   taxRatePercent,
@@ -167,9 +171,11 @@ export const computeReceiptPreview = ({
   taxRoundingMode,
 }: ReceiptPreviewInput): ReceiptPreviewResult => {
   const taxMultiplier = showTax ? 100 / (100 + taxRatePercent) : 1;
-  const item1Exact = 35000 * taxMultiplier;
-  const item2Exact = 16000 * taxMultiplier;
-  const item3Exact = 42000 * taxMultiplier;
+  // The quantities the preview's own labels assert: 1x / 2x / 1x.
+  const QUANTITIES: [number, number, number] = [1, 2, 1];
+  const item1Exact = 35000 * taxMultiplier * QUANTITIES[0];
+  const item2Exact = 16000 * taxMultiplier * QUANTITIES[1];
+  const item3Exact = 42000 * taxMultiplier * QUANTITIES[2];
 
   const itemPrices: [number, number, number] = [
     Math.round(item1Exact),
@@ -178,7 +184,7 @@ export const computeReceiptPreview = ({
   ];
 
   const exactSubtotal = item1Exact + item2Exact + item3Exact;
-  const subtotal = showTax ? Math.round(exactSubtotal) : 93000;
+  const subtotal = Math.round(exactSubtotal);
   const rawTax = showTax ? exactSubtotal * (taxRatePercent / 100) : 0;
   const tax = taxRoundingMode === 'truncate' ? Math.floor(rawTax) : Math.round(rawTax);
   const total = showTax ? subtotal + tax : subtotal;
