@@ -177,6 +177,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Round 152's deleted guard comes back — the SCOPE was the error, not the idea (round 153)](audits/feature-comment-path-guard.md) | — |
 | general | [The two follow-up guards from round 171, kill-tested and sound (round 172)](audits/followup-guards-kill-tested.md) | — |
 | general | [The fourth F4 guard: narrowed to one question, still unreached (round 233)](audits/fourth-f4-guard-narrowed.md) | — |
+| general | [The fourth F4 latch fires now: a one-line ordering fix (round 235)](audits/fourth-f4-latch-fixed.md) | — |
 | general | [The fourth F4 latch is unreachable, and the mechanism is three lines (round 234)](audits/fourth-f4-latch-unreachable.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
