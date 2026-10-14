@@ -119,3 +119,39 @@ test('confirming the release frees the table', async ({ page }) => {
     'confirming the release should free the table',
   ).toBeVisible({ timeout: TIMEOUT });
 });
+test('an occupied table cannot be deleted mid-service', async ({ page }) => {
+  await openTables(page);
+  await selectBilledTable(page);
+
+  // SAFETY, not just a disabled button: deleting the table a guest is sitting at
+  // would take the floor plan out from under an open service. The gate reads
+  // `disabled={Boolean(activeBill || selected.status === 'occupied')}` (:1194).
+  const del = page.locator('[data-testid="tables-delete-table-btn"]');
+  await expect(del).toBeVisible({ timeout: TIMEOUT });
+  await expect(del, 'an occupied table with a bill must not be deletable').toBeDisabled();
+
+  // The confirmation is therefore not reachable either — the guard stops it upstream,
+  // which is what makes it a rule rather than a prompt.
+  await expect(page.locator('.tables-warning-banner')).toHaveCount(0);
+});
+
+test('an available table can be deleted, behind its confirmation', async ({ page }) => {
+  await openTables(page);
+
+  // The inverse half: the guard must not block a table that is safe to remove.
+  const free = page.locator('.tables-table--available').first();
+  await expect(free, 'the seeded plan has an available table').toBeVisible({
+    timeout: TIMEOUT,
+  });
+  await free.click();
+
+  const del = page.locator('[data-testid="tables-delete-table-btn"]');
+  await expect(del).toBeEnabled({ timeout: TIMEOUT });
+
+  await del.click();
+  const confirm = page.locator('.tables-warning-banner');
+  await expect(confirm, 'a delete must be confirmed').toBeVisible({ timeout: 8_000 });
+
+  // And it stays undeleted until the confirmation is accepted.
+  await expect(free).toBeVisible({ timeout: TIMEOUT });
+});
