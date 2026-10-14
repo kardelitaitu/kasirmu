@@ -213,6 +213,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant settings screen gets E2E coverage, and its toggle is styled-out (round 148)](audits/restaurant-settings-e2e.md) | — |
 | general | [The restaurant settings screen, driven live: all thirteen toggles work (round 136)](audits/restaurant-settings-live.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
+| general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
 | general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
