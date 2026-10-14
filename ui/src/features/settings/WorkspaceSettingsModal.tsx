@@ -50,8 +50,30 @@ export interface WorkspaceSettingsModalProps {
 function renderWorkspaceCard(
   workspaceType: WorkspaceType,
   terminalId: string | undefined,
+  sessionToken: string | undefined,
 ): ReactNode {
-  const cardProps = { variant: 'modal' as const, terminalId: terminalId ?? '' };
+  // ⚠️ `sessionToken` MUST be forwarded. It was omitted here, so every card's workspace effect
+  // received `undefined` and its once-per-session guard — which compares a ref initialised to
+  // `undefined` against the token — was TRUE on the very first run:
+  //
+  //   WorkspaceKdsSettings.tsx:93   if (reloadNonce === 0 && ref.current === sessionToken) return;
+  //   WorkspaceInventorySettings.tsx:71   …same shape…
+  //
+  // The effect therefore returned before reading, so those cards NEVER loaded their settings and
+  // their F4 guards could not fire. Measured 2026-10-14 (round 237): `SETTING_CALLS = 0` for the
+  // KDS card both before and after the modal opened.
+  //
+  // `WorkspaceRestaurantPosSettings` escaped the never-firing half only because its deps include
+  // `settings.receipt`, which changes as the modal mounts and made later runs fall through — and
+  // that is exactly the run whose result the StrictMode cleanup then discarded (fixed round 235).
+  // `exactOptionalPropertyTypes` (tsconfig) means an optional prop cannot be ASSIGNED
+  // `undefined` — it must be omitted. Spread it conditionally, the same shape
+  // `api/tauri.ts:114-117` uses to forward an optional through a wrapper.
+  const cardProps = {
+    variant: 'modal' as const,
+    terminalId: terminalId ?? '',
+    ...(sessionToken === undefined ? {} : { sessionToken }),
+  };
 
   switch (workspaceType) {
     case 'restaurant-pos':
@@ -230,7 +252,7 @@ export default function WorkspaceSettingsModal({
           <div className={styles['body']}>
             <ErrorBoundary>
               {showFullCard ? (
-                renderWorkspaceCard(workspaceType, terminalId)
+                renderWorkspaceCard(workspaceType, terminalId, workspaceCtx?.sessionToken ?? undefined)
               ) : (
                 <TerminalPreferencesCard
                   variant="modal"
