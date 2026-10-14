@@ -177,6 +177,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [QRIS and split-tender driven live — the last two gaps closed (round 119)](audits/pos-qris-and-split-live.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
 | general | [The POS localStorage sweep, and a currency-sensitivity gap (round 105)](audits/pos-storage-key-sweep.md) | — |
+| general | [The printed receipt sample is pinned, and its tax mode documented (round 135)](audits/printed-sample-pinned.md) | — |
 | payments | [The QRIS mode setting and the two buttons beside it (round 124)](audits/qris-mode-and-two-buttons.md) | — |
 | money | [A USD store was offered a $10,000 quick-tender shortcut on a $7 sale (round 106)](audits/quick-tender-ladder-currency.md) | — |
 | general | [The credential contradiction does not exist: the save path sanitizes (round 125)](audits/rail-credential-sanitizer.md) | — |
