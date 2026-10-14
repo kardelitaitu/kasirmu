@@ -126,6 +126,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
 | products | [An archived screen still graded by 24 unit tests and 5 E2E tests (round 146)](audits/archived-product-screen-still-graded.md) | — |
 | staff | [Thirteen switches, twenty-seven roles, zero missing attributes (round 180)](audits/aria-role-attribute-sweep.md) | — |
+| general | [The surviving-assertion audit extended past the table screen — and came back clean (round 199)](audits/assertion-audit-beyond-tables.md) | — |
 | general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
