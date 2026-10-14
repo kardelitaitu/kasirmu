@@ -4,20 +4,38 @@
 > all settings keys wired and active (including `restaurant.dispatch_on_tab_save` wired in
 > commit 9377011c6).**
 >
-> **TWO open items are PINNED, not fixed — the earlier "NO open code defects" was false and
-> the header has been corrected (2026-10-12, round 22 of the current objective). Pinned means
-> the defect is stated in code with a `wouldNeed` clause and deliberately left to an owner;
-> it does NOT mean resolved. The pair is enforced:**
-> `ui/src/__tests__/planHeaderMatchesPinnedDefects.test.ts` fails if this header claims there
-> are no open defects while these guards still declare them.
+> **NO open code defects — the two pinned items are both CLOSED (2026-10-14, docs-auditor).**
+> The header previously read *"TWO open items are PINNED, not fixed"*, and both have since been
+> resolved by explicit owner rulings rather than by drift:
 >
-> 1. **Two INERT core-rail toggles** — `cash`, `card`. An operator switches one
->    off in `RestaurantPaymentsScreen` and the charge modal keeps offering the tender.
->    Pinned by `ui/src/__tests__/coreRailToggleReach.test.ts`, which records the per-rail
->    mapping and says INVERT, DO NOT DELETE. Both are UNIVERSAL by design (a site
->    with no EDC still takes a card by hand, so the rail models the TERMINAL, not the
->    tender). Wiring either changes checkout behaviour — a product decision, not a
->    reliability repair.
+>  · **item 1 (the two INERT core-rail toggles) — WIRED 2026-10-14, this commit.** The ruling
+>    rejected the "universal by design" framing it was parked under; see below.
+>  · **item 2 (the receipt preview and `currency.thousands_separator`) — CLOSED 2026-10-13**
+>    by `e84ccdc62` + `e0ffa8213`. Recorded in full below.
+>
+> The enforcement pair now asserts the OPPOSITE claim and still fails if this header drifts:
+> `ui/src/__tests__/planHeaderMatchesPinnedDefects.test.ts` compares this header against
+> `coreRailToggleReach.test.ts`'s ledger, which is EMPTY of inert rails, and
+> `ui/src/__tests__/planStatusAccuracy.test.ts` pins this file's stale-work class by name.
+>
+> 1. ~~**Two INERT core-rail toggles** — `cash`, `card`.~~ — **WIRED 2026-10-14 on an
+>    owner ruling, in this commit.** `PaymentModal` now applies
+>    `!coreRailWithheld(paymentRails, 'cash')` and `...'card'` in three places each: the
+>    tender-list filter, a redirect that moves a withheld selection to another live rail,
+>    and the Complete guard. `coreRailToggleReach.test.ts` moved both entries from INERT
+>    to WIRED per its own INVERT-DO-NOT-DELETE instruction, and its INERT map is now empty.
+>
+>    **Why the ruling went this way, because the park's own reasoning argued otherwise.**
+>    The text above said both rails are UNIVERSAL — a site with no EDC still takes a card by
+>    hand — and concluded that wiring "changes checkout behaviour". That is true of
+>    `railOffered` and false of `coreRailWithheld`, which is what the other three rails use
+>    and why it exists: it distinguishes THREE states. No row -> offered. `is_enabled: true`
+>    -> offered. Only an explicit `is_enabled: false` -> withheld. So the no-EDC site keeps
+>    its hand-keyed card exactly as the note promised, and the only behaviour that changes is
+>    the operator's OWN saved switch being honoured — which is the point: the switch was
+>    persisting `is_enabled` to the rail row and the modal never read it, a control that
+>    changed nothing. Four behavioural cases in `PaymentModalSaleFlow.test.tsx` pin it,
+>    including the no-row case the reasoning depends on.
 >
 >    **`credit` was the third member and is now WIRED — corrected 2026-10-13.** The owner
 >    answered the parked question by wiring it, in `abb1c324b` `feat(sales): enforce credit

@@ -153,6 +153,23 @@ export default function PaymentModal({
   // this file's own PINNED tender-list case.) Three states, documented on the helper.
   const openBillOffered = !coreRailWithheld(paymentRails, 'open_bill');
   const creditOffered = !coreRailWithheld(paymentRails, 'credit');
+  // F23, closed 2026-10-14 on an owner ruling. `cash` and `card` were the two INERT
+  // core rails: RestaurantPaymentsScreen renders each as an enable/disable switch
+  // that persists `is_enabled` on the rail row, and nothing here read it — so the
+  // switch was a control that changed nothing, which the plan classifies as worse
+  // than no control.
+  //
+  // The ruling was to WIRE them rather than accept them as universal, on the grounds
+  // that `coreRailWithheld` already encodes the nuance the "universal" framing missed:
+  // three states, not two. No row for the rail (a store whose list predates it) returns
+  // FALSE — the tender is offered — so a site with no EDC terminal still takes a card
+  // by hand exactly as the TENDER_RAILS note says. Only an EXPLICIT `is_enabled: false`
+  // hides the tender, and that is the operator's own saved switch being honoured.
+  //
+  // So this cannot withdraw a capability anyone did not turn off; it makes an existing
+  // toggle stop lying. Same helper, same shape as `open_bill` and `credit` above.
+  const cashOffered = !coreRailWithheld(paymentRails, 'cash');
+  const cardOffered = !coreRailWithheld(paymentRails, 'card');
   const [creditSettings, setCreditSettings] = useState<CreditSettingsDto | null>(null);
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
@@ -371,6 +388,27 @@ export default function PaymentModal({
       setMethod('cash');
     }
   }, [creditOffered, method]);
+
+  // F23 (closed 2026-10-14): the same recovery for the two newly-wired core rails.
+  // A rail switched off under a chosen tender must not strand the cashier on a
+  // hidden surface — Complete would otherwise submit a tender the operator has
+  // switched off. Mirrors the qris/open_bill/credit resets above.
+  useEffect(() => {
+    if (!cashOffered && !cardOffered) {
+      // Both are gone. Fall back to whichever wired rail is still on, and cash
+      // is universal only in the no-row sense — with BOTH rows explicitly
+      // disabled there is no universal default left to assume.
+      const fallback: PaymentMethod = creditOffered
+        ? 'credit'
+        : qrisOffered
+          ? 'qris'
+          : 'open_bill';
+      if (method === 'cash' || method === 'card') setMethod(fallback);
+      return;
+    }
+    if (!cashOffered && method === 'cash') setMethod(cardOffered ? 'card' : 'qris');
+    if (!cardOffered && method === 'card') setMethod(cashOffered ? 'cash' : 'qris');
+  }, [cashOffered, cardOffered, creditOffered, qrisOffered, method]);
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
@@ -1164,7 +1202,10 @@ retryCurrencyLoad,
       }
       return true;
     }
-    if (method === 'cash') return sufficient;
+    // F23 (closed 2026-10-14): a switch-off core rail cannot be tendered even
+    // if a stale selection survives — the guard is the backstop behind the filter
+    // and the reset effect, and it is what makes the withholding actual.
+    if (method === 'cash') return sufficient && cashOffered;
     if (method === 'qris') return qrReference.length > 0;
     // A failed card-terminal attempt blocks Complete UNTIL the cashier retries or
     // leaves the method. Without this, Complete stayed armed after the terminal
@@ -1176,7 +1217,14 @@ retryCurrencyLoad,
     // manual tender for a payment taken on another machine, and that path is
     // intended (see the "keeps manual card" test). The gate keys on the EVIDENCE
     // of a failure, so a cashier recording an off-POS card payment still can.
-    if (method === 'card' && edcTerminalFailed) return false;
+    // F23 (closed 2026-10-14): the card TAB is now rail-gated on the core
+    // `card` rail, so a switched-off rail cannot be tendered here either. This keeps
+    // the typed comparison effective for both state flags.
+    if (method === 'card') {
+      if (!cardOffered) return false;
+      if (edcTerminalFailed) return false;
+      return true;
+    }
     return true;
     // orderType is read above (the open-bill dine-in table arm) and so must be
     // listed: without it this memo closes over the render-time value, and a cashier
@@ -1184,7 +1232,7 @@ retryCurrencyLoad,
     // bill on a table number. THIRD occurrence of this exact trap in this area
     // (see PosScreen's release guard and PaymentModal's claim guard), which is why
     // the class sweep asserts the rule positively rather than trusting each site.
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
@@ -2256,6 +2304,8 @@ retryCurrencyLoad,
                       <div className="payment-method-options">
                         {visibleMethods(paymentRails, activeMarketProfile)
                           .filter((m) => m !== 'credit' || creditOffered)
+                          .filter((m) => m !== 'cash' || cashOffered)
+                          .filter((m) => m !== 'card' || cardOffered)
                           .map((m) => (
                           <label
                             key={m}

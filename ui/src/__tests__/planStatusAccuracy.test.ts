@@ -297,4 +297,72 @@ describe('the plan status header matches the tree (F32)', () => {
         'P1-complete claim with it: ' + missing.join(', '),
     ).toEqual([]);
   });
+
+  // ── The D6 residual: the SIXTH stale-header correction, pinned (2026-10-14) ──────
+  //
+  // The header told readers for three commits that the receipt-grouping fix "is left to
+  // the owner… a real design decision". It had already landed: `e84ccdc62` exposed the
+  // setting, `e0ffa8213` resolved it through the storage bridge, and `formatMoney` now
+  // groups the integer part itself with `useGrouping: false`. The plan file's own opening
+  // paragraph counts FIVE prior corrections of this same shape — "a pin lands, the summary
+  // is not re-read" — so this is the sixth, and the first to get a pin rather than another
+  // dated note.
+  //
+  // The guard above polices the DEFICIT direction (a header claiming no open defects while
+  // guards pin some). This one polices the STALE-WORK direction: a header claiming open work
+  // that has landed. Same file, opposite failure, and the second is the one this file's
+  // history is made of.
+  it('does not claim the D6 receipt-grouping fix is still left to the owner', () => {
+    const header = read(PLAN);
+    // The dated reasoning is KEPT — that is this corpus's convention, and the CLOSED block
+    // says so explicitly ("everything from here down is kept as the dated reasoning that
+    // produced the fix"). So the pin is not "the old sentence is absent"; it is that the
+    // CLOSED verdict sits BESIDE it, after it, so no reader meets the open question without
+    // its answer. A future edit that re-opens the work must remove or supersede the CLOSED
+    // block, which is exactly what fails here.
+    const closedAt = header.indexOf('✅ CLOSED 2026-10-14');
+    const staleAt = header.indexOf('one-line change, and it is left to the owner.');
+    expect(
+      closedAt,
+      'the D6 CLOSED block is gone. It landed in e84ccdc62 + e0ffa8213, and ' +
+        'ReceiptPreviewGroupingParity.test.ts EMPTIED its own ledger. Re-measure before ' +
+        'removing it, or record why the work is open again.',
+    ).toBeGreaterThan(-1);
+    expect(
+      staleAt === -1 || closedAt > staleAt,
+      'the D6 CLOSED block appears BEFORE the open question it answers, so a reader meets ' +
+        '"left to the owner" and may never reach the verdict. The correction must follow the ' +
+        'claim it supersedes.',
+    ).toBe(true);
+    // And the dated note names the commits, so the verdict cannot rot into an assertion
+    // without evidence.
+    expect(header).toContain('e84ccdc62');
+    expect(header).toContain('e0ffa8213');
+  });
+
+  it('the three claims the D6 note says are now false really are false in the tree', () => {
+    // Each of the three claims the header made, re-derived against the tree:
+    // (a) "No UI writer exists" — the writer is storage.setThousandsSep, called twice.
+    const storage = read('ui/src/utils/storage.ts');
+    expect(
+      storage,
+      'setThousandsSep is gone — the "no UI writer" claim may be true again',
+    ).toContain('export function setThousandsSep');
+    const ctx = read('ui/src/contexts/SettingsContext.tsx');
+    const writerCalls = ctx.split('setThousandsSep(').length - 1;
+    expect(
+      writerCalls,
+      'SettingsContext no longer writes the separator on both load paths (expected 2 calls)',
+    ).toBe(2);
+    // (b) "the preview formats through Intl/locale and ignores the setting" — it honours it.
+    const domain = read('ui/src/types/domain.ts');
+    expect(
+      domain,
+      'formatMoney no longer reads the store separator — the divergence the pin recorded is back',
+    ).toContain('getThousandsSep');
+    expect(
+      domain,
+      'the load-bearing useGrouping: false is gone, so Intl will ALSO group and the setting will double-apply',
+    ).toContain('useGrouping: false');
+  });
 });

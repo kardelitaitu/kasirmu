@@ -1964,8 +1964,67 @@ describe('PaymentModal — local payment rails gating', () => {
       await waitFor(() =>
         expect(screen.queryByRole('radio', { name: /qris/i })).toBeNull(),
       );
-      // Cash stays: universal tender, never a market rail.
+      // Cash stays ONLY because its own rail row was not in the list at all — the
+      // rail is universal in the NO-ROW sense, which `coreRailWithheld` encodes as
+      // "offered". (Until 2026-10-14 this comment read "universal tender, never a
+      // market rail", which was the INERT framing the F23 ruling inverted.)
       expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument();
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  // ── F23: cash and card are rail-gated too (owner ruling 2026-10-14) ────────
+  // The pin said they were INERT; the ruling was to wire them, because
+  // `coreRailWithheld` already returns "offered" when there is NO row, so a store
+  // that never touched the switch keeps taking cash and hand-keyed cards. These
+  // cases are the behavioural half — the guard only proves the gate EXPRESSION is
+  // present, not that switching the rail off hides the tender.
+  it('a disabled cash rail removes the Cash tab', async () => {
+    const { view, restore } = await mountWithRails([rail(false, 'cash')]);
+    try {
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /cash/i })).toBeNull(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('a disabled card rail removes the Card tab', async () => {
+    const { view, restore } = await mountWithRails([rail(false, 'card')]);
+    try {
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /card/i })).toBeNull(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('an enabled cash rail keeps the tab', async () => {
+    const { view, restore } = await mountWithRails([rail(true, 'cash')]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('a populated list with NO cash row keeps the tab (the no-row case the ruling relies on)', async () => {
+    const { view, restore } = await mountWithRails([
+      { rail_code: 'qris', label: 'QRIS', is_enabled: true, scope: 'location', parameters: '{}' },
+    ]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
+      );
     } finally {
       restore();
       view.unmount();

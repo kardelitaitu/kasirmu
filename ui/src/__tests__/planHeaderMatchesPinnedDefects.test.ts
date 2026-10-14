@@ -49,76 +49,71 @@ function findRoot(): string {
 const ROOT = findRoot();
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf-8');
 
-const PLAN = 'todo-restaurant-pos-reliability.md';
-
 /**
  * Guards that DECLARE a live, unwired defect, and the header claim each contradicts.
  *
  * One entry per declared defect. A new pin belongs here, so the header cannot drift
  * away from it without failing this case.
  */
-const DECLARED_LIVE_DEFECTS: Array<{ guard: string; what: string }> = [
-  {
-    guard: 'ui/src/__tests__/coreRailToggleReach.test.ts',
-    what: 'two INERT core-rail toggles (cash, card)',
-  },
-  {
-    guard: 'ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts',
-    what: 'formatMoney cannot express currency.thousands_separator',
-  },
-];
+/**
+ * EMPTIED 2026-10-14. Both entries were resolved by explicit owner rulings, and this
+ * file's own contract says the list must follow:
+ *
+ *   core-rail toggles — WIRED. `coreRailToggleReach.test.ts`'s INERT map is now empty
+ *   and its WIRED map holds all five rails; `PaymentModal` gates cash and card on
+ *   `coreRailWithheld` in three places each, and four behavioural cases in
+ *   `PaymentModalSaleFlow.test.tsx` pin the withholding.
+ *
+ *   formatMoney / currency.thousands_separator — CLOSED by `e84ccdc62` + `e0ffa8213`.
+ *   `ReceiptPreviewGroupingParity.test.ts` likewise emptied its own ledger and now
+ *   asserts the emptiness.
+ *
+ * So the header's "NO open code defects" is TRUE for the first time since this guard
+ * existed. The cases below are DELETED rather than left green: the second one's own
+ * message said *"no declared defects — this case is vacuous. Delete it rather than
+ * leaving it green for the wrong reason."* An assertion that nothing is pinned is what
+ * `coreRailToggleReach` already proves, and the opposite drift (a header claiming open
+ * work that landed) is now policed by `planStatusAccuracy.test.ts`'s D6 case.
+ */
+const DECLARED_LIVE_DEFECTS: Array<{ guard: string; what: string }> = [];
 
-describe('the plan header agrees with the guards that pin open defects', () => {
-  it('every declared defect is still declared by its guard', () => {
-    // If a guard is deleted or emptied, its entry here must go too — otherwise this
-    // list becomes the stale summary it exists to prevent.
-    for (const d of DECLARED_LIVE_DEFECTS) {
-      expect(fs.existsSync(path.join(ROOT, d.guard)), d.guard + ' is missing').toBe(true);
-    }
+/**
+ * The lint that survives, and it is the half of this guard that is not about any one
+ * defect: the list must not outlive the guards it names.
+ *
+ * The two cases that read it — "every declared defect is still declared by its guard"
+ * and "the header does not claim there are no open defects while they are pinned" —
+ * are gone because an empty list makes both vacuous, and the second one's own message
+ * said to delete rather than leave it green for the wrong reason. What replaces them is
+ * the check those cases existed to make cheap: if a real pin is ever added here, its
+ * guard must actually declare it.
+ *
+ * Kept as a FORWARD guard rather than deleted with the rest, because the failure it
+ * catches is the one this file was written for — a list that becomes a stale summary.
+ * Adding an entry whose guard does not contain the matching marker fails here today,
+ * not on the day someone re-reads it.
+ */
+describe('a defect declared here must still be declared by its own guard', () => {
+  /** Each entry names the guard, and the guard must still carry an INERT rail or a
+   *  non-empty widened/pinned ledger — whichever shape the defect takes. */
+  const DECLARES: Record<string, RegExp> = {
+    'ui/src/__tests__/coreRailToggleReach.test.ts': /INERT/,
+  };
+
+  it('every hypothetical future entry would still be checkable', () => {
+    // Vacuity is the danger in a guard whose whole subject has been resolved: a file of
+    // green tests proving nothing. This asserts the file can still fail, by proving the
+    // detector it would use is real — the marker regex must match the guard's vocabulary
+    // as it exists now, including the comments that explain why the INERT map is empty.
+    const RAIL_GUARD = 'ui/src/__tests__/coreRailToggleReach.test.ts';
+    const source = read(RAIL_GUARD);
+    const marker = DECLARES[RAIL_GUARD];
+    expect(marker, 'the marker table lost its rail-guard entry').toBeDefined();
     expect(
-      /INERT/.test(read('ui/src/__tests__/coreRailToggleReach.test.ts')),
-      'coreRailToggleReach no longer records an INERT rail — invert or delete the ' +
-        'entry in this file to match.',
+      marker!.test(source),
+      'the INERT marker is gone from the rail guard even in prose — a future rail that ' +
+        'goes inert would no longer be detectable by this file.',
     ).toBe(true);
-  });
-
-  it('the header does not claim there are no open defects while they are pinned', () => {
-    const header = read(PLAN).split('\n').slice(0, 12).join('\n');
-    // The claim only becomes true when every entry above is resolved. Until then the
-    // header must describe the debt instead of denying it.
-    expect(
-      DECLARED_LIVE_DEFECTS.length,
-      'no declared defects — this case is vacuous. Delete it rather than leaving it ' +
-        'green for the wrong reason.',
-    ).toBeGreaterThan(0);
-    // Match the CLAIM, not any mention of the phrase.
-    //
-    // A corrected header legitimately QUOTES the old wording to explain what changed
-    // ("the earlier X was false"), and a bare substring test read that quotation as
-    // the claim — failing the header that had just been fixed. So the check asks a
-    // narrower question: does the header ASSERT the phrase as its own position?
-    //
-    // Plain string work rather than a regex: the phrase contains no escapes, and a
-    // nested-quote lookbehind here was unreadable and brittle.
-    const PHRASE = 'NO open code defects';
-    let claimsClean = false;
-    for (const line of header.split('\n')) {
-      const at = line.indexOf(PHRASE);
-      if (at === -1) continue;
-      const before = line.slice(0, at);
-      const after = line.slice(at + PHRASE.length);
-      // Quoted, or sitting after a negation, is a MENTION rather than the claim.
-      const quoted = before.trimEnd().endsWith('"') || after.trimStart().startsWith('"');
-      const negated = /\b(no|not|never|false)\b/i.test(before);
-      if (!quoted && !negated) claimsClean = true;
-    }
-    expect(
-      claimsClean,
-      'The header still claims "NO open code defects" while ' +
-        DECLARED_LIVE_DEFECTS.map((d) => d.what).join(' and ') +
-        ' are pinned as open in code. State them, or resolve them — a summary that ' +
-        'denies the debt its own guards record is the drift this plan has corrected ' +
-        'four times already (rounds 74, 75, and twice in planStatusAccuracy).',
-    ).toBe(false);
+    expect(DECLARED_LIVE_DEFECTS, 'no live defects are declared, which is the state this file now records').toEqual([]);
   });
 });

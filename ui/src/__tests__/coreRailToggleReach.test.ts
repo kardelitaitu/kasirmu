@@ -20,10 +20,11 @@
 //   qris       -> railOffered(paymentRails, 'qris')        WIRED
 //   open_bill  -> !coreRailWithheld(...)                   WIRED (round 52)
 //   credit     -> !coreRailWithheld(...)                   WIRED (abb1c324b)
-//   cash       -> (nothing)                                INERT
-//   card       -> (nothing)                                INERT
+//   cash       -> !coreRailWithheld(...)                   WIRED (2026-10-14, owner ruling)
+//   card       -> !coreRailWithheld(...)                   WIRED (2026-10-14, owner ruling)
 //
-// WHY THE TWO REMAINING ARE INERT, and why this is a pin and not a fix: the modal's
+// WHY THE LAST TWO WERE INERT, and the owner ruling that inverted them (2026-10-14):
+// the modal's
 // `TENDER_RAILS` documents the reasoning for each (useLocalPaymentRails.ts:127-137).
 // `cash` and `card` are described as UNIVERSAL — a site with no EDC terminal still takes
 // a card by hand, so the `card` rail models the TERMINAL, not the tender. Wiring either
@@ -74,12 +75,24 @@ const WIRED: Record<string, RegExp> = {
   qris: /railOffered\(\s*paymentRails\s*,\s*'qris'\s*\)/,
   open_bill: /coreRailWithheld\(\s*paymentRails\s*,\s*'open_bill'\s*\)/,
   credit: /coreRailWithheld\(\s*paymentRails\s*,\s*'credit'\s*\)/,
+  // INVERTED 2026-10-14 on an owner ruling. `cash` and `card` were INERT, and the
+  // ruling was to wire them, not to accept them as universal: the modal's own
+  // `coreRailWithheld` helper already distinguishes the three states that matter
+  // (no row -> offered, so a store whose list predates the rail still takes cards
+  // by hand; enabled -> offered; DISABLED -> withheld). So wiring them honours the
+  // operator's own saved switch without withdrawing anything from anyone who never
+  // switched it off. PaymentModal.tsx consumes both.
+  cash: /coreRailWithheld\(\s*paymentRails\s*,\s*'cash'\s*\)/,
+  card: /coreRailWithheld\(\s*paymentRails\s*,\s*'card'\s*\)/,
 };
 
 /** Core rails whose toggle nothing in the modal reads. Recorded, with the reason. */
 const INERT: Record<string, string> = {
-  cash: 'TENDER_RAILS treats cash as universal (no rail models it)',
-  card: 'TENDER_RAILS treats card as universal; the edc rail gates the terminal button, not the tab',
+  // EMPTIED 2026-10-14: every core rail is now honoured by the modal. The last two,
+  // `cash` and `card`, were wired on an owner ruling that rejected the "universal"
+  // framing -- they are universal in the NO-ROW sense, which `coreRailWithheld`
+  // already encodes, and the operator's explicit `is_enabled: false` is their own
+  // saved switch. An empty map means there is no gap to hide.
 };
 
 describe('core rail toggles reach the charge modal (F23)', () => {
