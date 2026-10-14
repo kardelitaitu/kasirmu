@@ -7,6 +7,7 @@ import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { useToast } from '@/components/Toast';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { readScoped, writeScoped } from '@/utils/scopedStorage';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
@@ -114,7 +115,10 @@ export default function RestaurantReceiptsScreen({
   const settingsCtx = useOptionalSettings();
   const settings = settingsCtx?.settings ?? FALLBACK_SETTINGS;
   const markSettingsUpdated = settingsCtx?.markSettingsUpdated;
-  const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
+  // `resolvedStoreId` is read for ONE purpose: the receipt preferences below are keyed by
+  // store, so two terminals in one store share them and two stores on one device do not.
+  // Round 168 added `utils/scopedStorage.ts` for exactly this; round 169 applied it here.
+  const { sessionToken, terminalId: contextTerminalId, resolvedStoreId } = useWorkspace();
   const { caps } = useSubscription();
   const { session } = useAuth();
   const { isEnabled } = useFeatures();
@@ -292,37 +296,37 @@ export default function RestaurantReceiptsScreen({
 
     // 2. Overlay extra toggles from local preferences (localStorage)
     try {
-      const localTitle = localStorage.getItem('resto_rcpt_header_title');
+      const localTitle = readScoped('resto_rcpt_header_title', resolvedStoreId);
       if (localTitle !== null) initialTitle = localTitle.slice(0, MAX_HEADER_TITLE_LENGTH);
-      const localL1 = localStorage.getItem('resto_rcpt_header_line1');
+      const localL1 = readScoped('resto_rcpt_header_line1', resolvedStoreId);
       if (localL1 !== null) initialLine1 = localL1.slice(0, MAX_HEADER_LINE_LENGTH);
-      const localL2 = localStorage.getItem('resto_rcpt_header_line2');
+      const localL2 = readScoped('resto_rcpt_header_line2', resolvedStoreId);
       if (localL2 !== null) initialLine2 = localL2.slice(0, MAX_HEADER_LINE_LENGTH);
-      const localFontSize = localStorage.getItem('resto_rcpt_font_size');
+      const localFontSize = readScoped('resto_rcpt_font_size', resolvedStoreId);
       if (localFontSize && ['very_small', 'small', 'medium', 'large'].includes(localFontSize)) {
         initialFontSize = localFontSize as ReceiptFontSize;
       }
-      const localCode = localStorage.getItem('resto_rcpt_show_code');
+      const localCode = readScoped('resto_rcpt_show_code', resolvedStoreId);
       if (localCode !== null) initialShowCode = localCode === 'true';
-      const localDt = localStorage.getItem('resto_rcpt_show_dt');
+      const localDt = readScoped('resto_rcpt_show_dt', resolvedStoreId);
       if (localDt !== null) initialShowDt = localDt === 'true';
-      const localStaff = localStorage.getItem('resto_rcpt_show_staff');
+      const localStaff = readScoped('resto_rcpt_show_staff', resolvedStoreId);
       if (localStaff !== null) initialShowStaff = localStaff === 'true';
-      const localFooter = localStorage.getItem('resto_rcpt_show_footer');
+      const localFooter = readScoped('resto_rcpt_show_footer', resolvedStoreId);
       if (localFooter !== null) initialShowFooter = localFooter === 'true';
-      const localItemNotes = localStorage.getItem('resto_rcpt_show_item_notes');
+      const localItemNotes = readScoped('resto_rcpt_show_item_notes', resolvedStoreId);
       if (localItemNotes !== null) initialShowItemNotes = localItemNotes === 'true';
-      const localThousandsSep = localStorage.getItem('resto_rcpt_thousands_sep');
+      const localThousandsSep = readScoped('resto_rcpt_thousands_sep', resolvedStoreId);
       if (localThousandsSep !== null) initialShowThousandsSep = localThousandsSep === 'true';
-      const localShowDecimals = localStorage.getItem('resto_rcpt_show_decimals');
+      const localShowDecimals = readScoped('resto_rcpt_show_decimals', resolvedStoreId);
       if (localShowDecimals !== null) initialShowDecimals = localShowDecimals === 'true';
-      const localTaxRate = localStorage.getItem('resto_rcpt_tax_rate');
+      const localTaxRate = readScoped('resto_rcpt_tax_rate', resolvedStoreId);
       if (localTaxRate !== null && !isNaN(Number(localTaxRate))) {
         initialTaxRate = clamp(Number(localTaxRate), 0, 100);
       }
-      const localLogo = localStorage.getItem('resto_rcpt_logo');
+      const localLogo = readScoped('resto_rcpt_logo', resolvedStoreId);
       if (localLogo) initialBusinessLogo = localLogo;
-      const localLogoPos = localStorage.getItem('resto_rcpt_logo_pos');
+      const localLogoPos = readScoped('resto_rcpt_logo_pos', resolvedStoreId);
       if (localLogoPos && ['top', 'left', 'right'].includes(localLogoPos)) {
         initialLogoPos = localLogoPos as ReceiptLogoPosition;
       }
@@ -418,73 +422,73 @@ export default function RestaurantReceiptsScreen({
                 const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
                 setHeaderTitle(v);
                 originalsRef.current.headerTitle = v;
-                localStorage.setItem('resto_rcpt_header_title', v);
+                writeScoped('resto_rcpt_header_title', resolvedStoreId, v);
               }
               if (p['resto_rcpt_header_line1'] !== undefined) {
                 const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
                 setHeaderLine1(v);
                 originalsRef.current.headerLine1 = v;
-                localStorage.setItem('resto_rcpt_header_line1', v);
+                writeScoped('resto_rcpt_header_line1', resolvedStoreId, v);
               }
               if (p['resto_rcpt_header_line2'] !== undefined) {
                 const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
                 setHeaderLine2(v);
                 originalsRef.current.headerLine2 = v;
-                localStorage.setItem('resto_rcpt_header_line2', v);
+                writeScoped('resto_rcpt_header_line2', resolvedStoreId, v);
               }
               if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
                 const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
                 setLogoPosition(v);
                 originalsRef.current.logoPosition = v;
-                localStorage.setItem('resto_rcpt_logo_pos', v);
+                writeScoped('resto_rcpt_logo_pos', resolvedStoreId, v);
               }
               if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
                 const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
                 setFontSize(v);
                 originalsRef.current.fontSize = v;
-                localStorage.setItem('resto_rcpt_font_size', v);
+                writeScoped('resto_rcpt_font_size', resolvedStoreId, v);
               }
               if (p['resto_rcpt_show_code'] !== undefined) {
                 const v = p['resto_rcpt_show_code'] === 'true';
                 setShowReceiptCode(v);
                 originalsRef.current.showReceiptCode = v;
-                localStorage.setItem('resto_rcpt_show_code', String(v));
+                writeScoped('resto_rcpt_show_code', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_dt'] !== undefined) {
                 const v = p['resto_rcpt_show_dt'] === 'true';
                 setShowDateTime(v);
                 originalsRef.current.showDateTime = v;
-                localStorage.setItem('resto_rcpt_show_dt', String(v));
+                writeScoped('resto_rcpt_show_dt', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_staff'] !== undefined) {
                 const v = p['resto_rcpt_show_staff'] === 'true';
                 setShowStaffName(v);
                 originalsRef.current.showStaffName = v;
-                localStorage.setItem('resto_rcpt_show_staff', String(v));
+                writeScoped('resto_rcpt_show_staff', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_footer'] !== undefined) {
                 const v = p['resto_rcpt_show_footer'] === 'true';
                 setShowFooter(v);
                 originalsRef.current.showFooter = v;
-                localStorage.setItem('resto_rcpt_show_footer', String(v));
+                writeScoped('resto_rcpt_show_footer', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_item_notes'] !== undefined) {
                 const v = p['resto_rcpt_show_item_notes'] === 'true';
                 setShowItemNotes(v);
                 originalsRef.current.showItemNotes = v;
-                localStorage.setItem('resto_rcpt_show_item_notes', String(v));
+                writeScoped('resto_rcpt_show_item_notes', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_thousands_sep'] !== undefined) {
                 const v = p['resto_rcpt_thousands_sep'] === 'true';
                 setShowThousandsSeparator(v);
                 originalsRef.current.showThousandsSeparator = v;
-                localStorage.setItem('resto_rcpt_thousands_sep', String(v));
+                writeScoped('resto_rcpt_thousands_sep', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_decimals'] !== undefined) {
                 const v = p['resto_rcpt_show_decimals'] === 'true';
                 setShowDecimals(v);
                 originalsRef.current.showDecimals = v;
-                localStorage.setItem('resto_rcpt_show_decimals', String(v));
+                writeScoped('resto_rcpt_show_decimals', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_tax_rate'] !== undefined) {
                 const parsed = Number(p['resto_rcpt_tax_rate']);
@@ -492,13 +496,13 @@ export default function RestaurantReceiptsScreen({
                   const v = clamp(parsed, 0, 100);
                   setTaxRatePercent(v);
                   originalsRef.current.taxRatePercent = v;
-                  localStorage.setItem('resto_rcpt_tax_rate', String(v));
+                  writeScoped('resto_rcpt_tax_rate', resolvedStoreId, String(v));
                 }
               }
               if (p['resto_rcpt_logo']) {
                 setBusinessLogo(p['resto_rcpt_logo']);
                 originalsRef.current.businessLogo = p['resto_rcpt_logo'];
-                localStorage.setItem('resto_rcpt_logo', p['resto_rcpt_logo']);
+                writeScoped('resto_rcpt_logo', resolvedStoreId, p['resto_rcpt_logo']);
               }
             } catch {
               // LocalStorage write is best-effort write-through cache; memory state is authoritative
@@ -1182,20 +1186,20 @@ export default function RestaurantReceiptsScreen({
       // been saved. Doing it after the await keeps the cache consistent with what
       // actually committed.
       try {
-        localStorage.setItem('resto_rcpt_header_title', headerTitle);
-        localStorage.setItem('resto_rcpt_header_line1', headerLine1);
-        localStorage.setItem('resto_rcpt_header_line2', headerLine2);
-        localStorage.setItem('resto_rcpt_font_size', fontSize);
-        localStorage.setItem('resto_rcpt_show_code', String(showReceiptCode));
-        localStorage.setItem('resto_rcpt_show_dt', String(showDateTime));
-        localStorage.setItem('resto_rcpt_show_staff', String(showStaffName));
-        localStorage.setItem('resto_rcpt_show_footer', String(showFooter));
-        localStorage.setItem('resto_rcpt_show_item_notes', String(showItemNotes));
-        localStorage.setItem('resto_rcpt_thousands_sep', String(showThousandsSeparator));
-        localStorage.setItem('resto_rcpt_show_decimals', String(showDecimals));
-        localStorage.setItem('resto_rcpt_tax_rate', String(taxRatePercent));
-        localStorage.setItem('resto_rcpt_logo', businessLogo);
-        localStorage.setItem('resto_rcpt_logo_pos', logoPosition);
+        writeScoped('resto_rcpt_header_title', resolvedStoreId, headerTitle);
+        writeScoped('resto_rcpt_header_line1', resolvedStoreId, headerLine1);
+        writeScoped('resto_rcpt_header_line2', resolvedStoreId, headerLine2);
+        writeScoped('resto_rcpt_font_size', resolvedStoreId, fontSize);
+        writeScoped('resto_rcpt_show_code', resolvedStoreId, String(showReceiptCode));
+        writeScoped('resto_rcpt_show_dt', resolvedStoreId, String(showDateTime));
+        writeScoped('resto_rcpt_show_staff', resolvedStoreId, String(showStaffName));
+        writeScoped('resto_rcpt_show_footer', resolvedStoreId, String(showFooter));
+        writeScoped('resto_rcpt_show_item_notes', resolvedStoreId, String(showItemNotes));
+        writeScoped('resto_rcpt_thousands_sep', resolvedStoreId, String(showThousandsSeparator));
+        writeScoped('resto_rcpt_show_decimals', resolvedStoreId, String(showDecimals));
+        writeScoped('resto_rcpt_tax_rate', resolvedStoreId, String(taxRatePercent));
+        writeScoped('resto_rcpt_logo', resolvedStoreId, businessLogo);
+        writeScoped('resto_rcpt_logo_pos', resolvedStoreId, logoPosition);
       } catch {
         // Safe to ignore
       }
