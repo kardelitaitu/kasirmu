@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
-// WHY THIS FILE EXISTS — IT PINS A DEFECT, NOT A BEHAVIOUR TO KEEP
+// WHY THIS FILE EXISTS — THE F4 GUARD THAT COULD NOT FIRE, AND NOW CAN
 //
-// `WorkspaceRestaurantPosSettings` has an F4 guard whose banner CANNOT appear. Measured
+// `WorkspaceRestaurantPosSettings` had an F4 guard whose banner COULD NOT appear. Measured
 // 2026-10-14 (round 234) with the read forced to reject 24 times across three modal opens:
 //
 //   OUTCOMES = 24 x 'failed'      BANNER = 0      RETRY = 0
@@ -56,7 +56,7 @@ async function openWithArmedFailure(page: Page): Promise<void> {
   await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: TIMEOUT });
 }
 
-test('a failed course-firing read does NOT raise the F4 banner (known defect)', async ({
+test('a failed course-firing read raises the F4 banner and disables Save', async ({
   page,
 }) => {
   // Count the failures the app actually sees. This is what stops the assertion below passing
@@ -76,12 +76,18 @@ test('a failed course-firing read does NOT raise the F4 banner (known defect)', 
     'the read must genuinely be failing, or nothing below is meaningful',
   ).toBeGreaterThan(0);
 
-  // THE DEFECT, pinned as it is. See the header for the mechanism.
+  // THE GUARD, now that the latch is set on SETTLEMENT (`settle()` in the effect) rather than
+  // before the read. Round 234 pinned this same assertion as `toHaveCount(0)` — the defect —
+  // and round 235's fix flipped it. That is why the case was written with the failure count
+  // asserted first: the inversion is one line, and it is provably about the guard.
+  const banner = page.locator('[data-testid="resto-card-load-error"]');
+  await expect(banner, 'a failed read must say so').toBeVisible({ timeout: TIMEOUT });
+  await expect(banner).toHaveAttribute('role', 'alert');
+
   await expect(
-    page.locator('[data-testid="resto-card-load-error"]'),
-    'KNOWN DEFECT: the latch is set before the read, so the failure is discarded',
-  ).toHaveCount(0);
-  await expect(page.locator('[data-testid="resto-card-retry-btn"]')).toHaveCount(0);
+    page.locator('[data-testid="resto-card-retry-btn"]'),
+    'the retry is the way out of the latch',
+  ).toBeVisible({ timeout: TIMEOUT });
 });
 
 test('the card renders its controls over that failed read', async ({ page }) => {
@@ -91,6 +97,13 @@ test('the card renders its controls over that failed read', async ({ page }) => 
   // value that was never read. That is the shape of the loss.
   const dialog = page.locator('[role="dialog"]').first();
   await expect(dialog.locator('label[for="resto-course-firing"]')).toBeVisible({
+    timeout: TIMEOUT,
+  });
+
+  // And Save is DISABLED by the failed read — the F4 property the guard exists for: the card is
+  // showing a default it could not read, so an armed Save would write it over the real value.
+  const save = dialog.getByRole('button', { name: /^save$/i }).first();
+  await expect(save, 'a failed read must not leave Save armed').toBeDisabled({
     timeout: TIMEOUT,
   });
 });
