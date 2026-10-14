@@ -9,7 +9,7 @@ button round 149 added to prove the sidebar route.
 
 ## The defect
 
-`+ Add Table` seeds the modal from `{ name: '', capacity: 4, … }` (`:296-301`). The Save Table
+`+ Add Table` seeds the modal from `{ name: '', capacity: 4, … }` (`:295-303`). The Save Table
 button carried **no `disabled` gate at all**, while `handleSaveTableModal` returns silently on a
 blank name (`:323`). Probed live:
 
@@ -38,7 +38,8 @@ field is empty and the reason is self-evident.
 
 The sidebar ROW is feature-gated on `FEATURES.TABLE_MANAGEMENT`, which the dev mock omits — so
 `openRestaurantSidebarRow(page, 'tables')` cannot reach the screen at all. The SCREEN is not
-gated: `PosScreen` renders it for `showTables` (`:1542`), which `Shift+L` sets. So the spec
+gated: `PosScreen` renders it for `showTables` (`:1548` — was `:1542`, moved by
+`42cf0aca9`), which `Shift+L` sets. So the spec
 routes through the shortcut rounds 158-160 added, and its first assertion doubles as coverage
 that the shortcut lands somewhere real.
 
@@ -66,3 +67,5 @@ that the shortcut lands somewhere real.
 | Kill-test | **2 failed** (both projects) |
 | Code diff | one line; the rest is the comment |
 | Full UI suite | 12,680 passed |
+
+> last audited 14-10-26 by docs-auditor

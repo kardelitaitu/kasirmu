@@ -9,14 +9,15 @@ was `RestaurantReceiptsScreen.tsx`.
 
 ## The asymmetry
 
-`handleSave` guarded its LATER tasks (`:1121` `if (sessionToken && receiptWorkspaceId)`, `:1143`
-`if (sessionToken)`) but pushed its FIRST one with a fallback:
+`handleSave` guarded its LATER tasks (`:1136` `if (sessionToken && receiptWorkspaceId)`, `:1158`
+`if (sessionToken)` — `:1121`/`:1143` when written) but pushed its FIRST one with a fallback:
 
 ```ts
-setReceiptSettingsScoped(sessionToken ?? '', { … });   // :1101
+setReceiptSettingsScoped(sessionToken ?? '', { … });   // :1104 when written
 ```
 
-The file guards `!sessionToken` at five other sites (`:533`, `:806`, `:972`, `:1012`, `:1121`),
+The file guards `!sessionToken` at five other sites (`:537`, `:810`, `:976`, `:1016`, `:1108`
+— re-derived 2026-10-14; they were `:533`/`:806`/`:972`/`:1012`/`:1121` when written),
 so this was the odd one out. With an empty token it fired a bogus
 `set_receipt_settings_scoped('')` before the guarded tasks skipped.
 
@@ -41,7 +42,7 @@ Three code lines (the rest is comment):
 
 | Change | Why |
 |---|---|
-| `if (!sessionToken) return;` at the top of `handleSave` | the file's own idiom, five times over |
+| `if (!sessionToken) return;` at the top of `handleSave` (`:537`) | the file's own idiom, five times over |
 | `sessionToken ?? ''` → `sessionToken` | with the guard, the fallback would only MASK a future regression |
 | `… || !sessionToken` in the Save gate | the button can no longer arm a save the handler refuses |
 
@@ -65,3 +66,5 @@ token guard.
 | Kill-test | **survived** — the path is unreachable, stated as such |
 | Code diff | 3 lines; the rest is the comment |
 | Full UI suite | 12,680 passed |
+
+> last audited 14-10-26 by docs-auditor

@@ -37,8 +37,9 @@ One code line:
 ```
 
 Disabled rather than validated-on-click, and the expression **matches the handler's own test**,
-so the button can never be armed for a save the handler would refuse. Twelve lines of comment
-record the measurement and the reasoning; the diff is 12 insertions and 1 deletion.
+so the button can never be armed for a save the handler would refuse. Eleven lines of comment
+record the measurement and the reasoning; the diff is 12 insertions and 1 deletion
+(re-counted 2026-10-14: `git show c6ab59a65 -- …RestaurantMenuEditorScreen.tsx | grep -c '^+.*//'` → 11).
 
 ## Covered, and kill-tested
 
@@ -63,3 +64,5 @@ record the measurement and the reasoning; the diff is 12 insertions and 1 deleti
 | Kill-test | **2 failed** (both projects) |
 | Code diff | one line; the rest is the comment |
 | Full UI suite | 12,680 passed |
+
+> last audited 14-10-26 by docs-auditor

@@ -8,8 +8,12 @@ open design question rather than a defect, because the fix looked large.
 
 Measuring it showed **why** the class keeps recurring: there is no helper. Round 104's fix is
 two inline template literals in `PosScreen` (`pos-locked-cart:${resolvedStoreId || 'unresolved'}`)
-and nothing generalised them. The receipts screen has **88 call sites and 13 unique keys** with
-no scoping at all.
+and nothing generalised them. The receipts screen has **88 occurrences of a `resto_rcpt_` token across 42
+`localStorage` get/set calls and 14 distinct keys**, with no scoping at all. (The three counts
+are different units of the same code and are stated here so the sibling record's "42 call
+sites, 14 keys" does not read as a contradiction — re-derived 2026-10-14 at `0340777f9`:
+`grep -c 'localStorage\.\(getItem\|setItem\)'` → 42; `grep -o 'resto_rcpt_[a-z_0-9]*' | wc -l`
+→ 88; `grep -o "'resto_rcpt_[a-z_0-9]*'" | sort -u | wc -l` → 14.)
 
 So this round built the prerequisite rather than the migration: a helper to scope with, and
 the key question it forces an answer to.
@@ -61,3 +65,5 @@ the key question it forces an answer to.
 **No call site was migrated.** The receipts screen's 88 sites still use flat keys. That is the
 next round's work, and doing it now would mean the helper's tests and the migration's tests
 landing together — with the helper unproven at the moment the migration depended on it.
+
+> last audited 14-10-26 by docs-auditor
