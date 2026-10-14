@@ -58,6 +58,7 @@ import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
+import { scopedKey } from '@/utils/scopedStorage';
 import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
 import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
@@ -186,12 +187,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // reject a foreign draft before parsing it; a field would still have to be validated, and
   // a key cannot be forgotten. `resolvedStoreId` is '' before the store resolves, which
   // yields a distinct key rather than a collision with a real store.
+  // Both keys go through `scopedKey` (round 168's helper) rather than repeating the
+  // `:${resolvedStoreId || 'unresolved'}` literal. The sentinel's justification lives in
+  // that module now, next to the builder that has to get it right for every caller — a
+  // second copy here would be a second thing to keep true, which is the drift the helper
+  // exists to prevent.
   const LOCKED_CART_KEY = useMemo(
-    () => `pos-locked-cart:${resolvedStoreId || 'unresolved'}`,
+    () => scopedKey('pos-locked-cart', resolvedStoreId),
     [resolvedStoreId],
   );
   const ACTIVE_DRAFT_KEY = useMemo(
-    () => `pos-active-draft:${resolvedStoreId || 'unresolved'}`,
+    () => scopedKey('pos-active-draft', resolvedStoreId),
     [resolvedStoreId],
   );
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer

@@ -64,8 +64,18 @@ describe('a draft carries the store it was written for', () => {
     // `includes` cannot mis-escape.
     //
     // Three acceptable fixes; any one satisfies the property.
-    const scopedKey =
-      src.includes('ACTIVE_DRAFT_KEY') && src.includes('resolvedStoreId');
+    // ⚠️ `scopedKey` is checked PER KEY, and it requires a SENTINEL rather than a bare
+    // store id. Round 170 moved the inline `:${resolvedStoreId || 'unresolved'}` out of
+    // PosScreen into `utils/scopedStorage.ts`, and the first strengthening still passed
+    // because 'resolvedStoreId' appears in the call `scopedKey('pos-active-draft',
+    // resolvedStoreId)`. A single `src.includes('scopedKey(')` was tried next and the
+    // kill-test survived for the opposite reason: one bad key hid behind two good ones.
+    // Both spellings are accepted, and each key must match on its own.
+    const scoped = (key: string) =>
+      src.includes(`scopedKey('${key}', resolvedStoreId)`) ||
+      // The old inline spelling, as the source would contain it.
+      src.includes("`" + key + ":${" + "resolvedStoreId || 'unresolved'}");
+    const scopedKey = scoped('pos-active-draft') && scoped('pos-locked-cart');
     const clearedOnSwitch =
       src.includes('removeItem(ACTIVE_DRAFT_KEY)') && src.includes('switchStore');
     const recordsStore = src.includes('storeId') && src.includes('ACTIVE_DRAFT_KEY');
