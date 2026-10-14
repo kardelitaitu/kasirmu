@@ -1337,6 +1337,77 @@ Three of seven rows are now earned, two partially. **Compile time remains the la
 claim in this journal** — it is also the premise of axis A, which §5 offered as one of only two
 axes with order-of-magnitude potential. That guess is still a guess.
 
+### 10F. The FIRST build, run 2026-10-14 — and it REFUTES F2's premise (axis A)
+
+`cargo build --timings` has never been run in this todo's whole life; §10D recorded that as a
+decision and prescribed the escape hatch. **Run below, on the prescribed route.** The shared
+`target/` lock was avoided with a scratch target dir, so no concurrent session was stalled and
+no cache was touched:
+
+```bash
+CARGO_TARGET_DIR=/c/tmp-kasirmu-check cargo check --workspace --all-targets --timings
+# Finished dev profile in 3m 40s (221s), exit 0
+```
+
+Two deliberate choices: **`check`, not `build`** — axis A's question is incremental front-end
+latency, and codegen adds a fixed cost that tells you nothing about which crate to split; and
+**`--all-targets`** — a plain `cargo build --workspace` compiles *no test code at all*, which
+would have made the instrument blind to the very mass F2 is about. The temp-dir path is the
+git-bash spelling; the Windows path is `C:/tmp-kasirmu-check`.
+
+**The headline: F2's 52.8% is a LINE SHARE, and it does not carry into compile time.**
+
+| | compile seconds | share |
+|---|---|---|
+| lib/bin `check` units | **1,509 s** | **81.8 %** |
+| **test** `check` units | **337 s** | **18.2 %** |
+| total unit-seconds | 1,846 s | wall clock 221 s (8.4x parallel) |
+
+So tests are 52.8% of the lines and **18.2% of the front-end cost** — the split (or
+feature-gating) axis A was written to perform would retire at most 18% of the work, and
+F2's *"the largest test modules are also the slowest to compile and link"* does not hold:
+`sales_tests.rs` is 4,933 lines and its crate's whole test unit is **25.8 s**, while the
+**two Tauri shell crates alone are 189 s** — 56% of all test compile time.
+
+**The 10 most expensive units in the workspace, which is the real axis-A target list:**
+
+| # | seconds | unit |
+|---|---|---|
+| 1 | **135.9** | `kasirmu-mobile` (check-**test**) |
+| 2 | **51.1** | `kasirmu-app` (check-**test**) |
+| 3 | 38.5 | `windows` (dependency) |
+| 4 | 31.9 | `kasirmu-mobile` (check) |
+| 5 | 29.3 | `kasirmu-app` (check) |
+| 6 | 25.8 | `kasirmu-core` (check-test) |
+| 7 | 24.1 | `kasirmu-bridge` (check-test) |
+| 8 | 15.0 | `kasirmu-bridge` (check) |
+| 9 | 12.6 | `kasirmu-core` (check) |
+| 10 | 11.3 | `tauri-utils` (dependency) |
+
+**What this changes about axis A, stated rather than glossed:**
+1. **The insight is a ratio, not a total.** If tests are only 18% of front-end time, then
+   149 test-file *call sites* of `formatMoney` are irrelevant to compile cost — the number
+   that made the earlier receipt-grouping fix look like "a 149-site design decision" was a
+   count of *source lines that do not dominate the cost*. The same is true of every
+   line-count-driven reluctance in this todo.
+2. **Axis A's best target is NOT a test module.** It is the two shell crates, and the
+   cheapest intervention is the one §5 already named in passing: **feature-gating**.
+   `apps/mobile-tauri` and `apps/desktop-tauri` each compile the whole world because the
+   Tauri app is one crate; a `cfg` split on the surface (the same one that would help
+   axis E) attacks the top two rows directly.
+3. **The dependency tail is 3 of the top 10** (`windows`, `windows-sys`, `tauri-utils`),
+   and no axis covers dependencies at all — §0 puts them explicitly out of scope, so they
+   are recorded here as a sixth candidate rather than folded into A.
+4. **The 8.4x parallelism is worth guarding.** Cold, unthrottled, the workspace's front end
+   saturates ~8 cores. Anything that reduces unit count without reducing total work can
+   *lengthen* wall clock, so axis-A acceptance must be a wall-clock number, not a
+   unit-seconds sum.
+
+**What this does NOT do:** it is one cold run on one host. Per §10D's own caution the numbers
+are host-dependent, and per this file's law a quoted figure needs its mechanism named — the
+mechanism is `cargo check --workspace --all-targets --timings`, cold, with a scratch
+`CARGO_TARGET_DIR`. **Re-run it the same way before acting on any row.**
+
 ### 10D. Why no build was run — a decision, not an omission
 
 `cargo build --timings` and `cargo bloat` are the two remaining instruments, and neither was run.
