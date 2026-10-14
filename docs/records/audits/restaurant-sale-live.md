@@ -45,10 +45,19 @@ this round failed to reach the board without a page reload:
   because the sidebar popover closes before the click lands;
 * keyboard `Escape` — round 138 established it does not leave the workspace.
 
-And a reload discards the evidence: **`mockKdsOrders` is page memory, not persisted.**
-`oz-dev-mock:kds` is absent from a fresh page (`NO_KEY` on a clean load), because
-`pushKdsOrderFromCart` pushes to the array and never calls `writeSlice` — unlike
-`settings.ts`, which persists through `saveMockSettings()`.
+And a reload discards the evidence within a run: **`mockKdsOrders` is seeded into memory on
+load and written only on mutation.** `oz-dev-mock:kds` is absent on a FRESH page because
+`loadMockKdsState` (`kds.ts:224-244`) reads the slice and falls back to the SEED **without
+writing it** — `readSlice` takes a fallback thunk, so the first load persists nothing. The
+write happens through `saveMockKdsState` (`:243`) called only by the mutators (`:408`,
+`:498`, `:573`, …), so the state is in memory until something changes it.
+
+> **CORRECTED in round 142.** My original text here said the array was "page memory, not
+> persisted" and cited `NO_KEY` as proof. That was wrong, and it is why this round's own
+> verification was hard to read: the slice IS persisted once mutated, and a subsequent load
+> restores it — `kds.ts:245-247` seeds `mockKdsOrders` FROM the slice. `NO_KEY` was true only
+> because nothing had mutated in that fresh context. `settings.ts` persists on write too; the
+> KDS slice simply does not write on READ.
 
 So the only way to see the minted ticket is to reach the KDS **without reloading**, and no
 route I tried does that. The claim is therefore left open — twice now, with the remaining
