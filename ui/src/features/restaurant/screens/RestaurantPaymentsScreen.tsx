@@ -1082,6 +1082,14 @@ export function RestaurantPaymentsScreen({
                           type="checkbox"
                           role="switch"
                           checked={cashDrawerAutoKick}
+                          aria-checked={cashDrawerAutoKick}
+                          // ⚠️ Required by `role="switch"`, and the only `role="switch"` in this
+                          // file without it (round 201 above sets it). Measured 2026-10-14: the
+                          // native `checked` property alone is not exposed as the switch's state,
+                          // so a screen reader announced the control with no on/off at all.
+                          // The E2E probe found it by reading `aria-checked` and getting `null`
+                          // where the sibling rail switches return `"true"`/`"false"`.
+
                           onChange={(e) => {
                             const val = e.target.checked;
                             setCashDrawerAutoKick(val);
