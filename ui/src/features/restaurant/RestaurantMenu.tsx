@@ -74,7 +74,7 @@ function key(uid: string, name: string) {
 //
 // An earlier revision of this block filed `unavailable` under Tier 2 and
 // marked the cross-terminal gap "unresolved and not backed by an ADR" — the
-// .agents/resto-pos-ui-review.md §F5 finding. The sharing has since been
+// .agents/reviews/resto-pos-ui-review.md §F5 finding. The sharing has since been
 // built, and the note was never updated:
 //
 //   * the server key is `restaurant.unavailable.<locationId>` (`unavailableSettingKey`);
