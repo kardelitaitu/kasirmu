@@ -146,6 +146,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [The dev-mock answers get_enabled_features with a list matching no preset (round 129)](audits/dev-mock-feature-answer.md) | — |
 | ui | [The mock's feature vocabulary is wrong, and the cost is now measured (round 131)](audits/dev-mock-feature-vocabulary.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
+| general | [The context menu's Escape guard, unpinned like round 173's (round 174)](audits/docblock-invariant-claims-swept.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
 | general | [The restaurant cart setup, shared instead of copied four times (round 161)](audits/e2e-cart-setup-shared.md) | — |
 | general | [The restaurant sidebar route, shared instead of walked four times (round 162)](audits/e2e-sidebar-route-shared.md) | — |
