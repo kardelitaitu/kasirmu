@@ -134,6 +134,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [The cash-preset chips write to a rail parameter nothing reads (round 120)](audits/cash-preset-chips-unread.md) | — |
 | payments | [The cash presets are now read: rounds 120-121's inventory gets its first repair (round 122)](audits/cash-presets-wired.md) | — |
 | general | [Sampling the class-selector pattern across the suite (round 200)](audits/class-selector-pattern-sampled.md) | — |
+| general | [Hunting round 201's closure-after-await shape across the UI (round 202)](audits/closure-after-await-hunt.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
 | general | [Two gates that stop the course bar rendering under test (round 97)](audits/course-bar-render-gates.md) | — |
 | general | [courseFiringEnabled: checked, and NOT a defect (round 98)](audits/course-firing-default-verdict.md) | — |
