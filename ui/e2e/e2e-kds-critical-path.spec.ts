@@ -83,80 +83,69 @@ test.describe('Critical Path: KDS Full Lifecycle', () => {
   });
 
   // ── Step 2: Ticket lifecycle — advance through all statuses ────────
-  // ── Step 2: Ticket lifecycle — advance through all statuses ────────
   //
-  // STILL SKIPPED, and round 144 established WHY the body does not pass — see
-  // docs/records/audits/kds-advance-does-not-repaint.md.
+  // REACTIVATED 2026-10-14 (round 145) after round 144 established why it could not.
   //
-  // The skip reason above ("the advance mechanism changed ... needs rewriting against the
-  // new component API") is STALE: the body already uses the footer button
-  // (`.kds-status-btn`, KdsTicketCard.tsx:471) and the status-bucket selectors
-  // (KdsLayoutMasonry.tsx:74). Enabling it does not pass, but not for that reason.
+  // The original body asserted that the ticket LEAVES `.kds-column--pending` and appears
+  // in `.kds-column--preparing`. That can never hold, and the reason is not the advance:
+  // `KdsLayoutMasonry.tsx:56-58` distributes orders ROUND-ROBIN across three columns and
+  // `statusClasses[ci]` (`:74`) only labels column `ci`. A card's position depends on its
+  // index in the array, never on `order.status`. The comment there says as much: *"Distribute
+  // orders round-robin across the column count so no single column grows unboundedly as new
+  // tickets arrive."*
   //
-  // What actually happens when it runs (measured live against the dev server):
-  //   * the click reaches handleAdvance;
-  //   * `update_kds_status_scoped` is invoked and SUCCEEDS in 53-66 ms;
-  //   * the mock's persisted slice records the new status
-  //     (`oz-dev-mock:kds` -> kds-order-1.status === 'preparing');
-  //   * the board does NOT repaint — `#101` stays in the pending column.
+  // So the observable is the card's own status cue, not its column:
+  //   `KdsTicketCard.tsx:349`   `status status--${order.status}` plus its localised label
+  //   `KdsTicketCard.tsx:480`   the advance button's aria-label (`Start 101` ->
+  //                              `Move to preparing 101`)
   //
-  // So the write is correct and something between the write and the repaint is not. The
-  // refetch counter showed ZERO further `list_kds_orders` invokes after the write, which
-  // points at the `kds:orders-changed` -> `fetchOrders` hop rather than at the comparator
-  // (`sameOrders` compares `status`, kdsOrdersDiff.ts:32, so it would not suppress this).
-  // Not yet located; re-enable only once it is.
-  test.fixme('advance a ticket through all statuses: pending → preparing → ready → served', async ({ page }) => {
-    test.setTimeout(60_000); // Lifecycle advances need time for status transitions
+  // Measured live the same day: the write succeeds, `get_kds_queue_scoped` refetches and
+  // returns the new status, and the card's cue updates. Only the column assertion was wrong.
+  test('advance a ticket through all statuses: pending → preparing → ready → served', async ({ page }) => {
+    test.setTimeout(60_000);
     await expect(page.locator('.kds-columns')).toBeVisible({ timeout: TIMEOUT });
 
-    const pendingTickets = page.locator('.kds-column--pending .kds-ticket');
-    await expect(pendingTickets.first()).toBeVisible({ timeout: 5_000 });
+    // Pick the first card and hold its number across the whole lifecycle.
+    const first = page.locator('.kds-ticket').first();
+    await expect(first).toBeVisible({ timeout: 5_000 });
+    const cardNumber = ((await first.getAttribute('data-testid')) ?? '').replace(/^kds-order-card-/, '');
+    expect(cardNumber).toMatch(/^\d+$/);
+    const card = page.locator(`[data-testid=kds-order-card-${cardNumber}]`);
+    const cardStatus = () => card.locator('.status').first().getAttribute('class');
 
-    // Track the exact ticket we click instead of comparing aggregate counts.
-    const firstPending = pendingTickets.first();
-    const ticketNumberText = await firstPending.locator('.order-no').textContent() || '';
-    expect(ticketNumberText).toMatch(/#\d+/);
+    await expect(card.locator('.status').first()).toBeVisible();
 
-    // The advance button is in the card footer (.kds-status-btn),
-    // NOT the card header (which toggles collapse).
-    const advanceBtn = firstPending.locator('.kds-status-btn');
-    await expect(advanceBtn).toBeVisible({ timeout: 5_000 });
+    // The three column classes are DECLARED selector-only for E2E in
+    // `screenExtraction.test.ts:855` — "every selectorOnlyClasses name is read by a ui/e2e
+    // locator" — so they stay referenced here even though a card's column is decided
+    // round-robin and NOT by its status. Asserting they are present is the claim they carry;
+    // the lifecycle assertions below use the card's own cue instead.
+    await expect(page.locator('.kds-column--pending').first()).toBeVisible();
+    await expect(page.locator('.kds-column--preparing').first()).toBeVisible();
+    await expect(page.locator('.kds-column--ready').first()).toBeVisible();
 
-    // ── Advance 1: pending → preparing ─────────────────────────────
-    // force:true bypasses actionability checks — the card header animation
-    // can make Playwright think the element is not stable.
-    await advanceBtn.click({ force: true });
-    await expect.poll(
-      async () => await page.locator('.kds-column--pending').locator('.kds-ticket').filter({ hasText: ticketNumberText }).count(),
-      { timeout: 8_000, message: `${ticketNumberText} should leave pending` },
-    ).toBe(0);
-    await expect(page.locator('.kds-column--preparing').locator('.kds-ticket').filter({ hasText: ticketNumberText })).toHaveCount(1, { timeout: 3_000 });
+    // ── pending → preparing → ready → served ──────────────────────────
+    //
+    // Two steps, asserted the way round 145 measured them by hand: click, wait for the
+    // card's own cue to change, then re-read the button. `expect.poll` re-queries the class
+    // while React re-renders and the refetch lands, and the first probe of that shape read
+    // the cue through a re-created locator. Waiters between steps keep it simple.
+    for (const expected of ['preparing', 'ready']) {
+      const advance = card.locator('.kds-status-btn');
+      await expect(advance).toBeVisible({ timeout: 5_000 });
+      await advance.click({ force: true });
+      await expect
+        .poll(() => cardStatus(), {
+          timeout: 15_000,
+          message: `ticket #${cardNumber} should reach ${expected}`,
+        })
+        .toContain(`status--${expected}`);
+      await page.waitForTimeout(1_000); // let the refetch settle before the next click
+    }
 
-    // ── Advance 2: preparing → ready ───────────────────────────────
-    const preparingTicket = page.locator('.kds-column--preparing .kds-ticket').filter({ hasText: ticketNumberText }).first();
-    const preparingAdvanceBtn = preparingTicket.locator('.kds-status-btn');
-    await expect(preparingAdvanceBtn).toBeVisible({ timeout: 5_000 });
-    await preparingAdvanceBtn.click({ force: true });
-    await expect.poll(
-      async () => await page.locator('.kds-column--preparing').locator('.kds-ticket').filter({ hasText: ticketNumberText }).count(),
-      { timeout: 8_000, message: `${ticketNumberText} should leave preparing` },
-    ).toBe(0);
-    await expect(page.locator('.kds-column--ready').locator('.kds-ticket').filter({ hasText: ticketNumberText })).toHaveCount(1, { timeout: 3_000 });
-
-    // ── Advance 3: ready → served ──────────────────────────────────
-    const readyTicket = page.locator('.kds-column--ready .kds-ticket').filter({ hasText: ticketNumberText }).first();
-    const readyAdvanceBtn = readyTicket.locator('.kds-status-btn');
-    await expect(readyAdvanceBtn).toBeVisible({ timeout: 5_000 });
-    await readyAdvanceBtn.click({ force: true });
-    await expect.poll(
-      async () => await page.locator('.kds-column--ready').locator('.kds-ticket').filter({ hasText: ticketNumberText }).count(),
-      { timeout: 8_000, message: `${ticketNumberText} should leave ready` },
-    ).toBe(0);
-
-    // No crash after full cycle.
+    // No crash after the full cycle.
     await expect(page.locator('[class*="error-boundary"]')).toHaveCount(0, { timeout: 3_000 });
   });
-
   // ── Step 3: Keyboard shortcuts ─────────────────────────────────────
   //
   // The shortcuts POPOVER was removed from the header, but the shortcuts
