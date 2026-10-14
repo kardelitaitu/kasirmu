@@ -7,6 +7,7 @@ import { useTerminalHardware } from '@/hooks/useTerminalHardware';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { getPrimaryLocationScoped } from '@/api/locations';
+import { SwitchToggle } from '@/components/SwitchToggle';
 import {
   getLocalPaymentMethodsScoped,
   setLocalPaymentMethodsScoped,
@@ -1075,32 +1076,20 @@ export function RestaurantPaymentsScreen({
                 <div className="resto-compact-row">
                   <span className="resto-compact-label">{l10n.getString('restaurant-payment-auto-cash-drawer')}</span>
                   <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="cash-drawer-kick">
-                        <input
-                          id="cash-drawer-kick"
-                          type="checkbox"
-                          role="switch"
-                          checked={cashDrawerAutoKick}
-                          aria-checked={cashDrawerAutoKick}
-                          // ⚠️ Required by `role="switch"`, and the only `role="switch"` in this
-                          // file without it (round 201 above sets it). Measured 2026-10-14: the
-                          // native `checked` property alone is not exposed as the switch's state,
-                          // so a screen reader announced the control with no on/off at all.
-                          // The E2E probe found it by reading `aria-checked` and getting `null`
-                          // where the sibling rail switches return `"true"`/`"false"`.
-
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setCashDrawerAutoKick(val);
-                            updateRailParams('cash', { autoKick: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-auto-cash-drawer')}
-                          data-testid="cash-drawer-kick-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
+                    {/* The shared control (round 181) rather than a THIRD hand-written copy
+                        of this markup. The inline version is where round 179 found `aria-checked`
+                        missing while the rail switch above had it; the requirement now lives
+                        once, in the component, and is pinned by SwitchToggle.test.tsx. */}
+                    <SwitchToggle
+                      id="cash-drawer-kick"
+                      label={l10n.getString('restaurant-payment-auto-cash-drawer')}
+                      checked={cashDrawerAutoKick}
+                      onChange={(val) => {
+                        setCashDrawerAutoKick(val);
+                        updateRailParams('cash', { autoKick: val });
+                      }}
+                      testId="cash-drawer-kick-toggle"
+                    />
                   </div>
                 </div>
 
