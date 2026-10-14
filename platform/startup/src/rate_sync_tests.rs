@@ -61,6 +61,22 @@ async fn daemon_starts_stopped() {
     assert!(!daemon.is_running().await);
 }
 
+/// Poll until the daemon reports stopped — not a fixed 200ms sleep and a hope.
+///
+/// A fixed sleep makes the SLOWEST host decide whether the assertion below it ever sees
+/// the loop exit, and every fast host pays the full 200ms for nothing. Polling is cheaper
+/// AND strictly stronger: the assertion becomes exact. 10ms cadence, 2s ceiling (10x the
+/// old allowance), and the panic names what never happened.
+async fn wait_stopped(daemon: &RateSyncDaemon) {
+    for _ in 0..200 {
+        if !daemon.is_running().await {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("rate-sync daemon never reported stopped within 2s");
+}
+
 #[tokio::test]
 async fn daemon_start_and_stop() {
     let conn = kasirmu_core::migrations::fresh_db();
@@ -69,7 +85,7 @@ async fn daemon_start_and_stop() {
     daemon.start(db).await;
     assert!(daemon.is_running().await);
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_stopped(&daemon).await;
     assert!(!daemon.is_running().await);
 }
 
@@ -113,7 +129,7 @@ async fn daemon_double_start_is_noop() {
     daemon.start(db).await;
     assert!(daemon.is_running().await);
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_stopped(&daemon).await;
     assert!(!daemon.is_running().await);
 }
 
