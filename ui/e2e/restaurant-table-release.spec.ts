@@ -109,15 +109,39 @@ test('confirming the release frees the table', async ({ page }) => {
   await openTables(page);
   await selectBilledTable(page);
 
+  // ⚠️ THE TILE IS ADDRESSED BY INDEX. The first version of this assertion did not
+  // bind (measured 2026-10-14, round 198): removing `releaseTableScoped` from
+  // `statusAction` left all four cases PASSING, because
+  //
+  //   * the plan already carries several AVAILABLE tiles, so `.first()` could be one
+  //     of those rather than the source;
+  //   * `hasText: /Table 1/` also matches `Table 12` (rounds 195, 197);
+  //   * and a release sets CLEANING, not available (`floorplan.ts:152-154`) — so the
+  //     state asked for was wrong as well.
+  const sourceIndex = await page
+    .locator('.tables-table')
+    .evaluateAll((els) =>
+      els.findIndex((e) => e.className.includes('tables-table--occupied')
+        && e.className.includes('tables-table--has-bill')),
+    );
+  expect(sourceIndex, 'the billed table must be locatable').toBeGreaterThanOrEqual(0);
+
   await statusButton(page).click();
   await page.getByRole('button', { name: /confirm release/i }).click();
 
   // The mutation patches the plan in place (statusAction :439-440) rather than
-  // reloading, so the tile follows without a round trip.
-  await expect(
-    page.locator('.tables-table--available').filter({ hasText: /Table 1/ }).first(),
-    'confirming the release should free the table',
-  ).toBeVisible({ timeout: TIMEOUT });
+  // reloading, so the tile follows without a round trip — and it is THIS tile that
+  // must change, not any available one on the plan.
+  await expect
+    .poll(
+      async () =>
+        (await page.locator('.tables-table').nth(sourceIndex).getAttribute('class')) ?? '',
+      {
+        timeout: TIMEOUT,
+        message: `confirming the release must release tile ${sourceIndex}`,
+      },
+    )
+    .toContain('tables-table--cleaning');
 });
 test('an occupied table cannot be deleted mid-service', async ({ page }) => {
   await openTables(page);
