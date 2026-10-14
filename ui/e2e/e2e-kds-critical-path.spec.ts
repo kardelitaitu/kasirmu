@@ -83,10 +83,29 @@ test.describe('Critical Path: KDS Full Lifecycle', () => {
   });
 
   // ── Step 2: Ticket lifecycle — advance through all statuses ────────
+  // ── Step 2: Ticket lifecycle — advance through all statuses ────────
+  //
+  // STILL SKIPPED, and round 144 established WHY the body does not pass — see
+  // docs/records/audits/kds-advance-does-not-repaint.md.
+  //
+  // The skip reason above ("the advance mechanism changed ... needs rewriting against the
+  // new component API") is STALE: the body already uses the footer button
+  // (`.kds-status-btn`, KdsTicketCard.tsx:471) and the status-bucket selectors
+  // (KdsLayoutMasonry.tsx:74). Enabling it does not pass, but not for that reason.
+  //
+  // What actually happens when it runs (measured live against the dev server):
+  //   * the click reaches handleAdvance;
+  //   * `update_kds_status_scoped` is invoked and SUCCEEDS in 53-66 ms;
+  //   * the mock's persisted slice records the new status
+  //     (`oz-dev-mock:kds` -> kds-order-1.status === 'preparing');
+  //   * the board does NOT repaint — `#101` stays in the pending column.
+  //
+  // So the write is correct and something between the write and the repaint is not. The
+  // refetch counter showed ZERO further `list_kds_orders` invokes after the write, which
+  // points at the `kds:orders-changed` -> `fetchOrders` hop rather than at the comparator
+  // (`sameOrders` compares `status`, kdsOrdersDiff.ts:32, so it would not suppress this).
+  // Not yet located; re-enable only once it is.
   test.fixme('advance a ticket through all statuses: pending → preparing → ready → served', async ({ page }) => {
-    // Skipped: KDS component refactored — advance mechanism changed from
-    // card click to footer button with cooldown wrapper. Business logic
-    // test needs to be rewritten against the new component API.
     test.setTimeout(60_000); // Lifecycle advances need time for status transitions
     await expect(page.locator('.kds-columns')).toBeVisible({ timeout: TIMEOUT });
 
