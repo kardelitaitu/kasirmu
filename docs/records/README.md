@@ -280,6 +280,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The delete guard that protects a table mid-service (round 194)](audits/table-delete-guard.md) | — |
 | general | [The table floor plan, driven live — and a probe that read it too early (round 177)](audits/table-floor-plan-live.md) | — |
 | general | [The same silent-save defect, a third time, on the table form (round 165)](audits/table-form-save-gate.md) | — |
+| general | [Merge Table, and three assertions that survived their own kill-test (round 196)](audits/table-merge-three-surviving-assertions.md) | — |
 | general | [Move Table, driven for the first time (round 195)](audits/table-move-driven.md) | — |
 | release | [Unblocking round 192's unreachable guard — and backing the wrong fix out (round 193)](audits/table-release-spec-seeded.md) | — |
 | release | [The table release confirmation is unreachable in the current fixture (round 192)](audits/table-release-unreachable.md) | — |
