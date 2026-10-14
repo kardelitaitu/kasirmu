@@ -808,6 +808,14 @@ retail-shortcut-hold = Tahan / Lanjutkan
 retail-shortcut-sku = Fokus input SKU
 retail-shortcut-shift = Buka / Tutup shift
 retail-shortcut-options = Opsi
+# Restaurant POS keyboard shortcuts — manifest kunci di features/restaurant/restaurantShortcuts.ts.
+# Dipilih terpisah dari RETAIL_SHORTCUTS (F1-F12, ?, Ctrl+K, Ctrl+L, Esc) dan dari F10 global
+# milik AppShell, sehingga tidak mem-bayangi pintasan retail atau shell yang sedang berjalan.
+restaurant-shortcut-send-kitchen = Kirim ke dapur
+restaurant-shortcut-print-bill = Cetak bill
+restaurant-shortcut-split-bill = Pisah bill
+restaurant-shortcut-save-tab = Simpan tab
+restaurant-shortcut-open-tables = Buka daftar meja
 retail-shortcut-list = Daftar pintasan
 retail-shortcut-close = Tutup modal / Opsi
 retail-shortcut-fullscreen = Aktifkan/nonaktifkan layar penuh

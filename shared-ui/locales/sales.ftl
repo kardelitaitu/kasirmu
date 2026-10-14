@@ -886,6 +886,14 @@ retail-shortcut-hold = Hold / Resume order
 retail-shortcut-sku = Focus SKU input
 retail-shortcut-shift = Open / Close shift
 retail-shortcut-options = Options
+# Restaurant POS keyboard shortcuts — the manifest in features/restaurant/restaurantShortcuts.ts.
+# Keys are chosen disjoint from RETAIL_SHORTCUTS (F1-F12, ?, Ctrl+K, Ctrl+L, Esc) and from
+# AppShell's global F10, so no restaurant key shadows a working retail or shell binding.
+restaurant-shortcut-send-kitchen = Send to kitchen
+restaurant-shortcut-print-bill = Print bill
+restaurant-shortcut-split-bill = Split bill
+restaurant-shortcut-save-tab = Save tab
+restaurant-shortcut-open-tables = Open tables
 retail-shortcut-list = This shortcut list
 retail-shortcut-close = Close modal / Options
 retail-shortcut-fullscreen = Toggle Fullscreen
