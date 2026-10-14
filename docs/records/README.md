@@ -210,6 +210,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The receipts keys are store-scoped, with the migration pinned (round 169)](audits/receipt-keys-migrated.md) | — |
 | general | [The receipt preview now prices each row as a LINE TOTAL (round 133)](audits/receipt-preview-line-totals.md) | — |
 | general | [The receipt preview says 2x and prices one (round 132)](audits/receipt-preview-quantity.md) | — |
+| general | [Two preview documents behind one tab strip, now both covered (round 178)](audits/receipt-preview-two-documents.md) | — |
 | general | [The receipts Save pushed a task with an empty token, unlike its five siblings (round 164)](audits/receipts-save-token-consistency.md) | — |
 | general | [Four restaurant footer capabilities get E2E coverage, by sweeping the specs (round 147)](audits/restaurant-capabilities-e2e.md) | — |
 | general | [Three sweeps, three clean results: the restaurant controls are well-gated (round 167)](audits/restaurant-control-gates-sweep.md) | — |
