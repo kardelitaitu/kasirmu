@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openRestaurantPosWithItem } from './helpers';
+import { dismissRestaurantCartSheet, openRestaurantPosWithItem, seedCourseFiring } from './helpers';
 
 // WHY THIS FILE EXISTS
 //
@@ -24,23 +24,11 @@ const TIMEOUT = 20_000;
 // (`restaurantSettingsModel.ts:60`) and the chip and bar both gate on
 // `courseFiringEnabled !== false` (`CartPanel.tsx:961`, `:1003`). Round 205 established
 // this by measuring `CHIPS=0` on a default profile; this is the same seed.
-async function seedCourseFiring(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const key = 'oz-dev-mock:settings';
-    if (localStorage.getItem(key) !== null) return;
-    localStorage.setItem(key, JSON.stringify({ 'restaurant.course_firing': 'true' }));
-  });
-}
-
 // Open the POS, dismiss the portrait sheet, and add `count` distinct lines.
 async function openWithLines(page: Page, count: number): Promise<void> {
   await seedCourseFiring(page);
   await openRestaurantPosWithItem(page);
-  const backdrop = page.locator('[data-testid="restaurant-cart-sheet-backdrop"]');
-  if (await backdrop.isVisible().catch(() => false)) {
-    await backdrop.click({ position: { x: 5, y: 5 } });
-    await expect(backdrop).toHaveCount(0, { timeout: 8_000 });
-  }
+  await dismissRestaurantCartSheet(page);
   for (let n = 1; n < count; n += 1) {
     await page.locator('.restaurant-card').nth(n).click();
   }

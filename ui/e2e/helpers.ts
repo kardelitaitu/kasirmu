@@ -278,3 +278,50 @@ export async function openRestaurantSidebarRow(
   await expect(target).toBeVisible({ timeout: 5_000 });
   await target.click();
 }
+/**
+ * Put the portrait cart SHEET away so the product grid is clickable again.
+ *
+ * WHY THIS IS SHARED. In landscape the cart is inline and the grid never moves. In portrait
+ * it is a bottom sheet whose backdrop is `position: fixed; inset: 0; z-index: 100`
+ * (`RestaurantCartSheet.css:6-16`) — correct while open, and it intercepts every click on
+ * the grid behind it. Four specs needed this and each wrote its own copy:
+ * `restaurant-kitchen-dispatch-race`, `restaurant-cart-line-badges`,
+ * `restaurant-cart-line-course` and `restaurant-course-firing` (2026-10-14).
+ *
+ * A no-op when the sheet is not present, so the desktop shell can call it unconditionally.
+ *
+ * NOTE the constraint it does NOT solve: dismissing the sheet UNMOUNTS the cart panel in
+ * portrait, so a spec needing the grid and the cart visible at once cannot run there at all.
+ * Those cases skip on tablet by design — see the specs named above.
+ */
+export async function dismissRestaurantCartSheet(page: Page): Promise<void> {
+  const backdrop = page.locator('[data-testid="restaurant-cart-sheet-backdrop"]');
+  if (await backdrop.isVisible().catch(() => false)) {
+    await backdrop.click({ position: { x: 5, y: 5 } });
+    await expect(backdrop).toHaveCount(0, { timeout: 8_000 });
+  }
+}
+
+/**
+ * Enable restaurant COURSE FIRING before the app loads.
+ *
+ * WHY THIS IS SHARED. The default is `false` (`restaurantSettingsModel.ts:60`) and both the
+ * per-line course chip and the firing bar gate on `courseFiringEnabled !== false`
+ * (`CartPanel.tsx:961`, `:1003`). Three specs must seed it: `restaurant-cart-line-course`,
+ * `restaurant-course-firing` and `restaurant-settings-cards` (2026-10-14).
+ *
+ * `addInitScript` rather than `page.evaluate` is the mechanism, not a preference: the
+ * dev-mock reads the settings slice ONCE at module init, and `loginAs` navigates itself, so
+ * a write made after the first navigation is read by nobody. The init script runs on every
+ * document before the bundle, which is what makes the seed visible to that first read.
+ *
+ * The `!== null` guard keeps a value the spec itself later changed: the seed is for a FRESH
+ * profile, and a re-navigation must not undo the test's own work.
+ */
+export async function seedCourseFiring(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const key = 'oz-dev-mock:settings';
+    if (localStorage.getItem(key) !== null) return;
+    localStorage.setItem(key, JSON.stringify({ 'restaurant.course_firing': 'true' }));
+  });
+}

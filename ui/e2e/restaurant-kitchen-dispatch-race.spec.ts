@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openRestaurantPosWithItem } from './helpers';
+import { dismissRestaurantCartSheet, openRestaurantPosWithItem } from './helpers';
 
 // WHY THIS FILE EXISTS
 //
@@ -32,11 +32,7 @@ const TIMEOUT = 20_000;
  */
 async function openPosWithDismissedSheet(page: Page): Promise<void> {
   await openRestaurantPosWithItem(page);
-  const backdrop = page.locator('[data-testid="restaurant-cart-sheet-backdrop"]');
-  if (await backdrop.isVisible().catch(() => false)) {
-    await backdrop.click({ position: { x: 5, y: 5 } });
-    await expect(backdrop).toHaveCount(0, { timeout: 8_000 });
-  }
+  await dismissRestaurantCartSheet(page);
 }
 
 test('a line added while the kitchen send is in flight survives', async ({ page }, testInfo) => {

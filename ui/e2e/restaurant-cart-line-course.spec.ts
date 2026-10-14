@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openRestaurantPosWithItem } from './helpers';
+import { dismissRestaurantCartSheet, openRestaurantPosWithItem, seedCourseFiring } from './helpers';
 
 // WHY THIS FILE EXISTS
 //
@@ -37,24 +37,14 @@ const TIMEOUT = 20_000;
  * puts the chip on the till.
  */
 async function openWithLine(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const key = 'oz-dev-mock:settings';
-    if (localStorage.getItem(key) !== null) return;
-    // The dev-mock reads this slice once at module init, so an addInitScript (which
-    // runs before the bundle) is what makes it visible to that first read.
-    localStorage.setItem(key, JSON.stringify({ 'restaurant.course_firing': 'true' }));
-  });
+  await seedCourseFiring(page);
   await openRestaurantPosWithItem(page);
   // The chip proves the setting was read AND the workspace gate passed.
   await expect(
     page.locator('[data-testid="cart-line-course-chip"]').first(),
     'enabling course firing must put a course chip on the line',
   ).toBeVisible({ timeout: TIMEOUT });
-  const backdrop = page.locator('[data-testid="restaurant-cart-sheet-backdrop"]');
-  if (await backdrop.isVisible().catch(() => false)) {
-    await backdrop.click({ position: { x: 5, y: 5 } });
-    await expect(backdrop).toHaveCount(0, { timeout: 8_000 });
-  }
+  await dismissRestaurantCartSheet(page);
 }
 
 test('a course is assigned from the chip and shown on it', async ({ page }, testInfo) => {
