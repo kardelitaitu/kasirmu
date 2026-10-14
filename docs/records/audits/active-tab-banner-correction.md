@@ -72,3 +72,5 @@ shift and that the control is in the popover — both true — and then treated 
 evidence that no shift was open, when it actually meant one was open and the row therefore read
 *Close*. A probe that searches for the text of an action will find its opposite too, and reading
 `CLOSE_SHIFT=1` beside it is what settles the question.
+
+> last audited 14-10-26 by docs-auditor

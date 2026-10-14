@@ -73,3 +73,5 @@ rather than dropped.
 moment.** Round 214's toast had faded; round 213's `OPEN_SHIFT=0` meant a shift was open. Both
 times the code was right and the measurement window was wrong — which is the same lesson as
 rounds 177 and 205, and the reason the probe is now reading state rather than absence.
+
+> last audited 14-10-26 by docs-auditor

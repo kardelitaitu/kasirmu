@@ -63,3 +63,5 @@ Restored byte-identical to HEAD.
 
 A unit test alone would not have caught the ordering race, and the e2e alone would have been a
 slow way to find a one-line mock gap. Both are worth having.
+
+> last audited 14-10-26 by docs-auditor

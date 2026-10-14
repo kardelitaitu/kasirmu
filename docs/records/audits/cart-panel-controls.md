@@ -63,3 +63,5 @@ the specs that cover them, so nothing is lost by leaving this one out.
 
 That last one is the honest gap: it is a one-line navigation button and it is reachable, so it is
 a candidate for a round that wants a small win rather than another investigation.
+
+> last audited 14-10-26 by docs-auditor

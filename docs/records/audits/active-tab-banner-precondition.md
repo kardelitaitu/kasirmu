@@ -71,3 +71,5 @@ is the next thing to probe. That is one focused step, not a rewrite of this roun
 
 Worth adding to `helpers.ts` as `openRestaurantShift(page)` once it works, since any future spec
 touching tabs or held carts will need the same precondition.
+
+> last audited 14-10-26 by docs-auditor

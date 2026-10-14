@@ -66,3 +66,5 @@ give it the attention the selector archaeology deserves rather than another atte
 | Kill-test | 1 failed, the storage case |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,709 passed (up 2) |
+
+> last audited 14-10-26 by docs-auditor

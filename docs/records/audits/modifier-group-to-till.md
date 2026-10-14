@@ -61,3 +61,5 @@ approach. Recording the WHY in the helper's comment is what made it findable.
 
 Four layers, and each would pass while the next failed — which is why the chain was worth
 following rather than stopping at the first green.
+
+> last audited 14-10-26 by docs-auditor
