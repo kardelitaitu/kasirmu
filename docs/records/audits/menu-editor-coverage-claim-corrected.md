@@ -30,7 +30,7 @@ A fourth case in `restaurant-menu-editor-filters.spec.ts` — 8 passed on both p
 | Field | Why it matters |
 |---|---|
 | category select | moving an item between sections decides which filter chip finds it, so a frozen select files items wrong with nothing reported |
-| notes | the description the kitchen chit prints (`restaurant-receipt-kot-note`) — dropped text is lost context for the cook |
+| notes | the description the kitchen chit prints — dropped text is lost context for the cook |
 
 Both read the DOM for their inputs: the options are read from the select and the target is the
 first differing option. No fixture literal.
@@ -49,6 +49,17 @@ byte-identical to HEAD.
 
 Recording them rather than closing with another *fully covered* claim is the point of this
 round: **the previous closing claim was the defect.**
+
+
+> **Corrected 2026-10-14 (docs-auditor):** this row cited a `data-testid`
+> `restaurant-receipt-kot-note` that **does not exist anywhere in the tree** — a
+> repo-wide `git grep` found only this document. The KOT note is a **CSS class**,
+> `resto-receipt-kot-note`, defined at
+> `ui/src/features/restaurant/screens/RestaurantReceiptsScreen.tsx:1576` and styled
+> at `ui/src/features/restaurant/screens/RestaurantSettingsScreens.css:320`. The
+> distinction matters because the notes field is covered by the dynamic class, not by a
+> testid, so a future spec must select on the class — the same "a literal is not a selector"
+> trap as the dynamically built `payment-card-toggle-${id}` toggles.
 
 ## Verified
 

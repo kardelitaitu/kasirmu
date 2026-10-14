@@ -10,12 +10,21 @@ that, for every restaurant screen:
 |---|---|
 | menu editor | **16 / 21** |
 | receipts | 5 / 15 |
-| settings | 3 / 12 |
+| settings | **4 / 12** |
 | tables | 2 / 17 |
 | payments | **2 / 32** |
 
 No screen is close to fully covered, and the payments screen is at 6% — which corrects a
-reading a casual glance at the testid sweep could give. Recorded so the next round picks a
+reading a casual glance at the testid sweep could give.
+
+> **Two figures corrected 2026-10-14 (docs-auditor).** (a) settings is **4 / 12**, not 3 — the
+> covered four are `restaurant-settings-header`, `-load-error`, `-save-btn` and
+> `settings-card-order-entry`, re-derived at this record's own commit `058a37df0`.
+> (b) payments was **2 / 32 when this round wrote the table**, which is right for its own tip
+> and not for a later one: a lane then covered the custom-rail form, so the screen stands at
+> **7 / 32**. The 7 counts the five literal testids plus the two dynamically built
+> `payment-card-toggle-${id}` toggles the custom-rail spec asserts
+> (RestaurantPaymentsScreen.tsx:207) — a literal-only grep structurally misses those two. Recorded so the next round picks a
 screen from the numbers rather than from whichever file it happened to open.
 
 ## What landed: the settings screen

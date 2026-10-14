@@ -69,3 +69,5 @@ seed — so it belongs in a round that can verify those together, not bolted ont
 | Spec | removed, not left failing |
 | Probe spec | removed |
 | Tree | no source changed; git status shows only other lanes' known entries |
+
+> last audited 14-10-26 by docs-auditor

@@ -10,15 +10,19 @@ Those are what an operator uses to FIND an item before editing it, which makes t
 editor's actual entry point. `Hidden (86)` in particular is the triage view a kitchen lives in
 during a service — if 86ing an item put it somewhere un-findable, un-86ing it would be guesswork.
 
-## What the spec pins — 6 passed
+## What the spec pins — 8 passed
 
-`ui/e2e/restaurant-menu-editor-filters.spec.ts`, three cases on both projects:
+`ui/e2e/restaurant-menu-editor-filters.spec.ts`, **four cases on both projects**
+(counted on disk 2026-10-14: `test(` at `:35`, `:63`, `:91` and `:114`; this record
+originally said three, under-reporting the fourth — the category-select and notes case at
+`:114`, added by the round that covered the category builder):
 
 | Case | Asserts |
 |---|---|
 | Hidden (86) filter | the tab shows exactly the cards that carry `--hidden`, and every survivor is hidden — a mixed list would mean the filter lies |
 | search | narrows the list, every survivor actually matches the term, and clearing restores the whole list |
 | form fields | a price is accepted and kept, and the availability toggle flips |
+| category + notes | the category select really moves the item between sections (and its options are the real categories), and the notes textarea round-trips — the description the kitchen chit prints |
 
 The last also asserts that an edit arms Save — the point of a field is that it changes something.
 
@@ -36,7 +40,7 @@ fixtures breaks the day they change, and this screen's set already changed once 
 
 | Item | Result |
 |---|---|
-| New spec | 6 passed (3 cases x desktop/tablet) |
+| New spec | 8 passed (4 cases x desktop/tablet) |
 | Kill-test (hidden branch disabled) | fails |
 | `menuEditorLogic.ts` | unchanged, byte-identical to HEAD |
 | eslint | 0 |

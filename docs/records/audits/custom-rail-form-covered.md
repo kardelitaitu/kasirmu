@@ -3,8 +3,14 @@
 ## Why this, out of 30 uncovered testids
 
 Round 189's re-derivation put `RestaurantPaymentsScreen` at **2 of 32** and named it the
-clearest signal. But 27 of those testids are gateway credential inputs (Midtrans, Stripe,
-QRIS), which are the least operator-facing and the most sensitive.
+clearest signal. Most of what remains is gateway credential inputs (Midtrans, Stripe, QRIS)
+— the least operator-facing and the most sensitive.
+
+> **Count corrected 2026-10-14 (docs-auditor).** This note originally said "27 of those
+> testids are gateway credential inputs". No grep reproduces 27 credential inputs; 27 is the
+> number **remaining** after this round (32 − 5 = 27), and that set mixes credential fields
+> with toggles and layout controls. The claim is now stated qualitatively rather than as a
+> count, because the count that was written is not the count that was measured.
 
 The one control that is neither a credential nor a toggle is **Add Custom Payment Method** — the
 only way an operator puts a bespoke method on the till: a local wallet, a QRIS variant, a house
