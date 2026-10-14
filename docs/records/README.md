@@ -284,6 +284,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Move Table, driven for the first time (round 195)](audits/table-move-driven.md) | — |
 | release | [Unblocking round 192's unreachable guard — and backing the wrong fix out (round 193)](audits/table-release-spec-seeded.md) | — |
 | release | [The table release confirmation is unreachable in the current fixture (round 192)](audits/table-release-unreachable.md) | — |
+| general | [Auditing my own assertions for round 196's flaw, and where it did not apply (round 197)](audits/table-spec-assertion-audit.md) | — |
 | sync | [The Apply button could be stranded disabled after a revision conflict (2026-10-14)](audits/topology-conflict-apply-stranded.md) | — |
 | tax | [The two sample receipts are two tax MODES, not an inconsistency (round 134)](audits/two-samples-two-tax-modes.md) | — |
 | general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
