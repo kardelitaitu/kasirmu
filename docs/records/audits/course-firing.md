@@ -63,3 +63,5 @@ appears.
 | the setting that enables it | 105, 189 |
 | assign a course (the chip) | 205 |
 | fire a course / fire all | **206** |
+
+> last audited 14-10-26 by docs-auditor

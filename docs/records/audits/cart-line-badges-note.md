@@ -65,3 +65,5 @@ to a product claim instead of a matcher.
 | `PosScreen.tsx` | unchanged, byte-identical to HEAD |
 | eslint | 0 |
 | Full UI suite | 12,707 passed |
+
+> last audited 14-10-26 by docs-auditor

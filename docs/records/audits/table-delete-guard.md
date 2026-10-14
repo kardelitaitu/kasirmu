@@ -57,3 +57,5 @@ byte-identical to HEAD.
 
 The destructive edges of this screen are now pinned in both directions, which is where the
 operator cost of a regression is highest.
+
+> last audited 14-10-26 by docs-auditor

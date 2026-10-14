@@ -49,3 +49,5 @@ copy.
 Every skip is the same constraint recorded in four files before this round. Consolidating it
 means the FIFTH spec that needs it cannot rediscover the trap — which is the whole point of the
 existing helpers and the reason this one is worth its 17 lines.
+
+> last audited 14-10-26 by docs-auditor

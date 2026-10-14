@@ -50,3 +50,5 @@ removed. That is the property the last three rounds were actually buying.
 | `TableManagementScreen.tsx` | unchanged, byte-identical to HEAD |
 | eslint | 0 |
 | Full UI suite | 12,703 passed |
+
+> last audited 14-10-26 by docs-auditor

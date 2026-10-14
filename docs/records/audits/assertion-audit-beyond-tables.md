@@ -67,3 +67,5 @@ addressing a shared class and then assuming the result was the element under tes
 When the thing under test is one of several sharing a class, address it by testid, by index
 captured before the action, or by a unique attribute — and prefer `.poll()` when the claim is
 that something CHANGED.
+
+> last audited 14-10-26 by docs-auditor

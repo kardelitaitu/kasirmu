@@ -86,3 +86,5 @@ anything that arrived during it.** The tell is `setX(closure.map(...))` after an
 handler whose surface stays interactive. Functional updates or delta-derived records are the fix;
 a guard on the in-flight flag would also work and is the cheaper change where the surface can be
 disabled.
+
+> last audited 14-10-26 by docs-auditor

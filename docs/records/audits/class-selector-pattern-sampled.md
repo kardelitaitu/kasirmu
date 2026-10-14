@@ -61,3 +61,5 @@ An assertion binds when it is about a **named** element and a **specific** chang
 when it is about "an element matching this class" and a state that was already true. The fix in
 every failing case was the same: address the subject uniquely — by testid, by captured index, or by
 a stable attribute — and assert the change with `.poll()`.
+
+> last audited 14-10-26 by docs-auditor

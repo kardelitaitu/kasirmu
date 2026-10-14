@@ -85,3 +85,5 @@ correct-looking forms differ.
 | False positives | 2 found and closed |
 | `PosScreen.tsx` | restored byte-identical to HEAD |
 | Full UI suite | 12,707 passed, 0 failed |
+
+> last audited 14-10-26 by docs-auditor

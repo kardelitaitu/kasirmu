@@ -62,3 +62,5 @@ own matching code had already solved this problem.
 | move a tab | 195 |
 
 Merge remains — same gate, same shape, and now reachable by the same fixture.
+
+> last audited 14-10-26 by docs-auditor

@@ -64,3 +64,5 @@ is what caught it; without it the fixture change would have looked like the unbl
 
 The generalisation is worth the record: when a test cannot reach a branch, ask whether the
 SCOPING is wrong before concluding the SHARED fixture is wrong.
+
+> last audited 14-10-26 by docs-auditor

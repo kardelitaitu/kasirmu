@@ -54,3 +54,5 @@ two specs** — this one plus both firing cases in `restaurant-course-firing`. R
 **`CartLineItem` coverage moved 2 -> 12 of 17** across rounds 204, 205 and 208. What remains is
 the modifier pair (`add-modifier-btn`, `edit-modifiers-btn`, `modifiers`) and the price-override
 button — a coherent next slice rather than a scattering.
+
+> last audited 14-10-26 by docs-auditor

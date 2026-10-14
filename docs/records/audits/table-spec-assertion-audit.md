@@ -64,3 +64,5 @@ exist (`-1`), and spliced at `-1` — which **duplicated the entire file body** 
 `git diff --stat` showed `1 file changed, 1 insertion(+), 1 deletion(-)` for a correct mutation
 and the corruption was caught within one call. The lesson is narrow and worth keeping: **guard a
 splice on its index being non-negative**; `-1` is a valid array index and a silent disaster.
+
+> last audited 14-10-26 by docs-auditor

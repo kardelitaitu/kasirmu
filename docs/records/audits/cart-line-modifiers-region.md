@@ -61,3 +61,5 @@ HAS modifiers), `cart-line-modifiers` showing CHIPS rather than the region, and
 `cart-line-draft-badge`'s counterpart states. Reaching them needs a seeded menu item WITH
 modifier groups, which is a fixture change of the kind round 193 showed must be scoped to the
 spec rather than the shared mock.
+
+> last audited 14-10-26 by docs-auditor

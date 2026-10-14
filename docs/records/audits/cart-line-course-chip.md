@@ -66,3 +66,5 @@ in four specs; it is a property of the layout rather than a limitation of any on
 | `usePosState.ts` | unchanged, byte-identical to HEAD |
 | eslint | 0 |
 | Full UI suite | 12,707 passed |
+
+> last audited 14-10-26 by docs-auditor
