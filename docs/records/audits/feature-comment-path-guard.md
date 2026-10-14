@@ -88,8 +88,21 @@ can dangle because a file MOVED.
 
 **Measured over the whole features tree: 81 distinct prefixed tokens, 78 resolve, 3 do not.** The
 find pass found two of the three; the third (`docs/guides/EXTENDING.md` in `LocalApiSection.tsx`)
-is inside a JSX `<span>`, not a comment, so it is out of scope for a comment guard and is recorded
-here as a **fourth open item** rather than silently missed.
+is inside a JSX `<span>`, not a comment, so it is out of scope for a comment guard.
+
+**That third one is now FIXED too, by the same measurement.** `EXTENDING.md` does exist — at
+`docs/guides/developer/EXTENDING.md`; the citation had lost the `developer/` segment the guides
+restructure added. Repointed at `LocalApiSection.tsx:421`. A sibling search for the flat spelling
+found one more **live** stale citation, in a file that is not source at all:
+`docs/decisions/README.md:41` cited `docs/guides/EXTENDING.md` while discussing ADR #43's
+ambiguity — also repointed. The remaining hits for the old spelling are all **dated audit
+stamps** that *describe* the move ("two developer-doc checkboxes pointed at … which now live
+under `docs/guides/developer/`"), which is this corpus's convention and correctly left verbatim.
+
+**Still out of scope, and named so the next reader does not think the sweep was silent:**
+`docs/plans/_active/documentation-portal-plan.md:127,141` cite `guides/admin-guide.md` — but those
+are **mdBook-relative** links inside a portal config discussion, not repo-root paths, and the guard's
+prefix model does not apply to them.
 
 ### The two defects it found, and both were live
 

@@ -38,7 +38,7 @@ implementation-status walkthrough.
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
   Performance & Scale-Out Roadmap). The collision arrived when the newer file took a
-  number already in use, and both meanings are cited in the wild — `docs/guides/EXTENDING.md`
+  number already in use, and both meanings are cited in the world — `docs/guides/developer/EXTENDING.md`
   means the cloud-sync one when it writes "the transactional outbox (ADR #43 D7)" (D7 is a
   phase of it), while `docs/records/README.md` maps 43 to the React-only decision. **Re-derive rather than quote**: the count read 37 when this
   bullet was written and 26 on 2026-10-11 (eleven files) — run
