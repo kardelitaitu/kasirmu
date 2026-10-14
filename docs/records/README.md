@@ -187,6 +187,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The receipt preview now prices each row as a LINE TOTAL (round 133)](audits/receipt-preview-line-totals.md) | — |
 | general | [The receipt preview says 2x and prices one (round 132)](audits/receipt-preview-quantity.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
+| kds | [The restaurant kitchen dispatch, driven live (round 137)](audits/restaurant-kitchen-dispatch-live.md) | — |
 | general | [A flaky test on HEAD, and the shape that causes it (2026-10-12)](audits/restaurant-menu-editor-flaky-filter-test.md) | — |
 | payments | [Every card payment failed, then settled anyway (2026-10-12)](audits/restaurant-pos-card-settlement-defects.md) | — |
 | general | [Restaurant POS cart footer — live control-by-control pass (2026-10-12)](audits/restaurant-pos-cart-footer-live-controls.md) | — |
