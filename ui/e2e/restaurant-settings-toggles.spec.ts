@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 /**
@@ -56,17 +56,9 @@ const TOGGLES = [
   'interaction-vibration',
 ] as const;
 
-/** Open the restaurant POS and its sidebar popover, without entering Settings. */
-async function openSidebar(page: import('@playwright/test').Page) {
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-
-  const sidebarBtn = page.locator('.restaurant-sidebar-btn');
-  await expect(sidebarBtn).toBeVisible({ timeout: TIMEOUT });
-  await sidebarBtn.click();
-}
 
 /** Log in, open the restaurant POS, and enter Settings from its sidebar. */
-async function openRestaurantSettings(page: import('@playwright/test').Page) {
+async function openRestaurantSettings(page: Page) {
   // OWNER, not staff. Round 148: `staff` holds only
   // `sales:process, sales:void, reports:view`, and the Settings row gates on
   // `settings:edit` — so for that role the row renders DISABLED and this
