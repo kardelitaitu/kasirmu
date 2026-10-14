@@ -152,6 +152,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The interval stop is now observable — by isolating the hook (round 109)](audits/interval-stop-observable.md) | — |
 | general | [A committed build break in kasirmu-bridge, and what it reveals (2026-10-12)](audits/kasirmu-bridge-build-break-and-mock-fidelity.md) | — |
 | general | [The kasirmu-bridge suite does not fail — it does not finish (2026-10-13)](audits/kasirmu-bridge-suite-runtime.md) | — |
+| kds | [The KDS advance writes correctly and the board does not repaint (round 144)](audits/kds-advance-does-not-repaint.md) | — |
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
 | kds | [The real backend creates the ticket; the mock only reports them (round 139)](audits/kds-from-sale-production-vs-mock.md) | — |
 | kds | [The Kitchen Display row never hid: a predicate that cannot read the gate (round 128)](audits/kds-row-inert-predicate.md) | — |
