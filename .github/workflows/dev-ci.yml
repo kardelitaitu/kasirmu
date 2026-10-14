@@ -1030,7 +1030,7 @@ jobs:
   # "commit-subjects", "bundle-parity", "pg-schema-drift",
   # "migration-column-types", "typecheck-gate", "eol-guard", "cbm-hook-guard",
   # "test-shadow-copies", "invoke-token-parity", "topology-parity",
-  # "feature-registry", "plugin-guide-parity", "no-raw-params", "unsafe-safety",
+  # "feature-registry", "plugin-guide-parity", "no-raw-params", "unsafe-safety", "audit-stamps",
   # "scoped-coverage", "scoped-ambient-reads-self-test",
   # "unguarded-ambient-ipc-calls", "doc-uniqueness".
   static-gates:
@@ -1073,6 +1073,19 @@ jobs:
       # source, so it runs in seconds and cannot be masked by a compile failure.
       - name: Unsafe safety comments
         run: python3 scripts/verify-unsafe-safety.py
+      # Every record under docs/records/audits/ must carry a `> last audited` footer, or be
+      # named in scripts/audit-footer-baseline.json (which may only SHRINK). The baseline
+      # exists because 90 records predated the rule; a NEW record cannot be added to it.
+      #
+      # This gate's gates.json entry said "left out of CI deliberately: it reads the working
+      # tree, which a runner's checkout legitimately differs from". That was true when
+      # written and is not true now: the checker's ONLY git call is `check-ignore`, which can
+      # only EXCLUDE files -- so a clean checkout sees a SUBSET of what a dev tree sees and is
+      # strictly more permissive. It cannot fail on a file CI lacks. And it degrades to the
+      # old behaviour when git is absent (see its docstring). Verified: all offenders that
+      # motivated this step were tracked, so a runner catches exactly what a dev does.
+      - name: Audit record footers
+        run: python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard

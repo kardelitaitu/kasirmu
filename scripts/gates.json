@@ -1677,7 +1677,11 @@
           "audit stamps"
         ]
       },
-      "_note": "Wired 2026-10-02, same reasoning as docs-orphans. check-audit-stamps.py grades the AGENTS.md footer convention (> last audited DD-MM-YY by <name>) against each document's own stamp, so a footer that under-reports its audit fails. It caught one real defect on the day it was first run (onboarding-guide's footer still read 22-09-26 after its stamp was bumped to 2026-10-02, fixed in c70242335). Left out of CI deliberately: it reads the working tree, which a runner's checkout legitimately differs from, exactly as the checker that repaired its own Windows encoding crash noted."
+      "_note": "Wired 2026-10-02, same reasoning as docs-orphans. check-audit-stamps.py grades the AGENTS.md footer convention (> last audited DD-MM-YY by <name>) against each document's own stamp, so a footer that under-reports its audit fails. It caught one real defect on the day it was first run (onboarding-guide's footer still read 22-09-26 after its stamp was bumped to 2026-10-02, fixed in c70242335). WIRED INTO CI 2026-10-14 (static-gates). The original note said it was \"left out of CI deliberately: it reads the working tree, which a runner's checkout legitimately differs from\". That was true when written and is not true now, so the exclusion was re-checked rather than inherited: the checker's ONLY git call is `git check-ignore --stdin`, which can only EXCLUDE paths. A clean checkout therefore sees a SUBSET of a dev tree and is strictly more permissive -- it cannot fail on a file the runner lacks -- and the docstring records that a missing git degrades to the old behaviour. Every offender that motivated the wiring was tracked, so a runner catches exactly what a dev does. The reason it needed wiring at all: with the gate local-only, records landed unfootered in four consecutive rounds (1, 2, 11, 7 files) and each was found by hand long after the commit. The FOOTER REQUIREMENT itself (every file under docs/records/audits/ needs one, with scripts/audit-footer-baseline.json naming the 90 that predate it and allowed only to shrink) was added 2026-10-14 in the same pass.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
     },
     {
       "id": "nav-paths",
