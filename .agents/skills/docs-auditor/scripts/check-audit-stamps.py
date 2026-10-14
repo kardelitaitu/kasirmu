@@ -77,6 +77,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import json
 import pathlib
 import re
 import subprocess
@@ -152,6 +153,55 @@ def _footer_dates(text: str) -> list:
     return out
 
 
+AUDIT_DIR = "docs/records/audits/"
+FOOTER_BASELINE = "scripts/audit-footer-baseline.json"
+
+
+def _footer_baseline(root: pathlib.Path) -> set:
+    """The frozen list of audit records written before the footer rule existed.
+
+    A MISSING baseline file is not a pass: it means the rule cannot be enforced, and
+    silently degrading to "everything is grandfathered" is exactly the failure mode a
+    checker this shape is written to avoid. The caller reports it as a finding.
+    """
+    path = root / FOOTER_BASELINE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return set()
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        return set()
+    return {e for e in entries if isinstance(e, str)}
+
+
+def _missing_footers(root: pathlib.Path):
+    """Audit records with NO footer, split into (offenders, baseline_absent).
+
+    Only docs/records/audits/ is policed. The corpus s other conventions -- a dated
+    journal under .agents/, a plan doc at the root, a superseded record under
+    docs/records/superseded/ -- legitimately carry inline stamps or nothing, and
+    requiring a footer there would manufacture ceremony the repo does not ask for.
+    """
+    baseline = _footer_baseline(root)
+    baseline_absent = not (root / FOOTER_BASELINE).is_file()
+    target = root / AUDIT_DIR
+    if not target.is_dir():
+        return [], baseline_absent
+    out = []
+    for path in sorted(target.rglob("*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        if FOOTER_RE.search(text):
+            continue
+        rel = path.relative_to(root).as_posix()
+        if rel not in baseline:
+            out.append(rel)
+    return out, baseline_absent
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true",
@@ -211,6 +261,12 @@ def main() -> int:
         print("checker failed: %s" % exc, file=sys.stderr)
         return 2
 
+    try:
+        missing_footers, baseline_absent = _missing_footers(root)
+    except Exception as exc:  # same contract as the loop above
+        print("checker failed reading the footer baseline: %s" % exc, file=sys.stderr)
+        return 2
+
     total = len(equal) + len(newer) + len(older) + len(footer_only) + len(stamp_only)
     print("docs with a stamp and/or footer : %d" % total)
     print("  newest stamp == footer        : %d" % len(equal))
@@ -219,6 +275,7 @@ def main() -> int:
     print("  footer but no stamp           : %d" % len(footer_only))
     print("  stamp but no footer           : %d" % len(stamp_only))
     print("  footer is not a real date     : %d" % len(bad_dates))
+    print("  audit records with NO footer  : %d   <- required under docs/records/audits/" % len(missing_footers))
 
     if bad_dates:
         print("")
@@ -258,12 +315,29 @@ def main() -> int:
         for rel in equal:
             print("   %s" % rel)
 
-    if older or bad_dates:
+    if missing_footers:
         print("")
-        print("DRIFT: bump the footers above to their newest stamp date.")
+        print("== audit record with NO footer (required) ==")
+        for rel in missing_footers:
+            print("   %s" % rel)
+        if baseline_absent:
+            print("")
+            print("   NOTE: %s is missing, so NOTHING is grandfathered -- every"
+                  % FOOTER_BASELINE)
+            print("   record above is a finding. Restore the baseline or footer them all.")
+
+    if older or bad_dates or missing_footers:
+        print("")
+        if older:
+            print("DRIFT: bump the footers above to their newest stamp date.")
+        if missing_footers:
+            print("MISSING FOOTER: add a '> last audited DD-MM-YY by <who>' line as the LAST")
+            print("non-empty line. A record that predates the rule is named in")
+            print("%s; remove its line in the same commit" % FOOTER_BASELINE)
+            print("that adds the footer.")
         return 1
     print("")
-    print("OK: no footer under-reports its own audit.")
+    print("OK: no footer under-reports its own audit, and every audit record has one.")
     return 0
 
 
