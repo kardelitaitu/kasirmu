@@ -194,6 +194,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
 | general | [The receipt preview now prices each row as a LINE TOTAL (round 133)](audits/receipt-preview-line-totals.md) | — |
 | general | [The receipt preview says 2x and prices one (round 132)](audits/receipt-preview-quantity.md) | — |
+| general | [Four restaurant footer capabilities get E2E coverage, by sweeping the specs (round 147)](audits/restaurant-capabilities-e2e.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
 | kds | [The restaurant kitchen dispatch, driven live (round 137)](audits/restaurant-kitchen-dispatch-live.md) | — |
 | general | [A flaky test on HEAD, and the shape that causes it (2026-10-12)](audits/restaurant-menu-editor-flaky-filter-test.md) | — |
