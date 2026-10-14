@@ -161,6 +161,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
 | general | [The restaurant cart setup, shared instead of copied four times (round 161)](audits/e2e-cart-setup-shared.md) | — |
 | general | [Round 185's wait rule applied fleet-wide, and proven against a half-loaded screen (round 186)](audits/e2e-data-shaped-waits.md) | — |
+| general | [The two helpers five specs were carrying, consolidated (round 207)](audits/e2e-helper-consolidation-cart-sheet.md) | — |
 | general | [The restaurant sidebar route, shared instead of walked four times (round 162)](audits/e2e-sidebar-route-shared.md) | — |
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
 | general | [F40's device-blocked verification is half closeable in the browser (round 155)](audits/f40-browser-half.md) | — |
