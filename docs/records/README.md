@@ -155,6 +155,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The KDS advance writes correctly and the board does not repaint (round 144)](audits/kds-advance-does-not-repaint.md) | — |
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
 | kds | [The real backend creates the ticket; the mock only reports them (round 139)](audits/kds-from-sale-production-vs-mock.md) | — |
+| kds | [The KDS lifecycle test is reactivated, and the board is a masonry (round 145)](audits/kds-lifecycle-reactivated.md) | — |
 | kds | [The Kitchen Display row never hid: a predicate that cannot read the gate (round 128)](audits/kds-row-inert-predicate.md) | — |
 | kds | [What makes the POS-to-KDS ticket deterministic, and why the spec is fixme (round 142)](audits/kds-spec-determinism.md) | — |
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
