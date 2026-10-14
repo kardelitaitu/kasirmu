@@ -127,6 +127,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | products | [An archived screen still graded by 24 unit tests and 5 E2E tests (round 146)](audits/archived-product-screen-still-graded.md) | — |
 | general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
+| general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
 | payments | [The cash-preset chips write to a rail parameter nothing reads (round 120)](audits/cash-preset-chips-unread.md) | — |
 | payments | [The cash presets are now read: rounds 120-121's inventory gets its first repair (round 122)](audits/cash-presets-wired.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
