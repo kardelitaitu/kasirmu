@@ -62,3 +62,65 @@ committed as one.
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,671 passed, 0 failed (up 1) |
 | Commit | one file, `create mode` exactly the guard |
+
+
+---
+
+## Round 154 (2026-10-14): the bare spelling is CLOSED, and it found two live defects
+
+The gap recorded above — *"the guard covers the CONVENTIONAL spelling and is blind to the bare
+spelling"* — is closed. The finder is now two passes over the same file, kept separate because
+they answer different questions:
+
+| pass | what it matches | why separate |
+|---|---|---|
+| `backticked()` | a path in backticks | unambiguous: the author meant a citation, including one pointing at a deleted file |
+| `barePrefixed()` | a bare token carrying a repo-relative prefix | shape-inferred, so it carries its own exemption and its own measured miss rate |
+
+**The discriminator, and why it is not "match every path".** Round 152's version matched every
+path-shaped token and died of false positives. Re-measured 2026-10-14: **568 comment lines under
+`ui/src/features` name a file**, and almost all are a NAME, not a citation — `components.css`,
+`AnalyticsScreen.css`, `<feature>/register.tsx`. The line that makes the new pass safe is that a
+bare token only counts **when it starts with a repo-relative prefix** (`.agents/`, `ui/src/`,
+`crates/`, `docs/`, `scripts/`, `shared-ui/`). A bare filename is prose about a sibling; a bare
+token with a prefix is the author writing a path from the repo root, which is the only shape that
+can dangle because a file MOVED.
+
+**Measured over the whole features tree: 81 distinct prefixed tokens, 78 resolve, 3 do not.** The
+find pass found two of the three; the third (`docs/guides/EXTENDING.md` in `LocalApiSection.tsx`)
+is inside a JSX `<span>`, not a comment, so it is out of scope for a comment guard and is recorded
+here as a **fourth open item** rather than silently missed.
+
+### The two defects it found, and both were live
+
+1. **`ui/src/features/workspaces/tools.tsx:35`** cited `docs/records/audit-open-findings.md`.
+   The file is at `docs/records/findings/audit-open-findings.md` — the record subtree gained a
+   `findings/` level and the comment kept the pre-move path. **Fixed.**
+2. **`ui/src/features/retail/ScaleIndicator.css:6`** cited `ui/src/features/sales/WeightScaleWidget.css`
+   as its *predecessor*. That predecessor was **deleted** in `338c15c01` (*refactor(sales): retire
+   the weight-scale widget its replacement superseded*), so the sheet's provenance note pointed at
+   a file that no longer exists. **Fixed** by naming the deletion and its commit — the absence is
+   the claim, which is the same exemption the backticked pass already carried.
+
+**A bug in the first version of the new pass, found by running it rather than reading it.** The
+comment extractor was line-local (`indexOf('//')`, `indexOf('/*')`), so it found **1 of the 3**
+known dangling paths: `ScaleIndicator.css`'s citation sits on the sixth line of a `/* */` block,
+where there is no marker of any kind on the line. Replaced with block-comment **state tracking**,
+after which it finds both comment-shaped ones. Recorded because the same trap will catch the next
+line-local comment matcher in this tree.
+
+### Kill-tested, both passes, on the exact round-153 shape
+
+| Injected into a scanned feature file | Result |
+|---|---|
+| `// … in .agents/gone-file-xyz.md` — **bare**, the spelling round 153 proved invisible | **fails**, naming file and path |
+| `// … in \`.agents/gone-file-xyz.md\`` — backticked | **fails**, naming file and path |
+| probe removed | PASS again |
+
+| Verified | Result |
+|---|---|
+| Guard, healthy tree | 1 passed |
+| `tsc` / `eslint` (guard + tools.tsx) | 0 / 0 |
+| Both repaired files | no other change; HTML comment block in the CSS left intact |
+
+> last audited 14-10-26 by docs-auditor

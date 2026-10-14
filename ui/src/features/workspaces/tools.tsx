@@ -32,7 +32,8 @@
 // have no route twin. The permission-vocabulary alternative was refused — it
 // would have handed five admin-surface cards to a read-only role under a
 // commit that reads as a refactor. The finding this paragraph was filed
-// under is docs/records/audit-open-findings.md (2026-09-16).
+// under is docs/records/findings/audit-open-findings.md (2026-09-16; the path moved
+// into the records/findings/ subtree).
 
 import type { ReactNode } from 'react';
 import { roleAtLeast } from '@/utils/role';

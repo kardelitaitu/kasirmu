@@ -3,7 +3,9 @@
    at settings/FeatureToggleScreen.tsx:41). Before this sheet the component imported no
    CSS at all and `git grep scale-indicator -- '*.css'` returned zero files, so all 17
    names it renders were undefined tree-wide. Every declaration below is a port from its
-   predecessor ui/src/features/sales/WeightScaleWidget.css, named per declaration; nothing
+   predecessor ui/src/features/sales/WeightScaleWidget.css, since deleted (338c15c01,
+   refactor(sales): retire the weight-scale widget its replacement superseded), named per
+   declaration; nothing
    here is a value chosen by the author of this sheet, and no hex or rgba appears in it -
    the two source rules that carried a hard-coded colour fallback (:26 --color-success and
    :30 --color-warning) are ported as the bare token, because that token resolves in all
