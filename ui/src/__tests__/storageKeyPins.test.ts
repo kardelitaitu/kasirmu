@@ -150,6 +150,10 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:held-carts': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:kds': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:login-attempts': 'dev-mock/core/mockDatabase.ts',
+  // The local-payment rail slice (round 156). The rails used to live in a bare
+  // `new Map()` in module memory, so a save in the browser preview was lost on reload
+  // even though the real backend persists them in `local_payment_methods`.
+  'oz-dev-mock:local-payment-methods': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:sales': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:settings': 'dev-mock/handlers/settings.ts',
   'oz-dev-mock:shift-history': 'dev-mock/core/mockDatabase.ts',
