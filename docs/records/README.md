@@ -277,6 +277,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
 | general | [Round 181's component adopted at the site that motivated it (round 182)](audits/switch-toggle-adopted.md) | — |
 | general | [The shared switch component, and why adoption is left to each owner (round 181)](audits/switch-toggle-component.md) | — |
+| general | [The delete guard that protects a table mid-service (round 194)](audits/table-delete-guard.md) | — |
 | general | [The table floor plan, driven live — and a probe that read it too early (round 177)](audits/table-floor-plan-live.md) | — |
 | general | [The same silent-save defect, a third time, on the table form (round 165)](audits/table-form-save-gate.md) | — |
 | release | [Unblocking round 192's unreachable guard — and backing the wrong fix out (round 193)](audits/table-release-spec-seeded.md) | — |
