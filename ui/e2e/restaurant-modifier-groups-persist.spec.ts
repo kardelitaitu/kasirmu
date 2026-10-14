@@ -105,3 +105,56 @@ test('a saved group can be removed again', async ({ page }) => {
     timeout: 8_000,
   });
 });
+
+test('the till offers the authored group when the item is sold', async ({ page }, testInfo) => {
+  // Desktop only: the cart line lands in the portrait SHEET, whose backdrop covers the
+  // till tile this case taps next — round 201's constraint, recorded in five specs now.
+  test.skip(testInfo.project.name !== 'desktop', 'needs the till tile and cart visible at once');
+  await authorAndReopen(page);
+
+  // ⚠️ CLOSE THE FORM FIRST. `authorAndReopen` ends with the item form OPEN, and round 211
+  // measured that an open form swallows the back button's click — the first press exits the
+  // form, the second leaves the screen. Reopening then closing is the cheapest way to get to
+  // the state the one-click back button needs.
+  await page.locator('.restaurant-menu-editor-form-actions button').filter({ hasText: /cancel/i })
+    .first()
+    .click();
+  await expect(page.locator('.restaurant-menu-editor-form')).toHaveCount(0, { timeout: 8_000 });
+
+  // Leave the editor WITHOUT a reload. With no form open the back button returns to the till
+  // in one click — measured (`RESTAURANT_CARD=27`).
+  await page.locator('[data-testid="restaurant-menu-editor-back-btn"]').click();
+  await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: TIMEOUT });
+
+  // THE LINK THIS CASE ADDS: a product WITH groups must open the customizer instead of
+  // adding straight to the cart (`RestaurantMenu.tsx:255-262`). Tapping the first tile and
+  // getting a line in the cart would mean the group the operator just authored was ignored.
+  await page.locator('.restaurant-card').first().click();
+
+  const modal = page.locator('.modifier-modal');
+  await expect(
+    modal,
+    'an item with modifiers must ask for them rather than adding directly',
+  ).toBeVisible({ timeout: TIMEOUT });
+
+  // And it names the group the operator authored — the round trip closes here.
+  await expect(modal.locator('.modifier-group-name').first()).toHaveText(GROUP_NAME);
+
+  // Pick the option, then confirm. The confirm is DISABLED until the group is satisfied,
+  // so its arming is the proof the tap registered.
+  const option = modal.locator('[data-testid^="modifier-"]').first();
+  await expect(option).toBeVisible({ timeout: 8_000 });
+  await option.click();
+
+  const confirm = modal.locator('.modifier-confirm-btn');
+  await expect(confirm, 'choosing an option arms Add to Order').toBeEnabled({ timeout: 8_000 });
+  await confirm.click();
+
+  // The item lands in the cart WITH the modifier — the modals close and the line carries
+  // the group. A cart line without it would mean the selection was dropped on the way.
+  await expect(modal).toHaveCount(0, { timeout: TIMEOUT });
+  await expect(
+    page.locator('[data-testid="cart-line-modifiers"]').first(),
+    'the sold line must carry the modifier that was chosen',
+  ).toBeVisible({ timeout: TIMEOUT });
+});
