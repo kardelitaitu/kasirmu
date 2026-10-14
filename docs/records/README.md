@@ -191,6 +191,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The POS-to-KDS chain is closed: a completed sale appears on the board (round 141)](audits/pos-kds-chain-closed.md) | — |
 | kds | [The POS-to-KDS chain in the dev mock: a sale pushes the ticket, not a dispatch (round 138)](audits/pos-kds-chain-mechanism.md) | — |
 | kds | [The POS-to-KDS spec is reactivated and green (round 143)](audits/pos-kds-spec-reactivated.md) | — |
+| general | [The POS keys adopt the helper, and a substring guard was hiding a spelling (round 170)](audits/pos-keys-adopt-helper.md) | — |
 | general | [Production module-level state in the POS: three audits, no defect (round 103)](audits/pos-module-state-audit.md) | — |
 | payments | [QRIS and split-tender driven live — the last two gaps closed (round 119)](audits/pos-qris-and-split-live.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
