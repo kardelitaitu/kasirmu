@@ -174,6 +174,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The POS family's remaining sequence guards are all pinned (round 117)](audits/pos-family-guards-pinned.md) | — |
 | general | [POS-family shuffle sweep, second pass (round 102)](audits/pos-family-shuffle-sweep-2.md) | — |
 | general | [Shuffling the POS-family suites: one more leak found (round 100)](audits/pos-family-shuffle-sweep.md) | — |
+| kds | [The POS-to-KDS chain is closed: a completed sale appears on the board (round 141)](audits/pos-kds-chain-closed.md) | — |
 | kds | [The POS-to-KDS chain in the dev mock: a sale pushes the ticket, not a dispatch (round 138)](audits/pos-kds-chain-mechanism.md) | — |
 | general | [Production module-level state in the POS: three audits, no defect (round 103)](audits/pos-module-state-audit.md) | — |
 | payments | [QRIS and split-tender driven live — the last two gaps closed (round 119)](audits/pos-qris-and-split-live.md) | — |
