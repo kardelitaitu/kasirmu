@@ -321,6 +321,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Print Bill, and the failure arm the injection seam made testable (round 221)](audits/tables-print-bill.md) | — |
 | general | [The tables toolbar and the verb its state decides (round 219)](audits/tables-toolbar.md) | — |
 | general | [Three ways an instrument lied, and the tell for each (round 226)](audits/three-instrument-failures.md) | — |
+| general | [Three more latches set before their reads, and what is proven about them (round 236)](audits/three-more-latches-scanned.md) | — |
 | sync | [The Apply button could be stranded disabled after a revision conflict (2026-10-14)](audits/topology-conflict-apply-stranded.md) | — |
 | tax | [The two sample receipts are two tax MODES, not an inconsistency (round 134)](audits/two-samples-two-tax-modes.md) | — |
 | general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
