@@ -95,19 +95,37 @@ export function WorkspaceRestaurantPosSettings({
     // is what the touchedRef guard at :71 is already built for.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the once-per-
     // session latch or the re-read would be short-circuited.
+    // ⚠️ THE LATCH IS SET WHEN THE READ SETTLES, NOT WHEN IT STARTS.
+    //
+    // It used to be `originalsLoadedForRef.current = sessionToken;` HERE, before the read.
+    // Under React StrictMode (`main.tsx:23`) an effect runs, is cleaned up, and re-runs, so:
+    //
+    //   run 1   falls through this guard, SETS the ref, and starts the read;
+    //   cleanup sets `cancelled = true`;
+    //   run 2   sees the ref already equal to the token and RETURNS, so no second read;
+    //   result  run 1's outcome reaches a closure whose `cancelled` is true and is DISCARDED.
+    //
+    // `setLoadFailed(true)` was therefore unreachable — measured 2026-10-14 (round 234) with the
+    // read forced to reject 24 times: no banner, no retry, Save still armed. The card showed the
+    // DEFAULT `courseFiring: false` from a read that had failed, which is the F4 loss this guard
+    // exists to prevent.
+    //
+    // Latching on settlement keeps the intent — a read is attempted once per session, and a store
+    // switch re-seeds because the token differs — while letting the outcome land.
     if (reloadNonce === 0 && originalsLoadedForRef.current === sessionToken) return;
-    originalsLoadedForRef.current = sessionToken;
 
     setTableManagement(settings.receipt.showTableNumber);
 
     // Load courseFiring from the backend settings table.
     let cancelled = false;
+    const settle = () => { originalsLoadedForRef.current = sessionToken; };
     getSettingScoped(sessionToken ?? null, 'restaurant.course_firing').then((raw) => {
       if (cancelled) return;
       // `null` = never written, so the default applies. That is a real answer.
       const loaded = raw === 'true';
       if (!touchedRef.current.has('courseFiring')) setCourseFiring(loaded);
       originalsRef.current = { tableManagement: settings.receipt.showTableNumber, courseFiring: loaded };
+      settle();
       setLoadFailed(false);
       setOriginalsLoaded(true);
     }).catch(() => {
@@ -115,9 +133,11 @@ export function WorkspaceRestaurantPosSettings({
       // false "clean" and Save stays disabled. Seeding `courseFiring: false` here
       // was the F4 loss.
       if (cancelled) return;
+      settle();
       setLoadFailed(true);
       setOriginalsLoaded(true);
     });
+    return () => { cancelled = true; };
     return () => { cancelled = true; };
     // sessionToken is read at :68 from useWorkspace() at :32. The save path at :125 already lists
     // it, so the omission here is an inconsistency rather than a design decision.
