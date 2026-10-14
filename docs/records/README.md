@@ -183,6 +183,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [14 of 15 rail parameters the operator can edit have no reader (round 121)](audits/rail-parameters-unread.md) | — |
 | general | [Correcting round 121: the parameters ARE read back — but nothing acts on them (round 123)](audits/rail-params-roundtrip-not-consumed.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
+| general | [The receipt preview now prices each row as a LINE TOTAL (round 133)](audits/receipt-preview-line-totals.md) | — |
 | general | [The receipt preview says 2x and prices one (round 132)](audits/receipt-preview-quantity.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
 | general | [A flaky test on HEAD, and the shape that causes it (2026-10-12)](audits/restaurant-menu-editor-flaky-filter-test.md) | — |
