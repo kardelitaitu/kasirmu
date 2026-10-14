@@ -129,3 +129,37 @@ test('the listbox reports which course is selected', async ({ page }, testInfo) 
     'true',
   );
 });
+
+test('the chip shows hold, then fired, as the course moves', async ({ page }, testInfo) => {
+  // Desktop only: needs the grid and the cart visible at once (round 201's constraint).
+  test.skip(testInfo.project.name !== 'desktop', 'needs grid and cart visible at once');
+
+  await openWithLine(page);
+
+  const line = page.locator('[data-testid="cart-panel-line-item"]').first();
+  const chip = line.locator('[data-testid="cart-line-course-chip"]');
+  const fired = line.locator('[data-testid="cart-line-course-status-fired"]');
+  const hold = line.locator('[data-testid="cart-line-course-status-hold"]');
+
+  // No course => neither status badge, the same gating round 204 found on the Sent/New
+  // pair: a badge appears only once the state it reports exists.
+  await expect(fired).toHaveCount(0);
+  await expect(hold).toHaveCount(0);
+
+  // Assigning puts the line ON HOLD — queued, not sent.
+  await chip.click();
+  const main = line.locator('[data-testid="cart-line-course-option-main"]');
+  await expect(main).toBeVisible({ timeout: 8_000 });
+  await main.click();
+  await expect(hold, 'an assigned course is on hold').toBeVisible({ timeout: TIMEOUT });
+  await expect(fired, 'and it is not fired yet').toHaveCount(0);
+
+  // Firing flips hold -> fired, and the hold badge goes. That transition is what tells the
+  // runner the course is with the kitchen.
+  const fireMain = page.locator('[data-testid="fire-course-main"]');
+  await expect(fireMain, 'the bar offers the held course').toBeVisible({ timeout: TIMEOUT });
+  await fireMain.click();
+
+  await expect(fired, 'firing moves the course badge to fired').toBeVisible({ timeout: TIMEOUT });
+  await expect(hold, 'and hold is gone').toHaveCount(0);
+});
