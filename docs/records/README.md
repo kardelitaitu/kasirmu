@@ -247,6 +247,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
 | general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
 | general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
+| general | [The silent-save defect class is closed across the tree (round 166)](audits/silent-save-class-closed.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
 | general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
