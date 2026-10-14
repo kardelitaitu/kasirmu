@@ -91,7 +91,7 @@ export function WorkspaceKdsSettings({
     // overwrite user edits. "Once" is scoped to the token, not to the mount.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
     if (reloadNonce === 0 && originalsLoadedForRef.current === sessionToken) return;
-    originalsLoadedForRef.current = sessionToken;
+    // (the latch used to be set HERE, before the read — see the .finally() below)
 
     // Load all 5 KDS settings from the backend, then set originals
     // to the loaded values so dirty tracking doesn't fire on mount.
@@ -140,6 +140,15 @@ export function WorkspaceKdsSettings({
       // Save instead.
       setLoadFailed(true);
     }).finally(() => {
+      // Set the once-per-session latch WHERE THE OUTCOME LANDS, not before the read.
+      //
+      // Under StrictMode the effect runs, is cleaned up, and runs again. With the latch set
+      // before the read, run 1 started it and run 2 returned at the guard, so the only read
+      // belonged to a run whose outcome is discarded — making `setLoadFailed(true)` above
+      // unreachable. Round 235 fixed the identical ordering in
+      // `WorkspaceRestaurantPosSettings`; round 237 gave this card the `sessionToken` it was
+      // missing, which made the read FIRE but left this ordering in place.
+      originalsLoadedForRef.current = sessionToken;
       setOriginalsLoaded(true);
     });
     // The suppression on the previous line was hiding this: the effect reads sessionToken five
