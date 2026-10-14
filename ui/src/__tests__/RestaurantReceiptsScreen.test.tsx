@@ -576,6 +576,41 @@ describe('RestaurantReceiptsScreen — printer hardware', () => {
     });
   });
 
+  // The receipt Test Print payload was UNASSERTED until round 135: every case around it
+  // mocked `printSalesReceipt` and checked pass/fail paths only, so nothing pinned WHAT was
+  // printed. Two things matter enough to pin:
+  //
+  //   1. the sample prices EXCLUSIVE tax — subtotal 30000, tax = 30000 * rate/100,
+  //      total = 30000 * (1 + rate/100). The on-screen preview beside it prices INCLUSIVE tax
+  //      (`receiptLogic.ts`: line total * 100/(100+rate)). Those are two configured modes, not
+  //      drift: `sales_tests.rs:1161` exclusive, `:1284` inclusive, both real, chosen on the
+  //      tax rate row. See `docs/records/audits/two-samples-two-tax-modes.md`.
+  //
+  //   2. the items sum to the submitted subtotal. If a future edit changes one and not the
+  //      other, the sample silently prints a receipt that does not add up.
+  it('prints a receipt sample whose items sum to its subtotal, priced EXCLUSIVE tax', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const btn = screen.getByRole('button', { name: /^Test Print$/ });
+    await user.click(btn);
+
+    await waitFor(() => expect(printSalesReceipt).toHaveBeenCalled());
+
+    const [, payload] = vi.mocked(printSalesReceipt).mock.calls[0]!;
+    // self-consistency: the two line prices are the submitted subtotal.
+    const lineTotal = payload.items!.reduce((sum, it) => sum + it.totalPrice!.minorUnits, 0);
+    expect(lineTotal).toBe(payload.subtotal.minorUnits);
+
+    // EXCLUSIVE: tax sits ON TOP of the subtotal rather than being carved out of it.
+    expect(payload.tax!.minorUnits).toBe(
+      Math.round(payload.subtotal.minorUnits * (10 / 100)),
+    );
+    expect(payload.total.minorUnits).toBe(
+      payload.subtotal.minorUnits + payload.tax!.minorUnits,
+    );
+  });
+
   it('shows error toast when kitchen test chit fails', async () => {
     const user = userEvent.setup();
     vi.mocked(printKdsChitScoped).mockRejectedValueOnce(new Error('Connection refused to kitchen printer'));

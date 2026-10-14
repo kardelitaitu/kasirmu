@@ -865,6 +865,22 @@ export default function RestaurantReceiptsScreen({
     const start = Date.now();
     try {
       const currency = settings.store.currency || 'IDR';
+      // ── This sample prices EXCLUSIVE tax; the preview above prices INCLUSIVE ──
+      //
+      // Deliberately, and not drift. The mode is a configured property of the tax-rate
+      // row, not a global setting: `crates/kasirmu-core/src/db/sales_tests.rs:1161`
+      // seeds an EXCLUSIVE rate (tax = subtotal * rate/100, added on top) and `:1284`
+      // seeds an INCLUSIVE one (total unchanged, tax extracted for reporting), and
+      // `completedSale.ts:154-161` reads all three figures back from the database
+      // without deriving them. So these two samples demonstrate the two modes a store
+      // can be configured for. The preview's convention lives in `receiptLogic.ts` as
+      // `line total * 100/(100 + rate)`.
+      //
+      // `RestaurantReceiptsScreen.test.tsx` ("priced EXCLUSIVE tax") pins the convention
+      // AND that the two line prices sum to the submitted subtotal, so an edit to one
+      // without the other fails rather than printing a sample that does not add up.
+      //
+      // Full reasoning: docs/records/audits/two-samples-two-tax-modes.md.
       const printRes = await printSalesReceipt(sessionToken, {
         receiptNumber: '01-01-260929-01-000042',
         date: new Date().toLocaleDateString(),
