@@ -172,6 +172,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
 | general | [The bulk 86 controls, and two sweeps that found no third instance of round 183's pattern (round 184)](audits/menu-editor-bulk-controls.md) | — |
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
+| products | [The category builder and its duplicate-name rule (round 185)](audits/menu-editor-category-rule.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
 | general | [The menu editor's Save did nothing on a blank name, and never said so (round 163)](audits/menu-editor-save-gate.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
