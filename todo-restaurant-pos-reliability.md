@@ -139,6 +139,41 @@
 >    one-line change, and it is left to the owner. The guard exists so the decision cannot
 >    be defaulted into.
 >
+>    **✅ CLOSED 2026-10-14 (docs-auditor) — the owner took BOTH decisions, and the two
+>    paragraphs above went stale the day they landed.** Everything from "What is now left,
+>    verified this round" down to this line is kept as the dated reasoning that produced the
+>    fix; the outcome is these three commits:
+>
+>      **`e84ccdc62`** put `thousandsSeparator` on `StoreSettingsDto`, so the setting the
+>      screen offered can actually be read by the front end.
+>      **`e0ffa8213`** resolved it through the bridge `decimalSeparator` already used —
+>      `utils/storage.ts` gained `getThousandsSep` / `setThousandsSep` / `thousandsSepFor`,
+>      and `SettingsContext` writes through on **both** store-load paths
+>      (`SettingsContext.tsx:392` and `:509`; the second path added by `443349a60`).
+>      **`formatMoney`** takes a `thousandsSep` argument and groups the integer part itself
+>      with `useGrouping: false` (`ui/src/types/domain.ts:525`, `:568`), so `Intl` cannot
+>      also group — which is the "async setting → synchronous formatter" problem this block
+>      named, solved by the bridge rather than by making the formatter async.
+>
+>    **The three specific claims that are now measurable and FALSE:** (a) *"No UI writer
+>    exists"* — the writer is `utils/storage.ts:77` `setThousandsSep`, called from two places;
+>    (b) *"the preview formats through Intl/locale and ignores the setting"* — it honours it,
+>    which is why `ReceiptPreviewGroupingParity.test.ts` **EMPTIED its own ledger** and now
+>    asserts the emptiness rather than a count; (c) the *"arguably correct; nothing pins it
+>    either way"* reading was superseded when the pin landed, which this same block records
+>    at the ⚠️ UPDATE above. **Only the 149-site figure still holds** (re-measured: 149).
+>
+>    **D6 residual is therefore closed, and the lesson is the file's own recurring one** — it
+>    opens its header by noting the summary has been corrected five times for exactly this,
+>    "a pin lands, the summary is not re-read". This is the sixth. The guard did not catch it
+>    because `planStatusAccuracy.test.ts` pins **eight specific phrases** that went stale
+>    before — P6's screens, P1's keys, `sound_chime`, the F1 evidence row — and the D6
+>    residual was never one of them. The guard's own header says why: *"It does not attempt
+>    to re-derive progress in general — that is not mechanical. It checks the specific
+>    assertions that HAVE been wrong."* So the cost of each stale claim is a new pin, and
+>    this one is now unpinned: **the next reader should re-measure this header rather than
+>    trust it**, exactly as the guard's authors concluded about the header as a whole.
+>
 > **Header corrected 2026-10-09 (round 75):** it read *"P6 2 of 3 screens"* and *"P1's last
 > two keys (owner decision: they have no consumer at all)"*. **Both went stale in the same
 > way — the work landed and the summary was not re-read.** P6's third screen was unblocked
