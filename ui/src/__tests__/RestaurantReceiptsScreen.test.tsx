@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readScoped } from '@/utils/scopedStorage';
 import fs from 'node:fs';
 import path from 'node:path';
 import userEvent from '@testing-library/user-event';
@@ -769,8 +770,11 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
       expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
       const saveBtn = screen.getByRole('button', { name: /Save/i });
       expect(saveBtn).toBeDisabled();
-      expect(localStorage.getItem('resto_rcpt_header_title')).toBe('REMOTE RESTO');
-      expect(localStorage.getItem('resto_rcpt_tax_rate')).toBe('12');
+      // The keys are STORE-SCOPED since round 169 (`utils/scopedStorage.ts`), so a remote
+      // preference lands under `<base>:<storeId>` rather than the flat name. The claim is
+      // unchanged — the remote value is cached for the next mount — only its address moved.
+      expect(readScoped('resto_rcpt_header_title', 'default')).toBe('REMOTE RESTO');
+      expect(readScoped('resto_rcpt_tax_rate', 'default')).toBe('12');
     });
   });
 

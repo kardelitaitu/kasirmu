@@ -87,24 +87,18 @@ const EXPECTED_KEYS: Record<string, string> = {
   // Restaurant receipt print-preview preferences. The screen reads the same
   // seven through get_setting as a fallback, but the localStorage copy is what
   // makes a preview toggle survive a reload before the setting round-trips.
-  'resto_rcpt_font_size': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_code': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_dt': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_staff': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_footer': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_tax_rate': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_logo': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // The 2-column receipt header's three editable lines (f2c3339c3).
-  'resto_rcpt_header_title': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_header_line1': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_header_line2': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // Where the logo sits in the 2-column header (left / right).
-  'resto_rcpt_logo_pos': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // Whether per-item order notes print on the receipt (c761e0fc0).
-  'resto_rcpt_show_item_notes': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // Receipt amount formatting toggles (2cab71f40): thousands separator and decimals.
-  'resto_rcpt_thousands_sep': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_decimals': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  //
+  // ⚠️ NONE OF THE FOURTEEN `resto_rcpt_*` KEYS IS LISTED BELOW, and that is deliberate.
+  // Round 169 store-scoped them through `utils/scopedStorage.ts`, so every one is now
+  // read and written as `<base>:<storeId>` — the same treatment `pos-locked-cart` received in
+  // round 104 (see the note above it). This scanner reads quoted LITERALS, and a key built by
+  // `scopedKey(base, storeId)` has no literal to match, so these entries would fail the
+  // registry's own "renamed or deleted without updating" check the moment they were scoped.
+  //
+  // Coverage moved rather than disappearing: the OLD flat spelling is still honoured by
+  // `readScoped` as a legacy fallback, and `scopedStorage.test.ts` pins the isolation, the
+  // sentinel and that adoption. `RestaurantReceiptsScreen.test.tsx:772-776` asserts the remote
+  // preference lands at the SCOPED address — the same claim these entries used to cover.
 
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
