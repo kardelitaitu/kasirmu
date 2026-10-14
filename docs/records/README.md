@@ -168,6 +168,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
+| general | [The menu editor's Save did nothing on a blank name, and never said so (round 163)](audits/menu-editor-save-gate.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
 | inventory | [The menu tile's out-of-stock state is pinned in the UNIT layer, not in E2E (round 150)](audits/menu-tile-out-of-stock-unreachable.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
