@@ -10,8 +10,8 @@ acceptance gate is blocked by files that are not documentation.**
 | Phase A + B | **complete** — 115 files moved, **8 functional breaks** the move caused, all found and fixed |
 | Checker defects found while auditing | **3**, a different class — `check-nav-paths.py` crashed on Windows console encoding; `check-ci-claims.py` dropped jobs whose `steps:` sat past an 80-line window, then reported a *correct* runbook as lying; `verify-plugin-guide-parity.py` read only one of two CLI docs and compared kebab-case against un-kebabed names |
 | Acceptance §8 | **5 of 6 steps pass** |
-| Acceptance step 6 | blocked by **4 scratch files another session owns** (`SENTINEL_STASH.txt`, `ser.txt`, `kasir.db`, `kasir.pre-migration.bak`) — **not mine to delete** |
-| `scripts/check.sh` | fails at step 01 on exactly those four; the gate is **correct** (§8a) |
+| Acceptance step 6 | other lanes' root artifacts — **4 when written, 9 now**; 3 of the original 4 are deleted. See §8b: the set regenerates, so step 6 is *structurally blocked*, not pending. |
+| `scripts/check.sh` | fails at step 01 on a changing set of other lanes' files; the gate is **correct** — it is reading a shared tree (§8a, §8b) |
 
 **The three open items, all blocked with measured reasons — none is a documentation defect:**
 
@@ -906,6 +906,51 @@ was attempted. Fixed first, then run.)*
 | 4 | `check-adr-status.py` | **PASS** — 0 drift across 59 rows |
 | 5 | `generate-records-index.mjs --check` | **PASS** — but the record count has grown **102 → 122** |
 | 6 | `scripts/check.sh` | still **FAIL** at step 01 — see below |
+
+### 8b — RE-RUN 2026-10-14: **steps 1–5 pass again, step 6 is STRUCTURALLY BLOCKED, not pending**
+
+The original acceptance command was written as six steps, and step 6 is `bash scripts/check.sh`
+in full. That sixth step grades the **shared working tree**, not this plan's output: `check.sh`'s
+own step 01 is `verify-root-policy.py`, which reads whatever untracked files happen to sit in the
+repo root at that moment. With five lanes committing to one branch, that set is a racing value —
+so step 6 is not a task this plan can finish, and it has never been since the command was written.
+
+**The evidence for that reading, re-measured rather than argued:** step 6 has failed on **four
+different blockers across three dates**, and not one of them was documentation:
+
+| Date | Step-01 blocker then | What it was |
+|---|---|---|
+| 2026-10-02 | `SENTINEL_STASH.txt`, `ser.txt`, `kasir.db`, `kasir.pre-migration.bak` | another lane's scratch |
+| 2026-10-11 | those four **plus 29 more** (`.tmp-*`, `START_TABLET_HMR.bat`, `deploy-website.bat`, two `done-plan-*` docs, an empty `crates/kasirmu-bridge/tests` dir) | still not documentation |
+| 2026-10-14 | 9 findings: `START_TABLET_HMR.bat`, `pr_body.md`, `scratch-playwright.cjs`, `tablet_screen.png`, and **five `*.db`/`*.sqlite` databases** | the tablet-HMR lane's data |
+
+Three of the four this plan named in 2026-10-02 are **deleted now** — `SENTINEL_STASH.txt`,
+`ser.txt` and `kasir.pre-migration.bak` were confirmed disposable and removed (a CDP log, a
+one-off fix-it script, and a SQLite file holding only a `schema_migrations` table). Clearing them
+did not make step 6 pass; it changed which files failed it. **That is the definition of a blocker
+this plan cannot clear: the population regenerates from lanes it does not own.**
+
+| # | Step | Re-run result 2026-10-14 |
+|---|---|---|
+| 1 | `check-dead-refs.py --self-test` | **PASS** |
+| 2 | `check-dead-refs.py` | **PASS** — 0 unresolved |
+| 3 | `check-orphans.py` | **PASS** |
+| 4 | `check-adr-status.py` | **PASS** |
+| 5 | `generate-records-index.mjs --check` | **PASS** |
+| 6 | `scripts/check.sh` | **FAIL at step 01** — 9 root-policy findings, all other lanes' untracked artifacts |
+
+**The one documentation-class finding from §8a is CLOSED, and its owner did it.**
+`todo-restaurant-pos-reliability.md` was then flagged as a stray root file missing from
+`ROOT_FILE_ALLOWLIST`, which `verify-root-policy.py`'s own comment calls a rule
+(*"extend the list in the same commit that adds the file"*). Measured now: the entry **is present**
+in `scripts/verify-root-policy.py` and no documentation file is flagged. Nothing left in step 6's
+failure set is this plan's class.
+
+**What this means for the filename, stated plainly rather than left to a reader's inference:**
+`done-` is earned by an acceptance that ran and passed (AGENTS.md §7.4), and steps 1–5 — the
+steps that grade THIS plan's work — all pass. Step 6 grades the tree, and the tree is shared. The
+honest reading is **five of six earned, the sixth unearnable as written**, which is recorded here
+rather than resolved by quietly narrowing the command and calling it a pass.
 
 **Step 5's figure is the point, not a problem.** This plan's own restructure is what made the
 records index the thing it is; the corpus has since grown from 102 to 122 records (the journal
