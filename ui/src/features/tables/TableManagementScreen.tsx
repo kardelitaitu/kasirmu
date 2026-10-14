@@ -1316,6 +1316,19 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   variant="primary"
                   type="submit"
                   state={tableModalSaving ? 'processing' : 'ready'}
+                  // ⚠️ The name is part of the gate because `handleSaveTableModal` RETURNS
+                  // SILENTLY on a blank one (`:323` — `if (!tableModal || !tableModal.name.trim())
+                  // return;`). Measured 2026-10-14 before this fix: + Add Table opens the modal
+                  // with `name: ''` (`:296-301`), the Save Table button rendered ENABLED, and
+                  // clicking it produced no request, no error and no state change — the operator
+                  // taps Save and the till does nothing without saying why. The same shape as
+                  // `RestaurantMenuEditorScreen`'s item form, found in round 163.
+                  //
+                  // Note the contrast with the token guard twelve lines up (`:318-321`), which
+                  // REPORTS rather than returning silently — consistent with that intent, the
+                  // blank-name path is closed by disabling the control rather than by adding a
+                  // second toast, since the field is empty and the reason is self-evident.
+                  disabled={!tableModal.name.trim()}
                 >
                   <Localized id="tables-save-table"><span>Save Table</span></Localized>
                 </Button>
