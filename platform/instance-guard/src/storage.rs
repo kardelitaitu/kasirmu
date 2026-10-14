@@ -43,6 +43,12 @@ mod imp {
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
 
+    // SAFETY: the declarations below only NAME four Win32 symbols from kernel32; a
+    // declaration has no body and cannot execute, so there is nothing here to be unsound.
+    // The two `unsafe` obligations that DO matter sit at the call site further down (the
+    // null-terminated wide buffer and the four out-pointers), each carrying its own SAFETY
+    // note. `#[link(name = "kernel32")]` is the required MSVC import directive and is
+    // correct on every Windows target this crate builds for.
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetDiskFreeSpaceExW(
