@@ -33,6 +33,20 @@ async function openPayments(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Enable a gateway card so its body mounts.
+ *
+ * Two measured facts, both in the comments of the Midtrans case: `PaymentMethodCard` mounts its
+ * children only while OPEN, and the raw `role=switch` input is styled out of the layout — so the
+ * click has to go through the LABEL (`label[for="rail-toggle-<code>"]`). Rounds 148, 170, 179
+ * and 228 each met the second, which is why it is a helper now.
+ */
+async function enableRailCard(page: Page, code: string): Promise<void> {
+  const toggle = page.locator(`[data-testid="payment-card-toggle-${code}"]`);
+  await expect(toggle, `the ${code} card offers its toggle`).toBeAttached({ timeout: TIMEOUT });
+  await page.locator(`label[for="rail-toggle-${code}"]`).first().click();
+}
+
 /** Read the mock's rail slice and report whether any parameter carries `needle`. */
 async function marketRowsContain(page: Page, needle: string): Promise<boolean> {
   return page.evaluate((n) => {
@@ -52,16 +66,8 @@ async function marketRowsContain(page: Page, needle: string): Promise<boolean> {
 test('a gateway credential never reaches the market rail row', async ({ page }) => {
   await openPayments(page);
 
-  // ⚠️ THE CARD MUST BE ENABLED FIRST. `PaymentMethodCard` mounts its body only when open, and
-  // the midtrans card is closed on a fresh profile — unlike the `card` rail, which passes
-  // `mountBodyWhenCollapsed` (`:1222`). Measured 2026-10-14: the fields resolve to nothing until
-  // the toggle is switched on, which is also the state an operator must reach to configure a
-  // gateway at all.
-  const enable = page.locator('[data-testid="payment-card-toggle-midtrans"]');
-  await expect(enable, 'the Midtrans card offers its toggle').toBeAttached({ timeout: TIMEOUT });
-  // Through the LABEL — the raw `role=switch` input is styled out of the layout, the same
-  // pattern rounds 148, 170 and 179 each hit. Its `id` is `rail-toggle-midtrans`.
-  await page.locator('label[for="rail-toggle-midtrans"]').first().click();
+  // The card must be ENABLED first — see `enableRailCard` for both measured reasons.
+  await enableRailCard(page, 'midtrans');
 
   // Type into the SERVER KEY — the most sensitive of the three. A distinctive value so the
   // assertion cannot pass on an incidental match.
@@ -88,4 +94,56 @@ test('a gateway credential never reaches the market rail row', async ({ page }) 
     await marketRowsContain(page, SENTINEL),
     'a provider key must never appear in a market rail row — that table is unencrypted and synced',
   ).toBe(false);
+});
+
+test('a Stripe secret never reaches the market rail row either', async ({ page }) => {
+  await openPayments(page);
+  await enableRailCard(page, 'stripe');
+
+  // The same boundary as the Midtrans case, on the other gateway. Asserted rather than assumed
+  // because the allow-list is per-rail-code (`paymentRailsLogic.ts`): `stripe: ['reader',
+  // 'currency']`, and a code that is NOT listed passes its parameters through UNCHANGED. So the
+  // Stripe entry existing is what protects this rail, and a typo in the key name would be silent.
+  const secret = page.locator('[data-testid="stripe-sec-key-input"]');
+  await expect(secret, 'the Stripe card offers its keys').toBeVisible({ timeout: TIMEOUT });
+  await secret.fill(SENTINEL);
+
+  const save = page.locator('[data-testid="restaurant-payments-save-btn"]');
+  await expect(save, 'typing a key must arm Save').toBeEnabled({ timeout: 8_000 });
+  await save.click();
+  await expect(save).toBeDisabled({ timeout: TIMEOUT });
+
+  await page.waitForTimeout(500);
+  expect(
+    await marketRowsContain(page, SENTINEL),
+    'a Stripe secret must never appear in a market rail row',
+  ).toBe(false);
+});
+
+test('Verify Keys reports which half of the configuration is missing', async ({ page }) => {
+  await openPayments(page);
+  await enableRailCard(page, 'stripe');
+
+  const verify = page.locator('[data-testid="stripe-verify-keys-btn"]');
+  await expect(verify, 'the card offers a key check').toBeVisible({ timeout: TIMEOUT });
+
+  // WITH NEITHER KEY: the check must say so. A button that reports success on an empty form is
+  // worse than none — the operator would believe a gateway is configured when it is not.
+  await verify.click();
+  await expect(
+    // The exact FTL string (`products.ftl`): 'Please enter Publishable Key and Secret Key'.
+    page.getByText(/Please enter Publishable Key and Secret Key/i).first(),
+    'an unconfigured gateway must be reported as missing, not as valid',
+  ).toBeVisible({ timeout: 8_000 });
+
+  // WITH BOTH KEYS: the other arm. Filling them and re-checking is what makes the first
+  // assertion a CHECK rather than a constant.
+  await page.locator('[data-testid="stripe-pub-key-input"]').fill('pk_test_abc');
+  await page.locator('[data-testid="stripe-sec-key-input"]').fill('sk_test_abc');
+  await verify.click();
+  await expect(
+    // The exact FTL string: 'Stripe keys format valid ({mode})'.
+    page.getByText(/Stripe keys format valid/i).first(),
+    'a fully configured gateway must be reported as valid',
+  ).toBeVisible({ timeout: 8_000 });
 });
