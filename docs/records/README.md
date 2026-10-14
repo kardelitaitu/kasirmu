@@ -147,6 +147,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
+| general | [Round 152's deleted guard comes back — the SCOPE was the error, not the idea (round 153)](audits/feature-comment-path-guard.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
