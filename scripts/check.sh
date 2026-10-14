@@ -162,6 +162,20 @@ step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" pyth
 # reviewer's-eye exercise. Gate: scripts/gates.json -> "unsafe-safety".
 step "unsafe safety comments" "python3 scripts/verify-unsafe-safety.py --self-test" python3 scripts/verify-unsafe-safety.py --self-test
 step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" python3 scripts/verify-unsafe-safety.py
+# Round 201 of the restaurant-POS work found `setLines(updatedLines)` replacing state from a
+# pre-await render closure, so a line added mid-send was dropped with no message. The checker
+# was written for it and then never wired to ANY runner -- no check.sh step, no gates.json
+# entry, no CI step -- until 2026-10-14, when `verify-selftests-wired` flagged it as
+# "--self-test but no runner passes the flag". A guard nothing runs is not a guard.
+#
+# REPORT MODE ON PURPOSE: the script exits 0 on candidates, and that is its author's stated
+# design, not an oversight -- "a candidate is not a defect ... the point is a short list a
+# human reads, not a gate that blocks a lane on a heuristic". Its matcher cannot see where a
+# variable came from, so --strict here would fail good code. What this step buys is that the
+# list is PRINTED on every full-matrix run, and the count is visible where nobody was looking
+# before. Pair it with `--self-test` so a broken matcher cannot report a clean zero.
+step "state closure after await (self-test)" "python3 scripts/check-state-closure-after-await.py --self-test" python3 scripts/check-state-closure-after-await.py --self-test
+step "state closure after await (report)" "python3 scripts/check-state-closure-after-await.py" python3 scripts/check-state-closure-after-await.py
 # Ratchet on react-hooks/exhaustive-deps. `npm run lint` is `eslint .` with no --max-warnings 0, so
 # it exits 0 while reporting 58 warnings -- and that rule is the ONLY automated check for a stale
 # closure. Item 69 found five callbacks listing `userId`, which no component body ever read, while
