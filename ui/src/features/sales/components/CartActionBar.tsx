@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
@@ -43,6 +44,11 @@ export interface CartActionBarProps {
   activeOpenBillId?: string | null | undefined;
   handleOpenBill?: (() => Promise<void>) | undefined;
   /**
+   * Save Tab's precondition chain, extracted so the button and the keyboard shortcut run
+   * the SAME code. `handleSaveTabShortcut()` below is what a Shift+T binds to, and both
+   * paths go through this one function — that is the point, since the chain has a shift
+   * guard whose toast and a resolution branch that opens the open-bill input, and a
+   * shortcut that skipped either would fire a save with no table recorded.
    * Whether the Save Tab / Open Bill action is offered. `restaurant.save_tab`,
    * owned by RestaurantSettingsScreen. Absent = show, so retail and every test
    * render are unaffected; only an explicit `false` hides it. The same `!== false`
@@ -92,6 +98,33 @@ export function CartActionBar({
   // answered; see the prop doc above.
   const payBlocked = !activeShift && !shiftUnavailable;
 
+  // ── Save Tab: the precondition chain, shared with the keyboard shortcut ─────
+  //
+  // Extracted from this button's onClick (round 159) so `Shift+T` runs the SAME
+  // code. The chain is not decoration:
+  //
+  //   * the shift guard's toast tells the waiter WHY nothing happened, and a
+  //     shortcut that skipped it would appear to fail silently;
+  //   * the resolution branch decides between opening the open-bill INPUT (no
+  //     table or name recorded yet) and calling `handleOpenBill` directly. A
+  //     shortcut that called `handleOpenBill?.()` unconditionally would save a
+  //     tab with no table, which is exactly the contradiction
+  //     `RestaurantPaymentsScreen`'s dine-in rules exist to prevent.
+  const handleSaveTabClick = useCallback(() => {
+    if (!activeShift) {
+      addToast({
+        message: requiredLocalized(l10n, 'retail-toast-open-shift-first'),
+        type: 'warning',
+      });
+      return;
+    }
+    if (tableNumber?.trim() || customerName?.trim() || activeOpenBillId) {
+      void handleOpenBill?.();
+    } else {
+      setShowOpenBillInput(true);
+    }
+  }, [activeShift, addToast, l10n, tableNumber, customerName, activeOpenBillId, handleOpenBill, setShowOpenBillInput]);
+
   return (
     <div className="pos-cart-actions-row">
       {/* Clear cart button */}
@@ -137,20 +170,7 @@ export function CartActionBar({
       <button
         type="button"
         className="pos-cart-open-bill-btn"
-        onClick={() => {
-          if (!activeShift) {
-            addToast({
-              message: requiredLocalized(l10n, 'retail-toast-open-shift-first'),
-              type: 'warning',
-            });
-            return;
-          }
-          if (tableNumber?.trim() || customerName?.trim() || activeOpenBillId) {
-            void handleOpenBill?.();
-          } else {
-            setShowOpenBillInput(true);
-          }
-        }}
+        onClick={handleSaveTabClick}
         aria-label={activeOpenBillId ? (l10n.getString('pos-cart-update-tab-aria') || 'Update Tab') : l10n.getString('pos-cart-open-bill-aria')}
         data-testid="pos-cart-save-tab-btn"
       >

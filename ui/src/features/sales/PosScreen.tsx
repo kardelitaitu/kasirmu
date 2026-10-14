@@ -58,6 +58,7 @@ import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
+import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
 import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
 import PaymentModal from './PaymentModal';
@@ -1499,6 +1500,43 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // addToast and l10n are read by the reservation warning toast above.
     [openBills, handleResumeOpenBill, sessionToken, addToast, l10n],
   );
+
+  // ── Restaurant keyboard shortcuts (round 159) ───────────────────────────
+  //
+  // Restaurant-ONLY, gated on `activeWorkspace` like every other restaurant branch here
+  // (`:395`, `:586`, `:1811`). The retail till shares this component, so its handler
+  // object is empty and none of these keys exist there.
+  //
+  // Each action routes through an EXISTING self-guarding handler:
+  //   * `handlePrintBill` returns early on no lines/total/session (`:845-850`);
+  //   * `handleSendToKitchen` returns early on no session/lines/undelivered delta
+  //     (`:1042-1052`);
+  //   * `setShowSplitBillModal(true)` opens the split MODAL, not its confirm, so the
+  //     dine-in-only rule in `handleConfirmSplitBill` (`:884`) still applies;
+  //   * `setShowTables(true)` is the sidebar row's own action, already feature-gated.
+  //
+  // Save Tab is the one exception and it is deliberate. Its precondition chain (shift
+  // guard + the open-bill-input branch) is INLINE component logic in CartActionBar, so
+  // the shortcut CLAIMS the button through its testid and clicks it. That runs the same
+  // code the button runs — including the guard that stops a tab being saved with no
+  // table — rather than a copy that would drift from it.
+  const restaurantShortcutHandlers = useMemo<RestaurantShortcutHandlers>(() => {
+    if (activeWorkspace !== 'restaurant-pos') return {};
+    return {
+      'send-kitchen': () => { void handleSendToKitchen(); },
+      'print-bill': () => { void handlePrintBill(); },
+      'split-bill': () => { setShowSplitBillModal(true); },
+      'save-tab': () => {
+        const btn = document.querySelector<HTMLButtonElement>(
+          '[data-testid="pos-cart-save-tab-btn"]',
+        );
+        if (btn && !btn.disabled) btn.click();
+      },
+      'open-tables': () => { setShowTables(true); },
+    };
+  }, [activeWorkspace, handleSendToKitchen, handlePrintBill]);
+
+  useRestaurantShortcuts(restaurantShortcutHandlers);
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
