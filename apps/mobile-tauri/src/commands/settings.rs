@@ -118,7 +118,7 @@ fn run_set_receipt_settings(
 
 // ── Store info DTO ────────────────────────────────────────────
 //
-// `StoreSettingsDto` comes from `kasirmu_bridge::settings`; its six camelCase keys
+// `StoreSettingsDto` comes from `kasirmu_bridge::settings`; its seven camelCase keys
 // are pinned by `wire_pin_store_settings_carries_every_key_the_renderer_declares`.
 
 // ── Get store settings: the unscoped door is RETIRED (C17) ───────

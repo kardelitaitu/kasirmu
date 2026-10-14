@@ -1666,19 +1666,29 @@ fn wire_pin_receipt_settings_carries_every_key_the_renderer_declares() {
 #[test]
 fn wire_pin_store_settings_carries_every_key_the_renderer_declares() {
     // ui/src/api/settings.ts:35 — StoreSettingsDto (logo optional on the TS side,
-    // required here, which is why the pin sends it).
+    // required here, which is why the pin sends it; thousandsSeparator added 2026-10-13).
     const PAYLOAD: &str = r#"{
         "name": "Kopi Kita", "address": "Jl. Melati 12", "taxId": "NP-0001",
-        "currency": "IDR", "branch": "Bandung", "logo": "abc123"
+        "currency": "IDR", "branch": "Bandung", "logo": "abc123",
+        "thousandsSeparator": "comma"
     }"#;
     assert_wire_matches::<StoreSettingsDto>(
         PAYLOAD,
-        &["name", "address", "taxId", "currency", "branch", "logo"],
+        &[
+            "name",
+            "address",
+            "taxId",
+            "currency",
+            "branch",
+            "logo",
+            "thousandsSeparator",
+        ],
         "StoreSettingsDto",
     );
     let parsed: StoreSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(parsed.tax_id, "NP-0001");
     assert_eq!(parsed.branch, "Bandung");
+    assert_eq!(parsed.thousands_separator.as_deref(), Some("comma"));
 }
 
 #[test]
