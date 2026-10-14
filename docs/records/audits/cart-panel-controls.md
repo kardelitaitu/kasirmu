@@ -40,6 +40,11 @@ feature set — a shared fixture every feature-gated surface reads. Round 193 es
 the tables screens are reachable through the restaurant sidebar (`restaurant-sidebar-tables`) in
 the specs that cover them, so nothing is lost by leaving this one out.
 
+> **Denominator note, 2026-10-14 (docs-auditor).** The `of 10` above is a **literal-grep count**
+> and cannot see a dynamically built testid: `CartPanel.tsx:843` is
+> `data-testid={`pos-order-type-${opt.id}`}`, so the component's true surface is **11**, not 10.
+> The substance (CartPanel is the outlier) holds either way; the denominator undercounts by one.
+
 ## Verified
 
 | Item | Result |
@@ -59,9 +64,20 @@ the specs that cover them, so nothing is lost by leaving this one out.
 | `pos-active-tab-banner`, `pos-cart-new-tab-btn`, `.pos-cart-held-badge` | round 215 |
 | `pos-cart-conflict-alert`, `-takeover-btn` | **not reachable** — recorded |
 | `deduction-location-badge`, `-override-indicator` | need a configured deduction source |
-| `pos-cart-kds-btn` | reachable; not covered yet |
+| `pos-cart-kds-btn` | **not reachable** — corrected 2026-10-14 by docs-auditor; see below |
 
-That last one is the honest gap: it is a one-line navigation button and it is reachable, so it is
+> **CORRECTED 2026-10-14 (round 217, docs-auditor).** The `reachable` verdict on
+> `pos-cart-kds-btn` is false. The button sits at `CartPanel.tsx:691` inside the cluster gated by
+> `{!sidebarOwnsTerminalActions && (` at `:649`, and `sidebarOwnsTerminalActions` is
+> `activeWorkspace === 'restaurant-pos'` (`:445`) — so in this workspace the cluster does not render
+> at all, because `PosScreen` hands those controls to the sidebar popover. It is NOT the honest gap
+> this record called it: the KDS route is covered through `restaurant-sidebar-kds`. The correction
+> was already written into `ui/e2e/restaurant-tab-resume.spec.ts:7-16` by round 217, which noted
+> that round 216 "read the second one as a feature gate (true, but not the whole story) and the
+> first as reachable (false)".
+>
+> The record's earlier line, kept for its reasoning: that last one is the honest gap it is not — it
+> is a one-line navigation button and it is reachable, so it is
 a candidate for a round that wants a small win rather than another investigation.
 
 > last audited 14-10-26 by docs-auditor

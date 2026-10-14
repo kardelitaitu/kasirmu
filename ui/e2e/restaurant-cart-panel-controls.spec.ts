@@ -4,8 +4,10 @@ import { dismissRestaurantCartSheet, openRestaurantPosWithItem } from './helpers
 // WHY THIS FILE EXISTS
 //
 // `CartPanel` is the coverage outlier — 2 of 10 through rounds 204-215, which concentrated
-// on `CartLineItem`. This covers the panel's own REACHABLE controls: the customer field,
-// the floor-plan button and the KDS launcher.
+// on `CartLineItem`. This covers the panel's own REACHABLE controls: the customer field and
+// the floor-plan button. (The header said "and the KDS launcher" until 2026-10-14; there is no
+// KDS case here, and `pos-cart-kds-btn` is not reachable in this workspace at all -- see the
+// `sidebarOwnsTerminalActions` note below, which round 217 added.)
 //
 // ⚠️ THE TWO IT DOES NOT COVER, and why (measured 2026-10-14, round 216):
 //

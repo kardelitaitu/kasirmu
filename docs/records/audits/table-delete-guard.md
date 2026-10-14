@@ -6,7 +6,9 @@ Round 193 made the release confirmation reachable by seeding a bill from the spe
 fixture answers a second question the same detail panel raises, which nothing had asked: **what
 happens when an operator presses Delete on a table that is in use?**
 
-The answer is at `TableManagementScreen.tsx:1194`:
+The answer is at `TableManagementScreen.tsx:1193-1195` (corrected 2026-10-14 by
+docs-auditor: the block starts at `:1193` with the `data-testid`; the `disabled` line the claim
+is about is `:1194`, and `:1195` is the `onClick`):
 
 ```tsx
 <Button

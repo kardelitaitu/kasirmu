@@ -62,3 +62,5 @@ A cheap hedge for the next sweep of this kind: **the shape is `position: absolut
 inset**, and the tell for a hit area rather than a decoration is that the pseudo-element has no
 `background` of its own and no size worth seeing. Both 217's `::before` and this round's tail
 match the first half; only 217's matched the second.
+
+> last audited 14-10-26 by docs-auditor

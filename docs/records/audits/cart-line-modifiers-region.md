@@ -55,7 +55,15 @@ Restored byte-identical.
 
 ## CartLineItem, closed
 
-**Coverage moved 2 -> 14 of 17** across rounds 204, 205, 208 and 209. The three that remain are
+**Coverage moved 2 -> 14 of 17** across rounds 204, 205, 208 and 209.
+
+> **Denominator corrected 2026-10-14 (docs-auditor).** The numerator (14) is self-consistent,
+> but the 17 cannot see every testid in the component: `CartLineItem.tsx:301` builds one
+> dynamically as `data-testid={`cart-line-course-option-${c.id}`}`, invisible to a literal
+> `data-testid="..."` grep. Re-derived: **17 literal + 1 generated family**, so the honest
+> denominator is 18 — or 17 only if the option family is deliberately counted as one slot, which
+> the record does not say. Stated here rather than silently renumbered, because the figure is
+> right either way and the ambiguity is the defect. The three that remain are
 all *conditional render* paths with no seeded trigger — `edit-modifiers-btn` (needs a line that
 HAS modifiers), `cart-line-modifiers` showing CHIPS rather than the region, and
 `cart-line-draft-badge`'s counterpart states. Reaching them needs a seeded menu item WITH

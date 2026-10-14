@@ -42,7 +42,11 @@ The dev-mock is **untouched** — `git status` after the revert shows nothing in
 
 | release completes | confirming frees the table to available |
 
-**Kill-tested**: disabling the `activeBill` half of the guard (`:1129`) fails both cases. Restored,
+**Kill-tested**: disabling the `activeBill` half of the guard fails both cases — the guard itself
+opens at `:1048` (`{showReleaseConfirm && activeBill && (`); `:1129` is the `onClick` branch whose
+`if (selected.status === 'occupied' && activeBill)` OPENS the confirmation, which is what
+`activeBill` gates there (corrected 2026-10-14 by docs-auditor; the record cited `:1129` for
+the guard, and it is the branch). Restored,
 byte-identical to HEAD.
 
 ## Verified

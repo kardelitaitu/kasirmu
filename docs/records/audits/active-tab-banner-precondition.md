@@ -3,6 +3,13 @@
 ## What was attempted
 
 A coverage re-derivation put `CartPanel` at **1 of 10** — the outlier after rounds 204-212 worked
+
+> **Denominator note, 2026-10-14 (docs-auditor).** The `of 10` is a **literal-grep count** and
+> cannot see a dynamically built testid. `CartPanel.tsx:843` is
+> `data-testid={`pos-order-type-${opt.id}`}`, so the component's true surface is **11**:
+> `grep -oE 'data-testid="[a-z0-9-]*"' ui/src/features/sales/components/CartPanel.tsx | sort -u | wc -l`
+> returns 10, and `grep -n 'data-testid={'` finds the generated one. The conclusion (CartPanel is
+> the outlier) is unaffected; the denominator undercounts by one.
 through `CartLineItem`. The two most valuable were its SAFETY surfaces:
 
 | Testid | What it is |
@@ -44,7 +51,8 @@ failing silently); it just means the probe has to know the precondition.
 ## Where the shift control lives
 
 Not in the cart. `restaurantCartActions` (`PosScreen.tsx:1805-1808`) passes `onOpenShift` into
-the **restaurant sidebar POPOVER**, per the comment at `:1766-1771`: the cart header's buttons
+the **restaurant sidebar POPOVER**, per the comment at `:1799-1804` (was `:1766-1771` when
+written; corrected 2026-10-14 by docs-auditor): the cart header's buttons
 were moved there so the workspace renders one action cluster rather than two.
 
 So opening a shift in the restaurant shell needs the popover opened first — a step none of the

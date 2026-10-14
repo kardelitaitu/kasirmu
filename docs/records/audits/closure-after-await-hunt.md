@@ -16,7 +16,7 @@ by `setX(<lowercaseVar>.map|filter|concat(`).
 | Scope | Candidates |
 |---|---|
 | `features/sales` + `features/restaurant` | **3**, of which 2 were round 201's own comment |
-| all of `ui/src` (741 production files) | **10** |
+| all of `ui/src` (741 production files at the time; **723** today) | **10** |
 
 Every one was checked. **None has the defect**, and the reason is uniform: the variable is the
 **awaited result**, not a closure:
@@ -48,7 +48,22 @@ That is why the round-201 defect survived: it reads as the correct pattern.
 
 | Item | Result |
 |---|---|
-| Files scanned | 741 production files under `ui/src` |
+| Files scanned | 741 production files under `ui/src` (re-derived 2026-10-14: **723** — the tree has fewer non-test `.ts`/`.tsx` files than it did, so the figure moved down; `git ls-files ui/src | grep -E '\.(ts|tsx)
+| Candidates | 10, all inspected |
+| Defects found | 0 |
+| Source changed | none |
+
+## What would be needed to find more
+
+A grep cannot do it, for the reason above. The mechanical version is a lint rule — flag
+`setX(v.map|filter(` where `v` is bound to `useState` in the same component and an `await` appears
+between — which is a real candidate for a future round rather than another sweep.
+
+Recorded rather than left implicit: **the shape is not widespread, and the search that would find
+it is not a text search.**
+
+> last audited 14-10-26 by docs-auditor
+ | grep -v __tests__ | grep -v '\.test\.' | grep -v '\.spec\.' | wc -l`) |
 | Candidates | 10, all inspected |
 | Defects found | 0 |
 | Source changed | none |

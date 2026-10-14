@@ -47,7 +47,9 @@ not** — the second time this session a tracker caught real drift (round 169's 
 | Kill-test (allow-list disabled) | **4 of 5 failed** |
 | Payments + rails suites | **53 passed** |
 | Payments E2E (3 specs) | **6 passed** |
-| `railParamReaders` | 9 passed after the stale entry was removed |
+| `railParamReaders` | **4** passed — corrected 2026-10-14 by docs-auditor: the file has
+  4 `it()` blocks, and vitest reports `railParamReaders.test.ts (4 tests)`. The "9" was the
+  suite total at an earlier point, not this file's |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,703 passed |
 

@@ -16,7 +16,8 @@ setting switches on. The chip opens a listbox (`cart-line-course-dropdown`) whos
 
 ## The error, and it was a good one
 
-The first version of the spec did NOT enable course firing, and **all six cases failed against an
+The first version of the spec did NOT enable course firing, and **every case in that draft failed
+against an
 empty subtree**:
 
 ```
@@ -29,7 +30,9 @@ the chip and the firing bar are gated on `courseFiringEnabled !== false` (`CartP
 
 Before concluding that, the wiring was traced end to end because a `CHIPS=0` can also mean dead
 UI: `assignCourse` flows from `usePosState.ts:198` through `PosScreen` (`:137`, `:1757`) into
-`CartPanel` (`:1004`), and `CartPanel.test.tsx:337-367` already pins both gates. The code is
+`CartPanel` (`:1003` — corrected 2026-10-14 by docs-auditor; `:1004` is the `line` prop of the
+map body, and `grep -n 'courseFiringEnabled' ui/src/features/sales/components/CartPanel.tsx`
+returns `:961` and `:1003`), and `CartPanel.test.tsx:337-367` already pins both gates. The code is
 correct; the spec's premise was wrong.
 
 ## What the spec does now
@@ -38,7 +41,10 @@ It seeds `restaurant.course_firing` through the dev-mock's settings slice with `
 which also exercises the link an operator actually uses: the Settings screen's Course Firing
 toggle (rounds 105, 189) is what puts the chip on the till.
 
-**3 passed** on desktop:
+**4 passed** on desktop (corrected 2026-10-14 by docs-auditor: the fourth case —
+'hold, then fired, as the course moves' — was added by `5b892827b` after this record's snapshot,
+so the file now runs 4 cases; `grep -cE '^\s*test\(' ui/e2e/restaurant-cart-line-course.spec.ts`
+→ 4):
 
 | Case | Asserts |
 |---|---|
@@ -61,8 +67,8 @@ in four specs; it is a property of the layout rather than a limitation of any on
 
 | Item | Result |
 |---|---|
-| New spec | 3 passed, 3 skipped (portrait) |
-| Kill-test | 2 of 3 fail |
+| New spec | 4 passed, 4 skipped (portrait) — was 3 and 3 when written |
+| Kill-test | 2 of 3 fail (the denominator was right for the 3-case file; the file is now 4) |
 | `usePosState.ts` | unchanged, byte-identical to HEAD |
 | eslint | 0 |
 | Full UI suite | 12,707 passed |

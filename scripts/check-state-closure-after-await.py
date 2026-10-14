@@ -13,7 +13,8 @@ the send is in flight, so a line added during it was absent from the replacement
 `setLines` DROPPED it. Measured live: two lines, Send, add a third -- the cart came back with
 two. The operator's item vanished with no message.
 
-Round 202 hunted the same shape across all 741 production files and found no second
+Round 202 hunted the same shape across all 741 production files (723 today -- the count moves
+with the tree, so re-derive it rather than quoting this) and found no second
 instance -- but the hunt also established WHY a grep cannot be the guard:
 
     const rows = await getLocalPaymentMethodsScoped(...);   // fresh value

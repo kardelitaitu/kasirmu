@@ -73,3 +73,5 @@ holding another table's order.
 click rather than dispatching anyway, which is why a real user's tap on Resume did nothing and no
 test noticed — the control had never been driven. The tell is the message naming an element the
 spec never asked for, and it is worth reading literally rather than reaching for `force: true`.
+
+> last audited 14-10-26 by docs-auditor

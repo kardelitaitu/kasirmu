@@ -9,7 +9,7 @@ A scan showed **five** specs carrying local copies, so the condition was already
 | Helper | Specs that carried it |
 |---|---|
 | cart-sheet dismissal | `restaurant-kitchen-dispatch-race`, `restaurant-cart-line-badges`, `restaurant-cart-line-course`, `restaurant-course-firing` |
-| course-firing seed | `restaurant-cart-line-course`, `restaurant-course-firing`, `restaurant-settings-cards` |
+| course-firing seed | `restaurant-cart-line-course`, `restaurant-course-firing` (2 — corrected 2026-10-14; `restaurant-settings-cards` never imported `seedCourseFiring`) |
 
 ## What landed
 
@@ -28,7 +28,12 @@ must be an init script because the dev-mock reads the slice once at module init.
 
 ## The migration
 
-Four specs lost their local copies; `restaurant-settings-cards` already used only the seed and
+Four specs lost their local copies. **Corrected 2026-10-14 (docs-auditor):** the claim that
+`restaurant-settings-cards` "already used only the seed and" was the control is false — it never
+imported `seedCourseFiring` at all; its only helpers import is `openRestaurantSidebarRow`
+(`grep -n "from './helpers'" ui/e2e/restaurant-settings-cards.spec.ts` → `:2`), and it drives the
+setting through a `data-testid` toggle instead. So `seedCourseFiring` has exactly two consumers.
+What was true: four specs lost their local copies, and
 was left as the control. Net **+17 lines** — 49 of documented helper against 40 of scattered
 copy.
 
@@ -36,6 +41,12 @@ copy.
 |---|---|
 | `helpers.ts` | +49 |
 | the four specs | −40 |
+
+> **Consumer counts re-derived 2026-10-14 (docs-auditor).** `dismissRestaurantCartSheet` now has
+> **seven** spec consumers, not the four named here — `restaurant-cart-panel-controls`,
+> `restaurant-open-bills-cycle` and `restaurant-tab-resume` were added after this record. The
+> consolidation did its job (the helper is the shared seam); the count simply grew, which is the
+> outcome the record argued for. `git grep -l 'dismissRestaurantCartSheet' -- ui/e2e`.
 
 ## Verified
 

@@ -51,8 +51,17 @@ two specs** — this one plus both firing cases in `restaurant-course-firing`. R
 | the chip's hold / fired badges | 208 |
 | shared setup helpers | 207 |
 
-**`CartLineItem` coverage moved 2 -> 12 of 17** across rounds 204, 205 and 208. What remains is
-the modifier pair (`add-modifier-btn`, `edit-modifiers-btn`, `modifiers`) and the price-override
-button — a coherent next slice rather than a scattering.
+**`CartLineItem` coverage moved 2 -> 12 of 17** across rounds 204, 205 and 208. What remained at
+that point was the modifier pair (`add-modifier-btn`, `edit-modifiers-btn`, `modifiers`) and the
+override button — a coherent next slice rather than a scattering.
+
+> **Superseded 2026-10-14 (docs-auditor).** Round 209 (`44d6ea2d4`) covered that slice, so the
+> modifier pair and the override are no longer outstanding and the figure is **14 of 17**, not 12:
+> `grep -l 'cart-line-override-btn' ui/e2e/*.spec.ts` → `restaurant-cart-line-modifiers.spec.ts`.
+> The real testid is `cart-line-override-btn`, not a `cart-line-price-override` (no such testid
+> exists). Also note the denominator: **17 is a literal-`data-testid` count**, and this component
+> builds one dynamically — `data-testid={`cart-line-course-option-${c.id}`}` at
+> `CartLineItem.tsx:301` — so a literal-only grep cannot see that family and the true surface is
+> 17 literal + 1 generated.
 
 > last audited 14-10-26 by docs-auditor

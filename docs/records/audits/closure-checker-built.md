@@ -2,7 +2,8 @@
 
 ## Why
 
-Round 202 hunted round 201's closure-after-await shape across 741 files and concluded:
+Round 202 hunted round 201's closure-after-await shape across 741 files (723 today — the count
+moved down with the tree; corrected 2026-10-14) and concluded:
 
 > the shape is not widespread, and the search that would find it is not a text search.
 
@@ -59,6 +60,10 @@ And with round 201's defect temporarily restored:
 ```
 state-closure-after-await: 1 candidate(s)
   ui/src/features/sales/PosScreen.tsx:1092  setLines(lines.map(
+  // ^ a TRANSCRIPT of the round-201 defect while it was temporarily restored. `:1092` no longer
+  // holds it -- the fix now sits at `:1093` (`const updatedLines = lines.map(...)`) and
+  // `:1098` (`setLines(updatedLines)`). Noted so the next reader does not go looking for a
+  // defect that was deliberately removed.
       const updatedLines = lines.map((l) => ({ ...l, dispatchedQty: l.qty }));
 ```
 
