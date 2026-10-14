@@ -163,6 +163,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
+| inventory | [The menu tile's out-of-stock state is unreachable in the dev mock (round 150)](audits/menu-tile-out-of-stock-unreachable.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
