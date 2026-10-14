@@ -53,7 +53,10 @@ const ALLOWED_UNWIRED: Record<string, string> = {
   publishableKey: 'duplicate of the encrypted gateway config (screen :751)',
   secretKey: 'duplicate of the encrypted gateway config (screen :752)',
   nmid: 'duplicate of the encrypted gateway config (screen :1135 region)',
-  channels: 'duplicate of the encrypted gateway config (:701 save)',
+
+  // `channels` was removed here in round 183: `sanitizeRailParams`
+  // (paymentRailsLogic.ts) READS it to decide what survives into the rail row, so
+  // the "written and never read" debt this entry recorded no longer applies.
 
 };
 

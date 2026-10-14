@@ -120,3 +120,48 @@ export const computeRailsDirty = (
   }
   return false;
 };
+
+/**
+ * Parameters a market rail may carry, per rail code.
+ *
+ * `RestaurantPaymentsScreen.handleSave` used to filter these inline, which meant the rule
+ * that keeps provider credentials OUT of `local_payment_methods` lived in a component body and
+ * nothing tested it. Extracted here 2026-10-14 (round 183) so the sanitisation the whole
+ * payments surface depends on is pinned like the rest of the rails logic.
+ *
+ * WHY IT MATTERS: `setLocalPaymentMethodsScoped` writes the MARKET surface — which rails exist,
+ * what they are called, whether the site offers them. `setPaymentGatewayConfigScoped` writes
+ * CREDENTIALS, encrypted at rest. A provider key that lands in the rail list is a credential in
+ * a table that is read by every terminal and synced, with none of the encryption and the
+ * per-tenant scoping `payment_gateways` gets. Isolation is the whole point of two writes.
+ */
+const RAIL_PARAM_ALLOWLIST: Record<string, string[]> = {
+  midtrans: ['channels'],
+  stripe: ['reader', 'currency'],
+};
+
+/**
+ * Strip a rail's parameters down to the allow-listed keys for its code.
+ *
+ * Unknown rails pass their parameters through unchanged — they are site additions with no
+ * credential surface, and dropping their params would lose configuration the operator set.
+ * A rail that is NOT in the allow-list therefore keeps everything, by design.
+ */
+export function sanitizeRailParams(
+  railCode: string,
+  parameters: string,
+): string {
+  const allowed = RAIL_PARAM_ALLOWLIST[railCode.toLowerCase()];
+  if (!allowed) return parameters;
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(parameters) as Record<string, unknown>;
+  } catch {
+    return '{}';
+  }
+  const clean: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (parsed[key] !== undefined) clean[key] = parsed[key];
+  }
+  return JSON.stringify(clean);
+}
