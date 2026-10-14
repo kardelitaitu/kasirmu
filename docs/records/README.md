@@ -152,6 +152,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
 | general | [F40's device-blocked verification is half closeable in the browser (round 155)](audits/f40-browser-half.md) | — |
 | general | [Round 152's deleted guard comes back — the SCOPE was the error, not the idea (round 153)](audits/feature-comment-path-guard.md) | — |
+| general | [The two follow-up guards from round 171, kill-tested and sound (round 172)](audits/followup-guards-kill-tested.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
