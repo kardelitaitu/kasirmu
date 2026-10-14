@@ -176,36 +176,64 @@ describe('every dirty-tracking baseline consumes a load-failure signal (F4)', ()
   // An entry MUST name a concrete reason and a next step. Like EXEMPT above, this list is
   // designed to fail when it goes STALE: an entry whose site no longer matches is reported,
   // so a fixed file cannot stay listed and a listed file cannot be forgotten.
+  //
+  // SETTLED 2026-10-14 (round 239): `RestaurantMenu.tsx:391` was listed here as un-audited. It is
+  // NOT a defect and no longer an entry, because the F4 premise does not apply to that file — it
+  // has no `originalsRef.current =`, no `loadFailed` and no Save gated on a load. The site syncs
+  // `menuStateUserIdRef` on a user switch with nothing async after it, and its actual async read
+  // (`:460`, `getUserPreferencesScoped`) has a correct `cancelled` + cleanup guard and no latch.
+  // The precondition added to the case below is what makes that distinction mechanical.
   const LATCH_ALLOW: Array<{ site: string; reason: string }> = [
-    {
-      site: 'features/locations/nodeTopologyEditorRestoreState.ts:23',
-      reason:
-        'outside the restaurant-POS surface; the restore seed is synchronous state, not an ' +
-        'async read, so no StrictMode cleanup can discard it. Needs a separate audit.',
-    },
-    {
-      site: 'features/locations/NodeTopologyEditor.tsx:1608',
-      reason:
-        'outside the restaurant-POS surface. `autoFitKeyRef` latches a synchronous key, same ' +
-        'qualification as above.',
-    },
-    {
-      site: 'features/restaurant/RestaurantMenu.tsx:391',
-      reason:
-        'IN the restaurant surface and NOT yet audited. `menuStateUserIdRef` latches a userId ' +
-        'rather than a sessionToken; whether an async read follows before the outcome lands is ' +
-        'unestablished. The next round should settle it the way rounds 234-238 settled the ' +
-        'workspace cards: measure, then fix or exempt with evidence.',
-    },
+    // EMPTY, and that is the finding: all three sites this list was built for are excluded by
+    // the PREMISE CHECK instead, because none of them has the F4 dirty-tracking shape
+    // (`originalsRef.current =` plus a load-failure flag). See the note above the array.
   ];
 
   it('a once-per-session latch is not set before its own read', () => {
+    // SELF-CHECK, before anything else: the detector must still FIND the sites this list knowns
+    // about. Without this the case passes trivially if the regex rots — and a mutation that
+    // disables the premise check would then survive, which is how this was caught (round 239).
+    const detectionCount = (() => {
+      let n = 0;
+      for (const file of collectFiles()) {
+        const srcLines = fs.readFileSync(file, 'utf-8').split('\n');
+        for (let i = 0; i < srcLines.length - 1; i++) {
+          const guard =
+            /if\s*\([^)]*?([A-Za-z_$][\w$]*)\.current\s*===\s*[A-Za-z_$][\w$]*[^)]*\)\s*return/.exec(
+              srcLines[i]!,
+            );
+          if (!guard) continue;
+          if (new RegExp(guard[1]! + '\\.current\\s*=\\s*').test(srcLines[i + 1] ?? '')) n++;
+        }
+      }
+      return n;
+    })();
+    expect(
+      detectionCount,
+      'the detector found no pre-read latch anywhere, so this case cannot fail — it is not ' +
+        'testing anything. Fix the detector before trusting a pass.',
+    ).toBeGreaterThan(0);
     // The round-235 shape: `ref.current = token` directly after the guard comparing it, with
     // the read BELOW — so the run that reads is the run whose cleanup discards its outcome.
     const offenders: string[] = [];
     for (const file of collectFiles()) {
       const rel = path.relative(SRC, file).split(path.sep).join('/');
       const srcLines = fs.readFileSync(file, 'utf-8').split('\n');
+      // ⚠️ THE PRECONDITION. This case is about a latch that guards an ASYNC READ whose outcome
+      // a StrictMode cleanup can discard — i.e. a file with the F4 dirty-tracking shape. A
+      // `useLayoutEffect` that syncs a ref to a prop does the same `ref.current = x` on the line
+      // after its guard and is CORRECT: nothing async follows, so nothing is discarded.
+      //
+      // Measured 2026-10-14 (round 239) on the one entry this list could not classify:
+      // `RestaurantMenu.tsx:391` syncs `menuStateUserIdRef` on a user switch, and the file has
+      // NO `originalsRef.current =`, NO `loadFailed` and NO Save gated on a load — the F4 premise
+      // does not apply to it at all. Its async read at `:460` is separately correct.
+      //
+      // Requiring the premise is what stops this case reporting its own shape: without it, any
+      // ref-sync effect in the tree is an offender.
+      const text = srcLines.join('\n');
+      if (!/originalsRef\.current\s*=/.test(text)) continue;
+      if (!/\b(loadFailed|hasPartialError|hw\.loadFailed)\b/.test(text)) continue;
       for (let i = 0; i < srcLines.length - 1; i++) {
         const guard =
           /if\s*\([^)]*?([A-Za-z_$][\w$]*)\.current\s*===\s*[A-Za-z_$][\w$]*[^)]*\)\s*return/.exec(
