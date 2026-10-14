@@ -14,6 +14,7 @@
 import type { MockHandler } from '../core/mockDispatcher';
 import type { UnwrapArgs } from './catalog';
 import { MOCK_STORE, MOCK_TERMINAL } from '../core/mockSeedData';
+import { MOCK_LOCAL_PAYMENT_METHODS_KEY, readSlice, writeSlice } from '../core/mockDatabase';
 
 export interface PaymentDeps {
   unwrapArgs: UnwrapArgs;
@@ -23,11 +24,30 @@ export interface PaymentDeps {
 // The market rail surface: which rails exist, what they are called,
 // whether the site offers them. Session-local maps — the mock has no
 // multi-row table, so the rails live in a Map keyed by scope.
-/** Per-scope rail rows: `${scope_type}:${scope_id}` → rails. */
-const mockLocalPaymentRails = new Map<
-  string,
-  Array<{ rail_code: string; label: string; is_enabled: boolean; parameters: string }>
->();
+/**
+ * Per-scope rail rows: `${scope_type}:${scope_id}` → rails.
+ *
+ * PERSISTED (round 156). This used to be a bare `new Map()` justified by a comment
+ * saying `the mock has no multi-row table` — stale as soon as the core shipped
+ * `20260924_local_payment_methods.sql`, which IS a multi-row table and records that
+ * a site with no rows means `no market data recorded`. The old shape made a save
+ * in the browser preview SUCCEED and vanish on reload, which production does not do.
+ *
+ * Persistence mirrors `handlers/topology.ts` and `handlers/staff.ts`: one slice key,
+ * read on load, written on every mutation.
+ */
+type MockRailRow = { rail_code: string; label: string; is_enabled: boolean; parameters: string };
+
+function loadMockRails(): Map<string, MockRailRow[]> {
+  const raw = readSlice<Record<string, MockRailRow[]>>(MOCK_LOCAL_PAYMENT_METHODS_KEY, () => ({}));
+  return new Map(Object.entries(raw));
+}
+
+function saveMockRails(): void {
+  writeSlice(MOCK_LOCAL_PAYMENT_METHODS_KEY, Object.fromEntries(mockLocalPaymentRails));
+}
+
+const mockLocalPaymentRails = loadMockRails();
 
 /** Resolve the scope key for the mock rail map. */
 function mockRailScopeKey(scopeType: string, scopeId: string): string {
@@ -62,13 +82,9 @@ mockLocalPaymentRails.set(
  *  overriding per rail — including an explicit disable ("not offered at
  *  this site" is a fact). Mirrors the core
  *  `Store::local_payment_methods_for_location`. */
-function getMockLocalPaymentMethods(_unwrapArgs: UnwrapArgs, _args: unknown): Array<{
-  rail_code: string;
-  label: string;
-  is_enabled: boolean;
-  scope: 'location' | 'legal_entity';
-  parameters: string;
-}> {
+type MockRailRead = MockRailRow & { scope: 'location' | 'legal_entity' };
+
+function getMockLocalPaymentMethods(_unwrapArgs: UnwrapArgs, _args: unknown): MockRailRead[] {
   const location = MOCK_STORE;
   const entityRows =
     mockLocalPaymentRails.get(mockRailScopeKey('legal_entity', 'default:default-legal-entity')) ?? [];
@@ -89,13 +105,7 @@ function getMockLocalPaymentMethods(_unwrapArgs: UnwrapArgs, _args: unknown): Ar
 /** The slice-6 write: replace the location's rail list (the card edits the
  *  whole list; omitted rails are removed) and return the fresh effective
  *  read. Mirrors the core `replace_local_payment_methods` + read-back. */
-function setMockLocalPaymentMethods(unwrapArgs: UnwrapArgs, args: unknown): Array<{
-  rail_code: string;
-  label: string;
-  is_enabled: boolean;
-  scope: 'location' | 'legal_entity';
-  parameters: string;
-}> {
+function setMockLocalPaymentMethods(unwrapArgs: UnwrapArgs, args: unknown): MockRailRead[] {
   const { rails } = unwrapArgs<{
     locationId?: string;
     rails?: Array<{ rail_code: string; label: string; is_enabled: boolean; parameters?: string }>;
@@ -115,6 +125,7 @@ function setMockLocalPaymentMethods(unwrapArgs: UnwrapArgs, args: unknown): Arra
   } else {
     mockLocalPaymentRails.delete(key);
   }
+  saveMockRails();
   return getMockLocalPaymentMethods(unwrapArgs, args);
 }
 
