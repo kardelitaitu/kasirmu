@@ -146,6 +146,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [The mock's feature vocabulary is wrong, and the cost is now measured (round 131)](audits/dev-mock-feature-vocabulary.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
+| general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
@@ -163,7 +164,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
-| inventory | [The menu tile's out-of-stock state is unreachable in the dev mock (round 150)](audits/menu-tile-out-of-stock-unreachable.md) | — |
+| inventory | [The menu tile's out-of-stock state is pinned in the UNIT layer, not in E2E (round 150)](audits/menu-tile-out-of-stock-unreachable.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
