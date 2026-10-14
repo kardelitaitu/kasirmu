@@ -27,7 +27,7 @@ Two passes over all **806 `.tsx` files** under `ui/src`:
 
 `features/retail/AddCategoryModal.tsx` and `EditProductModal.tsx` both carry `type="submit"`
 and were the live candidates left by pass 1. Checked individually: **neither has the pattern.**
-`AddCategoryModal` has no `disabled={}` at all and no silent validation return;
+`AddCategoryModal` has no `disabled={}` at all. Its `if (!name.trim()) return;` at `:42` is silent, but the input is `required` at `:98`, so the browser blocks submit before the return is reachable — which is why it is not the pattern;
 `EditProductModal`'s five gates are all `imageBusy`/`MAX_IMAGES`, and its validation is reported
 through `error` rather than returned from.
 
@@ -58,5 +58,7 @@ reward.
 | Files surveyed | 806 `.tsx` under `ui/src`, two independent passes |
 | Live candidates left | **none** |
 | Retail twins | checked, clean |
-| Menu-editor fix | re-probed live: `saveDisabled=true` |
+| Menu-editor fix | re-probed live: `disabled={!draft || saving || !draft.name.trim()}` (`RestaurantMenuEditorScreen.tsx:994`) |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor
