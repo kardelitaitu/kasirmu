@@ -130,6 +130,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
+| general | [Cart line badges and the special-request note, plus a validation of round 203's checker (round 204)](audits/cart-line-badges-note.md) | — |
 | payments | [A switch with no aria-checked, found by a probe that could not read it (round 179)](audits/cash-drawer-kick-aria.md) | — |
 | payments | [The cash-preset chips write to a rail parameter nothing reads (round 120)](audits/cash-preset-chips-unread.md) | — |
 | payments | [The cash presets are now read: rounds 120-121's inventory gets its first repair (round 122)](audits/cash-presets-wired.md) | — |
