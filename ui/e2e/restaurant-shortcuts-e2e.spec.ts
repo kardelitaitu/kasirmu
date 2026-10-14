@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { openRestaurantPosWithItem } from './helpers';
 
 /**
  * E2E: the restaurant keyboard shortcuts reach their handlers in a browser (round 159/160).
@@ -31,34 +31,9 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 20_000;
 
-/**
- * Open the cart, whichever shell is rendering.
- *
- * The portrait tablet puts the cart in a bottom sheet behind
- * `.restaurant-floating-cart-trigger` — the same two-shell trap the payment-modal and
- * cart-capability specs handle. Without this, `.pos-cart-table-input` and the split-bill
- * control are simply not in the DOM.
- */
-async function openCart(page: Page): Promise<void> {
-  const lineItem = page.locator('[data-testid="cart-panel-line-item"]');
-  if (await lineItem.first().isVisible().catch(() => false)) return;
-  const trigger = page.locator('.restaurant-floating-cart-trigger');
-  if (await trigger.isVisible().catch(() => false)) {
-    await trigger.click();
-    await expect(page.locator('.restaurant-cart-sheet-panel')).toBeVisible({ timeout: 5_000 });
-  }
-}
 
 async function openRestaurantPos(page: Page): Promise<void> {
-  await loginAs(page, 'owner', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-  await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: TIMEOUT });
-  // One item in the cart, so the cart sheet has content to open on portrait.
-  await page.locator('.restaurant-card').first().click();
-  await openCart(page);
-  await expect(page.locator('[data-testid="cart-panel-line-item"]').first()).toBeVisible({
-    timeout: 5_000,
-  });
+  await openRestaurantPosWithItem(page);
 }
 
 test('Shift+L opens Table Management from the POS', async ({ page }) => {

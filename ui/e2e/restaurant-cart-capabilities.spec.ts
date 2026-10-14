@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { openRestaurantPosWithItem as openRestaurantPosWithItemShared } from './helpers';
 
 /**
  * E2E: Restaurant POS — the cart footer's restaurant capabilities.
@@ -35,28 +35,14 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 15_000;
 
-/** Ensure the cart contents are on screen, whichever shell is rendering. */
-async function openCart(page: import('@playwright/test').Page): Promise<void> {
-  const lineItem = page.locator('[data-testid="cart-panel-line-item"]');
-  if (await lineItem.first().isVisible().catch(() => false)) return;
-  const trigger = page.locator('.restaurant-floating-cart-trigger');
-  if (await trigger.isVisible().catch(() => false)) {
-    await trigger.click();
-    await expect(page.locator('.restaurant-cart-sheet-panel')).toBeVisible({ timeout: 5_000 });
-  }
-}
-
-/** Log in, open the restaurant POS, add one product, and reveal the cart. */
+// The two-shell cart setup is shared — `openRestaurantPosWithItem` in `helpers.ts`.
+//
+// 'staff' is EXPLICIT, and was already this spec's role before the extraction: these are
+// cart controls that need no `settings:edit`, so the least-privileged account that can reach
+// the till is the one that should exercise them. Round 161 parameterised the shared helper
+// rather than quietly promoting this spec to owner.
 async function openRestaurantPosWithItem(page: import('@playwright/test').Page) {
-  await loginAs(page, 'staff', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-  const productCards = page.locator('.restaurant-card');
-  await expect(productCards.first()).toBeVisible({ timeout: TIMEOUT });
-  await productCards.first().click();
-  await openCart(page);
-  await expect(page.locator('[data-testid="cart-panel-line-item"]').first()).toBeVisible({
-    timeout: 5_000,
-  });
+  await openRestaurantPosWithItemShared(page, 'staff');
 }
 
 test.describe('Restaurant POS — cart footer capabilities', () => {
