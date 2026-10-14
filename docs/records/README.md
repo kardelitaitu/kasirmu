@@ -240,6 +240,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The receipt preview says 2x and prices one (round 132)](audits/receipt-preview-quantity.md) | — |
 | general | [Two preview documents behind one tab strip, now both covered (round 178)](audits/receipt-preview-two-documents.md) | — |
 | general | [The receipts Save pushed a task with an empty token, unlike its five siblings (round 164)](audits/receipts-save-token-consistency.md) | — |
+| general | [An invisible hit area was eating clicks on a live button (round 217)](audits/resize-handle-click-interception.md) | — |
 | general | [Four restaurant footer capabilities get E2E coverage, by sweeping the specs (round 147)](audits/restaurant-capabilities-e2e.md) | — |
 | general | [Three sweeps, three clean results: the restaurant controls are well-gated (round 167)](audits/restaurant-control-gates-sweep.md) | — |
 | general | [A settings toggle that dispatches nothing, and a red guard on HEAD (2026-10-12)](audits/restaurant-dead-setting-dispatch-on-tab-save.md) | — |
