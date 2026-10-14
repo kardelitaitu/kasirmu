@@ -125,6 +125,48 @@ describe('RestaurantSettingsScreen', () => {
     expect(screen.getByText(/Unsaved changes/i)).toBeInTheDocument();
   });
 
+
+  it('reports a missing session token instead of dropping the Save silently', async () => {
+    // handleSave began `if (!sessionToken) return;` with no report. The operator
+    // toggles 13 restaurant settings, presses Save, and NOTHING happens — no toast,
+    // no error, and the dirty banner stays up. Every other save failure in this
+    // screen routes through addToast (restaurant-settings-error-save).
+    //
+    // Reachable whenever the session lapses while the screen is open, which is the
+    // same shape as StockShortfallDialog (fixed 0b9e88694) and the class
+    // WorkspaceContext.tsx:76-84 names: a rejected session that is "a console.warn
+    // only" leaves every downstream command no-opping with nothing on screen.
+    // The token is cleared AFTER the screen has loaded: with it null from the start
+    // `loadAll` (also guarded) renders nothing at all, so the Save button the case is
+    // about would never mount. A session expiring while the screen is open is the
+    // real-world path anyway.
+    const onSaved = vi.fn();
+    await renderScreen({ onSaved });
+    await waitFor(() => {
+      expect(screen.getByTestId('setting-toggle-customer-name')).toBeInTheDocument();
+    });
+
+    mocks.sessionToken = null as unknown as string;
+    try {
+      fireEvent.click(screen.getByTestId('setting-toggle-interaction-vibration'));
+      fireEvent.click(screen.getByTestId('restaurant-settings-save-btn'));
+
+      // The write must not be attempted without a token...
+      expect(mocks.setSettings).not.toHaveBeenCalled();
+      // ...and the operator must be told, not left guessing.
+      await waitFor(() => {
+        // The shared Toast renders with role="alert" (Toast.tsx:230), not "status".
+        expect(
+          screen.queryByRole('alert'),
+          'a silent refusal is invisible: the operator sees Save do nothing',
+        ).not.toBeNull();
+      });
+      expect(onSaved).not.toHaveBeenCalled();
+    } finally {
+      mocks.sessionToken = 'test-session-tok-1';
+    }
+  });
+
   it('saves settings with setSettingsScoped on clicking Save', async () => {
     const onSaved = vi.fn();
     await renderScreen({ onSaved });

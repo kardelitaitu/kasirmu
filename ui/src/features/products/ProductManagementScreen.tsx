@@ -20,6 +20,7 @@ import {
   type ProductDto,
   type CategoryDto,
 } from '@/api/products';
+import { invalidateCatalog } from '@/utils/catalog-cache';
 import { listTaxRatesScoped, type TaxRateDto } from '@/api/tax';
 import { listCurrenciesScoped, type CurrencyDto } from '@/api/currency';
 import { formatMoney, type Product, type Sku } from '@/types/domain';
@@ -294,6 +295,7 @@ export default function ProductManagementScreen() {
           taxRateIds: form.taxRateIds,
         });
       }
+      invalidateCatalog(sessionToken);
       setShowModal(false);
       await load();
     } catch (err) {
@@ -322,6 +324,7 @@ export default function ProductManagementScreen() {
     setDeleteError(null);
     try {
       await deleteProductScoped(sessionToken, deleteConfirmSku);
+      invalidateCatalog(sessionToken);
       setDeleteConfirmSku(null);
       await load();
     } catch (err) {

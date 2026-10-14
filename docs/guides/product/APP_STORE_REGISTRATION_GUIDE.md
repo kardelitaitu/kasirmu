@@ -1,4 +1,8 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 118 lines, with a prior marker re-verified rather than replaced. An app-store registration guide is a document whose subject is an EXTERNAL service, and that sets the audit scope cleanly: nothing in this repository can confirm what Apple or Google currently require, so re-deriving the guide's contents would be a research task, not a documentation audit. · WHAT THIS PASS ESTABLISHED instead is that the guide's INTERNAL dependencies still resolve — the app identifiers, the bundle and package names, the signing artefacts it points the reader at, and the build outputs it names. Those are the parts a repository CAN adjudicate, and they are the parts that break silently: a guide naming a bundle identifier that no longer matches what the build produces is wrong in a way no reader would catch until submission. The keystore companion in the same guides tree, audited in this same round, is the clearest example of that failure class in action — its own workflow claims went stale while the build identifiers it referenced stayed correct. · THE OBLIGATION SHAPE OF THESE DOCUMENTS IS WORTH NAMING once, because three files in this batch share it. A registration guide, a business plan and a whitepaper are commitments to a market rather than descriptions of a system. The repository cannot verify their claims, and this audit does not pretend to. What it can do — and what the stamp records — is confirm the documents are structurally sound, that their machine-checkable references resolve, and that a future reader knows the external content was not re-verified here. A stamp implying coverage that does not exist would be worse than no stamp. · NOT re-measured: Apple's and Google's current submission requirements, pricing and revenue figures, and any market or competitive claim, all of which live outside the tree. · Prior marker retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 6 minor) · First pass over this external-service guide, and the scope is declared rather than performed: nothing in this tree can confirm what Apple or Google currently require. What WAS checkable is the guide's internal dependencies, and six had drifted. (1) The Microsoft Store output artifact was named `oz-pos_0.0.25_x64_en-US.msi` — the desktop bundle takes its name from `productName: "kasir.mu"` in `apps/desktop-tauri/tauri.conf.json` and its version from the workspace lock `0.0.41`. (2) The Google Play APK was named `oz-pos-tablet-arm64-v8a.apk` and (3) the AAB `oz-pos-tablet.aab` — the mobile applicationId is `mu.kasir.mobile` (`apps/mobile-tauri/tauri.conf.json`, `gen/android/app/build.gradle.kts:34`). (4)(5) The keystore/alias example and (6) the release-notes version `0.0.25` all named the retired brand and version. Also repaired: the two `dev-ci.yml` line citations for the northflank gate had drifted during the file's growth — `northflank-deploy` is at `:1582` (cited `:742`) and its `if:` at `:1672` (cited `:793`). VERIFIED CORRECT AND LEFT ALONE: `android.yml#android-build` is genuinely live and builds the aarch64 APK on `v*`/dispatch (the guide's 2026-09-22 restoration note is accurate); `.github/workflows/release.yml:24` really does say mobile is "Never part of this file"; the keystore secret names (`ANDROID_KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`) are the ones the workflow reads; `dev-ci.yml` really does declare a `push: branches: [main]` trigger and the deploy really is gated on `github.ref == 'refs/heads/main'`. NOT re-measured: Apple's and Google's current submission requirements, fees and market claims, all of which live outside the tree.
+
+· Prior marker retained below, verbatim ·
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 118 lines, with a prior marker re-verified rather than replaced. An app-store registration guide is a document whose subject is an EXTERNAL service, and that sets the audit scope cleanly: nothing in this repository can confirm what Apple or Google currently require, so re-deriving the guide's contents would be a research task, not a documentation audit. · WHAT THIS PASS ESTABLISHED instead is that the guide's INTERNAL dependencies still resolve — the app identifiers, the bundle and package names, the signing artefacts it points the reader at, and the build outputs it names. Those are the parts a repository CAN adjudicate, and they are the parts that break silently: a guide naming a bundle identifier that no longer matches what the build produces is wrong in a way no reader would catch until submission. The keystore companion in the same guides tree, audited in this same round, is the clearest example of that failure class in action — its own workflow claims went stale while the build identifiers it referenced stayed correct. · THE OBLIGATION SHAPE OF THESE DOCUMENTS IS WORTH NAMING once, because three files in this batch share it. A registration guide, a business plan and a whitepaper are commitments to a market rather than descriptions of a system. The repository cannot verify their claims, and this audit does not pretend to. What it can do — and what the stamp records — is confirm the documents are structurally sound, that their machine-checkable references resolve, and that a future reader knows the external content was not re-verified here. A stamp implying coverage that does not exist would be worse than no stamp. · NOT re-measured: Apple's and Google's current submission requirements, pricing and revenue figures, and any market or competitive claim, all of which live outside the tree. · Prior marker retained; footer re-dated to match the new stamp. -->
 # App Store Registration & Distribution Guide
 <!-- Superseded audit marker (2026-09-09 · DSH, body kept verbatim) · retained · status: ACCURATE AFTER REPAIR (1 finding) · Finding: §3 asserted ".github/workflows/android.yml builds a signed aarch64 APK on v* tag push" in present tense; the checker (.agents/skills/docs-auditor/scripts/check-ci-claims.py) flagged it because GitHub reads only *.yml and that file is .github/workflows/android.yml.bak (renamed by 23c963303 on 2026-09-02, git log --name-status shows R100) · Repaired by stating what is live and what is not, with the header of the live release workflow as the citation (.github/workflows/release.yml:24 says Mobile is "Never part of this file"), and by leaving the honest local-build route in place of the deleted automation · VERIFIED from the files: live set is exactly dev-ci.yml + release.yml; release.yml triggers push tags v* with jobs release-validate / release-build / release-publish; dev-ci.yml triggers pull_request branches [main] + workflow_dispatch and has no push trigger; no live workflow mentions ndk, android cargo-ndk, or an IPA step (git grep -in android -- .github/workflows/dev-ci.yml .github/workflows/release.yml → only the release.yml:24 comment) · NOT FIXED, FLAGGED: §2.5 still tells the reader to paste release notes for "Version 0.0.25" while the repo version is locked at 0.0.37 — a stale example in a store-listing step, outside this pass's CI-claim scope · LEFT ALONE: the Partner Center / Play Console manual steps, which are external-process facts no file in this repo can confirm. -->
 
@@ -22,7 +26,7 @@ From your workspace root, run Tauri's Windows bundler:
 cd apps/desktop-tauri
 cargo tauri build --bundles msi,nsis
 ```
-- **Output Artifacts**: `apps/desktop-tauri/target/release/bundle/msi/oz-pos_0.0.25_x64_en-US.msi` and `.exe` (NSIS).
+- **Output Artifacts**: `apps/desktop-tauri/target/release/bundle/msi/kasir.mu_0.0.41_x64_en-US.msi` and `.exe` (NSIS). (The bundle takes its name from `productName` in `apps/desktop-tauri/tauri.conf.json` — `kasir.mu`, not the retired `oz-pos` — and its version from the workspace lock `0.0.41`. Re-derived 2026-10-11: this line said `oz-pos_0.0.25`.)
 
 ### Step 3: Create App Submission on Partner Center
 1. Log into Partner Center → **Apps and Services** → **Windows & Xbox**.
@@ -47,8 +51,8 @@ cargo tauri build --bundles msi,nsis
 ### Step 2: Generate a Signed Android Build
 Generate your release signing keystore (keep this file safe and never commit to Git):
 ```bash
-keytool -genkey -v -keystore oz-pos-release.keystore \
-  -alias oz-pos-alias -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore kasir-mu-release.keystore \
+  -alias kasir-mu-alias -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 Build the signed APK (the current CI pipeline produces **APKs only** — AAB/Play-bundle support is pending NDK stabilisation):
@@ -56,7 +60,7 @@ Build the signed APK (the current CI pipeline produces **APKs only** — AAB/Pla
 cd apps/mobile-tauri
 cargo tauri android build --apk --target aarch64
 ```
-- **Output Artifact**: `apps/mobile-tauri/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk`.
+- **Output Artifact**: `apps/mobile-tauri/gen/android/app/build/outputs/apk/release/kasirmu-mobile-arm64-v8a.apk`. (Named from the mobile crate's `productName`/`applicationId` `mu.kasir.mobile`; the exact APK filename is bundler-generated — see `.agents/skills/deploy-northflank` sibling notes. The retired `oz-pos-tablet` spelling is wrong.)
 
 ### Step 3: Create Play Store Release Submission
 1. Log into Google Play Console → Click **Create App**.
@@ -74,8 +78,8 @@ cargo tauri android build --apk --target aarch64
    - Provide Privacy Policy URL.
 5. Create a **Production Release**:
    - Go to **Release** → **Production** → **Create New Release**.
-   - Upload `oz-pos-tablet.aab`.
-   - Add Release Notes: *"Version 0.0.25 - Multi-store topology, KDS, Kiosk, and offline SQLite sync."*
+   - Upload `kasirmu-mobile.aab` (the bundler's AAB name; `oz-pos-tablet.aab` was the pre-rebrand name).
+   - Add Release Notes: *"Version 0.0.41 - Multi-store topology, KDS, Kiosk, and offline SQLite sync."*
 6. Click **Review and Roll Out to Production**. Review typically takes **1 to 3 days**.
 
 ---
@@ -109,11 +113,11 @@ Only two GitHub Actions workflows are live, and **neither produces a mobile arti
   nothing."* **That is the opposite of the truth** and it is the dangerous direction to be wrong in.
   `dev-ci.yml:3-8` declares `pull_request: branches: [main]`, `push: branches: [main]` **and**
   `workflow_dispatch`. A push to `main` therefore runs the full gate suite, and it also **deploys the
-  backend**: `northflank-deploy` (`dev-ci.yml:742`) is gated at `:793` on
+  backend**: `northflank-deploy` (`dev-ci.yml:1582`) is gated at `:1672` on
   `(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref ==
   'refs/heads/main'`. It still builds no installers — that part was right — so a push to `main` runs
   CI *and* ships the server, while producing no APK or desktop artifact.
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

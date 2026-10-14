@@ -58,7 +58,7 @@ describe('PriceOverrideModal — price step', () => {
 
   it('shows inline error with role="alert" when price exceeds 10x current price', () => {
     render(withFluent(<PriceOverrideModal {...defaultProps} />, salesFtl));
-    const input = screen.getByLabelText('Enter new price in minor units') as HTMLInputElement;
+    const input = screen.getByLabelText('Enter new price') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '550000' } });
     fireEvent.click(screen.getByText('Next'));
     expect(screen.getByRole('alert')).toHaveTextContent(/10x|exceeds|maximum/i);
@@ -66,7 +66,7 @@ describe('PriceOverrideModal — price step', () => {
 
   it('clears price error when user edits the price input', () => {
     render(withFluent(<PriceOverrideModal {...defaultProps} />, salesFtl));
-    const input = screen.getByLabelText('Enter new price in minor units') as HTMLInputElement;
+    const input = screen.getByLabelText('Enter new price') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '550000' } });
     fireEvent.click(screen.getByText('Next'));
     expect(screen.getByRole('alert')).toBeInTheDocument();

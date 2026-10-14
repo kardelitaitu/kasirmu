@@ -5,7 +5,12 @@ title: "ADR #55: One Server Origin — the compiled list, the fallback pair and 
 status: Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 294 lines, no audit stamp, no footer and no marker. Its status line claims the whole decision shipped — resolver, literal collapse, drift gate, endpoint and client attestation, and the boot-time cascade — and that is a broad claim, so it was checked in the one place a naive audit would get it wrong. · THE DECISION LANDED, AND IT LANDED IN THE SHAPE THE ADR SPECIFIED. The Context section records that the tree defined the server origin six times, four ways, with two values, tabulating a compiled const in the core crate, a debug fallback in the bridge, and a debug bootstrap in the desktop shell carrying the other domain. Those three files no longer contain an origin literal at all. What exists instead is exactly the artefact the Decision calls for: a single module, `crates/kasirmu-core/src/server_origin.rs`, exporting `MAIN_SERVER_ORIGIN`, `FALLBACK_SERVER_ORIGIN`, `ORIGIN_ENV_OVERRIDE`, and separate debug origins for the two local ports. Six definitions became one compiled list plus a documented fallback pair. · THE FINDING THAT WOULD HAVE BEEN A FALSE POSITIVE, and it is the most useful thing in this stamp. A search for the old domain returns exactly one hit in the tree: `FALLBACK_SERVER_ORIGIN = "https://license.ozpos.my.id"` in that same module. Read as a straggler, that is a rebrand leak — the same class this campaign has found in three separate documents. Read against this ADR it is the FALLBACK PAIR, named in the title alongside the compiled list, retained deliberately for a deployment that has not yet been repointed. An audit that flagged it would have been reporting the decision working. · WHY THIS DOCUMENT IS A MODEL, and the stamp should say so rather than just clear it. It opens with a threat model in a repository that documents none — stating that sync is device-to-device, that nothing signs or MACs an item, and therefore that the sender is NOT an authority — and then draws the consequence honestly: this policy is not a defence against an attacker who can inject, it is a defence against a package or a peer writing a key it has no business writing. A security decision that states what it is not for is worth more than one that only states what it does, and the explicit note that refusing on EGRESS is the half that matters because the ingest side already refuses on arrival is the kind of distinction most security documents leave implicit. · It also carries the by-filename citation warning this campaign has now seen in several ADRs, correctly, because `docs/decisions/README.md` records that numbering has collided. · NOT re-measured: the drift gate and the attestation endpoints, which are the document's own content; what is verified is the central module and the consolidation the Context describes. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · Fresh full audit; the 2026-09-29 stamp is merged at the bottom as original evidence, delimiters stripped so it cannot nest. · MAJOR — FOUR SPLICED SENTENCES, a defect class this file's own history shows recurring: commits 3ded047d2, b25b5c1b7, 87b01f92e, ab9a41969, 94ad73f62 and 3f3d1bc88 each repaired a split in this same ADR (and ADR 54), and four more were still live. (1) §4-O2: the pre-resolution sentence's tail, "behaviour rather than silently repointing developer sync at loopback", trailed the new bullet and asserted "unresolved (§6 O2)" while §6 records O2 as RESOLVED — a self-contradiction. (2) §6-O2: the OLD question's tail, "production fallback name, which means a developer's machine can silently sync to production", sat directly under the RESOLVED bullet that says the bootstrap no longer targets production. (3) §2.4: an edit inserted the "Deployment order" paragraph BETWEEN "...exactly the gap the" and "auth-side cascade fills.", splitting one sentence. (4) §6-O4: the original bullet's second half — "MARKETING_HOST ... while the runbook deploys ozpos.my.id (`:1004`, `:1096`) ... ADR #54 §2.4" — was split around the inserted measured answer, leaving its head before the insert and its tail after. Repairs: (1) and (2) deleted as superseded text (their content is restated by the resolving bullet and (1) made a false claim about §6); (3) and (4) REJOINED, because their content is unique and still true. · MINOR: two line citations in the O3 "Re-verified 2026-09-20" note had drifted on a grown tree — the gate entry is `gates.json:1188-1195` (not `:587-593`) and the runner is `check.sh:179` (not `:99`); the substance (a check.sh runner and NO `ci` block) re-verified unchanged, and a dated re-verification was appended rather than the old numbers silently swapped. · VERIFIED AND LEFT ALONE, the strongest part of this file: the central module exists exactly as §2.1-§2.2 specify — `crates/kasirmu-core/src/server_origin.rs` exports `MAIN_SERVER_ORIGIN` (:28, `https://license.kasir.mu`), `FALLBACK_SERVER_ORIGIN` (:36, `https://license.ozpos.my.id` — the DELIBERATE fallback pair named in the title, not a rebrand leak), `ORIGIN_ENV_OVERRIDE` (:43), `DEBUG_AUTH_ORIGIN` (:47) and `DEBUG_SYNC_ORIGIN` (:51), with `normalize_origin`, `resolve_origin`, `release_ladder` and `advances_ladder`. `crates/kasirmu-core/src/attestation.rs` really does resolve via `resolved_origin()` with a `OnceLock` cache, delegate from `license_server_url()`, verify against `LICENSE_PUBLIC_KEY_PEM`, refuse the `BOOTSTRAP_FREE` sentinel and enforce the 16-64 `[A-Za-z0-9_-]` nonce bounds. `signDetached` is real and single — `apps/license-server/main.go:1494`, used by attest.go, crl.go and status.go. The `server-origins` gate exists in `gates.json`. All 11 cited companion paths resolve. · NOT re-measured: the drift gate's and the attestation endpoints' live behaviour, and the 2026-09-19/20 measurements the file records as its own evidence. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 294 lines, no audit stamp, no footer and no marker. Its status line claims the whole decision shipped — resolver, literal collapse, drift gate, endpoint and client attestation, and the boot-time cascade — and that is a broad claim, so it was checked in the one place a naive audit would get it wrong. · THE DECISION LANDED, AND IT LANDED IN THE SHAPE THE ADR SPECIFIED. The Context section records that the tree defined the server origin six times, four ways, with two values, tabulating a compiled const in the core crate, a debug fallback in the bridge, and a debug bootstrap in the desktop shell carrying the other domain. Those three files no longer contain an origin literal at all. What exists instead is exactly the artefact the Decision calls for: a single module, `crates/kasirmu-core/src/server_origin.rs`, exporting `MAIN_SERVER_ORIGIN`, `FALLBACK_SERVER_ORIGIN`, `ORIGIN_ENV_OVERRIDE`, and separate debug origins for the two local ports. Six definitions became one compiled list plus a documented fallback pair. · THE FINDING THAT WOULD HAVE BEEN A FALSE POSITIVE, and it is the most useful thing in this stamp. A search for the old domain returns exactly one hit in the tree: `FALLBACK_SERVER_ORIGIN = "https://license.ozpos.my.id"` in that same module. Read as a straggler, that is a rebrand leak — the same class this campaign has found in three separate documents. Read against this ADR it is the FALLBACK PAIR, named in the title alongside the compiled list, retained deliberately for a deployment that has not yet been repointed. An audit that flagged it would have been reporting the decision working. · WHY THIS DOCUMENT IS A MODEL, and the stamp should say so rather than just clear it. It opens with a threat model in a repository that documents none — stating that sync is device-to-device, that nothing signs or MACs an item, and therefore that the sender is NOT an authority — and then draws the consequence honestly: this policy is not a defence against an attacker who can inject, it is a defence against a package or a peer writing a key it has no business writing. A security decision that states what it is not for is worth more than one that only states what it does, and the explicit note that refusing on EGRESS is the half that matters because the ingest side already refuses on arrival is the kind of distinction most security documents leave implicit. · It also carries the by-filename citation warning this campaign has now seen in several ADRs, correctly, because `docs/decisions/README.md` records that numbering has collided. · NOT re-measured: the drift gate and the attestation endpoints, which are the document's own content; what is verified is the central module and the consolidation the Context describes. · No stamp existed; this is the first. -->
+
 # ADR #55: One Server Origin
 
 **Status:** Implemented (2026-09-19). §2.1-§2.3, §2.4 (endpoint and client) and §2.5 (boot-time
@@ -114,12 +119,12 @@ machinery.
 - **`OZ_REDIRECT_ONLY`/`OZ_SYNC_REDIRECT_URL` remains the migration path** (HTTP 421, ADR #11),
   not this list. The list is how a client *starts*; the redirect is how a fleet *moves*. Note the
   421 middleware covers `/api/sync/*` only (`redirect.rs:39-40`), which is exactly the gap the
+  auth-side cascade fills.
 
 **Deployment order (measured 2026-09-19):** `/api/v1/license/attest` answers 404 on the live
 host today, because the endpoint is in this tree and not yet deployed. The client degrades
 safely — a failed attestation caches nothing, so `license_server_url()` stays on the compiled
 MAIN — which means the cascade is inert, and correct, until the licence server ships first.
-  auth-side cascade fills.
 
 **Shipped 2026-09-19 (observability):** the resolved origin and the tier that won are now
 reported on the settings surface. `kasirmu_core::attestation::resolved_origin()` is the single
@@ -184,8 +189,6 @@ have caught the fork in §1.
 - **The debug bootstrap no longer targets production** (O2): it points at
   `DEBUG_SYNC_ORIGIN`. The residue is that a debug build with no local Docker stack running gets
   no sync auto-connection at all — deliberate, and preferable to a silent production connection.
-  behaviour rather than silently repointing developer sync at loopback. Whether a debug build
-  should auto-provision to `DEBUG_SYNC_ORIGIN` instead is unresolved (§6 O2).
 
 ## 5. Verification
 
@@ -251,13 +254,19 @@ main question rather than an afterthought.
   returns false whenever a URL is configured, so a developer who deliberately pointed the machine
   at production keeps that setting. A debug build with no local stack running now simply does not
   auto-connect, which is the correct explicit-configuration behaviour.
-  production fallback name, which means a developer's machine can silently sync to production.
 - **O3 — Should the gate gain CI coverage?** It is local-only today (`scripts/gates.json`
   `server-origins`, no `ci` block), which is honest rather than omitted.
-  **Re-verified 2026-09-20:** still true, and now measured rather than asserted — `gates.json:587-593`
-  declares only a `check.sh` runner with no `ci` block, `check.sh:99` runs it, and `dev-ci.yml`
+  **Re-verified 2026-09-20:** still true, and now measured rather than asserted — `gates.json:1188-1195`
+  declares only a `check.sh` runner with no `ci` block, `check.sh:179` runs it, and `dev-ci.yml`
   names neither the gate nor `check.sh`. So the gap is real and deliberate: closing it is a
   one-line manifest change plus the workflow step whenever that is wanted.
+
+  **Re-verified 2026-10-11 (docs-auditor):** both coordinates above had drifted on a grown tree —
+  the gate entry is at `gates.json:1188-1195` (not `:587-593`) and the runner step is
+  `check.sh:179` (not `:99`), while the substance is unchanged: the gate still declares a
+  `check.sh` runner and **no `ci` block**, and `dev-ci.yml` still neither names the gate nor runs
+  `check.sh`. Line citations in a dated re-verification note are readings of their revision; the
+  claim they support is what was re-tested.
 - **O4 — ANSWERED BY MEASUREMENT (2026-09-19): there is no marketing-host fork.** Both
   `kasir.mu` and `ozpos.my.id` return byte-identical `/llms.txt` (7256 bytes) and the same 302 on
   `/admin/login`, so they are one Worker bound to two custom domains; `MARKETING_HOST =
@@ -267,7 +276,6 @@ main question rather than an afterthought.
   ADR #54 §2.4's `next` allowlist needs is therefore both marketing names, not a correction.
   Caveat: identical content today is evidence of one deployment, not a guarantee about DNS or
   renewal, which is exactly what §2.4's attestation is for.
-  `MARKETING_HOST = 'kasir.mu'` and `DASHBOARD_HOSTS = {'admin.kasir.mu'}` while the runbook
 
   **Re-verified 2026-09-20 (the dashboard fork is not one).** The question this caveat raises is
   whether the second name needs its own panel hosts. Measured, they are not panels:
@@ -279,8 +287,9 @@ main question rather than an afterthought.
   set is correct, and the CORS default needs the marketing second name (added below) but no
   ozpos panel hosts. A reader who "fixes" the apparent asymmetry would be adding origins no
   browser ever presents.
-  deploys `ozpos.my.id` (`:1004`, `:1096`) — the same fork, one layer out, and it decides the
-  OAuth `next` allowlist in ADR #54 §2.4.
+
+  The runbook side is the same fork, one layer out: it deploys `ozpos.my.id` (`:1004`,
+  `:1096`), and that second name decides the OAuth `next` allowlist in ADR #54 §2.4.
 
 ## 7. References
 
@@ -294,4 +303,4 @@ main question rather than an afterthought.
 - `docs/operations/runbook.md` — the deployment procedure, whose app-side URL table this record
   corrects.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

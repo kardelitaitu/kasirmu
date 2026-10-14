@@ -1,5 +1,9 @@
 # kasir.mu Modules
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Re-audit of the module contract page; the 2026-08-31 stamp is merged at the bottom as plain text (delimiters stripped so it cannot nest). · MINOR: the description of what manifest.json carries listed id / version / dependencies / permissions and omitted `capabilities` — a field the schema defines, all fourteen real manifests populate, and the kernel actually enforces at boot (Kernel::verify_capabilities, KernelError::MissingCapability). A page that teaches the manifest format without naming an enforced field is the omission a reader cannot detect. Added, with a pointer to docs/specs/module-manifest-format.md, which was itself repaired to name all nine fields this campaign. · VERIFIED AND LEFT ALONE, re-derived at HEAD rather than inherited: the anatomy tree matches the four stub crates and the active ones; the two-source-of-truth explanation is correct — each module carries a per-crate manifest_json_matches_module_declaration test (modules/{giftcards,kitchen,promotions,purchasing}/src/lib_tests.rs), and platform/startup/src/startup_tests.rs really does hold every_module_manifest_is_registered and every_declared_dependency_is_registered (the third name in the example block is the per-module test, which lives in the module, not in startup); the current-modules table is exact — 14 directories, 14 k.register lines in init_module_system, and every dependency edge matches the manifest; the loyalty anecdote is still true (the LoyaltyEarnHandler is wired from platform/startup/src/lib.rs:245, and the comment at :134 records the same history); the generator scripts scripts/new-module.{ps1,sh} exist and both carry a -DryRun/--dry-run path. · NOT re-measured: whether the generator still produces a crate that compiles and passes its own tests on first run, which is a claim about runtime behaviour. · Superseded 2026-08-31 body follows as plain text:
+
+Superseded audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: all 4 stubs confirmed lifecycle-only (the PROMO-3 engine lives in kasirmu-core, not modules/promotions); loyalty Active; dependency table matches manifest.json; referenced files exist. -->
+
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: all 4 stubs (purchasing/promotions/giftcards/kitchen) confirmed lifecycle-only (the PROMO-3 engine lives in kasirmu-core, not modules/promotions); loyalty Active (models/repository/service); dependency table matches manifest.json (sales->inventory, reporting->inventory+sales, loyalty->crm, kitchen->sales+terminal); referenced files exist (scripts/new-module.{ps1,sh}, docs/specs/module-manifest.schema.json, platform/startup/src/startup_tests.rs) -->
 
 Each directory here is one **business vertical**: a Cargo crate that owns a
@@ -24,7 +28,8 @@ modules/<id>/
 
 `manifest.json` is validated against `docs/specs/module-manifest.schema.json`:
 kebab-case `id`, semver `version`, a `dependencies` array of other module ids,
-and a `permissions` array.
+a `permissions` array, and a `capabilities` array (the `namespace:action`
+vocabulary the kernel checks at boot — see `docs/specs/module-manifest-format.md`).
 
 ## The two sources of truth, and why they cannot drift
 
@@ -165,4 +170,4 @@ Promoting a stub, in order:
 | `giftcards` | Stub | `sales` |
 | `kitchen` | Stub | `sales`, `terminal` |
 
-> last audited 31-08-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

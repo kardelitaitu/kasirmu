@@ -5,7 +5,12 @@ title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provi
 status: Partially implemented (2026-09-21; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,032 lines, with a prior marker re-verified rather than replaced. Among the largest decision records audited, and its status line is the most useful kind: it enumerates exactly which sections are IMPLEMENTED, names the one that is NOT (the identify leg for the linked tier), and carries the date of a status re-audit and a section amendment. A reader can tell in one line what is real. · AND THE SUBSTRATE IS LIVE, which is the checkable part. The provisioning surface the decision governs is `ui/src/features/setup/ProvisioningFlow.tsx` — the same component that replaced the retired setup wizard, and the file the setup-wizard cluster audited in round 25 concluded is the live fresh-device path. The bridge-side entry point it depends on, `crates/kasirmu-bridge/src/setup.rs`, is present and is where the preset-feature lookup landed. · ONE STALE COORDINATE, and the document is right that the subject moved. It cites `provisioning.rs` at the core-crate root; the file now lives at `crates/kasirmu-core/src/db/provisioning.rs`, with its tests beside it and its schema in the dated migrations `20261007_provisioning.sql` and `20261008_provisioning_legacy_backfill.sql`. For a decision record whose subject is still being implemented, that is the expected consequence of the core crate's own internal reorganisation, and the status line's section-level precision is unaffected by where the file now sits. · THE CROSS-DOCUMENT CHAIN IS DENSE AND ALL OF IT VERIFIED, which is the useful thing about auditing this one after the setup cluster. The preset-feature derivation ADR-56 depends on was itself the live user-facing bug the setup-wizard option-B plan found and fixed — every freshly provisioned terminal had opened with no features enabled — and that fix is visible in the tree as `preset_registry` in `crates/kasirmu-core/src/features.rs` and `get_preset_features` in the bridge. A decision record, a bug found while planning a different change, and the wizard retirement all meet in this one component. · NOT re-measured: the identify leg for the linked tier, which the status line states is the outstanding item and which this pass did not attempt to adjudicate. · Prior marker retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 major, 1 minor) · Re-audit of this record against branch 0.0.41; the 2026-09-29 stamp is merged below as original evidence. · MAJOR 1 — A CLAIM THE SHIPPED CODE CONTRADICTS: the outstanding-items block said "only `'local'` is currently sent directly from the wizard (`ProvisioningFlow.tsx:104`)". Both halves were wrong. `:104` is a store-type entry, and the component now defaults to `'linked'` — `:218` sets `useState<ProvisioningMode>('linked')` and `:587` submits `mode: provisionMode`, with `'local'` offered as the deliberate opt-out at `:721`/`:784` and its own comment explaining the reversal (the free plan attaches to a kasir.mu account). The remaining item is unchanged: §2.3's manual email identity step is not a separate UI because Google sign-in and the emailed-code path live inside the `linked` leg of this same component. · MAJOR 2 — THE SAME INVERSION IN THE DESIGN PROSE: §2.4 asserted `local` "is the **default**, not the fallback". It was, at the date this decision was taken; it is not now. Corrected to a dated reading with the code's own rationale quoted, because a design record that states a default the product has since moved is the claim a reader is most likely to act on. · MINOR — a bare filename: §2.5's pairing list named `LicenseActivationScreen.tsx` with no directory, and the file lives under `ui/src/features/auth/`, not `features/setup/` beside the other three it is listed with. Qualified. · VERIFIED AND LEFT ALONE: the status line's section-level precision is still correct — §2.1, §2.2, §2.5, §2.6 and §5 Q2 remain implemented, and the `linked`-tier `identify` leg remains the one outstanding item. Every named artifact resolves: `ui/src/features/setup/ProvisioningFlow.tsx`, `crates/kasirmu-bridge/src/setup.rs`, `crates/kasirmu-core/src/db/provisioning.rs` (the 2026-09-29 stamp's one stale coordinate, now correct), both `20261007_provisioning.sql` and `20261008_provisioning_legacy_backfill.sql`, `website/src/pages/[locale]/pair.astro`, `apps/license-server/pairing.go`, `crates/kasirmu-core/src/features.rs`. The §2.3 AMENDMENT's two "open resolutions" were in fact TAKEN — `SetupWizard.tsx`, its `.css` and its test are all deleted — and the record correctly frames them as a dated recommendation rather than a live state, so nothing was rewritten there. · NOT re-measured: the runtime provisioning path, the `linked`-tier identify leg, and the section-by-section implementation status beyond the named artifacts. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body preserved as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 1,032 lines, with a prior marker re-verified rather than replaced. Among the largest decision records audited, and its status line is the most useful kind: it enumerates exactly which sections are IMPLEMENTED, names the one that is NOT (the identify leg for the linked tier), and carries the date of a status re-audit and a section amendment. A reader can tell in one line what is real. · AND THE SUBSTRATE IS LIVE, which is the checkable part. The provisioning surface the decision governs is `ui/src/features/setup/ProvisioningFlow.tsx` — the same component that replaced the retired setup wizard, and the file the setup-wizard cluster audited in round 25 concluded is the live fresh-device path. The bridge-side entry point it depends on, `crates/kasirmu-bridge/src/setup.rs`, is present and is where the preset-feature lookup landed. · ONE STALE COORDINATE, and the document is right that the subject moved. It cites `provisioning.rs` at the core-crate root; the file now lives at `crates/kasirmu-core/src/db/provisioning.rs`, with its tests beside it and its schema in the dated migrations `20261007_provisioning.sql` and `20261008_provisioning_legacy_backfill.sql`. For a decision record whose subject is still being implemented, that is the expected consequence of the core crate's own internal reorganisation, and the status line's section-level precision is unaffected by where the file now sits. · THE CROSS-DOCUMENT CHAIN IS DENSE AND ALL OF IT VERIFIED, which is the useful thing about auditing this one after the setup cluster. The preset-feature derivation ADR-56 depends on was itself the live user-facing bug the setup-wizard option-B plan found and fixed — every freshly provisioned terminal had opened with no features enabled — and that fix is visible in the tree as `preset_registry` in `crates/kasirmu-core/src/features.rs` and `get_preset_features` in the bridge. A decision record, a bug found while planning a different change, and the wizard retirement all meet in this one component. · NOT re-measured: the identify leg for the linked tier, which the status line states is the outstanding item and which this pass did not attempt to adjudicate. · Prior marker retained; footer re-dated to match the new stamp. -->
+
 # ADR #56: First-Run Provisioning
 
 **Status: Partially implemented** (2026-09-21; status re-audited 2026-09-22). **Updated
@@ -21,10 +26,21 @@ constraint the follow-up slice must honour (it cannot write from either current 
 **Not implemented — the remaining item:**
 
 1. **§2.3's `identify` leg for the `linked` tier.** The manual email identity step has no UI on either shell;
-   `ProvisioningMode = 'local' | 'linked'` exists (`ui/src/api/settings.ts:151`) and only
-   `'local'` is currently sent directly from the wizard (`ui/src/features/setup/ProvisioningFlow.tsx:104`).
-   Note: §2.5 pairing is fully shipped across `apps/license-server/pairing.go`, `LicenseActivationScreen.tsx`,
+   `ProvisioningMode = 'local' | 'linked'` exists (`ui/src/api/settings.ts:151`) and BOTH legs are now reachable, but the SHIPPED DEFAULT IS
+   `'linked'`, not `'local'` (`ui/src/features/setup/ProvisioningFlow.tsx:218` sets
+   `useState<ProvisioningMode>('linked')`, and the form submits `mode: provisionMode` at `:587`); `'local'`
+   is the deliberate opt-out offered at `:721`/`:784` for a merchant with no connection. **Dated correction
+   2026-10-11:** this line read *"only `'local'` is currently sent directly from the wizard
+   (`ProvisioningFlow.tsx:104`)"* — the `:104` coordinate was stale and the claim was inverted; the default
+   moved to `'linked'` when the free plan was attached to a kasir.mu account. The REMAINING work is
+   unchanged: §2.3's manual email identity step is not a separate UI, because Google sign-in and the
+   emailed-code path now live inside the `linked` leg of this same component.
+   Note: §2.5 pairing is fully shipped across `apps/license-server/pairing.go`,
+   `ui/src/features/auth/LicenseActivationScreen.tsx`,
    `ProvisioningFlow.tsx`, and the operator web portal at `website/src/pages/[locale]/pair.astro`.
+   *(Path qualified 2026-10-11: this line named `LicenseActivationScreen.tsx` bare, and the file lives
+   under `features/auth/`, not `features/setup/` — a reader resolving it from the setup directory
+   finds nothing.)*
    §5 Q2 is also shipped: `TabletAppShell.tsx` gates `!bootAllowed` before `!hasCompletedSetup`.
 
 *Clock note: the `last audited` stamp at the foot of this record carries the host clock's date
@@ -582,9 +598,14 @@ are repaired separately (`8bff7a66f`).
 `mode` in §2.1 is not decoration:
 
 - **`local`** — store name + owner PIN, no network. Produces a working OS and a sellable terminal.
-  This tier is the **default**, not the fallback, because the target deployment includes merchants
-  with unreliable connectivity and because ADR #41 §2.1's "Internet Connection is Mandatory" would
-  make those merchants unable to open the app at all.
+  This tier was the **default at the time of this decision**, because the target deployment includes
+  merchants with unreliable connectivity and because ADR #41 §2.1's "Internet Connection is Mandatory"
+  would make those merchants unable to open the app at all. **Dated correction 2026-10-11: it is no
+  longer the default.** `ProvisioningFlow.tsx:213-218` now selects `'linked'` by default, with the
+  change documented in its own comment — the free plan attaches to a kasir.mu account, so a fresh
+  terminal signs up before it opens a register, and `'local'` is *"the deliberate exception rather
+  than the path of least resistance"*. The tier's rationale is unchanged and it remains fully
+  reachable; only which one pre-selects has moved.
 - **`linked`** — the §2.3 identity step, adding `tenant_id`, sync, topology and multi-terminal.
 
 A `local` terminal upgrades to `linked` in-app when the merchant links their account, by writing
@@ -1061,4 +1082,4 @@ export fails visibly. Unlike the session and picker-ticket defaults fixed in `8d
 `b229f41c7`, no local check consumes that value — the only reader is Google — so the cost is a wrong
 `iat` in a diagnostic rather than an authorisation decision.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

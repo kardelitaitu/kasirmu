@@ -6,6 +6,8 @@ order: 6
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page. THE CLAIM MOST LIKELY TO BE WRONG, CHECKED HARDEST: "Products and menu items are added one at a time — there is no bulk or CSV import today." The repo DOES have `import_preview`/`import_data` commands (apps/desktop-tauri/src/commands/data.rs:91,123, registered at lib.rs:1415,1434, wrappers at ui/src/api/data.ts:335-352), so a shallow grep says this is false. It is not: `data.rs` is documented as "backup, restore, export .kasirpkg, import .kasirpkg" and `importData` reads an ENCRYPTED WHOLE-DATABASE PACKAGE (`pickImportFile` filters to extensions ['kasirpkg','ozpkg'] and passes a password) — it restores a backup, it does not add product rows. There is no CSV product importer. The sentence stands, and this stamp records the near-miss because the same wrong conclusion is one grep away. · VERIFIED: the two workspace kinds are real (`restaurant-pos` is a live type_key; ui/src/app/tablet/TabletAppShell.tsx:100,593); the checkout screen's parts (product/menu grid, category tabs, search, SKU-or-barcode field, side cart panel) match PosScreen; cash and QRIS are the shipped tenders and the "cards and e-wallets coming soon" hedge is the product's own documented position (README.md:329 lists card/cloud-sync work as in development); barcode-or-SKU entry is real (useBarcodeScanner, the SKU field); "committed locally ... counts toward the open shift" matches the local-first sale path. · NOT re-measured: a live checkout on a register, and the loyalty-attach flow. · Footer is an internal marker, stripped from the built site. -->
+
 ## Set up a workspace
 
 Create a workspace for the register: **Retail POS** for retail (product grid,
@@ -91,3 +93,5 @@ See [Payments & QRIS](../payments/) for the payment methods in depth, or
 ---
 
 Keep reading · **Previous:** [License Activation](../activation/) · **Next:** [Workspaces](../workspaces/)
+
+> last audited 11-10-26 by docs-auditor

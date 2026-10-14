@@ -27,6 +27,38 @@ pub struct RecipeItem {
     pub unit: String,
 }
 
+/// An input row for defining an ingredient in a recipe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecipeIngredientInput {
+    /// ID of the ingredient product.
+    pub ingredient_product_id: String,
+    /// Quantity of the ingredient required per unit of parent product.
+    pub quantity_required: i64,
+    /// Unit of measurement (e.g. "pcs", "g", "ml").
+    pub unit: String,
+}
+
+/// A detailed recipe ingredient including joined product attributes (SKU, name, cost).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecipeItemDetails {
+    /// ID of this recipe row.
+    pub id: String,
+    /// ID of the composite/parent product.
+    pub parent_product_id: String,
+    /// ID of the ingredient product.
+    pub ingredient_product_id: String,
+    /// Stock-keeping unit of the ingredient.
+    pub ingredient_sku: String,
+    /// Display name of the ingredient product.
+    pub ingredient_name: String,
+    /// Quantity required per unit of parent product.
+    pub quantity_required: i64,
+    /// Unit of measurement.
+    pub unit: String,
+    /// Unit cost of the ingredient in minor units (for margin & recipe costing).
+    pub cost_minor: i64,
+}
+
 #[cfg(test)]
 #[path = "recipe_tests.rs"]
 mod tests;

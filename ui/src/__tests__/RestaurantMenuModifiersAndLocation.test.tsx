@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
+import { withFluent } from '@/i18n/test-utils';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import type { Product, Sku } from '@/types/domain';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -203,5 +204,126 @@ describe('RestaurantMenu — Modifiers & Location-Aware 86 state', () => {
       expect(card?.className).toContain('restaurant-card--disabled');
       expect(card?.textContent).toContain('Unavailable');
     });
+  });
+
+  it('ignores stale localStorage unavailable cache on open (no local-to-remote flash)', async () => {
+    // Pre-populate both key tiers a previous session might have left
+    // behind. The remote says nothing is 86'd; the previous code seeded
+    // the initial state from these keys, then the fetch replaced the
+    // set and the grid flashed from "Unavailable" to "Available".
+    localStorage.setItem(
+      'restaurant-loc-loc-branch-1-unavail',
+      JSON.stringify(['MINERAL-WATER']),
+    );
+    localStorage.setItem(
+      'restaurant-cashier-1-unavail',
+      JSON.stringify(['MINERAL-WATER']),
+    );
+    mockGetSettingScoped.mockResolvedValue(null);
+
+    renderWithFluentSync(
+      <RestaurantMenu />,
+      sharedFtl,
+      productsFtl,
+      salesFtl,
+    );
+
+    // Synchronously, on the very first render, the grid must not have
+    // folded the stale cache into `unavailable` — the items must show
+    // as available before the fetch even resolves.
+    const initialCard = screen.getByText('Mineral Water').closest('.restaurant-card');
+    expect(initialCard?.className).not.toContain('restaurant-card--disabled');
+    expect(initialCard?.textContent).not.toContain('Unavailable');
+
+    // And the same after the fetch resolves with an empty list.
+    await waitFor(() => {
+      expect(mockGetSettingScoped).toHaveBeenCalled();
+    });
+    const settledCard = screen.getByText('Mineral Water').closest('.restaurant-card');
+    expect(settledCard?.className).not.toContain('restaurant-card--disabled');
+  });
+
+  it('still pushes to the server once the backend read has succeeded', async () => {
+    // Counterpart to the two tests above: the gate must OPEN on a
+    // successful read, otherwise 86'ing an item would silently stop
+    // syncing to the server altogether.
+    mockGetSettingScoped.mockReset().mockResolvedValue(JSON.stringify([]));
+
+    renderWithFluentSync(
+      <RestaurantMenu />,
+      sharedFtl,
+      productsFtl,
+      salesFtl,
+    );
+
+    await waitFor(() => expect(mockGetSettingScoped).toHaveBeenCalled());
+
+    const card = screen.getByText('Mineral Water').closest('.restaurant-card') as HTMLElement;
+    fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
+    await userEvent.click(screen.getByText('Mark unavailable'));
+
+    await waitFor(() => {
+      expect(mockSetSettingScoped).toHaveBeenCalledWith(
+        'test-session-token',
+        'restaurant.unavailable.loc-branch-1',
+        JSON.stringify(['MINERAL-WATER']),
+      );
+    });
+  });
+
+  it('does not push the local unavailable set to the server when the backend read fails', async () => {
+    // A rejected read must leave unavailableLoadedRef SHUT. `unavailable`
+    // is still the empty seed, so the next state change would otherwise
+    // push `[]` over the real 86'd list on the server.
+    mockGetSettingScoped.mockReset().mockRejectedValue(new Error('backend unreachable'));
+
+    renderWithFluentSync(
+      <RestaurantMenu />,
+      sharedFtl,
+      productsFtl,
+      salesFtl,
+    );
+
+    // Wait for the read to be attempted AND rejected.
+    await waitFor(() => expect(mockGetSettingScoped).toHaveBeenCalled());
+
+    // Now change `unavailable` the way a waiter would: 86 the mineral water.
+    const card = screen.getByText('Mineral Water').closest('.restaurant-card') as HTMLElement;
+    fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
+    await userEvent.click(screen.getByText('Mark unavailable'));
+
+    await waitFor(() => {
+      const disabled = screen.getByText('Mineral Water').closest('.restaurant-card');
+      expect(disabled?.className).toContain('restaurant-card--disabled');
+    });
+
+    // The 86 is applied locally, but nothing is pushed to the server: we
+    // never successfully read it, so we must not claim to know its contents.
+    expect(mockSetSettingScoped).not.toHaveBeenCalled();
+  });
+
+  it('does not push the local set to the server when a token arrives after mount', async () => {
+    // Mobile path: RestaurantMenu mounts before WorkspaceContext has minted
+    // a token. The old code marked the set loaded on THAT path too, so the
+    // persistence effect pushed the empty seed the moment a token appeared
+    // and the read had not landed yet.
+    mockSessionToken.current = null;
+    mockGetSettingScoped.mockReset().mockImplementation(() => new Promise(() => {}));
+
+    const view = renderWithFluentSync(
+      <RestaurantMenu />,
+      sharedFtl,
+      productsFtl,
+      salesFtl,
+    );
+    expect(mockGetSettingScoped).not.toHaveBeenCalled();
+
+    // Token arrives -> the persistence effect re-runs (sessionToken is a dep)
+    // and the read is kicked off but deliberately never settles.
+    mockSessionToken.current = 'test-session-token';
+    view.rerender(withFluent(<RestaurantMenu />, sharedFtl, productsFtl, salesFtl));
+
+    await waitFor(() => expect(mockGetSettingScoped).toHaveBeenCalled());
+    expect(mockSetSettingScoped).not.toHaveBeenCalled();
   });
 });

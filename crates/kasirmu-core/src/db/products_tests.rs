@@ -330,6 +330,73 @@ fn create_product_without_stock() {
         .unwrap();
     let qty = store(&conn).get_stock(&p.id).unwrap();
     assert_eq!(qty, 0);
+    let details = store(&conn).get_product("NOSTOCK").unwrap().unwrap();
+    assert_eq!(details.stock_qty, Some(0));
+    assert!(!details.is_in_stock());
+}
+
+#[test]
+fn create_retail_product_zero_stock_has_authoritative_ledger_row() {
+    let conn = fresh();
+    let _p = store(&conn)
+        .create_product(
+            "ZERO-RETAIL",
+            "Zero Retail",
+            price(100),
+            None,
+            None,
+            0,
+            Some("retail"),
+        )
+        .unwrap();
+    let details = store(&conn).get_product("ZERO-RETAIL").unwrap().unwrap();
+    assert_eq!(details.stock_qty, Some(0));
+    assert!(!details.is_in_stock());
+
+    // Untracked product (restaurant) gets no inventory row and is orderable
+    let _resto = store(&conn)
+        .create_product(
+            "RESTO-1",
+            "Burger",
+            price(500),
+            None,
+            None,
+            0,
+            Some("restaurant"),
+        )
+        .unwrap();
+    let resto_details = store(&conn).get_product("RESTO-1").unwrap().unwrap();
+    assert_eq!(resto_details.stock_qty, None);
+    assert!(resto_details.is_in_stock());
+
+    // Untracked product (service) gets no inventory row and is orderable
+    let _service = store(&conn)
+        .create_product(
+            "SRV-1",
+            "Car Wash",
+            price(1500),
+            None,
+            None,
+            0,
+            Some("service"),
+        )
+        .unwrap();
+    let srv_details = store(&conn).get_product("SRV-1").unwrap().unwrap();
+    assert_eq!(srv_details.stock_qty, None);
+    assert!(srv_details.is_in_stock());
+}
+
+#[test]
+fn product_type_check_constraint_rejects_invalid_values() {
+    let conn = fresh();
+    let err = conn
+        .execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+         VALUES ('bad-1', 'BAD-SKU', 'Bad Item', 100, 'USD', 'both')",
+            [],
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("CHECK constraint failed"));
 }
 
 #[test]

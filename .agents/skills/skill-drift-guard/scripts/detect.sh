@@ -432,8 +432,57 @@ if should_run paths; then
           # bare `src/...` token has no such prefix and falls through to print.
           pre = substr(line, 1, RSTART - 1)
           tok = substr(line, RSTART, RLENGTH)
+          # `post` is captured BEFORE the residual is advanced, because the marker
+          # can sit on EITHER side of the token: "the old path was `X`" names it dead
+          # before, while "`X` is untracked" and "a `X` hit that is a dated note"
+          # name it dead after.
+          post = substr(line, RSTART + RLENGTH)
           line = substr(line, RSTART + RLENGTH)
           if (pre ~ /[a-zA-Z0-9_.-]+-[0-9]+(\.[0-9]+)+\/$/) continue
+          # A path NAMED AS DEAD is a correction record, not a claim that it exists.
+          #
+          # Three live examples were reported as drift on 2026-10-13, none a claim:
+          # docs-auditor "the true old path was `ui/src/styles/tokens.css`" (it moved
+          # to ui/src/theme/), deploy-cloudflare "deliberately does NOT build the
+          # portal (`docs/book` is untracked)", and figma-bridge "a deploy-cloudflare
+          # `docs/book` hit that is a dated note". The last one RECORDS that the guard
+          # reports it and calls it a false positive -- so the finding had become
+          # accepted noise, which is how a gate stops being read.
+          #
+          # Decided on the TOKEN own surrounding text, like the vendored case above:
+          # a bare token cannot say whether the sentence around it is a claim or a
+          # correction, and the extractor is the only place the offset is known.
+          #
+          # THE MARKER MUST BE ADJACENT, AND THE CLAUSE IS THE UNIT.
+          #   * `{0,25}$` / `^[^.;]{0,25}` -- not a paragraph-wide window. "old" in an
+          #     earlier sentence does not excuse a path named in a later one; case 6 of
+          #     tests/check1-dead-path-note.bats pins exactly that.
+          #   * the clause is split on `.` and `;`, so a SECOND path on the same line
+          #     does not inherit the excuse of the first. Case 7 pins that, because a
+          #     context test that reaches across a clause is one step from silencing
+          #     real drift -- and an earlier revision of THIS rule did silence cases
+          #     5-8, caught by those negative cases before it shipped.
+          #
+          # awk has no `split`-to-last-element, so the clause is taken with `sub`:
+          # `before` keeps the text after the last `.`/`;`, `after` the text before the
+          # next one.
+          before = pre; after = post
+          sub(/.*[.;]/, "", before)
+          sub(/[.;].*/, "", after)
+          # `\y` (awk word boundary) rather than a `[^a-zA-Z]|$` alternation: the
+          # trailing `$` anchor is fragile across the shell/awk quoting layers, and an
+          # earlier revision of this rule silently never matched because of it -- the
+          # check kept reporting the three known-good lines while looking correct.
+          # A STRING, not a regex literal: in awk `d = /re/` assigns the RESULT of
+          # matching $0 against /re/ -- a 0 or 1 -- so `$0 ~ d` becomes `$0 ~ 0` and is
+          # always false. An earlier revision of this rule was written that way and
+          # silently never matched: the check kept reporting the three known-good lines
+          # while looking correct, and only the bats probes below exposed it.
+          #
+          # `\y` (awk word boundary) rather than a `[^a-zA-Z]|$` alternation: the
+          # trailing `$` anchor is fragile across the shell/awk quoting layers.
+          deadmark = "\\y(old|gone|untracked|dead|superseded|deprecated|removed|note)\\y"
+          if (before ~ deadmark || after ~ deadmark || before ~ /not build/ || after ~ /not build/) continue
           print NR "\t" tok
         }
       }' "$skill" 2>/dev/null)
@@ -517,7 +566,21 @@ if should_run versions; then
         if ! grep -q "$v" Cargo.toml; then
           FINDINGS[versions]+="${skill}: quoted version ${ver} not in Cargo.toml"$'\n'
         fi
-      done < <(grep -hoE '"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null | sort -u)
+      # Exclude a version that is a JSON FIELD VALUE rather than a dependency claim.
+      #
+      # This check is "Dependency version drift": it exists so a skill quoting
+      # `rusqlite = { version = "0.31" }` or `rust-version = "1.88"` is caught when the
+      # real Cargo.toml moves. A quoted version following a JSON-style key is a
+      # different thing: desktop-ui-automation quotes the CDP banner
+      # `{ "Browser": "Edg/...", "Protocol-Version": "1.3", ... }`, where 1.3 is the
+      # browser protocol version and can never appear in Cargo.toml.
+      #
+      # Narrow on purpose: a match is dropped only when the version is IMMEDIATELY
+      # preceded by a `"key":` pair, so project-scaffold's four genuine claims
+      # (rust-version "1.88", rusqlite version "0.31", tracing "0.1",
+      # tracing-subscriber "0.3") are all still checked.
+      done < <(grep -hoE '"[^"]*"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+(\.[0-9]+)?"|"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null \
+        | grep -vE '^"[^"]*"[[:space:]]*:' | sort -u)
     done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
 fi
@@ -607,8 +670,17 @@ if should_run fluent; then
         if ! grep -rqE "^${ftl_id}\s*=" shared-ui/locales/ 2>/dev/null; then
           FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in shared-ui/locales/"$'\n'
         fi
-      done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
-        sed 's/id="//;s/"$//')
+      # Skip PLACEHOLDER ids. A skill documenting an error message must write a
+      # stand-in for the value it cannot know: desktop-ui-automation lists
+      # `element data-testid="X" is disabled -- refusing to click` and four siblings,
+      # where X is the testid a reader substitutes. Requiring an FTL key for it is
+      # unsatisfiable -- the skill would have to name a real id the message does not
+      # have. Same shape as the dead-path note in Check 1: a template is not a claim.
+      #
+      # Narrow on purpose: only single-uppercase-letter and angle-bracket placeholders
+      # are dropped, so a real FTL id is still checked.
+      done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u \
+        | sed 's/id="//;s/"$//' | grep -vE '^[A-Z]$|^<[^>]*>$')
     done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
   # else: no front-end yet, silently skip

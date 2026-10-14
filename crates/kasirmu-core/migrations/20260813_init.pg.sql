@@ -183,6 +183,15 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'payments_new', 'payments');
     END IF;
 
+    -- 'products_new' -> 'products'   (20261020_product_type_check.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'products_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'products')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'products_new', 'products');
+    END IF;
+
     -- 'user_location_access'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'user_location_access'
@@ -913,31 +922,6 @@ BEGIN
             ('workspace_instances', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('workspace_instances', 'bound_location_id', 'TEXT', NULL::text, false),
             ('workspace_instances', 'purpose_key', 'TEXT', '''general''', true),
-            ('products', 'id', 'TEXT', NULL::text, true),
-            ('products', 'sku', 'TEXT', NULL::text, true),
-            ('products', 'name', 'TEXT', NULL::text, true),
-            ('products', 'price_minor', 'BIGINT', NULL::text, true),
-            ('products', 'currency', 'TEXT', NULL::text, true),
-            ('products', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('products', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('products', 'category_id', 'TEXT', NULL::text, false),
-            ('products', 'barcode', 'TEXT', NULL::text, false),
-            ('products', 'price_updated_at', 'TEXT', '''''', false),
-            ('products', 'track_serial', 'BIGINT', '0', true),
-            ('products', 'product_type', 'TEXT', '''retail''', true),
-            ('products', 'cost_minor', 'BIGINT', '0', true),
-            ('products', 'version', 'BIGINT', '1', true),
-            ('products', 'store_id', 'TEXT', NULL::text, false),
-            ('products', 'tenant_id', 'TEXT', '''default''', true),
-            ('products', 'kitchen_zone', 'TEXT', NULL::text, false),
-            ('products', 'brand', 'TEXT', NULL::text, false),
-            ('products', 'rack_location', 'TEXT', NULL::text, false),
-            ('products', 'notes', 'TEXT', NULL::text, false),
-            ('products', 'unit', 'TEXT', NULL::text, false),
-            ('products', 'is_active', 'BIGINT', '1', true),
-            ('products', 'default_supplier_id', 'TEXT', NULL::text, false),
-            ('products', 'popularity_score', 'DOUBLE PRECISION', '0', true),
-            ('products', 'image_hash', 'TEXT', NULL::text, false),
             ('memo_locations', 'memo_id', 'TEXT', NULL::text, true),
             ('memo_locations', 'location_id', 'TEXT', NULL::text, true),
             ('memo_locations', 'tenant_id', 'TEXT', '''default''', true),
@@ -963,6 +947,31 @@ BEGIN
             ('provisioning', 'mode', 'TEXT', NULL::text, true),
             ('provisioning', 'home_region', 'TEXT', '''global''', true),
             ('provisioning', 'provisioned_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('products', 'id', 'TEXT', NULL::text, true),
+            ('products', 'sku', 'TEXT', NULL::text, true),
+            ('products', 'name', 'TEXT', NULL::text, true),
+            ('products', 'price_minor', 'BIGINT', NULL::text, true),
+            ('products', 'currency', 'TEXT', NULL::text, true),
+            ('products', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('products', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('products', 'category_id', 'TEXT', NULL::text, false),
+            ('products', 'barcode', 'TEXT', NULL::text, false),
+            ('products', 'price_updated_at', 'TEXT', '''''', false),
+            ('products', 'track_serial', 'BIGINT', '0', true),
+            ('products', 'product_type', 'TEXT', '''retail''', true),
+            ('products', 'cost_minor', 'BIGINT', '0', true),
+            ('products', 'version', 'BIGINT', '1', true),
+            ('products', 'store_id', 'TEXT', NULL::text, false),
+            ('products', 'tenant_id', 'TEXT', '''default''', true),
+            ('products', 'kitchen_zone', 'TEXT', NULL::text, false),
+            ('products', 'brand', 'TEXT', NULL::text, false),
+            ('products', 'rack_location', 'TEXT', NULL::text, false),
+            ('products', 'notes', 'TEXT', NULL::text, false),
+            ('products', 'unit', 'TEXT', NULL::text, false),
+            ('products', 'is_active', 'BIGINT', '1', true),
+            ('products', 'default_supplier_id', 'TEXT', NULL::text, false),
+            ('products', 'popularity_score', 'DOUBLE PRECISION', '0', true),
+            ('products', 'image_hash', 'TEXT', NULL::text, false),
             ('assignment_branches', 'assignment_user_id', 'TEXT', NULL::text, true),
             ('assignment_branches', 'branch_id', 'TEXT', NULL::text, true),
             ('assignment_workspaces', 'assignment_user_id', 'TEXT', NULL::text, true),
@@ -1105,6 +1114,9 @@ BEGIN
             ('workspace_inventory_locations', 'is_primary', 'BIGINT', '0', true),
             ('workspace_inventory_locations', 'allow_negative_stock', 'BIGINT', '0', true),
             ('workspace_inventory_locations', 'sort_order', 'BIGINT', '0', true),
+            ('category_taxes', 'category_id', 'TEXT', NULL::text, true),
+            ('category_taxes', 'tax_rate_id', 'TEXT', NULL::text, true),
+            ('category_taxes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('inventory', 'product_id', 'TEXT', NULL::text, true),
             ('inventory', 'qty', 'BIGINT', '0', true),
             ('inventory', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
@@ -1141,6 +1153,10 @@ BEGIN
             ('product_variants', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('product_variants', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('product_variants', 'tenant_id', 'TEXT', '''default''', true),
+            ('product_taxes', 'product_sku', 'TEXT', NULL::text, true),
+            ('product_taxes', 'tax_rate_id', 'TEXT', NULL::text, true),
+            ('product_taxes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_taxes', 'tenant_id', 'TEXT', '''default''', true),
             ('product_bundles', 'id', 'TEXT', NULL::text, true),
             ('product_bundles', 'bundle_sku', 'TEXT', NULL::text, true),
             ('product_bundles', 'name', 'TEXT', NULL::text, true),
@@ -1156,13 +1172,6 @@ BEGIN
             ('product_images', 'hash', 'TEXT', NULL::text, true),
             ('product_images', 'position', 'BIGINT', '0', true),
             ('product_images', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('category_taxes', 'category_id', 'TEXT', NULL::text, true),
-            ('category_taxes', 'tax_rate_id', 'TEXT', NULL::text, true),
-            ('category_taxes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('product_taxes', 'product_sku', 'TEXT', NULL::text, true),
-            ('product_taxes', 'tax_rate_id', 'TEXT', NULL::text, true),
-            ('product_taxes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('product_taxes', 'tenant_id', 'TEXT', '''default''', true),
             ('payable_payments', 'id', 'TEXT', NULL::text, true),
             ('payable_payments', 'tenant_id', 'TEXT', NULL::text, true),
             ('payable_payments', 'payable_id', 'TEXT', NULL::text, true),
@@ -2409,37 +2418,6 @@ CREATE TABLE IF NOT EXISTS "workspace_instances" (
 , bound_location_id TEXT
     REFERENCES inventory_locations(id) ON DELETE RESTRICT, purpose_key TEXT NOT NULL DEFAULT 'general');
 
-CREATE TABLE IF NOT EXISTS "products" (
-    id          TEXT PRIMARY KEY,
-    sku         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    price_minor BIGINT NOT NULL CHECK (price_minor >= 0),
-    currency    TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    category_id TEXT REFERENCES categories(id),
-    barcode     TEXT,
-    price_updated_at TEXT DEFAULT '',
-    track_serial BIGINT NOT NULL DEFAULT 0,
-    product_type TEXT NOT NULL DEFAULT 'retail',
-    cost_minor  BIGINT NOT NULL DEFAULT 0,
-    version     BIGINT NOT NULL DEFAULT 1,
-    store_id    TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    tenant_id   TEXT NOT NULL DEFAULT 'default',
-    kitchen_zone TEXT,
-    brand TEXT,
-    rack_location TEXT,
-    notes TEXT,
-    unit TEXT,
-    is_active BIGINT NOT NULL DEFAULT 1,
-    default_supplier_id TEXT REFERENCES suppliers(id),
-    popularity_score DOUBLE PRECISION NOT NULL DEFAULT 0
-, image_hash TEXT);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id, sku);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
-
 CREATE TABLE IF NOT EXISTS memo_locations (
     memo_id      TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
     location_id  TEXT NOT NULL REFERENCES locations(id) ON DELETE RESTRICT,
@@ -2520,6 +2498,38 @@ CREATE TABLE IF NOT EXISTS provisioning (
     -- future path (sync, downgrade, a repair script) cannot be incoherent.
     CHECK (mode = 'local' OR (tenant_id IS NOT NULL AND device_id IS NOT NULL))
 );
+
+CREATE TABLE IF NOT EXISTS "products" (
+    id                  TEXT PRIMARY KEY,
+    sku                 TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    price_minor         BIGINT NOT NULL CHECK (price_minor >= 0),
+    currency            TEXT NOT NULL,
+    created_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    category_id         TEXT REFERENCES categories(id),
+    barcode             TEXT,
+    price_updated_at    TEXT DEFAULT '',
+    track_serial        BIGINT NOT NULL DEFAULT 0,
+    product_type        TEXT NOT NULL DEFAULT 'retail' CHECK (product_type IN ('retail', 'restaurant', 'service')),
+    cost_minor          BIGINT NOT NULL DEFAULT 0,
+    version             BIGINT NOT NULL DEFAULT 1,
+    store_id            TEXT REFERENCES locations(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    tenant_id           TEXT NOT NULL DEFAULT 'default',
+    kitchen_zone        TEXT,
+    brand               TEXT,
+    rack_location       TEXT,
+    notes               TEXT,
+    unit                TEXT,
+    is_active           BIGINT NOT NULL DEFAULT 1,
+    default_supplier_id TEXT REFERENCES suppliers(id),
+    popularity_score    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    image_hash          TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id, sku);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
 
 CREATE TABLE IF NOT EXISTS assignment_branches (
     assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
@@ -2736,6 +2746,13 @@ CREATE TABLE IF NOT EXISTS workspace_inventory_locations (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_inv_locations_one_primary_per_instance
     ON workspace_inventory_locations(instance_id) WHERE is_primary = 1;
 
+CREATE TABLE IF NOT EXISTS category_taxes (
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (category_id, tax_rate_id)
+);
+
 CREATE TABLE IF NOT EXISTS inventory (
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     qty        BIGINT NOT NULL DEFAULT 0 CHECK (qty >= 0),
@@ -2803,6 +2820,15 @@ CREATE TABLE IF NOT EXISTS "product_variants" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_product_variants_barcode ON product_variants(barcode);
 
+CREATE TABLE IF NOT EXISTS "product_taxes" (
+    product_sku  TEXT NOT NULL,
+    tax_rate_id  TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (product_sku, tax_rate_id),
+    FOREIGN KEY (tenant_id, product_sku) REFERENCES products(tenant_id, sku) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS "product_bundles" (
     id          TEXT PRIMARY KEY,
     bundle_sku  TEXT NOT NULL UNIQUE,
@@ -2824,22 +2850,6 @@ CREATE TABLE IF NOT EXISTS product_images (
     position   BIGINT NOT NULL DEFAULT 0,   -- display order of alternatives
     updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     PRIMARY KEY (product_id, slot)
-);
-
-CREATE TABLE IF NOT EXISTS category_taxes (
-    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    PRIMARY KEY (category_id, tax_rate_id)
-);
-
-CREATE TABLE IF NOT EXISTS "product_taxes" (
-    product_sku  TEXT NOT NULL,
-    tax_rate_id  TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
-    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    tenant_id TEXT NOT NULL DEFAULT 'default',
-    PRIMARY KEY (product_sku, tax_rate_id),
-    FOREIGN KEY (tenant_id, product_sku) REFERENCES products(tenant_id, sku) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS payable_payments (

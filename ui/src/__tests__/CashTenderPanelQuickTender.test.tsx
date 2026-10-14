@@ -8,6 +8,7 @@
 // the rule that replaced it: every rendered shortcut is strictly above the
 // payable, and no two shortcuts are the same amount.
 import { describe, it, expect } from 'vitest';
+import { cleanup } from '@testing-library/react';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { renderWithFluentSync } from './test-utils/render';
 import { formatMoney, type Money } from '@/types/domain';
@@ -34,6 +35,8 @@ const presetLabels = () =>
   Array.from(document.querySelectorAll('.payment-quick-btn'))
     .map((button) => button.textContent ?? '')
     .filter((text) => text !== 'Exact');
+
+const usd = (minorUnits: number): Money => ({ minor_units: minorUnits, currency: 'USD' });
 
 const idr = (minorUnits: number): Money => ({ minor_units: minorUnits, currency: 'IDR' });
 
@@ -71,4 +74,84 @@ describe('CashTenderPanel quick-tender shortcuts', () => {
     const labels = presetLabels();
     expect(labels).toEqual([formatMoney(idr(10_000), 'id-ID'), formatMoney(idr(20_000), 'id-ID')]);
   });
+
+  // ── The same presets in a 2-exponent currency ─────────────────────────
+  //
+  // Every case above is IDR (exponent 0), where the preset value and the major
+  // units coincide. They do NOT in a 2-exponent currency: the panel computes
+  // `denomMinor = amount * 10^exp` (CashTenderPanel.tsx:87), so the built-in
+  // 5000 means Rp 5.000 in IDR and $5,000 in USD.
+  //
+  // This pins the USD rendering so the default set's currency sensitivity is
+  // visible. The defaults are not currency-tuned — a USD store is offered
+  // $5,000-$500,000 shortcuts — which is a product decision to make deliberately
+  // rather than discover in the field.
+  it('renders the built-in presets at the currency exponent, not as minor units', () => {
+    // $7.00 payable. The currency-aware ladder is $5 … $100, and the $5 rung rounds up to
+    // the payable itself, so it is correctly dropped and four buttons render. Before the
+    // fix this ladder was IDR-shaped and the first button read $5,000.00.
+    renderPanel(usd(700));
+    const labels = presetLabels();
+    expect(labels).toHaveLength(4);
+    expect(labels[0]).toBe(formatMoney(usd(1_000), 'id-ID')); // $10.00
+    expect(labels[3]).toBe(formatMoney(usd(10_000), 'id-ID')); // $100.00
+  });
+
+  it('a USD store may supply its own presets, which are honoured unchanged', () => {
+    // The escape hatch: the presets key is per-device localStorage, so a USD
+    // store can replace the IDR-shaped defaults.
+    renderPanel(usd(700), [10, 20, 50]);
+    const labels = presetLabels();
+    expect(labels).toEqual([
+      formatMoney(usd(1_000), 'id-ID'),
+      formatMoney(usd(2_000), 'id-ID'),
+      formatMoney(usd(5_000), 'id-ID'),
+    ]);
+  });
+
+  // ── The built-in ladder must suit the currency ────────────────────────
+  //
+  // The fallback is `[5000 … 500000]` MAJOR units, so it means Rp 5.000-Rp 500.000 in
+  // IDR and $5,000-$500,000 in USD. Nothing in the repo writes
+  // `restaurant-tender-presets` / `retail-tender-presets`, so EVERY store gets that
+  // fallback -- a USD till was offering a $5,000 shortcut on a $7 sale.
+  it('offers a ladder an operator can actually reach, per currency', () => {
+    // IDR: the existing ladder is right for the currency it was written for.
+    renderPanel(idr(3_500));
+    expect(presetLabels()[0]).toBe(formatMoney(idr(5_000), 'id-ID'));
+    cleanup();
+
+    // USD: the same order of magnitude must NOT be offered a $5,000 shortcut.
+    renderPanel(usd(700));
+    expect(
+      presetLabels()[0],
+      'a USD store is offered the IDR-shaped ladder: $5,000 on a $7 sale',
+    ).toBe(formatMoney(usd(1_000), 'id-ID'));
+  });
+
+  it('renders Exact button with payment-quick-btn--exact class', () => {
+    renderPanel(idr(50_000));
+    const exactBtn = document.querySelector('.payment-quick-btn--exact');
+    expect(exactBtn).not.toBeNull();
+    expect(exactBtn?.textContent).toContain('Exact');
+  });
+
+  it('renders sufficient change with payment-change-amount--sufficient and locale formatting', () => {
+    renderWithFluentSync(
+      <CashTenderPanel
+        tendered="100000"
+        onTenderedChange={noop}
+        total={idr(75_000)}
+        sufficient={true}
+        change={idr(25_000)}
+        locale="id-ID"
+        tenderPresets={undefined}
+      />,
+      salesFtl,
+    );
+    const changeEl = document.querySelector('.payment-change-amount--sufficient');
+    expect(changeEl).not.toBeNull();
+    expect(changeEl?.textContent).toBe(formatMoney(idr(25_000), 'id-ID'));
+  });
 });
+

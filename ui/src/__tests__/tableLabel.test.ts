@@ -1,5 +1,16 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 import { describe, expect, it } from 'vitest';
-import { bareTableNumber, heldCartLabel, matchesTableBill } from '@/features/sales/utils/tableLabel';
+import { bareTableNumber, heldCartLabel, matchesTableBill, extractCustomerNameFromTableBill } from '@/features/sales/utils/tableLabel';
 
 /**
  * The regression these guard: the product stores table names that ALREADY read
@@ -9,9 +20,12 @@ import { bareTableNumber, heldCartLabel, matchesTableBill } from '@/features/sal
  *   tbl-12 | Table 12 | 6 | VIP Room
  */
 describe('bareTableNumber', () => {
-  it('strips a leading "Table" word, which is what the stored names carry', () => {
+  it('strips a leading "Table" or "Meja" word, which is what the stored names carry', () => {
     expect(bareTableNumber('Table 12')).toBe('12');
     expect(bareTableNumber('Table 1')).toBe('1');
+    expect(bareTableNumber('Meja 12')).toBe('12');
+    expect(bareTableNumber('meja 5')).toBe('5');
+    expect(bareTableNumber('Meja: 3')).toBe('3');
   });
 
   it('leaves an identifier that never carried the word alone', () => {
@@ -91,10 +105,53 @@ describe('matchesTableBill', () => {
     expect(matchesTableBill({ label: 'VIP 1' }, 'VIP 1')).toBe(true);
   });
 
+  it('matches Indonesian table names with Meja prefix or bare numbers', () => {
+    expect(matchesTableBill({ label: 'Meja 2 (Bapak Budi)' }, 'Meja 2')).toBe(true);
+    expect(matchesTableBill({ label: 'Table 2' }, 'Meja 2')).toBe(true);
+    expect(matchesTableBill({ label: 'Meja 2' }, 'Table 2')).toBe(true);
+    expect(matchesTableBill({ label: '2' }, 'Table 2')).toBe(true);
+    expect(matchesTableBill({ label: '2' }, 'Meja 2')).toBe(true);
+  });
+
   it('returns false for falsy or empty inputs', () => {
     expect(matchesTableBill(null, 'Table 2')).toBe(false);
     expect(matchesTableBill({ label: 'Table 2' }, '')).toBe(false);
     expect(matchesTableBill({}, 'Table 2')).toBe(false);
   });
 });
+
+describe('extractCustomerNameFromTableBill', () => {
+  it('extracts customer name from Table-prefixed bills', () => {
+    expect(extractCustomerNameFromTableBill('Table 2 (Budi)')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Table 2 - Budi')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Table 12 (Siti Aminah)')).toBe('Siti Aminah');
+  });
+
+  it('extracts customer name from Meja-prefixed bills', () => {
+    expect(extractCustomerNameFromTableBill('Meja 2 (Budi)')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Meja 5 - Pak Joko')).toBe('Pak Joko');
+    expect(extractCustomerNameFromTableBill('meja 10 (Dewi)')).toBe('Dewi');
+  });
+
+  it('returns null for table-only strings with no customer name', () => {
+    expect(extractCustomerNameFromTableBill('Table 2')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Table 12')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Meja 5')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Table')).toBeNull();
+    expect(extractCustomerNameFromTableBill('Meja')).toBeNull();
+  });
+
+  it('returns plain customer name when no table prefix is present', () => {
+    expect(extractCustomerNameFromTableBill('Budi')).toBe('Budi');
+    expect(extractCustomerNameFromTableBill('Ibu Ratna')).toBe('Ibu Ratna');
+  });
+
+  it('returns null for empty, whitespace, or null inputs', () => {
+    expect(extractCustomerNameFromTableBill(null)).toBeNull();
+    expect(extractCustomerNameFromTableBill(undefined)).toBeNull();
+    expect(extractCustomerNameFromTableBill('')).toBeNull();
+    expect(extractCustomerNameFromTableBill('   ')).toBeNull();
+  });
+});
+
 

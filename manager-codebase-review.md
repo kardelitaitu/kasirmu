@@ -1,3 +1,45 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) ·
+     DATED SNAPSHOT, audited against branch 0.0.41, and the rule this file sets for itself was
+     honoured: nothing below the notice was rewritten. The repairs are all inside the
+     2026-09-28 notice (the live part) plus two present-tense lines the snapshot asserts about
+     TODAY. ·
+     THE MAJOR IS A LOST JOURNAL. The closing line names its own evidence —
+     ".agents/manager-journal-codebase-review.md" — as the thing "every figure in it traces to".
+     THAT FILE DOES NOT EXIST and never has in this checkout: a tree-wide glob for
+     *codebase-review* returns exactly four files (this one, the checklist, the decisions
+     companion and .agents/planning/review-backlog-codebase-review.md), and a grep for
+     "manager-journal-codebase-review" matches THIS file only, at the line making the claim.
+     So the traceability the document promises has no destination — the one defect that
+     undermines an otherwise unusually self-aware document. Recorded, not invented: no journal
+     was fabricated, and the sentence now says where the evidence actually lives.
+     ·
+     REPAIRED, minor 1: the notice's own Immediate-site coordinates had drifted —
+     sales_checkout.rs:215 -> :242 and gift_cards.rs:53 -> :52 (refunds.rs:69 verified EXACT).
+     Re-derived by reading each file. The checklist companion the notice points at carries the
+     same stale :215/:53 pair plus five more drifted coordinates; that file is ANOTHER lane's
+     assignment and is reported, not edited here.
+     ·
+     REPAIRED, minor 2: §16 said the decisions companion holds "D1-D11"; it now holds 14
+     (D1-D14), and its own 2026-10-11 stamp records that total. And the §13 register_scale
+     correction said the mutator "has since been DELETED" — it survives at registry.rs:165
+     gated `#[cfg(any(test, feature = "test-support"))]`. The FINDING is unchanged and correct
+     (nothing in production registers a scale); only the wording overstated the deletion.
+     ADR #49 :249 has the accurate phrasing.
+     ·
+     VERIFIED AND LEFT ALONE: the twelve P0 headings are exactly twelve; both companion files
+     exist at the sizes stated; the C10 and C3 items the notice points at are BOTH ticked `[x]`;
+     the notice's self-declared NOT-REPRODUCED and DOWNGRADED rows are honest and stay; the
+     dated 2026-09-27 correction blocks hold on their substantive claims (all four rate-sync
+     settings keys exist at keys.rs:173-179 with typed accessors and test pins); db/mod.rs:30-46
+     quotes the composability rule verbatim; the header path C:/dev/ozpos and "Version
+     reviewed: 0.0.39" are deliberate dated readings. A bare `name.rs` or `name.rs@line` in this
+     file is its established PROSE STYLE for a measurement list, not a path claim — 20 apparent
+     "dead paths" were that shape and none is a defect.
+     ·
+     NOT re-measured: every finding's substance (whether the DEFERRED transaction, the
+     double-deduct, the RLS gap or the voided-sales count still hold today — that is the
+     checklist's job and its C-items are the acceptance), every count in the body, and any
+     runtime behaviour. This pass audited the DOCUMENT, not the codebase review it records. -->
 # Codebase Review - kasir.mu (C:/dev/ozpos)
 
 <!-- SNAPSHOT NOTICE · added 2026-09-28 · not a re-audit, and nothing below was rewritten.
@@ -7,8 +49,9 @@
      re-verified as fixed, and their remediation items are ticked in that checklist:
        · P0-1 (section 4, the DEFERRED transaction) -> checklist C10, `[x]` "DONE
          2026-09-25, all three clauses re-verified this session", naming
-         sales_checkout.rs:215, refunds.rs:69 and gift_cards.rs:53 among the
-         TransactionBehavior::Immediate sites.
+         sales_checkout.rs:242, refunds.rs:69 and gift_cards.rs:52 among the
+         TransactionBehavior::Immediate sites (re-measured 2026-10-11; the notice's
+         :215/:53 were correct when written and have drifted).
        · P0-2 (section 5.1, the self-origin double deduct) -> checklist C3, `[x]`
          "CLOSED 2026-09-25, acceptance re-verified this session".
      The header path `C:/dev/ozpos` and "Version reviewed: 0.0.39" are the values measured
@@ -458,7 +501,7 @@ This section exists because the most expensive defect class in a documented code
 
 | Surface | Status | Evidence |
 |---|---|---|
-| Hardware scale path | **INERT** | HidWeightScale is never registered (no `register_scale` caller outside tests), HardwareConfig omits scales (bootstrap.rs:169-177), read_scale_weight_scoped always returns Ok(None). A weighed-goods merchant configures a scale, sees no weight, and gets no error. **CORRECTION 2026-09-27: `register_scale` has since been DELETED** (`crates/kasirmu-hal/src/registry.rs`) as part of C29's inert-surface sweep, because this finding established it had zero callers — so the mutator is gone and `scale_ids()` (`registry.rs:138`) remains, still reached in production by `kasirmu-bridge/src/scale.rs:60` and `apps/mobile-tauri/src/commands/scale.rs:63`. The finding itself is unchanged: nothing registers a scale. The cited `registry.rs:134` was the definition line and no longer exists. |
+| Hardware scale path | **INERT** | HidWeightScale is never registered (no `register_scale` caller outside tests), HardwareConfig omits scales (bootstrap.rs:169-177), read_scale_weight_scoped always returns Ok(None). A weighed-goods merchant configures a scale, sees no weight, and gets no error. **CORRECTION 2026-09-27: `register_scale` has since been REMOVED FROM PRODUCTION** (`crates/kasirmu-hal/src/registry.rs:165`) as part of C29's inert-surface sweep, because this finding established it had zero callers. **CORRECTED 2026-10-11:** the mutator was not deleted outright — it survives gated `#[cfg(any(test, feature = "test-support"))]`, so the accurate statement is that no PRODUCTION path can register a scale, which is the finding. A reader grepping the name still finds it (`register_scale` has 22 tree-wide references). The production writer is what went, exactly as ADR #49 :249 words it. `scale_ids()` remains, now at `registry.rs:151` rather than the cited `:138`, still reached in production by `kasirmu-bridge/src/scale.rs:60` and `apps/mobile-tauri/src/commands/scale.rs:63`. The finding itself is unchanged: nothing registers a scale. The cited `registry.rs:134` was the definition line and no longer exists. |
 | EDC payment terminals | **STUB ON A MONEY PATH** | WiredEdcTerminal and WirelessEdcTerminal are registered by apply_config (bootstrap.rs:371-391) while every operation returns Unsupported. Startup logs them as registered; the first card sale fails at the device layer. |
 | 10 modules' business logic | **TEST-ONLY** | SalesService, InventoryService, SalesRepository, InventoryStockHandler have no production callers (10.2 above). |
 | File, syslog and eventlog sinks | **INERT** | try_init_with_file, try_init_json_with_file, init_syslog and init_eventlog have zero call sites outside the crate (only definitions and its own tests). A shipped binary logs to stdout only, and kasirmu-cli installs no subscriber at all. An incident has no log file to hand a support engineer. |
@@ -614,7 +657,7 @@ Flip RLS from ENABLE to FORCE while the app connects as the owner. Hand-edit the
 
 ## 16. Parked decisions for the owner
 
-Each of these is now analysed in **manager-codebase-review-decisions.md** (D1-D11; this line said D1-D8 until 2026-09-29), with the deciding facts, the options priced against them, what would change the answer, and a recommendation. Two of those analyses changed this review's own advice: D1 showed that requiring the master key at boot would destroy data, and D2 showed that the shipped PostgreSQL profile connects as a superuser, where FORCE is a no-op.
+Each of these is now analysed in **manager-codebase-review-decisions.md** (D1-D14; this line said D1-D8 until 2026-09-29, and D1-D11 until 2026-10-11 when the companion's settled total was re-measured), with the deciding facts, the options priced against them, what would change the answer, and a recommendation. Two of those analyses changed this review's own advice: D1 showed that requiring the master key at boot would destroy data, and D2 showed that the shipped PostgreSQL profile connects as a superuser, where FORCE is a no-op.
 
 These are irreversible, deployment-dependent, or genuinely the owner's call. Nothing here blocks the reversible work above.
 
@@ -671,6 +714,8 @@ P0-1 and P0-2 were each independently re-derived by a second worker, and both re
 | '219 production unwrap sites' | **NOT REPRODUCED** - a different pattern yields 96 non-test, non-comment sites in 37 files, and the repository's own scanner counts 140 annotated invariants across 29 files |
 | Counts quoted in the first draft (migrations, test functions, front-end files, autocommit sites) | **CORRECTED** in this revision; section 11 now prints the command that produces each row |
 
-This document was assembled by the manager from the workers' reports; every figure in it traces to a file and line cited in the text or in the accompanying journal at .agents/manager-journal-codebase-review.md.
+This document was assembled by the manager from the workers' reports; every figure in it traces to a file and line cited in the text. **[CORRECTED 2026-10-11 — the sentence above named an accompanying journal at `.agents/manager-journal-codebase-review.md` as the other half of that trace. That file does not exist in this checkout and nothing here or elsewhere resolves it; a tree-wide glob for `*codebase-review*` returns four files and none is a journal. The live evidence surface is `manager-codebase-review-checklist.md` (per-item fences plus a verification log), and the per-finding deciding facts for the parked questions are in `manager-codebase-review-decisions.md`. The dead pointer is recorded rather than silently deleted, because a traceability claim with no destination is the finding.]**
 
 It was then audited by three independent workers before delivery - one re-deriving its numbers, one hunting for what it failed to cover, one judging it as a document - and the result was not cosmetic: two findings were added that outrank items in the original verdict (section 14), several counts were wrong and are corrected, one severity was double-labelled and is now fixed, one headline number did not reproduce and is now stated as unreproduced rather than repeated, and the "act on first" list was reordered away from the finding that reads as most alarming toward the findings with the largest merchant-visible consequence.
+
+> last audited 11-10-26 by docs-auditor

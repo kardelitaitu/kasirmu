@@ -1,5 +1,9 @@
-<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Supersedes the 2026-07-22 marker below, kept verbatim. (1) The Module Info table and Manifest block declared dependencies ["crm"]; the manifest, `dependencies()` (modules/loyalty/src/lib.rs:98) and the drift test all carry **["crm","giftcards"]**. This is a BOOT contract, not a cosmetic list: `namespace_grants()` names `giftcards` so loyalty may read the `gift_cards` table, and the kernel refuses to boot if a grant names an undeclared dependency — so the README understated what the module cannot start without. (2) It described `src/models.rs` as DEFINING the loyalty and gift-card types; that file is now a re-export stub (`pub use foundation::loyalty::*`), the definitions having moved to foundation/src/loyalty.rs under ADR-61 on 2026-09-28. Both corrected. · Repaired against branch 0.0.41. -->
-<!-- Audit stamp: 2026-07-26 · rewritten after the previous file was found corrupted (2.8 MB of repeated garbage text); content reconstructed from modules/loyalty/manifest.json, src/{lib,models,repository,service,error}.rs, and platform/startup/src/lib.rs · RE-AUDITED 31-08 (cont) by docs-auditor: lifecycle hooks are stubs (lib.rs:98-118) — corrected the Lifecycle section which claimed on_load "validates dependencies" and on_start "initialises state" (both are "future phases" comments); earn-handler-wired-in-platform and the not-registered-history claims re-confirmed. CAUTION resolved: src/models.rs has since LANDED (LOYALTY-01, 803f6239 — earn_multiplier f64 -> earn_multiplier_millionths i64 fixed-point); re-verified the Models list (LoyaltyTier/Account/Transaction/AccountWithDetails all present) and the "Misplaced: gift cards" section (GiftCard/GiftCardTransaction/GiftCardWithTransactions/IssueGiftCardInput/GiftCardFilter/RedeemGiftCardResult still live here — the gift-card migration has NOT landed, so that section remains accurate); Overview updated to note the fixed-point multiplier -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Repaired: the §Manifest JSON block still declared `"dependencies": ["crm"]` while the Module Info table above it (corrected 2026-10-08) and the real manifest both carry `["crm", "giftcards"]` — the page contradicted itself and understated a boot contract. Confirmed against `modules/loyalty/manifest.json`, `dependencies()` at `src/lib.rs:94-99`, and `namespace_grants()` at `:101-107`. Re-verified and left alone: the ADR-61 re-export note (`src/models.rs` is `pub use foundation::loyalty::*;`, definitions at `foundation/src/loyalty.rs:13/97`), the stub lifecycle hooks (`on_load`/`on_start`/`on_stop` at `lib.rs:109/118/126`), the 'Misplaced: gift cards' section, and the drift guard `loyalty_module_manifest_matches_declaration` (`src/lib_tests.rs:50`). The `lib.rs:98` citation now points at the value line of a 5-line function (fn at :94) — left as written; the anchor resolves. NOT re-measured: runtime earn/redeem behaviour. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
+> Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Supersedes the 2026-07-22 marker below, kept verbatim. (1) The Module Info table and Manifest block declared dependencies ["crm"]; the manifest, `dependencies()` (modules/loyalty/src/lib.rs:98) and the drift test all carry **["crm","giftcards"]**. This is a BOOT contract, not a cosmetic list: `namespace_grants()` names `giftcards` so loyalty may read the `gift_cards` table, and the kernel refuses to boot if a grant names an undeclared dependency — so the README understated what the module cannot start without. (2) It described `src/models.rs` as DEFINING the loyalty and gift-card types; that file is now a re-export stub (`pub use foundation::loyalty::*`), the definitions having moved to foundation/src/loyalty.rs under ADR-61 on 2026-09-28. Both corrected. · Repaired against branch 0.0.41.
+> Audit stamp: 2026-07-26 · rewritten after the previous file was found corrupted (2.8 MB of repeated garbage text); content reconstructed from modules/loyalty/manifest.json, src/{lib,models,repository,service,error}.rs, and platform/startup/src/lib.rs · RE-AUDITED 31-08 (cont) by docs-auditor: lifecycle hooks are stubs (lib.rs:98-118) — corrected the Lifecycle section which claimed on_load "validates dependencies" and on_start "initialises state" (both are "future phases" comments); earn-handler-wired-in-platform and the not-registered-history claims re-confirmed. CAUTION resolved: src/models.rs has since LANDED (LOYALTY-01, 803f6239 — earn_multiplier f64 -> earn_multiplier_millionths i64 fixed-point); re-verified the Models list (LoyaltyTier/Account/Transaction/AccountWithDetails all present) and the "Misplaced: gift cards" section (GiftCard/GiftCardTransaction/GiftCardWithTransactions/IssueGiftCardInput/GiftCardFilter/RedeemGiftCardResult still live here — the gift-card migration has NOT landed, so that section remains accurate); Overview updated to note the fixed-point multiplier
+-->
 
 # Loyalty Module
 
@@ -81,12 +85,19 @@ kernel.start_all()?;
 
 ## Manifest
 
+The block below mirrors the identity fields of `modules/loyalty/manifest.json`. (Repaired
+2026-10-11: it read `["crm"]` — the 2026-10-08 pass corrected the Module Info table above but
+missed this block, so the page contradicted itself. The real manifest and
+`dependencies()` at `src/lib.rs:94-99` both carry `["crm", "giftcards"]`. The manifest also
+declares `description` and `capabilities` this block does not repeat, matching how sibling
+module READMEs present identity metadata only.)
+
 ```json
 {
   "id": "loyalty",
   "name": "Loyalty",
   "version": "1.0.0",
-  "dependencies": ["crm"],
+  "dependencies": ["crm", "giftcards"],
   "permissions": [
     "loyalty:view",
     "loyalty:earn",
@@ -96,4 +107,4 @@ kernel.start_all()?;
 }
 ```
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

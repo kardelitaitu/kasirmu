@@ -740,3 +740,102 @@ fn create_and_update_args_deserialize_camel_and_snake_case() {
     assert_eq!(update_camel.rack_location, Some(Some("RACK-A".into())));
     assert_eq!(update_snake.rack_location, Some(Some("RACK-A".into())));
 }
+
+#[test]
+fn product_dto_into_catalog_item_domain_views() {
+    let make_dto = |ptype: &str| ProductDto {
+        id: "p1".into(),
+        sku: "SKU-1".into(),
+        name: "Test".into(),
+        category: None,
+        price: MoneyDto {
+            minor_units: 100,
+            currency: "USD".into(),
+        },
+        barcode: None,
+        in_stock: true,
+        stock_qty: Some(10),
+        tax_rate_ids: vec![],
+        created_at: "2026-01-01".into(),
+        price_updated_at: "2026-01-01".into(),
+        product_type: ptype.into(),
+        cost_minor: 0,
+        brand: None,
+        rack_location: None,
+        notes: None,
+        unit: None,
+        is_active: true,
+        default_supplier_id: None,
+        popularity_score: 0.0,
+        image_hash: None,
+        images: None,
+    };
+
+    match make_dto("retail").into_catalog_item() {
+        CatalogItemDto::Retail(r) => assert_eq!(r.product.sku, "SKU-1"),
+        _ => panic!("expected retail"),
+    }
+
+    match make_dto("restaurant").into_catalog_item() {
+        CatalogItemDto::Restaurant(r) => assert_eq!(r.product.sku, "SKU-1"),
+        _ => panic!("expected restaurant"),
+    }
+
+    match make_dto("service").into_catalog_item() {
+        CatalogItemDto::Service(s) => assert_eq!(s.product.sku, "SKU-1"),
+        _ => panic!("expected service"),
+    }
+}
+
+#[test]
+fn recipe_dto_serialization_roundtrip() {
+    let item = RecipeItemDto {
+        id: "r1".into(),
+        parent_product_id: "parent-1".into(),
+        ingredient_product_id: "ing-1".into(),
+        ingredient_sku: "ING-1".into(),
+        ingredient_name: "Sugar".into(),
+        quantity_required: 10,
+        unit: "g".into(),
+        cost_minor: 50,
+    };
+    let json = serde_json::to_string(&item).unwrap();
+    let deser: RecipeItemDto = serde_json::from_str(&json).unwrap();
+    assert_eq!(deser, item);
+
+    let input = RecipeIngredientInputDto {
+        ingredient_product_id: "ing-1".into(),
+        quantity_required: 10,
+        unit: "g".into(),
+    };
+    let json_input = serde_json::to_string(&input).unwrap();
+    let deser_input: RecipeIngredientInputDto = serde_json::from_str(&json_input).unwrap();
+    assert_eq!(deser_input, input);
+
+    let set_args = SetRecipeScopedArgs {
+        parent_product_id: "parent-1".into(),
+        ingredients: vec![input],
+    };
+    let json_args = serde_json::to_string(&set_args).unwrap();
+    let deser_args: SetRecipeScopedArgs = serde_json::from_str(&json_args).unwrap();
+    assert_eq!(deser_args, set_args);
+}
+
+#[tokio::test]
+async fn recipe_scoped_commands_reject_invalid_token() {
+    let bridge = TestBridge::new();
+    let ctx = bridge.ctx();
+
+    let get_res = get_recipe_scoped(&ctx, "invalid-token", "prod-1").await;
+    assert!(matches!(get_res, Err(BridgeError::InvalidSession)));
+
+    let set_args = SetRecipeScopedArgs {
+        parent_product_id: "prod-1".into(),
+        ingredients: vec![],
+    };
+    let set_res = set_recipe_scoped(&ctx, "invalid-token", &set_args).await;
+    assert!(matches!(set_res, Err(BridgeError::InvalidSession)));
+
+    let del_res = delete_recipe_scoped(&ctx, "invalid-token", "prod-1").await;
+    assert!(matches!(del_res, Err(BridgeError::InvalidSession)));
+}

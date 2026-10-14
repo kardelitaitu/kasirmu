@@ -186,12 +186,23 @@ fn get_product_service_type() {
 #[test]
 fn get_product_unknown_type_defaults_to_retail() {
     let conn = fresh();
+    // The 20261020 migration constrains product_type to
+    // ('retail', 'restaurant', 'service'), so an unknown value cannot be written
+    // through ordinary SQL any more. Forge the row with SQLite's own escape
+    // hatch — which is what a value written outside the constraint (external
+    // edit, restored database file) actually looks like — so the reader's
+    // coercion is still pinned. The write-side invariant is pinned by
+    // products_tests.rs; the legacy backfill by migrations_tests.rs.
+    conn.execute("PRAGMA ignore_check_constraints = ON", [])
+        .unwrap();
     conn.execute(
         "INSERT INTO products (id, sku, name, price_minor, currency, product_type, version, is_active, created_at, updated_at)
          VALUES ('p-unk', 'UNK-1', 'Unknown', 100, 'USD', 'nonexistent', 1, 1, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
         [],
     )
     .unwrap();
+    conn.execute("PRAGMA ignore_check_constraints = OFF", [])
+        .unwrap();
     let repo = InventoryRepository::new(&conn);
     let p = repo.get_product("p-unk").unwrap().unwrap();
     // Unknown product type defaults to Retail

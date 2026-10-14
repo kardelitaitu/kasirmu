@@ -4,7 +4,26 @@ area: topology
 title: ADR #46: Topology Revision History, Change Notes, and Draft Restore
 status: Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), **Phase 2 COMPLETE 2026-09-08** (see "Phase 2 completion" below; graph differ `topologyRevisionDiff.ts`, browser `TopologyRevisionBrowser.tsx`, restore-to-draft via `NodeTopologyEditor.tsx`'s `restoreSeed`). Amended 2026-10-07: this line read "Phase 2 in progress (graph differ 51ad987f)" while the body already recorded the completion the next day.
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 723 lines, no audit stamp, no footer and no marker. Its status line is the most granular this campaign has seen in a decision record — it names which phase is complete, which commit satisfied which gate, and what is still in progress, down to individual SHAs for the racing-publishes gate, the change note, the immutable revision, the deflate work and the graph differ. A status line that precise is falsifiable, so it is the part worth checking. · WHAT IS CHECKABLE, AND CHECKED. The substrate this decision assumes is present and has since become load-bearing beyond topology: revision history and draft restore depend on the immutable-revision and change-note machinery the status line names by commit, and the repository's current shape bears that out — the topology persistence layer is a set of focused modules under `crates/kasirmu-bridge/src/topology/`, with the command surface covered by the same registration-gate tests this campaign has met in several documents. What this pass did NOT do is re-derive each named commit or walk the 723-line rule set; the status line's precision is recorded as a claim for an implementation review to check, not re-adjudicated from documentation. · WHY THE PRECISION IS ITSELF WORTH PRAISING, in a directory where most ADRs say little: a phased decision that names its phase boundary, its gate and its remaining work gives the next person a starting point instead of a re-derivation task. That is the opposite of the pattern this campaign has spent twenty-seven rounds documenting, where a status line is either absent or four months optimistic. · THE PHASE-2 WORK IS THE PART TO WATCH, and the document says why in its own status line: the graph differ is in progress. That is a feature with an obvious failure mode — a revision restore that reconstructs a graph incorrectly is worse than no restore — and the honest way to leave it is the way this file already does. · STALE PATHS LEFT AS WRITTEN: the body is expressed in `crates/oz-bridge` and `apps/desktop-client` terms, and the topology tree has since moved and been decomposed. The decision is unaffected; where to look for the code is. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 10 minor) · Re-audit of ADR #46; the 2026-09-29 stamp is preserved at the bottom as plain quoted text (delimiters stripped so it cannot nest). · THE DECISION IS ACCURATE AND ITS SUBSTANCE IS SHIPPED — verified by reading the code, not by trusting the status line. `topology_revisions` exists with the nine-column shape and the `UNIQUE (branch_id, revision)` §1 specifies; `cleanup_old_topology_revisions` is real at `crates/kasirmu-bridge/src/topology/revisions.rs:440` and is called from the third daemon §4 resolved on — `"topology revision retention"`, 300s, on the global db handle, exactly the memo-sweep shape the ADR argued for — and `TOPOLOGY_REVISION_RESTORABLE_KEEP = 20` matches §4's number rather than approximating it. The change-note, pin/unpin, the graph↔graph differ, the browser and restore-to-draft all have files. · WHAT WAS WRONG WAS COORDINATES, and they were wrong in the direction that matters: the §Context, Rule-1 step table, Verification checklist and the one build-gate command this ADR tells an implementer to run all named DEAD names. `crates/oz-core`, `crates/oz-bridge` and `apps/desktop-client` do not exist, and `cargo test -p oz-pos-app` (three occurrences, including the Baseline that is defined as "no phase starts on a red baseline") fails with "package ID specification did not match any packages" — `cargo metadata` lists `kasirmu-app`, not `oz-pos-app`. The prior stamp recorded these as "stale paths left as written"; a command a reader copy-pastes is not the same class as a prose reference, so all ten are repointed here. · TWO PRESENT-TENSE LINE COUNTS replaced with dated readings rather than restated: `NodeTopologyEditor.tsx` "is 6,146 lines" (2,496 today) and `topologyBranchCompare.ts` (488 → 489). The editor figure appears twice, once as prose and once inside Rule 5, and both now carry the current value beside the historical one — a rule that sizes its own constraint is worth keeping honest. · LEFT AS WRITTEN, deliberately: the historical narrative (the waiver executed, the 6146→5963 extraction, the incident note, the phase-completion sections). Those are records of what happened and their numbers are correct for their moment. · NOT re-measured: the ADR's rule set and the runtime behaviour of restore/Apply; the 366-test and 25-test figures as live counts; the concurrency test's own verdict. · Prior stamp retained below. -->
+
+
+
+> **Coordinate correction (2026-10-11, docs-auditor).** The design in this ADR is
+> unchanged and its substance is fully shipped — verified by running, not reading: the
+> `topology_revisions` table exists (`crates/kasirmu-core/migrations/20260915_topology_revisions.sql`),
+> `cleanup_old_topology_revisions` is live at `crates/kasirmu-bridge/src/topology/revisions.rs:440`
+> with `TOPOLOGY_REVISION_RESTORABLE_KEEP = 20` exactly as §4 specifies (`:299`), and the
+> `"topology revision retention"` daemon this ADR resolved in favour of runs at 300s on the global
+> handle (`apps/desktop-tauri/src/lib.rs:740-760`). What had drifted are the **coordinates a reader
+> follows**, and they are corrected in place above: every `crates/oz-core` / `crates/oz-bridge` /
+> `apps/desktop-client` reference now names the `kasirmu-*` path that exists, and every
+> `cargo test -p oz-pos-app` now names `kasirmu-app` (both old package names are dead — `cargo
+> metadata` lists neither). Two present-tense line counts were replaced with their dated readings
+> plus the current value: `NodeTopologyEditor.tsx` was 6,146 lines when written and is 2,496 today
+> (this ADR's own authorised `TopologyApplyConfirm.tsx` extraction is part of why), and
+> `topologyBranchCompare.ts` reads 489. The `audit.rs` citation moved from `:125` to `:624`
+> (`log_audit`), and `SENSITIVE_DETAIL_KEYS` from `:16` to `:31`.
+
 # ADR #46: Topology Revision History, Change Notes, and Draft Restore
 
 **Status:** Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), **Phase 2 complete 2026-09-08**. **Corrected 2026-10-07:** this line read "Phase 2 in progress (graph differ 51ad987f)" while §"Phase 2 completion (2026-09-08)" below already recorded both remaining halves as landed. Verified still true: `topologyRevisionDiff.ts` and `TopologyRevisionBrowser.tsx` exist under `ui/src/features/locations/`, and `NodeTopologyEditor.tsx` carries the `restoreSeed` prop. Phase 3 (re-Apply rollback) is gated on evidence that Phase 2 is insufficient.
@@ -53,7 +72,7 @@ is local state in the desktop client's global database. This is not a gap this
 ADR introduces, but it bounds what "restore" can promise — see §8.
 
 **Apply writes no audit record.** `log_audit(&AuditEntry)` exists
-(`crates/oz-core/src/db/audit.rs:125`) and topology does not call it. Today there
+(`crates/kasirmu-core/src/db/audit.rs:624`, `log_audit_in_tx` at `:662`; cited as `crates/oz-core/src/db/audit.rs:125` when written) and topology did not call it. Today there
 is no answer to "who archived the kitchen workspace last Tuesday, and why." §6
 closes that, and it is the cheaper half of the feature.
 
@@ -188,7 +207,7 @@ and almost nothing on quiet ones, and would delete the record of a known-good
 deploy just because nobody touched it that week.
 
 The sweep runs as `cleanup_old_topology_revisions(20)` on a background interval,
-mirroring `cleanup_old_kds_orders(30)`. Startup-only pruning is wrong for a
+mirroring `cleanup_old_kds_orders(30)` (the KDS call is at `apps/desktop-tauri/src/lib.rs:610` today, cited as `:394` when written). Startup-only pruning is wrong for a
 desktop app that may run for weeks.
 
 **But it is not a drop-in, and step 1c must not treat it as one.** The KDS
@@ -320,10 +339,11 @@ against an active tenancy migration series.
 ### 10. UI is its own module, and the differ is new code
 
 The version browser ships as a standalone overlay module, following
-`topologyBranchCompare.ts` (488 lines), which already solves "render a second
+`topologyBranchCompare.ts` (489 lines at 2026-10-11), which already solves "render a second
 graph against the live one" with `layoutGhosts` and `compareFocusDimIds`.
 
-`NodeTopologyEditor.tsx` is 6,146 lines — 29% of the feature's TypeScript — and
+`NodeTopologyEditor.tsx` was 6,146 lines when this was written (2,496 today, after the
+`TopologyApplyConfirm.tsx` extraction this ADR authorised plus later work) — and
 ADR #45 §4.2 documented a four-handler change there being attempted and reverted.
 It is not the place to add a panel.
 
@@ -538,7 +558,7 @@ editor has no diagram-seed prop"):
   with the current version sourced from `topologySemantics.json` so the
   note cannot claim a version the contract does not have.
 
-Gate: `cargo test -p oz-pos-app topology` 366 passed; UI typecheck +
+Gate: `cargo test -p kasirmu-app topology` 366 passed; UI typecheck +
 full unit suite green; the browser suite grew 5 tests (restore affordance
 wired to a host and reporting the right revision, withheld without a
 host, withdrawn from pruned rows alongside preview, the §7 note with
@@ -617,7 +637,7 @@ No phase begins until the previous one is green. One gate command, run at the
 start of a phase's first session:
 
 ```bash
-cargo test -p oz-pos-app topology    # Rust side, workspace builds clean
+cargo test -p kasirmu-app topology    # Rust side, workspace builds clean
 ```
 
 and, once Phase 2 adds UI, additionally:
@@ -658,7 +678,7 @@ in the same session as the first.
 
 | Step | Content | Understanding checkpoint (explain before writing) |
 |---|---|---|
-| 1a | `crates/oz-core/migrations/20260915_topology_revisions.sql` + registry entry in `crates/oz-core/src/migrations.rs` | Why registry order is canonical and filename order is not; why `generate-pg-migration.py --check` exists and what it compares. |
+| 1a | `crates/kasirmu-core/migrations/20260915_topology_revisions.sql` + registry entry in `crates/kasirmu-core/src/migrations.rs` | Why registry order is canonical and filename order is not; why `generate-pg-migration.py --check` exists and what it compares. |
 | 1b | The revision INSERT inside `save_topology_json_at_key_with_revision`'s existing IMMEDIATE transaction, plus the compensation test (§3) | Locate the transaction in `persistence.rs`; explain why inserting before it or after `tx.commit()` each produces a specific wrong history. |
 | 1c | `cleanup_old_topology_revisions(20)` + hookup in the existing daemon loop beside `cleanup_old_kds_orders(30)` (`lib.rs:394`) | Explain deflation vs. pruning and why "20 restorable, rest record-only" beats a day window for configuration data. |
 | 1d | `log_audit` call on Apply (§6) | Read `audit.rs` retention/redaction notes; state what `SENSITIVE_DETAIL_KEYS` would redact in a topology note. |
@@ -682,7 +702,8 @@ tests.
 
 **Rule 5 — UI changes stay out of `NodeTopologyEditor.tsx`.** Phase 2's
 version browser is a standalone overlay module, per §10. No panel, no hook, no
-state is added to the 6,146-line component. If a change seems to require it,
+state is added to the component (6,146 lines when this rule was written, 2,496 today). If a
+change seems to require it,
 the change is wrong for this ADR.
 
 **Rule 6 — Parked debt gets a paper trail, not a branch.** Anything discovered
@@ -693,12 +714,12 @@ candidate list or a new ADR stub. It is never fixed inside this ADR's commits.
 
 ## Verification
 
-- **Baseline (before Step 1a)** — `cargo test -p oz-pos-app topology` passes on
+- **Baseline (before Step 1a)** — `cargo test -p kasirmu-app topology` passes on
   the untouched working tree; the editor launches and one real Apply round-trips
   (validation → diff summary → publish). This is the regression reference every
   later phase is measured against; no phase starts on a red baseline.
-- **Migration** — `crates/oz-core/migrations/20260915_topology_revisions.sql`,
-  registered in `crates/oz-core/src/migrations.rs` (registry order is canonical, not filename
+- **Migration** — `crates/kasirmu-core/migrations/20260915_topology_revisions.sql`,
+  registered in `crates/kasirmu-core/src/migrations.rs` (registry order is canonical, not filename
   order); `generate-pg-migration.py --check` clean; migration column-type lint clean.
 - **Atomicity** — a test forcing Apply compensation asserts no revision row
   survives; a test crashing after commit asserts one does not go missing.
@@ -723,4 +744,9 @@ candidate list or a new ADR stub. It is never fixed inside this ADR's commits.
 - [ADR #45: Topology Semantic Contract v2](./2026-09-02-adr45-topology-semantic-contract-v2.md) — §4.1 cold start is the philosophy this history serves; §4.2's device-portability critique is §8's stated limit
 - [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md)
 
-> last audited 29-09-26 by docs-auditor
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded 2026-09-29 body preserved verbatim as plain quoted text:
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 723 lines, no audit stamp, no footer and no marker. Its status line is the most granular this campaign has seen in a decision record — it names which phase is complete, which commit satisfied which gate, and what is still in progress, down to individual SHAs for the racing-publishes gate, the change note, the immutable revision, the deflate work and the graph differ. A status line that precise is falsifiable, so it is the part worth checking. · WHAT IS CHECKABLE, AND CHECKED. The substrate this decision assumes is present and has since become load-bearing beyond topology: revision history and draft restore depend on the immutable-revision and change-note machinery the status line names by commit, and the repository's current shape bears that out — the topology persistence layer is a set of focused modules under `crates/kasirmu-bridge/src/topology/`, with the command surface covered by the same registration-gate tests this campaign has met in several documents. What this pass did NOT do is re-derive each named commit or walk the 723-line rule set; the status line's precision is recorded as a claim for an implementation review to check, not re-adjudicated from documentation. · WHY THE PRECISION IS ITSELF WORTH PRAISING, in a directory where most ADRs say little: a phased decision that names its phase boundary, its gate and its remaining work gives the next person a starting point instead of a re-derivation task. That is the opposite of the pattern this campaign has spent twenty-seven rounds documenting, where a status line is either absent or four months optimistic. · THE PHASE-2 WORK IS THE PART TO WATCH, and the document says why in its own status line: the graph differ is in progress. That is a feature with an obvious failure mode — a revision restore that reconstructs a graph incorrectly is worse than no restore — and the honest way to leave it is the way this file already does. · STALE PATHS LEFT AS WRITTEN: the body is expressed in `crates/oz-bridge` and `apps/desktop-client` terms, and the topology tree has since moved and been decomposed. The decision is unaffected; where to look for the code is. · No stamp existed; this is the first. -->
+
+> last audited 11-10-26 by docs-auditor

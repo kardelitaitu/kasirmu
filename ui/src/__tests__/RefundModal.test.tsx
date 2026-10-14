@@ -59,6 +59,10 @@ const mockSale = {
   subtotal: { minor_units: 35000, currency: 'IDR' },
   taxTotal: { minor_units: 0, currency: 'IDR' },
   lineCount: 2,
+  // Always on the wire; see completedSale.test.ts for why the type is now required.
+  discountPercent: 0,
+  tipMinor: 0,
+  serviceChargeMinor: 0,
   status: 'completed',
   paymentMethod: 'CASH',
   tenderedMinor: 50000,

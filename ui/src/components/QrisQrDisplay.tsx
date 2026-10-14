@@ -5,6 +5,8 @@ import { requiredLocalized } from '@/components';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { minorUnitExponent } from '@/types/domain';
+import { triggerInteraction } from '@/utils/interaction';
+import { listen } from '@/api/tauri';
 import './QrisQrDisplay.css';
 
 interface QrisQrDisplayProps {
@@ -62,11 +64,85 @@ export default function QrisQrDisplay({
   const { l10n } = useLocalization();
   const [status, setStatus] = useState<'waiting' | 'confirmed' | 'expired'>('waiting');
   const [remainingSecs, setRemainingSecs] = useState<number | null>(null);
+  const [verifiedProvider, setVerifiedProvider] = useState<string | null>(null);
+  const [listenerEnabled, setListenerEnabled] = useState<boolean | null>(null);
   const autoMode = pollSettled !== undefined;
   // onExpired identity churns with parent renders; keep the latest in a
   // ref so the countdown effect fires it exactly once at zero.
   const onExpiredRef = useRef(onExpired);
   onExpiredRef.current = onExpired;
+
+  // Check if native Android QRIS push notification listener is enabled
+  useEffect(() => {
+    if (!isOpen) {
+      setVerifiedProvider(null);
+      return;
+    }
+    if (typeof window !== 'undefined' && window.__kasirmuNative?.isQrisNotificationListenerEnabled) {
+      try {
+        setListenerEnabled(window.__kasirmuNative.isQrisNotificationListenerEnabled());
+      } catch {
+        setListenerEnabled(null);
+      }
+    }
+  }, [isOpen]);
+
+  // ── Zero-MDR QRIS Notification Listener ────────────────────────
+  // When an incoming push notification from an Indonesian bank/e-wallet
+  // arrives on the tablet/desktop, verify if the parsed amount matches this invoice.
+  useEffect(() => {
+    if (!isOpen || status !== 'waiting') return;
+    let unlistenTauri: (() => void) | undefined;
+    let cancelled = false;
+    let confirmed = false;
+
+    const onPaymentReceived = (data?: {
+      provider?: string;
+      amountMinor?: number;
+      amount?: number;
+      rawText?: string;
+    }) => {
+      if (!data || confirmed) return;
+      const receivedAmount = data.amountMinor ?? data.amount;
+      if (receivedAmount === amount) {
+        confirmed = true;
+        setVerifiedProvider(data.provider ?? 'QRIS');
+        setStatus('confirmed');
+      }
+    };
+
+    const handleQrisPayment = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        provider?: string;
+        amountMinor?: number;
+        amount?: number;
+        rawText?: string;
+      }>;
+      onPaymentReceived(customEvent.detail);
+    };
+
+    window.addEventListener('kasirmu:qrisPaymentNotification', handleQrisPayment);
+
+    listen<{
+      provider?: string;
+      amountMinor?: number;
+      amount?: number;
+      rawText?: string;
+    }>('kasirmu:qrisPaymentNotification', (event) => {
+      onPaymentReceived(event.payload);
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenTauri = fn;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unlistenTauri?.();
+      window.removeEventListener('kasirmu:qrisPaymentNotification', handleQrisPayment);
+    };
+  }, [isOpen, status, amount]);
 
   // ── Manual mode: the cashier asserts, nothing confirms on a timer ──
   // The pre-3.2 demo flipped this dialog to "Payment confirmed!" after
@@ -136,6 +212,7 @@ export default function QrisQrDisplay({
 
   useEffect(() => {
     if (status !== 'confirmed') return;
+    triggerInteraction('pay');
     const timer = setTimeout(() => {
       onPaymentConfirmed();
     }, 1200);
@@ -281,6 +358,27 @@ export default function QrisQrDisplay({
           </div>
         )}
 
+        {status === 'waiting' && listenerEnabled === true && (
+          <div className="qris-listener-status" role="status">
+            <span className="qris-listener-pulse-dot" aria-hidden="true" />
+            <Localized id="payment-qris-listener-listening">
+              <span>Auto-verifying via bank push notifications...</span>
+            </Localized>
+          </div>
+        )}
+
+        {status === 'waiting' && listenerEnabled === false && (
+          <button
+            type="button"
+            className="qris-listener-enable-btn"
+            onClick={() => window.__kasirmuNative?.openNotificationListenerSettings?.()}
+          >
+            <Localized id="payment-qris-listener-enable-hint">
+              <span>Enable instant auto-verification</span>
+            </Localized>
+          </button>
+        )}
+
         {/* Manual mode only: with no settlement feed, the cashier is the
             oracle. Auto mode has no button — its poll is the truth. */}
         {status === 'waiting' && !autoMode && (
@@ -298,8 +396,11 @@ export default function QrisQrDisplay({
 
         {status === 'confirmed' && (
           <div className="qris-status qris-status--success" role="status" aria-label={requiredLocalized(l10n, 'payment-qris-confirmed-aria')}>
-            <Localized id="payment-qris-confirmed">
-              <span>Payment confirmed!</span>
+            <Localized
+              id={verifiedProvider ? 'payment-qris-listener-verified' : 'payment-qris-confirmed'}
+              vars={{ provider: verifiedProvider ?? '' }}
+            >
+              <span>{verifiedProvider ? `Payment verified via ${verifiedProvider}!` : 'Payment confirmed!'}</span>
             </Localized>
           </div>
         )}

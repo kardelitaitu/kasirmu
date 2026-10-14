@@ -34,6 +34,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
 const VERIFIER = resolve(ROOT, 'scripts', 'verify-ci-docs-drift.py');
+/** A sibling module the verifier imports; the fixture tree must carry it too. */
+const LIVE_WORKFLOWS = resolve(ROOT, 'scripts', '_live_workflows.py');
 
 /* ── Fixture contents ──────────────────────────────────────────────── */
 
@@ -151,6 +153,13 @@ function buildFixture({ docs = DOCS } = {}) {
   mkdirSync(join(dir, 'docs', 'operations'), { recursive: true });
   mkdirSync(join(dir, 'docs', 'releases'), { recursive: true });
   copyFileSync(VERIFIER, join(dir, 'scripts', 'verify-ci-docs-drift.py'));
+  // The verifier IMPORTs its sibling '_live_workflows' (scripts/_live_workflows.py:
+  // the shared "what does GitHub actually execute" rule, introduced by 9fb6f3f68).
+  // The fixture copied only the verifier, so every case died with
+  // "ModuleNotFoundError: No module named '_live_workflows'" -- the refactor updated
+  // the importer and not this tree. Any module the verifier imports from its own
+  // directory has to be copied too, or the fixture proves nothing.
+  copyFileSync(LIVE_WORKFLOWS, join(dir, 'scripts', '_live_workflows.py'));
   writeFileSync(join(dir, 'scripts', 'gates.json'), GATES_JSON);
   writeFileSync(join(dir, 'scripts', 'check.sh'), CHECK_SH);
   writeFileSync(join(dir, 'scripts', 'check-ui.mjs'), CHECK_UI);

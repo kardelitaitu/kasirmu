@@ -58,6 +58,8 @@ vi.mock('@/api/products', () => ({
   }),
   listProducts: vi.fn(() => Promise.resolve([])),
   listCategories: vi.fn(() => Promise.resolve([])),
+  listProductsScoped: vi.fn(() => Promise.resolve([])),
+  listCategoriesScoped: vi.fn(() => Promise.resolve([])),
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),

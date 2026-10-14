@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Repaired: (1) the §3 ownership table was one row stale — sales also owns payments (assigned by P5.4, as the firewall page records), so the map is 14 modules and 31 tables, not 30; verify-namespace-governance.py --check-ownership prints 31 and is green; (2) the §4 loyalty site cited modules/loyalty/src/repository.rs:59, which is now an own-namespace loyalty_accounts query — the tracked cross-vertical edge is at :85 (marker at :82, read(GIFTCARDS) at :83), which the --strict run names as the ONE frozen edge. All three rules re-verified as stated: Rule 1 — the checker scans 55 module source files and reports 1 frozen edge, 0 new blocking findings, 0 stale baseline entries; Rule 2 — 14 classified handler types across 3/3 roots, 17 EventHandler impls, and the two source-reading traps it documents (lifetime <'a> masking, tests.rs exclusion) are still the reasons; Rule 3 — 0 undeclared edges, and the capability half reports 14 manifests declaring exactly 36 derived capabilities. · VERIFIED UNCHANGED: the soft->strict timeline, the T3 grant-marker window semantics, the retired reporting->sales edge and its successor doc, and every references path. · NOT re-measured: runtime boot behaviour, and whether the gate passes in CI beyond the local --strict run. · Prior stamp preserved below as plain text. -->
 # Module Namespace Governance (Phase 1 — now strict)
 
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding class, 5 references) · Repaired: five path references named ticket/inventory docs under `docs/architecture/` (`handler-census-phase0.md`, `phase4-implementation-tickets.md`, `reporting-facade-inventory.md`, `phase2-implementation-tickets.md`) that are not there; all four targets live in `docs/records/superseded/` and were verified present. The "strict since 2026-10-03" status claim was re-measured and holds (`check.sh:509` `--strict`). · Repaired against branch `0.0.41` at `134aaed1b`. -->
@@ -137,7 +138,7 @@ schema. Derived from the tree, not from any plan.
 
 | Module | Owns (tables) |
 |---|---|
-| sales | `sales`, `sale_lines` |
+| sales | `sales`, `sale_lines`, `payments` |
 | inventory | `products`, `product_recipes`, `inventory`, `stock_summary` |
 | crm | `customers` |
 | settings | `settings` |
@@ -181,10 +182,15 @@ module code. Each is either allowlisted (deliberate, with a reason) or baselined
 
 | Site | Reads | Owner module | Verdict |
 |---|---|---|---|
-| `modules/loyalty/src/repository.rs:59` | `gift_cards` | giftcards | **Baselined debt + grant marker.** `get_gift_card_by_number` reads a table owned by the `giftcards` module, but loyalty declares only `deps: ["crm"]`. Carries the T3 marker. Not surfaced by the plan; found by this inventory. |
+| `modules/loyalty/src/repository.rs:85` | `gift_cards` | giftcards | **Baselined debt + grant marker.** `get_gift_card_by_number` reads a table owned by the `giftcards` module, but loyalty declares only `deps: ["crm"]`. Carries the T3 marker. Not surfaced by the plan; found by this inventory. |
 | `modules/inventory/src/handlers.rs` (72, 89, 127, 155, 161, 180, 187, 195) | `products`, `product_recipes`, `inventory`, `stock_summary` | inventory | **Not a violation** — all four tables are inventory's own. The file's cross-file concern (it is a dead test-only handler) is the census's, not this rule's. |
 
-**Genuine cross-vertical edges: 1** (loyalty→gift_cards). It is baselined **and** carries a T3 grant
+**Genuine cross-vertical edges: 1** (loyalty→gift_cards). Re-verified 11-10-26 against `verify-namespace-governance.py --strict`, which reports
+exactly one frozen edge at `modules/loyalty/src/repository.rs:85` (the file grew; the marker sits
+at `:82` and the `read(GIFTCARDS)` call at `:83`). The §3 table above was re-derived against
+`modules/ownership.json` the same pass and one row was stale: `sales` also owns `payments`,
+which the firewall page records as assigned by P5.4 — so the map is **14 modules and 31 tables**,
+not 30. `verify-namespace-governance.py --check-ownership` prints the 31 figure and is green. It is baselined **and** carries a T3 grant
 marker; it is not new, so the gate is green today and a *new* one fails. The baseline is now only a
 bookkeeping record of the edges that still need their Phase 4 replacement — permission itself comes from
 the marker, so the baseline can shrink to zero without weakening the gate.
@@ -237,4 +243,4 @@ When P4.6 lands, the allowlist and the baseline in §4 both empty. Until then, t
 
 ---
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

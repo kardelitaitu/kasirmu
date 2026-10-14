@@ -211,16 +211,32 @@ vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
 // their own beforeEach after this global one runs.
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
+
+  // ⚠️ This block is why EVERY test file needed jsdom, and it is guarded now.
+  //
+  // It used to run unconditionally, so `localStorage.clear()` threw
+  // "localStorage is not defined" the moment a file ran under `--environment=node`
+  // — which took 235 genuinely DOM-free files (the `api-*-contract` clusters) down
+  // with it. The browser-state half is meaningless without a DOM anyway: there is
+  // no localStorage to clear and no documentElement to reset.
+  //
+  // Guarded on the globals themselves rather than on a NODE_ENV flag: a file that
+  // declares `// @vitest-environment node` gets the same treatment without this
+  // module needing to know how it was selected.
+  if (typeof localStorage !== 'undefined') {
+    localStorage.clear();
+    sessionStorage.clear();
+  }
 
   // Reset theme-related DOM pollution that can leak between test files
   // in the same vitest worker (e.g. ThemeProvider leaves data-theme and
   // test-injected style tags behind). This prevents cross-file flakes.
-  const html = document.documentElement;
-  html.removeAttribute('data-theme');
-  html.classList.remove('is-theme-transitioning');
-  document.querySelectorAll('style#theme-test-styles').forEach((el) => el.remove());
+  if (typeof document !== 'undefined') {
+    const html = document.documentElement;
+    html.removeAttribute('data-theme');
+    html.classList.remove('is-theme-transitioning');
+    document.querySelectorAll('style#theme-test-styles').forEach((el) => el.remove());
+  }
 });
 
 // ── Global afterEach: remove rendered React trees ─────────────────
@@ -236,7 +252,10 @@ beforeEach(() => {
 // the real module instead of the file's mock.
 let cachedInvalidateCatalog: (() => void) | null = null;
 afterEach(async () => {
-  cleanup();
+  // `cleanup()` unmounts React trees; under the node environment nothing was
+  // mounted (no testing-library render can run without a DOM), and the call
+  // throws on a missing document.
+  if (typeof document !== 'undefined') cleanup();
   if (!cachedInvalidateCatalog) {
     const mod = await import('@/utils/catalog-cache');
     cachedInvalidateCatalog = mod.invalidateCatalog;

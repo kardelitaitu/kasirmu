@@ -4,7 +4,11 @@ area: subscription
 title: ADR #23: Free Trial Lifecycle & License Activation Workflow
 status: Re-scoped — superseded by subscription-tiers.md §4 (FINAL, approved 2026-08-17)
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and correctly filed as re-scoped. The front matter reads Re-scoped — superseded by `subscription-tiers.md` §4 (FINAL, approved 2026-08-17), and the reference is precise: it names the SECTION of the superseding document, not just the file. That is the level of specificity a supersession note needs, because §4 of an 895-line document is a findable thing and a vague pointer would not be. · The supersession target exists, and its §4 is the section that would have to carry the trial lifecycle this document specifies. Not verified in this pass — the target file is later in the queue and will be audited on its own terms; recorded here as the open edge of this file's claim rather than asserted either way. · Left entirely as written, with the same reasoning as its sibling ADR-5 in this batch: a re-scoped decision record is a historical artifact, and its body describes the trial workflow as it was designed. What it must not be is read as current, and the front matter prevents that twice over — once at the metadata level and once by pointing at the section that replaced it. · Status checker reports no drift for this row. Stamp and footer added; the file had neither. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · MINOR, both dead pointers in a correctly re-scoped record whose body is otherwise untouched. The Related list named `subscription-tiers.md` bare, against a repo root that does not hold it — the superseding document is `docs/guides/user/subscription-tiers.md`, and the path is now given. The re-scope note's `docs/plans/todo.md` moved into `_active/`. Both repaired with an inline date, because a reader following either pointer would have landed nowhere. · VERIFIED: the three other Related documents resolve (`docs/decisions/2026-07-10-license-server.md`, the archived ADR-5 sibling, and `docs/specs/hardware-fingerprint-trial-lock.md`), and the front matter's supersession target exists. · LEFT AS WRITTEN: the flat 90-day trial described in the body — the front matter and the re-scope note both declare it superseded, which is the correct handling for a historical decision record. · NOT re-measured: the superseding §4 trial strategy's own terms.
+
+Superseded 2026-09-29 stamp preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and correctly filed as re-scoped. The front matter reads Re-scoped — superseded by `subscription-tiers.md` §4 (FINAL, approved 2026-08-17), and the reference is precise: it names the SECTION of the superseding document, not just the file. That is the level of specificity a supersession note needs, because §4 of an 895-line document is a findable thing and a vague pointer would not be. · The supersession target exists, and its §4 is the section that would have to carry the trial lifecycle this document specifies. Not verified in this pass — the target file is later in the queue and will be audited on its own terms; recorded here as the open edge of this file's claim rather than asserted either way. · Left entirely as written, with the same reasoning as its sibling ADR-5 in this batch: a re-scoped decision record is a historical artifact, and its body describes the trial workflow as it was designed. What it must not be is read as current, and the front matter prevents that twice over — once at the metadata level and once by pointing at the section that replaced it. · Status checker reports no drift for this row. Stamp and footer added; the file had neither. -->
 # ADR #23: Free Trial Lifecycle & License Activation Workflow
 
 - **Status**: Approved — ⚠️ **RE-SCOPED by `subscription-tiers.md` §4 (FINAL, approved 2026-08-17)**
@@ -14,7 +18,7 @@ status: Re-scoped — superseded by subscription-tiers.md §4 (FINAL, approved 2
   - `docs/decisions/2026-07-10-license-server.md` (ADR #9: License Server Architecture)
   - `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md` (ADR #5: Tier Entitlements)
   - `docs/specs/hardware-fingerprint-trial-lock.md` (`SPEC-2026-TRIAL-LOCK`: Anti-Abuse Trial Lock)
-  - `subscription-tiers.md` §4 (trial & conversion strategy — the replacement)
+  - `docs/guides/user/subscription-tiers.md` §4 (trial & conversion strategy — the replacement; path added 2026-10-11 — it was written as a bare filename against a repo root that no longer holds it)
 
 > **Re-scope note:** the flat **90-day full-product trial** described below is
 > superseded by `subscription-tiers.md` §4: the
@@ -22,7 +26,7 @@ status: Re-scoped — superseded by subscription-tiers.md §4 (FINAL, approved 2
 > sales history), and paid trials are **segmented by signup vertical** —
 > 14-day Plus trial for general signups, 14-day Pro trial for
 > restaurant/cafe signups, 30-day Pro trial for enterprise referrals.
-> `docs/plans/todo.md` C2.1 tracked the implementation (license-server `trial_vertical`
+> `docs/plans/_active/todo.md` C2.1 tracked the implementation (path corrected 2026-10-11: the plan moved into `_active/`) (license-server `trial_vertical`
 > field + segmented minting, shipped 2026-08-18).
 >
 > **Deviation 1 (shipped 2026-08-18, then SUPERSEDED):** an earlier version
@@ -191,5 +195,5 @@ When a merchant enters a purchased license key:
 - System clock rollback protection via SQLite ledger timestamps.
 - Audit logging of all trial activation attempts on the PocketBase Auth Server.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 

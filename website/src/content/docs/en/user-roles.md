@@ -6,7 +6,11 @@ order: 6
 updated: "2026-10-01"
 ---
 
-<!-- Audit stamp: 2026-09-19 · DSH · status: ACCURATE AFTER REPAIR (3 findings) · 2026-09-19 RE-AUDIT: Staff management and role authoring became dedicated fullscreen pages — ui/src/features/staff/register.tsx:20-33 registers both routes with fullscreen: true and no longer carries a registerNavItem, so AppShell renders them without AppLayout and the sidebar holds neither. This page's two "under Tools in the sidebar" pointers were therefore wrong and are re-pointed at the workspace picker's Tools grid (Staff Management card) and at the Staff page's Roles button. Verified against the running app: the Tools sidebar section lists Terminals, Features, Data, Audit Log, Security Trail, Offline Queue, Shifts, Memos and neither Staff nor Roles. · 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Customer-facing page, first audit evidence it ever carried. · Verified and correct: all 13 permission keys this page cites exist as declared consts in platform/core/src/rbac.rs (93 such keys; sales:void at :356, sales:refund at :358). The Staff-preset description matches the code grant-for-grant: rbac_presets.rs gives it exactly 22 keys, all checkout-side (sales_process, payments_*, discounts_apply, customers_create+view, loyalty_*, shifts_open+close, tables_*, kds_*, workspaces_switch) and none of the management keys the page says were stripped. platform/core/src/rbac.rs exists as cited. · FINDING 1, wrong guidance: the page told customers to find this in Settings -> Staff. Settings surfaces Staff nowhere - no route reference exists anywhere in ui/src/features/settings/ - while staff/register.tsx registers both screens with section: tools, whose label is nav-section-tools = “Tools”. Fixed to Tools -> Staff. · FINDING 2, a shipped feature omitted, same class as the deploy-history gap on stores.md: “Custom is a sixth preset … not shown in the standard staff dropdown yet” is literally true (StaffManagementScreen states it presents exactly the five preset roles) yet it reads as though custom roles are unavailable. They are shipped: a routed screen (route roles, label Roles, gated manager AND staff:manage_roles) backed by create/update/delete_role_scoped, list_permission_keys_scoped and list_role_holders_scoped, all registered and all actually called by that screen. New “Authoring custom roles” section, including both delete guards - preset ids refuse, and a role still referenced refuses, per delete_role_scoped’s own ///. · ROLE_PRESETS holds SIX entries, not five: my first scan said four because I sliced a fixed 6000 chars out of a 10259-char array and believed the result. A truncated read reported a wrong count in the direction that would have made me accuse an accurate page. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Re-audit of the User Roles guide. MINOR 1 (a shipped surface omitted): the page said role authoring is "a separate screen" reached by a Roles button. It is a TAB on the Staff page — staff/register.tsx registers ONE lazy component at THREE routes (`staff`, `roles`, `trash`, all fullscreen: true, all screenGroup: 'staff-management'), and StaffManagementScreen derives its active tab from the route. Reworded to the tab model with the three route names. MINOR 2 (a third tab the page never mentioned): **Trash** lists deleted identities and is gated on `staff:delete`, which only the Owner preset holds (register.tsx's own comment: "the gate is staff:delete (owner-only by preset) rather than staff:read"). Added, because a reader told there are two tabs will not find the third. · VERIFIED AND LEFT ALONE: ROLE_PRESETS holds SIX entries — Owner, Manager, Staff, Admin, Auditor, Custom (rbac_presets.rs, six `RolePreset {}` literals) — so the page's "five presets, sixth described below" framing is right; all 13 cited permission keys exist in platform/core/src/rbac.rs (93 keys); the Roles route really is gated requiredRole 'manager' AND requiredPermission 'staff:manage_roles' (register.tsx); the Staff route carries 'staff:read' and the Trash route 'staff:delete'; the Staff Management card is in the workspace picker's Tools grid (ui/src/features/workspaces/tools.tsx id 'staff', minimumRole 'manager'). · NOT re-measured: the live 5-row permission matrix behaviour (it needs a running app and a real session per role); left as the page's own reproduced tab
+
+STAMP MERGED INTO THIS ONE — superseded stamp(s) kept verbatim as plain text (delimiters stripped so they cannot nest):
+
+Audit stamp: 2026-09-19 · DSH · status: ACCURATE AFTER REPAIR (3 findings) · 2026-09-19 RE-AUDIT: Staff management and role authoring became dedicated fullscreen pages — ui/src/features/staff/register.tsx:20-33 registers both routes with fullscreen: true and no longer carries a registerNavItem, so AppShell renders them without AppLayout and the sidebar holds neither. This page's two "under Tools in the sidebar" pointers were therefore wrong and are re-pointed at the workspace picker's Tools grid (Staff Management card) and at the Staff page's Roles button. Verified against the running app: the Tools sidebar section lists Terminals, Features, Data, Audit Log, Security Trail, Offline Queue, Shifts, Memos and neither Staff nor Roles. · 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Customer-facing page, first audit evidence it ever carried. · Verified and correct: all 13 permission keys this page cites exist as declared consts in platform/core/src/rbac.rs (93 such keys; sales:void at :356, sales:refund at :358). The Staff-preset description matches the code grant-for-grant: rbac_presets.rs gives it exactly 22 keys, all checkout-side (sales_process, payments_*, discounts_apply, customers_create+view, loyalty_*, shifts_open+close, tables_*, kds_*, workspaces_switch) and none of the management keys the page says were stripped. platform/core/src/rbac.rs exists as cited. · FINDING 1, wrong guidance: the page told customers to find this in Settings -> Staff. Settings surfaces Staff nowhere - no route reference exists anywhere in ui/src/features/settings/ - while staff/register.tsx registers both screens with section: tools, whose label is nav-section-tools = “Tools”. Fixed to Tools -> Staff. · FINDING 2, a shipped feature omitted, same class as the deploy-history gap on stores.md: “Custom is a sixth preset … not shown in the standard staff dropdown yet” is literally true (StaffManagementScreen states it presents exactly the five preset roles) yet it reads as though custom roles are unavailable. They are shipped: a routed screen (route roles, label Roles, gated manager AND staff:manage_roles) backed by create/update/delete_role_scoped, list_permission_keys_scoped and list_role_holders_scoped, all registered and all actually called by that screen. New “Authoring custom roles” section, including both delete guards - preset ids refuse, and a role still referenced refuses, per delete_role_scoped’s own ///. · ROLE_PRESETS holds SIX entries, not five: my first scan said four because I sliced a fixed 6000 chars out of a 10259-char array and believed the result. A truncated read reported a wrong count in the direction that would have made me accuse an accurate page. -->
 
 ## What a role is
 
@@ -15,7 +19,9 @@ account can do and see. Roles come from a fixed taxonomy of five presets,
 shown when you edit an account on the **Staff** screen — a dedicated
 full-screen page you open from the **Staff Management** card in the workspace
 picker's Tools grid, not a sidebar entry. The bundled table actually holds six presets;
-the staff picker offers five of them, and the sixth is described below.
+the staff picker offers five of them, and the sixth is described below. The page itself is
+a full-screen view with three tabs — **Staff**, **Roles**, and **Trash** — registered at
+`#/staff`, `#/roles` and `#/trash`.
 
 ## The five roles
 
@@ -71,11 +77,15 @@ authoritative list:
 
 ## Authoring custom roles
 
-The **Roles** screen — open it with the **Roles** button on the Staff page — is where
-custom roles are built. It is a separate screen from the staff
-list, and it is gated more tightly: **manager or owner** *and* the
-`staff:manage_roles` permission. Read-only staff cannot reach it even if they can view
-the staff list, because a role defines the grants every other check resolves through.
+The **Roles** view is a **tab on the Staff page** — open the Staff page and switch to
+**Roles** (both `#/staff` and `#/roles` land on the same full-screen page, differing only
+in which tab opens first). It is gated more tightly than the staff list: **manager or owner**
+*and* the `staff:manage_roles` permission. Read-only staff cannot reach it even if they can
+view the staff list, because a role defines the grants every other check resolves through.
+
+A third tab, **Trash**, lists deleted identities so they stay readable after deletion. It is
+gated on `staff:delete`, which the **Owner** preset holds and no other preset does — so a
+manager who cannot delete anyone does not see who was deleted.
 
 An authored role is a named set of permission keys chosen from the same registry the
 five presets are built from — nothing can be granted there that the backend does not
@@ -122,4 +132,4 @@ The four gaps in the plan have been closed:
 > this page names verified: customers/sales-history/dashboard requiredRole
 > manager, analytics requiredRole manager + analytics:view, Roles screen
 > requiredPermission staff:manage_roles (rbac.rs:440).
-> last audited 19-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

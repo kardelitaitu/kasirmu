@@ -250,3 +250,22 @@ METHOD: there is NO crates/*/devmock module and NO platform/**/devmock. "The dev
 ui/src/dev-mock/ (hyphenated, not CamelCase) plus the HAL/payment/notification mock drivers. 15 (name
 match) and 20 (directory contents) answer different questions: 13 of the 20 files - handlers/* and
 tauri-*.ts - carry no "mock" substring in the filename. Never quote one for the other.
+
+
+---
+
+## ADDENDUM 2026-10-11 — §11's devmock path row, corrected (dated correction; the table above stands as measured)
+
+The §11 row "paths containing devmock" lists six; two of its entries no longer address what it says.
+The FILE's own historical-snapshot banner already covers the numbers, but a path row is a pointer, and
+a pointer that resolves to nothing costs a reader directly:
+
+| the row says | live today |
+|---|---|
+| the three `done-todo-refactor-devmock-agents-1/2/4.md` listed without the `done-todo/` segment | `.agents/archived/done-todo/done-todo-refactor-devmock-agents-{1,2,4}.md` — the corpus gained its `done-todo/` subdirectory |
+| `.agents/devmock-kds-extract.py` | **absent** — a one-off extraction script, correctly gone; the fact sheet's own class for it |
+
+`todo-refactor-devmock-agents-3.md` is also gone from the repo root (archived with its siblings); the
+remaining paths in the row (`ui/src/__tests__/NodeTopologyEditorDevMock.test.tsx`) still resolve. The
+count of 6 is therefore no longer 6, which is the same caveat the banner states for every other figure
+in this file: re-run the query, do not quote the row.

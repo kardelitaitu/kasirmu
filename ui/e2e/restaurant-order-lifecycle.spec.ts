@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { loginAs, selectWorkspace, WORKSPACES, openRestaurantCart } from './helpers';
 
 /**
  * Restaurant POS — the end-to-end ORDER LIFECYCLE.
@@ -38,14 +38,9 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 15_000;
 
+// The two-shell cart setup is shared — see `openRestaurantCart` in `helpers.ts`.
 async function openCart(page: Page): Promise<void> {
-  const lineItem = page.locator('[data-testid="cart-panel-line-item"]');
-  if (await lineItem.first().isVisible().catch(() => false)) return;
-  const trigger = page.locator('.restaurant-floating-cart-trigger');
-  if (await trigger.isVisible().catch(() => false)) {
-    await trigger.click();
-    await expect(page.locator('.restaurant-cart-sheet-panel')).toBeVisible({ timeout: 5_000 });
-  }
+  await openRestaurantCart(page);
 }
 
 /** Log in, open the restaurant POS, and add `count` distinct products. */

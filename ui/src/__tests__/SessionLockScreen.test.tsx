@@ -86,6 +86,7 @@ session-lock-invalid-pin = Invalid PIN
 session-lock-pin-aria = PIN: { $length } of { $max } digits entered
 session-lock-pad-aria = PIN pad
 session-lock-lockout = Wait { $seconds }s.
+backspace-aria = Backspace
 `;
 
 function withProviders(children: ReactNode): ReactElement {
@@ -211,14 +212,24 @@ describe('SessionLockScreen rendering', () => {
     }
   });
 
-  it('renders Clear and backspace buttons', () => {
+  it('renders Clear and backspace buttons, both with an accessible name', () => {
     renderScreen();
     expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
-    // Backspace is an SVG-only button — verify there are 2 --action keys
     const pad = document.querySelector('.session-lock-pad');
     expect(pad).toBeTruthy();
     const actionKeys = pad!.querySelectorAll('.session-lock-pad-key--action');
     expect(actionKeys.length).toBeGreaterThanOrEqual(2);
+
+    // Backspace is an SVG-only button, so it needs an explicit aria-label or it
+    // announces as a bare "button" to a screen reader. This pad was missed while
+    // StaffLoginScreen's identical key already carried the name
+    // (StaffLoginScreen.tsx:563) — asserting it here is what keeps the two from
+    // drifting apart again. Query by NAME, which is the property under test.
+    expect(
+      screen.getByRole('button', { name: 'Backspace' }),
+      'the backspace key lost its accessible name — it is icon-only, so an ' +
+        'aria-label is the only thing that names it',
+    ).toBeInTheDocument();
   });
 
   it('shows auth and sync connection status indicators', () => {

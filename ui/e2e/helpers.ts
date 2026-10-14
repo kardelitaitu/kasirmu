@@ -191,3 +191,90 @@ export async function waitForApp(page: Page): Promise<void> {
   await page.waitForSelector('#root', { timeout: 15_000 });
   await page.waitForTimeout(1_000);
 }
+
+/**
+ * Ensure the restaurant cart's contents are on screen, whichever shell is rendering.
+ *
+ * WHY THIS IS SHARED. The restaurant POS renders the cart differently per shell:
+ * desktop (landscape) puts it inline, so `[data-testid="cart-panel-line-item"]` is already
+ * present; the portrait tablet puts it in a bottom SHEET behind
+ * `.restaurant-floating-cart-trigger`, where the line item is not in the DOM until the
+ * bar is tapped. Four specs carried their own copy of this helper and each of them hit the
+ * trap on its first run — `restaurant-cart-capabilities`, `restaurant-order-lifecycle`,
+ * `restaurant-payment-modal` and `restaurant-shortcuts-e2e` (2026-10-14). Consolidating it
+ * means the next spec cannot rediscover it.
+ *
+ * Returns nothing: callers assert against the line items afterwards. Safe to call when the
+ * cart is already open, and a no-op on the desktop shell.
+ */
+export async function openRestaurantCart(page: Page): Promise<void> {
+  const lineItem = page.locator('[data-testid="cart-panel-line-item"]');
+  if (await lineItem.first().isVisible().catch(() => false)) return;
+
+  const trigger = page.locator('.restaurant-floating-cart-trigger');
+  if (await trigger.isVisible().catch(() => false)) {
+    await trigger.click();
+    await expect(page.locator('.restaurant-cart-sheet-panel')).toBeVisible({ timeout: 5_000 });
+  }
+}
+
+/**
+ * Open the restaurant POS, add one product, and reveal the cart.
+ *
+ * The companion to `openRestaurantCart`, covering the whole setup four specs repeated:
+ * login as owner, select the workspace, click the first menu tile and expose the cart.
+ * `.restaurant-card` is the menu tile — NOT `.restaurant-grid-item`, which is the desktop
+ * grid's own class, and the tile's accessible name ends in "Add".
+ */
+export async function openRestaurantPosWithItem(
+  page: Page,
+  role: 'owner' | 'staff' = 'owner',
+): Promise<void> {
+  await loginAs(page, role, '1234');
+  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
+
+  const productCards = page.locator('.restaurant-card');
+  await expect(productCards.first()).toBeVisible({ timeout: 15_000 });
+  await productCards.first().click();
+
+  await openRestaurantCart(page);
+  await expect(page.locator('[data-testid="cart-panel-line-item"]').first()).toBeVisible({
+    timeout: 5_000,
+  });
+}
+/**
+ * Open the restaurant POS and click ONE row in its sidebar popover.
+ *
+ * WHY THIS IS SHARED. Four specs walk the same route — login, select the workspace, wait for
+ * the menu grid, open `.restaurant-sidebar-btn`, then click a row — and each carried its own
+ * copy: `restaurant-settings-toggles` and `restaurant-cart-capabilities` (settings),
+ * `restaurant-payment-rails-persist` and `mock-payment-rails-persist` (payments). The route is
+ * stable, and the failure it produces when it drifts (a row that never fires) is the one
+ * `restaurant-sidebar-entries.spec.ts` grades — so a single definition keeps a drift in one
+ * place rather than four.
+ *
+ * `row` is the testid suffix: `openRestaurantSidebarRow(page, 'payments')` clicks
+ * `[data-testid="restaurant-sidebar-payments"]`.
+ *
+ * The role is parameterised for the same reason `openRestaurantPosWithItem`'s is: these rows
+ * gate on `settings:edit` (`RestaurantSidebar.tsx`, round 128), so a spec that needs one must
+ * log in as a role that holds it — but a spec exercising a permission-free row should NOT be
+ * silently promoted by a helper's default.
+ */
+export async function openRestaurantSidebarRow(
+  page: Page,
+  row: string,
+  role: 'owner' | 'staff' = 'owner',
+): Promise<void> {
+  await loginAs(page, role, '1234');
+  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
+  await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: 15_000 });
+
+  const sidebarBtn = page.locator('.restaurant-sidebar-btn');
+  await expect(sidebarBtn).toBeVisible({ timeout: 15_000 });
+  await sidebarBtn.click();
+
+  const target = page.locator(`[data-testid="restaurant-sidebar-${row}"]`);
+  await expect(target).toBeVisible({ timeout: 5_000 });
+  await target.click();
+}

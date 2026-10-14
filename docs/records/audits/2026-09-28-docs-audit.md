@@ -37,7 +37,7 @@ Verified after: `check-audit-stamps.py` reports `footer OLDER than newest stamp:
 Verified after: `check-env-docs.py` reports `all 34 code-read variables are named in a doc`.
 
 ### Phase 3 — `api-reference.md` deep audit (commit `1abb0f0c5`)
-Full anchor-by-anchor enumeration, validation against client source, and a remediation plan are in the companion file **`docs/audits/2026-09-28-api-reference-audit.md`**. Summary of the 163 discrepancies:
+Full anchor-by-anchor enumeration, validation against client source, and a remediation plan are in the companion file **`docs/records/audits/2026-09-28-api-reference-audit.md`** (written as `docs/audits/…` before the 2026-10-02 move). Summary of the 163 discrepancies:
 - **101** `listed_not_defined` — documented commands absent from both clients (traced via `git log -S` to historical removal/rename, not doc invention).
 - **49** `registered_not_listed` — live registered commands missing from the page.
 - **10** `marker_wrong` — availability marker `[D]` should be `[D+T]`.

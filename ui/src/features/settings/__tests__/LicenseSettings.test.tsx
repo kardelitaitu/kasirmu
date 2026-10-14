@@ -899,8 +899,13 @@ describe('LicenseSettings', () => {
   // for an action that never happened.
   //
   // The shell is switched through the same seam the entry points use
-  // (setShellKind), the way useAuthConnection.test.tsx and
-  // stepAccountCopy.test.tsx already do.
+  // (setShellKind), the way useAuthConnection.test.tsx already does.
+  //
+  // `stepAccountCopy.test.tsx` was named here too until round 176: it was deleted with
+  // the setup wizard (`badd31d2e`), so the citation pointed at a file that no longer
+  // exists. Removed rather than re-pointed — the surviving name is the one test that
+  // both uses `setShellKind` and is itself a connection test, which is the likeness the
+  // sentence is drawing.
   describe('Shell-gated subscription actions', () => {
     afterEach(() => {
       // Restored, so no later case can inherit the tablet shell.

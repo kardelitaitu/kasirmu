@@ -45,6 +45,13 @@ fn stock_at_locations(
         .collect()
 }
 
+#[derive(Debug, Clone)]
+struct RecipeIngredientAllocation {
+    sku: String,
+    qty_per_unit: i64,
+    allocations: Vec<crate::sale_deduction::LocationAllocation>,
+}
+
 impl Store<'_> {
     /// Complete a sale with location-aware stock deduction (ADR-19 §6).
     ///
@@ -234,6 +241,71 @@ impl Store<'_> {
         // IMMEDIATE contends at BEGIN where the 5000 ms busy_timeout applies.
         let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
+        // ── Credit facility & ceiling enforcement (F23/F24) ─────────────
+        let has_credit_split = payment_splits
+            .iter()
+            .any(|s| s.method.eq_ignore_ascii_case("credit"))
+            || sale
+                .payment_method
+                .as_deref()
+                .is_some_and(|m| m.eq_ignore_ascii_case("credit"));
+
+        if has_credit_split {
+            if !crate::Settings::is_credit_enabled(&tx)? {
+                return Err(CoreError::Validation {
+                    field: "payment_method",
+                    message: "store credit facility is not enabled in settings".to_string(),
+                });
+            }
+
+            let max_limit_minor = crate::Settings::get_credit_max_limit(&tx)?;
+            if max_limit_minor > 0 {
+                // Clippy `if_not_else`: an `if !X { A } else { B }` reads better inverted.
+                let credit_requested: i64 = if payment_splits.is_empty() {
+                    sale.total.minor_units
+                } else {
+                    payment_splits
+                        .iter()
+                        .filter(|s| s.method.eq_ignore_ascii_case("credit"))
+                        .map(|s| s.amount_minor)
+                        .sum()
+                };
+
+                let cust_id = sale.customer_id.as_deref().unwrap_or("");
+                let cust_name = payment_splits
+                    .iter()
+                    .find(|s| s.method.eq_ignore_ascii_case("credit"))
+                    .and_then(|s| s.gateway_reference.as_deref())
+                    .unwrap_or("");
+
+                // Compute existing unsettled credit for this customer
+                let outstanding_minor: i64 = tx.query_row(
+                    "SELECT COALESCE(SUM(p.amount_minor), 0)
+                     FROM payments p
+                     JOIN sales s ON p.sale_id = s.id
+                     WHERE p.method = 'credit'
+                       AND p.settled_at IS NULL
+                       AND s.status != 'voided'
+                       AND (
+                         (?1 != '' AND s.customer_id = ?1)
+                         OR (?2 != '' AND p.gateway_reference = ?2)
+                       )",
+                    rusqlite::params![cust_id, cust_name],
+                    |row| row.get(0),
+                )?;
+
+                let total_credit = outstanding_minor.saturating_add(credit_requested);
+                if total_credit > max_limit_minor {
+                    return Err(CoreError::Validation {
+                        field: "credit_limit",
+                        message: format!(
+                            "credit limit exceeded: outstanding balance {outstanding_minor} + attempted credit {credit_requested} exceeds ceiling {max_limit_minor}",
+                        ),
+                    });
+                }
+            }
+        }
+
         // ── Resolve topology route order ──────────────────────────
         let default_location = crate::location_resolver::get_default_location_id();
         let stock_locations = if stock_locations.is_empty() {
@@ -247,6 +319,9 @@ impl Store<'_> {
         let mut deductions: Vec<StockDeduction> = Vec::with_capacity(sale.lines.len());
         let mut line_deductions: HashMap<String, Vec<crate::sale_deduction::LocationAllocation>> =
             HashMap::new();
+        let mut recipe_line_deductions: HashMap<String, Vec<RecipeIngredientAllocation>> =
+            HashMap::new();
+        let mut line_tracks_inventory: HashMap<String, bool> = HashMap::new();
         let mut shortfalls: Vec<Shortfall> = Vec::new();
 
         // Batch-lookup all SKUs in a single query (avoids N+1 per-line SELECT).
@@ -276,6 +351,7 @@ impl Store<'_> {
                 "Store::complete_sale_deduction_with_locations_and_estimate:sale_line",
             );
             let tracks_inventory = ptype.tracks_inventory();
+            line_tracks_inventory.insert(line.id.clone(), tracks_inventory);
             let recipe = self.get_recipe_ingredients(pid)?;
             let has_recipe = !recipe.is_empty();
 
@@ -383,6 +459,14 @@ impl Store<'_> {
                                         delta: -allocation.qty,
                                     }
                                 }));
+                                recipe_line_deductions
+                                    .entry(line.id.clone())
+                                    .or_default()
+                                    .push(RecipeIngredientAllocation {
+                                        sku: ing_sku,
+                                        qty_per_unit: ingredient.quantity_required,
+                                        allocations,
+                                    });
                             } else {
                                 let available = availability
                                     .first()
@@ -464,6 +548,7 @@ impl Store<'_> {
         let deduction_json = serde_json::json!({
             "version": 1,
             "lines": sale.lines.iter().map(|line| {
+                let tracks_inv = line_tracks_inventory.get(&line.id).copied().unwrap_or(true);
                 let deductions = line_deductions
                     .get(&line.id.clone()).map_or_else(|| vec![serde_json::json!({
                         "location_id": primary_location.as_str(),
@@ -479,11 +564,29 @@ impl Store<'_> {
                             }))
                             .collect::<Vec<_>>()
                     });
-                serde_json::json!({
+                let mut line_obj = serde_json::json!({
                     "sale_line_id": line.id,
                     "sku": line.sku,
+                    "tracks_inventory": tracks_inv,
                     "deductions": deductions,
-                })
+                });
+                if let Some(ing_allocs) = recipe_line_deductions.get(&line.id) {
+                    let ingredients: Vec<serde_json::Value> = ing_allocs.iter().map(|ing| {
+                        serde_json::json!({
+                            "sku": ing.sku,
+                            "qty_per_unit": ing.qty_per_unit,
+                            "deductions": ing.allocations.iter().map(|alloc| {
+                                serde_json::json!({
+                                    "location_id": alloc.location_id.as_str(),
+                                    "qty": alloc.qty,
+                                    "sold_at": now,
+                                })
+                            }).collect::<Vec<_>>(),
+                        })
+                    }).collect();
+                    line_obj["ingredients"] = serde_json::Value::Array(ingredients);
+                }
+                line_obj
             }).collect::<Vec<_>>()
         })
         .to_string();

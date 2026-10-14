@@ -182,6 +182,28 @@ const SURFACES: GuardedSurface[] = [
     element: /<ProductLookupScreen\b/,
     why: 'the non-restaurant product pane',
   },
+  // ── The PORTRAIT restaurant cart, added later and missed by this list ──
+  //
+  // ⚠️ Found by asking which components PosScreen RENDERS versus which this list
+  // guards. The list is the guard, so a surface absent from it is a surface with no
+  // protection — and this pair was absent because neither name ends in `Screen` or
+  // `Modal`, which is what every other entry happens to look like.
+  //
+  // They matter more than their size suggests: `isPortraitRestaurant` is the
+  // TABLET form factor, so on the device the restaurant actually runs on these two
+  // are the cashier's only route to the cart. A throw in either — a missing line
+  // field, a bad total — unmounted the whole POS screen mid-sale and took the cart
+  // with it, which is precisely the F9 failure this file was written for.
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<RestaurantFloatingCartBar\b/,
+    why: 'the tablet cart bar: the cashier\'s only cart affordance in portrait',
+  },
+  {
+    file: path.join(SRC, 'features/sales/PosScreen.tsx'),
+    element: /<RestaurantCartSheet\b/,
+    why: 'the tablet cart sheet: where the sale is actually edited in portrait',
+  },
 ];
 
 /**

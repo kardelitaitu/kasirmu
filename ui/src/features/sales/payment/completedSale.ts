@@ -24,9 +24,10 @@
  * default. A third caller has to state its tenders; it cannot inherit one
  * site's answer by accident.
  */
-import type { CartLine, Money } from '@/types/domain';
+import { courseLabel, type CartLine, type Money } from '@/types/domain';
 import type { PaymentDto, PrintSalesReceiptArgs, SaleDetail } from '@/api/sales';
 import type { ActiveMarketProfile } from '@/api/regional';
+import { bareTableNumber } from '../utils/tableLabel';
 
 export interface CompletedSaleReceiptInput {
   /** `saleResult.saleId` — keys the receipt number. */
@@ -169,3 +170,136 @@ export function buildCompletedSaleReceipt({
     ...(customerTaxId ? { customerTaxId } : {}),
   };
 }
+
+export interface PreCheckoutBillReceiptInput {
+  billNumber?: string;
+  cartLines: CartLine[];
+  cartCurrency: string;
+  subtotal: Money;
+  total: Money;
+  taxAmount?: Money | null | undefined;
+  tableNumber?: string | undefined;
+  customerName?: string | undefined;
+  marketProfile?: ActiveMarketProfile | null | undefined;
+}
+
+/**
+ * Format a pre-checkout interim bill/check for a dining table before payment is collected.
+ * Produces PrintSalesReceiptArgs with an unpaid indicator and no cash tender (preventing drawer pulse).
+ */
+export function buildPreCheckoutBillReceipt({
+  billNumber,
+  cartLines,
+  cartCurrency,
+  subtotal,
+  total,
+  taxAmount,
+  tableNumber,
+  customerName,
+  marketProfile,
+}: PreCheckoutBillReceiptInput): PrintSalesReceiptArgs {
+  const taxIdLabel = marketProfile
+    ? marketProfile.country_code === 'ID'
+      ? 'NPWP'
+      : marketProfile.country_code === 'SG'
+      ? 'GST Reg No'
+      : 'Tax ID'
+    : undefined;
+  const taxRegime = marketProfile?.tax_regime ?? undefined;
+
+  return {
+    date: new Date().toISOString(),
+    receiptNumber: billNumber ?? (tableNumber ? `CHECK-${tableNumber.trim()}` : `BILL-${Date.now().toString().slice(-6)}`),
+    items: cartLines.map((line) => {
+      const lineTax = taxAmount && cartLines.length > 0 && taxAmount.minor_units > 0
+        ? { minorUnits: Math.round(taxAmount.minor_units / cartLines.length), currency: cartCurrency }
+        : undefined;
+      return {
+        name: line.name ?? line.sku,
+        quantity: line.qty,
+        unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
+        totalPrice: { minorUnits: line.unit_price.minor_units * line.qty, currency: line.unit_price.currency },
+        ...(lineTax ? { taxAmount: lineTax } : {}),
+        ...(line.note ? { note: line.note } : {}),
+      };
+    }),
+    subtotal: { minorUnits: subtotal.minor_units, currency: cartCurrency },
+    ...(taxAmount && taxAmount.minor_units > 0
+      ? { tax: { minorUnits: taxAmount.minor_units, currency: cartCurrency } }
+      : {}),
+    total: { minorUnits: total.minor_units, currency: cartCurrency },
+    payments: [],
+    ...(tableNumber ? { tableNumber } : {}),
+    ...(customerName ? { customerName } : {}),
+    ...(taxIdLabel ? { taxIdLabel } : {}),
+    ...(taxRegime ? { taxRegime } : {}),
+  };
+}
+
+export interface KitchenChitReceiptInput {
+  chitNumber?: string;
+  cartLines: CartLine[];
+  cartCurrency: string;
+  tableNumber?: string | undefined;
+  customerName?: string | undefined;
+  printerTarget?: string | undefined;
+  documentKind?: 'receipt' | 'invoice' | 'kitchen' | 'kot' | 'bar' | undefined;
+}
+
+/**
+ * Determine whether a cart item represents a drink/beverage destined for the bar.
+ */
+export function isBeverageItem(line: CartLine): boolean {
+  if (line.courseId === 'beverage' || (line.courseId as string) === 'drinks') {
+    return true;
+  }
+  const cat = (line.category || '').toLowerCase();
+  return cat.includes('beverage') || cat.includes('drink') || cat.includes('minuman') || cat.includes('bar');
+}
+
+/**
+ * Format a kitchen order ticket (KOT / chit) for food orders sent to the kitchen.
+ * Formats line items with their quantity, modifiers, course indicators, and notes.
+ */
+export function buildKitchenChitReceipt({
+  chitNumber,
+  cartLines,
+  cartCurrency,
+  tableNumber,
+  customerName,
+  printerTarget,
+  documentKind,
+}: KitchenChitReceiptInput): PrintSalesReceiptArgs {
+  return {
+    date: new Date().toISOString(),
+    receiptNumber: chitNumber ?? `KOT-${bareTableNumber(tableNumber || '') || 'ORDER'}-${Date.now().toString().slice(-4)}`,
+    items: cartLines.map((line) => {
+      let displayName = line.name ?? line.sku;
+      if (line.courseId) {
+        displayName = `[${courseLabel(line.courseId)}] ${displayName}`;
+      }
+      const noteParts: string[] = [];
+      if (line.modifiers && line.modifiers.length > 0) {
+        noteParts.push(line.modifiers.map((m) => m.modifierName).join(', '));
+      }
+      if (line.note?.trim()) {
+        noteParts.push(line.note.trim());
+      }
+      return {
+        name: displayName,
+        quantity: line.qty,
+        unitPrice: { minorUnits: 0, currency: cartCurrency },
+        totalPrice: { minorUnits: 0, currency: cartCurrency },
+        ...(noteParts.length > 0 ? { note: noteParts.join(' | ') } : {}),
+      };
+    }),
+    subtotal: { minorUnits: 0, currency: cartCurrency },
+    total: { minorUnits: 0, currency: cartCurrency },
+    payments: [],
+    ...(tableNumber ? { tableNumber } : {}),
+    ...(customerName ? { customerName } : {}),
+    documentKind: documentKind ?? 'kitchen',
+    printerTarget: printerTarget ?? 'kitchen',
+  };
+}
+

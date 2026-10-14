@@ -7,6 +7,7 @@ import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { useToast } from '@/components/Toast';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { readScoped, writeScoped } from '@/utils/scopedStorage';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
@@ -15,6 +16,7 @@ import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesS
 import { getReceiptFormatScoped, setReceiptLayoutScoped } from '@/api/receipt-format';
 import { getPrimaryLocationScoped } from '@/api/locations';
 import { printSalesReceipt } from '@/api/sales';
+import { printKdsChitScoped } from '@/api/kds';
 import { openCashDrawerScoped } from '@/api/hardware';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { tierSatisfies } from '@/utils/tierLevel';
@@ -113,7 +115,10 @@ export default function RestaurantReceiptsScreen({
   const settingsCtx = useOptionalSettings();
   const settings = settingsCtx?.settings ?? FALLBACK_SETTINGS;
   const markSettingsUpdated = settingsCtx?.markSettingsUpdated;
-  const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
+  // `resolvedStoreId` is read for ONE purpose: the receipt preferences below are keyed by
+  // store, so two terminals in one store share them and two stores on one device do not.
+  // Round 168 added `utils/scopedStorage.ts` for exactly this; round 169 applied it here.
+  const { sessionToken, terminalId: contextTerminalId, resolvedStoreId } = useWorkspace();
   const { caps } = useSubscription();
   const { session } = useAuth();
   const { isEnabled } = useFeatures();
@@ -152,6 +157,7 @@ export default function RestaurantReceiptsScreen({
   const [headerTitle, setHeaderTitle] = useState('');
   const [headerLine1, setHeaderLine1] = useState('');
   const [headerLine2, setHeaderLine2] = useState('');
+  const [previewMode, setPreviewMode] = useState<'customer' | 'kitchen'>('customer');
 
   // ── Paper margins state (mm) ────────────────────────────────
   const [marginTop, setMarginTop] = useState(5);
@@ -174,7 +180,25 @@ export default function RestaurantReceiptsScreen({
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [testingPrint, setTestingPrint] = useState(false);
   const [testingDrawer, setTestingDrawer] = useState(false);
+  const [testingKitchenChit, setTestingKitchenChit] = useState(false);
   const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
+
+  /**
+   * Resolve a test-print result's Fluent key to display text.
+   *
+   * `formatTestPrintResult` is pure and returns a KEY (not a sentence), so this
+   * screen is the single place that renders it — for the status card and every
+   * toast. `detail` is only present on the two `-detail` variants, so passing it
+   * to the others is harmless but pointless; passing it always keeps the call one
+   * shape.
+   */
+  const testPrintMessage = useCallback(
+    (res: { messageId: string; detail?: string }) =>
+      res.detail !== undefined
+        ? l10n.getString(res.messageId, { detail: res.detail })
+        : l10n.getString(res.messageId),
+    [l10n],
+  );
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
   // The workspace (primary-location) scope id used for the scoped
@@ -272,37 +296,37 @@ export default function RestaurantReceiptsScreen({
 
     // 2. Overlay extra toggles from local preferences (localStorage)
     try {
-      const localTitle = localStorage.getItem('resto_rcpt_header_title');
+      const localTitle = readScoped('resto_rcpt_header_title', resolvedStoreId);
       if (localTitle !== null) initialTitle = localTitle.slice(0, MAX_HEADER_TITLE_LENGTH);
-      const localL1 = localStorage.getItem('resto_rcpt_header_line1');
+      const localL1 = readScoped('resto_rcpt_header_line1', resolvedStoreId);
       if (localL1 !== null) initialLine1 = localL1.slice(0, MAX_HEADER_LINE_LENGTH);
-      const localL2 = localStorage.getItem('resto_rcpt_header_line2');
+      const localL2 = readScoped('resto_rcpt_header_line2', resolvedStoreId);
       if (localL2 !== null) initialLine2 = localL2.slice(0, MAX_HEADER_LINE_LENGTH);
-      const localFontSize = localStorage.getItem('resto_rcpt_font_size');
+      const localFontSize = readScoped('resto_rcpt_font_size', resolvedStoreId);
       if (localFontSize && ['very_small', 'small', 'medium', 'large'].includes(localFontSize)) {
         initialFontSize = localFontSize as ReceiptFontSize;
       }
-      const localCode = localStorage.getItem('resto_rcpt_show_code');
+      const localCode = readScoped('resto_rcpt_show_code', resolvedStoreId);
       if (localCode !== null) initialShowCode = localCode === 'true';
-      const localDt = localStorage.getItem('resto_rcpt_show_dt');
+      const localDt = readScoped('resto_rcpt_show_dt', resolvedStoreId);
       if (localDt !== null) initialShowDt = localDt === 'true';
-      const localStaff = localStorage.getItem('resto_rcpt_show_staff');
+      const localStaff = readScoped('resto_rcpt_show_staff', resolvedStoreId);
       if (localStaff !== null) initialShowStaff = localStaff === 'true';
-      const localFooter = localStorage.getItem('resto_rcpt_show_footer');
+      const localFooter = readScoped('resto_rcpt_show_footer', resolvedStoreId);
       if (localFooter !== null) initialShowFooter = localFooter === 'true';
-      const localItemNotes = localStorage.getItem('resto_rcpt_show_item_notes');
+      const localItemNotes = readScoped('resto_rcpt_show_item_notes', resolvedStoreId);
       if (localItemNotes !== null) initialShowItemNotes = localItemNotes === 'true';
-      const localThousandsSep = localStorage.getItem('resto_rcpt_thousands_sep');
+      const localThousandsSep = readScoped('resto_rcpt_thousands_sep', resolvedStoreId);
       if (localThousandsSep !== null) initialShowThousandsSep = localThousandsSep === 'true';
-      const localShowDecimals = localStorage.getItem('resto_rcpt_show_decimals');
+      const localShowDecimals = readScoped('resto_rcpt_show_decimals', resolvedStoreId);
       if (localShowDecimals !== null) initialShowDecimals = localShowDecimals === 'true';
-      const localTaxRate = localStorage.getItem('resto_rcpt_tax_rate');
+      const localTaxRate = readScoped('resto_rcpt_tax_rate', resolvedStoreId);
       if (localTaxRate !== null && !isNaN(Number(localTaxRate))) {
         initialTaxRate = clamp(Number(localTaxRate), 0, 100);
       }
-      const localLogo = localStorage.getItem('resto_rcpt_logo');
+      const localLogo = readScoped('resto_rcpt_logo', resolvedStoreId);
       if (localLogo) initialBusinessLogo = localLogo;
-      const localLogoPos = localStorage.getItem('resto_rcpt_logo_pos');
+      const localLogoPos = readScoped('resto_rcpt_logo_pos', resolvedStoreId);
       if (localLogoPos && ['top', 'left', 'right'].includes(localLogoPos)) {
         initialLogoPos = localLogoPos as ReceiptLogoPosition;
       }
@@ -398,73 +422,73 @@ export default function RestaurantReceiptsScreen({
                 const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
                 setHeaderTitle(v);
                 originalsRef.current.headerTitle = v;
-                localStorage.setItem('resto_rcpt_header_title', v);
+                writeScoped('resto_rcpt_header_title', resolvedStoreId, v);
               }
               if (p['resto_rcpt_header_line1'] !== undefined) {
                 const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
                 setHeaderLine1(v);
                 originalsRef.current.headerLine1 = v;
-                localStorage.setItem('resto_rcpt_header_line1', v);
+                writeScoped('resto_rcpt_header_line1', resolvedStoreId, v);
               }
               if (p['resto_rcpt_header_line2'] !== undefined) {
                 const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
                 setHeaderLine2(v);
                 originalsRef.current.headerLine2 = v;
-                localStorage.setItem('resto_rcpt_header_line2', v);
+                writeScoped('resto_rcpt_header_line2', resolvedStoreId, v);
               }
               if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
                 const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
                 setLogoPosition(v);
                 originalsRef.current.logoPosition = v;
-                localStorage.setItem('resto_rcpt_logo_pos', v);
+                writeScoped('resto_rcpt_logo_pos', resolvedStoreId, v);
               }
               if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
                 const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
                 setFontSize(v);
                 originalsRef.current.fontSize = v;
-                localStorage.setItem('resto_rcpt_font_size', v);
+                writeScoped('resto_rcpt_font_size', resolvedStoreId, v);
               }
               if (p['resto_rcpt_show_code'] !== undefined) {
                 const v = p['resto_rcpt_show_code'] === 'true';
                 setShowReceiptCode(v);
                 originalsRef.current.showReceiptCode = v;
-                localStorage.setItem('resto_rcpt_show_code', String(v));
+                writeScoped('resto_rcpt_show_code', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_dt'] !== undefined) {
                 const v = p['resto_rcpt_show_dt'] === 'true';
                 setShowDateTime(v);
                 originalsRef.current.showDateTime = v;
-                localStorage.setItem('resto_rcpt_show_dt', String(v));
+                writeScoped('resto_rcpt_show_dt', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_staff'] !== undefined) {
                 const v = p['resto_rcpt_show_staff'] === 'true';
                 setShowStaffName(v);
                 originalsRef.current.showStaffName = v;
-                localStorage.setItem('resto_rcpt_show_staff', String(v));
+                writeScoped('resto_rcpt_show_staff', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_footer'] !== undefined) {
                 const v = p['resto_rcpt_show_footer'] === 'true';
                 setShowFooter(v);
                 originalsRef.current.showFooter = v;
-                localStorage.setItem('resto_rcpt_show_footer', String(v));
+                writeScoped('resto_rcpt_show_footer', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_item_notes'] !== undefined) {
                 const v = p['resto_rcpt_show_item_notes'] === 'true';
                 setShowItemNotes(v);
                 originalsRef.current.showItemNotes = v;
-                localStorage.setItem('resto_rcpt_show_item_notes', String(v));
+                writeScoped('resto_rcpt_show_item_notes', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_thousands_sep'] !== undefined) {
                 const v = p['resto_rcpt_thousands_sep'] === 'true';
                 setShowThousandsSeparator(v);
                 originalsRef.current.showThousandsSeparator = v;
-                localStorage.setItem('resto_rcpt_thousands_sep', String(v));
+                writeScoped('resto_rcpt_thousands_sep', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_show_decimals'] !== undefined) {
                 const v = p['resto_rcpt_show_decimals'] === 'true';
                 setShowDecimals(v);
                 originalsRef.current.showDecimals = v;
-                localStorage.setItem('resto_rcpt_show_decimals', String(v));
+                writeScoped('resto_rcpt_show_decimals', resolvedStoreId, String(v));
               }
               if (p['resto_rcpt_tax_rate'] !== undefined) {
                 const parsed = Number(p['resto_rcpt_tax_rate']);
@@ -472,13 +496,13 @@ export default function RestaurantReceiptsScreen({
                   const v = clamp(parsed, 0, 100);
                   setTaxRatePercent(v);
                   originalsRef.current.taxRatePercent = v;
-                  localStorage.setItem('resto_rcpt_tax_rate', String(v));
+                  writeScoped('resto_rcpt_tax_rate', resolvedStoreId, String(v));
                 }
               }
               if (p['resto_rcpt_logo']) {
                 setBusinessLogo(p['resto_rcpt_logo']);
                 originalsRef.current.businessLogo = p['resto_rcpt_logo'];
-                localStorage.setItem('resto_rcpt_logo', p['resto_rcpt_logo']);
+                writeScoped('resto_rcpt_logo', resolvedStoreId, p['resto_rcpt_logo']);
               }
             } catch {
               // LocalStorage write is best-effort write-through cache; memory state is authoritative
@@ -766,7 +790,7 @@ export default function RestaurantReceiptsScreen({
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       addToast({
-        message: 'Logo file too large (maximum 2MB)',
+        message: l10n.getString('restaurant-receipt-logo-too-large'),
         type: 'error',
       });
       return;
@@ -787,8 +811,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_AUTH_REQUIRED);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -799,8 +823,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_PRINTER_DISABLED);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -811,8 +835,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_HOST);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -823,8 +847,10 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_PORT);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: printerConnection === 'bluetooth' ? 'Bluetooth MAC address is required' : res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: printerConnection === 'bluetooth'
+          ? l10n.getString('restaurant-test-print-bt-mac-required')
+          : testPrintMessage(res),
         type: 'error',
       });
       return;
@@ -832,8 +858,8 @@ export default function RestaurantReceiptsScreen({
 
     if (dirty) {
       addToast({
-        title: 'Unsaved Changes',
-        message: 'Test print uses last saved settings. Save changes to apply your draft layout.',
+        title: l10n.getString('restaurant-test-print-unsaved-title'),
+        message: l10n.getString('restaurant-test-print-unsaved-message'),
         type: 'warning',
       });
     }
@@ -843,6 +869,22 @@ export default function RestaurantReceiptsScreen({
     const start = Date.now();
     try {
       const currency = settings.store.currency || 'IDR';
+      // ── This sample prices EXCLUSIVE tax; the preview above prices INCLUSIVE ──
+      //
+      // Deliberately, and not drift. The mode is a configured property of the tax-rate
+      // row, not a global setting: `crates/kasirmu-core/src/db/sales_tests.rs:1161`
+      // seeds an EXCLUSIVE rate (tax = subtotal * rate/100, added on top) and `:1284`
+      // seeds an INCLUSIVE one (total unchanged, tax extracted for reporting), and
+      // `completedSale.ts:154-161` reads all three figures back from the database
+      // without deriving them. So these two samples demonstrate the two modes a store
+      // can be configured for. The preview's convention lives in `receiptLogic.ts` as
+      // `line total * 100/(100 + rate)`.
+      //
+      // `RestaurantReceiptsScreen.test.tsx` ("priced EXCLUSIVE tax") pins the convention
+      // AND that the two line prices sum to the submitted subtotal, so an edit to one
+      // without the other fails rather than printing a sample that does not add up.
+      //
+      // Full reasoning: docs/records/audits/two-samples-two-tax-modes.md.
       const printRes = await printSalesReceipt(sessionToken, {
         receiptNumber: '01-01-260929-01-000042',
         date: new Date().toLocaleDateString(),
@@ -883,16 +925,16 @@ export default function RestaurantReceiptsScreen({
         const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_UNCONFIRMED);
         setTestPrintResult({ ...res, timestamp: Date.now() });
         addToast({
-          title: `[${res.code}] Print Error`,
-          message: res.message,
+          title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+          message: testPrintMessage(res),
           type: 'error',
         });
       } else {
         const res = formatTestPrintResult(TEST_PRINT_CODES.SUCCESS);
         setTestPrintResult({ ...res, timestamp: Date.now() });
         addToast({
-          title: `[${res.code}] Print Success`,
-          message: res.message,
+          title: `[${res.code}] ${l10n.getString('restaurant-test-print-success-title')}`,
+          message: testPrintMessage(res),
           type: 'success',
         });
       }
@@ -906,8 +948,8 @@ export default function RestaurantReceiptsScreen({
       const res = formatTestPrintResult(classified.code, classified.detail);
       setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        title: `[${res.code}] Print Error`,
-        message: res.message,
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
         type: 'error',
       });
     } finally {
@@ -925,14 +967,16 @@ export default function RestaurantReceiptsScreen({
     showItemNotes,
     addToast,
     dirty,
+    l10n,
+    testPrintMessage,
   ]);
 
   // ── Test Cash Drawer ─────────────────────────────────────────
   const handleTestDrawer = useCallback(async () => {
     if (!sessionToken) {
       addToast({
-        title: 'Authentication Required',
-        message: 'Authentication session required to open cash drawer',
+        title: l10n.getString('restaurant-drawer-auth-title'),
+        message: l10n.getString('restaurant-drawer-auth-message'),
         type: 'error',
       });
       return;
@@ -943,20 +987,20 @@ export default function RestaurantReceiptsScreen({
       const res = await openCashDrawerScoped(sessionToken);
       if (res && res.opened !== false) {
         addToast({
-          title: 'Drawer Signal Sent',
-          message: 'Cash drawer kick pulse sent to default printer',
+          title: l10n.getString('restaurant-drawer-sent-title'),
+          message: l10n.getString('restaurant-drawer-sent-message'),
           type: 'success',
         });
       } else {
         addToast({
-          title: 'Drawer Kick Unconfirmed',
-          message: 'Device did not confirm drawer open',
+          title: l10n.getString('restaurant-drawer-unconfirmed-title'),
+          message: l10n.getString('restaurant-drawer-unconfirmed-message'),
           type: 'warning',
         });
       }
     } catch (err) {
       addToast({
-        title: 'Drawer Kick Failed',
+        title: l10n.getString('restaurant-drawer-failed-title'),
         // ERR-05: the drawer-kick failure text is backend hardware detail; render
         // the screen's own localized copy instead of surfacing it verbatim.
         message: l10nErrorMessage(err, l10n, 'receipts-drawer-kick-failed'),
@@ -967,8 +1011,101 @@ export default function RestaurantReceiptsScreen({
     }
   }, [sessionToken, addToast, l10n]);
 
+  // ── Test Kitchen Chit ────────────────────────────────────────
+  const handleTestKitchenChit = useCallback(async () => {
+    if (!sessionToken) {
+      addToast({
+        title: l10n.getString('restaurant-drawer-auth-title'),
+        message: l10n.getString('restaurant-drawer-auth-message'),
+        type: 'error',
+      });
+      return;
+    }
+
+    if (kitchenConnection === 'disabled') {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_PRINTER_DISABLED);
+      addToast({
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
+        type: 'error',
+      });
+      return;
+    }
+
+    if (kitchenConnection === 'network' && !kitchenDevicePath.trim()) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_HOST);
+      addToast({
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(res),
+        type: 'error',
+      });
+      return;
+    }
+
+    if ((kitchenConnection === 'usb' || kitchenConnection === 'serial' || kitchenConnection === 'bluetooth') && !kitchenDevicePath.trim()) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_PORT);
+      addToast({
+        title: `[${res.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: kitchenConnection === 'bluetooth'
+          ? l10n.getString('restaurant-test-print-bt-mac-required')
+          : testPrintMessage(res),
+        type: 'error',
+      });
+      return;
+    }
+
+    setTestingKitchenChit(true);
+    const start = Date.now();
+    try {
+      const res = await printKdsChitScoped(sessionToken, 'test-order-chit');
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
+      if (res !== false) {
+        addToast({
+          title: l10n.getString('restaurant-test-kitchen-chit-success-title'),
+          message: l10n.getString('restaurant-test-kitchen-chit-success'),
+          type: 'success',
+        });
+      } else {
+        const errRes = formatTestPrintResult(TEST_PRINT_CODES.ERR_UNCONFIRMED);
+        addToast({
+          title: `[${errRes.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+          message: testPrintMessage(errRes),
+          type: 'warning',
+        });
+      }
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
+      const classified = classifyTestPrintError(err);
+      const errRes = formatTestPrintResult(classified.code, classified.detail);
+      addToast({
+        title: `[${errRes.code}] ${l10n.getString('restaurant-test-print-error-title')}`,
+        message: testPrintMessage(errRes),
+        type: 'error',
+      });
+    } finally {
+      setTestingKitchenChit(false);
+    }
+  }, [sessionToken, kitchenConnection, kitchenDevicePath, addToast, l10n, testPrintMessage]);
+
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
+    // Same guard as the five other token-dependent callbacks in this file (`:533`, `:806`,
+    // `:972`, `:1012`). This one pushed its FIRST task with `sessionToken ?? ''` and only
+    // guarded the later ones with `if (sessionToken && …)` (`:1121`, `:1143`), so an empty
+    // token fired a bogus `set_receipt_settings_scoped('')` before the guarded tasks skipped.
+    //
+    // Not reachable through the UI today — the mock always supplies a token, and the Save
+    // button is disabled until an edit makes the screen dirty — so this is a consistency fix
+    // rather than a defect repair. Against the real backend an empty token is rejected, and a
+    // rejected task inside the `Promise.all` would surface as a failed save for a form the
+    // operator never got to submit. The Save button also gains the token in its gate below.
+    if (!sessionToken) return;
     setSaving(true);
     const start = Date.now();
     try {
@@ -976,7 +1113,7 @@ export default function RestaurantReceiptsScreen({
 
       // 1. Save workspace receipt format settings
       tasks.push(
-        setReceiptSettingsScoped(sessionToken ?? '', {
+        setReceiptSettingsScoped(sessionToken, {
           showCurrency,
           decimalSeparator: settings.receipt.decimalSeparator,
           showTax,
@@ -1049,20 +1186,20 @@ export default function RestaurantReceiptsScreen({
       // been saved. Doing it after the await keeps the cache consistent with what
       // actually committed.
       try {
-        localStorage.setItem('resto_rcpt_header_title', headerTitle);
-        localStorage.setItem('resto_rcpt_header_line1', headerLine1);
-        localStorage.setItem('resto_rcpt_header_line2', headerLine2);
-        localStorage.setItem('resto_rcpt_font_size', fontSize);
-        localStorage.setItem('resto_rcpt_show_code', String(showReceiptCode));
-        localStorage.setItem('resto_rcpt_show_dt', String(showDateTime));
-        localStorage.setItem('resto_rcpt_show_staff', String(showStaffName));
-        localStorage.setItem('resto_rcpt_show_footer', String(showFooter));
-        localStorage.setItem('resto_rcpt_show_item_notes', String(showItemNotes));
-        localStorage.setItem('resto_rcpt_thousands_sep', String(showThousandsSeparator));
-        localStorage.setItem('resto_rcpt_show_decimals', String(showDecimals));
-        localStorage.setItem('resto_rcpt_tax_rate', String(taxRatePercent));
-        localStorage.setItem('resto_rcpt_logo', businessLogo);
-        localStorage.setItem('resto_rcpt_logo_pos', logoPosition);
+        writeScoped('resto_rcpt_header_title', resolvedStoreId, headerTitle);
+        writeScoped('resto_rcpt_header_line1', resolvedStoreId, headerLine1);
+        writeScoped('resto_rcpt_header_line2', resolvedStoreId, headerLine2);
+        writeScoped('resto_rcpt_font_size', resolvedStoreId, fontSize);
+        writeScoped('resto_rcpt_show_code', resolvedStoreId, String(showReceiptCode));
+        writeScoped('resto_rcpt_show_dt', resolvedStoreId, String(showDateTime));
+        writeScoped('resto_rcpt_show_staff', resolvedStoreId, String(showStaffName));
+        writeScoped('resto_rcpt_show_footer', resolvedStoreId, String(showFooter));
+        writeScoped('resto_rcpt_show_item_notes', resolvedStoreId, String(showItemNotes));
+        writeScoped('resto_rcpt_thousands_sep', resolvedStoreId, String(showThousandsSeparator));
+        writeScoped('resto_rcpt_show_decimals', resolvedStoreId, String(showDecimals));
+        writeScoped('resto_rcpt_tax_rate', resolvedStoreId, String(taxRatePercent));
+        writeScoped('resto_rcpt_logo', resolvedStoreId, businessLogo);
+        writeScoped('resto_rcpt_logo_pos', resolvedStoreId, logoPosition);
       } catch {
         // Safe to ignore
       }
@@ -1229,10 +1366,12 @@ export default function RestaurantReceiptsScreen({
       showThousandsSeparator,
     );
 
-  // Sample gross prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar (42.000)
-  // When showTax is true, line items show net price = 100/(100 + taxRatePercent) of gross,
-  // rounded for display (e.g. 16.000 * 100 / 110 = 14545.4545... -> shown as 14.545),
-  // while exact fractional parts are preserved in the subtotal and raw tax inside
+  // Sample gross UNIT prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar
+  // (42.000), with quantities 1 / 2 / 1. When showTax is true, each row shows its LINE
+  // TOTAL net of tax — unit * 100/(100 + taxRatePercent) * qty — which is the same
+  // convention the real receipt uses (`completedSale.ts:132`, `:221`). Rounded for
+  // display (2x Es Teh: 16.000 * 100/110 * 2 = 29.090.90... -> shown as 29.091), while
+  // the exact fractional parts are preserved in the subtotal and raw tax inside
   // computeReceiptPreview.
   const preview = computeReceiptPreview({ taxRatePercent, showTax, taxRoundingMode });
   const [sampleItem1Price, sampleItem2Price, sampleItem3Price] = preview.itemPrices;
@@ -1337,7 +1476,7 @@ export default function RestaurantReceiptsScreen({
           <button
             type="button"
             className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-            disabled={!dirty || saving || loadFailed || hw.loadFailed}
+            disabled={!dirty || saving || loadFailed || hw.loadFailed || !sessionToken}
             aria-busy={saving || undefined}
             onClick={handleSave}
             data-testid="restaurant-receipts-save-btn"
@@ -1361,9 +1500,28 @@ export default function RestaurantReceiptsScreen({
         >
           <div className="restaurant-preview-card noise-dither">
             <div className="restaurant-preview-header-bar">
-              <span className="restaurant-preview-title">
-                <Localized id="restaurant-preview-title">Print Preview</Localized>
-              </span>
+              <div className="restaurant-preview-tabs" role="tablist" aria-label={l10n.getString('restaurant-preview-title') || 'Receipt preview tabs'}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={previewMode === 'customer'}
+                  className={`restaurant-preview-tab ${previewMode === 'customer' ? 'active' : ''}`}
+                  onClick={() => setPreviewMode('customer')}
+                  data-testid="restaurant-preview-tab-customer"
+                >
+                  <Localized id="restaurant-preview-tab-customer">Customer Receipt</Localized>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={previewMode === 'kitchen'}
+                  className={`restaurant-preview-tab ${previewMode === 'kitchen' ? 'active' : ''}`}
+                  onClick={() => setPreviewMode('kitchen')}
+                  data-testid="restaurant-preview-tab-kitchen"
+                >
+                  <Localized id="restaurant-preview-tab-kitchen">Kitchen Chit (KOT)</Localized>
+                </button>
+              </div>
               <span className="restaurant-preview-badge">
                 <Localized id="restaurant-preview-live-badge">Live Preview</Localized>
               </span>
@@ -1381,6 +1539,59 @@ export default function RestaurantReceiptsScreen({
                 }}
               >
                 <div className="resto-receipt-printable-area">
+                  {previewMode === 'kitchen' ? (
+                    <div className="resto-receipt-kitchen-chit" data-testid="receipt-preview-kitchen-chit">
+                      <div className="resto-receipt-center resto-receipt-kot-header">
+                        <div className="resto-receipt-kot-badge">
+                          <Localized id="restaurant-preview-kot-title">*** KITCHEN ORDER TICKET (KOT) ***</Localized>
+                        </div>
+                        <div className="resto-receipt-table-large">
+                          {tablesEnabled && showTableNumber ? 'TABLE 1' : 'ORDER #42'}
+                        </div>
+                        <div className="resto-receipt-kot-meta">
+                          <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>·</span>
+                          <span>{staffDisplayName}</span>
+                          <span>·</span>
+                          <span>Pax: 3</span>
+                        </div>
+                        <div className="resto-receipt-divider" />
+                      </div>
+
+                      <div className="resto-receipt-kot-course">
+                        <div className="resto-receipt-kot-course-title">-- APPETIZER --</div>
+                        <div className="resto-receipt-kot-item">
+                          <span className="resto-receipt-kot-qty">1x</span>
+                          <span className="resto-receipt-kot-name">Lumpia Goreng</span>
+                        </div>
+                      </div>
+
+                      <div className="resto-receipt-kot-course">
+                        <div className="resto-receipt-kot-course-title">-- MAIN COURSE --</div>
+                        <div className="resto-receipt-kot-item">
+                          <span className="resto-receipt-kot-qty">2x</span>
+                          <span className="resto-receipt-kot-name">Nasi Goreng Spesial</span>
+                        </div>
+                        {showItemNotes && (
+                          <div className="resto-receipt-kot-note">* Pedas level 3, tanpa timun</div>
+                        )}
+                      </div>
+
+                      <div className="resto-receipt-kot-course">
+                        <div className="resto-receipt-kot-course-title">-- BEVERAGE --</div>
+                        <div className="resto-receipt-kot-item">
+                          <span className="resto-receipt-kot-qty">2x</span>
+                          <span className="resto-receipt-kot-name">Es Teh Manis</span>
+                        </div>
+                      </div>
+
+                      <div className="resto-receipt-divider" />
+                      <div className="resto-receipt-center resto-receipt-kot-footer">
+                        <Localized id="restaurant-preview-kot-end">*** END OF KOT ***</Localized>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Store Header with Logo */}
                   {businessLogo ? (
                     logoPosition === 'top' ? (
@@ -1532,11 +1743,11 @@ export default function RestaurantReceiptsScreen({
                       <span>TOTAL</span>
                       <span>{formatPrice(sampleTotal)}</span>
                     </div>
-                    <div className="resto-receipt-total-row" style={{ fontSize: '10px', color: '#4b5563' }}>
+                    <div className="resto-receipt-total-row resto-receipt-tender-row">
                       <span>Cash</span>
                       <span>{formatPrice(sampleCash)}</span>
                     </div>
-                    <div className="resto-receipt-total-row" style={{ fontSize: '10px', color: '#4b5563' }}>
+                    <div className="resto-receipt-total-row resto-receipt-tender-row">
                       <span>Change</span>
                       <span>{formatPrice(sampleChange)}</span>
                     </div>
@@ -1559,6 +1770,8 @@ export default function RestaurantReceiptsScreen({
                     <div className="resto-receipt-watermark">
                       <span>kasir.mu</span>
                     </div>
+                  )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1603,6 +1816,40 @@ export default function RestaurantReceiptsScreen({
                   <rect x="6" y="14" width="12" height="8" />
                 </svg>
                 <Localized id="restaurant-test-print">Test Print Receipt</Localized>
+              </span>
+            </button>
+
+            {/* Test Kitchen Chit Button under preview */}
+            <button
+              type="button"
+              className={`resto-test-print-btn resto-anim-btn ${testingKitchenChit ? 'resto-anim-btn--loading' : ''}`}
+              disabled={testingKitchenChit}
+              aria-busy={testingKitchenChit || undefined}
+              onClick={handleTestKitchenChit}
+              data-testid="restaurant-receipts-preview-test-chit-btn"
+            >
+              <span className="resto-anim-btn__spinner-wrap" aria-hidden="true">
+                <span className="resto-anim-btn__spinner" />
+              </span>
+              <span className="resto-anim-btn__content resto-test-print-label">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                <Localized id="restaurant-test-kitchen-chit">Print Test Chit</Localized>
               </span>
             </button>
 
@@ -1655,7 +1902,7 @@ export default function RestaurantReceiptsScreen({
                   </span>
                 </div>
                 <p className="resto-test-print-status__msg">
-                  {testPrintResult.message}
+                  {testPrintMessage(testPrintResult)}
                 </p>
               </div>
             )}
@@ -2205,10 +2452,15 @@ export default function RestaurantReceiptsScreen({
                       <input
                         type="text"
                         className="resto-text-input"
+                        // A placeholder is not an accessible name — it vanishes
+                        // on the first keystroke, and a screen reader may not
+                        // announce it at all. The same bundle string serves as
+                        // the label.
+                        aria-label={l10n.getString('restaurant-logo-url-placeholder')}
                         placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
                         value={
                           businessLogo.startsWith('data:') && !businessLogo.startsWith('data:image/svg+xml;utf8,')
-                            ? 'Custom uploaded image'
+                            ? l10n.getString('restaurant-logo-custom-uploaded')
                             : businessLogo
                         }
                         onFocus={(e) => {
@@ -2218,7 +2470,11 @@ export default function RestaurantReceiptsScreen({
                         }}
                         onChange={(e) => {
                           const val = e.target.value;
-                          if (val === '' || !val.startsWith('Custom uploaded')) {
+                          // The guard must read the SAME localized sentinel the value
+                          // above renders. A hardcoded 'Custom uploaded' check left the
+                          // Indonesian label writable as if it were a URL: editing the
+                          // field stored the translated placeholder as the logo.
+                          if (val === '' || !val.startsWith(l10n.getString('restaurant-logo-custom-uploaded'))) {
                             setBusinessLogo(normalizeLogoInput(val));
                           }
                         }}
@@ -2454,12 +2710,12 @@ export default function RestaurantReceiptsScreen({
                     value={printerConnection}
                     onChange={handlePrinterConnectionChange}
                     options={[
-                      { value: 'auto', label: 'Auto Detect' },
-                      { value: 'bluetooth', label: 'Bluetooth SPP (Wireless)' },
-                      { value: 'network', label: 'Network / Ethernet' },
-                      { value: 'usb', label: 'USB' },
-                      { value: 'serial', label: 'Serial / COM' },
-                      { value: 'disabled', label: 'Disabled' },
+                      { value: 'auto', label: l10n.getString('restaurant-printer-conn-auto') },
+                      { value: 'bluetooth', label: l10n.getString('restaurant-printer-conn-bluetooth') },
+                      { value: 'network', label: l10n.getString('restaurant-printer-conn-network') },
+                      { value: 'usb', label: l10n.getString('restaurant-printer-conn-usb') },
+                      { value: 'serial', label: l10n.getString('restaurant-printer-conn-serial') },
+                      { value: 'disabled', label: l10n.getString('restaurant-printer-conn-disabled') },
                     ]}
                   />
                 </div>
@@ -2468,7 +2724,7 @@ export default function RestaurantReceiptsScreen({
                   <div style={{ marginBottom: 'var(--space-3)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                       <label htmlFor="resto-hw-printer-path" className="resto-toggle-title">
-                        Bluetooth MAC Address
+                        {l10n.getString('restaurant-printer-bt-mac-label')}
                       </label>
                       {btPermissionsGranted === false && (
                         <button
@@ -2482,7 +2738,7 @@ export default function RestaurantReceiptsScreen({
                             win.__kasirmuNative?.requestBluetoothPermissions?.();
                           }}
                         >
-                          Grant Bluetooth Permission
+                          {l10n.getString('restaurant-printer-bt-grant')}
                         </button>
                       )}
                     </div>
@@ -2496,7 +2752,7 @@ export default function RestaurantReceiptsScreen({
                             if (e.target.value) handlePrinterDevicePathChange(e.target.value);
                           }}
                         >
-                          <option value="">-- Select Paired Bluetooth Device --</option>
+                          <option value="">{l10n.getString('restaurant-printer-bt-paired-placeholder')}</option>
                           {pairedBtDevices.map((d) => (
                             <option key={d.address} value={d.address}>
                               {d.name} ({d.address})
@@ -2509,7 +2765,7 @@ export default function RestaurantReceiptsScreen({
                       id="resto-hw-printer-path"
                       type="text"
                       className="resto-text-input"
-                      placeholder="66:12:34:AB:CD:EF (MAC Address)"
+                      placeholder={l10n.getString('restaurant-printer-bt-mac-placeholder')}
                       value={printerDevicePath}
                       onChange={(e) => handlePrinterDevicePathChange(e.target.value)}
                     />
@@ -2519,13 +2775,17 @@ export default function RestaurantReceiptsScreen({
                 {(printerConnection === 'network' || printerConnection === 'serial' || printerConnection === 'usb') && (
                   <div style={{ marginBottom: 'var(--space-3)' }}>
                     <label htmlFor="resto-hw-printer-path" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
-                      {printerConnection === 'network' ? 'Printer IP / Host' : 'Device Port / Path'}
+                      {printerConnection === 'network'
+                        ? l10n.getString('restaurant-printer-ip-label')
+                        : l10n.getString('restaurant-printer-port-label')}
                     </label>
                     <input
                       id="resto-hw-printer-path"
                       type="text"
                       className="resto-text-input"
-                      placeholder={printerConnection === 'network' ? '192.168.1.100:9100' : 'COM3 or /dev/ttyUSB0'}
+                      placeholder={printerConnection === 'network'
+                        ? l10n.getString('restaurant-printer-ip-placeholder')
+                        : l10n.getString('restaurant-printer-port-placeholder')}
                       value={printerDevicePath}
                       onChange={(e) => handlePrinterDevicePathChange(e.target.value)}
                     />
@@ -2580,11 +2840,11 @@ export default function RestaurantReceiptsScreen({
                       onChange={handleKitchenConnectionChange}
                       disabled={!hasKdsFeature}
                       options={[
-                        { value: 'disabled', label: 'Disabled' },
-                        { value: 'bluetooth', label: 'Bluetooth SPP (Wireless)' },
-                        { value: 'network', label: 'Network / Ethernet' },
-                        { value: 'usb', label: 'USB' },
-                        { value: 'serial', label: 'Serial / COM' },
+                        { value: 'disabled', label: l10n.getString('restaurant-printer-conn-disabled') },
+                        { value: 'bluetooth', label: l10n.getString('restaurant-printer-conn-bluetooth') },
+                        { value: 'network', label: l10n.getString('restaurant-printer-conn-network') },
+                        { value: 'usb', label: l10n.getString('restaurant-printer-conn-usb') },
+                        { value: 'serial', label: l10n.getString('restaurant-printer-conn-serial') },
                       ]}
                     />
                   </div>
@@ -2592,16 +2852,33 @@ export default function RestaurantReceiptsScreen({
                   {hasKdsFeature && kitchenConnection !== 'disabled' && (
                     <div>
                       <label htmlFor="resto-hw-kitchen-path" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
-                        Kitchen Printer IP / Device Path
+                        {l10n.getString('restaurant-kitchen-printer-path-label')}
                       </label>
                       <input
                         id="resto-hw-kitchen-path"
                         type="text"
                         className="resto-text-input"
-                        placeholder={kitchenConnection === 'network' ? '192.168.1.101:9100' : kitchenConnection === 'bluetooth' ? '66:12:34:AB:CD:EF' : 'COM4'}
+                        placeholder={kitchenConnection === 'network'
+                          ? l10n.getString('restaurant-kitchen-printer-net-placeholder')
+                          : kitchenConnection === 'bluetooth'
+                            ? l10n.getString('restaurant-kitchen-printer-bt-placeholder')
+                            : l10n.getString('restaurant-kitchen-printer-serial-placeholder')}
                         value={kitchenDevicePath}
                         onChange={(e) => handleKitchenDevicePathChange(e.target.value)}
                       />
+                      <div style={{ marginTop: 'var(--space-3)' }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          data-testid="restaurant-kitchen-test-chit-btn"
+                          state={testingKitchenChit ? 'processing' : 'ready'}
+                          onClick={handleTestKitchenChit}
+                        >
+                          <Localized id="restaurant-test-kitchen-chit">
+                            <span>Print Test Chit</span>
+                          </Localized>
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>

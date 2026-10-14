@@ -187,10 +187,13 @@ mod debt;
 /// `health::export_diagnostics` as `resolves_session_names_no_permission`. Those three
 /// are therefore the first entries this file has had to add to the ceiling as well as
 /// the floor: the ledger now carries **71** rows against a ceiling of **78**, so the
-/// raise consumed three of the nine rows of headroom rather than none. Recorded rather
-/// than smoothed over, because a floor step that also spends debt is the one shape this
-/// ratchet is meant to make visible. Provenance in docs/records/journal/JOURNAL.md.
-const REGISTERED_FLOOR: usize = 494;
+/// 497 -> 500 with three QRIS listener commands (7ff9930ca, 2026-10-12):
+/// `qris_listener::get_qris_listener_status_scoped`,
+/// `qris_listener::open_qris_listener_settings_scoped` and
+/// `qris_listener::simulate_qris_notification_scoped`. All three arrive gated on
+/// SALES_PROCESS, so they move no debt ledger row or ceiling — only the registration
+/// floor and the ledger total.
+const REGISTERED_FLOOR: usize = 500;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

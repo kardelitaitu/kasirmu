@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 5 minor) · Re-audit of the residency/retention policy; the 2026-09-29 and 2026-09-09 stamps are preserved together at the bottom as plain quoted text (delimiters stripped so they cannot nest). · THE POLICY IS ACCURATE AND ITS LOAD-BEARING CLAIMS ARE TRUE AT HEAD — verified at source, not re-read from the stamps. The retention schedule's numbers are EXACT: `Tier::audit_retention_days` really is Plus 90 / Pro 180 / Premium 365 / Enterprise 1095 / Free-and-OneTime `None`, and `Entitlements::audit_retention_days` really is a pure one-line delegation to the tier (so the "no seam for a contract override" argument holds). The audit-delete trigger and its one narrow exception are real in both engines, and the sweep's marker really is held only inside its own transaction (insert/delete either side of the one DELETE). The most careful paragraph in the file — the hedge that `crates/kasirmu-api` contains exactly one tenant-scoped production DELETE and that it is memo snapshot reconciliation rather than an erasure path — is TRUE, and its citation `pg/memos.rs:261` is line-exact; the other DELETE statements the crate holds are id-scoped or key-scoped, none tenant-wide. The telemetry claim is also true: zero analytics/crash SDKs in `ui/package.json` or any `Cargo.toml`. · WHAT WAS WRONG WAS FIVE COORDINATES, one of them impossible rather than merely stale. (a) `INSERT INTO users` was cited as `crates/kasirmu-api/src/pg.rs`, which is now a 155-line file that does not contain it — the statement is in `pg/users.rs:78`, the module having split into a directory. (b) The tier-window source was cited as `subscription.rs`, a DIFFERENT FILE THAT EXISTS and does not hold `audit_retention_days`; the function is `Tier::audit_retention_days` in `subscription/tier.rs:198`. A wrong citation naming a real file is the more dangerous of the two, because a grep finds the file and stops. (c) `Entitlements::audit_retention_days` `:189` → `:222`. (d) `SWEEP_MARKER_KEY` `:484` → `:486`, with the insert/remove either side of the sweep's DELETE at `:553-556`/`:562-565` rather than `:551-555`/`:560-563`. (e) `Store::sweep_audit_retention` `:520` → `:522`. · LEFT AS WRITTEN: every retention number, the tier matrix, the §4 open-gap inventory (no sync-DB purge, no self-service path, backups outliving deletion), the §5 operator procedure, and the two dated correction paragraphs — those are findings and policy, not coordinates, and the 2026-09-09 correction's own account of how a "no purge exists" claim survived an audit is worth preserving exactly as written. · NOT re-measured: the live Northflank/PocketBase deployment topology, PITR and litestream windows as actually configured, a real tenant-deletion run, and the note the sweep announces itself with in a live database. -->
+
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 215 lines, carrying a prior stamp and footer that this pass re-verified rather than replaced. · A data-residency policy is a document whose claims are as much about WHERE DATA GOES as about what the code does, and the second half is checkable. The residency and retention rules it records are the ones this campaign has independently confirmed while auditing the sync and permission layers — the one-tenant-per-store scoping that ADR-47 and the `assignments` table implement, the sync snapshot path ADR-50 hardened, and the cloud-side replica that `docs/records/sqlite-pg-roles.md` (audited in round 19) describes as a GENERATED copy of the SQLite source of truth rather than a second system of record. That last point matters more here than in most documents: a residency policy treating Postgres as an independent store would be wrong about where deletions and corrections actually have to be applied, and this campaign has now seen that generated-replica fact stated in three separate files that agree. · THE CLOUD-SYNC EXCLUSIONS ARE THE PART WITH TEETH, and they line up with what the code does. The D1/D2 sync work in ADR-37 excludes `popularity_score` on the grounds that popularity is derived and local; ADR-52 (round 10) extends the same principle to credentials, refused on both untrusted egress lanes. A residency policy that said otherwise would be contradicted by both, and it does not. · NOT re-measured: the specific retention windows, deletion schedules and any jurisdiction-specific commitments. Those are policy statements an organisation makes about itself, and a documentation audit cannot confirm them from a repository — it can only check that the document still says what it said and that the code has not quietly grown a path that contradicts it. · Prior stamp retained as original evidence; footer bumped to match the new stamp. · RE-VERIFIED 2026-10-07 (docs-auditor): every load-bearing claim re-checked against the tree and all HOLD — `legal_entities` still carries no region column (`20260908_legal_entities.sql`, zero `region` hits), `RLS_TABLES` is 29 entries and self-validates (`generate-pg-migration.py:676-679`), `hash_pin` is real (`platform/core/src/auth.rs:23`), and the §3 audit-retention mechanism is exactly as described (marker inserted `db/audit.rs:551-555`, DELETE `:556-559`, marker removed `:560-563`, all in one transaction). What had rotted was the LINE NUMBERS, not the claims: six citations pointed at the wrong lines of the right files (SWEEP_MARKER_KEY said `:126`, is `:484`; sweep said `:162`, is `:520`; the daemon call sites said `:614`/`:639`, are `:830`/`:855`; the DELETE's file had split out of `pg.rs` into `pg/memos.rs:261`). Same shape this document's own §3 paragraph names for a DIFFERENT error — a correct citation to the wrong instrument — so it is recorded rather than quietly repaired: the claims were sound and the pointers had drifted. -->
 # Data Residency & Retention Policy — kasir.mu
 
@@ -54,7 +56,8 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
 - **Catalog & inventory**: `products`, variants/taxes/bundles, `tax_rates`,
   `inventory`, `stock_movements`, `stock_summary`, `categories`, `settings`.
 - **Staff accounts**: `users` — `username`, `display_name`, `role_id`,
-  **`pin_hash`** (`INSERT INTO users`, `crates/kasirmu-api/src/pg.rs`). Staff PIN
+  **`pin_hash`** (`INSERT INTO users`, `crates/kasirmu-api/src/pg/users.rs:78` — cited as
+  `pg.rs` when written, before the module split into a `pg/` directory). Staff PIN
   *hashes* replicate to the cloud; raw PINs never leave the device — PINs are
   hashed with Argon2id at creation (`hash_pin`, `platform/core/src/auth.rs`).
   Treat the cloud user table as personal data.
@@ -67,8 +70,8 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
   one narrow exception since `20260920_audit_retention.sql`: DELETE is allowed
   only while a `settings` row with key `audit.retention_sweep_active` exists,
   which `Store::sweep_audit_retention` writes around its own deletes
-  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:484`, inserted at :551-555
-  and removed at :560-563, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
+  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:486`, inserted at :553-556
+  and removed at :562-565, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
   deleted therefore gets a two-part answer: not by any ordinary path, and yes
   by the tier retention sweep, which announces itself in the same database.
 - **Ops**: `offline_queue`, `sent_reports`, `exchange_rates`,
@@ -108,7 +111,9 @@ leave via metrics has to look at the sync server, not at the absence of a route 
 | `offline_queue` (cloud) | **90 days**, enforced | hourly prune, 500-row batches (`start_prune_loop_pg`; runbook §3.6) |
 | `sent_reports` dedup claims (cloud) | **90 days**, enforced | same prune |
 | Memos (device) | archived → purged at **30 days** | retention sweep (`c8d2a54f` enforced via `archived_at`; daemon `5ee1064a`; `20260914_memo_retention.sql`) |
-| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:520`), called from `apps/desktop-tauri/src/lib.rs:830`/`:855` and `apps/mobile-tauri/src/lib.rs:577`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs`, `audit_retention_days`) |
+| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:522`), called from `apps/desktop-tauri/src/lib.rs:830`/`:855` and `apps/mobile-tauri/src/lib.rs:577`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement
+  (`Tier::audit_retention_days`, `crates/kasirmu-core/src/subscription/tier.rs:198` — a bare
+  `subscription.rs` names a different file that does not hold this function) |
 | `audit_log` rows within the window | **infinite**, immutable by trigger | the sweep only deletes PAST the window; see the trigger exception in §2 |
 | Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/kasirmu-api` (verified: no per-tenant `DELETE`) |
 | Local device DB | kept until operator action (backup/restore) | — |
@@ -130,8 +135,8 @@ exists" is the instrument-mismatch shape: the answer was produced by a tool that
 was never pointed at the question.
 
 **Actually open**: the Enterprise *configurable contract override* on the 3-year
-default. `Entitlements::audit_retention_days` (`crates/kasirmu-core/src/entitlements.rs
-:189`) is a pure `self.tier.audit_retention_days()` delegation, so there is no seam
+default. `Entitlements::audit_retention_days` (`crates/kasirmu-core/src/entitlements.rs:222`) is a
+pure `self.tier.audit_retention_days()` delegation, so there is no seam
 through which a contract could widen the window; adding one means a signed-payload
 change in `apps/license-server` (a payload-schema ownership decision), not a local
 edit. Deferred as such — an unsigned local override would let a tenant extend the
@@ -213,4 +218,4 @@ deployment-level facts (single-region, §1), not per-tenant choices. Updates to
 this file must re-verify its claims against HEAD — it names files, columns,
 and the absence of code paths, all of which can drift.*
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

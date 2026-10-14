@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major) · Re-audit of a COMPLETE plan. ONE MAJOR, and it is the document's own §3 'Current state, measured' table: it is the BEFORE reading, so five of its rows have since inverted (install_key is LIVE at :351 not dormant at :261; install_key_derivation_active is real at :410; the keychain literal has 19 references; rekey has 29 hits in kasirmu-cli; and the crate DOES now carry a OnceLock). Added §3.1 with the re-measured table and redirected the reader there; §3 itself left as the dated reading it is. The plan's header slice-status, its §4 option-C design, its §6/§8/§10 rulings and all eight cited SHAs (f2932f6f8, 625c47290, 5813b9208, 6aa7ad2e4, 6a050fdfe, 224d39d13, 6638b3ccf, 547828b82) re-verify. NOT re-measured: whether C1's box has since been ticked, and the release-profile test the §10 clause requires. -->
+
 # C1 S2b / S2c — per-install at-rest key: implementation plan
 
 <!-- Plan token kept: `plan-` (AGENTS.md §7.4 — the docs-auditor exempts this name
@@ -86,6 +88,27 @@ it, and the read path must never assume the keychain answered.
 **The two legacy arms differ.** S2b/S2c must treat them as two families with different
 `legacy` closures, exactly as `candidate_keys` already does. A single-`legacy` refactor
 would change ciphertext meaning for one of them.
+### 3.1 Re-measured 11-10-26 — the table above is the BEFORE state, and five of its rows have since inverted
+
+This plan's §3 is a "current state" reading taken **before** the work landed, so every row that
+says a thing is absent is now false by design. Re-derived at HEAD on 11-10-26; the body above is
+left as the dated reading it is.
+
+| Row above | State at HEAD 11-10-26 | Evidence |
+|---|---|---|
+| `install_key` dormant at `:261` | **LIVE, and relocated** — `pub fn install_key` is at `:351` | the file grew 1,007 lines; every §3 coordinate moved |
+| `install_key_derivation_active()` hardcoded `false` at `:276-278` | **REAL** — `:410`, body `install_key_from_process().is_some()` | no longer a constant |
+| **No keychain entry** | **FALSE now** — `oz-pos/at-rest-key.v1` has **19** references | the seam this plan designed exists |
+| **No `rekey` subcommand** (0 hits) | **FALSE now** — **29** hits in `crates/kasirmu-cli/src/` | `commands/rekey.rs` + dispatch at `cli.rs:107`, `commands/mod.rs:31` |
+| `kasirmu-crypto` has no process-global state | **FALSE now** — `static INSTALL_KEY: OnceLock<[u8;32]>` (option C, as designed) | `set_install_key` at `:385` |
+| 6 families, encrypt at `:375,415,…` | the 7-site list moved; `candidate_keys` call sites are now at `:586,620,634,648,662,676,709,727,754,776` | the two-legacy-arms warning below still holds and is load-bearing |
+| `kasirmu-crypto` never depends on `kasirmu-security` | **STILL TRUE** — option C was taken, so the sibling independence this plan argued for is preserved | the design choice held |
+
+**What this means for a reader:** the plan is COMPLETE (as its own header says) and its §4 option C
+is what shipped. Do not read §3 as the repo's state; read §3.1. The header's own slice-status line
+and the §6/§8/§10 rulings are the accurate part and were left unchanged.
+
+
 
 ## 4. Design: how the key reaches the derivation
 

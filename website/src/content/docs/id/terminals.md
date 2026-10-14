@@ -6,7 +6,11 @@ order: 5
 updated: "2026-10-01"
 ---
 
-<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Indonesian counterpart of en/terminals.md, same single finding repaired: "Buka layar Terminal" — Terminal berada di bagian Alat navigasi utama, bukan di Pengaturan (ui/src/features/terminals/register.tsx:8-16, section: 'tools'; nav-terminals = Terminal shared.id.ftl:249; nav-section-tools = Alat shared.id.ftl:234). · All other claims verified and left alone (full evidence list in the en/terminals.md stamp): pengenal perangkat hostname/MAC (terminals.ftl:18-19), peran manajer (register.tsx:8), kunci rahasia bersama opsional (terminals.ftl:20), metadata JSON, nonaktif/dihapus permanen (isActive, deleteTerminalScoped), pewarisan fitur paket + Setel ulang semua pengesampingan (TerminalManagementScreen.tsx:403,835-837), lima kelompok pengesampingan persis (FEATURE_GROUPS :38-96), preferensi volume suara/mode gelap/nolkan otomatis timbangan (api/settings.ts:110,116-118), binding ke toko + instance ruang kerja dengan kembali ke pemilih, dasbor multi-toko Terminal Aktif/Daring/Total (multi-store-stat-* multi-location.id.ftl:4-6), tampil di editor topologi dan tersinkron saat terhubung kembali. Label Terima for receiving (purchasing.id.ftl:74) and POS Toko / Tampilan Dapur for bindings use the app's own id labels. · Replacement sentence mirrors the page's own patterns; rest untouched. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Re-audit of the Indonesian Terminals page, checked against the tree in its own right rather than as a copy of the English page. NO DRIFT FOUND, and notably the one defect the English twin carried is absent here: the English page said "Settings → System → System Diagnostics" while this page already reads **Pengaturan → Diagnostik Sistem**, which is correct — the settings sidebar is one flat 14-item list (SettingsNavTree.tsx:41-202) with no "System" group. Re-verified where the page's pointers lead: Settings → System Diagnostics is the `system-diagnostics` nav entry (:194-195), the Terminals screen is registered in the Tools section (terminals/register.tsx, section: 'tools', requiredRole: 'manager'), and the terminal model — name plus device identifier, device binding to a store and workspace instance, per-terminal sound/dark-mode/auto-zero, and the five override groups — matches FEATURE_GROUPS (TerminalManagementScreen.tsx:40) and the terminals commands. · NOT re-measured: a live register/deactivate/delete round-trip and a device binding honoured on a real boot. · Superseded 2026-09-09 stamp preserved below as plain te
+
+STAMP MERGED INTO THIS ONE — superseded stamp(s) kept verbatim as plain text (delimiters stripped so they cannot nest):
+
+Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Indonesian counterpart of en/terminals.md, same single finding repaired: "Buka layar Terminal" — Terminal berada di bagian Alat navigasi utama, bukan di Pengaturan (ui/src/features/terminals/register.tsx:8-16, section: 'tools'; nav-terminals = Terminal shared.id.ftl:249; nav-section-tools = Alat shared.id.ftl:234). · All other claims verified and left alone (full evidence list in the en/terminals.md stamp): pengenal perangkat hostname/MAC (terminals.ftl:18-19), peran manajer (register.tsx:8), kunci rahasia bersama opsional (terminals.ftl:20), metadata JSON, nonaktif/dihapus permanen (isActive, deleteTerminalScoped), pewarisan fitur paket + Setel ulang semua pengesampingan (TerminalManagementScreen.tsx:403,835-837), lima kelompok pengesampingan persis (FEATURE_GROUPS :38-96), preferensi volume suara/mode gelap/nolkan otomatis timbangan (api/settings.ts:110,116-118), binding ke toko + instance ruang kerja dengan kembali ke pemilih, dasbor multi-toko Terminal Aktif/Daring/Total (multi-store-stat-* multi-location.id.ftl:4-6), tampil di editor topologi dan tersinkron saat terhubung kembali. Label Terima for receiving (purchasing.id.ftl:74) and POS Toko / Tampilan Dapur for bindings use the app's own id labels. · Replacement sentence mirrors the page's own patterns; rest untouched. -->
 
 ## Apa itu terminal
 
@@ -66,7 +70,7 @@ kejutan di kasir.
 
 ## Diagnostik
 
-**Pengaturan → Sistem → Diagnostik** menampilkan alasan setiap fitur
+**Pengaturan → Diagnostik Sistem** menampilkan alasan setiap fitur
 terbuka atau terkunci untuk Anda saat ini — gerbang yang sama yang
 memberlakukan aplikasi, dengan alasan yang disebutkan. Layarnya hanya-baca
 dan bekerja offline. Jika sebuah fitur diam atau tidak tersedia di perangkat,
@@ -89,4 +93,4 @@ Terminal muncul di editor topologi bersama lokasi dan gudang, dan tata letak
 tersinkron ke setiap perangkat saat terhubung kembali. Lihat
 [Lokasi & Topologi](../location/) dan [Ruang Kerja](../workspaces/).
 
-> last audited 09-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

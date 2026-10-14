@@ -4,6 +4,8 @@ version: "1.1"
 effective: "September 29, 2026"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major) · First audit stamp this page has carried. It is LEGAL prose, so this pass verified only the FACTUAL and TECHNICAL claims and changed no legal wording. · MAJOR: §3 said the Service is offered "in tiers (for example Free, Pro, and Premium)". The canonical lineup is Free / Plus / Pro / Premium / Enterprise — five tiers, per crates/kasirmu-core/src/subscription/tier.rs:22-38 (the enum itself carries the comment "the canonical lineup is Free / Plus / Pro / Premium / Enterprise") and the pricing page. The word "for example" softened it without making it right: a reader on a Plus or Enterprise plan would not find their own tier named in the agreement that governs it. Now lists all five. The Indonesian twin carried the identical omission and was corrected in the same pass, so the pair stays in parity. · VERIFIED, NOT CHANGED: Paddle named as the payment processor (and the "we never receive or store your card details" claim) matches the product's own billing path; support@kasir.mu is a live contact address used elsewhere on the site (28 occurrences); the 14-day refund window, the USD/IDR billing split, the "you own your data" clause and the cloud-sync licence grant describe the shipped free/paid split. · NOT verified, deliberately: the legal effect of any clause, its enforceability in any jurisdiction, and the adequacy of the retention or rights sections. Those are questions for a lawyer, not a documentation audit. · NOT re-measured: the live checkout, the current Paddle merchant configuration. -->
+
 These Terms of Service (the "Terms") are a legally binding agreement between you ("you", "your", or the "Customer") and the operator of the kasir.mu service (the "Company", "we", "us", or "our") governing your access to and use of the kasir.mu website, desktop application, cloud services, license server, and related services (together, the "Service").
 
 By creating an account, downloading the software, activating a license, or otherwise using the Service, you agree to these Terms. If you are using the Service on behalf of a business, you represent that you have authority to bind that business, and "you" means the business.
@@ -24,7 +26,7 @@ We may add, change, or remove features over time. We will try to give reasonable
 
 ## 3. Plans, licenses, and activation
 
-1. The Service is offered in tiers (for example Free, Pro, and Premium) as described on the pricing page. Each paid plan grants you a non-exclusive, non-transferable, revocable right to use the Service for your own business operations, subject to the limits of your plan (for example, the number of stores, registers, warehouses, or POS instances your plan allows).
+1. The Service is offered in tiers (Free, Plus, Pro, Premium, and Enterprise) as described on the pricing page. Each paid plan grants you a non-exclusive, non-transferable, revocable right to use the Service for your own business operations, subject to the limits of your plan (for example, the number of stores, registers, warehouses, or POS instances your plan allows).
 2. When you subscribe or purchase, we issue license keys that are cryptographically signed and tied to your account. You may use the software only on devices you own or operate, within your plan's limits, and only while your subscription is active (or, for the free tier, in accordance with its terms).
 3. You may not resell, sublicense, lease, or transfer the software or license keys, except that you may transfer the software to another device you own as part of a normal replacement.
 4. The free tier is provided without charge for the features and limits described on the pricing page. We may change free-tier terms with reasonable notice.
@@ -131,3 +133,5 @@ Questions about these Terms: **support@kasir.mu**. To purchase or upgrade a plan
 | --- | --- | --- |
 | 1.1 | September 29, 2026 | Refund window changed from 30 days to 14 days. |
 | 1.0 | August 17, 2026 | Initial publication. |
+
+> last audited 11-10-26 by docs-auditor

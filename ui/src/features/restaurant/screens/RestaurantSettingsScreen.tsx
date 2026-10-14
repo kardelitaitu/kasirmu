@@ -28,6 +28,7 @@
 // provisioning fact — see finding F14 in the plan doc.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
@@ -154,6 +155,10 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   const [soundChime, setSoundChime] = useState(DEFAULT_RESTAURANT_SETTINGS.soundChime);
   const [interactionSound, setInteractionSound] = useState(DEFAULT_RESTAURANT_SETTINGS.interactionSound);
   const [interactionVibration, setInteractionVibration] = useState(DEFAULT_RESTAURANT_SETTINGS.interactionVibration);
+  const [printBillAction, setPrintBillAction] = useState(DEFAULT_RESTAURANT_SETTINGS.printBillAction);
+  const [tableTransfer, setTableTransfer] = useState(DEFAULT_RESTAURANT_SETTINGS.tableTransfer);
+  const [dispatchOnTabSave, setDispatchOnTabSave] = useState(DEFAULT_RESTAURANT_SETTINGS.dispatchOnTabSave);
+  const [splitBillByItem, setSplitBillByItem] = useState(DEFAULT_RESTAURANT_SETTINGS.splitBillByItem);
 
   // Dirty tracking
   const originalsRef = useRef<RestaurantSettingsValues>({ ...DEFAULT_RESTAURANT_SETTINGS });
@@ -217,6 +222,10 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         setSoundChime(values.soundChime);
         setInteractionSound(values.interactionSound);
         setInteractionVibration(values.interactionVibration);
+        setPrintBillAction(values.printBillAction);
+        setTableTransfer(values.tableTransfer);
+        setDispatchOnTabSave(values.dispatchOnTabSave);
+        setSplitBillByItem(values.splitBillByItem);
 
         // F6 / D3 — the DB is authoritative, and the RUNTIME reads localStorage.
         //
@@ -273,7 +282,11 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       autoPrintKitchen !== orig.autoPrintKitchen ||
       soundChime !== orig.soundChime ||
       interactionSound !== orig.interactionSound ||
-      interactionVibration !== orig.interactionVibration
+      interactionVibration !== orig.interactionVibration ||
+      printBillAction !== orig.printBillAction ||
+      tableTransfer !== orig.tableTransfer ||
+      dispatchOnTabSave !== orig.dispatchOnTabSave ||
+      splitBillByItem !== orig.splitBillByItem
     );
   }, [
     customerName,
@@ -285,12 +298,30 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     soundChime,
     interactionSound,
     interactionVibration,
+    printBillAction,
+    tableTransfer,
+    dispatchOnTabSave,
+    splitBillByItem,
     dirtyVersion,
   ]);
 
   // Save handler
   const handleSave = useCallback(async () => {
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. This screen writes thirteen restaurant settings; an
+      // operator who presses Save with a lapsed session saw the button do nothing —
+      // no toast, no error, and the "Unsaved changes" banner still up, so the
+      // reasonable reading was that the save had been accepted.
+      //
+      // Same repair as StockShortfallDialog (0b9e88694) and the same class
+      // WorkspaceContext.tsx:76-84 names: a rejected session that is "a console.warn
+      // only" leaves every downstream command no-opping with nothing on screen.
+      addToastRef.current({
+        message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'),
+        type: 'warning',
+      });
+      return;
+    }
     setSaving(true);
     try {
       const tasks: Promise<unknown>[] = [];
@@ -307,6 +338,10 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
           'restaurant.sound_chime': String(soundChime),
           'restaurant.interaction_sound': String(interactionSound),
           'restaurant.interaction_vibration': String(interactionVibration),
+          'restaurant.print_bill_action': String(printBillAction),
+          'restaurant.table_transfer': String(tableTransfer),
+          'restaurant.dispatch_on_tab_save': String(dispatchOnTabSave),
+          'restaurant.split_bill_by_item': String(splitBillByItem),
         }),
       );
 
@@ -333,6 +368,10 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
         soundChime,
         interactionSound,
         interactionVibration,
+        printBillAction,
+        tableTransfer,
+        dispatchOnTabSave,
+        splitBillByItem,
       };
       setDirtyVersion((v) => v + 1);
 
@@ -370,6 +409,10 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
     soundChime,
     interactionSound,
     interactionVibration,
+    printBillAction,
+    tableTransfer,
+    dispatchOnTabSave,
+    splitBillByItem,
     settingsContext,
     l10n,
     addToast,
@@ -574,7 +617,45 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               </div>
             </div>
 
-            {/* ── 3. Kitchen & Audio Notifications ────────────────── */}
+            {/* ── 3. Dining Operations & Billing ───────────────── */}
+            <div className="resto-settings-group-card" data-testid="settings-card-dining-ops">
+              <div className="resto-compact-form">
+                <SettingRow
+                  id="resto-setting-print-bill-action"
+                  label={l10n.getString('restaurant-setting-print-bill')}
+                  description={l10n.getString('restaurant-setting-print-bill-desc')}
+                  checked={printBillAction}
+                  onChange={setPrintBillAction}
+                  testId="setting-toggle-print-bill-action"
+                />
+                <SettingRow
+                  id="resto-setting-table-transfer"
+                  label={l10n.getString('restaurant-setting-table-transfer')}
+                  description={l10n.getString('restaurant-setting-table-transfer-desc')}
+                  checked={tableTransfer}
+                  onChange={setTableTransfer}
+                  testId="setting-toggle-table-transfer"
+                />
+                <SettingRow
+                  id="resto-setting-dispatch-on-tab-save"
+                  label={l10n.getString('restaurant-setting-dispatch-on-tab-save')}
+                  description={l10n.getString('restaurant-setting-dispatch-on-tab-save-desc')}
+                  checked={dispatchOnTabSave}
+                  onChange={setDispatchOnTabSave}
+                  testId="setting-toggle-dispatch-on-tab-save"
+                />
+                <SettingRow
+                  id="resto-setting-split-bill-by-item"
+                  label={l10n.getString('restaurant-setting-split-bill-by-item')}
+                  description={l10n.getString('restaurant-setting-split-bill-by-item-desc')}
+                  checked={splitBillByItem}
+                  onChange={setSplitBillByItem}
+                  testId="setting-toggle-split-bill-by-item"
+                />
+              </div>
+            </div>
+
+            {/* ── 4. Kitchen & Audio Notifications ────────────────── */}
             <div className="resto-settings-group-card" data-testid="settings-card-kitchen">
               <div className="resto-compact-form">
                 <SettingRow

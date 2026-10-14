@@ -6,6 +6,8 @@ order: 4
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page; it is the Indonesian translation of en/activation.md, audited the same day. Every technical anchor re-verified against the code, not against the en twin: the key placeholder `OZ-PRO-ABCD-EFGH` matches the app's own `auth-license-placeholder = OZ-PRO-XXXX-XXXX-XXXX` (shared-ui/locales/shared.ftl:517, mirrored in shared.id.ftl:475) — the Indonesian page shows a four-group shape, which is the same shape; the six-digit recovery code is real (apps/license-server/activate.go:56 documents `RecoveryCode` as "the 6-digit code emailed to the tenant", main.go:332, and license_recover_test.go:121 asserts it); the 24-hour rotation throttle is exact — `window: 24 * time.Hour` at apps/license-server/activate.go:73 with the cooldown comment at :66-70; the offline grace-then-degrade path is real at crates/kasirmu-core/src/availability.rs ("Grace-aware effective tier" :266, "Grace-window end" :341). · THE TWO ROUTE-ONLY LINKS are correct as written: `../../pricing/`, `../../login/` and `../../support/` are Astro ROUTES, not content slugs — they resolve in the site route table, and check-site-links.py confirms all 46 content docs link only to routes that exist. · NOT re-measured: a live activation handshake against the license server, and the actual delivery of the recovery-code email. · The footer below is an internal marker; website/src/plugins/rehype-strip-audit-footer.mjs strips it from the built site, so it never reaches a reader. -->
+
 ## Dapatkan kunci lisensi
 
 Paket berbayar dibeli di situs web: buka [halaman harga](../../pricing/),
@@ -75,3 +77,5 @@ paket gratis. Lihat [Lisensi & Paket](../licensing/).
 ---
 
 Lanjut membaca · **Sebelumnya:** [Wizard Pengaturan](../setup-wizard/) · **Berikutnya:** [Transaksi Pertama Anda](../first-sale/)
+
+> last audited 11-10-26 by docs-auditor

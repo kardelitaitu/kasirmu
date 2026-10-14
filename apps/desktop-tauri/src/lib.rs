@@ -1233,10 +1233,12 @@ pub fn run() {
                                 }
                                 crate::lan_server::TableSyncEvent::StatusChanged(_) => {
                                     let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                                    let _ = uplink_app_handle.emit("tabs:changed", serde_json::Value::Null);
                                 }
                             }
                         } else {
                             let _ = uplink_app_handle.emit("tables:status-changed", serde_json::Value::Null);
+                            let _ = uplink_app_handle.emit("tabs:changed", serde_json::Value::Null);
                         }
                     }
                 });
@@ -1617,6 +1619,9 @@ pub fn run() {
             commands::products::get_product_track_serial_scoped,
             commands::products::get_product_track_serial_batch_scoped,
             commands::products::record_product_search_scoped,
+            commands::products::get_recipe_scoped,
+            commands::products::set_recipe_scoped,
+            commands::products::delete_recipe_scoped,
             commands::products_images::products_set_image_scoped,
             commands::products_images::products_clear_image_scoped,
             commands::products_images::products_list_images_scoped,
@@ -1884,6 +1889,9 @@ pub fn run() {
             commands::sync::settings_changed_sink_scoped,
             commands::qris_auto::qris_auto_charge_scoped,
             commands::qris_auto::qris_auto_status_scoped,
+            commands::qris_listener::get_qris_listener_status_scoped,
+            commands::qris_listener::open_qris_listener_settings_scoped,
+            commands::qris_listener::simulate_qris_notification_scoped,
             commands::settings::get_hardware_settings_scoped,
             commands::purchasing::list_suppliers_scoped,
             commands::purchasing::get_supplier_scoped,

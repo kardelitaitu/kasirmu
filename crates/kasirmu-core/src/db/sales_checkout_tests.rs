@@ -313,3 +313,381 @@ fn checkout_restaurant_product_without_recipe_succeeds_without_shortfall() {
     );
     assert_eq!(sale_count(&conn), 1);
 }
+
+fn credit_tender(amount_minor: i64, customer_name: Option<&str>) -> Vec<crate::PaymentSplitArg> {
+    vec![crate::PaymentSplitArg {
+        method: "credit".into(),
+        amount_minor,
+        gateway_reference: customer_name.map(str::to_string),
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }]
+}
+
+#[test]
+fn credit_checkout_rejects_when_credit_facility_is_disabled() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_stocked_product(&conn, "CREDIT-SKU-1");
+    // Ensure credit is disabled (default)
+    crate::Settings::set_credit_enabled(&conn, false).unwrap();
+
+    let sale = single_line_sale("CREDIT-SKU-1", Some("cashier-1"));
+    let err = s
+        .complete_sale_deduction_with_locations_and_estimate(
+            &sale,
+            None,
+            &[],
+            &credit_tender(1000, Some("Customer A")),
+            "cashier-1",
+            None,
+            &[],
+            false,
+        )
+        .unwrap_err();
+
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "payment_method");
+            assert!(message.contains("store credit facility is not enabled"));
+        }
+        other => panic!("expected Validation error, got {other:?}"),
+    }
+}
+
+#[test]
+fn credit_checkout_enforces_max_credit_limit_ceiling() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_stocked_product(&conn, "CREDIT-SKU-2");
+    crate::Settings::set_credit_enabled(&conn, true).unwrap();
+    crate::Settings::set_credit_max_limit(&conn, 5000).unwrap();
+
+    // 1. Credit sale above ceiling (6000 > 5000) is rejected immediately
+    let mut sale_large = single_line_sale("CREDIT-SKU-2", Some("cashier-1"));
+    sale_large.total = price(6000);
+    let err = s
+        .complete_sale_deduction_with_locations_and_estimate(
+            &sale_large,
+            None,
+            &[],
+            &credit_tender(6000, Some("Customer B")),
+            "cashier-1",
+            None,
+            &[],
+            false,
+        )
+        .unwrap_err();
+
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "credit_limit");
+            assert!(message.contains("credit limit exceeded"));
+        }
+        other => panic!("expected Validation error, got {other:?}"),
+    }
+
+    // 2. Credit sale within ceiling (3000 <= 5000) succeeds
+    let mut sale_1 = single_line_sale("CREDIT-SKU-2", Some("cashier-1"));
+    sale_1.total = price(3000);
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale_1,
+        None,
+        &[],
+        &credit_tender(3000, Some("Customer B")),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .expect("first credit sale within limit must succeed");
+
+    // 3. Second credit sale for 3000 exceeds remaining ceiling (3000 + 3000 = 6000 > 5000)
+    let mut sale_2 = single_line_sale("CREDIT-SKU-2", Some("cashier-1"));
+    sale_2.total = price(3000);
+    let err2 = s
+        .complete_sale_deduction_with_locations_and_estimate(
+            &sale_2,
+            None,
+            &[],
+            &credit_tender(3000, Some("Customer B")),
+            "cashier-1",
+            None,
+            &[],
+            false,
+        )
+        .unwrap_err();
+
+    match err2 {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "credit_limit");
+            assert!(
+                message.contains(
+                    "outstanding balance 3000 + attempted credit 3000 exceeds ceiling 5000"
+                )
+            );
+        }
+        other => panic!("expected Validation error, got {other:?}"),
+    }
+
+    // 4. Settle the first credit payment -> available limit resets
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'",
+        rusqlite::params![now, sale_1.id],
+    )
+    .unwrap();
+
+    // 5. Retry second credit sale -> now succeeds!
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale_2,
+        None,
+        &[],
+        &credit_tender(3000, Some("Customer B")),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .expect("credit sale after settlement must succeed");
+}
+
+#[test]
+fn checkout_restaurant_product_with_recipe_deducts_ingredients() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "RAW-EGG";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Raw Egg', 200, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES (?1, 'Default', 'store')",
+        rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 10)",
+        rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-OMELET";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Cheese Omelet', 500, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 2,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .expect("set_recipe must succeed");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new(dish_sku), 2, price(1000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[],
+        &tender(2000),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .expect("sale with recipe must succeed");
+
+    let remaining_stock: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(remaining_stock, 6, "ingredient stock must be deducted by 4");
+
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 5,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .expect("updating recipe must succeed");
+
+    let post_edit_stock: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        post_edit_stock, 6,
+        "modifying recipe later must not retroactively change stock of past sales"
+    );
+}
+
+#[test]
+fn checkout_restaurant_product_with_recipe_shortfalls_on_ingredient() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "RAW-CHICKEN";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Raw Chicken', 1000, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES (?1, 'Default', 'store')",
+        rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 2)",
+        rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-ROAST-CHICKEN";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Roast Chicken', 1500, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 1,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .expect("set_recipe must succeed");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new(dish_sku), 5, price(7500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    let err = s
+        .complete_sale_deduction_with_locations_and_estimate(
+            &sale,
+            None,
+            &[],
+            &tender(7500),
+            "cashier-1",
+            None,
+            &[],
+            false,
+        )
+        .unwrap_err();
+
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "stock");
+            assert!(
+                message.contains(ing_sku),
+                "shortfall message must contain ingredient SKU: {message}"
+            );
+            assert!(
+                message.contains("\"deficit\":3"),
+                "shortfall deficit must be 3: {message}"
+            );
+        }
+        other => panic!("expected stock Validation error, got {other:?}"),
+    }
+}
+
+#[test]
+fn checkout_snapshots_bom_cost_for_recipe_product() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    let ing_sku = "ING-BOM-COST-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, cost_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Ingredient Cost', 1000, 750, 'USD', 'retail')",
+        rusqlite::params![ing_id, ing_sku],
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 100)",
+        rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+
+    let dish_id = uuid::Uuid::now_v7().to_string();
+    let dish_sku = "DISH-BOM-COST-1";
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, cost_minor, currency, product_type) \
+         VALUES (?1, ?2, 'Dish Cost', 3000, 0, 'USD', 'restaurant')",
+        rusqlite::params![dish_id, dish_sku],
+    )
+    .unwrap();
+
+    // Dish requires 2 units of the 750-cost ingredient (total BOM cost = 1500)
+    s.set_recipe(
+        &dish_id,
+        &[crate::recipe::RecipeIngredientInput {
+            ingredient_product_id: ing_id.clone(),
+            quantity_required: 2,
+            unit: "pcs".to_string(),
+        }],
+    )
+    .expect("set_recipe must succeed");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new(dish_sku), 1, price(3000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[],
+        &tender(3000),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .expect("checkout must succeed");
+
+    // Verify sale_lines snapshot has BOM cost = 1500
+    let cost: Option<i64> = conn
+        .query_row(
+            "SELECT cost_minor FROM sale_lines WHERE sale_id = ?1 AND sku = ?2",
+            rusqlite::params![sale.id, dish_sku],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(
+        cost,
+        Some(1500),
+        "sale line cost_minor must snapshot the BOM recipe cost of 1500"
+    );
+}

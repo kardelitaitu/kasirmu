@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 6 minor) · Full audit. MAJOR: §2b quoted the dev-mock's `get_subscription_capabilities` "verbatim from ui/src/dev-mock/tauri-api.ts:2089" — but that file is now **369 lines** (it was 2,000+ when the block was captured) because the mock split into a directory. The handler lives at `ui/src/dev-mock/handlers/system.ts:661` and its body changed shape: it reads `getMockTierCaps()` from `core/mockTier.ts` instead of returning a hardcoded `tier: 'premium'`, and now carries `status`, `isTrial`, `trialEndsAt`, `features`, `maxKdsScreens`, `expiresAt`, `graceUntil` and `isExpired`. The excerpt was replaced with a faithful identifier-keyed quote of the real block, and §2b gained the directory-structure note. MINOR: §2a's `Entitlements::apply_debug_upgrade()` cite `entitlements.rs:102` → `:134`; its sibling cite `commands/subscription.rs:143` → the full path, with what the helper is; §2c's `PaymentModal.tsx:1909` → `:2416` (the file grew to 2,578 lines and `:1909` is a comment fragment); §2d's `TopologyScreen.tsx:547` → `:579`; and both licence-status rows now quote the real handlers, which read `getMockTier()`/`MOCK_TIER_NAMES` rather than the literal `'pro'`/`'Pro'` the page had. VERIFIED EXACT AND LEFT ALONE: the three other §2c gate expressions (`AnalyticsScreen.tsx:532`, `LoyaltyManagementScreen.tsx:161`, `DailyTotalWidget.tsx:52` — all three line-exact) and the §2d terminal quota (`TerminalManagementScreen.tsx:164`, line-exact); the two commands it says are absent from the mock, `recover_pending_topology_apply_at_startup` and `settings_changed_sink`, are still absent — re-grepped. ONE FACT THAT MOVED IN THE CLEAN DIRECTION: `recover_workspace_instances_scoped` is no longer missing from the mock, it is at `ui/src/dev-mock/handlers/workspaces.ts:101`; the page's list of absent commands is therefore two, not three, and `tauri-api.ts:338` records the move. NOT re-measured: whether any step of this checklist currently PASSES — a checklist is only as current as its last full run by someone with the tree built, which this pass is not. What is recorded is the state of the file's references, not a claim that the checklist is green. -->
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (3 findings) · Supersedes the 2026-09-29 marker below, kept verbatim. Repaired in §2c/§2d, which claim specific gate expressions per screen: (1) §2c listed a fifth screen `SetupWizard.tsx`, which does not exist in `ui/src` (only `docs/plans/_done/done-mobile-setupwizard.md`), and it is removed — the qris gate the row described belongs to the `PaymentModal.tsx` row already present; (2) `PaymentModal.tsx`'s gate was quoted `caps && !caps.supportsQris` but the code's expression is the inverse `!caps || caps.supportsQris` (`:1909`, a `qrisAllowed` prop); (3) §2d's third row named `StaffManagementScreen.tsx` reading `maxStaffUsers`, which no production screen reads — the two real quota checks (`TerminalManagementScreen.tsx:164`, `TopologyScreen.tsx:547`) are now the whole list, and the staff question is flagged rather than invented. Every surviving row now names file:line. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 164 lines, with a prior marker re-verified rather than replaced. A developer checklist is a live procedure, so the audit question is whether its steps would work if followed today. · THE STRUCTURAL POINT WORTH RECORDING, because it is the kind of thing that compounds silently: this file is a checklist of commands, and the commands age at a different rate from the prose around them. Re-running every step would mean a full build and test cycle, which is not a documentation task — so this pass checked the class of reference the checklist depends on and recorded the result honestly. Where a step names a pre-restructure path, that is the normal consequence of the crate and shell renames recorded throughout this campaign, and a checklist sits in the middle ground the changelogs do not: a changelog is history and must not be updated, while a checklist is instructions, and a dead path in it costs a reader a failed command. That distinction is why checklists have been repaired this campaign and changelogs preserved intact. · WHAT IS NOT RE-MEASURED, and the limit is inherent: whether each listed step still passes, whether the ordering is still right, and whether anything new should be listed. A checklist is only as current as its last full run by someone with the tree built, and this pass does not have that. What is recorded is the state of the file, not a claim that the checklist is current — a distinction worth making explicit, because a reader is entitled to know which of the two they are getting. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
 # Development Checklist — kasir.mu Desktop
@@ -26,7 +27,7 @@ Features are gated by the `get_subscription_capabilities` IPC. The dev database 
 ### 2a. Rust Backend (`crates/kasirmu-core/src/entitlements.rs`, projected by `apps/desktop-tauri/src/commands/subscription.rs`)
 
 - [ ] **Debug override** — `Entitlements::apply_debug_upgrade()` at
-  `crates/kasirmu-core/src/entitlements.rs:102`. Three things this checklist got wrong until
+  `crates/kasirmu-core/src/entitlements.rs:134`. Three things this checklist got wrong until
   08-09-26, all of which matter when you are testing gates:
   1. It is **not** a `#[cfg(debug_assertions)]` block around the capability projection.
      `cfg!(debug_assertions)` is one of three runtime predicates *inside a named method*,
@@ -36,42 +37,61 @@ Features are gated by the `get_subscription_capabilities` IPC. The dev database 
      so the failure paths stay exercisable. If you are checking "does the gate hold", a
      dev build will not automatically hide the answer.
   3. It is **desktop-only**. The caller passes `debug_upgrade: true`
-     (`commands/subscription.rs:143`); the tablet never calls it. That divergence is
+     (`apps/desktop-tauri/src/commands/subscription.rs:143`, the `#[allow(dead_code)]` helper its sibling test file calls); the tablet never calls it. That divergence is
      preserved on purpose by the consolidation design, and the tablet caps gap is
      recorded as its owner's separate task — so a feature that works under `cargo tauri
      dev` on desktop can still be correctly gated off on tablet.
 - [ ] **All capability fields use the overridden `tier`** — Every field (`supportsAnalytics`, `supportsLoyalty`, `supportsQris`, `supportsDailyDashboard`, etc.) must read from the overridden `tier` variable, NOT from the original `sub` object. (Previously `supports_analytics` used `sub.supports_analytics_with_addons()` which bypassed the override.)
 - [ ] **Quota fields use the overridden tier** — `max_locations` (was `max_stores` before the store→location rename; the JSON wire name on the TS side is still `maxLocations`, see §2b), `max_pos_instances`, `max_warehouses`, `max_staff_users`, `sales_history_days`, `offline_grace_days` all come from `tier.method()`.
 
-### 2b. Dev-Mock (`ui/src/dev-mock/tauri-api.ts`)
+### 2b. Dev-Mock (`ui/src/dev-mock/`)
+
+> **The mock is now a directory, not one file.** `ui/src/dev-mock/tauri-api.ts` is the
+> 369-line router; the handlers live under `ui/src/dev-mock/handlers/*.ts` and the tier
+> model under `ui/src/dev-mock/core/mockTier.ts`. The block below is quoted from
+> `handlers/system.ts:661`, where `get_subscription_capabilities` now resides
+> (it moved in the Phase 5.x handler split).
 
 - [ ] **`get_subscription_capabilities` exists** — Returns Premium-tier caps:
   ```ts
-  // verbatim from ui/src/dev-mock/tauri-api.ts:2089, one field per line as shipped
-  'get_subscription_capabilities': () => ({
-    tier: 'premium',
-    state: 'active',          // this field was missing from the block until 08-09-26
-    maxLocations: null,       // was maxStores. The store->location rename took the
-                              // quota with it; ui/src/api/subscription.ts:33 records
-                              // that the wire name stays maxLocations on purpose.
-    maxPosInstances: null,
-    maxWarehouses: null,
-    maxStaffUsers: null,
-    salesHistoryDays: null,
-    supportsQris: true,
-    supportsAnalytics: true,
-    supportsLoyalty: true,
-    supportsDailyDashboard: true,
-    supportsCloudSync: true,
-    offlineGraceDays: 30,
-    locationCount: 1,         // was storeCount
-    staffCount: 1,
-    terminalCount: 1,
-    addons: [],
-  }),
-  ```
-- [ ] **`get_license_status` returns active** — Returns `{ isActive: true, status: 'valid', tier: 'pro', ... }`.
-- [ ] **`check_license_status` returns active** — Returns `{ status: 'active', tier: 'Pro', active: true, ... }`.
+  // verbatim from ui/src/dev-mock/handlers/system.ts:661 (identifier keys + the fields
+  // that matter to a gate; the full object also carries trial/expiry fields)
+  'get_subscription_capabilities': () => {
+    const caps = getMockTierCaps();          // reads core/mockTier.ts, not a literal
+    return {
+      tier: getMockTier(),
+      status: revokedRequested() ? 'revoked' : 'active',
+      state: revokedRequested() ? 'revoked' : 'active',
+      isTrial: false,
+      trialEndsAt: null,
+      features: {},
+      maxLocations: caps.maxLocations,        // was maxStores; the store->location rename
+                                              // took the quota with it, and the wire name
+                                              // stays maxLocations on purpose
+                                              // (ui/src/api/subscription.ts:33).
+      maxPosInstances: caps.maxPosInstances,
+      maxWarehouses: caps.maxWarehouses,
+      maxKdsScreens: caps.maxKdsScreens,
+      maxStaffUsers: caps.maxStaffUsers,
+      salesHistoryDays: caps.salesHistoryDays,
+      supportsQris: caps.supportsQris,
+      supportsAnalytics: caps.supportsAnalytics,
+      supportsLoyalty: caps.supportsLoyalty,
+      supportsDailyDashboard: caps.supportsDailyDashboard,
+      supportsCloudSync: caps.supportsCloudSync,
+      offlineGraceDays: caps.offlineGraceDays,
+      expiresAt: null,
+      graceUntil: null,
+      isExpired: false,
+      locationCount: 1,
+      staffCount: 1,
+      terminalCount: 1,
+      addons: [],
+    };
+  },
+```
+- [ ] **`get_license_status` returns active** — Returns `{ isActive: true, status: 'valid', tier: getMockTier(), ... }` — the tier is read from the one mock tier model, not the hardcoded `'pro'` this row previously quoted.
+- [ ] **`check_license_status` returns active** — Returns `{ status: 'active', tier: MOCK_TIER_NAMES[getMockTier()], active: true, deviceRevoked: false, expiresAt: null, graceUntil: null, maxLocations: ... }` (field-for-field with `ServerLicenseStatus`; `ui/src/dev-mock/handlers/settings.ts:70`).
 
 ### 2c. UI Feature Gates (4 screens)
 
@@ -82,7 +102,7 @@ Re-verified 2026-10-08. The prior version listed a fifth row for `SetupWizard.ts
 | `analytics/AnalyticsScreen.tsx:532` | `caps && !caps.supportsAnalytics` | `supportsAnalytics: true` |
 | `loyalty/LoyaltyManagementScreen.tsx:161` | `caps && !caps.supportsLoyalty` | `supportsLoyalty: true` |
 | `sales/widgets/DailyTotalWidget.tsx:52` | `caps && !caps.supportsDailyDashboard` | `supportsDailyDashboard: true` |
-| `sales/PaymentModal.tsx:1909` | `qrisAllowed={!caps || caps.supportsQris}` | `supportsQris: true` |
+| `sales/PaymentModal.tsx:2416` | `qrisAllowed={!caps || caps.supportsQris}` | `supportsQris: true` |
 
 **Key behavior**: When `caps` is `null` (loading/error), `caps && !caps.supportsX` evaluates to `false` — features render **open**, not locked. This is the correct fallback. (`PaymentModal` writes the same rule from the other side: `!caps || …` is true when caps are absent, so the tender stays available.)
 
@@ -93,7 +113,7 @@ Re-verified 2026-10-08. The prior version's third row named `StaffManagementScre
 | Screen | Gate check | Unlocked when |
 |--------|-----------|---------------|
 | `terminals/TerminalManagementScreen.tsx:164` | `caps !== null && caps.maxPosInstances !== null && caps.terminalCount >= caps.maxPosInstances` | `maxPosInstances: null` (unlimited) |
-| `locations/TopologyScreen.tsx:547` | `caps !== null && caps.maxLocations !== null && caps.locationCount >= caps.maxLocations` | `maxLocations: null` (unlimited) |
+| `locations/TopologyScreen.tsx:579` | `caps !== null && caps.maxLocations !== null && caps.locationCount >= caps.maxLocations` | `maxLocations: null` (unlimited) |
 
 > Whether the **staff** quota is surfaced in a screen at all is left open rather than invented here: `maxStaffUsers` exists on the caps type (`ui/src/api/subscription.ts:65`) and is exercised by `StaffManagementScreen.test.tsx`, but no production screen reads it in this tree. Flagged for the owner — do not re-add a row without a file:line.
 
@@ -170,4 +190,4 @@ cd ui && npx vitest run
 | Home screen opens wrong page (e.g. analytics instead of settings) | Stale `#/analytics` hash from shortcut persists across workspace switches | Clear hash after consuming it in AppShell workspace routing effect |
 | Home screen looks like old settings page | WorkspaceHome renders stale analytics/reports shortcuts inline instead of using tools section | Ensure WorkspaceHome uses `.workspace-home-content` with two `.workspace-section` divs (Workspaces + Tools) |
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

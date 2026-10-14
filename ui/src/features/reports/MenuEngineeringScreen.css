@@ -221,7 +221,7 @@
 
 .menu-eng-table-header {
   display: grid;
-  grid-template-columns: 2rem 1.5fr 6.25rem 4rem 6.25rem 6.25rem 5.625rem 7.5rem 1.2fr;
+  grid-template-columns: 2rem 1.5fr 6.25rem 4rem 6.25rem 6.25rem 5.625rem 5rem 7.5rem 1.2fr;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2);
   font-size: var(--text-xs);
@@ -234,7 +234,7 @@
 
 .menu-eng-table-row {
   display: grid;
-  grid-template-columns: 2rem 1.5fr 6.25rem 4rem 6.25rem 6.25rem 5.625rem 7.5rem 1.2fr;
+  grid-template-columns: 2rem 1.5fr 6.25rem 4rem 6.25rem 6.25rem 5.625rem 5rem 7.5rem 1.2fr;
   gap: var(--space-2);
   padding: var(--space-2);
   font-size: var(--text-sm);

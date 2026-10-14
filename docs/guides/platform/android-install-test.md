@@ -1,7 +1,19 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 3 minor) · Re-audit of a QA procedure. · THE MAJOR IS A FALSE EVIDENCE SENTENCE, twice repeated: the guide said the tracked `AndroidManifest.xml` "declares only `android.permission.INTERNET`" to prove no camera path exists. It declares TWELVE permissions, `CAMERA` among them (":41", with the camera features at `required="false"` ":42-43"). The conclusion was right and the evidence was wrong, which is the worst shape for a QA doc: a tester who opens the manifest to check the claim finds it contradicted and stops trusting the rest. · WHY THE PERMISSION IS DECLARED ANYWAY, which the manifest's own comment states (":26-40"): wry 0.55.1's generated `RustWebChromeClient` maps `VIDEO_CAPTURE` -> `CAMERA` and answers the WebView permission request, so the permission is wired for a WebView source with no app-side caller. The REAL evidence for "no camera scanner" is that `ui/src` has ZERO `getUserMedia`/`BarcodeDetector` hits, and the repair states that instead. · VERIFICATION CHECKLIST HAD CONTRADICTED THE BODY: Phase 1 said "no camera permission prompt to expect" while the checklist still asked the tester to confirm "Camera preview opens" and "Camera permission dialog (if barcode enabled)". Both rows now match Phase 6. · OTHER REPAIRS: tracked-file count 49 -> 57 (50 `gen/android/` + 7 `gen/schemas/`, re-derive published); the checklist's Android SDK floor said 34 while the prerequisite table and `build.gradle.kts` say 36; and eleven drifted line coordinates in `staff.ftl`/`sales.ftl`/`StaffLoginScreen.tsx`/`ProductLookupScreen.tsx`/`TabletAppLayout.tsx` (each ~24-30 lines low, re-derived, with the re-derive hint kept where a line number is inherently perishable). · VERIFIED AND LEFT ALONE: every Fluent id the guide quotes is REAL and says what the guide says it says (`staff-login-attempts-remaining`, `staff-login-lockout`, `session-lock-lockout`, `pos-cart-empty`, `payment-split-title`, `product-lookup-no-results`, `barcode-input-aria`); `applicationId = mu.kasir.mobile` and `compileSdk/targetSdk = 36` match; the 2026-10-09 `--debug` warning is accurate and important (a release build is not DEBUGGABLE, so no CDP socket); and the `grep ozpos`-not-`oz-pos` instruction is right because the process name is the applicationId. · Prior 2026-09-29 stamp retained below, delimiters stripped. · NOT re-measured: whether the procedure works on hardware — that needs a device and is the original work. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 644 lines, no audit stamp, no footer and no marker — for a QA procedure someone runs against a physical device. That makes it an operational document, and under the rule this campaign has applied throughout, a stale COMMAND in a live procedure is a defect to repair rather than a historical detail to preserve. · REPAIRED, AND THE REPAIR IS A CAVEAT RATHER THAN A STRING. The APK paths (`oz-pos-tablet-arm64-v8a*.apk`) and the logcat tag (`-s "oz-pos-tablet"`) all use the pre-restructure product name, while `apps/mobile-tauri/tauri.conf.json` now declares `"productName": "kasir.mu"` and `"identifier": "mu.kasir.mobile"`. The obvious repair is to substitute the new name — and that would be guessing, because the generated APK filename is produced by the build, not by this document. Instead the guide now carries the same kind of warning its iOS siblings already carry: the artifact name must be resolved at build time, with the `ls` command that does it. · THE ASYMMETRY THAT PROMPTED THE REPAIR IS THE INTERESTING PART. Both iOS guides in this directory were already audited and already flag the instability explicitly — `ios-install-test.md` says outright that the project filename is not stable, that this guide and the build guide disagree on it, that neither can be verified until the scaffold exists, and that discovery beats a hardcoded name. The Android guide was the only one of the three that had no such note while using the same pre-restructure name. A QA engineer following it would hit a path that does not resolve, with nothing in the document to explain why. Closing that gap was worth more than a string substitution, and the note says so. · The device requirements table is the part most likely to be trusted blindly and it checks out: Android 8.0+ / API 26 is the stated `minSdkVersion`, consistent with what the mobile build documentation states. · NOT re-measured: whether the build, install and logcat procedure actually works on hardware. That is the original work and needs a device. · No stamp existed; this is the first. -->
 # Android APK Install Test — kasir.mu
 
 > **Status:** Implemented (2026-07-21)
+>
+> **⚠️ Manifest permission correction (2026-10-11, docs-auditor).** Two places in this guide
+> used to say the tracked `AndroidManifest.xml` "declares only `android.permission.INTERNET`" as
+> the evidence that no camera path exists. That is false: it declares **twelve** permissions,
+> including `CAMERA` (`:41`) with `android.hardware.camera` / `autofocus` at `required="false"`
+> (`:42-43`). The CONCLUSION those sentences drew is still correct — `ui/src` uses no
+> `getUserMedia`/`BarcodeDetector` anywhere (0 hits), so there is no in-app camera scanner and no
+> runtime prompt to expect — but the stated evidence was wrong, and the manifest's own comment
+> (`:26-40`) explains why the permission is declared anyway: wry 0.55.1's generated
+> `RustWebChromeClient` maps `VIDEO_CAPTURE` -> `CAMERA` and answers the WebView permission
+> request, so the permission is wired for a WebView source even with no app-side caller.
 > **Target audience:** QA / developers testing on Android 10+ physical tablets
 > **Artifact name — verify before running (added 2026-09-29, docs-auditor).** The APK
 > filenames below (`oz-pos-tablet-arm64-v8a*.apk`) and the logcat tag near the end
@@ -106,9 +118,10 @@ cd ../..
 
 The scaffold under `gen/android/` is **committed** (`.gitignore:167-169`: "The
 generated scaffold under apps/*/gen/ is COMMITTED so CI and contributors don't
-need the Tauri CLI installed to build" — 49 tracked files under
-`apps/mobile-tauri/gen/`, including `app/build.gradle.kts` with its
-`signingConfigs` block). So `cargo tauri android init` is only needed if the
+need the Tauri CLI installed to build" — 57 tracked files under
+`apps/mobile-tauri/gen/` (50 under `gen/android/`, 7 under `gen/schemas/` — re-derive
+with `git ls-files apps/mobile-tauri/gen | wc -l`), including `app/build.gradle.kts` with
+its `signingConfigs` block). So `cargo tauri android init` is only needed if the
 directory is missing; if you see "already initialized", skip this step, and if
 you do change the scaffold, commit the change.
 
@@ -262,8 +275,11 @@ adb shell pm list packages | grep ozpos
 
 **Pass criteria:** App launches cleanly, orientation is locked to landscape,
 no black bars or layout issues on notched devices. There is **no camera
-permission prompt to expect** — the tracked `AndroidManifest.xml` declares only
-`INTERNET`; no barcode path uses the camera (see Phase 6).
+permission prompt to expect** in practice — `ui/src` contains no `getUserMedia`/
+`BarcodeDetector` call at all, so nothing in the shipped app asks for the camera (see
+Phase 6). The manifest does still DECLARE `CAMERA` (`:41`, `required="false"` on the
+feature), because wry's generated `RustWebChromeClient` maps `VIDEO_CAPTURE` to it; a
+declared permission alone raises no dialog.
 
 **Common failures:**
 - **"App not installed"** — APK architecture mismatch. Ensure you built for
@@ -288,9 +304,9 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
 | 2.1 | Tap PIN pad digit 1 | Key highlights on touch (visual feedback) | ☐ |
 | 2.2 | Enter PIN digits | Each tap produces haptic feedback (if enabled) | ☐ |
 | 2.3 | Tap Submit/OK | Loading spinner; transitions to workspace picker | ☐ |
-| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`shared-ui/locales/staff.ftl:121`); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
-| 2.5 | Wrong PIN (5 attempts) | **Timed** lockout: `staff-login-lockout` = "Locked out. Try again in {seconds}s" (`staff.ftl:122`); on the session lock the variant is `session-lock-lockout` = "Wait {seconds}s." (`:143`). It self-expires — no "Contact administrator" string exists anywhere in the locales, so do NOT file a FAIL when the pad re-enables by itself | ☐ |
-| 2.6 | PIN entry completion | The PIN **auto-submits on the 4th digit** (`StaffLoginScreen.tsx:316-327`, guarded by `MAX_PIN_LENGTH = 4` at `:235`) — the PIN step has **no submit button and no empty-PIN error**, and digits 1–3 issue no request at all. The only action keys are `Clear` and `Backspace` (`:443`, `:465`, both disabled at length 0). `staff-login-pin-min-length` is defined in `staff.ftl`/`staff.id.ftl` but referenced nowhere in the code, so do NOT expect "PIN must be at least 4 digits." — and do not look for a submit control in this step; the screen's only `type="submit"` is the username step's (`:552`) | ☐ |
+| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`shared-ui/locales/staff.ftl:145` — re-derived 2026-10-11); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
+| 2.5 | Wrong PIN (5 attempts) | **Timed** lockout: `staff-login-lockout` = "Locked out. Try again in {seconds}s" (`staff.ftl:146`); on the session lock the variant is `session-lock-lockout` = "Wait {seconds}s." (`staff.ftl:170`). It self-expires — no "Contact administrator" string exists anywhere in the locales, so do NOT file a FAIL when the pad re-enables by itself | ☐ |
+| 2.6 | PIN entry completion | The PIN **auto-submits on the 4th digit** (`StaffLoginScreen.tsx:377`, auto-submit on the 4th digit; the guarded setter is `:322`, and `MAX_PIN_LENGTH = 4` is declared at `:39`) — the PIN step has **no submit button and no empty-PIN error**, and digits 1–3 issue no request at all. The only action keys are `Clear` and `Backspace` (`:497` renders the four key slots; `Clear`/`Backspace` are disabled at length 0). `staff-login-pin-min-length` is defined in `staff.ftl`/`staff.id.ftl` but referenced nowhere in the code, so do NOT expect "PIN must be at least 4 digits." — and do not look for a submit control in this step; the screen's only `type="submit"` is the username step's (`:662`) | ☐ |
 
 **Pass criteria:** Touch targets register correctly (≥ 48px), visual feedback
 works, PIN entry is reliable with no missed taps.
@@ -314,8 +330,8 @@ smooth, back navigation works correctly.
 | 4.2 | Scroll product grid | Touch scroll works — smooth, no stutter | ☐ |
 | 4.3 | Search products | Tap search bar → keyboard opens → results filter in real-time | ☐ |
 | 4.4 | Category filter tabs | Tabs are ≥ 48px height. Tap reliably switches category. | ☐ |
-| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `shared-ui/locales/sales.ftl:16`). | ☐ |
-| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/app/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
+| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `shared-ui/locales/sales.ftl:17`). | ☐ |
+| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/app/tablet/TabletAppLayout.tsx:45` — `FALLBACK_TAB_LIMIT = 7`, applied at `:88`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
 
 **Pass criteria:** All touch targets meet minimum size, scrolling is smooth,
 keyboard does not cover critical UI.
@@ -338,10 +354,13 @@ correctly, no ghost taps or missed taps.
 
 ### Phase 6: Barcode Scanning (Keyboard-Wedge / Manual)
 
-> ⚠️ **There is no camera barcode scanner.** The tracked `AndroidManifest.xml`
-> declares only `android.permission.INTERNET`; no code in `ui/src` uses
-> `BarcodeDetector`/`getUserMedia`. The shipped surface is a **text field** on
-> the Products lookup screen (`ProductLookupScreen.tsx:280`,
+> ⚠️ **There is no camera barcode scanner.** No code in `ui/src` uses
+> `BarcodeDetector`/`getUserMedia` (0 hits), which is the real evidence. The manifest
+> declares `CAMERA` at `:41` for wry's WebView `VIDEO_CAPTURE` mapping — see the
+> correction banner at the top of this file — but nothing in the app requests it.
+>
+> The shipped surface is a **text field** on
+> the Products lookup screen (`ui/src/features/products/ProductLookupScreen.tsx:310`,
 > `aria-label = barcode-input-aria` "Barcode input") — a HID keyboard-wedge
 > scanner "types" the code and sends Enter, and the same field accepts manual
 > typing.
@@ -351,7 +370,7 @@ correctly, no ghost taps or missed taps.
 | 6.1 | Open the **Products** tab (route `products`) | Lookup screen shows a "Barcode input" field | ☐ |
 | 6.2 | Scan a known product with a HID wedge scanner (or type the code + Enter) | Code lands in the field and the lookup resolves the product | ☐ |
 | 6.3 | Successful lookup | Product shown in results; add-to-cart path from the result works | ☐ |
-| 6.4 | Unknown barcode | "No results" state via `product-lookup-no-results` (`ProductLookupScreen.tsx:364`) — there is no "Product not found for barcode XXXXXX." string | ☐ |
+| 6.4 | Unknown barcode | "No results" state via `product-lookup-no-results` (`ProductLookupScreen.tsx:394`) — there is no "Product not found for barcode XXXXXX." string | ☐ |
 | 6.5 | Clear the field / back out | Screen returns to its normal state; POS unaffected | ☐ |
 
 **Pass criteria:** Wedge-typed and manually-typed codes both resolve reliably,
@@ -359,7 +378,7 @@ unknown codes produce the no-results state. Do not test camera scanning — it
 is not implemented.
 
 > Note: the retail **quick-return** flow has its own barcode field
-> (`RetailModals.tsx:803`) if you also want to cover returns on-device.
+> (`ui/src/features/retail/RetailModals.tsx` (the barcode field; re-derive the line rather than trusting one)) if you also want to cover returns on-device.
 
 ### Phase 7: Payment Flow (Touch)
 
@@ -368,7 +387,7 @@ is not implemented.
 | 7.1 | Tap **Pay** / **Checkout** | Payment screen opens | ☐ |
 | 7.2 | **Swipe left** on cart panel | Payment modal opens (gesture shortcut) | ☐ |
 | 7.3 | **Swipe right** on payment modal | Returns to cart (gesture shortcut) | ☐ |
-| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `shared-ui/locales/sales.ftl:122`); there is no "Mixed" label. Each easy to tap | ☐ |
+| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `shared-ui/locales/sales.ftl:155`); there is no "Mixed" label. Each easy to tap | ☐ |
 | 7.5 | Cash: enter amount tendered | Numeric keypad is large enough to tap reliably | ☐ |
 | 7.6 | Complete payment | Sale completes. Success message. | ☐ |
 | 7.7 | Receipt preview | Receipt displays full details on screen | ☐ |
@@ -535,7 +554,7 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
 | Chinese tablet (no Google Play) | WebView component may be missing | Install GMS or use a WebView APK | External |
 | SAMOLED burn-in | Persistent UI elements leave ghost marks | Use dark mode or reduce static elements | Investigate |
 | Bluetooth printer pairing | Printer not discovered | Check Bluetooth compatibility list | Investigate |
-| Camera barcode on low-light | Scan fails consistently | Enable flashlight or use an external scanner | Investigate |
+| Camera barcode on low-light | No camera path exists in the app (0 `getUserMedia` callers) | Use an external/wedge scanner | Not Applicable |
 | Samsung DeX mode | App may launch in DeX desktop mode | Close DeX or test in standard Android mode | External |
 | Huawei devices (no GMS) | `cargo tauri android init` may fail | Use AOSP-based SDK instead of Google SDK | External |
 | Concurrent notifications | Toast/snackbar overlaps with Android toast | Reduce notification cadence | By Design |
@@ -545,7 +564,7 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
 ## Verification Checklist
 
 ```
-☐ Prerequisites: JDK 17+, Android SDK 34+, NDK 27, cargo-ndk, Rust targets
+☐ Prerequisites: JDK 17+, Android SDK 36+, NDK 27, cargo-ndk, Rust targets
 
 ☐ BUILD
    ☐ Frontend builds with vite.mobile.config.ts
@@ -562,7 +581,7 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
    ☐ App launches within 8 seconds
    ☐ Orientation locks to landscape
    ☐ Safe-area insets respected (notch/cutout)
-   ☐ Camera permission dialog (if barcode enabled)
+   ☐ No camera permission dialog appears (no camera path exists — Phase 6)
 
 ☐ PHASE 2 — Login
    ☐ PIN entry works (touch numpad)
@@ -588,11 +607,11 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
    ☐ Quantity increment/decrement reliable
    ☐ Total recalculates correctly
 
-☐ PHASE 6 — Barcode Scanning (Keyboard-Wedge / Manual)
-   ☐ Camera preview opens
-   ☐ Barcode scans successfully
-   ☐ Unknown barcode shows error
-   ☐ Cancel returns to POS
+☐ PHASE 6 — Barcode Scanning (Keyboard-Wedge / Manual — NOT camera)
+   ☐ Barcode input field present on the Products lookup screen
+   ☐ Wedge-typed code resolves the product
+   ☐ Unknown barcode shows the no-results state
+   ☐ Cleared field returns the screen to normal
 
 ☐ PHASE 7 — Payment
    ☐ Payment modal opens (tap + swipe)
@@ -669,4 +688,4 @@ Notes:
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

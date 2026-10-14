@@ -1,3 +1,14 @@
+<!-- Re-verified 11-10-26 · docs-auditor · Cross-link repair, dated records, no content rewritten.
+     The 2026-10-02 records restructure moved NINE of the documents these six records cite from
+     `docs/architecture/` into `docs/records/superseded/` (45e1cd520 and its companions), so every
+     `docs/architecture/<moved>.md` citation in the Predecessors/Successor blocks named a path that no
+     longer resolves — 42 across the six files. Repointed to the live home. The three cited documents
+     that are STILL in `docs/architecture/` (module-namespace-governance.md, module-namespace-firewall.md,
+     module-boot-sequence.md) were deliberately left alone, as were the relative markdown links, which
+     already resolved because the files moved together. No claim, count or ticket status was altered.
+     Verified after the edit: 0 residual stale citations, 42 repointed, 32 correct citations preserved,
+     0 dead relative links, and every cited ticket/decision path still resolving. NOT re-measured: the
+     phases' own per-ticket acceptance runs and the runtime behaviour of the seams they describe. -->
 # Phase 1 Implementation Tickets — Modular Scaffolding
 
 **Status:** Draft for execution (2026-10-02) — tickets only, no code changed by this document
@@ -6,10 +17,10 @@ Turns the five bullets of that action into tickets with acceptance criteria, evi
 repository paths each one touches.
 
 **Predecessors:**
-- `docs/architecture/handler-census-phase0.md` — the classified handler population (Action #1).
+- `docs/records/superseded/handler-census-phase0.md` — the classified handler population (Action #1).
 - `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` — the seam vocabulary, D1–D8 (Action #2).
 - `docs/architecture/module-namespace-governance.md` — the Phase 1 rules and table-ownership map (Action #3).
-- `docs/architecture/namespaced-store-api-draft.md` — the Phase 2 API shape these tickets feed (Action #4).
+- `docs/records/superseded/namespaced-store-api-draft.md` — the Phase 2 API shape these tickets feed (Action #4).
 
 **Grounding rule (learned in Phase 0):** every ticket names a repository fact verified at the time of
 writing. The plan's prose is *not* treated as evidence — the Phase 0 census falsified one of its claims
@@ -34,7 +45,7 @@ for the others except where a `Depends on` line says so.
 
 ## 2. T1 — Census tooling (automate what Phase 0 did by hand)
 
-**Problem.** The Phase 0 census (`docs/architecture/handler-census-phase0.md`) was produced by hand: grep
+**Problem.** The Phase 0 census (`docs/records/superseded/handler-census-phase0.md`) was produced by hand: grep
 for `impl EventHandler`, then read each site to decide live/dead. It found one dead handler the plan
 asserted was live. A hand census drifts the moment someone adds a handler, and the drift is silent.
 
@@ -230,7 +241,7 @@ assert a dead handler is live are exactly the 'aspirational structure' §13 of t
 | `todo-modular-scaffolding.md` §14 item 1 ('Explicitly confirm `InventoryStockHandler` is active') | asserts it is active | it is **dead/test-only** — constructed nowhere in production; only referenced from `modules/inventory/src/handlers_tests.rs` |
 | `todo-modular-scaffolding.md` §15 ('`InventoryStockHandler` is retained.') | retention as a live-seam policy | retained *as a classified test-only type*, not as a running handler |
 | `todo-modular-scaffolding.md` §10 Phase 0 ('Confirm `InventoryStockHandler` remains active and documented') | same | same |
-| `docs/architecture/MODULAR_APP_PLAN.md:77` ASCII diagram | still shows `SaleCompletedReporter` | removed under MSL-11; `modules/reporting/src/handlers.rs:3` and `modules/reporting/README.md:11,:40` record the removal |
+| `docs/records/superseded/MODULAR_APP_PLAN.md:77` ASCII diagram | still shows `SaleCompletedReporter` | removed under MSL-11; `modules/reporting/src/handlers.rs:3` and `modules/reporting/README.md:11,:40` record the removal |
 
 **Ticket T4 — reconcile the docs with the census, without rewriting history.**
 
@@ -239,24 +250,24 @@ assert a dead handler is live are exactly the 'aspirational structure' §13 of t
    supersession marker in place (see the `docs/plans/_active/todo.md` header for the pattern).
 2. §14 item 1 and §10 Phase 0: change 'confirm it is active' to 'confirm its status against the census',
    so the instruction no longer presumes the answer.
-3. `docs/architecture/MODULAR_APP_PLAN.md:77`: annotate the diagram node, pointing at
-   `docs/architecture/handler-census-phase0.md` for the current handler set. Do not silently redraw the
+3. `docs/records/superseded/MODULAR_APP_PLAN.md:77`: annotate the diagram node, pointing at
+   `docs/records/superseded/handler-census-phase0.md` for the current handler set. Do not silently redraw the
    diagram — the same supersession-marker convention applies.
-4. Add a one-line pointer from `docs/architecture/MODULAR_APP_PLAN.md` (near the topology section) to
-   `docs/architecture/module-namespace-governance.md` and `docs/architecture/namespaced-store-api-draft.md`,
+4. Add a one-line pointer from `docs/records/superseded/MODULAR_APP_PLAN.md` (near the topology section) to
+   `docs/architecture/module-namespace-governance.md` and `docs/records/superseded/namespaced-store-api-draft.md`,
    so the architecture doc does not read as the only source of truth for module structure.
 
 **Why annotate instead of delete:** the Phase 0 census's value is partly that it *falsified* a written
 claim. Deleting the claim hides the lesson; the plan's own §10 exit criterion ('dead-code claims in the
 plan match the repository') is satisfied by a correction the next reader can see.
 
-**Files:** `todo-modular-scaffolding.md`; `docs/architecture/MODULAR_APP_PLAN.md`.
+**Files:** `todo-modular-scaffolding.md`; `docs/records/superseded/MODULAR_APP_PLAN.md`.
 
 **Acceptance criteria:**
 - `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` stays clean on both files.
 - `git grep -n "InventoryStockHandler" todo-modular-scaffolding.md` shows the correction, not a bare
   'active' assertion.
-- `git grep -n "SaleCompletedReporter" docs/architecture/MODULAR_APP_PLAN.md` shows the removal note.
+- `git grep -n "SaleCompletedReporter" docs/records/superseded/MODULAR_APP_PLAN.md` shows the removal note.
 - `python scripts/verify-debt-markers.py` stays exit 0 (no new dangling pointer introduced by the edits).
 
 **Depends on:** T1 optionally, for the corrected table content. Can be done in either order.
@@ -291,7 +302,7 @@ ADR-62 D5 ('reads through it, never writes') and must be resolved explicitly, no
 
 **Ticket T5 — inventory and reconcile the facade, then stage the reporting migration.**
 
-1. Produce a new inventory doc (to be created at `docs/architecture/reporting-facade-inventory.md`): for each public method above — owning
+1. Produce a new inventory doc (to be created at `docs/records/superseded/reporting-facade-inventory.md`): for each public method above — owning
    submodule, the tables it reads/writes, and whether a *module repository* duplicates it. Cross-check the
    last against `modules/reporting/src/repository.rs` (the `generate_daily_report` facade-bypass edge at
    :33).
@@ -305,7 +316,7 @@ ADR-62 D5 ('reads through it, never writes') and must be resolved explicitly, no
    named candidate; list any *other* reporting-module query that names a foreign table, so §9.5's
    'no new direct SQL' becomes a checklist rather than an aspiration.
 
-**Files:** a new inventory doc (to be created at `docs/architecture/reporting-facade-inventory.md`); possibly an amendment line in
+**Files:** a new inventory doc (to be created at `docs/records/superseded/reporting-facade-inventory.md`); possibly an amendment line in
 `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` D5 (if option 2a is chosen — an ADR edit, not a
 silent doc change).
 
@@ -318,7 +329,7 @@ silent doc change).
 **Depends on:** T3 for the marker vocabulary on the baselined edges. **Blocks:** NamespacedStore draft §5
 row 2.4 (the reporting migration).
 
-**Status: DONE 2026-10-02.** [docs/architecture/reporting-facade-inventory.md](reporting-facade-inventory.md)
+**Status: DONE 2026-10-02.** [docs/records/superseded/reporting-facade-inventory.md](reporting-facade-inventory.md)
 inventories all 24 public facade methods with their submodules, line numbers and tables. Corrections it
 records: the surface is 24 methods not 4; the plan's claim that reporting reads `payments` through the
 facade is false (no facade SQL names it); and the facade is not read-only. The write question is decided
@@ -377,10 +388,10 @@ only; they add no enforcement beyond the existing soft `namespace-governance` ga
 
 - `todo-modular-scaffolding.md` §14 item 5 (this action), §10 Phase 1 exit criteria, §11.1–§11.5 (gates),
   §9.5 (reporting facade)
-- `docs/architecture/handler-census-phase0.md` (Action #1 deliverable)
+- `docs/records/superseded/handler-census-phase0.md` (Action #1 deliverable)
 - `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` (D1–D8)
 - `docs/architecture/module-namespace-governance.md` (Rules 1–3, ownership map §3, inventory §4)
-- `docs/architecture/namespaced-store-api-draft.md` (§5 migration order, C1–C3)
+- `docs/records/superseded/namespaced-store-api-draft.md` (§5 migration order, C1–C3)
 - `scripts/verify-namespace-governance.py`, `scripts/handler-classification.json`,
   `scripts/namespace-governance-baseline.json`
 - `platform/startup/src/event_handlers.rs`, `crates/kasirmu-notification/src/handlers.rs`,

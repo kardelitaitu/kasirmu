@@ -50,6 +50,23 @@ function NoteIcon() {
   );
 }
 
+/** Sliders icon for modifier customization */
+function SlidersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true">
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  );
+}
+
 export interface CartLineItemProps {
   line: CartLine;
   onRemove: (line: CartLine) => void;
@@ -172,6 +189,20 @@ export function CartLineItem({
         <div className="pos-cart-line-info">
           <div className="pos-cart-line-name">
             {line.name ?? line.sku}
+            {line.dispatchedQty !== undefined && line.dispatchedQty >= line.qty && (
+              <span className="pos-cart-line-dispatched-badge" data-testid="cart-line-dispatched-badge">
+                <Localized id="pos-line-status-sent">
+                  <span>Sent</span>
+                </Localized>
+              </span>
+            )}
+            {line.dispatchedQty !== undefined && line.dispatchedQty < line.qty && (
+              <span className="pos-cart-line-draft-badge" data-testid="cart-line-draft-badge">
+                <Localized id="pos-line-status-new">
+                  <span>New</span>
+                </Localized>
+              </span>
+            )}
             {onUpdateNote && (
               <button
                 type="button"
@@ -186,11 +217,25 @@ export function CartLineItem({
                 <NoteIcon />
               </button>
             )}
+            {onEditModifiers && (!line.modifiers || line.modifiers.length === 0) && (
+              <button
+                type="button"
+                className="pos-cart-line-modifier-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditModifiers(line);
+                }}
+                aria-label={l10n.getString('edit-modifiers') || 'Customize item'}
+                data-testid="cart-line-add-modifier-btn"
+              >
+                <SlidersIcon />
+              </button>
+            )}
             {onAssignCourse && (
               <span className="pos-cart-line-course">
                 <button
                   type="button"
-                  className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}`}
+                  className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}${line.coursingStatus === 'fired' ? ' pos-cart-course-chip--fired' : line.coursingStatus === 'hold' ? ' pos-cart-course-chip--hold' : ''}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCourseMenuLineChange?.(courseOpen ? null : line.id);
@@ -199,7 +244,29 @@ export function CartLineItem({
                   aria-expanded={courseOpen}
                   data-testid="cart-line-course-chip"
                 >
-                  {line.courseId ? `${courseEmoji(line.courseId)} ${courseLabel(line.courseId)}` : 'Course'}
+                  {line.courseId ? (
+                    <>
+                      <span>{courseEmoji(line.courseId)} {courseLabel(line.courseId)}</span>
+                      {line.coursingStatus === 'fired' && (
+                        <span
+                          className="pos-cart-course-status-badge pos-cart-course-status-badge--fired"
+                          data-testid="cart-line-course-status-fired"
+                        >
+                          ✓
+                        </span>
+                      )}
+                      {line.coursingStatus === 'hold' && (
+                        <span
+                          className="pos-cart-course-status-badge pos-cart-course-status-badge--hold"
+                          data-testid="cart-line-course-status-hold"
+                        >
+                          ⏸
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    'Course'
+                  )}
                 </button>
                 {courseOpen && (
                   <span
@@ -246,9 +313,9 @@ export function CartLineItem({
               </span>
             )}
           </div>
-          {line.modifiers && line.modifiers.length > 0 && (
+          {((line.modifiers && line.modifiers.length > 0) || onOverride) ? (
             <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
-              {line.modifiers.map((m) => (
+              {line.modifiers?.map((m) => (
                 <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
                   {m.modifierName}
                   {m.priceMinor > 0 && (
@@ -258,7 +325,7 @@ export function CartLineItem({
                   )}
                 </span>
               ))}
-              {onEditModifiers && (
+              {onEditModifiers && (line.modifiers?.length ?? 0) > 0 && (
                 <button
                   type="button"
                   className="pos-cart-line-edit-modifiers-btn"
@@ -272,8 +339,22 @@ export function CartLineItem({
                   Edit
                 </button>
               )}
+              {onOverride && (
+                <button
+                  type="button"
+                  className="pos-cart-line-modifier-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOverride(line);
+                  }}
+                  aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
+                  data-testid="cart-line-override-btn"
+                >
+                  <span aria-hidden="true">$</span>
+                </button>
+              )}
             </div>
-          )}
+          ) : null}
           {line.note && (
             <div
               className="pos-cart-line-note-badge"
@@ -299,16 +380,6 @@ export function CartLineItem({
           <div className="pos-cart-line-price">
             <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
           </div>
-          {onOverride && (
-            <button
-              type="button"
-              className="pos-cart-line-override"
-              onClick={() => onOverride(line)}
-              aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
-            >
-              <Localized id="pos-cart-line-override">Override</Localized>
-            </button>
-          )}
         </div>
 
         {/* 3 — Qty controls */}
@@ -428,6 +499,10 @@ export function CartLineItem({
               rows={3}
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
+              // The placeholder is not an accessible name: it disappears the
+              // moment the cashier types, and axe flags a control named only by
+              // one. The modal's own title is the honest label.
+              aria-label={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
               placeholder={l10n.getString('pos-cart-line-note-placeholder') || 'e.g. No onion, less ice, allergy...'}
               data-testid="cart-line-note-input"
               maxLength={200}

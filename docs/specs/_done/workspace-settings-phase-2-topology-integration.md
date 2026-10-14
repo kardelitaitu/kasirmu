@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · SUBSTANTIALLY ACCURATE with one orphaned component recorded. The inspector-drawer integration this phase describes is real: the shared cards are imported by `ui/src/features/locations/topologyCard.ts`, which is the topology canvas card layer — that is exactly the "node badges and inspector" surface the spec targets. · STALE PATHS, left as written: the Baseline and References name `ui/src/features/stores/NodeTopologyEditor.tsx` and `ui/src/features/stores/TopologyScreen.tsx`, and neither exists at that path. The components moved to `ui/src/features/locations/` — `ui/src/features/locations/NodeTopologyEditor.tsx` is present, alongside `topologyContract.ts` and `nodeTopologyEditorMigration.ts`. Recorded rather than rewritten, since a Baseline is a pre-fix record. · ONE COMPONENT ORPHANED: `StoreInfoCard.tsx` exists in the workspace-cards directory and has its own test (`ui/src/__tests__/StoreInfoCard.test.tsx`), but a search for it outside tests and outside its own file returns nothing — no production module imports it. The acceptance criterion "When a store node is selected, the inspector renders a `StoreInfoCard`" is therefore not wired, even though the component was built and tested. That is a real gap with a specific shape: a component that passed its unit test and never got connected. I have not wired it — adding an inspector branch is implementation work for the phase owner, and the topology card mapping is a behavioural decision, not a doc repair. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · The prior stamp's ORPHANED-COMPONENT finding was accurate when written and is now SUPERSEDED rather than outstanding: `StoreInfoCard.tsx` is still exported with its own unit test and still has no production importer, BUT the store-node inspector surface it was meant to provide EXISTS — a later redesign replaced it with the Branch Location fields section (address / currency / timezone / tax id), and the replacement is test-pinned: `ui/src/__tests__/InspectorIntegration.test.tsx:183-197` selects a store node and asserts 'Branch Location' renders, with the comment 'The redesign replaced StoreInfoCard with the Branch Location fields section'. So the acceptance criterion is met in substance by a different component. The node-type → card mapping this phase specifies is real: `ui/src/features/locations/topologyCard.ts` maps store-pos / restaurant-pos / kds via `settingsCardForTypeKey`. MINOR: the Baseline and References name `ui/src/features/stores/{NodeTopologyEditor,TopologyScreen,NodeTopologyIcons}.tsx`; those moved to `ui/src/features/locations/`. NOT re-measured: the live badge reactivity and the Playwright topology suite. · Superseded 2026-09-29 body preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · SUBSTANTIALLY ACCURATE with one orphaned component recorded. The inspector-drawer integration this phase describes is real: the shared cards are imported by `ui/src/features/locations/topologyCard.ts`, which is the topology canvas card layer — that is exactly the "node badges and inspector" surface the spec targets. · STALE PATHS, left as written: the Baseline and References name `ui/src/features/stores/NodeTopologyEditor.tsx` and `ui/src/features/stores/TopologyScreen.tsx`, and neither exists at that path. The components moved to `ui/src/features/locations/` — `ui/src/features/locations/NodeTopologyEditor.tsx` is present, alongside `topologyContract.ts` and `nodeTopologyEditorMigration.ts`. Recorded rather than rewritten, since a Baseline is a pre-fix record. · ONE COMPONENT ORPHANED: `StoreInfoCard.tsx` exists in the workspace-cards directory and has its own test (`ui/src/__tests__/StoreInfoCard.test.tsx`), but a search for it outside tests and outside its own file returns nothing — no production module imports it. The acceptance criterion "When a store node is selected, the inspector renders a `StoreInfoCard`" is therefore not wired, even though the component was built and tested. That is a real gap with a specific shape: a component that passed its unit test and never got connected. I have not wired it — adding an inspector branch is implementation work for the phase owner, and the topology card mapping is a behavioural decision, not a doc repair. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
 # Phase 2 — Topology Integration
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -8,6 +10,26 @@
 - **Dependencies:** Phase 0b (SettingsContext), Phase 0d (delta ledger), Phase 1 (shared cards)
 - **Owner:** TBD
 - **Est. effort:** 3-4 days
+
+## ⚠️ Audit correction (2026-10-11)
+
+The 2026-09-29 stamp recorded `StoreInfoCard.tsx` as **orphaned** — built and unit-tested but
+imported by no production module, so the criterion "when a store node is selected, the inspector
+renders a `StoreInfoCard`" was not wired. That was accurate then. It is now **superseded rather
+than outstanding**: a later inspector redesign **replaced** that card with the Branch Location
+fields section (address / currency / timezone / tax id), and the replacement is test-pinned —
+`ui/src/__tests__/InspectorIntegration.test.tsx:183-197` selects a store node and asserts the
+"Branch Location" section renders, with the comment "The redesign replaced StoreInfoCard with the
+Branch Location fields section". So the store-node inspector surface **exists and is covered**;
+what changed is which component provides it. `StoreInfoCard.tsx` remains in the tree (exported
+from `workspace-cards/index.ts`) with its own unit test but no production importer.
+
+The node-type → card mapping this phase specifies is real and shipped: `ui/src/features/locations/topologyCard.ts`
+maps `store-pos`, `restaurant-pos` and `kds` to the shared cards via `settingsCardForTypeKey`.
+
+**Still stale, left as historical:** the Baseline and References name
+`ui/src/features/stores/{NodeTopologyEditor,TopologyScreen,NodeTopologyIcons}.tsx`; those
+components moved to `ui/src/features/locations/`.
 
 ## Summary
 
@@ -80,4 +102,4 @@ Wire the shared workspace cards into `NodeTopologyEditor.tsx`'s existing right I
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

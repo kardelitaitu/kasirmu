@@ -4,9 +4,14 @@ area: module-system
 title: ADR #31: Decentralized UI Feature Module Registration
 status: Accepted (2026-07-24)
 ---
-<!-- Superseded audit marker (2026-07-24 · Hermes-Agent, body kept verbatim) · hermes · status: ACTIVE · ADR #31: Decentralized UI Feature Module Registration -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor) · Fresh full audit; the 2026-07-24 Hermes marker and the 2026-09-29 body are merged below as original evidence. · MINOR 1 (illustration paths that no longer resolve): the §1 snippet imports `@/platform/ui/page-registry` and `@/platform/ui/menu-registry` and names `index.ts` as the feature entry point. `grep -rn '@/platform/ui' ui/src` returns ZERO hits; the real entry point is `register.tsx` (`ui/src/features/sales/register.tsx`) importing from `@/registries/`. A dated correction note was added rather than editing the illustrative snippet, since the record's text is the decision as written and the prior stamp had already logged one move of this same path. · MINOR 2: recorded, not repaired — the mechanism is more load-bearing than the ADR's own framing suggests, and the three registry modules are live at `ui/src/registries/{page,menu,widget}-registry/index.ts`. · VERIFIED AND LEFT ALONE, re-measured: the OUTCOME is fully realised — `ui/src/App.tsx` is 39 lines, imports `registerAllFeatures` from `@/features` and calls it before the shell mounts, which is the §3 end-state and far from the "250+ lines" the Context describes; `registerAllFeatures` appears 11 times across `App.tsx`/`main.mobile.tsx`/`features/index.ts`; 48 `registerPage(` call sites live under `ui/src/features/`; front-matter `num: 31` and `status: Accepted` agree with the decisions index. · NOT re-measured: the Context's "over 35 screen components" and "~40 sequential calls" figures, which describe the pre-decision App.tsx and cannot be re-derived from a tree that no longer contains it. · Prior stamps retained verbatim below. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its mechanism is more load-bearing than the ADR's own framing suggests. The three registration functions it specifies are the registry layer this campaign has been re-measuring all session: `registerPage` at `ui/src/registries/page-registry/index.ts`, `registerNavItem` at `ui/src/registries/menu-registry/index.ts`, and `registerWidget` at `ui/src/registries/widget-registry/index.ts`. All three are live and centralised under `ui/src/registries/`. · A PATH FINDING THAT UPDATES THIS CAMPAIGN'S OWN RECORD. The 2026-07-24 Hermes stamp on this file (retained below, re-labelled) records the registries at `ui/src/platform/ui/{page,menu,widget}-registry` -- and in round 15 that location was found to be already stale, with the registries now at `ui/src/registries/`. So this file's prior stamp is one of the two in the repository documenting a location the tree has since left, and the current position is `ui/src/registries/`, as recorded there and here. It is a concrete illustration of why a stamp is a dated observation rather than a durable fact: the stamp was correct, and it is now wrong, and neither state is a defect in it. · The ADR's thesis also shows up in a document audited elsewhere in this campaign: the workspace-settings Phase 0a record describes screens that "register lazily (`lazy(...)` + `registerPage`/`registerNavItem` in `ui/src/features/*/register.tsx`)", which is this ADR's mechanism in use, and the project rule telling authors to grep for a screen name and its `route:` precisely because a registered screen leaves no static import is a direct consequence of decentralising registration this way. · Status checker reports no drift for this row. The prior stamp said "status: ACTIVE", a marker rather than a claim; the front matter says "Accepted (2026-07-24)" and the index agrees. Stacked footer collapsed; prior stamp retained as original evidence. -->
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — the superseded Hermes marker and the 2026-09-29 body follow as blockquote text (not nested in an HTML comment — nesting closes the outer comment early):
+
+> Superseded audit marker (2026-07-24 · Hermes-Agent) · status: ACTIVE · ADR #31: Decentralized UI Feature Module Registration
+>
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its mechanism is more load-bearing than the ADR's own framing suggests. The three registration functions it specifies are the registry layer this campaign has been re-measuring all session: `registerPage` at `ui/src/registries/page-registry/index.ts`, `registerNavItem` at `ui/src/registries/menu-registry/index.ts`, and `registerWidget` at `ui/src/registries/widget-registry/index.ts`. All three are live and centralised under `ui/src/registries/`. · A PATH FINDING THAT UPDATES THIS CAMPAIGN'S OWN RECORD. The 2026-07-24 Hermes stamp on this file (retained below, re-labelled) records the registries at `ui/src/platform/ui/{page,menu,widget}-registry` -- and in round 15 that location was found to be already stale, with the registries now at `ui/src/registries/`. So this file's prior stamp is one of the two in the repository documenting a location the tree has since left, and the current position is `ui/src/registries/`, as recorded there and here. It is a concrete illustration of why a stamp is a dated observation rather than a durable fact: the stamp was correct, and it is now wrong, and neither state is a defect in it. · The ADR's thesis also shows up in a document audited elsewhere in this campaign: the workspace-settings Phase 0a record describes screens that "register lazily (`lazy(...)` + `registerPage`/`registerNavItem` in `ui/src/features/*/register.tsx`)", which is this ADR's mechanism in use, and the project rule telling authors to grep for a screen name and its `route:` precisely because a registered screen leaves no static import is a direct consequence of decentralising registration this way. · Status checker reports no drift for this row. The prior stamp said "status: ACTIVE", a marker rather than a claim; the front matter says "Accepted (2026-07-24)" and the index agrees. Stacked footer collapsed; prior stamp retained as original evidence.
+-->
 # ADR #31: Decentralized UI Feature Module Registration
 
 **Status:** Accepted (2026-07-24)  
@@ -109,5 +114,26 @@ export default function App() {
 ### Negative / Trade-offs
 - One additional `index.ts` file per feature folder for exporting the `register()` function.
 
-> last audited 29-09-26 by docs-auditor
+> **Correction (2026-10-11): the illustrative snippet's import paths and entry-point name
+> have both moved, and the mechanism is worth re-stating as-built.**
+>
+> The §1 example imports `@/platform/ui/page-registry` and `@/platform/ui/menu-registry`,
+> and names `ui/src/features/<feature>/index.ts` as the entry point. Neither is current:
+> `grep -rn '@/platform/ui' ui/src` returns **zero** hits, and the real registration entry
+> point is **`register.tsx`** (e.g. `ui/src/features/sales/register.tsx`), importing from
+> **`@/registries/`** — `import { registerPage } from '@/registries/page-registry'` and
+> `import { registerNavItem } from '@/registries/menu-registry'`. The three registry modules
+> themselves are live at `ui/src/registries/{page,menu,widget}-registry/index.ts`.
+>
+> The decision's OUTCOME is fully realised and was re-measured: `ui/src/App.tsx` is **39
+> lines**, imports `registerAllFeatures` from `@/features`, and calls it once before the
+> shell mounts — which is exactly the §3 end-state, and a long way from the "250+ lines of
+> imperative setup" the Context describes. `registerAllFeatures` is referenced 11 times
+> across `App.tsx`, `main.mobile.tsx` and `ui/src/features/index.ts`, and 48
+> `registerPage(` call sites live under `ui/src/features/`.
+>
+> This is a correction of an illustration, not of the decision: the paths moved after the
+> record was written (the prior stamp already traced one move, `ui/src/platform/ui/` →
+> `ui/src/registries/`), and the record's own text is left as written.
 
+> last audited 11-10-26 by docs-auditor

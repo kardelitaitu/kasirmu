@@ -31,6 +31,10 @@ export interface RestaurantSettingsValues {
   soundChime: boolean;
   interactionSound: boolean;
   interactionVibration: boolean;
+  printBillAction: boolean;
+  tableTransfer: boolean;
+  dispatchOnTabSave: boolean;
+  splitBillByItem: boolean;
 }
 
 /**
@@ -58,6 +62,10 @@ export const DEFAULT_RESTAURANT_SETTINGS: RestaurantSettingsValues = {
   soundChime: true,
   interactionSound: true,
   interactionVibration: true,
+  printBillAction: true,
+  tableTransfer: true,
+  dispatchOnTabSave: true,
+  splitBillByItem: true,
 };
 
 /** One toggle: the DB key behind it and the value an unset key falls back to. */
@@ -85,6 +93,10 @@ export const RESTAURANT_SETTING_SPECS: readonly SettingSpec[] = [
   { field: 'soundChime', key: 'restaurant.sound_chime', fallback: DEFAULT_RESTAURANT_SETTINGS.soundChime },
   { field: 'interactionSound', key: 'restaurant.interaction_sound', fallback: DEFAULT_RESTAURANT_SETTINGS.interactionSound },
   { field: 'interactionVibration', key: 'restaurant.interaction_vibration', fallback: DEFAULT_RESTAURANT_SETTINGS.interactionVibration },
+  { field: 'printBillAction', key: 'restaurant.print_bill_action', fallback: DEFAULT_RESTAURANT_SETTINGS.printBillAction },
+  { field: 'tableTransfer', key: 'restaurant.table_transfer', fallback: DEFAULT_RESTAURANT_SETTINGS.tableTransfer },
+  { field: 'dispatchOnTabSave', key: 'restaurant.dispatch_on_tab_save', fallback: DEFAULT_RESTAURANT_SETTINGS.dispatchOnTabSave },
+  { field: 'splitBillByItem', key: 'restaurant.split_bill_by_item', fallback: DEFAULT_RESTAURANT_SETTINGS.splitBillByItem },
 ];
 
 /** Reads one raw setting. Rejects when the read FAILED (as opposed to returning null). */

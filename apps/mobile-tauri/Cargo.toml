@@ -38,6 +38,7 @@ kasirmu-core = { workspace = true }
 # health.rs is the first repoint (ctx-free commands only); later slices build
 # the tablet BridgeCtx seam and repoint the scoped bodies.
 kasirmu-bridge = { workspace = true }
+qris-core = { workspace = true }
 reqwest = { workspace = true }
 rand = { workspace = true }
 kasirmu-hal = { workspace = true }

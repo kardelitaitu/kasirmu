@@ -147,5 +147,19 @@
           android:authorities="${applicationId}.syncinitprovider"
           android:exported="false"
           android:initOrder="-100" />
+
+        <!-- ── Zero-MDR QRIS Notification Listener Service ──────────
+             Captures incoming settlement push alerts from Indonesian banks
+             and merchant apps (BCA, Mandiri, BRI, Bank Jatim, GoBiz) to
+             verify payments without third-party MDR transaction fees. -->
+        <service
+          android:name=".QrisNotificationListenerService"
+          android:label="@string/qris_listener_label"
+          android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+          android:exported="true">
+          <intent-filter>
+            <action android:name="android.service.notification.NotificationListenerService" />
+          </intent-filter>
+        </service>
     </application>
 </manifest>

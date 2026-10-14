@@ -307,6 +307,65 @@ describe('SalesHistoryScreen', () => {
     });
   });
 
+  it('opens detail modal when row is tapped directly (touch-first ergonomics)', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      const rows = container.querySelectorAll('.sales-history-row-wrap');
+      expect(rows.length).toBeGreaterThan(0);
+    });
+
+    const firstRow = container.querySelector('.sales-history-row-wrap')!;
+    await user.click(firstRow);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sale Detail')).toBeInTheDocument();
+      expect(screen.getByText('Line Items')).toBeInTheDocument();
+    });
+  });
+
+  it('renders line items with course and modifier choices in detail modal', async () => {
+    const user = userEvent.setup();
+    const detailWithModifiers = {
+      ...sampleDetail,
+      lines: [
+        {
+          id: 'line-m1',
+          sku: 'STEAK-01',
+          name: 'Sirloin Steak',
+          qty: 1,
+          unit_price: { minor_units: 120000, currency: 'IDR' },
+          total_minor: 120000,
+          tax_amount: null,
+          course: 'main',
+          modifiers_json: JSON.stringify([
+            { name: 'Doneness', choice: 'Medium Rare' },
+            { name: 'Sauce', choice: 'Mushroom' },
+          ]),
+        },
+      ],
+    };
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(detailWithModifiers);
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => expect(screen.getAllByText('View').length).toBeGreaterThan(0));
+    await user.click(screen.getAllByText('View')[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sirloin Steak')).toBeInTheDocument();
+      expect(screen.getByText('main')).toBeInTheDocument();
+      expect(screen.getByText('Medium Rare')).toBeInTheDocument();
+      expect(screen.getByText('Mushroom')).toBeInTheDocument();
+    });
+  });
+
   it('shows line items in detail modal', async () => {
     const user = userEvent.setup();
     mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
@@ -951,5 +1010,144 @@ describe('SalesHistoryScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+  });
+
+  it('renders standard back button when onBack prop is provided and triggers callback', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    const onBack = vi.fn();
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen onBack={onBack} />, salesFtl, sharedFtl);
+
+    const backBtn = await screen.findByTestId('sales-history-back-btn');
+    expect(backBtn).toBeInTheDocument();
+    expect(backBtn).toHaveAttribute('aria-label', 'Back');
+
+    await user.click(backBtn);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits back button when onBack prop is not provided', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('sales-history-back-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders search clear button when search query is entered and clears input on click', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search sale ID, payment, cashier…');
+    expect(screen.queryByTestId('sales-history-search-clear-btn')).not.toBeInTheDocument();
+
+    await user.type(searchInput, 'sale-001');
+    expect(searchInput).toHaveValue('sale-001');
+
+    const clearSearchBtn = screen.getByTestId('sales-history-search-clear-btn');
+    expect(clearSearchBtn).toBeInTheDocument();
+
+    await user.click(clearSearchBtn);
+    expect(searchInput).toHaveValue('');
+    expect(screen.queryByTestId('sales-history-search-clear-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders clear filters button when filter is active and resets all filters on click', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('sales-history-clear-filters-btn')).not.toBeInTheDocument();
+
+    // Activate a status filter
+    const voidedChip = screen.getByRole('radio', { name: 'Voided' });
+    await user.click(voidedChip);
+
+    // Only sale-003 is voided
+    expect(screen.getByText('sale-003…')).toBeInTheDocument();
+    expect(screen.queryByText('sale-001…')).not.toBeInTheDocument();
+
+    // Clear filters button should now be visible
+    const clearFiltersBtn = screen.getByTestId('sales-history-clear-filters-btn');
+    expect(clearFiltersBtn).toBeInTheDocument();
+
+    await user.click(clearFiltersBtn);
+
+    // All sales visible again, status reset to All, button hidden
+    expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    expect(screen.getByText('sale-003…')).toBeInTheDocument();
+    expect(screen.queryByTestId('sales-history-clear-filters-btn')).not.toBeInTheDocument();
+  });
+
+  it('opens sale detail when the entire table row is clicked', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    // Click the receipt cell itself rather than the View button
+    const receiptCell = screen.getByText('sale-001…');
+    await user.click(receiptCell);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    expect(mockGetSaleScoped).toHaveBeenCalledWith('session-1', sampleSales[0]!.id);
+  });
+
+  it('renders complete financial breakdown in detail dialog including discount, service charge, and tip', async () => {
+    const breakdownDetail = {
+      ...sampleDetail,
+      subtotal: { minor_units: 100000, currency: 'IDR' },
+      total: { minor_units: 115000, currency: 'IDR' },
+      taxTotal: { minor_units: 10000, currency: 'IDR' },
+      discountLabel: 'VIP Promo',
+      discountPercent: 10,
+      serviceChargeMinor: 10000,
+      tipMinor: 5000,
+      tenderedMinor: 120000,
+    };
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(breakdownDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('sale-001…')).toBeInTheDocument();
+    });
+
+    const receiptCell = screen.getByText('sale-001…');
+    await user.click(receiptCell);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/subtotal/i)).toBeInTheDocument();
+    expect(screen.getByText(/discount/i)).toBeInTheDocument();
+    expect(screen.getByText('(VIP Promo)')).toBeInTheDocument();
+    expect(screen.getByText(/service charge/i)).toBeInTheDocument();
+    expect(screen.getByText(/tip/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/tax/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/total/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/tendered/i)).toBeInTheDocument();
+    expect(screen.getByText(/change/i)).toBeInTheDocument();
   });
 });

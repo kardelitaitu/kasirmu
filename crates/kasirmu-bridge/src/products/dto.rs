@@ -7,7 +7,7 @@
 //! serialize to the same `{slot, hash, position}` JSON, keeping the wire
 //! contract unchanged (spec 0046b).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A product-image assignment mirrored from the product-image command
 /// module (spec 0046b).
@@ -92,4 +92,95 @@ pub struct SerialTrackRow {
     pub sku: String,
     /// Whether the product is configured for serial tracking.
     pub track_serial: bool,
+}
+
+/// A typed retail product view for inventory tracking, barcode scanning, and shelf placement.
+#[derive(Debug, Serialize)]
+pub struct RetailProductDto {
+    /// Underlying product details.
+    #[serde(flatten)]
+    pub product: ProductDto,
+}
+
+/// A typed restaurant menu item view for menu display, coursing, and kitchen prep.
+#[derive(Debug, Serialize)]
+pub struct RestaurantMenuItemDto {
+    /// Underlying product details.
+    #[serde(flatten)]
+    pub product: ProductDto,
+}
+
+/// A typed service item view (non-physical goods with unlimited availability).
+#[derive(Debug, Serialize)]
+pub struct ServiceItemDto {
+    /// Underlying product details.
+    #[serde(flatten)]
+    pub product: ProductDto,
+}
+
+/// A typed catalog domain item, discriminated by its product type.
+#[derive(Debug, Serialize)]
+#[serde(tag = "catalog_kind", rename_all = "snake_case")]
+pub enum CatalogItemDto {
+    /// A physical retail item with stock tracking.
+    Retail(RetailProductDto),
+    /// A restaurant dish or drink with kitchen prep.
+    Restaurant(RestaurantMenuItemDto),
+    /// A non-physical service item.
+    Service(ServiceItemDto),
+}
+
+impl ProductDto {
+    /// Convert to a typed domain catalog item based on `product_type`.
+    pub fn into_catalog_item(self) -> CatalogItemDto {
+        match self.product_type.as_str() {
+            "restaurant" => CatalogItemDto::Restaurant(RestaurantMenuItemDto { product: self }),
+            "service" => CatalogItemDto::Service(ServiceItemDto { product: self }),
+            _ => CatalogItemDto::Retail(RetailProductDto { product: self }),
+        }
+    }
+}
+
+/// Detailed recipe ingredient view for UI authoring and dish margin calculation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeItemDto {
+    /// ID of this recipe row.
+    pub id: String,
+    /// ID of the composite/parent product.
+    pub parent_product_id: String,
+    /// ID of the ingredient product.
+    pub ingredient_product_id: String,
+    /// Stock-keeping unit of the ingredient.
+    pub ingredient_sku: String,
+    /// Display name of the ingredient product.
+    pub ingredient_name: String,
+    /// Quantity required per unit of parent product.
+    pub quantity_required: i64,
+    /// Unit of measurement (e.g. "pcs", "g", "ml").
+    pub unit: String,
+    /// Unit cost of the ingredient in minor units.
+    pub cost_minor: i64,
+}
+
+/// Input for defining an ingredient row when setting a recipe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeIngredientInputDto {
+    /// ID of the ingredient product.
+    pub ingredient_product_id: String,
+    /// Quantity required per unit of parent product.
+    pub quantity_required: i64,
+    /// Unit of measurement (e.g. "pcs", "g", "ml").
+    pub unit: String,
+}
+
+/// Request args for `set_recipe_scoped`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetRecipeScopedArgs {
+    /// Parent composite product ID.
+    pub parent_product_id: String,
+    /// List of recipe ingredients to set (or empty to clear recipe).
+    pub ingredients: Vec<RecipeIngredientInputDto>,
 }

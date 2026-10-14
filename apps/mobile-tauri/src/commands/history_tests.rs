@@ -53,6 +53,10 @@ fn sale_detail_carries_the_estimate_stamp_when_claimed() {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(
@@ -79,6 +83,10 @@ fn sale_detail_serializes_null_when_unstamped() {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert!(
@@ -143,6 +151,10 @@ fn sale_detail_debug() {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -167,6 +179,10 @@ fn sale_detail_serialize() {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");
@@ -183,6 +199,23 @@ fn sale_detail_serialize() {
         "camelCase wire: taxEstimateNote"
     );
     assert_eq!(json["lines"].as_array().unwrap().len(), 0);
+    // The discount / tip / service-charge block added by the sales-history polish
+    // (a4a2f343c) reached this DTO without a single wire assertion, which is why a
+    // later field addition broke the build here rather than a test. Pin the
+    // camelCase spellings so the next one is a red test, not a compile error.
+    assert_eq!(
+        json["discountPercent"], 0,
+        "camelCase wire: discountPercent"
+    );
+    assert!(
+        json["discountLabel"].is_null(),
+        "camelCase wire: discountLabel"
+    );
+    assert_eq!(json["tipMinor"], 0, "camelCase wire: tipMinor");
+    assert_eq!(
+        json["serviceChargeMinor"], 0,
+        "camelCase wire: serviceChargeMinor"
+    );
 }
 
 // ── PaymentBreakdown ────────────────────────────────────────────────

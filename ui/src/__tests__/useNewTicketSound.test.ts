@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
 import type { KdsOrder } from '@/api/kds';
 
 // ── Mock useSound ────────────────────────────────────────────────────
@@ -38,9 +38,33 @@ function makeOrder(id: string): KdsOrder {
 
 // ── Tests ────────────────────────────────────────────────────────────
 
+// ── Fake timers ──────────────────────────────────────────────────────
+//
+// This file used to REAL-WAIT for the debounce: five \`await new Promise((r) =>
+// setTimeout(r, N))\` calls summing to 16,000ms for seven tests, two of them over
+// 6s. Measured in the full-suite run, this file was the second-slowest in the repo
+// at 16.6s for 7 tests — 99.9% of it spent sleeping.
+//
+// The waits are not padding: they exercise the debounce BOUNDARY (just inside the
+// window must not chime, past it must, and a burst must produce exactly one
+// trailing catch-up). Deleting them would delete the coverage.
+//
+// \`vi.useFakeTimers()\` controls both \`setTimeout\` AND \`Date.now()\`, and this hook
+// reads both (it compares \`Date.now() - lastPlayedRef\` against DEBOUNCE_MS=5000). So
+// the boundary can be crossed instantly with \`advanceTimersByTime\` and the assertions
+// stay exactly as they were.
+//
+// \`act(...)\` wraps each advance: the trailing timer calls \`playBeep\` from inside a
+// React effect's closure, so advancing without act would update outside React's
+// knowledge and the call assertion would race the flush.
 describe('useNewTicketSound', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mockPlayBeep.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('plays beep when a new ticket arrives', () => {
@@ -68,7 +92,7 @@ describe('useNewTicketSound', () => {
     );
     expect(mockPlayBeep).toHaveBeenCalledTimes(1);
     // Advance past debounce window.
-    await new Promise((r) => setTimeout(r, 6000));
+    act(() => { vi.advanceTimersByTime(6000); });
     rerender({ orders: [makeOrder('o-1'), makeOrder('o-2')] });
     expect(mockPlayBeep).toHaveBeenCalledTimes(2);
   });
@@ -80,7 +104,7 @@ describe('useNewTicketSound', () => {
     );
     expect(mockPlayBeep).toHaveBeenCalledTimes(1);
     // Advance only 2 seconds (within 5s debounce).
-    await new Promise((r) => setTimeout(r, 2000));
+    act(() => { vi.advanceTimersByTime(2000); });
     // Add two new tickets.
     rerender({ orders: [makeOrder('o-1'), makeOrder('o-2'), makeOrder('o-3')] });
     // Should NOT have played — still within debounce window.
@@ -94,16 +118,16 @@ describe('useNewTicketSound', () => {
     );
     expect(mockPlayBeep).toHaveBeenCalledTimes(1);
     // Burst arrives inside the window — previously swallowed forever.
-    await new Promise((r) => setTimeout(r, 1500));
+    act(() => { vi.advanceTimersByTime(1500); });
     rerender({ orders: [makeOrder('o-1'), makeOrder('o-2')] });
     rerender({ orders: [makeOrder('o-1'), makeOrder('o-2'), makeOrder('o-3')] });
     expect(mockPlayBeep).toHaveBeenCalledTimes(1);
     // Wait past the remainder of the debounce window: exactly one trailing
     // catch-up chime (not one per arrival, not zero).
-    await new Promise((r) => setTimeout(r, 4500));
+    act(() => { vi.advanceTimersByTime(4500); });
     expect(mockPlayBeep).toHaveBeenCalledTimes(2);
     // No further chimes for the same burst.
-    await new Promise((r) => setTimeout(r, 2000));
+    act(() => { vi.advanceTimersByTime(2000); });
     expect(mockPlayBeep).toHaveBeenCalledTimes(2);
   });
 

@@ -160,29 +160,29 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
   //
   // Rates themselves are NOT at risk: listExchangeRatesScoped feeds only the rate
   // table, and conversions read the stored rate rather than this boolean.
-  // UNPINNED, AND THE REASON IS RECORDED RATHER THAN LEFT AS A PUZZLE.
+  // PINNED (round 81, 2026-10-13) -- and the three earlier attempts failed for a reason
+  // worth keeping, because it tells you which scenario this guard is FOR.
   //
-  // Three attempts to pin this by mutation all SURVIVED (removing the line below and
-  // re-running ExchangeRateScreen.test.tsx stayed green), so there is currently no test
-  // that distinguishes guarded from unguarded here. Two causes were isolated:
+  // WHY EARLIER ATTEMPTS SURVIVED: they switched the token through the workspace mock,
+  // which REMOUNTS the screen. A remount gives the new instance its OWN `useRef(0)`, so
+  // the two reads report seq=1 against DIFFERENT refs and `seq !== ref` compares 1 to 1
+  // forever. There was no race to observe; a probe that forced the stale write showed it
+  // applying last while changing nothing on screen, because it landed on a tearing-down
+  // instance. Both observations were true and neither implicated the guard.
   //
-  //   1. A timing-only test can release the stale promise BEFORE the second read is
-  //      issued, so nothing is actually raced. Fixed by waiting on the call count.
-  //   2. With the ordering enforced, a probe that replaced this guard with a
-  //      console.log DID show the stale arm reaching setAutoSync -- DIAG apply 0 after
-  //      DIAG apply 1. So on that reading the write does happen when unguarded.
+  // THE PATH THIS GUARD EXISTS FOR is a HOT TOKEN SWAP, not a remount:
+  // `WorkspaceContext.swapSessionToken` (ADR #6) changes the token WITHOUT resetting the
+  // workspace or instance. FastPINOverlay uses it for a SHARED TOUCHSCREEN, where one
+  // operator hands the tablet to the next. The screen stays mounted, `loadAutoSync` deps
+  // on `[sessionToken]` so the callback identity changes, the effect re-runs, and BOTH
+  // reads share one `autoSyncSeqRef` -- instrumented as seq=[1, 2] against one ref.
   //
-  // Those two facts do not reconcile: aria-checked is a CONTROLLED attribute fed
-  // straight from autoSync, so a state change should surface in the DOM, yet the
-  // assertion kept reading true. Later probes of that same assertion gave
-  // contradictory results, so those probe edits were not landing where they were
-  // believed to be, and no conclusion drawn from them is trustworthy -- including the
-  // DIAG line above.
-  //
-  // WHAT TO DO INSTEAD: do not retry this from outside the component. Observe the
-  // effect directly (renderHook on the callback, or a logger inside the component
-  // render) so the state transition is READ rather than inferred from the DOM. Until
-  // then, treat this guard as verified-by-reasoning and NOT verified-by-test.
+  // The pin is `exchangeRateAutoSyncSwap.test.tsx`. It holds the swap's read open, lets
+  // the newer read win, then settles the superseded read with the opposite value: deleting
+  // the line below fails it with 'the SUPERSEDED read set autoSync after the hot swap's
+  // read had already won' (measured). The earlier note's prescription -- force the
+  // SHARED-ref path rather than switching the token through the workspace mock -- was
+  // right, and a hot token swap is how production reaches it.
   const autoSyncSeqRef = useRef(0);
 
   const loadAutoSync = useCallback(async () => {

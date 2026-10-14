@@ -53,7 +53,7 @@
        - its Fluent strings: COMMITTED (`bcb4a5452`).
        - its CSS: COMMITTED, swept into a peer's `268440251`.
        - its tests: COMMITTED (`ba69f826f`).
-       - **the JSX itself: UNCOMMITTED.** `WorkspaceHome.tsx` also carries another session's
+       - **the JSX itself: COMMITTED (corrected 11-10-26).** `WorkspaceHome.tsx` also carried another session's
          quick-launch cards in a separate hunk, and `AGENTS.md` 7.3 permits only whole-path
          commits, so the two cannot be separated. The block is recorded verbatim in
          "ROUND 15: the uncommitted block is now recorded verbatim", so it is recoverable.
@@ -66,6 +66,19 @@
 
      DEVICE: the tablet left the network during round 15 and has not returned. Every finding
      since round 16 comes from code, tests and ADRs rather than hardware. Re-pairing is
+     
+     RE-VERIFIED 11-10-26 (docs-auditor): TWO CLAIMS ABOVE WENT STALE IN THE FAVOURABLE
+     DIRECTION, and both are corrected here rather than above. (a) The notice JSX is no
+     longer uncommitted — `WorkspaceHome.tsx` is clean in the worktree and the non-blocking
+     licence notice renders at `:788` (`/* ── Non-blocking licence notice ──`); the file has
+     been committed several times since (last touched 2026-10-08). (b) The "ONE OPEN DEFECT"
+     below is CLOSED: `crates/kasirmu-core/src/db/provisioning.rs:533` now reads
+     `if args.mode == ProvisioningMode::Local {`, committed in `c22fb6421` (2026-10-05) and an
+     ancestor of HEAD — and the tripwire it names lives in `provisioning_tests.rs:715/:764`.
+     The stamp's own 2026-10-05 date is why: the guard landed THE SAME DAY, after the stamp
+     was written. Nothing in the 34-round log is retracted; only the present-tense half above
+     moved. NOT re-measured: the device exercise (the tablet left the network in round 15 and
+     is still absent), so every hardware claim in this file remains a record of its round.
      required to resume device verification; nothing in this file depends on it to be read. -->
 
 

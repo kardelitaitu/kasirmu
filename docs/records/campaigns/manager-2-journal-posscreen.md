@@ -707,4 +707,21 @@ OPEN ITEM FOR THE OWNER (independent of this campaign, blocks every UI commit ho
   HEAD :14 is the css import) yields TS6133 + TS2440 and one eslint no-unused-vars error repo-wide. Not mine, not
   fixed, not touched. 21 files dirty tree-wide at pause; none of them mine.
 
+> **Re-verified 2026-10-11 (docs-auditor).** The stamp above says "the file sits in
+> `docs/archived/`" — that was its location when the stamp was written and is not now: this file
+> lives at `docs/records/campaigns/manager-2-journal-posscreen.md`, moved by the 2026-10-02 records
+> restructure. `docs/archived/` is now a tombstone holding only its own README. The stamp's
+> conclusion is unaffected and still the point — an agent must not resume the "ACTIVE OBJECTIVE"
+> banner — but a reader following the stated path lands nowhere.
+>
+> The same restructure also archived the plan docs the stamp lists as tracked. Current homes:
+> `todo-refactor-pos-screen-agents-1.md` and `-2.md` are now
+> `.agents/archived/done-todo/done-todo-refactor-pos-screen-agents-1.md` and
+> `.agents/reviews/done-todo-refactor-pos-screen-agents-2.md` (both earned their `done-` prefix),
+> and `done-todo-refactor-pos-screen-agents-1.md` is at `.agents/archived/done-todo/`. The body's
+> references to them are left as written: they are the campaign's own working notes.
+>
+> The sibling boundary holds and is the reason this file was not merged: `manager-2-journal.md`
+> (691 KB) sits beside this one in the same directory, so the two agents' work remains separable.
+
 > last audited 29-09-26 by docs-auditor

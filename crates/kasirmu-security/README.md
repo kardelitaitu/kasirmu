@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, code matches doc) · verified against crates/kasirmu-security/src: all 6 modules present (error.rs, mask.rs, tls.rs, linux.rs, macos.rs, windows.rs); Keyring trait at lib.rs:78; default_keyring() at lib.rs:139 returns platform-native or InMemoryKeyring (lib.rs:166); #![deny(unsafe_code)] at lib.rs:24 (windows.rs uses #![allow(unsafe_code)] for FFI, documented with SAFETY comments) · doc's "scaffold" label at docs/ARCHITECTURE.md:79 is itself stale (this crate is fully implemented) · RE-AUDITED 2026-08-31 by docs-auditor: all 6 modules + Keyring/default_keyring/InMemoryKeyring/deny(unsafe_code) re-confirmed against current HEAD; three post-08-29 commits are additive, not contradicting — b6692a92 mask_token (bearer-credential masking, covered by the "sensitive-data masking" row), fe655711 SEC-4 staged rotate_key + SEC-6 entropy scrubbing (rotate_key is an extra trait method beyond the illustrative set/get/delete example), 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major) · Re-audit of the crate README; the 2026-07-22/2026-08-31/2026-09-12 bodies are merged at the bottom as original evidence. MAJOR: the §Public API table listed SIX modules while the crate declares NINE pub mods (src/lib.rs:71-86). Added `install_key` — the per-install at-rest key resolution seam (`resolve_install_key`, the generate-once `InstallKeySource`/`InstallKeyResolution` verdicts, and the `begin_/resume_/retire_` rotation trio) — and `keychain_status`, the backend-independent status-code predicate, both of which are substantive public surfaces rather than internals. The row count matters here more than usual because the file's own subject is 'do not read two secret mechanisms as one story', and a reader counting the modules would not have found the one that actually resolves the key. (test_helpers is also a pub mod and is deliberately NOT tabulated: it is a test-only surface, not part of the crate's API.) Also corrected the prose that said only the three platform modules are gate-controlled: install_key and keychain_status are compile-gated on nothing, which is the whole reason keychain_status was split out — its docstring records that the predicate was previously untestable off macOS, 'which is how SEC-1 shipped'. VERIFIED AND LEFT ALONE: the headline and its two scope paragraphs (they are mirrored from the crate module doc by an earlier repair, and that mirroring is still true); the Keyring trait / default_keyring / RotationInfo locations; the angle-bracketed placeholder in the example (an earlier repair replaced a live-key-shaped string); `#![deny(unsafe_code)]` with FFI confined to the platform modules. NOT re-measured: the live keychain round-trip on each OS, and the rotation trio's runtime behaviour. · Superseded stamp bodies follow as plain quoted text:
+
+Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, code matches doc) · verified against crates/kasirmu-security/src: all 6 modules present (error.rs, mask.rs, tls.rs, linux.rs, macos.rs, windows.rs); Keyring trait at lib.rs:78; default_keyring() at lib.rs:139 returns platform-native or InMemoryKeyring (lib.rs:166); #![deny(unsafe_code)] at lib.rs:24 (windows.rs uses #![allow(unsafe_code)] for FFI, documented with SAFETY comments) · doc's "scaffold" label at docs/ARCHITECTURE.md:79 is itself stale (this crate is fully implemented) · RE-AUDITED 2026-08-31 by docs-auditor: all 6 modules + Keyring/default_keyring/InMemoryKeyring/deny(unsafe_code) re-confirmed against current HEAD; three post-08-29 commits are additive, not contradicting — b6692a92 mask_token (bearer-credential masking, covered by the "sensitive-data masking" row), fe655711 SEC-4 staged rotate_key + SEC-6 entropy scrubbing (rotate_key is an extra trait method beyond the illustrative set/get/delete example), 
 20dc2054 clippy lint repairs · REPAIRED 12-09-26 by DSH: the opening headline asserted at-rest encryption, which 7b3a7291c had already corrected away in the module doc; the headline and the two scope paragraphs now mirror that doc rather than restating it in new words, the keyring example value was a live-key-shaped string (a payment-provider secret prefix followed by hex-ish text) that a secret scanner would match, and is now an angle-bracketed non-value, and crates/kasirmu-security/Cargo.toml carries the same description field corrected the same way -->
 
 # kasirmu-security
@@ -32,13 +34,17 @@ NOT the key that any settings or PII ciphertext is derived from.
 | `error` | `SecurityError` (thiserror) |
 | `mask` | PAN / sensitive-data masking |
 | `tls` | TLS configuration helpers |
+| `install_key` | Per-install at-rest key **resolution** — `resolve_install_key`, the generate-once `InstallKeySource`/`InstallKeyResolution` verdicts, and the `begin_/resume_/retire_` rotation trio. This is the seam that hands 32 raw bytes to `kasirmu_crypto::set_install_key`; the two crates are deliberate siblings and neither depends on the other |
+| `keychain_status` | Backend-independent keychain status-code classification — `status_means_item_not_found` and the `errSec*` constants. Deliberately NOT `cfg`-gated, so the predicate is testable on every host rather than only macOS |
 | `linux` | `LibSecretKeyring` — Linux Secret Service (libsecret/DBus) |
 | `macos` | `MacOsKeychain` — macOS Keychain (Security framework) |
 | `windows` | `WindowsCredentialManager` — Windows Credential Manager |
 
 The `Keyring` trait, `default_keyring()` and `RotationInfo` live in the crate root
 (`src/lib.rs`); the three platform modules are compile-gated per target OS, and
-`InMemoryKeyring` is the development fallback.
+`InMemoryKeyring` is the development fallback. `install_key` and `keychain_status` are
+compile-gated on nothing — the at-rest-key resolution and the status predicate are
+exercised on every host, which is the reason `keychain_status` was split out.
 
 ### Keyring trait
 
@@ -59,4 +65,4 @@ keyring.delete_secret("api-key")?;
 
 - `#![deny(unsafe_code)]` — platform modules may use FFI with `// SAFETY:`.
 
-> last audited 12-09-26 by DSH
+> last audited 11-10-26 by docs-auditor

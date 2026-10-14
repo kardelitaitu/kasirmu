@@ -1,3 +1,14 @@
+<!-- Re-verified 11-10-26 · docs-auditor · Cross-link repair, dated records, no content rewritten.
+     The 2026-10-02 records restructure moved NINE of the documents these six records cite from
+     `docs/architecture/` into `docs/records/superseded/` (45e1cd520 and its companions), so every
+     `docs/architecture/<moved>.md` citation in the Predecessors/Successor blocks named a path that no
+     longer resolves — 42 across the six files. Repointed to the live home. The three cited documents
+     that are STILL in `docs/architecture/` (module-namespace-governance.md, module-namespace-firewall.md,
+     module-boot-sequence.md) were deliberately left alone, as were the relative markdown links, which
+     already resolved because the files moved together. No claim, count or ticket status was altered.
+     Verified after the edit: 0 residual stale citations, 42 repointed, 32 correct citations preserved,
+     0 dead relative links, and every cited ticket/decision path still resolving. NOT re-measured: the
+     phases' own per-ticket acceptance runs and the runtime behaviour of the seams they describe. -->
 # NamespacedStore — API Draft (Phase 2, design only)
 
 **Status:** Draft for review (2026-10-01) — **no enforcement**, nothing compiles yet
@@ -5,7 +16,7 @@
 Precedes Phase 2 'abstraction introduction' (§7.3, §9.2). Design must be compatible with the single shared
 SQLite connection the tree uses today (§7.1).
 **Predecessors:** ADR-62 (module seam taxonomy), `docs/architecture/module-namespace-governance.md` (Phase 1
-soft governance), `docs/architecture/handler-census-phase0.md` (the classified handler population).
+soft governance), `docs/records/superseded/handler-census-phase0.md` (the classified handler population).
 **Enforcement:** none. This document is a shape to argue with, not a gate. The Phase 1 checker
 (`scripts/verify-namespace-governance.py`) remains the only mechanical boundary until Phase 2 lands.
 
@@ -296,7 +307,7 @@ Nothing here is enforced now. Phase 4 (§7.3, §9.2) becomes possible only after
   synchronous), §9.2 (namespace phasing), §9.5 (reporting facade), §14 (Immediate Next Action #4)
 - `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` (the seams and the D5 reporting exception)
 - `docs/architecture/module-namespace-governance.md` (Phase 1 rules, ownership map §3, inventory §4)
-- `docs/architecture/handler-census-phase0.md` (the classified handler population)
+- `docs/records/superseded/handler-census-phase0.md` (the classified handler population)
 - `crates/kasirmu-plugin/src/db.rs` (the reusable scanner: `validate_sql`, `strip_sql_comments`,
   `ensure_no_quoted_identifiers`, `extract_table_references`)
 - `crates/kasirmu-core/src/db/mod.rs:206` (`Store<'a>` — the borrowed view this mirrors)

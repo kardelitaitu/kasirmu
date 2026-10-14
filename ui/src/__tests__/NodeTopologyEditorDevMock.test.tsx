@@ -124,70 +124,80 @@ describe('editor revision-conflict recovery through the real dev-mock IPC', () =
     // T-4 convention (it models state, not auth), so any token snapshots.
     const seeded = await loadTopology('dev-mock-test-token');
     expect(seeded).not.toBeNull();
-    const seedNodes = seeded?.nodes ?? [];
+    // Exclude any leftover store-auth from an aborted prior run to avoid duplicate ids
+    const seedNodes = (seeded?.nodes ?? []).filter((n) => n.id !== 'store-auth');
     const seedWires = seeded?.wires ?? [];
     const seedRevision = seeded?.revision ?? 0;
 
     renderEditor();
 
     // The editor loads the seeded diagram through the real chain.
-    await waitFor(() => expect(getNodeCount()).toBe(seedNodes.length));
+    await waitFor(() => expect(getNodeCount()).toBe(seedNodes.length), { timeout: 5000 });
 
-    // A concurrent writer (another tab / the sync daemon) applies a NEWER
-    // diagram on top of the current revision — the editor is now stale.
-    const authoritativeNodes: TopologyNodePayload[] = [
-      ...seedNodes,
-      { id: 'store-auth', type: 'store', name: 'Authoritative Branch', x: 520, y: 520 },
-    ];
-    const bumped = await applyTopologyDiff(
-      'test-session-token',
-      [],
-      [],
-      [],
-      authoritativeNodes,
-      seedWires,
-      undefined,
-      seedRevision,
-    );
-    expect(bumped.revision).toBe(seedRevision + 1);
+    try {
+      // A concurrent writer (another tab / the sync daemon) applies a NEWER
+      // diagram on top of the current revision — the editor is now stale.
+      const authoritativeNodes: TopologyNodePayload[] = [
+        ...seedNodes,
+        { id: 'store-auth', type: 'store', name: 'Authoritative Branch', x: 520, y: 520 },
+      ];
+      const bumped = await applyTopologyDiff(
+        'test-session-token',
+        [],
+        [],
+        [],
+        authoritativeNodes,
+        seedWires,
+        undefined,
+        seedRevision,
+      );
+      expect(bumped.revision).toBe(seedRevision + 1);
 
-    // The stale editor user makes an edit on the old revision.
-    // Open the add panel and add a retail POS workspace node.
-    const addLabel = 'topology-rack-add-title';
-    const addBtn = document.querySelector(`.rack-icon-btn[aria-label="${addLabel}"]`) as HTMLElement;
-    if (addBtn && !addBtn.classList.contains('is-active')) {
-      fireEvent.click(addBtn);
+      // The stale editor user makes an edit on the old revision.
+      // Open the add panel and add a retail POS workspace node.
+      const addLabel = 'topology-rack-add-title';
+      const addBtn = document.querySelector(`.rack-icon-btn[aria-label="${addLabel}"]`) as HTMLElement;
+      if (addBtn && !addBtn.classList.contains('is-active')) {
+        fireEvent.click(addBtn);
+      }
+      fireEvent.click(screen.getByText('+ Retail POS'));
+      // The spawned node is auto-selected, so the inspector header also shows
+      // the name — the card title AND the inspector h3 both match.
+      await waitFor(() => expect(getNodeCount()).toBe(seedNodes.length + 1), { timeout: 5000 });
+
+      // Apply — the dev-mock gate rejects the stale baseRevision, and the
+      // editor must adopt the authoritative diagram (round 137 recovery).
+      // Drive the PIN-gated Apply flow (the dev-mock's verify_pin accepts it).
+      fireEvent.click(screen.getByText('Apply Topology'));
+      await waitFor(() => expect(document.getElementById('topology-apply-pin')).not.toBeNull(), { timeout: 5000 });
+      const pinInput = document.getElementById('topology-apply-pin') as HTMLInputElement;
+      fireEvent.change(pinInput, { target: { value: '1234' } });
+      const applyBtn = screen.getByText('Apply').closest('button')!;
+      await waitFor(() => expect(applyBtn).not.toBeDisabled(), { timeout: 5000 });
+      fireEvent.click(applyBtn);
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Authoritative Branch').length).toBeGreaterThanOrEqual(1);
+        // The stale canvas (including the user's spawned node) is replaced.
+        expect(getNodeCount()).toBe(authoritativeNodes.length);
+        // The conflict toast explains the reload.
+        expect(screen.getByText('The topology changed elsewhere — loaded the latest version. Re-apply your changes.')).toBeInTheDocument();
+      }, { timeout: 5000 });
+    } finally {
+      // Self-heal: restore the seed diagram for watch-mode re-runs.
+      const latest = await loadTopology('dev-mock-test-token');
+      if (latest) {
+        await applyTopologyDiff(
+          'test-session-token',
+          [],
+          [],
+          [],
+          seedNodes,
+          seedWires,
+          undefined,
+          latest.revision,
+        );
+      }
     }
-    fireEvent.click(screen.getByText('+ Retail POS'));
-    // The spawned node is auto-selected, so the inspector header also shows
-    // the name — the card title AND the inspector h3 both match.
-    await waitFor(() => expect(getNodeCount()).toBe(seedNodes.length + 1));
-
-    // Apply — the dev-mock gate rejects the stale baseRevision, and the
-    // editor must adopt the authoritative diagram (round 137 recovery).
-    // Drive the PIN-gated Apply flow (the dev-mock's verify_pin accepts it).
-    fireEvent.click(screen.getByText('Apply Topology'));
-    const pinInput = document.getElementById('topology-apply-pin') as HTMLInputElement | null;
-    expect(pinInput).not.toBeNull();
-    fireEvent.change(pinInput as HTMLInputElement, { target: { value: '1234' } });
-    fireEvent.click(screen.getByText('Apply'));
-
-    await waitFor(() => expect(screen.getAllByText('Authoritative Branch').length).toBeGreaterThanOrEqual(1));
-    // The stale canvas (including the user's spawned node) is replaced.
-    expect(getNodeCount()).toBe(authoritativeNodes.length);
-    // The conflict toast explains the reload.
-    expect(screen.getByText('The topology changed elsewhere — loaded the latest version. Re-apply your changes.')).toBeInTheDocument();
-
-    // Self-heal: restore the seed diagram for watch-mode re-runs.
-    await applyTopologyDiff(
-      'test-session-token',
-      [],
-      [],
-      [],
-      seedNodes,
-      seedWires,
-      undefined,
-      seedRevision + 1,
-    );
   });
 });

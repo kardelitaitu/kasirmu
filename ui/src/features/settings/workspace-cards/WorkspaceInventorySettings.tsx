@@ -22,7 +22,7 @@ export function WorkspaceInventorySettings({
   // `userId` is deliberately not destructured. It stays on the props interface so the call sites in
   // SettingsPage keep typechecking, but the component body never read it -- the only thing keeping
   // it "used" was the useCallback dependency array further down, which eslint had already flagged
-  // as an unnecessary dependency. See docs/plans/0.0.36-backlog.md item 69.
+  // as an unnecessary dependency. See docs/plans/_backlog/0.0.36-backlog.md item 69.
   locationId,
   variant = 'full-page',
   onSaved,

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // renderWithProviders* (not renderWithFluentSync): the EOD screen's print button now
@@ -16,6 +18,7 @@ const mockEodReport = vi.fn();
 const mockEodReportScoped = vi.fn();
 const mockListShifts = vi.fn();
 const mockPrintReceipt = vi.fn();
+const mockCloseShift = vi.fn();
 
 vi.mock('@/api/sales', () => ({
   exportEodReport: (...args: unknown[]) => mockEodReport(...args),
@@ -28,6 +31,7 @@ vi.mock('@/api/sales', () => ({
 vi.mock('@/api/shifts', () => ({
   listShifts: (...args: unknown[]) => mockListShifts(...args),
   listShiftsScoped: (...args: unknown[]) => mockListShifts(...args),
+  closeShiftScoped: (...args: unknown[]) => mockCloseShift(...args),
 }));
 
 vi.mock('@/api/hardware', () => ({
@@ -127,6 +131,8 @@ describe('EodReportScreen', () => {
     mockEodReportScoped.mockReset();
     mockListShifts.mockReset();
     mockPrintReceipt.mockReset();
+    mockCloseShift.mockReset();
+    mockCloseShift.mockResolvedValue(makeShift());
     mockDownloadCsv.mockReset();
     // Pinned in beforeEach, not at module scope: mockReset() above would clear
     // a module-scope implementation and leave the fetch returning undefined,
@@ -320,6 +326,103 @@ describe('EodReportScreen', () => {
     await waitFor(() => {
       expect(mockPrintReceipt).toHaveBeenCalled();
     }, { timeout: 2000 });
+
+    expect(await screen.findByText('EOD report sent to printer')).toBeInTheDocument();
+  });
+
+  // ── Shift close functionality from EOD screen ──
+  it('opens shift close modal and calls closeShiftScoped upon confirmation', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([
+      makeShift({
+        id: 'shift-active-1',
+        status: 'open',
+        closedAt: null,
+        closingBalanceMinor: null,
+        openedAt: `${today}T08:00:00.000Z`,
+        openingBalanceMinor: 100000,
+      }),
+    ]);
+    mockCloseShift.mockResolvedValue(
+      makeShift({
+        id: 'shift-active-1',
+        status: 'closed',
+        closedAt: `${today}T18:00:00.000Z`,
+      }),
+    );
+
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-close-shift-btn')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('eod-close-shift-btn'));
+
+    // Modal is open
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Close Active Shift')).toBeInTheDocument();
+
+    // Type counted cash
+    const input = screen.getByLabelText('Counted cash in drawer');
+    await user.type(input, '150000');
+
+    // Type notes
+    const notes = screen.getByLabelText('Notes (optional)');
+    await user.type(notes, 'Reconciled smoothly');
+
+    // Click confirm Close Shift inside modal
+    const confirmButtons = screen.getAllByRole('button', { name: /Close Shift/i });
+    const confirmBtn = confirmButtons[confirmButtons.length - 1]!;
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockCloseShift).toHaveBeenCalledWith(
+        expect.any(String),
+        'shift-active-1',
+        150000,
+        'Reconciled smoothly',
+      );
+    });
+
+    expect(await screen.findByText('Shift closed successfully')).toBeInTheDocument();
+  });
+
+  it('allows cancelling shift close without calling closeShiftScoped', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([
+      makeShift({
+        id: 'shift-active-2',
+        status: 'open',
+        closedAt: null,
+        closingBalanceMinor: null,
+        openedAt: `${today}T08:00:00.000Z`,
+        openingBalanceMinor: 100000,
+      }),
+    ]);
+
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-close-shift-btn')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('eod-close-shift-btn'));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    // Click Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    expect(mockCloseShift).not.toHaveBeenCalled();
   });
 
   // ── CSV Export functionality ──
@@ -344,6 +447,94 @@ describe('EodReportScreen', () => {
     const [csv, filename] = mockDownloadCsv.mock.calls[0] as [string, string];
     expect(filename).toMatch(/^end-of-day-\d{4}-\d{2}-\d{2}\.csv$/);
     expect(csv).toContain(',');
+  });
+
+
+  it('labels every CSV row from the bundle, not with a raw English literal', async () => {
+    // The export wrote its Metric column as bare literals ('Total Revenue',
+    // 'Voided Sales', `Payment - ${method}`, `Hour 09:00`) while the screen beside it
+    // rendered the same facts through eod-summary-* / eod-* keys. So the file a
+    // restaurant hands its accountant was English-only in every locale, and the two
+    // surfaces could drift apart on wording that is meant to be one string.
+    //
+    // The keys already existed; the export simply did not use them.
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Export CSV')).toBeTruthy();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Export CSV'));
+    await waitFor(() => {
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
+    }, { timeout: 2000 });
+
+    const [csv] = mockDownloadCsv.mock.calls[0] as [string, string];
+    // The English values are what the bundle renders, so the assertion is on the
+    // IDIOM: every row label must come from a resolved key. A raw literal is
+    // indistinguishable in the OUTPUT, which is why this checks the source instead.
+    expect(csv, 'the Metric column must render the bundle value, not a literal').toContain('Total Revenue');
+    // And the export must not carry a label the bundle does not define.
+    const src = readFileSync(resolve(__dirname, '../features/sales/EodReportScreen.tsx'), 'utf-8');
+    const exportBody = src.slice(src.indexOf('const exportCsv'), src.indexOf('}, [lastRefresh]);'));
+    const literals = [...exportBody.matchAll(/\[\s*'([A-Z][A-Za-z ]{3,})'\s*,/g)].map((m) => m[1]);
+    expect(
+      literals,
+      'CSV row labels must be built from l10n lookups, not typed as English.',
+    ).toEqual([]);
+  });
+
+
+  it('includes the cash reconciliation, which the screen and the printed sheet both show', async () => {
+    // Found 2026-10-13 (round 38). The screen renders a Cash Reconciliation section
+    // (opening / counted / expected / net difference) and the PRINT path reconciles the
+    // same totals from closedShiftsOnStoreDay(shiftsRef.current, storeTz) -- with a
+    // comment saying it uses 'the SAME filter the on-screen section uses'. The CSV
+    // omitted the whole section, so the one export a restaurant hands its accountant
+    // was also the only one that did not reconcile the drawer.
+    //
+    // The data was already in scope: the parent holds `shifts` and already derives
+    // todayClosed for PRINT at EodReportScreen.tsx:429. No new fetch, no API change --
+    // the export simply was not reading it.
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([
+      makeShift({
+        openedAt: `${today}T08:00:00.000Z`,
+        closedAt: `${today}T18:00:00.000Z`,
+        openingBalanceMinor: 100000,
+        closingBalanceMinor: 250000,
+        expectedCashMinor: 240000,
+        cashDifferenceMinor: 10000,
+      }),
+    ]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Export CSV')).toBeTruthy();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Export CSV'));
+    await waitFor(() => {
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
+    }, { timeout: 2000 });
+
+    const [csv] = mockDownloadCsv.mock.calls[0] as [string, string];
+    for (const label of ['Total opening', 'Total counted', 'Total expected', 'Net difference']) {
+      expect(csv, `the CSV must carry the reconciliation row "${label}"`).toContain(label);
+    }
+    // The VALUES, not just the labels: a row written with the wrong field, or a
+    // reduce over the wrong array, would still emit four correct-looking labels.
+    // The fixture is 100000 opening / 250000 closing / 240000 expected / +10000 diff.
+    // IDR renders with a DOT as the thousands separator ("Rp 100.000"), not as a
+    // decimal point, so the assertion is on the exact rendered strings -- a locale
+    // whose grouping differs would have to change this fixture deliberately.
+    expect(csv).toContain('Total opening,Rp 100.000');
+    expect(csv).toContain('Total counted,Rp 250.000');
+    expect(csv).toContain('Total expected,Rp 240.000');
+    expect(csv).toContain('Net difference,Rp 10.000');
   });
 
   // ── Shift summary with diff tags ──

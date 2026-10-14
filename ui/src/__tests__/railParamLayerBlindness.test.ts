@@ -81,11 +81,11 @@ describe('a rail parameter is honoured by the layer that acts (F19)', () => {
   it('verifyDrawer really is read by nobody, which is what makes it F19', () => {
     // The CONTRAST that makes the two cases different. If verifyDrawer gains a reader,
     // F19 shrinks and the plan row needs re-measuring rather than staying at five.
+    // F19 resolved: verifyDrawer was pruned from RestaurantPaymentsScreen.tsx
     const readers = sources.filter((f) => f.text.includes('verifyDrawer'));
     expect(
       readers.map((f) => f.rel),
-      'verifyDrawer gained a consumer — F19 is resolved for this control, so re-measure the ' +
-        'plan row instead of leaving it claimed as inert',
-    ).toEqual(['features/restaurant/screens/RestaurantPaymentsScreen.tsx']);
+      'verifyDrawer has no consumers or writers across ui/src',
+    ).toEqual([]);
   });
 });

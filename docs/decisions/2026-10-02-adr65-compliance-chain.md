@@ -5,6 +5,8 @@ title: "ADR-65: The Compliance Chain — where fiscal integrity attaches, and th
 status: Proposed (2026-10-02) — the anchor point is decided; no chain, no certification module and no second locale is built
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Re-audit of a Proposed record that carries two of its own amendment blocks. Its ANCHOR claims were verified rather than inherited and every one is EXACT at HEAD: audit_log at 20260813_init.sql:38-47 with no hash column; audit_review_checkpoints at :49-57 with the reviewed_through_created_at + reviewed_through_id ordering pair; the immutable-delete trigger parity tests at migrations_tests.rs:930/:939/:954; the PG port test pg_audit_log_delete_port_matches_sqlite at apps/cloud-server/tests/pg_trigger_ports.rs:175; and shared-ui/locales/ holding exactly 54 .ftl files in two variants (27 default + 27 id) — the "one language" claim in §1.4 is precise. Repaired two minor drifts, both present-tense: §3 row 3 called ADR-64's tender set "the seven-value set" (that was the 20261017 intermediate; D4's gateway_status is nine and D1's method CHECK is twelve), and the 2026-10-07 amendment's "nothing writes settled_at/settled_by" was too broad — payments.settled_at has one narrow writer for retail credit (bridge settings.rs:650, mobile settings.rs:627) that touches no gateway_status, so the exact claim is "no production path writes gateway_status" (only the sync replay appliers.rs:784). Both repaired in place with the delta recorded, and D2/§3 rows 3-4 given dated status notes. Every decision (D1-D3) and every §3 acceptance row is unchanged in substance; four of four seams remain unproven, which is what D2 predicts. NOT re-measured: whether a second market exists, and any certification or hashing behaviour (none is built). -->
+
 # ADR-65: The Compliance Chain
 
 **Status:** Proposed (2026-10-02). **D1–D2 decide where integrity attaches and when it may ship.
@@ -61,6 +63,15 @@ tender states and names the transition as the anchor (§2.1 there). ADR-64 is **
 > `settled_at`/`settled_by`, nothing enforces D4's rules, and no transition is recorded. This
 > paragraph's point therefore stands, but for a narrower reason than originally written: the anchor
 > is a column, not a lifecycle.
+>
+> **Amended again 2026-10-11 — the vocabulary is now nine values, but say "no `gateway_status` writer", not "nothing writes `settled_at`".** The column-level claim in the 2026-10-07 note is right in
+> substance and slightly too broad as worded: `payments.settled_at` **does** have one narrow writer —
+> `UPDATE payments SET settled_at … WHERE method = 'credit'` (`kasirmu-bridge/src/settings.rs:650`,
+> mirrored at `apps/mobile-tauri/src/commands/settings.rs:627`) — which settles retail credit, not a
+> tender transition, and touches no `gateway_status`. What is exactly true is that **no production
+> path writes `payments.gateway_status`**; the only writer is the sync replay,
+> `platform/sync/src/queue/appliers.rs:784`, copying a peer payload verbatim. So the anchor is still
+> a column and not a lifecycle, and D4's rules 1–4 remain unenforced. ADR-64 §2.2 tabulates this.
 
 ## 2. Decision
 
@@ -71,7 +82,9 @@ issue, so the hash covers the sale/payment state transition, whose fields are al
 and persisted. `audit_log` stays the actor-action record and is **not** rehashed — two chains over
 one table is how a later auditor cannot tell which one they are reading.
 
-**D2 — no chain ships until a market mandates one.** The decision taken here is the **anchor
+**D2 — no chain ships until a market mandates one.** *(Status 2026-10-11: holds — no
+`modules/fiscal-*` crate exists and no integrity chain is built. Four of the four seams in §3 are
+still unproven, which is the state this decision predicts.)* The decision taken here is the **anchor
 point**, not the build. ADR-59 §2.4's rule is the binding constraint: building `modules/fiscal-*`
 against an imagined market is the named error. When a second market with a certification
 obligation is committed, the chain lands on the anchor D1 fixed — and the interface it lands on is
@@ -91,8 +104,8 @@ market has to pass, and each is currently unproven.
 |---|---|---|---|
 | 1 | **A certification module under the kernel** — a `modules/fiscal-*` crate implementing `foundation::contracts::Module` (ADR-59 §2.3) | **Never built.** 14 registered crates, 10 substantive, none market-specific | Dependency edges or a signing key are unavailable to a module; or the release matrix cannot ship a per-market binary |
 | 2 | **A second locale through Fluent** | 54 `.ftl` files, one language | Missing keys, plural/select-rule differences, or a receipt template that cannot render the script |
-| 3 | **The tender classification across markets** (ADR-64 D1) | TO BUILD | A rail that needs neither of D1's four modes, or a kind the seven-value set cannot hold |
-| 4 | **An integrity chain over the D4 transitions** | TO BUILD, and D2 says not yet | The hash cannot be computed offline-first, or the chain forks on a replayed sync packet |
+| 3 | **The tender classification across markets** (ADR-64 D1) | **Vocabulary SHIPPED; classification axis TO BUILD** (re-measured 2026-10-11) | A rail that needs neither of D1's four modes, or a kind the **twelve-value** `method` set cannot hold. *(This row said "the seven-value set", which was the `20261017` intermediate; D4's `gateway_status` is nine values, and D1's `method` CHECK is twelve. The classification axis the row is really about — `method_kind`/`method_mode` — has zero tree-wide hits.*) |
+| 4 | **An integrity chain over the D4 transitions** | **TO BUILD, and D2 says not yet.** *(2026-10-11: the transitions themselves are still unbuilt — D4's vocabulary shipped, its rules did not, so there is not yet a recorded transition to hash.)* | The hash cannot be computed offline-first, or the chain forks on a replayed sync packet |
 
 **Acceptance for this record** is a reading, not a build: D1 and D2 recorded here, and the four
 rows above either green or explicitly waived with the reason written.
@@ -126,9 +139,14 @@ rows above either green or explicitly waived with the reason written.
 - `foundation/src/contracts.rs` — the `Module` contract a certification crate implements
 - `shared-ui/locales/` — 54 `.ftl` files, `(default)` + `id` only
 - `AGENTS.md` §6.3 — @fluent/react is the localisation standard
-- ADR-64 §2.1 (anchor), D4 rule 4 (a correction is a new row), D1 (the classification)
+- ADR-64 §2.1 (anchor), D4 rule 4 (a correction is a new row), D1 (the classification),
+  **§2.2** (the 2026-10-11 per-decision re-measurement this record's §3 rows rest on)
+- `crates/kasirmu-core/migrations/20261018_gateway_status_adr64_vocabulary.sql` — the nine-value
+  `gateway_status` vocabulary (the anchor column)
+- `platform/sync/src/queue/appliers.rs:784` — the only writer of `gateway_status` (a verbatim
+  peer payload), and the fact that makes the anchor a column rather than a lifecycle
 - ADR-59 §1.5, §2.3, §2.4, §3.2, §Q3 — kernel state, fiscal data built, certification conditional,
   the accepted cost, and the no-imagined-market rule
 - `docs/decisions/2026-10-02-global-kernel-and-region-pack-strategy.md` §2 — the open items
 
-> last audited 02-10-26 by DSH
+> last audited 11-10-26 by docs-auditor

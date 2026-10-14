@@ -1,6 +1,6 @@
-# Receipt hierarchy code — plan and design review
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Re-audit. THE PLAN IS IMPLEMENTED AND ITS RECORD IS EXACTLY RIGHT — all six phases are marked COMPLETED and every claim was re-derived, not inherited. Phase 1-4 commit SHAs all resolve (13ef0a472, 147d01444, 51bb92093, 13b577201, 4a2a79c6e); crates/kasirmu-core/src/db/receipt_code.rs exports INDEX_ID_MAX = 14_776_335 (:36 — the 62^4-1 ceiling the plan states), format_base62_index (:75), allocate_entity_index (:136) and claim_receipt_sequence (:314); the migration 20261006_receipt_hierarchy_code.sql exists and its faktur columns are real (faktur_pajak_nsfp :71, faktur_pajak_kode_transaksi :72); Phase 6's faktur_pajak.rs exists with validate_nsfp (:62), validate_kode_transaksi (:76) and format_faktur_pajak_17 (:91); the scoped commands stamp_faktur_pajak_scoped / create_faktur_pengganti_scoped are registered (apps/desktop-tauri/src/lib.rs:1573-1574, commands/history.rs:110/:116); and the named test files exist (faktur_pajak_tests.rs, SalesHistoryScreen.test.tsx). · THE MINORS ARE ALL DATED READINGS OF A GROWN TREE, re-pointed so a reader lands on the right code: the phase headers' file references (sales_checkout.rs / sales_lifecycle.rs / receipt.rs) are bare basenames that now live under commands/pos/ or db/, and the pre-commit gate list in Phase 5 quotes test counts (21 / 191 / 26) that are readings of their day. Each is annotated rather than overwritten, because the numbers record what the acceptance run printed. · NOT re-measured, unchanged from before: whether the 22-28 character codes actually fit a 58 mm printer at the stated column counts, and the DJP Coretax e-Faktur rules themselves (PER-11/PJ/2025) — those are the plan's design content. · Prior 2026-09-29 stamp merged below as plain text, delimiters stripped:
 
-<!-- Audit stamp: 2026-09-29 · status: AGREED FOR 10,000+ ENTERPRISE SCALE · verified against branch 0.0.40 -->
+2026-09-29 · status: AGREED FOR 10,000+ ENTERPRISE SCALE · verified against branch 0.0.40 -->
 
 Plan for a hierarchical, human-readable receipt code built from per-entity index
 ids (location, terminal, staff) plus an annual continuous sequence, supporting
@@ -387,3 +387,4 @@ a separate stored field, printed only once issued.
 - **Fiscal Year:** Aligns with store-local calendar year.
 - **Sentinels:** `00` represents unassigned staff / kiosk / system checkout.
 
+> last audited 11-10-26 by docs-auditor

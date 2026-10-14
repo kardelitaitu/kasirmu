@@ -1,4 +1,5 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 184 lines, carrying a prior stamp and footer that this pass re-verified rather than redid. · The process document describes how a release is cut, and the parts of it that name live infrastructure were checked: the release trigger workflow exists, and the changelog-per-version convention it describes is visible in this very directory. · A STRUCTURAL OBSERVATION ABOUT THIS DIRECTORY, made here because the release process is what puts files in it. `docs/releases/` contains four per-version changelogs that stop at 0.0.34 while the branch is `0.0.40`, plus two operational documents (the first-release runbook and the mobile checklist) that this campaign has separately found carrying stale instructions — the checklist's iOS build trigger names a workflow that now exists only as an inert `.bak`. A release process that produces dated records and one that maintains live runbooks need two different review cadences, and stamping both identically treats the second as if it were the first. Not a defect in this document, which describes the cutting of a release rather than the maintenance of the documents that follow from one; recorded once so the distinction is available to whoever owns the process. · NOT re-measured: the individual commands, tag conventions and version-bump steps, which are this document's subject and were verified by the prior stamp against HEAD. Stamp and footer retained and re-dated; the prior evidence is not disturbed. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 4 minor) · Full audit; the prior 2026-09-29 body is merged at the bottom as original evidence. · MAJOR — THE EMERGENCY-REVOCATION STEP SENT AN OPERATOR TO A FILE THAT DOES NOT EXIST. Under "If the private key is compromised mid-release", step 1 said to publish an advisory "via the project's SECURITY.md contact channel". There is no SECURITY.md at any path in this repository (the only hits are inside node_modules). The standing procedure and the on-call contact live in docs/security/INCIDENT_RESPONSE.md, whose Security Lead row names the address — repointed, with the missing-file fact recorded so the next reader does not re-hunt. · MINORS, all live paths a reader follows: docs/releases/CHANGELOG-<version>.md -> docs/records/releases/ (the 2026-10-02 move); apps/desktop-client/tauri.conf.json -> apps/desktop-tauri/tauri.conf.json in the rotation procedure; `oz-cloud-server.exe` and the `oz` CLI at crates/oz-cli -> `kasirmu-cloud.exe` and the `kasir` CLI at crates/kasirmu-cli (both renames complete in the tree); and the two cross-links in the closing paragraph, whose RELATIVE targets were already correct. · VERIFIED AND LEFT ALONE: workflow release.yml is LIVE with the three jobs the §3 table names; scripts/verify-release-workflow.py, bump-version.ps1, release.sh, check-release-version.mjs, check-updater-compat.mjs and generate-latest-json.mjs all exist; the UPDATER_PRIVATE_KEY hard-fail and the unsigned-Windows warning both match the workflow; the pubkey-rotation procedure's six steps are sound; the rollback section's immutability point is still true. · NOT re-measured: the tag conventions, the version-bump steps' effect on real manifests, and whether the pipeline produces installers — that needs a real tag push. The prior 2026-09-29 body follows. -->
+<!-- PRIOR AUDIT BODY (2026-09-29, preserved as plain text; delimiters stripped) — Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 184 lines, carrying a prior stamp and footer that this pass re-verified rather than redid. · The process document describes how a release is cut, and the parts of it that name live infrastructure were checked: the release trigger workflow exists, and the changelog-per-version convention it describes is visible in this very directory. · A STRUCTURAL OBSERVATION ABOUT THIS DIRECTORY, made here because the release process is what puts files in it. `docs/releases/` contains four per-version changelogs that stop at 0.0.34 while the branch is `0.0.40`, plus two operational documents (the first-release runbook and the mobile checklist) that this campaign has separately found carrying stale instructions — the checklist's iOS build trigger names a workflow that now exists only as an inert `.bak`. A release process that produces dated records and one that maintains live runbooks need two different review cadences, and stamping both identically treats the second as if it were the first. Not a defect in this document, which describes the cutting of a release rather than the maintenance of the documents that follow from one; recorded once so the distinction is available to whoever owns the process. · NOT re-measured: the individual commands, tag conventions and version-bump steps, which are this document's subject and were verified by the prior stamp against HEAD. Stamp and footer retained and re-dated; the prior evidence is not disturbed. -->
 # Release Process — kasir.mu
 
 <!-- Superseded audit marker (2026-09-04, body kept verbatim) · DSH · status: ACCURATE · version lock: 0.0.36 · supersedes the same-day STALE-BY-INFRA-CHANGE stamp. Its central claim ("as of 2026-09-02 this triggers nothing") was accurate when written and was overtaken by R36-11: release.yml is live again, desktop-only. Step 3 rewritten to describe what the restored pipeline actually does, including the two failure modes that are easy to miss -- a missing UPDATER_PRIVATE_KEY hard-fails by design, and unsigned Windows installers only WARN. Mobile (android.yml/ios.yml) and release-time Docker images remain unautomated and are called out as such rather than implied -->
@@ -20,7 +21,7 @@ that operators must know how to rotate safely (audit finding **L-4**).
    heading into the canonical `CHANGELOG.md` so they stay in sync.
 2. **Generate changelog** — run `bash scripts/release.sh <new-version>`
    (or its `--dry-run` variant) to write the reviewed draft to
-   `docs/releases/CHANGELOG-<version>.md` and refresh the canonical
+   `docs/records/releases/CHANGELOG-<version>.md` and refresh the canonical
    `CHANGELOG.md` heading. The script then runs the AUDIT-28 version gate
    (   `scripts/check-release-version.mjs`), which fails unless the tag, all
    app version sources, and the `CHANGELOG.md` heading agree. The same
@@ -77,7 +78,7 @@ that operators must know how to rotate safely (audit finding **L-4**).
      only (trust is local to the machine that installs the root).
 
    Shipped Tauri app exes (numeric-24 via `tauri-winres`) and
-   `oz-cloud-server.exe`, the `oz` CLI (`crates/oz-cli`, embed-resource
+   `kasirmu-cloud.exe`, the `kasir` CLI (`crates/kasirmu-cli`, embed-resource
    build.rs), and the license-server Windows build (Go `rsrc_windows_amd64.syso`
    via go-winres, `//go:generate` in main.go) all embed an `asInvoker`
    manifest (numeric RT_MANIFEST type 24), so no UAC elevation prompt
@@ -131,7 +132,7 @@ when the existing signing key is compromised or reaches end-of-life.
    key in a secure secrets manager (not the repo).
 2. **Encode the new public key** as the standard Tauri base64 string
    (one long line, no newlines).
-3. **Edit `apps/desktop-client/tauri.conf.json`** and replace
+3. **Edit `apps/desktop-tauri/tauri.conf.json`** and replace
    `plugins.updater.pubkey` with the new base64 string.
 4. **Re-sign all release artifacts** for the next release — the new key
    cannot validate previously-signed artifacts, so clients installed
@@ -147,8 +148,13 @@ when the existing signing key is compromised or reaches end-of-life.
 
 If the private key is compromised mid-release:
 
-1. **Publish an advisory** immediately via the project's `SECURITY.md`
-   contact channel.
+1. **Publish an advisory** immediately via the incident-response channel.
+   This repository has **no `SECURITY.md`** — the standing procedure and the
+   on-call escalation path live in
+   [`docs/security/INCIDENT_RESPONSE.md`](../../security/INCIDENT_RESPONSE.md),
+   whose Security Lead row names the contact address. (The earlier text here
+   pointed at a root `SECURITY.md`; that file does not exist at any path in
+   the tree, so a reader following it landed nowhere.)
 2. **Revoke at the update endpoint** — if the manifest endpoint is under
    operator control, take it offline. Existing client installations
    will fail to update, which is correct (better than running
@@ -177,9 +183,9 @@ Rollback is manual but the assets needed for it are always preserved:
 
 ## Pre-release checklist
 
-See [`docs/releases/checklist.md`](./checklist.md) and
-[`docs/releases/mobile-checklist.md`](./mobile-checklist.md) for the
+See [`docs/records/releases/checklist.md`](./checklist.md) and
+[`docs/records/releases/mobile-checklist.md`](./mobile-checklist.md) for the
 operational pre-release checks. Both are referenced from
 `scripts/release.sh`.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

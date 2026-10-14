@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
+import { useInvalidSession } from '@/hooks/useInvalidSession';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,13 +27,15 @@ import RestaurantSettingsScreen from '@/features/restaurant/screens/RestaurantSe
 import { RestaurantFloatingCartBar } from '@/features/restaurant/components/RestaurantFloatingCartBar';
 import { RestaurantCartSheet } from '@/features/restaurant/components/RestaurantCartSheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useOrientation } from '@/hooks/useOrientation';
 
-import { formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
+import { defaultTenderPresets, formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
+  holdCartScoped,
+  listOpenBillsScoped,
+  printSalesReceipt,
 } from '@/api/sales';
 import { getReceiptSettingsScoped, getSettingScoped, getStoreSettingsScoped } from '@/api/settings';
 import { useOptionalCurrency } from '@/contexts/CurrencyContext';
@@ -39,7 +43,7 @@ import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
-import { listTablesScoped, updateTableStatusScoped } from '@/api/tables';
+import { listTablesScoped, updateTableStatusScoped, releaseTableScoped } from '@/api/tables';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
@@ -54,12 +58,16 @@ import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
+import { scopedKey } from '@/utils/scopedStorage';
+import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
+import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import ItemModifierModal from './components/ItemModifierModal';
-import { matchesTableBill } from './utils/tableLabel';
+import { matchesTableBill, bareTableNumber, heldCartLabel } from './utils/tableLabel';
+import { buildPreCheckoutBillReceipt, buildKitchenChitReceipt, isBeverageItem } from './payment/completedSale';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { notifyMemoryPressure } from '@/api/system';
@@ -133,14 +141,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     resetCart,
     setLines,
   } = usePosState();
+  // A session that expires MID-SHIFT. AppShell's banner covers a REJECTED
   const { addToast } = useToast();
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { session, logout, isManager, hasPermission } = useAuth();
-  const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken } = useWorkspace();
+  const { activeWorkspace, setActiveWorkspace, sessionToken: rawToken, resolvedStoreId } =
+    useWorkspace();
   const sessionToken = rawToken || '';
-  const { products } = useProducts(sessionToken || undefined);
+  const { products, reload: reloadPosProducts } = useProducts(sessionToken || undefined);
+  const [menuRevision, setMenuRevision] = useState(0);
   const { isEnabled } = useFeatures();
   // F21: the shared chime hook. Not KDS-specific — a plain Web Audio tone, and the
   // retail POS already uses it for the same order-complete confirmation.
@@ -160,8 +171,35 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   }, [onNavigate, setActiveWorkspace]);
 
   // ── Restore locked cart or active draft on mount ────────────────
-  const LOCKED_CART_KEY = 'pos-locked-cart';
-  const ACTIVE_DRAFT_KEY = 'pos-active-draft';
+  // Declared HERE, above the persistence effects that read it. The active-draft
+  // save, the memory-trim save, the lock save and the restore all carry `orderType`,
+  // and every one of them is hoisted above the later state block — so the
+  // declaration has to come first or the reads land in its temporal dead zone.
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
+  // ⚠️ STORE-SCOPED. These were plain constants (`pos-locked-cart`, `pos-active-draft`),
+  // and the payload they carry is entirely store-specific: the lines, `tableNumber`,
+  // `customerName`, `guestCount` and `orderType`. A store switch remounts the POS —
+  // `WorkspaceContext.switchStore` sets `setActiveWorkspace(null)` (:363) — and the mount
+  // effect below restores whatever this key holds, so the operator who rang up a cart at
+  // one store and moved to another was shown the FIRST store's cart and table number.
+  //
+  // The store id goes in the KEY rather than in the payload because the restore has to
+  // reject a foreign draft before parsing it; a field would still have to be validated, and
+  // a key cannot be forgotten. `resolvedStoreId` is '' before the store resolves, which
+  // yields a distinct key rather than a collision with a real store.
+  // Both keys go through `scopedKey` (round 168's helper) rather than repeating the
+  // `:${resolvedStoreId || 'unresolved'}` literal. The sentinel's justification lives in
+  // that module now, next to the builder that has to get it right for every caller — a
+  // second copy here would be a second thing to keep true, which is the drift the helper
+  // exists to prevent.
+  const LOCKED_CART_KEY = useMemo(
+    () => scopedKey('pos-locked-cart', resolvedStoreId),
+    [resolvedStoreId],
+  );
+  const ACTIVE_DRAFT_KEY = useMemo(
+    () => scopedKey('pos-active-draft', resolvedStoreId),
+    [resolvedStoreId],
+  );
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend
@@ -220,9 +258,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (typeof data.guestCount === 'string') {
         setGuestCount(data.guestCount);
       }
+      // ⚠️ The order type was NOT restored before this, so every restored cart came
+      // back as the dine_in default. A cashier who rang up a takeaway, then had the
+      // tablet reload / the OS trim memory / the till locked for a break, got a
+      // DINE-IN cart back: it carries a table it never had, gates the claim and
+      // release (rounds 40-45), and the kitchen prints the wrong ticket. Validated
+      // against the union of what the three save sites can write, so an older
+      // payload without the field still falls back to the default.
+      if (data.orderType === 'dine_in' || data.orderType === 'takeaway' || data.orderType === 'delivery') {
+        setOrderType(data.orderType);
+      }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
-  }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
+  }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge, LOCKED_CART_KEY, ACTIVE_DRAFT_KEY]);
 
   const [showOptions, setShowOptions] = useState(false);
   const [showTables, setShowTables] = useState(false);
@@ -233,6 +281,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
   const [showRestaurantSettings, setShowRestaurantSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [showSplitBillModal, setShowSplitBillModal] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
@@ -269,6 +318,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tableNumber,
           customerName,
           guestCount,
+          // orderType rides with the cart: a takeaway restored as dine_in comes back
+          // with a table it never had, gates a claim/release it should not, and
+          // prints the wrong ticket to the kitchen.
+          orderType,
         };
         localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
       } catch {
@@ -277,7 +330,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     } else {
       localStorage.removeItem(ACTIVE_DRAFT_KEY);
     }
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, ACTIVE_DRAFT_KEY]);
 
   // ── Listen for Android OS memory trim callbacks (Phase 2 audit) ─
   useEffect(() => {
@@ -309,6 +362,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             tableNumber,
             customerName,
             guestCount,
+            orderType,
           };
           localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
         } catch { /* ignore */ }
@@ -320,7 +374,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
       window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
     };
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, ACTIVE_DRAFT_KEY]);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
@@ -332,10 +386,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // (P1/D2): the control stays visible on restaurant while an explicit stored
   // "false" can finally turn it off.
   const [orderTypePromptEnabled, setOrderTypePromptEnabled] = useState(activeWorkspace === 'restaurant-pos');
-  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
+  // NOTE: `orderType` is declared ABOVE the restore section (~line 167), not here.
+  // The draft/lock persistence effects and the restore all read it, and they are
+  // hoisted above this point — a `const` declared here would be in its temporal dead
+  // zone for them (TS2448), which is how this surfaced.
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
+  // A session that expires MID-SHIFT. AppShell's banner covers a REJECTED
+  // `createSession` at boot; this covers `invalidSession` answering a later command,
+  // which used to be swallowed silently so the cashier could not take payment.
+  const showSessionBanner = useInvalidSession();
   const { orientation } = useOrientation();
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const isPortraitRestaurant = activeWorkspace === 'restaurant-pos' && !orientation.isLandscape;
@@ -361,7 +422,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   }, [sessionToken]);
 
   const handleChangePhoto = useCallback(async () => {
-    if (!sessionToken || !session?.user_id || avatarBusy) return;
+    if (!sessionToken) {
+      // Reported, not dropped. The browser-preview refusal three lines below already
+      // carries a message for exactly this reason; a missing session is the same kind
+      // of fact and was the one left mute.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!session?.user_id || avatarBusy) return;
     if (!isTauriWebview()) {
       // The browser dev preview has no dialog plugin, so `pickImageFile`
       // returns null there — indistinguishable from a cancel. Say so rather
@@ -517,6 +585,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setDiscountName,
     setShowPromotions,
     setAppliedPromotions,
+    isManager,
   });
   // ── Barcode scanner integration ─────────────────────────────
   // Disabled on restaurant POS workspace (scanners are for retail checkout).
@@ -614,6 +683,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   });
 
   // ── Open Bill / held-cart state ──────────────────────────────────
+  const [dispatchOnTabSave, setDispatchOnTabSave] = useState<boolean | null>(null);
+  const [autoPrintKitchen, setAutoPrintKitchen] = useState<boolean | null>(null);
+  const dispatchKitchenDeltaRef = useRef<((deltaLines: CartLine[]) => Promise<void>) | null>(null);
+
   const {
     activeOpenBillId,
     setActiveOpenBillId,
@@ -628,6 +701,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     openingBill,
     handleOpenBill,
     handleResumeOpenBill,
+    releaseLease,
   } = usePosHeldCarts({
     sessionToken,
     addToast,
@@ -645,8 +719,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setTableNumber,
     customerName,
     setCustomerName,
+    guestCount,
+    setGuestCount,
+    tipPercent,
+    setTipPercent,
+    serviceChargeEnabled,
+    serviceChargePercent,
+    setServiceCharge,
     orderType,
     setOrderType,
+    dispatchOnTabSave,
+    onDispatchKitchen: useCallback(
+      async (deltaLines: CartLine[]) => {
+        if (dispatchKitchenDeltaRef.current) {
+          await dispatchKitchenDeltaRef.current(deltaLines);
+        }
+      },
+      [],
+    ),
   });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
@@ -691,8 +781,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setAppliedPromotions([]);
     // If this was an open bill being paid, delete it from DB.
     if (activeOpenBillId) {
+      void releaseLease(activeOpenBillId);
       deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {
-        addToast({ message: 'Failed to delete held cart', type: 'error' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-held-cart-delete-failed'), type: 'error' });
       });
       setActiveOpenBillId(null);
       loadOpenBills();
@@ -701,6 +792,45 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     try {
       localStorage.removeItem(ACTIVE_DRAFT_KEY);
     } catch { /* ignore */ }
+    // Release table if the completed order/bill had one — DINE-IN ONLY.
+    //
+    // ⚠️ This is the RELEASE half of the defect fixed on the claim side in
+    // 206462b4d. The cart panel shows the Table number field for the restaurant
+    // POS on EVERY order type (CartPanel.tsx:735-743), so a cashier ringing up a
+    // TAKEAWAY with a number left in that field reached here and freed a real
+    // table: `releaseTableScoped` on whatever `match` the number resolved to.
+    // Blocking the claim alone was therefore only half the fix — a takeaway could
+    // still free an occupied table it had never claimed. A takeaway has no table
+    // to release.
+    if (tableNumber && sessionToken && orderType === 'dine_in') {
+      void listTablesScoped(sessionToken)
+        .then(async (tables) => {
+          const remainingBills = await listOpenBillsScoped(sessionToken).catch(() => []);
+          const stillHasOpenBill = remainingBills.some((b) => matchesTableBill(b, tableNumber));
+          if (stillHasOpenBill) {
+            return;
+          }
+          const bareInput = bareTableNumber(tableNumber);
+          const match = tables.find(
+            (t) =>
+              t.name === tableNumber ||
+              t.id === tableNumber ||
+              (bareTableNumber(t.name) === bareInput && bareInput !== ''),
+          );
+          if (match && (match.status === 'occupied' || match.status === 'reserved')) {
+            return releaseTableScoped(sessionToken, match.id);
+          }
+        })
+        // ⚠️ NOT an empty catch. The release is deliberately fire-and-forget — a
+        // floor-plan hiccup must never fail the sale that just completed — but a
+        // SILENT one left the table reading "Occupied" on the floor plan with no
+        // sale behind it, and nothing on screen said so. The cashier's next move is
+        // to seat someone at a table the system believes is taken. Warn, do not
+        // block: the sale is already recorded and must stay that way.
+        .catch(() => {
+          addToast({ type: 'warning', message: requiredLocalized(l10n, 'tables-action-error') });
+        });
+    }
     setTableNumber('');
     setCustomerName('');
     setGuestCount('');
@@ -711,7 +841,306 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // fire for a sale that failed. `null` means never written, which the setting's own
     // default (true) says should chime.
     if (soundChime !== false) playSuccess();
-  }, [resetCart, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess]);
+    // orderType is read above (the dine-in-only release) and so must be listed:
+    // without it this callback closes over the render-time value and a cashier who
+    // switches Dine-In -> Takeaway after mount would still free the table.
+    // l10n is read above by the table-release warning toast, so it must be listed:
+    // the closure would otherwise keep the mount-time localizer and the toast would
+    // render in the language the cashier was NOT using after a locale switch.
+  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, l10n, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess, releaseLease, ACTIVE_DRAFT_KEY]);
+
+  const handlePrintBill = useCallback(async () => {
+    if (lines.length === 0 || !total) return;
+    if (!sessionToken) {
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'error' });
+      return;
+    }
+    // ⚠️ DINE-IN ONLY — the NINTH site of this rule. Same derivation as the saved-tab
+    // builders, but the consequence is on PAPER: completedSale.ts puts this value in
+    // the printed args (:232) and derives the receipt NUMBER from it (:212), so a
+    // takeaway with a stray number in the Table field printed a check naming a table
+    // it does not have. The button gate in CartActionBar now agrees with this.
+    const billTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
+    try {
+      const receipt = buildPreCheckoutBillReceipt({
+        billNumber: `BILL-${bareTableNumber(billTable) || 'CHECK'}-${Date.now().toString().slice(-4)}`,
+        cartLines: lines,
+        cartCurrency: subtotal?.currency || activeCurrency,
+        subtotal: subtotal ?? { minor_units: 0, currency: activeCurrency },
+        total: total && cartTaxExclusive && cartTax > 0 && cartTaxFresh
+          ? { minor_units: total.minor_units + cartTax, currency: total.currency }
+          : total,
+        taxAmount: cartTax > 0 ? { minor_units: cartTax, currency: activeCurrency } : undefined,
+        tableNumber: billTable || undefined,
+        customerName: customerName || undefined,
+      });
+      await printSalesReceipt(sessionToken, receipt);
+      addToast({
+        message: l10n.getString('pos-toast-bill-printed', { table: billTable }) || 'Interim bill check printed',
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'pos-toast-bill-print-failed'),
+        type: 'error',
+      });
+    }
+      // orderType gates the table this prints, so it must be listed.
+  }, [lines, total, sessionToken, tableNumber, orderType, customerName, subtotal, activeCurrency, cartTaxExclusive, cartTax, cartTaxFresh, addToast, l10n]);
+
+  const handleConfirmSplitBill = useCallback(
+    async (selectedLines: CartLine[], remainingLines: CartLine[]) => {
+      if (selectedLines.length === 0) return;
+      if (remainingLines.length > 0 && sessionToken) {
+        try {
+          // ⚠️ DINE-IN ONLY — the same rule the PaymentModal open-bill path
+          // applies (795fc18d4), on the split-bill path added later in 276d6ce04.
+          // `tableNumber` is written into the remaining tab's cart_data, its label
+          // AND its customer_name, while `orderType` is written into the same
+          // record — so a takeaway with a stray number in the Table field persisted
+          // a tab contradicting itself: {"tableNumber":"T99","orderType":"takeaway"}.
+          // An open bill is a table's running tab; a takeaway has none.
+          const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
+          const trimmedName = (customerName ?? '').trim();
+          // ⚠️ PAX IS DINE-IN ONLY, the same rule the table line above applies. The
+          // setting's own description is "party size and number of SEATED GUESTS PER
+          // TABLE" (products.ftl:105), and CartPanel.tsx:908 already hides the field
+          // on a takeaway — but the FIELD was hidden while the VALUE persisted, so a
+          // cashier who typed a pax and then switched to Takeaway saved a party size
+          // for an order with no table.
+          const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
+          const cartData = JSON.stringify({
+            lines: remainingLines.map((l) => ({
+              sku: l.sku,
+              name: l.name,
+              qty: l.qty,
+              unit_price: l.unit_price,
+              ...(l.courseId ? { courseId: l.courseId } : {}),
+              ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+              ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+              ...(l.note ? { note: l.note } : {}),
+            })),
+            discountPercent,
+            discountLabel,
+            ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+            ...(trimmedName ? { customerName: trimmedName } : {}),
+            ...(trimmedGuest ? { guestCount: trimmedGuest } : {}),
+            ...(typeof tipPercent === 'number' && tipPercent > 0 ? { tipPercent } : {}),
+            ...(typeof serviceChargeEnabled === 'boolean' ? { serviceChargeEnabled } : {}),
+            ...(typeof serviceChargePercent === 'number' && serviceChargePercent > 0 ? { serviceChargePercent } : {}),
+            ...(orderType ? { orderType } : {}),
+          });
+          const label = heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
+          if (activeOpenBillId) {
+            await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+          }
+          const remSubtotalMinor = remainingLines.reduce(
+            (sum, l) => sum + l.unit_price.minor_units * l.qty,
+            0,
+          );
+          await holdCartScoped(sessionToken, {
+            label,
+            cart_data: cartData,
+            item_count: remainingLines.length,
+            total_minor: remSubtotalMinor,
+            currency: remainingLines[0]?.unit_price.currency || activeCurrency,
+            bill_type: 'open_bill',
+            customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+          });
+          setActiveOpenBillId(null);
+          loadOpenBills();
+        } catch {
+          addToast({ message: requiredLocalized(l10n, 'pos-toast-tab-balance-failed'), type: 'error' });
+        }
+      }
+      setLines(selectedLines);
+      setShowSplitBillModal(false);
+      setShowPayment(true);
+    },
+    [
+      sessionToken,
+      tableNumber,
+      customerName,
+      guestCount,
+      discountPercent,
+      discountLabel,
+      tipPercent,
+      serviceChargeEnabled,
+      serviceChargePercent,
+      orderType,
+      activeOpenBillId,
+      activeCurrency,
+      setActiveOpenBillId,
+      loadOpenBills,
+      addToast,
+      setLines,
+      // l10n is read by the failure toasts this handler raises (round 15's
+      // localization pass), so it must be listed or the toast renders in the
+      // locale the cashier was NOT using after a switch.
+      l10n,
+    ],
+  );
+
+  const [sendingToKitchen, setSendingToKitchen] = useState(false);
+
+  const hasUndispatchedItems = useMemo(
+    () => lines.some((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0),
+    [lines],
+  );
+
+  const handleDispatchKitchenDelta = useCallback(
+    async (deltaLines: CartLine[]) => {
+      if (!sessionToken) {
+        // Reported, not dropped: this function is what puts food on the pass. With no
+        // session the chit is never sent, and silence leaves the operator unable to
+        // tell "not sent" from "sent and ignored".
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      if (deltaLines.length === 0) return;
+      if (autoPrintKitchen !== false) {
+        // ⚠️ DINE-IN ONLY — the TWELFTH site of this rule, and the one with a
+        // physical consequence: every other site mislabelled a RECORD, this one
+        // misdirects FOOD. `tableNumber` was passed straight through, so a takeaway
+        // with a stray number in the Table field (the field renders on restaurant POS
+        // unconditionally — CartPanel.tsx:864) sent the pass a chit numbered
+        // `KOT-99-…` carrying `tableNumber: 99`, and the kitchen plated for a table
+        // that did not order.
+        //
+        // The builder's `|| 'ORDER'` fallback is NOT the guard: it handles a MISSING
+        // table, which is the right default, but says nothing about a table that
+        // should never have been sent.
+        const chitTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
+        const foodLines = deltaLines.filter((l) => !isBeverageItem(l));
+        const drinkLines = deltaLines.filter((l) => isBeverageItem(l));
+
+        if (foodLines.length > 0) {
+          const foodChit = buildKitchenChitReceipt({
+            cartLines: foodLines,
+            cartCurrency: subtotal?.currency || activeCurrency,
+            tableNumber: chitTable || undefined,
+            customerName: customerName || undefined,
+            printerTarget: 'kitchen',
+            documentKind: 'kitchen',
+          });
+          await printSalesReceipt(sessionToken, foodChit);
+        }
+
+        if (drinkLines.length > 0) {
+          const barChit = buildKitchenChitReceipt({
+            cartLines: drinkLines,
+            cartCurrency: subtotal?.currency || activeCurrency,
+            tableNumber: chitTable || undefined,
+            customerName: customerName || undefined,
+            printerTarget: 'bar',
+            documentKind: 'bar',
+          });
+          await printSalesReceipt(sessionToken, barChit);
+        }
+      }
+    },
+    // orderType gates the table the chit carries, so it must be listed: without it
+    // the chit closes over the mount-time order type and a mid-sale switch to
+    // Takeaway still prints a table.
+    [sessionToken, autoPrintKitchen, subtotal, activeCurrency, tableNumber, orderType, customerName, addToast, l10n],
+  );
+  dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
+
+  const handleSendToKitchen = useCallback(async () => {
+    if (!sessionToken) {
+      // Reported, not dropped. See handleDispatchKitchenDelta above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (lines.length === 0) return;
+    const deltaLines = lines
+      .filter((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0)
+      .map((l) => ({ ...l, qty: l.qty - (l.dispatchedQty ?? 0) }));
+    if (deltaLines.length === 0) return;
+
+    setSendingToKitchen(true);
+    try {
+      await handleDispatchKitchenDelta(deltaLines);
+      const updatedLines = lines.map((l) => ({ ...l, dispatchedQty: l.qty }));
+      setLines(updatedLines);
+
+      // Persist to open bill if active or table assigned
+      //
+      // ⚠️ DINE-IN ONLY — the SEVENTH site of this rule (see
+      // RestaurantOrderTypeFieldConsumers.test.ts and
+      // docs/records/audits/restaurant-pos-order-type-fields.md). It was written
+      // unconditionally while the split-bill handler 110 lines above already applied
+      // the rule, which is how the series went: the rule is right, and it gets
+      // applied one site at a time.
+      //
+      // `trimmedTable` is used twice below, so an unguarded value does two things on
+      // a takeaway with a stray number in the Table field:
+      //   * `if (activeOpenBillId || trimmedTable)` is TRUE, so the whole open-bill
+      //     block runs and the kitchen dispatch is persisted into a tab;
+      //   * that tab's cart_data carries tableNumber AND orderType, contradicting
+      //     itself, and its customer_name is overwritten with "Table N".
+      // A takeaway has no table to open a tab against.
+      const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
+      const trimmedName = (customerName ?? '').trim();
+      // PAX is dine-in-only — see the split-bill site above for the rule and the
+      // reachable sequence.
+      const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
+      if (activeOpenBillId || trimmedTable) {
+        const cartData = JSON.stringify({
+          lines: updatedLines.map((l) => ({
+            sku: l.sku,
+            name: l.name,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
+            dispatchedQty: l.qty,
+          })),
+          discountPercent,
+          discountLabel,
+          ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
+          ...(trimmedName ? { customerName: trimmedName } : {}),
+          ...(trimmedGuest ? { guestCount: trimmedGuest } : {}),
+          ...(typeof tipPercent === 'number' && tipPercent > 0 ? { tipPercent } : {}),
+          ...(typeof serviceChargeEnabled === 'boolean' ? { serviceChargeEnabled } : {}),
+          ...(typeof serviceChargePercent === 'number' && serviceChargePercent > 0 ? { serviceChargePercent } : {}),
+          ...(orderType ? { orderType } : {}),
+        });
+
+        const label = heldCartLabel(trimmedTable, trimmedName) ?? (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
+
+        if (activeOpenBillId) {
+          await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+        }
+
+        const held = await holdCartScoped(sessionToken, {
+          label,
+          cart_data: cartData,
+          item_count: updatedLines.length,
+          total_minor: subtotal?.minor_units ?? 0,
+          currency: subtotal?.currency ?? activeCurrency,
+          bill_type: 'open_bill',
+          customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+        });
+        setActiveOpenBillId(held.id);
+        loadOpenBills();
+      }
+
+      addToast({
+        message: l10n.getString('pos-toast-kitchen-dispatched', { table: tableNumber || 'Order' }) || 'Order sent to kitchen',
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'pos-toast-kitchen-dispatch-failed'),
+        type: 'error',
+      });
+    } finally {
+      setSendingToKitchen(false);
+    }
+  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -739,6 +1168,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tableNumber,
           customerName,
           guestCount,
+          orderType,
         };
         localStorage.setItem(LOCKED_CART_KEY, JSON.stringify(data));
       } else {
@@ -746,7 +1176,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, logout, LOCKED_CART_KEY]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
@@ -792,6 +1222,23 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // `courseFiringEnabled !== false` (:631, :669), so a stale read carrying the
   // PREVIOUS store's setting forward would hide course firing on a store that has
   // it enabled -- a POS capability disappearing across a store switch.
+  //
+  // PINNED (round 83, 2026-10-13) by switching the token and letting the stale read land,
+  // the same way as its sibling above. Removing `if (stale()) return;` below now fails
+  // PosScreenCoreFlow.test.tsx -> 'ignores a slower course-firing read from the previous
+  // store' with `expected <div class="pos-cart-course-bar"></div> to be null`.
+  //
+  // The first attempt at this pin was worth documenting because it LOOKED pinned and was
+  // not: it asserted on the bar's "Fire All" text, which CourseSelectorBar renders only
+  // when a line carries `coursingStatus === 'hold'` (:41). A barcode-scanned line has no
+  // course, so the text was absent whether or not the bar mounted -- an assertion that
+  // could not fail. The observable is the CONTAINER `div.pos-cart-course-bar`, which
+  // mounts on exactly this guard's condition (CartPanel.tsx:961); asserting on it is the
+  // established idiom (CartPanel.test.tsx:316/:324).
+  //
+  // Also note the argument order in that test: `getSettingScoped(token, key)`, so the key
+  // is SECOND. Reading it from the first parameter answers `null` for every read and makes
+  // the mutation appear to survive.
   const courseFiringSeq = useRef(0);
   useEffect(() => {
     const seq = ++courseFiringSeq.current;
@@ -818,6 +1265,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [customerNameEnabled, setCustomerNameEnabled] = useState<boolean | null>(null);
   const [guestCountEnabled, setGuestCountEnabled] = useState<boolean | null>(null);
   const [saveTabEnabled, setSaveTabEnabled] = useState<boolean | null>(null);
+  const [printBillEnabled, setPrintBillEnabled] = useState<boolean | null>(null);
+  const [splitBillEnabled, setSplitBillEnabled] = useState<boolean | null>(null);
 
   // ── Order Sound Notifications (F21) ─────────────────────────────
   //
@@ -850,8 +1299,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen` (settingsModel), so an unset key
   // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
   // what the module's own default says a kitchen expects.
-  const [autoPrintKitchen, setAutoPrintKitchen] = useState<boolean | null>(null);
 
+  // PINNED (round 84, 2026-10-13). Removing the success-path `if (stale()) return;`
+  // below fails PosScreenCoreFlow.test.tsx -> 'ignores a slower order-type-prompt read
+  // from the previous store', on `div.pos-cart-order-type-row` (CartPanel.tsx:804).
+  //
+  // It went unnoticed because the round-82 sweep removed ALL THREE guards of this
+  // shape at once and failed on the receipt case alone -- so this one and the
+  // course-firing one both looked pinned. A blanket kill-test cannot say WHICH guard
+  // is load-bearing; each needs its own run.
   const orderTypePromptSeq = useRef(0);
   useEffect(() => {
     const seq = ++orderTypePromptSeq.current;
@@ -887,6 +1343,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     void getSettingScoped(sessionToken, 'restaurant.save_tab')
       .then((raw) => { if (!cancelled) setSaveTabEnabled(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setSaveTabEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.print_bill_action')
+      .then((raw) => { if (!cancelled) setPrintBillEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setPrintBillEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.split_bill_by_item')
+      .then((raw) => { if (!cancelled) setSplitBillEnabled(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setSplitBillEnabled(null); });
+    void getSettingScoped(sessionToken, 'restaurant.dispatch_on_tab_save')
+      .then((raw) => { if (!cancelled) setDispatchOnTabSave(raw === null ? null : raw === 'true'); })
+      .catch(() => { if (!cancelled) setDispatchOnTabSave(null); });
     // F20: the Auto-Print KOT switch. A failed read keeps `null`, which the modal
     // treats as its default (print) — so a settings outage cannot silently stop a
     // kitchen printing tickets, the direction of failure that goes unnoticed.
@@ -900,6 +1365,32 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => { cancelled = true; };
   }, [sessionToken]);
 
+  // The same rails the payment modal consults for `autoKick` (PaymentModal:131).
+  // Needed here so the till can honour the cash presets the operator configures.
+  const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+
+  // Precedence, highest first:
+  //   1. the Cash rail's `presets` parameter — what the operator picked in
+  //      Settings -> Payments (round 122 read side; the chips at
+  //      RestaurantPaymentsScreen.tsx:1102 write it). THIS used to be skipped:
+  //      the screen saved the choice and the till never saw it.
+  //   2. `localStorage['restaurant-tender-presets']` — retained, but nothing in the repo
+  //      writes it (round 105), so an external provisioner can still override.
+  //   3. `defaultTenderPresets(activeCurrency)` — the currency ladder (round 106).
+  const tenderPresets = useMemo(() => {
+    const fromRail = cashTenderPresets(paymentRails);
+    if (fromRail) return fromRail;
+    try {
+      const saved = localStorage.getItem('restaurant-tender-presets');
+      if (saved) {
+        const parsed = JSON.parse(saved) as number[];
+        const filtered = parsed.filter((n) => Number.isFinite(n) && n > 0);
+        if (filtered.length > 0) return filtered;
+      }
+    } catch { /* ignore */ }
+    return defaultTenderPresets(activeCurrency);
+  }, [activeCurrency, paymentRails]);
+
   const handleRequestExit = useCallback(() => {
     if (activeShift !== null) {
       handleCloseShiftClick();
@@ -910,15 +1401,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   const handleOpenCashDrawer = useCallback(async () => {
     if (!sessionToken) {
-      addToast({ message: 'Authentication required to open cash drawer', type: 'error' });
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'error' });
       return;
     }
     try {
       const res = await openCashDrawerScoped(sessionToken);
       if (res && res.opened !== false) {
-        addToast({ message: 'Cash drawer opened', type: 'success' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-drawer-opened'), type: 'success' });
       } else {
-        addToast({ message: 'Cash drawer did not open: device returned unconfirmed', type: 'warning' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-drawer-unconfirmed'), type: 'warning' });
       }
     } catch (err) {
       addToast({
@@ -952,18 +1443,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         } catch { /* ignore */ }
       }
       if (!prod) {
-        addToast({ message: 'Product details not found', type: 'error' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-product-not-found'), type: 'error' });
         return;
       }
       const groups = getProductModifierGroups(prod);
       if (groups.length === 0) {
-        addToast({ message: 'No modifiers configured for this item', type: 'info' });
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-no-modifiers'), type: 'info' });
         return;
       }
       setEditingCartLine(line);
       setEditingProduct(prod);
     },
-    [products, sessionToken, addToast],
+    [products, sessionToken, addToast, l10n],
   );
 
   const handleConfirmEditModifiers = useCallback(
@@ -992,18 +1483,66 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       if (sessionToken) {
         void listTablesScoped(sessionToken)
           .then((tables) => {
+            const bareInput = bareTableNumber(tableName);
             const match = tables.find(
-              (t) => t.name === tableName || t.id === tableName,
+              (t) =>
+                t.name === tableName ||
+                t.id === tableName ||
+                (bareTableNumber(t.name) === bareInput && bareInput !== ''),
             );
-            if (match && match.status !== 'occupied') {
-              return updateTableStatusScoped(sessionToken, match.id, 'occupied');
+            if (match && match.status === 'available') {
+              return updateTableStatusScoped(sessionToken, match.id, 'reserved');
             }
           })
-          .catch(() => {});
+          // Same shape as the release above: the reservation is best-effort so it
+          // cannot block the cashier seating a party, but a silent failure leaves
+          // two terminals disagreeing about whether the table is taken — the exact
+          // state the floor-plan sync exists to prevent.
+          .catch(() => {
+            addToast({ type: 'warning', message: requiredLocalized(l10n, 'tables-action-error') });
+          });
       }
     },
-    [openBills, handleResumeOpenBill, sessionToken],
+    // addToast and l10n are read by the reservation warning toast above.
+    [openBills, handleResumeOpenBill, sessionToken, addToast, l10n],
   );
+
+  // ── Restaurant keyboard shortcuts (round 159) ───────────────────────────
+  //
+  // Restaurant-ONLY, gated on `activeWorkspace` like every other restaurant branch here
+  // (`:395`, `:586`, `:1811`). The retail till shares this component, so its handler
+  // object is empty and none of these keys exist there.
+  //
+  // Each action routes through an EXISTING self-guarding handler:
+  //   * `handlePrintBill` returns early on no lines/total/session (`:845-850`);
+  //   * `handleSendToKitchen` returns early on no session/lines/undelivered delta
+  //     (`:1042-1052`);
+  //   * `setShowSplitBillModal(true)` opens the split MODAL, not its confirm, so the
+  //     dine-in-only rule in `handleConfirmSplitBill` (`:884`) still applies;
+  //   * `setShowTables(true)` is the sidebar row's own action, already feature-gated.
+  //
+  // Save Tab is the one exception and it is deliberate. Its precondition chain (shift
+  // guard + the open-bill-input branch) is INLINE component logic in CartActionBar, so
+  // the shortcut CLAIMS the button through its testid and clicks it. That runs the same
+  // code the button runs — including the guard that stops a tab being saved with no
+  // table — rather than a copy that would drift from it.
+  const restaurantShortcutHandlers = useMemo<RestaurantShortcutHandlers>(() => {
+    if (activeWorkspace !== 'restaurant-pos') return {};
+    return {
+      'send-kitchen': () => { void handleSendToKitchen(); },
+      'print-bill': () => { void handlePrintBill(); },
+      'split-bill': () => { setShowSplitBillModal(true); },
+      'save-tab': () => {
+        const btn = document.querySelector<HTMLButtonElement>(
+          '[data-testid="pos-cart-save-tab-btn"]',
+        );
+        if (btn && !btn.disabled) btn.click();
+      },
+      'open-tables': () => { setShowTables(true); },
+    };
+  }, [activeWorkspace, handleSendToKitchen, handlePrintBill]);
+
+  useRestaurantShortcuts(restaurantShortcutHandlers);
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
@@ -1029,25 +1568,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   if (showSalesHistory) {
     return (
       <div className="pos-screen" style={{ flexDirection: 'column' }}>
-        <header className="restaurant-subscreen-top-bar">
-          <button
-            type="button"
-            className="restaurant-subscreen-back-btn"
-            onClick={() => setShowSalesHistory(false)}
-            aria-label={l10n.getString('back') || 'Back'}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-            <span>{l10n.getString('back') || 'Back'}</span>
-          </button>
-          <span className="restaurant-subscreen-top-title">{l10n.getString('sales-history-title') || 'Sales History'}</span>
-        </header>
         <div style={{ flex: 1, overflow: 'auto' }}>
           {/* Crash isolation (F9) — see the Table Management note above. */}
           <LocalizedErrorBoundary onReset={() => setShowSalesHistory(false)}>
-            <SalesHistoryScreen />
+            <SalesHistoryScreen onBack={() => setShowSalesHistory(false)} />
           </LocalizedErrorBoundary>
         </div>
       </div>
@@ -1057,26 +1581,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Sub-screen: Stock Inquiry (F8) ───────────────────────────
   if (showStockInquiry) {
     return (
-      <div className="pos-screen" style={{ flexDirection: 'column' }}>
-        <header className="restaurant-subscreen-top-bar">
-          <button
-            type="button"
-            className="restaurant-subscreen-back-btn"
-            onClick={() => setShowStockInquiry(false)}
-            aria-label={l10n.getString('back') || 'Back'}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-            <span>{l10n.getString('back') || 'Back'}</span>
-          </button>
-          <h2 className="restaurant-subscreen-top-title">{l10n.getString('nav-inventory') || 'Stock Inquiry'}</h2>
-        </header>
+      <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
           {/* Crash isolation (F9) — the third of the three that had no boundary. */}
           <LocalizedErrorBoundary onReset={() => setShowStockInquiry(false)}>
-            <ProductLookupScreen onAddProduct={handleAddProduct} />
+            <ProductLookupScreen
+              onAddProduct={handleAddProduct}
+              onBack={() => setShowStockInquiry(false)}
+            />
           </LocalizedErrorBoundary>
         </div>
       </div>
@@ -1090,9 +1602,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         <div style={{ flex: 1, overflow: 'auto' }}>
           {/* Crash isolation (F9): a throw in a settings sub-screen must not take
               the POS screen with it. `onReset` returns to the sale. */}
-          <LocalizedErrorBoundary onReset={() => setShowMenuEditor(false)}>
+          <LocalizedErrorBoundary onReset={() => { setShowMenuEditor(false); setMenuRevision((r) => r + 1); reloadPosProducts(); }}>
             <RestaurantMenuEditorScreen
-              onBack={() => setShowMenuEditor(false)}
+              onBack={() => {
+                setShowMenuEditor(false);
+                setMenuRevision((r) => r + 1);
+                reloadPosProducts();
+              }}
               sessionToken={sessionToken}
             />
           </LocalizedErrorBoundary>
@@ -1233,6 +1749,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handlePay, addToast, setShowOpenBillInput, setCartId, resetCart,
     setShowOpenBills, openBills,
     activeOpenBillId, setActiveOpenBillId, handleOpenBill,
+    printBillEnabled: printBillEnabled ?? true,
+    handlePrintBill,
+    splitBillEnabled: splitBillEnabled ?? true,
+    showSplitBillModal,
+    setShowSplitBillModal,
+    handleConfirmSplitBill,
+    hasUndispatchedItems,
+    sendingToKitchen,
+    handleSendToKitchen,
   };
   const cartPanelProps: CartPanelProps = {
     ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,
@@ -1260,7 +1785,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // `handleNavigate` uses (`isPageAccessible`), so the row is visible exactly
     // when the navigation would succeed — a second predicate would be free to
     // disagree with the thing it is predicting.
-    showKitchenDisplay: isPageAccessible(getPage('kds'), session?.role_name ?? '', session?.permissions),
+    //
+    // THAT PREDICATE ALONE IS INERT FOR THIS ROUTE (round 128). `getPage('kds')`
+    // is `{ route: 'kds', feature: 'kitchen-display' }` — no `requiredRole`, no
+    // `requiredPermission` — and `isPageAccessible` -> `passesGate` reads only
+    // those two, returning true when neither is set (`page-registry/index.ts:181`).
+    // So it answered `true` for Owner, Cashier, an empty role and a garbage role
+    // alike, and the row never hid. The feature flag is the gate that actually
+    // varies, which is how its sibling `showTables` has always been written.
+    // Kept AND-ed with `isPageAccessible` rather than replacing it: the role and
+    // permission axes still apply the moment this route gains one.
+    showKitchenDisplay:
+      isEnabled(FEATURES.KITCHEN_DISPLAY) &&
+      isPageAccessible(getPage('kds'), session?.role_name ?? '', session?.permissions),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
     onOpenMenuEditor: () => setShowMenuEditor(true),
     onOpenReceipts: () => setShowReceiptsSettings(true),
@@ -1272,6 +1809,30 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   return (
     <>
+    {/* ── Session died MID-SHIFT ──────────────────────────────────────────
+        The AppShell banner keys on `sessionError`, which is set only when a REJECTED
+        `createSession` fails at boot. A session that expires during a shift never sets
+        it — an IPC command answers `invalidSession` instead, and this screen used to
+        swallow that kind silently (`if (kind === 'invalidSession') return;`), which is
+        right for a per-card settings read and wrong as the ONLY handling. The cashier
+        could not take payment and nothing said why.
+
+        Styled by PosScreen.css rather than importing the analytics component: its class
+        names are `analytics-session-banner*`, and AnalyticsScreen.css reaches the tablet
+        shell via tablet.css but NOT the desktop shell, so reusing it would render an
+        unstyled alert there. */}
+    {showSessionBanner && (
+      <div className="pos-session-banner" role="alert" data-testid="pos-session-banner">
+        <span>{requiredLocalized(l10nRef.current, 'analytics-session-expired-message')}</span>
+        <button
+          type="button"
+          className="pos-session-banner-action"
+          onClick={goToWorkspacePicker}
+        >
+          {requiredLocalized(l10nRef.current, 'analytics-sign-in-again')}
+        </button>
+      </div>
+    )}
     <div
       className="pos-screen"
       ref={posScreenRef}
@@ -1292,8 +1853,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             took the POS screen down. The children's boundaries only cover what
             renders INSIDE them. */}
         {activeWorkspace === 'restaurant-pos' ? (
-          <LocalizedErrorBoundary resetKeys={[activeWorkspace]}>
+          <LocalizedErrorBoundary resetKeys={[activeWorkspace, menuRevision]}>
           <RestaurantMenu
+            key={menuRevision}
             onAddProduct={handleAddProduct}
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
@@ -1321,25 +1883,37 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       )}
 
       {/* ── Restaurant Portrait: Floating Cart Bar & Bottom Sheet Drawer ── */}
+      {/* Crash isolation (F9). Portrait — the TABLET form factor — is where the
+          restaurant actually runs, and these two are the cashier's ONLY route to the
+          cart there: the bar opens the sheet, and the sheet is where the sale is
+          edited. Unwrapped, a throw in either unmounted the whole POS screen and took
+          the cart with it mid-sale, which is the F9 failure. They were missed by
+          restaurantPosCrashIsolation.test.ts because neither name ends in `Screen` or
+          `Modal` — the shape every other guarded entry happens to have. Both are now
+          listed there, so removing a boundary fails that guard. */}
       {isPortraitRestaurant && (
-        <>
+        <LocalizedErrorBoundary resetKeys={[String(lines.length), activeWorkspace]}>
           <RestaurantFloatingCartBar
             lines={lines}
             total={total}
             tableNumber={tableNumber}
+            orderType={orderType}
             onOpenCart={() => setCartSheetOpen(true)}
           />
           <RestaurantCartSheet
             open={cartSheetOpen}
             onClose={() => setCartSheetOpen(false)}
             tableNumber={tableNumber}
+            orderType={orderType}
           >
-            <CartPanel
-              {...cartPanelProps}
-              hidden={false}
-            />
+            <LocalizedErrorBoundary resetKeys={[String(lines.length)]}>
+              <CartPanel
+                {...cartPanelProps}
+                hidden={false}
+              />
+            </LocalizedErrorBoundary>
           </RestaurantCartSheet>
-        </>
+        </LocalizedErrorBoundary>
       )}
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
@@ -1377,6 +1951,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
           orderType={orderType}
+          tenderPresets={tenderPresets}
           // F20: undefined means "not loaded / never written", which the modal
           // resolves to its default (print). Passing `null` through would make an
           // unread setting indistinguishable from an explicit false.

@@ -20,6 +20,7 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import { withFluent } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
+import { listen } from '@/api/tauri';
 
 import {
   ExitAnimHost,
@@ -423,3 +424,158 @@ describe('QrisQrDisplay — QRIS Auto mode', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('QrisQrDisplay — Zero-MDR QRIS Notification Listener', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete window.__kasirmuNative;
+  });
+
+  it('automatically verifies payment when push notification event arrives with matching amount', () => {
+    const onPaymentConfirmed = vi.fn();
+    const hostRef = makeHostRef();
+    render(
+      withFluent(
+        <HostModal
+          hostRef={hostRef}
+          onPaymentConfirmed={onPaymentConfirmed}
+        />,
+        salesFtl,
+      ),
+    );
+
+    expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+
+    // Dispatch native payment notification from BCA for 25000 IDR (matches invoice)
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('kasirmu:qrisPaymentNotification', {
+          detail: {
+            provider: 'BCA',
+            amountMinor: 25000,
+            amountFormatted: 'Rp 25.000',
+            rawText: 'Transfer Masuk Rp 25.000 dari BUDI SANTOSO',
+          },
+        }),
+      );
+    });
+
+    // Payment detected and verified!
+    expect(screen.getByText('Payment verified via BCA!')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
+
+    // Settle callback is triggered after 1200ms
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores push notifications with non-matching amount', () => {
+    const onPaymentConfirmed = vi.fn();
+    const hostRef = makeHostRef();
+    render(
+      withFluent(
+        <HostModal
+          hostRef={hostRef}
+          onPaymentConfirmed={onPaymentConfirmed}
+        />,
+        salesFtl,
+      ),
+    );
+
+    // Dispatch notification with 50000 IDR (invoice is 25000)
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('kasirmu:qrisPaymentNotification', {
+          detail: {
+            provider: 'Mandiri',
+            amountMinor: 50000,
+          },
+        }),
+      );
+    });
+
+    // Still waiting
+    expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeNull();
+    expect(onPaymentConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('displays listening indicator when native listener is enabled', () => {
+    window.__kasirmuNative = {
+      isQrisNotificationListenerEnabled: () => true,
+    };
+    const hostRef = makeHostRef();
+    render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
+
+    expect(screen.getByText('Auto-verifying via bank push notifications...')).toBeInTheDocument();
+    expect(document.querySelector('.qris-listener-pulse-dot')).toBeInTheDocument();
+  });
+
+  it('displays enable hint and invokes openNotificationListenerSettings when clicked', () => {
+    const openSettings = vi.fn();
+    window.__kasirmuNative = {
+      isQrisNotificationListenerEnabled: () => false,
+      openNotificationListenerSettings: openSettings,
+    };
+    const hostRef = makeHostRef();
+    render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
+
+    const enableBtn = screen.getByRole('button', { name: 'Enable instant auto-verification' });
+    expect(enableBtn).toBeInTheDocument();
+
+    fireEvent.click(enableBtn);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies payment when notification is received via Tauri event', () => {
+    type ListenHandler = Parameters<typeof listen>[1];
+    let tauriHandler: ListenHandler | undefined;
+    vi.mocked(listen).mockImplementation((event, handler) => {
+      if (event === 'kasirmu:qrisPaymentNotification') {
+        tauriHandler = handler;
+      }
+      return Promise.resolve(() => {});
+    });
+
+    const onPaymentConfirmed = vi.fn();
+    const hostRef = makeHostRef();
+    render(
+      withFluent(
+        <HostModal
+          hostRef={hostRef}
+          onPaymentConfirmed={onPaymentConfirmed}
+        />,
+        salesFtl,
+      ),
+    );
+
+    expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(tauriHandler).toBeDefined();
+
+    act(() => {
+      tauriHandler?.({
+        event: 'kasirmu:qrisPaymentNotification',
+        id: 1,
+        payload: {
+          provider: 'Mandiri',
+          amountMinor: 25000,
+          amountFormatted: 'Rp 25.000',
+        },
+      });
+    });
+
+    expect(screen.getByText('Payment verified via Mandiri!')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
+  });
+});
+

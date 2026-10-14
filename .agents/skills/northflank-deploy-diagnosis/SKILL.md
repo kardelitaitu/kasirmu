@@ -3,7 +3,13 @@ name: northflank-deploy-diagnosis
 description: Diagnose why a kasir.mu Northflank build or deploy failed, and prove the fix before spending another deploy cycle. Use when a Northflank build shows FAILURE with only "Failure on executing build", when a container exits at exec with "error while loading shared libraries", when the Dockerfile that Northflank builds diverges from ops/docker/Dockerfile.server, when a pkg-config or build-script failure appears in a Docker build log, or when the Northflank service/path/branch config is suspected to be stale. Covers the build-logs endpoint (buildId is a QUERY PARAM, not a path segment), the lineLimit ceiling and the useless pagination cursor, the PATCH-combined-service vs deprecated build-options distinction, enumerating a crate closure's pkg-config build scripts via cargo metadata plus resolved feature sets, verifying runtime shared libraries offline against already-built local images with ldd, the usrmerge `dpkg -S` trap, and the sandbox rule that Docker container egress is blocked so apt-get cannot be tested in a fresh container.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all five paths the file cites exist — `ops/docker/Dockerfile.server`, `ops/docker/Dockerfile.unified`, `scripts/verify-dockerfile-workspace.py`, `apps/cloud-server`, `.github/workflows/dev-ci.yml`. The bare `Dockerfile.server` at `:120` is a short-form back-reference to the `ops/docker/` path established at `:90`, not a claim that a Dockerfile sits at the repo root — verified, none does. The `oz-pos` / `oz-cloud` strings are NOT rebrand drift: the file documents them as the real Northflank project id and real image-tag prefixes, both allow-listed in the drift guard's crate-prefix check. Left alone deliberately. · SEPARATE FINDING, fixed in `onboarding-guide` rather than here: this skill had **no router row** in the onboarding guide (`grep -c` returned 0), making it unreachable to the next agent; a row was added there on 22-09-26. · NOT re-measured (would need live Northflank credentials): the build-log phase behaviour and the API endpoints. No network call was attempted during this audit. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major) · Re-audit of the Northflank diagnosis skill; the 2026-09-22 stamp is merged at the bottom as original evidence. · MAJOR, and it is the guard this skill leans on: the §4 bullet read "`scripts/verify-dockerfile-workspace.py` validates manifest COPYs and dummy src dirs only (it passes 42/42 for both files). It does **not** look at apt lists." BOTH HALVES ARE NOW FALSE. The script grew an `apt_divergence()` function plus an `APT_PARITY_EXEMPT` table for documented deliberate asymmetries, it reports per package rather than as a bare set difference, and it carries a `--self-test` that pins the rule in both directions. Current output: "all 43 workspace members are represented … apt packages agree (10 installed by all files)" for BOTH files — 43 members, not 42 — with the two remaining asymmetries annotated `[exempt: …]`, not reported as drift. The function's own docstring quotes the omission as its reason for existing and dates the consequence: the unified image was unbuildable 2026-09-13 → 09-18 because `Dockerfile.server` installed `libudev-dev` and `Dockerfile.unified` did not and nothing compared the two. Both files install it today (each carrying its DOCKER-13/DOCKER-14 comment). · RESIDUE FLAGGED, NOT PATCHED (code file, doc->code rule): the same stale sentence survives verbatim in `ops/docker/Dockerfile.unified:62-63` — "compares the two files' cache-priming manifests but NOT their apt package lists". True when written; the script has since caught up. A code owner should update it. · VERIFIED AND LEFT ALONE, re-measured at HEAD: all six cited paths exist; `PREFIX_ALLOWLIST` really does default to `oz-pos oz-cloud` (detect.sh:802) so this file produces no crate-prefix finding; the live service id is `cloud` in project `oz-pos`; `dev-ci.yml:1675` sets `NF_PROJECT_ID` to `${{ vars.NORTHFLANK_PROJECT_ID || 'oz-pos' }}`; the built binary really is `/app/kasirmu-cloud` (Dockerfile.server:212,227) and the pre-rebrand `/app/oz-cloud-server` distinction at §5 is correctly drawn; `.env` carries `NORTHFLANK_API_TOKEN` (not a KASIRMU_-prefixed name) exactly as §1 greps; `kasirmu-hal` does depend on `serialport`, which is the chain the libudev discussion rests on. · NOT re-measured: the live Northflank API behaviour, the build-log endpoint semantics, and any Docker egress claim — all need credentials or a daemon, and the file says so itself. -->
+
+<!-- STAMPS MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as plain text:
+
+Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all five paths the file cites exist — `ops/docker/Dockerfile.server`, `ops/docker/Dockerfile.unified`, `scripts/verify-dockerfile-workspace.py`, `apps/cloud-server`, `.github/workflows/dev-ci.yml`. The bare `Dockerfile.server` at `:120` is a short-form back-reference to the `ops/docker/` path established at `:90`, not a claim that a Dockerfile sits at the repo root — verified, none does. The `oz-pos` / `oz-cloud` strings are NOT rebrand drift: the file documents them as the real Northflank project id and real image-tag prefixes, both allow-listed in the drift guard's crate-prefix check. Left alone deliberately. · SEPARATE FINDING, fixed in `onboarding-guide` rather than here: this skill had **no router row** in the onboarding guide (`grep -c` returned 0), making it unreachable to the next agent; a row was added there on 22-09-26. · NOT re-measured (would need live Northflank credentials): the build-log phase behaviour and the API endpoints. No network call was attempted during this audit.
+-->
+
 
 # kasir.mu — diagnosing a Northflank build/deploy failure
 
@@ -95,9 +101,21 @@ silently omitted `libudev-dev` for five days while the server file had always in
 
 - The builder stage needs `pkg-config libc-dev libssl-dev libudev-dev`.
 - `rust:1.88-slim` ships `cc`/`gcc` but **not** `pkg-config` and **not** `make`.
-- The only related gate, `scripts/verify-dockerfile-workspace.py`, validates manifest COPYs and dummy
-  src dirs only (it passes 42/42 for both files). It does **not** look at apt lists.
-  `docs/plans/_active/northflank-p1-p7-plan.md:26` already records that it does not validate the unified file.
+- `scripts/verify-dockerfile-workspace.py` **now also compares the apt package lists** — the gap
+  this section describes is closed. It grew an `apt_divergence()` function plus an
+  `APT_PARITY_EXEMPT` table for documented deliberate asymmetries (`libudev1`, `supervisor`,
+  `gosu`, `jq`, and the four builder-stage tools), it reports per package rather than as a bare
+  diff, and it has a `--self-test` that pins the rule in both directions. Current output: `all 43
+  workspace members are represented … apt packages agree (10 installed by all files)` for both
+  files, and the two asymmetries it still prints are annotated `[exempt: …]`, not drift.
+  *(This bullet read "validates manifest COPYs and dummy src dirs only … passes 42/42 … does not
+  look at apt lists" until 2026-10-11, and that is exactly the omission the checker's own docstring
+  now quotes as its reason for existing — the unified image was unbuildable 2026-09-13 → 09-18
+  because nothing compared the two files' apt lines.)*
+  **One residue worth knowing:** the same stale sentence survives in
+  `ops/docker/Dockerfile.unified:62-63` ("compares the two files' cache-priming manifests but NOT
+  their apt package lists"). It was true when that comment was written; the script has since caught
+  up. The comment is a code file, so it is flagged here rather than edited.
 - **Do not write a naive "-dev must have a runtime counterpart" rule.** There is no `libssl3` line
   despite `libssl-dev` (it arrives via `ca-certificates` → `openssl`), so such a check would be wrong.
   It needs an explicit build-only allowlist.
@@ -178,4 +196,4 @@ Resolve remote shas with `git ls-remote`. A `git fetch` that prints `X..Y main -
 7. Prove what you can locally; state plainly what the sandbox prevented you from proving.
 8. Ask for the push order, then merge to `main` and poll the build to conclusion.
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 11-10-26 by docs-auditor

@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's entire import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync } from 'fs';
 import { resolve, join, relative } from 'path';
@@ -284,8 +295,60 @@ function collectTags(
     let depth = 0;
     let quote: string | null = null;
     let gt = -1;
+    // ⚠️ Second bug fixed here (round 49): a `//` comment INSIDE a JSX tag.
+    //
+    // `KdsHeaderRight.tsx`'s shift button carries a four-line `//` comment between
+    // its attributes (it documents why the button's accessible name reads
+    // "Start Shift End Shift"). Prose contains apostrophes and quotes, and the
+    // scanner treated them as string delimiters — an odd number of `"` in the comment
+    // left it "inside a string" for the rest of the tag, so the terminating `>` was
+    // never seen at depth 0 and the WHOLE ELEMENT was dropped.
+    //
+    // Effect: `kds-btn--shift` had no element evidence, so the sizing scanner
+    // exempted its 34px rule as a DEAD SELECTOR — the violation became invisible and
+    // the ratchet entry for it was reported as stale, i.e. the guard asked for a true
+    // finding to be deleted.
+    // Brace depth to restore when a TEMPLATE LITERAL's ${ } closes.
+    //
+    // ⚠️ Bug fixed here (round 49). A backtick opened at depth 1 (inside
+    // `className={``) and its ${...} was scanned as ordinary text: the inner `}`
+    // decremented `depth`, the closing backtick never matched because the scan was
+    // inside the "quote", and every remaining character of the tag was swallowed.
+    // `>` was never found at depth 0, so the whole element was DROPPED.
+    //
+    // Concretely: `KdsHeaderRight.tsx`'s shift button has a template-literal
+    // className, so `collectTags` found ZERO tags in that file, `kds-btn--shift` got
+    // no element evidence, and the sizing scanner exempted its 34px rule as a DEAD
+    // SELECTOR. That made the real violation invisible and reported the ratchet
+    // entry for it as stale — the guard telling us to delete a true finding.
+    let templateBrace: number | null = null;
     while (j < n) {
       const c = text[j] ?? '';
+      // Comments inside a JSX tag, BEFORE quote handling: prose contains apostrophes
+      // and quotes, and treating them as delimiters desynced the scan (see below).
+      if (c === '/' && text[j + 1] === '/') {
+        const eol = text.indexOf('\n', j);
+        j = eol === -1 ? n : eol + 1;
+        continue;
+      }
+      if (c === '/' && text[j + 1] === '*') {
+        const end = text.indexOf('*/', j + 2);
+        j = end === -1 ? n : end + 2;
+        continue;
+      }
+      if (quote === '`') {
+        if (c === '\\') { j += 2; continue; }
+        if (c === '${') { templateBrace = depth; depth++; j += 2; continue; }
+        if (c === '}' && templateBrace !== null && depth === templateBrace + 1) {
+          depth = templateBrace;
+          templateBrace = null;
+          j++;
+          continue;
+        }
+        if (c === '`') { quote = null; j++; continue; }
+        j++;
+        continue;
+      }
       if (quote) { if (c === quote) quote = null; j++; continue; }
       if (IS_QUOTE(c)) { quote = c; j++; continue; }
       if (c === '{') depth++;
@@ -423,6 +486,18 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
  * suite fails if it grows OR if an entry is fixed and left here. The list can
  * only shrink. Fixing them is the R4 follow-up.
  *
+ * Shrank again 13 -> 5 on 2026-10-13 (round 34 of the restaurant-POS objective):
+ * the KDS was 8 of the 13 entries and is the surface a kitchen actually operates, so
+ * it was taken to the floor rather than left for R4. `.kds-btn` was the worst at 22px
+ * and the one that cascaded -- every variant inherited it. The others were 28-38px
+ * overrides that outranked it (`--filter`, `--shift`, `--status-btn`, `--tab`,
+ * `--reset-btn`, the modal-actions override and the offline retry). `.kds-item-row`
+ * was not in this list because the scanner did not see it; it carried :hover and
+ * :active at 28px, so it is an interactive control styled as one, and it was raised
+ * in the same pass. The three remaining KDS declarations below the floor
+ * (`.kds-card-header-meta` 22px, `.kds-category-header` 30px, `.kds-item-row-inner`
+ * 20px) are NOT touch targets -- two are layout rows and the third is the flex box
+ * INSIDE the row that now enforces the floor -- so they were left, with a comment.
  * It has begun shrinking: 15 -> 13 on 2026-10-07, when the SegmentedTabs and
  * KdsRoutingRulesEditor sheets were both brought to the floor by later touch
  * work and their two entries became obsolete. Removing an entry is sanctioned
@@ -431,19 +506,6 @@ const EXPLICIT_EXEMPTIONS: Array<{ re: RegExp; why: string; matched: boolean }> 
  * it first.
  */
 const KNOWN_VIOLATIONS: Array<{ key: string; why: string }> = [
-  { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-height: 1.75rem', why: "Stock-count row remove control; 28px floor." },
-  { key: 'features/inventory/StockCountDetail.css::.sc-remove-btn::min-width: 1.75rem', why: "Stock-count row remove control; 28px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-btn--filter::min-height: 34px', why: "KDS filter button; 34px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-btn--shift::min-height: 34px', why: "KDS shift button; 34px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-btn::min-height: 22px', why: "KDS base button; 22px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-modal-actions .kds-btn::min-height: 28px', why: "KDS modal action button; 28px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-offline-retry-btn::min-height: 1.75rem', why: "KDS offline retry control; 28px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-reset-btn::min-height: 38px', why: "KDS reset button; 38px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-status-btn::min-height: 34px', why: "KDS status button; 34px floor." },
-  { key: 'features/kds/KdsScreen.css::.kds-tab::min-height: 34px', why: "KDS tab strip; 34px floor." },
-  { key: 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn::min-height: 34px', why: "KDS routing action button; 34px floor." },
-  { key: 'features/kiosk/KioskScreen.css::.kiosk-load-error button::min-height: var(--space-10)', why: "Kiosk load-error retry button; 2.5rem = 40px floor. The class+type compound (0,1,1) outranks the catch-all." },
-  { key: 'features/locations/NodeTopologyEditor.css::.canvas-zoom-btn::min-width: 28px', why: "Topology canvas zoom control; 28px floor." },
   // The former `.pos-cart-order-type-btn::min-height: 2rem` entry is GONE, and the
   // history is the reason to leave it that way rather than re-add it:
   //
@@ -577,12 +639,19 @@ function loadCoarseOverrides(tokens: Map<string, string>): Set<string> {
     const stripped = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
     for (const rule of parseRules(stripped, [])) {
       if (!rule.inPointerCoarse) continue;
-      const subject = subjectOfSelector(rule.selectors);
-      for (const decl of rule.body.split(';')) {
-        const m = SIZING_PROP_RE.exec(decl.trim());
-        if (!m) continue;
-        const px = parsePxValue(m[3]!.trim(), tokens);
-        if (px !== null && px >= MIN_TARGET_PX) raised.add(rel + '::' + subject);
+      // EVERY selector the rule names, not just the first. A coarse block that
+      // raises five controls writes them as one comma-separated rule, and
+      // subjectOfSelector reads only the first -- so the other four were never
+      // registered and kept being graded on their fine-pointer sizes. The
+      // multi-selector case below pins this.
+      for (const sel of rule.selectors.split(',')) {
+        const subject = subjectOfSelector(sel);
+        for (const decl of rule.body.split(';')) {
+          const m = SIZING_PROP_RE.exec(decl.trim());
+          if (!m) continue;
+          const px = parsePxValue(m[3]!.trim(), tokens);
+          if (px !== null && px >= MIN_TARGET_PX) raised.add(rel + '::' + subject);
+        }
       }
     }
   }
@@ -752,6 +821,52 @@ beforeAll(() => {
 /* ── Tests ───────────────────────────────────────────────────────── */
 
 describe('Touch target sizing compliance', () => {
+  it('a MULTI-SELECTOR coarse override exempts every selector it names, not only the first', () => {
+    // Found 2026-10-13 (round 35). KdsRoutingRulesEditor.css raises five controls to
+    // the floor in ONE coarse block:
+    //
+    //     @media (pointer: coarse) {
+    //       .kds-routing-section-btn,
+    //       .kds-routing-retry,
+    //       .kds-routing-switch,
+    //       .kds-routing-icon-btn,
+    //       .kds-routing-btn { min-height: var(--touch-target-min); }
+    //     }
+    //
+    // subjectOfSelector reads only the FIRST selector of a rule, so the override was
+    // registered as .kds-routing-section-btn alone. The other four were still graded
+    // on their fine-pointer min-*, which is why .kds-routing-btn's 34px stayed in
+    // KNOWN_VIOLATIONS even though the sheet raises it on a tablet -- a ratchet entry
+    // describing a control that is NOT a violation. A stale entry reads as a fresh
+    // regression, which is the exact failure this list's history warns about.
+    //
+    // Every selector a coarse rule names is a tap target raised by that rule.
+    const raised = new Set<string>();
+    for (const file of discoverCssFiles()) {
+      const rel = relative(UI_SRC, file).replace(/\\/g, '/');
+      const stripped = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const rule of parseRules(stripped, [])) {
+        if (!rule.inPointerCoarse) continue;
+        for (const sel of rule.selectors.split(',')) {
+          const subject = subjectOfSelector(sel);
+          for (const decl of rule.body.split(';')) {
+            const m = SIZING_PROP_RE.exec(decl.trim());
+            if (!m) continue;
+            const px = parsePxValue(m[3]!.trim(), loadTokens());
+            if (px !== null && px >= MIN_TARGET_PX) raised.add(rel + '::' + subject);
+          }
+        }
+      }
+    }
+    const routing = 'features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-btn';
+    expect(
+      raised.has(routing),
+      'the coarse rule raises this selector but the override set does not carry it -- ' +
+        'only the rule first selector is registered, so the other four controls in ' +
+        'that block are still graded on their fine-pointer sizes.',
+    ).toBe(true);
+    expect(raised.has('features/kds/components/KdsRoutingRulesEditor.css::.kds-routing-icon-btn')).toBe(true);
+  });
   it('scans every stylesheet under ui/src, derived from the filesystem', () => {
     // A hardcoded list is the drift this suite exists to prevent; if the walk
     // ever returns a token set, fail loudly rather than pass vacuously.
@@ -844,7 +959,40 @@ describe('Touch target sizing compliance', () => {
     // control surfaced as a NEW violation. CartPanel.css now floors it at
     // --touch-target-min inside its own @media (pointer: coarse) block, which is
     // the state this guard grades as compliant, so there is no debt to record.
-    expect(KNOWN_VIOLATIONS.length).toBe(13);
+    // 5 -> 2 on 2026-10-13 (round 35), and NOT by fixing anything: three of the
+    // five were FALSE ENTRIES the gate could not see were false.
+    //
+    // THE GATE BUG. A coarse override written as one comma-separated rule was
+    // registered only for its FIRST selector, because subjectOfSelector reads
+    // `selectors.split(',')[0]`. KdsRoutingRulesEditor.css raises FIVE controls in
+    // one block and StockCountDetail.css raises three; in both, the entries below
+    // named a selector that was not first, so those controls were graded on their
+    // fine-pointer min-* even though the sheet already raises them on a tablet.
+    //
+    // The ratchet therefore held debt that had been PAID. loadCoarseOverrides now
+    // walks every selector of the rule, the ratchet immediately reported these
+    // three as no-longer-violating, and they are deleted as it instructs. The
+    // multi-selector case above pins the fix.
+    //
+    // Kept honest: removing an entry is sanctioned only after reading the sheet
+    // and confirming the violation is really gone, which is what the two blocks
+    // at KdsRoutingRulesEditor.css:482-490 and StockCountDetail.css:254-260 show.
+    // 2 -> 0 on 2026-10-13 (round 36): the ratchet is EMPTY, and the last two were
+    // both covered rather than reclassified.
+    //
+    //   * the kiosk load-error retry -- raised from var(--space-10) = 40px to the
+    //     floor. It is a CUSTOMER control: the single button on the screen an
+    //     ordering kiosk shows when the catalog fails to load, so the moment is
+    //     already a frustrating one.
+    //   * the topology canvas zoom rail -- given this sheet's FIRST (pointer: coarse)
+    //     block, because the sheet had none. NOT a raised base: 28px is correct for a
+    //     floating canvas zoom cluster on a desktop editor, where three 44px circles
+    //     in a 4px rail is visibly wrong. The tablet gets the floor; the desktop stays
+    //     compact. This is the mechanism this suite grades as compliant.
+    //
+    // An empty list is the state the sweep in round 34 was aiming at and the count
+    // assertion is what proves it was reached deliberately rather than by deletion.
+    expect(KNOWN_VIOLATIONS.length).toBe(0);
   });
 
   it('every exemption is justified, and none is a silent bypass', () => {

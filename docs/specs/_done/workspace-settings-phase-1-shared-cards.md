@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — the deliverable is fully present and countable. All five shared card components exist exactly where the Plan says to put them, under `ui/src/features/settings/workspace-cards/`: `WorkspaceStorePosSettings.tsx`, `WorkspaceRestaurantPosSettings.tsx`, `WorkspaceKdsSettings.tsx`, `WorkspaceInventorySettings.tsx` and `TerminalPreferencesCard.tsx`. A sixth, `StoreInfoCard.tsx`, sits alongside them — it is not in this phase's scope but is credited to Phase 2, which is where it is checked. The `WorkspaceCardProps` design (sessionToken / locationId / terminalId / variant / onSaved, with terminalId required for the modal variant) is a sound contract and the cards that consume it exist, so the interface is load-bearing rather than aspirational. The card directory did not exist at Baseline, as recorded. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE (0 findings) · Re-derived at HEAD rather than inherited: all five cards named in the Plan exist under `ui/src/features/settings/workspace-cards/` — WorkspaceStorePosSettings, WorkspaceRestaurantPosSettings, WorkspaceKdsSettings, WorkspaceInventorySettings, TerminalPreferencesCard — alongside StoreInfoCard and the index.ts that re-exports them. The phase's own Residual listed 'not yet wired into SettingsPage' as future work; that has since happened — `ui/src/features/locations/topologyCard.ts` imports three of the cards. One stale Reference left as written: `ui/src/features/kds/KdsSettingsPanel.tsx` no longer exists (the KDS field source of truth moved); `ui/src/features/settings/AppearanceSettings.tsx` and `ui/src/components/Card.tsx` both still resolve. NOT re-measured: the card render variants, draft isolation and concurrent-edit dialog (a test run). · Superseded 2026-09-29 body preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — the deliverable is fully present and countable. All five shared card components exist exactly where the Plan says to put them, under `ui/src/features/settings/workspace-cards/`: `WorkspaceStorePosSettings.tsx`, `WorkspaceRestaurantPosSettings.tsx`, `WorkspaceKdsSettings.tsx`, `WorkspaceInventorySettings.tsx` and `TerminalPreferencesCard.tsx`. A sixth, `StoreInfoCard.tsx`, sits alongside them — it is not in this phase's scope but is credited to Phase 2, which is where it is checked. The `WorkspaceCardProps` design (sessionToken / locationId / terminalId / variant / onSaved, with terminalId required for the modal variant) is a sound contract and the cards that consume it exist, so the interface is load-bearing rather than aspirational. The card directory did not exist at Baseline, as recorded. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
 <!-- dead-ref-prefix-ok: ui/src/features/kds/KdsSettingsPanel.tsx -->
 <!-- Cited as the KDS field source of truth; the component has since been renamed or removed. Recorded in the stamp above. -->
 # Phase 1 — Shared Cards & Local Profile
@@ -10,6 +12,18 @@
 - **Dependencies:** Phase 0b (SettingsContext), Phase 0c (terminal_profile.json + hook)
 - **Owner:** TBD
 - **Est. effort:** 4-6 days
+
+## ✅ Audit re-verification (2026-10-11)
+
+The five shared cards named in the Plan are present at HEAD under
+`ui/src/features/settings/workspace-cards/`: `WorkspaceStorePosSettings.tsx`,
+`WorkspaceRestaurantPosSettings.tsx`, `WorkspaceKdsSettings.tsx`,
+`WorkspaceInventorySettings.tsx` and `TerminalPreferencesCard.tsx`, plus `StoreInfoCard.tsx`
+and the `index.ts` that re-exports them. Two Reference paths are stale and left as written:
+`ui/src/features/kds/KdsSettingsPanel.tsx` no longer exists (the KDS field source of truth
+moved), and `ui/src/features/settings/AppearanceSettings.tsx` still resolves. The cards are now
+consumed in production — `ui/src/features/locations/topologyCard.ts` imports three of them —
+which the phase's own Residual section listed as future work ("not yet wired into SettingsPage").
 
 ## Summary
 
@@ -115,4 +129,4 @@ export interface WorkspaceCardProps {
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

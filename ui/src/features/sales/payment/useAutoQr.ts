@@ -150,7 +150,8 @@ export function useAutoQr({
         try {
           await voidPendingSale(sessionToken!, createdSaleId);
         } catch (voidErr) {
-          addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+          console.error('voidPendingSale failed', voidErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-void-failed'), type: 'error' });
         }
       }
       addToast({
@@ -165,7 +166,14 @@ export function useAutoQr({
   }, [sessionToken, buildGatewaySale, issueAutoQr, addToast, setProcessing, attemptIdRef, l10nRef]);
 
   const handleAutoReissue = useCallback(async () => {
-    if (!autoQr || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. `!autoQr` stays silent — there is no auto-QR panel to
+      // act on — but a missing token means the reissue cannot be attempted, and this
+      // hook toasts on its other paths.
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!autoQr) return;
     try {
       autoIssueSeq.current += 1;
       const charge = await issueAutoQr(autoQr.saleResult);
@@ -191,7 +199,12 @@ export function useAutoQr({
   }, [autoQr, sessionToken, issueAutoQr, addToast, l10nRef]);
 
   const handleAutoCancel = useCallback(() => {
-    if (!autoQr || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleAutoReissue above.
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!autoQr) return;
     const { saleResult } = autoQr;
     setAutoQr(null);
     voidPendingSale(sessionToken, saleResult.saleId)
@@ -201,9 +214,12 @@ export function useAutoQr({
           type: 'info',
         }),
       )
-      .catch((voidErr) =>
-        addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' }),
-      );
+      .catch((voidErr: unknown) => {
+        // The cause is logged, not shown: it arrives in English and cannot be
+        // localized here, and the cashier needs the instruction.
+        console.error('voidPendingSale failed', voidErr);
+        addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-void-failed'), type: 'error' });
+      });
   }, [autoQr, sessionToken, addToast, l10nRef]);
 
   const handleAutoConfirmed = useCallback(async () => {
@@ -217,13 +233,13 @@ export function useAutoQr({
       // queued finalize_sale instead of voiding a PAID sale.
       await settleGatewaySale(saleResult, false);
     } catch (err) {
-      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'payment-qris-gateway-failed'), type: 'error' });
       const classified = classifyError(err);
       setPaymentError(classified);
     } finally {
       setProcessing(false);
     }
-  }, [autoQr, settleGatewaySale, classifyError, addToast, setProcessing, setPaymentError]);
+  }, [autoQr, settleGatewaySale, classifyError, addToast, setProcessing, setPaymentError, l10nRef]);
 
   const handleAutoPoll = useCallback(async () => {
     if (!autoQr || !sessionToken) return false;

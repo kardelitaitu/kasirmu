@@ -1040,6 +1040,14 @@ settings-localpay-no-location = Belum ada lokasi untuk dikonfigurasi.
 settings-localpay-empty-list = Belum ada jalur yang dicatat — tambahkan yang ditawarkan lokasi ini.
 settings-localpay-scope-location = Diatur di lokasi ini
 settings-localpay-scope-legal-entity = Default pasar (badan hukum)
+settings-localpay-qris-autoverify-title = Verifikasi Otomatis Notifikasi Bank (0% MDR)
+settings-localpay-qris-autoverify-desc = Verifikasi pembayaran QRIS otomatis dari notifikasi aplikasi bank (BCA, Mandiri, BRI, Bank Jatim, GoPay, ShopeePay) tanpa potongan fee payment gateway.
+settings-localpay-qris-status-active = Aktif & Memantau
+settings-localpay-qris-status-inactive = Izin Notifikasi Diperlukan
+settings-localpay-qris-status-desktop = Mode Desktop / Simulasi
+settings-localpay-qris-enable-btn = Buka Pengaturan Izin Notifikasi Android
+settings-localpay-qris-test-btn = Uji Notifikasi (Simulasi Rp 50.000)
+settings-localpay-qris-test-success = Event simulasi pembayaran berhasil dikirim!
 
 # ── Store credit (F24, Business Defaults screen) ────────────────────────
 settings-credit-title = Kredit toko
@@ -1176,6 +1184,8 @@ settings-edc-delete = Hapus
 settings-edc-test = Uji Koneksi
 settings-edc-testing = Menguji…
 settings-edc-empty = Belum ada terminal kartu EDC yang dikonfigurasi.
+settings-edc-err-name-required = Nama terminal wajib diisi
+settings-edc-err-address-required = Alamat / port perangkat wajib diisi
 settings-edc-status-ready = Siap
 settings-edc-status-busy = Sibuk
 settings-edc-status-offline = Terputus
@@ -1203,6 +1213,9 @@ settings-edc-default-select = Terminal EDC Standar Kasir Ini
 settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.
+settings-edc-load-failed = Gagal memuat terminal EDC
+settings-edc-status-failed = Gagal membaca status terminal
+settings-edc-delete-failed = Gagal menghapus terminal
 settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
 
 # Panel Konflik Sinkronisasi Terkarantina (Dead-letter recovery)

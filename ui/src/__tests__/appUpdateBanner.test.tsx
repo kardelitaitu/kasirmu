@@ -1,15 +1,16 @@
 // ── app/UpdateBanner tests ────────────────────────────────────────
 //
-// ⚠️ WHY THIS FILE EXISTS, and why it does not replace UpdateBanner.test.tsx:
-// there are TWO UpdateBanner components. `ui/src/components/UpdateBanner.tsx`
-// is DEAD — only its own test imports it, and it is not exported from
-// `components/index.ts`. The SHIPPED one is `ui/src/app/UpdateBanner.tsx`,
-// imported by `AppLayout.tsx:5` and rendered at `AppLayout.tsx:386`.
+// WHY THIS FILE EXISTS, and what changed beneath it. It was written when the tree
+// held TWO UpdateBanner components: a dead twin at `ui/src/components/UpdateBanner.tsx`,
+// reachable only from its own test, and the shipped one at `ui/src/app/UpdateBanner.tsx`,
+// imported by `AppLayout.tsx:5`. This file was added to cover the SHIPPED banner, which
+// had no test at all.
 //
-// So the existing UpdateBanner.test.tsx exercises a component no user can
-// reach, and the shipped banner had NO test at all. This file covers the
-// shipped one. The dead twin's retirement is a separate slice (recorded in
-// docs/records/journal/JOURNAL-part-8.md:341-345).
+// THE TWIN IS NOW GONE. Measured 2026-10-14 (round 152): the only `UpdateBanner` files
+// in `ui/src` are `app/UpdateBanner.tsx`, `app/UpdateBanner.css` and this test. The dead
+// component and its `UpdateBanner.test.tsx` were both retired, so the title above is
+// stale and the file is now simply the shipped banner's suite — the reason it is named
+// `app…` rather than `UpdateBanner…` is history, not a distinction still to draw.
 //
 // The regression this pins: `versionBlocked` was a ONE-WAY LATCH. It was set
 // when the running build was below the update's `min_version`, and never

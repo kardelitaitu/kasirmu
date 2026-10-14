@@ -38,6 +38,18 @@ Scope: the Rust workspace (`crates/`, `modules/`, `platform/`, `foundation/`,
 `apps/cloud-server`, `apps/desktop-tauri`, `apps/mobile-tauri`). Not the React
 renderer, not the Go licence server.
 
+**Re-measured 11-10-26 — two §1 "FALSE" rows have since been fixed by this plan's own P2 work.**
+`RUSTDOCFLAGS` now has **11 hits** under `.github`/`scripts` (the row said none): the env line landed in
+`dev-ci.yml:17` beside the `rust-doc` job at `:389`, and locally at `scripts/check.sh:119`, with its
+runner and `scripts/gates.json` note dated **2026-09-28** — the day after this file's measurement. That is
+P2-4, which the plan itself records as DONE 2026-09-29. Likewise the clippy citation moved
+`dev-ci.yml:325 → :353` (the command is unchanged: `cargo clippy --workspace --all-targets -- -D warnings`).
+`#![deny(unsafe_code)]` crate roots read **41**, not 7. The remaining §1 verdicts re-derived as written:
+`scan-unwrap-panic.py` exits 0 and `verify-pg-tests-ran.py --self-test` exits 0. ONE acceptance was
+**not re-runnable here**: `verify-coverage-floors.py` needs a `coverage-probe.json` produced by
+`cargo llvm-cov`, so it fails on the missing input rather than on a floor — its `--self-test` passes.
+Nothing in §1 is wrong as a reading of `6c9e4328a`; two rows are simply **resolved**.
+
 **How to use this file.** Every box is either ticked `[x]` with the measurement
 that closes it, or open `[ ]` with an acceptance command. An item is done when
 its acceptance command is run and exits 0 — not when the code "looks right".

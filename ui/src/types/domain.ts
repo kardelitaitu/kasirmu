@@ -11,7 +11,7 @@ export type LineId = string & { readonly __brand: 'LineId' };
 /** Branded string type for stock-keeping unit codes. */
 export type Sku = string & { readonly __brand: 'Sku' };
 
-import { getDecimalSep } from '@/utils/storage';
+import { getDecimalSep, getThousandsSep } from '@/utils/storage';
 
 /** Money in minor units, paired with a 3-letter ISO-4217 code. */
 export interface Money {
@@ -123,6 +123,8 @@ export interface CartLine {
   readonly modifiers?: ModifierSelection[];
   /** Optional customer/kitchen note for this item (e.g. "pedas", "less ice"). */
   readonly note?: string;
+  /** Quantity that has already been dispatched to the kitchen. */
+  readonly dispatchedQty?: number;
 }
 
 /**
@@ -144,8 +146,8 @@ export interface Product {
   readonly createdAt?: string;
   /** ISO-8601 timestamp of the last price change. */
   readonly priceUpdatedAt?: string;
-  /** Product type: "retail" | "restaurant" | "both" | "service". */
-  readonly productType: 'retail' | 'restaurant' | 'both' | 'service';
+  /** Product type: "retail" | "restaurant" | "service". */
+  readonly productType: 'retail' | 'restaurant' | 'service';
   /** Cost price in minor units (local-only, ADR #36). */
   readonly costMinor?: number;
   /** Brand (free text). */
@@ -166,16 +168,81 @@ export interface Product {
   readonly modifierGroups?: ModifierGroup[];
 }
 
+/** A retail product with physical barcode, ledger inventory, and shelf placement. */
+export interface RetailProduct extends Product {
+  readonly productType: 'retail';
+}
+
+/** A restaurant menu item with courses, modifier customizations, and recipe deduction. */
+export interface RestaurantMenuItem extends Product {
+  readonly productType: 'restaurant';
+}
+
+/** A service item (untracked stock, appointment or hourly rate). */
+export interface ServiceItem extends Product {
+  readonly productType: 'service';
+}
+
+/** Discriminated union of typed catalog domain models. */
+export type CatalogItem = RetailProduct | RestaurantMenuItem | ServiceItem;
+
+/** Type guard for retail products. */
+export function isRetailProduct(p: Product): p is RetailProduct {
+  return p.productType === 'retail';
+}
+
+/** Type guard for restaurant menu items. */
+export function isRestaurantMenuItem(p: Product): p is RestaurantMenuItem {
+  return p.productType === 'restaurant';
+}
+
+/** Type guard for service items. */
+export function isServiceItem(p: Product): p is ServiceItem {
+  return p.productType === 'service';
+}
+
+/** A single recipe ingredient item for a composite dish or drink. */
+export interface RecipeItem {
+  readonly id: string;
+  readonly parentProductId: string;
+  readonly ingredientProductId: string;
+  readonly ingredientSku: string;
+  readonly ingredientName: string;
+  readonly quantityRequired: number;
+  readonly unit: string;
+  readonly costMinor: number;
+}
+
+/** Input row for editing or creating an ingredient in a recipe. */
+export interface RecipeIngredientInput {
+  ingredientProductId: string;
+  quantityRequired: number;
+  unit: string;
+}
+
 /** Extract configured modifier groups from a product or its serialized metadata. */
 export function getProductModifierGroups(product: Product): ModifierGroup[] {
   if (product.modifierGroups && product.modifierGroups.length > 0) {
     return product.modifierGroups;
   }
-  if (product.notes && product.notes.startsWith('[')) {
+    if (product.notes && product.notes.startsWith('[')) {
     try {
       const parsed = JSON.parse(product.notes);
       if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
         return parsed as ModifierGroup[];
+      }
+    } catch { /* malformed notes */ }
+  }
+  if (product.notes && product.notes.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(product.notes);
+      if (parsed && typeof parsed === 'object') {
+        const groups =
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifierGroups ||
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifiers;
+        if (Array.isArray(groups) && groups.length > 0 && groups[0].modifiers) {
+          return groups as ModifierGroup[];
+        }
       }
     } catch { /* malformed notes */ }
   }
@@ -216,6 +283,34 @@ export const MINOR_UNIT_EXPONENT: Record<string, number> = {
 /** Minor-unit exponent (decimal places) for an ISO-4217 currency code. */
 export const minorUnitExponent = (currency: string): number =>
   MINOR_UNIT_EXPONENT[currency] ?? 2;
+
+/**
+ * Default quick-tender denominations for a currency, in MAJOR units.
+ *
+ * `CashTenderPanel` multiplies each by `10^minorUnitExponent(currency)` to get minor units,
+ * so the SAME array means Rp 5.000 in IDR (exponent 0) and $5,000 in USD (exponent 2). The
+ * ladder therefore has to be chosen per exponent, not once.
+ *
+ * This replaced three hardcoded copies of `[5000, 10000, …]` — in `PosScreen`,
+ * `RetailPosScreen` and `CashTenderPanel` itself. Nothing in the repo writes the
+ * `restaurant-tender-presets` / `retail-tender-presets` keys those callers read, so that
+ * fallback is what EVERY store gets: a USD till was offering a $5,000 cash shortcut on a $7
+ * sale.
+ *
+ * The rungs are `5, 10, 20, 50, 100, 200, 500` scaled by the currency's order of magnitude,
+ * which keeps the IDR set byte-identical to what shipped (5.000 … 500.000) while giving a
+ * 2-exponent currency $5 … $500.
+ */
+export const defaultTenderPresets = (currency: string): number[] => {
+  // An exponent-0 currency (IDR, JPY, KRW, VND) prices in thousands, so its ladder is
+  // 5.000 … 100.000 major units — byte-identical to what shipped and what the quick-tender
+  // suite pins. Everything else (USD and the rest of the 2-exponent majority, plus the
+  // 3-exponent Gulf currencies) prices in units and tens, so its ladder is 5 … 100. The
+  // rung COUNT is five in both, which is what the panel was built around.
+  return minorUnitExponent(currency) === 0
+    ? [5_000, 10_000, 20_000, 50_000, 100_000]
+    : [5, 10, 20, 50, 100];
+};
 
 /** Strict decimal literal: optional sign, digits and/or a fractional part. */
 const DECIMAL_RE = /^([+-]?)(\d*)(?:\.(\d*))?$/;
@@ -262,31 +357,121 @@ export function parseMinorUnits(input: string, scaleExponent: number): number | 
 }
 
 /**
+ * Render integer minor units as the plain decimal literal an editable amount
+ * `<input>` needs — 350 with exp 2 → "3.50", 10000 with exp 0 → "10000" — so the
+ * value round-trips back through `parseMinorUnits` / `parseMoneyInput` unchanged.
+ *
+ * Integer-only arithmetic, no floating-point rounding.
+ */
+export function minorUnitsToInputString(minor: number, exp: number): string {
+  if (!Number.isFinite(minor)) return '';
+  const digits = String(Math.trunc(Math.abs(minor))).padStart(exp + 1, '0');
+  const body = exp > 0
+    ? `${digits.slice(0, digits.length - exp)}.${digits.slice(digits.length - exp)}`
+    : digits;
+  return minor < 0 ? `-${body}` : body;
+}
+
+/**
+ * Format integer minor units for editable input fields according to currency rules.
+ * For exponent-0 currencies (IDR, JPY, KRW): integer digits only ("5000", "0").
+ * For decimal currencies (USD, EUR, GBP): trimmed decimals ("50", "50.50", "0.05", "0").
+ */
+export function formatMoneyInput(minor: number, currency: string = 'IDR'): string {
+  if (!Number.isFinite(minor) || minor < 0) return '';
+  const exp = minorUnitExponent(currency);
+  if (exp === 0) {
+    return String(Math.trunc(minor));
+  }
+  const factor = 10 ** exp;
+  const whole = Math.trunc(minor / factor);
+  const frac = Math.abs(minor % factor);
+  return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(exp, '0')}`;
+}
+
+/**
+ * Parse operator input (major units, as typed) into integer minor units across any currency.
+ *
+ * Handles grouping dots/commas safely:
+ * - Currencies with exponent 0 (IDR, JPY, KRW, VND):
+ *   "5000" -> 5000, "5.000" -> 5000, "50.000" -> 50000, "50,000" -> 50000, "1.234.567" -> 1234567.
+ *   Rejects fractional decimals ("50.5") that the currency cannot represent.
+ * - Currencies with exponent > 0 (USD, EUR, SGD):
+ *   "50" -> 5000, "50.50" -> 5050, "50,50" -> 5050, "1,234.50" -> 123450, "1.234,50" -> 123450.
+ *   Rejects over-precision ("50.123" for USD).
+ *
+ * Returns integer minor units, or null if input is non-numeric, negative, or invalid.
+ */
+export function parseMoneyInput(input: string, currency: string = 'IDR'): number | null {
+  const raw = input.trim();
+  if (raw === '') return null;
+
+  // Strip spaces and underscores
+  const normalised = raw.replace(/[ _]/g, '');
+
+  const exp = minorUnitExponent(currency);
+
+  let degrouped = normalised;
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(normalised)) {
+    // Dot grouping followed by comma decimal (e.g. 1.234,50): strip dots, comma becomes dot
+    degrouped = normalised.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(normalised)) {
+    // Comma grouping followed by dot decimal (e.g. 1,234.50): strip commas
+    degrouped = normalised.replace(/,/g, '');
+  } else {
+    // Single separator type or no decimals:
+    const threePlaceDotGroups = /^\d{1,3}(\.\d{3})+$/.test(normalised);
+    const multiDotGroup = threePlaceDotGroups && (normalised.match(/\./g) ?? []).length > 1;
+    const looksDotGrouped =
+      !normalised.includes(',') && threePlaceDotGroups && (exp === 0 || multiDotGroup);
+
+    const threePlaceCommaGroups = /^\d{1,3}(,\d{3})+$/.test(normalised);
+    const multiCommaGroup = threePlaceCommaGroups && (normalised.match(/,/g) ?? []).length > 1;
+    const looksCommaGrouped =
+      !normalised.includes('.') && threePlaceCommaGroups && (exp === 0 || multiCommaGroup);
+
+    if (looksDotGrouped) {
+      degrouped = normalised.replace(/\./g, '');
+    } else if (looksCommaGrouped) {
+      degrouped = normalised.replace(/,/g, '');
+    } else {
+      // If a comma is present and no dot, treat comma as potential decimal point
+      degrouped = normalised.includes('.') ? normalised : normalised.replace(',', '.');
+    }
+  }
+
+  if (!/^\d+(\.\d*)?$/.test(degrouped)) return null;
+
+  const [whole = '0', frac = ''] = degrouped.split('.');
+
+  if (exp === 0) {
+    // Currencies with exponent 0 (IDR, JPY, KRW, VND) have no circulating minor units.
+    if (frac !== '' && !/^0+$/.test(frac)) {
+      return null;
+    }
+    const minor = Number(whole);
+    return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+  }
+
+  // Reject input with more decimal places than currency exponent
+  if (frac.length > exp) return null;
+
+  const padded = frac.padEnd(exp, '0');
+  const minor = Number(whole) * 10 ** exp + Number(padded);
+  return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+}
+
+/**
  * Parse a user-entered balance or money amount in major units
- * (e.g. "100" for USD $100.00 -> 10000 minor units; "100000" for IDR Rp 100.000 -> 100000 minor units)
+ * (e.g. "100" for USD $100.00 -> 10000 minor units; "100000" or "100.000" for IDR -> 100000 minor units)
  * scaled to the currency's minor units.
  *
- * For currencies with 0 exponent (e.g. IDR), rejects fractional input (contains decimal point).
- * For currencies with exponent > 0 (e.g. USD), rejects fractional input that has more decimal
- * places than the exponent.
- *
- * Returns null if input is invalid or negative.
+ * Returns null if input is invalid or negative; empty string parses to 0.
  */
 export function parseBalanceInput(input: string, currency: string): number | null {
   const trimmed = input.trim();
   if (trimmed === '') return 0;
-  const exp = minorUnitExponent(currency);
-  if (exp === 0 && trimmed.includes('.')) {
-    return null;
-  }
-  const parts = trimmed.split('.');
-  const frac = parts[1];
-  if (frac !== undefined && frac.length > exp) {
-    return null;
-  }
-  const val = parseMinorUnits(trimmed, exp);
-  if (val === null || val < 0) return null;
-  return val;
+  return parseMoneyInput(trimmed, currency);
 }
 
 /** Render a fixed-point millionths value (LOYALTY-01 tier multipliers)
@@ -312,6 +497,7 @@ export const formatMoney = (
   m: Money,
   locale: string = 'id-ID',
   decimalSep?: 'dot' | 'comma' | 'none',
+  thousandsSep?: 'comma' | 'dot' | 'space' | 'none',
 ): string => {
   if (!m || typeof m !== 'object' || typeof m.currency !== 'string') {
     return 'Rp 0';
@@ -321,11 +507,46 @@ export const formatMoney = (
   const exp = minorUnitExponent(m.currency);
   const major = m.minor_units / 10 ** exp;
   const decimals = hideDecimals || exp === 0 ? 0 : exp;
-  const fmt = new Intl.NumberFormat(locale, {
+  // The store's thousands separator, when one is configured.
+  //
+  // `Intl.NumberFormat` derives grouping from the LOCALE, so before this the
+  // preview could not agree with the paper: the printer honours
+  // `currency.thousands_separator` through `ReceiptConfig.grouping`
+  // (receipt.rs:193) while this formatter grouped the Indonesian way whatever the
+  // store asked for. Passing `useGrouping: false` and grouping the integer part
+  // ourselves is the only way to express a separator the locale does not choose.
+  //
+    // Defaults through the localStorage bridge, exactly as `decimalSep` does on the
+  // line above. The two settings are the printer's own pair — `ReceiptConfig` carries
+  // `decimal_separator` (:181) and `grouping` (:193) — so the preview must resolve both
+  // the same way or it can only ever agree with the paper on half the figures.
+  //
+  // An explicit argument still wins, so a caller with a reason can override.
+  const tsep = thousandsSep ?? getThousandsSep();
+  const wanted = tsep === 'comma' ? ',' : tsep === 'dot' ? '.' : tsep === 'space' ? ' ' : null;
+  // A fraction-bearing locale mark is only needed when there IS a fraction to mark.
+  const hasFraction = decimals > 0;
+  const localeFmt = new Intl.NumberFormat(locale, {
     style: 'decimal',
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+  // Which mark does THIS locale use between integer and fraction? It varies (en-US
+  // '.', de-DE ','), and it is the one thing the grouping character must not equal.
+  const decimalMark = hasFraction
+    ? localeFmt.formatToParts(1.5).find((x) => x.type === 'decimal')?.value
+    : undefined;
+  // THE COLLISION RULE. The grouping character comes from the store SETTING and the
+  // decimal mark from the LOCALE. For de-DE and id-ID the locale's decimal mark is a
+  // comma, so a store that sets `comma` produced:
+  //
+  //     $ 1,234,567,89      three commas, no way to tell where the integer ends
+  //
+  // The printer cannot reach this: both its marks come from `ReceiptConfig` and are
+  // resolved together (receipt.rs:360-365). A formatter taking one from each source must
+  // check they differ, and when they do not, grouping by that character is worse than
+  // not grouping at all — the fraction stops being parsable.
+  const groupChar = wanted && wanted !== decimalMark ? wanted : null;
   // Known currency → symbol mapping
   const symbols: Record<string, string> = {
     USD: '$', IDR: 'Rp', EUR: '€', GBP: '£', JPY: '¥', KRW: '₩',
@@ -333,5 +554,22 @@ export const formatMoney = (
     AUD: 'A$', CAD: 'C$', HKD: 'HK$', TWD: 'NT$', INR: '₹',
   };
   const prefix = symbols[m.currency] ?? m.currency;
-  return `${prefix} ${fmt.format(major)}`;
+  if (!groupChar) return `${prefix} ${localeFmt.format(major)}`;
+  // Group the INTEGER part only, so a separator can never split the fraction.
+  // Group the INTEGER part only, so a separator can never split the fraction.
+  // `useGrouping: false` is load-bearing: without it Intl has ALREADY grouped the
+  // integer with the locale's character, and re-grouping an already-grouped string
+  // leaves both separators in place (`1,234,567` + a space setting stayed
+  // `1,234,567`). The locale's mark is still needed to find the fraction boundary.
+  const plain = new Intl.NumberFormat(locale, {
+    style: 'decimal',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: false,
+  }).format(major);
+  const cut = decimalMark ? plain.lastIndexOf(decimalMark) : -1;
+  const intPart = cut === -1 ? plain : plain.slice(0, cut);
+  const fracPart = cut === -1 ? '' : plain.slice(cut);
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, groupChar);
+  return `${prefix} ${grouped}${fracPart}`;
 };

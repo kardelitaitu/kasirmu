@@ -1,8 +1,38 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 209 lines, with no prior stamp, footer or marker. It records a design session rather than a specification, and its status line says so: five questions decided across two rounds, with the work that follows named separately. That framing is worth preserving, because a planning-notes file that pretends to be a plan will be read as one. · THE SUBSTRATE IS REAL, and the checkable part is which payment paths exist. The QRIS processor this work concerns is live in the cloud server, alongside the webhook handler this campaign has cited in several documents, and the card-present path it plans against has a hardware driver with its own sibling test file in the abstraction layer. A planning document whose subject does not exist in the tree would be the failure mode; this one's subject is present. · WHAT THE FILE IS ACTUALLY FOR, which is narrower than a reader might assume. It records a session in which questions were answered — which methods exist per workspace, how they are gated, what the defaults are — and the fact that the questions are NUMBERED AND MARKED DECIDED is the mechanism that stops the same debate recurring. That mechanism is worth more than the individual answers, because the answers will age as payment methods are added and the numbering will not. · A NOTE ON ITS RELATIONSHIP TO THE SIBLINGS AUDITED IN THE SAME ROUND, because the set is a chain and not a menu. This file decides what payment methods exist; the resilience design audited in an earlier round decides how they fail safely; the multi-terminal card-terminal plan decides how one physical device binds to several; and the owner question records that part of the phase cannot proceed at all without an answer from outside the codebase. A reader who takes any one in isolation will misjudge the others, and the plans are numbered precisely to make the order legible. · NOT re-measured: the five decisions themselves, whether the per-workspace gating they specify matches what the server enforces, or the tier rules the admin guide and the plan-gating decision also describe. Those are the document's content. What is established is that the payment surface it plans against exists. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 3 minor) · Re-audit, and the MAJOR is that this plan's §1.1 "current-state map" is now HISTORY IN THE GOOD DIRECTION: Phase 1 shipped. PaymentModal.tsx is 2,577 lines (was ~1,500) and the hardcoded ['cash','card','qris','credit'] array is GONE, replaced by a payment-rails system (ui/src/features/sales/useLocalPaymentRails.ts, ui/src/hooks/useActiveMarketProfile.ts) whose coreRailWithheld/railOffered distinction is deliberate. The decided values are live in ui/src/api/types/payment.ts:5 — 'cash','card','card_debit','card_credit','qris_manual','qris' — so Q2 (card_debit+card_credit) and §1.3's qris_manual both SHIPPED. A new migration 20260924_local_payment_methods.sql landed a local_payment_methods table (scope legal_entity|location, rail_code, is_enabled, parameters) on the REGIONAL-configuration track rather than this plan's settings-key design, and its header states it deliberately derives nothing from tier entitlements — which is the separation §1.2's safety rule asked for, implemented at a different layer. payment_gateways remains a fail-fast stub, so §1.4's Midtrans CRUD is still Phase 2. A dated STATUS UPDATE block was added under the status line. Renames applied: apps/desktop-client -> apps/desktop-tauri (2), crates/oz-core/ -> crates/kasirmu-core/ (4), and the numbered migrations 022_*/027_* -> the consolidated 20260813_init.sql. · VERIFIED AND LEFT ALONE: the RBAC and subscription traces in §0, the five decided questions, the terminology law, the permission matrix, and the credit-limit ruling — those are the document's content. · NOT re-measured: whether receivables:*/payables:* shipped, whether the shipped rail gating matches the server's enforcement, or the tier rules. · Prior 2026-09-29 body retained verbatim below. -->
+<!-- Merged prior stamp (2026-09-29), kept as plain text — delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 209 lines, with no prior stamp, footer or marker. It records a design session rather than a specification, and its status line says so: five questions decided across two rounds, with the work that follows named separately. That framing is worth preserving, because a planning-notes file that pretends to be a plan will be read as one. · THE SUBSTRATE IS REAL, and the checkable part is which payment paths exist. The QRIS processor this work concerns is live in the cloud server, alongside the webhook handler this campaign has cited in several documents, and the card-present path it plans against has a hardware driver with its own sibling test file in the abstraction layer. A planning document whose subject does not exist in the tree would be the failure mode; this one's subject is present. · WHAT THE FILE IS ACTUALLY FOR, which is narrower than a reader might assume. It records a session in which questions were answered — which methods exist per workspace, how they are gated, what the defaults are — and the fact that the questions are NUMBERED AND MARKED DECIDED is the mechanism that stops the same debate recurring. That mechanism is worth more than the individual answers, because the answers will age as payment methods are added and the numbering will not. · A NOTE ON ITS RELATIONSHIP TO THE SIBLINGS AUDITED IN THE SAME ROUND, because the set is a chain and not a menu. This file decides what payment methods exist; the resilience design audited in an earlier round decides how they fail safely; the multi-terminal card-terminal plan decides how one physical device binds to several; and the owner question records that part of the phase cannot proceed at all without an answer from outside the codebase. A reader who takes any one in isolation will misjudge the others, and the plans are numbered precisely to make the order legible. · NOT re-measured: the five decisions themselves, whether the per-workspace gating they specify matches what the server enforces, or the tier rules the admin guide and the plan-gating decision also describe. Those are the document's content. What is established is that the payment surface it plans against exists. · No stamp existed; this is the first. -->
 # Payment Methods per Workspace — Planning Notes
 
 > **Status:** ALL FIVE QUESTIONS DECIDED (rounds 1–2, 2026-09-03) — see §2a/§2b/§2c. Phase 1 is spec-ready; Phase 3/4 designs are complete on paper. Next: draft `docs/specs/_active/` package (spec.yaml + plan.md + validation.md).
 > **Date:** 2026-09-03 · Session with DSH (DeepSeek Harness agent)
+
+> **⚠️ STATUS UPDATE (2026-10-11, docs-auditor) — the map in §1.1 is HISTORY; Phase 1 shipped.**
+> Read §1.1 as the pre-work measurement it was, not as current state. Re-derived:
+> `ui/src/features/sales/PaymentModal.tsx` is now **2,577 lines** (was ~1,500) and the
+> hardcoded `['cash','card','qris','credit']` array is **gone** — it was replaced by a
+> payment-**rails** system (`ui/src/features/sales/useLocalPaymentRails.ts`,
+> `ui/src/hooks/useActiveMarketProfile.ts`), with a `coreRailWithheld`/`railOffered`
+> distinction the file's own comments explain. The decided method values are live in
+> `ui/src/api/types/payment.ts:5` — `'cash', 'card', 'card_debit', 'card_credit',
+> 'qris_manual', 'qris', …` — so **Q2 (`card_debit`+`card_credit`) and §1.3's
+> `qris_manual` both shipped**, and `crates/kasirmu-payment/src/types.rs` names the same
+> set. A **new migration `20260924_local_payment_methods.sql`** landed a
+> `local_payment_methods` table (scope_type legal_entity|location, rail_code, is_enabled,
+> parameters) — the market-rail axis, delivered on the **regional-configuration** track
+> rather than this plan's `settings`-table design, and its header states in terms that it
+> deliberately does **not** derive from tier entitlements. `payment_gateways` remains a
+> fail-fast stub (`crates/kasirmu-core/src/db/payment_gateways.rs`), so §1.4's Midtrans
+> CRUD is still Phase 2.
+>
+> **What this means for the plan's status line:** "Phase 1 is spec-ready" is now
+> **superseded in the good direction** — Phase 1 shipped without the spec package §4.1
+> called for, and the rail model that landed is broader than the per-workspace-type
+> settings key §1.2 specified. The permission family (Q5 round 2, §2c) was **not**
+> re-measured — whether `receivables:*`/`payables:*` shipped is a separate question this
+> pass did not answer.
+>
+> Two path renames applied below: `apps/desktop-client` → `apps/desktop-tauri`,
+> `crates/oz-core/` → `crates/kasirmu-core/`, and the numbered migrations `022_*`/`027_*`
+> → the consolidated `20260813_init.sql`.
 
 ---
 
@@ -14,11 +44,11 @@ Three topics were reviewed today, in order:
    - `platform/core/src/rbac.rs`: `Role` = name + JSON permission list; 84 compile-time permission constants (`domain:action`).
    - Wildcard resolver: `*` → everything, `sales:*` → domain, `sales:void` → exact. Empty/malformed → **deny all** (fail-closed).
    - Presets (`rbac_presets.rs`): Owner=`*` · Admin=all minus billing/ownership/`staff:delete` · Manager=broad but no `staff:manage_roles` · Staff=checkout-only · Auditor=read-only · Custom=empty.
-   - Enforcement at every command via `require_permission_for_session` (`apps/desktop-client/src/commands/authz.rs`) + scope check (store/workspace assignment, ADR #35).
+   - Enforcement at every command via `require_permission_for_session` (`apps/desktop-tauri/src/commands/authz.rs`) + scope check (store/workspace assignment, ADR #35).
    - Bidirectional inventory tests anchor registry ↔ presets ↔ `ALL_ENFORCED`.
 
 2. **Subscription contract** — traced end-to-end. Verdict: **already solid, no work needed.**
-   - `crates/oz-core/src/subscription.rs`: tiers Free/Plus/Pro/Premium/Enterprise (+ deprecated `OneTime` for DB back-compat).
+   - `crates/kasirmu-core/src/subscription.rs`: tiers Free/Plus/Pro/Premium/Enterprise (+ deprecated `OneTime` for DB back-compat).
    - Quotas: `max_stores` (1/1/2/5/∞), `max_pos_instances` (1/2/5/∞/∞), `max_warehouses` (0/0/0/∞/∞ — Premium+ only since 2026-09-29), `max_staff_users` (1/5/20/50/∞), `sales_history_days` (90/365/5y/∞/∞).
    - Features: QRIS (Plus+), cloud sync (Plus+), Stripe (Pro+), analytics (Pro+), KDS (Pro+), loyalty + Lua engine (Premium+), regional zones (Enterprise).
    - `effective_tier()`: canceled → Free; within `offline_grace_days` → paid tier; out of grace → Free. Clock-rollback detection via ledger MAX(created_at) vs wall clock (30s tolerance). Row is **RSA-2048-signed** by the license server.
@@ -39,12 +69,12 @@ Goal: per-workspace-type enable/disable of payment methods in the payment modal 
 | # | Fact | Location | Implication |
 |---|---|---|---|
 | 1 | Methods are **hardcoded** in the modal: `['cash','card','qris','credit']` + free-text "other" + `open_bill`; identical for retail and resto | `ui/src/features/sales/PaymentModal.tsx:1443`, type at line 38 | The core ask genuinely doesn't exist yet |
-| 2 | `payments.method` is a **free string** column | `crates/oz-core/src/payment.rs`; migration `022_payments_table.sql` | New method values need **no schema change** |
-| 3 | `credit` already exists but means **customer tab** (name + later settlement), NOT credit card. Settlement SQL filters `method = 'credit'` | PaymentModal:1497; `apps/desktop-client/src/commands/settings.rs:359,396` | ⚠️ Naming collision: "credit card" needs a different value (proposal: keep `card` for EDC, or `card_credit`/`card_debit` split — open question #2) |
+| 2 | `payments.method` is a **free string** column | `crates/kasirmu-core/src/payment.rs`; migration `20260813_init.sql` (consolidated) | New method values need **no schema change** |
+| 3 | `credit` already exists but means **customer tab** (name + later settlement), NOT credit card. Settlement SQL filters `method = 'credit'` | PaymentModal:1497; `apps/desktop-tauri/src/commands/settings.rs:359,396` | ⚠️ Naming collision: "credit card" needs a different value (proposal: keep `card` for EDC, or `card_credit`/`card_debit` split — open question #2) |
 | 4 | Subscription caps already gate method visibility: `useSubscription().caps` → QRIS locked teaser when `!caps.supportsQris` | PaymentModal:1592, SetupWizard:695 | Config must **intersect** with signed entitlements — pattern already exists |
-| 5 | `payment_gateways` table EXISTS (migration `20260825_payment_infra.sql`) with stub CRUD: `name` (stripe/square/midtrans/paddle), `is_active`, `config_json` | `crates/oz-core/src/db/payment_gateways.rs` | "Midtrans ID" has a designated home; stubs must be implemented; audit note: **encrypt keys at rest** (CRY-1 tie-in) |
-| 6 | Gateway plumbing pre-built on `Payment`: `gateway_reference/status/response`, `idempotency_key` (PAY-2 drop point lives in oz-payment drivers) | `payment.rs`; migration `027_payment_gateway_fields.sql` | Midtrans integration slots in without schema changes |
-| 7 | `MIDTRANS_SERVER_KEY` env validation exists (`Mid-server-`/`SB-Mid-server-` prefixes) | `crates/oz-core/src/config_validator.rs:162` | Env-var path works today; per-store config is the next step |
+| 5 | `payment_gateways` table EXISTS (migration `20260825_payment_infra.sql`) with stub CRUD: `name` (stripe/square/midtrans/paddle), `is_active`, `config_json` | `crates/kasirmu-core/src/db/payment_gateways.rs` | "Midtrans ID" has a designated home; stubs must be implemented; audit note: **encrypt keys at rest** (CRY-1 tie-in) |
+| 6 | Gateway plumbing pre-built on `Payment`: `gateway_reference/status/response`, `idempotency_key` (PAY-2 drop point lives in oz-payment drivers) | `payment.rs`; migration `20260813_init.sql` (consolidated) | Midtrans integration slots in without schema changes |
+| 7 | `MIDTRANS_SERVER_KEY` env validation exists (`Mid-server-`/`SB-Mid-server-` prefixes) | `crates/kasirmu-core/src/config_validator.rs:162` | Env-var path works today; per-store config is the next step |
 | 8 | `type_key` (`store-pos`/`restaurant-pos`) flows through session + WorkspaceContext; Settings page already has separate `store-pos` and `restaurant-pos` sections | `SettingsPage.tsx:806-813`, `SettingsNavTree.tsx:114-125` | Config UI has a natural home; retail-only gating trivial |
 | 9 | Settings storage = `settings` table (key, JSON value) per store DB | `db/popularity.rs:574,630` | Phase 1 rides this — **no migration needed** |
 | 10 | **No piutang/receivable concept exists** anywhere in the codebase | (grep: only an unrelated comment) | "Pay later" is greenfield — needs real design (§1.5) |
@@ -209,4 +239,4 @@ Fact for the AP side: purchasing permissions (`purchasing:view` / `purchasing:ma
 
 *Raw discussion trace: sessions with DSH on 2026-09-03. Code references verified at branch `0.0.35` (HEAD at time of writing: `8beda436`).*
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

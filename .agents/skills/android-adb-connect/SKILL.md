@@ -3,7 +3,25 @@ name: android-adb-connect
 description: Connect to the kasir.mu Android tablet over wireless ADB and get a trustworthy read of what it is doing - wait for the mDNS device, prove the app process and WebView are alive, capture a screenshot, dump the UI hierarchy, and confirm which build is installed. Use when adb devices is empty, when adb shell dies with no devices/emulators found, when a wireless tablet will not connect or appears to have dropped its pairing, when screencap or adb pull fails with a Windows path in the error message, when you need a screenshot of the tablet, when you need to know what is actually on the tablet home screen, when a claim about the running app needs device evidence, or before concluding the app crashed on launch. For building, signing or installing the APK use android-apk-build; for driving the live DOM over Chrome DevTools Protocol use android-ui-automation.
 ---
 
-<!-- Audit stamp: 2026-10-02 · Budak-Korporat · status: ACCURATE — new skill, rev 1, no predecessor ·
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Re-audit
+     of a skill whose every claim was measured on real hardware on 02-10-26. The device facts, the command
+     set, the five liveness lines and the MSYS path-conversion failure all stand; the two repairs below are
+     LINE COORDINATES that aged as the cited files grew, plus the standard re-derivation note. ·
+  MINOR 1 — §6's worked example cited `WorkspaceHome.tsx:937-943` / `:738` / `:435` and `tools.tsx:82`.
+     Re-derived at HEAD (the file is 1,130 lines now): `toolGroups.length > 0` is at `:936` (a second
+     content-card instance at `:1104`), `canSeeTools` at `:453`, `canAddWorkspace` at `:423`, and the
+     catalogue anchor is `tools.tsx:67` (`TOOL_GROUP_ORDER`). THE BEHAVIOUR IS UNCHANGED — the Tools grid
+     is still gated inside a zero-workspace branch, which is the point the section makes. ·
+  MINOR 2 — §7's caveat now records `scripts/android-cdp.mjs` at 428 lines with its adb call at `:46` and
+     the misleading 'not running' message at `:73`, so the next reader can find the code the workaround
+     refers to. ·
+  VERIFIED AND LEFT ALONE: all five paths the stamp names exist; the §1 wait loop, the §2 MSYS_NO_PATHCONV
+     failure and its fix, the §3 five liveness lines, the §4 panel-state reading, the §5 build check and the
+     §7 routing table are unchanged. The `grep -i kasirmu` trap is still exactly right — 'kasirmu' is not a
+     substring of 'mu.kasir.mobile'. ·
+  NOT re-measured: everything requiring the tablet (the re-pairing procedure, the EBUSY workaround, the
+     on-device output quoted in §3 and §6). Those are device measurements and this pass had no device. ·
+  PRIOR STAMP, kept verbatim as text with delimiters stripped: Audit stamp: 2026-10-02 · Budak-Korporat · status: ACCURATE — new skill, rev 1, no predecessor ·
      Audited against branch `0.0.41` at `bd203ac99`. Every claim below was measured on the device or
      read out of the tree during this pass; nothing is inherited from another document. Measured:
      all five liveness commands returned the values quoted in §3; the MSYS path-conversion failure in
@@ -14,7 +32,8 @@ description: Connect to the kasir.mu Android tablet over wireless ADB and get a 
      ui/src/features/workspaces/tools.tsx, ui/src/app/tablet/TabletAppShell.tsx,
      scripts/android-cdp.mjs and scripts/android-screen.mjs all exist. NOT re-measured (needs a
      device state this pass never entered): the re-pairing procedure, which stays in
-     android-apk-build §5 — no pairing was lost during this pass. -->
+     android-apk-build §5 — no pairing was lost during this pass.
+-->
 
 # Connecting to the Android tablet over wireless ADB
 
@@ -146,12 +165,17 @@ tree, and it settles questions unit tests cannot. Worked example, measured 02-10
 > The tablet home showed one card, "Tambah Workspace", and **no Tools grid at all**.
 
 The dump proved it — a `WORKSPACE` header, one button, nothing below — and the code
-explains it. `ui/src/features/workspaces/WorkspaceHome.tsx:937-943` renders
-`{toolGroups.length > 0 && <ToolsCategoryGrid ... />}` **inside** the branch reached when
-`sortedWorkspaces.length > 0`. With zero workspaces the render takes the
-`canAddWorkspace` empty branch instead (`:738`), so the grid is never mounted — even
-though `canSeeTools` (`:435`) was `true` for the owner role and the catalogue itself
-(`ui/src/features/workspaces/tools.tsx:82`) was intact.
+explains it. `ui/src/features/workspaces/WorkspaceHome.tsx:936-942` renders
+`{toolGroups.length > 0 && <ToolsCategoryGrid ... />}` **inside** the empty-state branch
+(the one that draws the "Add Workspace" card). With zero workspaces the render never
+reaches a populated branch, so the grid is never mounted — even though `canSeeTools`
+(`:453`) was `true` for the owner role and the catalogue itself
+(`ui/src/features/workspaces/tools.tsx:67`, `TOOL_GROUP_ORDER`) was intact.
+
+  *Coordinates re-derived 11-10-26: the file has grown to 1,130 lines, so the cites above did not land
+  where they were written. `toolGroups.length > 0` is at `:936` (a second, content-card instance at
+  `:1104`); `canSeeTools` is at `:453`; `canAddWorkspace` is at `:423`. The BEHAVIOUR the paragraph
+  describes was re-read and is unchanged — the grid is still gated inside a zero-workspace branch.*
 
 The lesson generalises: **a screen that renders "nothing" is usually a branch, not a dead
 component.** Read the UI tree first, then find the `&&` or ternary that gates it, and only
@@ -187,5 +211,10 @@ node is `NAF="true"` with no children, so CDP is the only way to read the
 rendered DOM; and a `location.reload()` closes the CDP target
 (`Inspected target navigated or closed`), so re-attach after one.
 
-> last audited 02-10-26 by Budak-Korporat
+  *Re-verified 11-10-26: `scripts/android-cdp.mjs` is 428 lines; its adb call is
+  `execFileSync("adb", …)` at `:46` and the misleading message the caveat warns about is at
+  `:73`. The EBUSY workaround and both traps above remain accurate as written — they describe
+  device/sandbox behaviour that is not re-measurable from the tree.*
+
+> last audited 11-10-26 by docs-auditor
 > amended 2026-10-07 by Budak-Korporat (adb EBUSY / direct-WebSocket workaround)

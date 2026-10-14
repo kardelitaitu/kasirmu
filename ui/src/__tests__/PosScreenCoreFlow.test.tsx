@@ -189,11 +189,16 @@ vi.mock('@/contexts/AuthContext', async () => {
 // Mutable so a test can SWITCH STORES. The receipt-settings read depends on
 // sessionToken, so changing it starts a second read while the first is in flight.
 // Reset in beforeEach so the token cannot leak between cases.
-const wsState = vi.hoisted(() => ({ sessionToken: 'mock-session-token' as string }));
+const wsState = vi.hoisted(() => ({
+  sessionToken: 'mock-session-token' as string,
+  // Mutable for the course-firing case below: the course bar only renders on
+  // `restaurant-pos`, and a store switch is what re-runs the read being raced.
+  activeWorkspace: 'store-pos' as string,
+}));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
-    activeWorkspace: 'store-pos',
+    activeWorkspace: wsState.activeWorkspace,
     setActiveWorkspace: vi.fn(),
     activeInstance: null,
     setActiveInstance: vi.fn(),
@@ -434,6 +439,10 @@ async function renderPosScreenWithShift(openedAt?: Date) {
     total: { minor_units: 1000, currency: 'USD' },
     taxTotal: { minor_units: 0, currency: 'USD' },
     lineCount: 1,
+    // Always on the wire; see completedSale.test.ts for why the type is now required.
+    discountPercent: 0,
+    tipMinor: 0,
+    serviceChargeMinor: 0,
     status: 'completed',
     paymentMethod: 'cash',
     tenderedMinor: 1000,
@@ -464,13 +473,47 @@ async function renderPosScreenWithShift(openedAt?: Date) {
 
 // ── TEST: Core Sale Flow (RED - should fail initially) ─────────────────
 
+// The suites mock `resolvedStoreId: 'default'`, and the POS keys are store-scoped.
+const STORE_ID = 'default';
+
 describe('PosScreen — Core Sale Flow (TDD)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // ⚠️ clearAllMocks() clears CALLS but KEEPS IMPLEMENTATIONS, and restoreAllMocks() in
+    // afterEach does not restore a vi.fn() that a vi.mock factory created. Measured on
+    // vitest (round 92): a mockImplementation set in one case is still in force for the
+    // next. The cases here that replace `getSettingScoped` therefore leaked their
+    // behaviour into every later case, which is what made the full suite fail while this
+    // file passed alone.
+    //
+    // Reset to the factory's own default explicitly. Only the mocks a case replaces need
+    // this; resetting all of them would drop the factory defaults and break every case.
+    // mockReset(), not just mockImplementation(): a queued `mockResolvedValueOnce` from a
+    // case that never consumed it SURVIVES both clearAllMocks() and a later
+    // mockImplementation. Probed on vitest (round 99): case A queues a once-value, case B
+    // calls the mock after clearAllMocks + mockImplementation and still receives A's value.
+    //
+    // The effect here was visible in the log: TWO scans of 'BARCODE-002' answered
+    // `ITEM-002` then `ITEM-001` -- the second got a leftover queued value intended for a
+    // different barcode. That is what failed `adds multiple products` (it got 1 line, not
+    // 2) and `persists active draft` (its scan answered a product it did not expect) under
+    // `--sequence.shuffle.tests`.
+    //
+    // mockReset() clears the implementation AND the once-queue, so the default must be
+    // re-installed straight after. Only the mocks cases queue values on need this.
+    vi.mocked(settingsApi.getSettingScoped).mockReset();
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(() => Promise.resolve(null));
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    // Cases key the lookup on their own barcode; an implementation left behind answers
+    // \`null\` for every other code, which is how the trimMemory case was silently
+    // depending on a neighbour (round 93).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => mockLookupByBarcode(code)) as never);
     localStorage.clear();
     mockedBarcode.reset();
-    // A store-switching test mutates this, so later cases need it restored.
+    // A store-switching test mutates these, so later cases need them restored.
     wsState.sessionToken = 'mock-session-token';
+    wsState.activeWorkspace = 'store-pos';
   });
 
   afterEach(() => {
@@ -520,6 +563,205 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // The guard held: the stale `true` did not land, so the table-number input
     // stays absent exactly as the CURRENT store configured it.
     expect(document.querySelector('#pos-table-number')).toBeNull();
+  });
+
+  // ── The SAME race on the course-firing flag, which had NO pin ──────────────
+  //
+  // `courseFiringSeq` (PosScreen.tsx:1199) guards this read exactly as the receipt
+  // one above does, and its comment names the consequence: "a stale read carrying
+  // the PREVIOUS store's setting forward would hide course firing on a store that
+  // has it enabled -- a POS capability disappearing across a store switch."
+  //
+  // It was UNPINNED. Measured 2026-10-13: removing `if (stale()) return;` before
+  // `setCourseFiringEnabled` left this file, PosScreen.test.tsx,
+  // PosScreen.integration.test.tsx and restaurantToggleFailDirection.test.ts at
+  // 144 passed, 0 failed.
+  //
+  // ── The observable is the CONTAINER, not the buttons ──
+  //
+  // A first attempt asserted on "Fire All" and was worthless. CourseSelectorBar
+  // renders per-course buttons only when a line carries that course, and the
+  // "Fire All" button only when a line has `coursingStatus === 'hold'`
+  // (CourseSelectorBar.tsx:25, :41). A barcode-scanned line has neither, so the
+  // text was absent whether or not the bar mounted -- the assertion could not fail.
+  //
+  // The container `div.pos-cart-course-bar` mounts whenever
+  // `lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled
+  // !== false` (CartPanel.tsx:961), which is this guard's own condition. It is the
+  // observable, and asserting on it is the established idiom here
+  // (CartPanel.test.tsx:316/:324).
+  it('ignores a slower course-firing read from the previous store', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // This case asserted on `.pos-cart-course-bar` for nine rounds and could never pass.
+    // THREE gates each independently make that element unreachable, and all three had to
+    // be identified before it could be written correctly:
+    //
+    //   1. the barcode scanner is DISABLED on this workspace
+    //      (`PosScreen.tsx:567`, enabled: activeWorkspace !== 'restaurant-pos'), so the
+    //      cart line cannot be created by scanning -- it was created by seeding the
+    //      mount-time restore key instead;
+    //   2. the bar lives in CartPanel, and portrait skips it (`:1789`). jsdom's 1024x768
+    //      is landscape, so the harness answers the orientation query and this one holds;
+    //   3. `courseFiringEnabled !== false` (`CartPanel.tsx:961`), and an UNSET key resolves
+    //      to false (`:1223`). So read 1 must answer 'true' or the bar is hidden by design.
+    //
+    // The case only ever appeared to pass because a RETAIL case earlier in the file left
+    // its scanner registration in the mock's single slot. See
+    // docs/records/audits/scanner-disabled-on-restaurant-pos.md and
+    // course-bar-render-gates.md.
+    let releaseFirst: (v: string | null) => void = () => {};
+    const firstRead = new Promise<string | null>((resolve) => { releaseFirst = resolve; });
+    let readNo = 0;
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null,
+      key: string) => {
+      if (key !== 'restaurant.course_firing') return Promise.resolve(null);
+      readNo += 1;
+      // Read 1 (held) answers ON; read 2 answers OFF after the store switch.
+      return readNo === 1 ? firstRead : Promise.resolve('false');
+    }) as never);
+
+    const courseFiringCalls = () =>
+      vi.mocked(settingsApi.getSettingScoped).mock.calls.filter(
+        (c) => c[1] === 'restaurant.course_firing',
+      ).length;
+
+    // The cart line, seeded BEFORE the render: the restore effect runs on mount.
+    localStorage.setItem(
+      `pos-active-draft:${STORE_ID}`,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'ITEM-CF',
+            name: 'Course Item',
+            category: 'Main',
+            qty: 1,
+            unit_price: { minor_units: 15000, currency: 'USD' },
+          },
+        ],
+        orderType: 'dine_in',
+      }),
+    );
+
+    const view = renderWithProvidersSync(<PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(courseFiringCalls()).toBe(1));
+
+    // Read 1 answers ON, and the seeded line satisfies the container's own gate.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-cart-course-bar')).not.toBeNull();
+    });
+
+    // Store switch: read 2 is issued and settles with DISABLED.
+    await act(async () => {
+      wsState.sessionToken = 'mock-session-token-course';
+    });
+    rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(courseFiringCalls()).toBe(2));
+    await waitFor(() => {
+      expect(document.querySelector('.pos-cart-course-bar')).toBeNull();
+    });
+
+    // Read 1 settles NOW -- after read 2 already won -- with the opposite value.
+    await act(async () => {
+      releaseFirst('true');
+      await firstRead;
+    });
+
+    expect(
+      document.querySelector('.pos-cart-course-bar'),
+      "the superseded course_firing read restored the course bar after the current " +
+        "store's read had already disabled it -- this store shows a POS capability " +
+        'it does not have.',
+    ).toBeNull();
+
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+    view.unmount();
+  });
+
+  // ── The THIRD guard of this shape, and the only one still unpinned ─────────
+  //
+  // `orderTypePromptSeq` (PosScreen.tsx:1277) guards `restaurant.order_type_prompt`
+  // exactly as the two above guard their keys. Measured 2026-10-13 by removing only
+  // its guard: PosScreen.test.tsx + this file + PosScreen.integration.test.tsx stayed
+  // at 126 passed, 0 failed.
+  //
+  // That round-82 measurement is why this case exists separately: killing all three
+  // guards AT ONCE fails on the receipt case, so the other two looked pinned when
+  // only one was. A blanket kill-test cannot tell you WHICH guard is load-bearing.
+  //
+  // The consequence is the one its own comment documents: the fallback is computed
+  // FROM the workspace (`raw === null ? activeWorkspace === 'restaurant-pos' : ...`),
+  // so a stale read carries the PREVIOUS workspace's answer. On restaurant-pos that
+  // is the order-type selector (Dine-in / Takeaway / Delivery) surviving a switch
+  // away from the workspace it belongs to.
+  //
+  // Observable: `div.pos-cart-order-type-row` (CartPanel.tsx:804), gated on
+  // `orderTypePromptEnabled && setOrderType` -- the same container idiom as the
+  // course bar above, and unlike the course bar it has no per-item early return.
+  it('ignores a slower order-type-prompt read from the previous store', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    let releaseStale: (v: unknown) => void = () => {};
+    const stalePending = new Promise((resolve) => { releaseStale = resolve; });
+
+    // Read 1 is held open and will answer ENABLED.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+      if (key !== 'restaurant.order_type_prompt') return Promise.resolve(null);
+      return stalePending;
+    }) as never);
+
+    const promptCalls = () =>
+      vi.mocked(settingsApi.getSettingScoped).mock.calls.filter(
+        (c) => c[1] === 'restaurant.order_type_prompt',
+      ).length;
+
+    const view = renderWithProvidersSync(<PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(promptCalls()).toBe(1));
+
+    // The selector is present while the read is unread: the `null` initial state
+    // resolves to `activeWorkspace === 'restaurant-pos'`, which is true here.
+    expect(document.querySelector('.pos-cart-order-type-row')).not.toBeNull();
+
+    // The store switches. The NEW read answers DISABLED at once.
+    vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null, key: string) => {
+      if (key !== 'restaurant.order_type_prompt') return Promise.resolve(null);
+      return Promise.resolve('false');
+    }) as never);
+    await act(async () => {
+      wsState.sessionToken = 'mock-session-token-2';
+    });
+    rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
+      settingsFtl);
+    await waitFor(() => expect(promptCalls()).toBe(2));
+
+    // The CURRENT store disabled the prompt, so the selector is gone.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-cart-order-type-row')).toBeNull();
+    });
+
+    // The superseded read now lands with ENABLED.
+    await act(async () => {
+      releaseStale('true');
+      await stalePending;
+    });
+
+    expect(
+      document.querySelector('.pos-cart-order-type-row'),
+      "the superseded order_type_prompt read restored the order-type selector after " +
+        "the current store's read had already disabled it -- the operator sees a " +
+        'control this store turned off.',
+    ).toBeNull();
+
+    // Unmount, for the reason the course-firing case above does: the cart panel is global
+    // to the document, so a render left mounted can be found by the NEXT case's queries.
+    // Added round 89 after the sibling leaked its cart line.
+    //
+    // NOT asserted afterwards. `expect(querySelector(...)).toBeNull()` here passes with
+    // or without this line -- RTL's auto-cleanup removes the tree between cases either
+    // way -- so such an assertion would look like a guard and protect nothing. Measured.
+    view.unmount();
   });
 
   it('adds product to cart, opens payment, completes cash sale, resets cart', async () => {
@@ -1517,7 +1759,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await userEvent.click(lockBtn);
 
     // Cart data should be in localStorage
-    const lockedCart = localStorage.getItem('pos-locked-cart');
+    const lockedCart = localStorage.getItem(`pos-locked-cart:${STORE_ID}`);
     expect(lockedCart).not.toBeNull();
     const data = JSON.parse(lockedCart!);
     expect(data.lines.length).toBe(1);
@@ -1786,6 +2028,81 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
   // ── Android Low-Memory & Draft Resilience (Phase 2 Audit) ───────────
 
+  // ── The restore survives a corrupt draft ─────────────────────────────
+  //
+  // The mount effect wraps its `JSON.parse` in a try/catch. That resilience was pinned
+  // ONLY by `hooks/useLockedCartPersistence.test.tsx`, which drives the DEAD
+  // `posScreenHooks.ts` copy — round 107's pattern. Measured in round 110: the live
+  // restore does survive it (probed: no error boundary), but nothing asserted so.
+  //
+  // A corrupt draft is reachable: the key is written by `JSON.stringify`, but a partial
+  // write, a storage-quota failure mid-set, or a tampered value all produce unparseable
+  // content — and the till must still boot to a usable POS rather than an error screen.
+  // The companion to the case below, and the second thing the dead
+  // `useLockedCartPersistence` tests pinned: a draft carrying ONLY `lines` must restore,
+  // because every other field is optional. The live restore type-guards each one
+  // (`typeof data.discountPercent === 'number'`, `Array.isArray(data.appliedPromotions)`, ...),
+  // so a minimal payload is handled by construction — but nothing asserted that.
+  it('restores a draft that carries only lines, since every other field is optional', async () => {
+    localStorage.setItem(
+      `pos-active-draft:${STORE_ID}`,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'MIN-1',
+            name: 'Minimal Item',
+            qty: 1,
+            unit_price: { minor_units: 250, currency: 'USD' },
+          },
+        ],
+      }),
+    );
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    await waitFor(() => {
+      const lines = screen.queryAllByTestId('cart-panel-line-item');
+      expect(
+        lines.some((l) => l.textContent?.includes('Minimal Item')),
+        'a draft with only `lines` did not restore: every other field is optional and the ' +
+          'restore type-guards each one, so a minimal payload must survive.',
+      ).toBe(true);
+    });
+
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+  });
+
+  it('boots to a usable POS when the draft is unparseable', async () => {
+    localStorage.setItem(`pos-active-draft:${STORE_ID}`, '{not valid json');
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector('.pos-screen')).not.toBeNull();
+    });
+    expect(
+      document.querySelector('.error-boundary'),
+      'a corrupt draft put the POS into its error boundary: the restore threw instead of ' +
+        'falling back to an empty cart.',
+    ).toBeNull();
+
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+  });
+
   it('restores active draft cart from pos-active-draft on mount', async () => {
     const draftData = {
       lines: [
@@ -1799,7 +2116,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       discountPercent: 10,
       tableNumber: 'Table 5',
     };
-    localStorage.setItem('pos-active-draft', JSON.stringify(draftData));
+    localStorage.setItem(`pos-active-draft:${STORE_ID}`, JSON.stringify(draftData));
 
     await renderWithProviders(
       <PosScreen />,
@@ -1814,11 +2131,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(screen.getByText('Recovered Draft Item')).toBeInTheDocument();
     });
 
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
   });
 
   it('persists active draft when kasirmu:trimMemory event is dispatched', async () => {
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
 
     await renderWithProviders(
       <PosScreen />,
@@ -1834,7 +2151,30 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(screen.getByText('0m')).toBeInTheDocument();
     });
 
-    // Simulate scanning or adding a barcode
+    // Its OWN fixture, keyed on the barcode. This case used to depend on a NEIGHBOUR's
+    // `lookupByBarcodeScoped` implementation leaking in: nothing in this file ever made
+    // the default mock resolve 'BARCODE-001', so it only passed when the case that sets
+    // that lookup ran first. Revealed by `--sequence.shuffle.tests` (round 93); the file
+    // passes in declaration order and fails under a shuffle that moves its supplier after
+    // it.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => {
+      if (code !== 'BARCODE-001') return Promise.resolve(null);
+      return Promise.resolve({
+        sku: 'ITEM-001',
+        name: 'Test Item',
+        category: 'Test',
+        price: { minor_units: 700, currency: 'USD' },
+        barcode: 'BARCODE-001',
+        in_stock: true,
+        stock_qty: 100,
+        tax_rate_ids: [],
+        product_type: 'standard',
+        created_at: '',
+        price_updated_at: '',
+      });
+    }) as never);
+
     act(() => {
       mockedBarcode.triggerScan('BARCODE-001');
     });
@@ -1848,11 +2188,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       window.dispatchEvent(new CustomEvent('kasirmu:trimMemory', { detail: { level: 80 } }));
     });
 
-    const stored = localStorage.getItem('pos-active-draft');
+    const stored = localStorage.getItem(`pos-active-draft:${STORE_ID}`);
     expect(stored).not.toBeNull();
     const parsed = JSON.parse(stored!);
     expect(parsed.lines.some((l: { sku: string }) => l.sku === 'ITEM-001')).toBe(true);
 
-    localStorage.removeItem('pos-active-draft');
+    localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
   });
 });

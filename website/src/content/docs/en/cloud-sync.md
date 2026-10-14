@@ -6,6 +6,8 @@ order: 8
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page. Short structural guide; every claim verified: the push/pull-per-register model matches the shipped offline-queue plus delta-ledger sync (the queue lives in crates/kasirmu-core, the transport in platform/sync); the status screen's three named fields are real — a pending count and a conflict count are polled on the offline queue screen (ui/src/features/offline/OfflineQueueScreen.tsx:122,212,324-326) and `pendingCount` is part of the offline status contract (ui/src/api/offline.ts:58). The "what syncs" list (sales, stock movements, shifts, staff, products, topology) names only entities that exist as features; it is descriptive prose, not an enum, so it is not machine-checkable and is left as written. · The inline SVG is correct in the two ways the site's own authoring guide specifies: `class="docs-flow"` (rule at website/src/styles/global.css:382, matching the sibling offline-mode.md diagram) and a descriptive `aria-label` with `role="img"`. · NOT re-measured: live multi-register convergence, which needs two running instances. · Footer is an internal marker, stripped from the built site. -->
+
 ## How sync works
 
 <svg class="docs-flow" role="img" aria-label="Sync flow: each register keeps a local copy and pushes and pulls changes through the shared cloud server." viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg">
@@ -40,3 +42,5 @@ items. A healthy queue drains within seconds of reconnecting.
 Sales, stock movements, shifts, staff, products, and topology changes all
 sync. The tenant is isolated per account, so data never crosses between
 businesses.
+
+> last audited 11-10-26 by docs-auditor

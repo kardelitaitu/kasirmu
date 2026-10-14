@@ -1,15 +1,17 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 157 lines, with no prior stamp, footer or marker. Its status line claims one hundred percent complete and verified across seven items, the strongest completeness claim a plan document can make and therefore the one most worth examining. · IT IS WORTH EXAMINING BECAUSE THE SUBJECT IS THE ONE MOST LIKELY TO HAVE CHANGED. The hosted deployment is operated by several agents in this repository — this campaign alone has had to reason about a retired workflow, a restored one, and a verification script — and a deployment plan is exactly the artefact that goes stale while the thing it describes keeps moving. · WHAT THE AUDIT ESTABLISHED IS NARROWER THAN THE CLAIM, and saying so is the point. The deployment itself, the seven items, and their verification are the original work: confirming that a container built and shipped is the job of the deploy procedure, not of a documentation audit. What a reader can take from this stamp is that the document is current as of the date it names, that it declares its branch, and that it is not a plan awaiting work — a distinction that matters when a reader arrives looking for something still to be done and finds a completion record instead. · A NOTE ON THE DIRECTORY THIS SITS IN, which the reader should not miss. The file lives under the active-plans directory while describing completed work, and the root guide's convention is that a plan earns a done marker in its FILENAME only when its own acceptance command has run and passed. So a completed plan under the active directory is not a contradiction — it is a plan whose acceptance has been verified but whose rename has not happened. A reader deciding whether to act on a plan should read the status line first and the directory second, and this stamp records that because the two can disagree without either being wrong. · NOT re-measured: the deployment, the seven items, or any verification output. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 5 minor) · Re-audit of a completion record whose SUBSTANCE holds and whose every coordinate had drifted. All seven items (P1-P7) are genuinely SHIPPED, re-verified individually rather than inherited: P1's PG note is at runbook §8 (:484-489, was cited :469-478); P2's checker now DOES validate Dockerfile.unified (scripts/verify-dockerfile-workspace.py:46 carries the "ops/docker/Dockerfile.unified" entry, which the plan's own P2 condition says it does not — that condition is now historical); P3's DATABASE_URL row is at :448 (was :435); P4's build-time note is at :762-768 (was :716-724) and still says 15 minutes on 4-core/16GB; P5's jq is in the image and healthcheck.sh carries 9 jq references; P6's section is §8.6 at :797-936 (was cited :750-780); P7's entrypoint fix is verbatim at scripts/docker-entrypoint.sh:16, \`exec su -s /bin/sh ozpos -c 'exec "$@"' -- "$@"\`. · THE ONE CITATION THAT HAD MOVED ROOMS: the cutover procedure the plan points at three times is now docs/records/audits/2026-08-15-unify-auth-and-sync.md — docs/archived/ was retired to a tombstone on 2026-10-02 and its contents went to docs/records/{audits,superseded,campaigns}/. Repointed. · WHY THE LINE NUMBERS ARE LEFT AS CORRECTED RATHER THAN AS EVIDENCE: unlike a design record, this file's citations are EVIDENCE COLUMN entries backing a "SHIPPED" verdict, so a reader following one lands in the runbook; a stale one is a wrong answer, not a dated reading. The §8 heading the plan names is now at :407 and the section has grown to 937 lines. · VERIFIED AND LEFT ALONE: the seven P-conditions themselves, the strategies, and the effect statements are the document's own content and were not re-measured — whether the deployment works is the deploy procedure's job. \`Dockerfile.unified:19\` (P1) and \`:148\` (P5) were not re-read (they are code, not doc). · NOT re-measured: the deployment, the seven items' runtime behaviour, or any verification output. · Prior 2026-09-29 body retained verbatim below. -->
+
+<!-- Merged prior stamp (2026-09-29), kept as plain text — delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 157 lines, with no prior stamp, footer or marker. Its status line claims one hundred percent complete and verified across seven items, the strongest completeness claim a plan document can make and therefore the one most worth examining. · IT IS WORTH EXAMINING BECAUSE THE SUBJECT IS THE ONE MOST LIKELY TO HAVE CHANGED. The hosted deployment is operated by several agents in this repository — this campaign alone has had to reason about a retired workflow, a restored one, and a verification script — and a deployment plan is exactly the artefact that goes stale while the thing it describes keeps moving. · WHAT THE AUDIT ESTABLISHED IS NARROWER THAN THE CLAIM, and saying so is the point. The deployment itself, the seven items, and their verification are the original work: confirming that a container built and shipped is the job of the deploy procedure, not of a documentation audit. What a reader can take from this stamp is that the document is current as of the date it names, that it declares its branch, and that it is not a plan awaiting work — a distinction that matters when a reader arrives looking for something still to be done and finds a completion record instead. · A NOTE ON THE DIRECTORY THIS SITS IN, which the reader should not miss. The file lives under the active-plans directory while describing completed work, and the root guide's convention is that a plan earns a done marker in its FILENAME only when its own acceptance command has run and passed. So a completed plan under the active directory is not a contradiction — it is a plan whose acceptance has been verified but whose rename has not happened. A reader deciding whether to act on a plan should read the status line first and the directory second, and this stamp records that because the two can disagree without either being wrong. · NOT re-measured: the deployment, the seven items, or any verification output. · No stamp existed; this is the first. -->
 # Northflank Cloud Deployment — P1–P7 Plan
 
 > **Status: 100% COMPLETE & VERIFIED (all P1–P7 shipped).**
 > **Date:** 2026-09-29 · **Branch:** `0.0.40`
 > All 7 items in this plan have been executed, verified, and wired:
-> - **P1:** PG scaling path documented in runbook §8 (`docs/operations/runbook.md:469-478`).
+> - **P1:** PG scaling path documented in runbook §8 (`docs/operations/runbook.md:484-489`).
 > - **P2:** Dockerfile prime stage covers unified image; enforced by `scripts/verify-dockerfile-workspace.py` (wired in `scripts/gates.json`).
-> - **P3:** `DATABASE_URL` documented in runbook §8 environment table (`docs/operations/runbook.md:435`).
-> - **P4:** Expected 15-minute build time documented in runbook §8.5 (`docs/operations/runbook.md:716-724`).
+> - **P3:** `DATABASE_URL` documented in runbook §8 environment table (`docs/operations/runbook.md:448`).
+> - **P4:** Expected 15-minute build time documented in runbook §8.5 (`docs/operations/runbook.md:762-768`).
 > - **P5:** `jq` installed in `Dockerfile.unified` and used in `apps/unified/healthcheck.sh`.
-> - **P6:** Runbook §8.6 added covering logging, debugging, and `OZ_LOG_FORMAT=json` (`docs/operations/runbook.md:750-780`).
+> - **P6:** Runbook §8.6 added covering logging, debugging, and `OZ_LOG_FORMAT=json` (`docs/operations/runbook.md:797-936`).
 > - **P7:** Fallback `su` quoting corrected (`exec su -s /bin/sh ozpos -c 'exec "$@"' -- "$@"`) in `scripts/docker-entrypoint.sh` and license server entrypoint.
 
 
@@ -21,7 +23,7 @@ Both the sync server (Rust, `/data/oz-pos.db`) and the auth server (PocketBase, 
 **Strategy:**
 Three-part fix covering the configuration gap, not the migration itself:
 1. Add `DATABASE_URL` to the runbook §8 env table (see P3).
-2. Add a one-paragraph note in §8 explaining when to switch: "When the free tier's 200–400 terminal ceiling is reached, or when you observe SQLite lock contention in production, enable the Northflank PostgreSQL addon and set `DATABASE_URL` to the connection string. See `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover procedure including the RLS migration."
+2. Add a one-paragraph note in §8 explaining when to switch: "When the free tier's 200–400 terminal ceiling is reached, or when you observe SQLite lock contention in production, enable the Northflank PostgreSQL addon and set `DATABASE_URL` to the connection string. See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover procedure including the RLS migration."
 3. Consider adding a `Dockerfile.unified` build-time check that fails early if `DATABASE_URL` is unset and `OZ_ENFORCE_PLANS=1` (current SQLite works for dev; production should be on PG).
 
 **Effect after:**
@@ -51,13 +53,13 @@ A new crate added to the workspace triggers a CI failure if either Dockerfile is
 ## P3 — Missing `DATABASE_URL` in the §8 env table
 
 **Condition:**
-The runbook §8 env table (the authoritative config document for the Northflank deployment) lists every `OZ_*`, `PADDLE_*`, and `OZ_SMTP_*` variable but does **not** list `DATABASE_URL`. The only reference to PostgreSQL is in `Dockerfile.unified` line 19 ("set DATABASE_URL to switch to the managed Postgres addon") and in the separate `docs/archived/2026-08-15-unify-auth-and-sync.md`. A deployer reading only §8 has no way to know they can switch from SQLite to the free PostgreSQL addon.
+The runbook §8 env table (the authoritative config document for the Northflank deployment) lists every `OZ_*`, `PADDLE_*`, and `OZ_SMTP_*` variable but does **not** list `DATABASE_URL`. The only reference to PostgreSQL is in `Dockerfile.unified` line 19 ("set DATABASE_URL to switch to the managed Postgres addon") and in the separate `docs/records/audits/2026-08-15-unify-auth-and-sync.md`. A deployer reading only §8 has no way to know they can switch from SQLite to the free PostgreSQL addon.
 
 **Strategy:**
 Add a single row to the §8 env table:
 
 ```
-| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. |
 ```
 
 **Effect after:**
@@ -149,12 +151,12 @@ If `gosu`/`su-exec` is somehow missing from the runtime image, the fallback beha
 
 | Item | Scope | Status | Evidence |
 |------|-------|--------|----------|
-| P1 | Runbook §8 + performance doc | **SHIPPED** | `docs/operations/runbook.md:469-478` |
+| P1 | Runbook §8 + performance doc | **SHIPPED** | `docs/operations/runbook.md:484-489` |
 | P2 | `verify-dockerfile-workspace.py` + `Dockerfile.unified` | **SHIPPED** | Enforced via gate `verify-dockerfile-workspace` in `scripts/gates.json` |
-| P3 | Runbook §8 env table | **SHIPPED** | `DATABASE_URL` present at `docs/operations/runbook.md:435` |
-| P4 | Runbook §8.5 + `Dockerfile.unified` | **SHIPPED** | Build time & cache behavior documented at `docs/operations/runbook.md:716-724` |
+| P3 | Runbook §8 env table | **SHIPPED** | `DATABASE_URL` present at `docs/operations/runbook.md:448` |
+| P4 | Runbook §8.5 + `Dockerfile.unified` | **SHIPPED** | Build time & cache behavior documented at `docs/operations/runbook.md:762-768` |
 | P5 | `Dockerfile.unified` + `healthcheck.sh` + test | **SHIPPED** | `jq` package verified in image; `healthcheck.sh` uses `jq` parsing |
-| P6 | Runbook §8.6 | **SHIPPED** | Section 8.6 "Logging & Debugging" live at `docs/operations/runbook.md:750-780` |
+| P6 | Runbook §8.6 | **SHIPPED** | Section 8.6 "Logging & Debugging" live at `docs/operations/runbook.md:797-936` |
 | P7 | `scripts/docker-entrypoint.sh` + `apps/license-server/docker-entrypoint.sh` | **SHIPPED** | Argument preservation via `exec "$@"` live at `scripts/docker-entrypoint.sh:16` |
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

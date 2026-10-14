@@ -60,6 +60,19 @@ const KNOWN_NOISE_SELECTORS = [
   // ui/src/theme/components.css). A large soft --shadow-sm pane in the preview
   // rail: it takes the overlay rather than a small-control exemption.
   '.restaurant-preview-card',
+  // Split-bill modal + table-management modal dialog (2026-10-12): both are
+  // --shadow-* dialog surfaces, wired to ::after in all three components.css
+  // lists (main + both @media parity blocks). Named on both sides for the same
+  // reason as .restaurant-preview-card above: the coverage walk reads CSS
+  // selectors, so the ::after entry alone is not enough.
+  '.pos-split-modal',
+  '.tables-modal-dialog',
+  // The active preview tab, elevated once its shadow was tokenised.
+  '.restaurant-preview-tab.active',
+  // The exact-tender quick button, same reason. Covered rather than waived on
+  // purpose: the exempt-prefix door was tried first and breached its ceiling
+  // (9 > 8), which is the tripwire at :165 doing its job.
+  '.payment-quick-btn--exact',
   // The mat the thermal roll sits on — same shape as the two above: a
   // full-width stage carrying inset --shadow-inner, named on both sides.
   '.resto-receipt-paper-wrapper',
@@ -823,7 +836,22 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // the file header (grade through the name) is the durable fix, deferred by owner
     // decision on 2026-10-06.
     expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 120 selectors; measured 105 with 20 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(85);
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 120 selectors; measured 105 with 20 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(105);
+    // Ceiling 105 -> 107, 2026-10-12. The +2 is the RENAME case this comment block
+    // above already sanctioned, twice over: .restaurant-preview-tab.active and
+    // .payment-quick-btn--exact were given ::after entries in all three
+    // components.css lists in the SAME change that put them here, so both surfaces
+    // ARE dithered and this door's own rule is satisfied. Neither is a new waiver.
+    //
+    // What made them visible is the tokenising pass: both carried a hardcoded
+    // box-shadow literal, which the shadow walk does not grade, and replacing it with
+    // var(--shadow-sm) moved each into scope. The exempt-prefix door was tried first
+    // and breached its ceiling (9 > 8) -- the same tripwire that fired on
+    // .restaurant-size-btn at the 2026-10-07 entry above, pointing to the same
+    // resolution: give it the overlay instead of a waiver.
+    //
+    // The ordering rule the earlier entry states was followed: surfaces fixed FIRST
+    // (the ::after rules are what actually paint the overlay), entries named second.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 122 selectors; measured 107 with 22 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(107);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is

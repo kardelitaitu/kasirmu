@@ -686,9 +686,15 @@
   transition: gap var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.restaurant-grid-item,
+.restaurant-grid > [role="listitem"] {
+  display: contents;
+}
+
 /* ── Restaurant card (diagonal layout) ──────────── */
 .restaurant-card {
   position: relative;
+  width: 100%;
   /* Slimmer accent strip: keeps the + Add affordance while giving the name
      and price far more horizontal room (was 32% of the card width). */
   --card-add-width: 26%;
@@ -789,6 +795,19 @@ body.is-resizing .restaurant-card * {
 .restaurant-card:active:not(.restaurant-card--disabled) {
   transform: translateY(0) scale(0.985);
   box-shadow: var(--shadow-sm);
+}
+
+/* A refused add on an 86'd card. The card is excluded from the :hover/:active
+   rules above (they all carry :not(.restaurant-card--disabled)), so a tap used
+   to produce NO movement at all — a dead tap a cashier cannot tell apart from a
+   frozen tablet. This is the one state that fires for a disabled card, and it is
+   deliberately a RECOIL rather than the lift a successful add gives: the gesture
+   must not read as "added". Paired with a role="status" line so it is announced
+   too, and timed at 600ms in the component. */
+.restaurant-card--rejected {
+  transform: translateY(0) scale(0.97);
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger) 45%, transparent);
 }
 
 .restaurant-card:focus-visible {
@@ -928,6 +947,8 @@ body.is-resizing .restaurant-card * {
 
 .restaurant-card-status {
   display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   margin-top: var(--space-0_5);
   padding: var(--space-0_5) var(--space-1_5);
   border-radius: var(--radius-sm);
@@ -935,6 +956,19 @@ body.is-resizing .restaurant-card * {
   color: var(--color-fg-secondary);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
+}
+
+.restaurant-card-badge-86 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger);
+  color: var(--color-accent-fg);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-condensed);
 }
 
 /* Add badge — icon-only circle centred in the accent strip.

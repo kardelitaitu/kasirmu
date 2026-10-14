@@ -1062,6 +1062,14 @@ settings-localpay-no-location = No location to configure yet.
 settings-localpay-empty-list = No rails recorded yet — add the ones this site offers.
 settings-localpay-scope-location = Set at this site
 settings-localpay-scope-legal-entity = Market default (legal entity)
+settings-localpay-qris-autoverify-title = Zero-MDR Push Notification Verification
+settings-localpay-qris-autoverify-desc = Automatically verify incoming QRIS payments from Indonesian banking apps (BCA, Mandiri, BRI, Bank Jatim, GoPay, ShopeePay) with 0% payment gateway fees.
+settings-localpay-qris-status-active = Active & Listening
+settings-localpay-qris-status-inactive = Permission Required
+settings-localpay-qris-status-desktop = Desktop / Simulation Mode
+settings-localpay-qris-enable-btn = Enable Android Notification Access
+settings-localpay-qris-test-btn = Test Notification (Simulate Rp 50.000)
+settings-localpay-qris-test-success = Test payment event dispatched!
 
 # ── Store credit (F24, Business Defaults screen) ────────────────────────
 # The `credit.*` family had no surface at all before this card: a key, typed
@@ -1205,6 +1213,10 @@ settings-edc-delete = Delete
 settings-edc-test = Test Connection
 settings-edc-testing = Testing…
 settings-edc-empty = No EDC card terminals configured yet.
+# Form-validation copy. These two were raw English literals at EdcTerminalsCard.tsx's
+# handleSubmit (:160, :165) while every other message in that card came from the bundle.
+settings-edc-err-name-required = Terminal name is required
+settings-edc-err-address-required = Device address / port is required
 settings-edc-status-ready = Ready
 settings-edc-status-busy = Busy
 settings-edc-status-offline = Offline
@@ -1232,6 +1244,10 @@ settings-edc-default-select = Register Default EDC Terminal
 settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.
+# Failure fallbacks — what the operator sees when the backend sent no message.
+settings-edc-load-failed = Could not load the EDC terminals
+settings-edc-status-failed = Could not read the terminal status
+settings-edc-delete-failed = Could not delete the terminal
 settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
 
 # Quarantined Sync Conflicts Panel (Dead-letter recovery)

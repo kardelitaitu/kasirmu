@@ -210,3 +210,15 @@ backslash-heavy markdown; worked around with backslash-free heredoc appends.
 
 ## ASSUMPTION CHECKPOINT FIRED (wave gate rule) — my forwarded finding was WRONG, a writer caught it
 G3 landed todo-refactor-cloud-sync-agents-1.md (+51/-9) and REJECTED R2's claim (which I had forwarded verbatim)
+
+
+---
+
+## ADDENDUM 2026-10-11 — the fact-sheet address moved (dated correction, nothing above retracted)
+
+Four body references address the fact sheet as `.agents/plan-docs-facts-2026-09-14.md` (:41, :123, :187
+and the §SETTLED DOSSIERS anchor). The `edd97e5c0` reorg (2026-09-13) moved it one level down: the live
+path is `.agents/planning/plan-docs-facts-2026-09-14.md`. The ✅ 2026-10-07 OUTCOME banner above already
+warns that the fact sheet is itself a historical snapshot, so the two corrections compose: follow the
+new path AND read its numbers as evidence-of-what-was-then, re-running its commands for anything current.
+Not repointed in the body for the same reason as its sibling — a dated journal keeps its addresses.

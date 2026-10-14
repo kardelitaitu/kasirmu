@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 5 minor) · THE MAJOR IS A LIVE RED GATE THIS PAGE CLAIMS IS ENFORCED. §6 quotes a conscious ceiling of "37176 lines across 178 files" and says the core-size-ratchet gate fails if core grows above it — at HEAD the gate IS failing: python3 scripts/verify-core-size.py reports measured 38703 vs ceiling 37176 (+1527 lines), exit 1, with scripts/core-size-baseline.json committed-clean and only a README dirty under crates/kasirmu-core/, so the growth is MERGED work that never got the deliberate ceiling edit the section demands. That is the exact failure mode the same section warns about ("a gate that is permanently red trains people to ignore it"). Recorded in place rather than re-baselined: lowering the ceiling is a code owner's deliberate act, not a docs repair. ALSO REPAIRED: five drifted coordinates (namespaced.rs NamespacedStore 181->212, check_statement 344->374, Posture 251->282, NamespaceError::Foreign 87->149; lifecycle.rs verify_capabilities 245->278) and the §1 table count "14 modules, 30 tables" -> 31 (payments is now owned by sales; verify-namespace-governance.py --check-ownership prints 31 and is green). · VERIFIED UNCHANGED: the single-source ownership chain (ownership.json -> generator -> ownership.rs :12/:49), the facade (facade.rs :36 trait, :91 impl — both exact), grants deriving from manifests, the closed capability vocabulary, the four required gate ids in gates.json, and namespace-governance run as a live check.sh step. · NOT re-measured: whether the four gates pass in CI today beyond the two I ran, and any runtime behaviour. · Prior stamp preserved below as plain text. -->
 # Module namespace firewall — completion criteria
 
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · Repaired: the Tickets line cited `docs/architecture/phase4-implementation-tickets.md`, which is not in `docs/architecture/` — the target is `docs/records/superseded/phase4-implementation-tickets.md` (verified present). The completion-criteria claims were re-measured and hold: `scripts/verify-namespace-governance.py --strict` is a live `check.sh` step (`:509`) and its `--check-ownership`/`--check-capabilities` legs are at `:521` and `:532`. · Repaired against branch `0.0.41` at `134aaed1b`. -->
@@ -13,7 +14,7 @@ criteria). Tickets: `docs/records/superseded/phase4-implementation-tickets.md`.
 
 ## 1. One table, one owner
 
-`modules/ownership.json` is the single source of the table→module map (14 modules, 30
+`modules/ownership.json` is the single source of the table→module map (14 modules, 31
 tables). `scripts/generate-ownership-map.mjs` renders it into
 `crates/kasirmu-core/src/db/ownership.rs` (`pub const TABLE_OWNERS` at
 `crates/kasirmu-core/src/db/ownership.rs:12`, `pub fn owner_of` at
@@ -24,12 +25,12 @@ not a default). A hand-edit of the generated file is caught by the required gate
 
 ## 2. Every module statement is checked at runtime
 
-`NamespacedStore<'a>` (`crates/kasirmu-core/src/db/namespaced.rs:181`) borrows the shared
+`NamespacedStore<'a>` (`crates/kasirmu-core/src/db/namespaced.rs:212`) borrows the shared
 connection and validates every statement against the ownership map before it runs.
-`check_statement` (`crates/kasirmu-core/src/db/namespaced.rs:344`) is the pure check: it
+`check_statement` (`crates/kasirmu-core/src/db/namespaced.rs:374`) is the pure check: it
 names the tables a statement touches and refuses a table outside the module’s own
 namespace unless a `Grants` entry permits it. `Posture`
-(`crates/kasirmu-core/src/db/namespaced.rs:251`) separates `ReadWrite` (own namespace)
+(`crates/kasirmu-core/src/db/namespaced.rs:282`) separates `ReadWrite` (own namespace)
 from `ReadOnly` (foreign namespace); `Grants` has **no write field by construction**, so
 there is no cross-namespace write path to open.
 
@@ -40,7 +41,7 @@ Evidence that this is load-bearing, not decorative:
 - All eight wrapped verticals carry a boundary test in
   `modules/<id>/src/repository_tests.rs` asserting a foreign read is refused with
   `NamespaceError::Foreign { table, owner, self_owner }` (the error names the table AND
-  its owner, `crates/kasirmu-core/src/db/namespaced.rs:87`).
+  its owner, `crates/kasirmu-core/src/db/namespaced.rs:149`).
 
 ## 3. Reporting reads go through a typed facade
 
@@ -73,7 +74,7 @@ by `Capability::parse` (`platform/kernel/src/capability.rs:29`). `CapabilityRegi
 (`platform/kernel/src/capability.rs:119`) `verify_all`
 (`platform/kernel/src/capability.rs:164`) returns `KernelError::MissingCapability` for the
 first module (in id order) with an ungranted requirement, and `Kernel::load_all` calls it
-**before** any `on_load` runs (`platform/kernel/src/kernel/lifecycle.rs:245`), so a
+**before** any `on_load` runs (`platform/kernel/src/kernel/lifecycle.rs:278`), so a
 half-loaded system never exists. The required gate `capability-parity`
 (`scripts/gates.json`) fails when a manifest’s declared capabilities drift from what
 `modules/ownership.json` + its `dependencies` justify.
@@ -97,6 +98,15 @@ dependency), and `the_real_loyalty_grant_names_a_declared_dependency` pins the i
 (`scripts/core-size-baseline.json`). The required gate `core-size-ratchet`
 (`scripts/gates.json`) fails when core grows above the recorded ceiling without a
 deliberate `--emit-baseline` commit. Current baseline: **37176 lines across 178 files**.
+
+> **Measured 11-10-26: this gate is RED at HEAD.** `python3 scripts/verify-core-size.py`
+> reports **measured 38703 vs ceiling 37176 (+1527 lines)** and exits 1. Nothing in the working
+> tree is dirty on this path (`scripts/core-size-baseline.json` is committed-clean and the only
+> modified file under `crates/kasirmu-core/` is a README), so the growth is committed work that
+> was merged without the deliberate ceiling edit the paragraph above requires. The mechanism the
+> section describes is intact — the gate runs, and a red gate proves nothing, which is exactly
+> the failure this section already warns about elsewhere. **Ratio unchanged and worth reading:
+> the same drift that once left this ceiling behind has recurred.**
 
 That figure was re-emitted to the true measured count, not because core was allowed to drift, but
 because the ceiling had been left behind by committed work — the payment-gateway and cloud-export
@@ -151,4 +161,4 @@ All four are `status: required` in `scripts/gates.json` and run from `scripts/ch
 
 ---
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

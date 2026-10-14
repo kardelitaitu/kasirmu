@@ -4,9 +4,15 @@ area: architecture
 title: ADR #4: Store-First Tenancy & Workspace Type/Instance Architecture
 status: Implemented (2026-07-10)
 ---
-<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · foundational ADR; structs verified: SessionContext (crates/oz-core/src/session.rs:24), WorkspaceType/WorkspaceInstance (db/workspaces.rs:48/67), InstanceStatus enum (subscription.rs:33); crates/oz-core/src/db/workspaces.rs + platform/core/src + StoreDatabaseManager (platform/core/src/database/manager.rs) present; AppShell.tsx type_key switch (restaurant-pos/store-pos) confirmed; terminals migration 016 binding columns + HMAC design match implementation; store-scoped DB model + SessionContext immutability match ADR #7's resolve_scope() · referenced ADRs (#5/#6/#7/#8/#9) all exist · Status "Implemented (2026-07-10)" consistent -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Full audit on branch 0.0.41. **Repaired:** one correction note under Related recording that (a) the UI components exist but at real paths — WorkspaceContext at ui/src/contexts/, WorkspaceHome at ui/src/features/workspaces/, and AppShell/TabletAppShell now under ui/src/app/ and ui/src/app/tablet/; (b) the backend/migration paths are dead under both spellings — crates/oz-core/src/db/workspaces.rs → crates/kasirmu-core/src/db/workspaces.rs, apps/desktop-client/src/commands/workspaces.rs → apps/desktop-tauri/src/commands/workspaces.rs, store_profiles.rs has no current counterpart, and the numbered migrations (016_terminals.sql, 025_store_profiles.sql) do not exist — the tables live in the consolidated crates/kasirmu-core/migrations/20260813_init.sql (terminals :926). Also added an inline pointer at the Phase 1 "47 deprecated commands" line, which repeats ADR #7's now-false claim. **Verified and left alone:** the foundational structures are live — SessionContext (crates/kasirmu-core/src/session.rs:44), InstanceStatus (subscription.rs:50), WorkspaceInstanceRow (db/workspaces.rs:74, the Row-suffixed refinement the 2026-09-29 stamp recorded), and the schema the ADR sketches (workspace_types :1028, workspace_type_screens :1020, workspace_instances :983, user_workspace_instances :956, and the terminals bound_store_id/bound_instance_id/binding_signature columns the ADR says migration 016 adds). `WorkspaceInstanceRow` confirmed; the ADR's DB sketches are design illustrations (the real tables add columns such as last_accessed_at, bound_location_id, purpose_key). **NOT re-measured:** the session resolution algorithm's runtime behaviour and the scaling math, which are design content. · Prior stamps merged below. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the most load-bearing document in this batch still describes live structures. At 871 lines this is the foundational ADR the workspace-type/instance model rests on, so the audit question is whether the types it defines still exist in the shape it gave them. They do, with one rename. `SessionContext` is at `crates/kasirmu-core/src/session.rs:44` and `InstanceStatus` at `crates/kasirmu-core/src/subscription.rs:50`, both as recorded. `WorkspaceInstance` has become `WorkspaceInstanceRow` at `crates/kasirmu-core/src/db/workspaces.rs:74` — the `Row` suffix distinguishes the storage record from the domain type, which is a refinement rather than a contradiction; consistently with that split, the domain `WorkspaceType` the prior stamp verified is no longer found as a bare `enum WorkspaceType` in the core crate. `StoreDatabaseManager` is at `platform/core/src/database/manager.rs`, exactly the path the stamp names. · NO REPAIRS, and the reason is this ADR's role: it is a foundational decision that later ADRs cite by number, and rewriting its body to track renames would break the chain of reference that makes it useful. The prior stamp verified the referenced ADRs (#5/#6/#7/#8/#9) all exist; they do, and the ADR status checker reports no drift for this row against the hand-maintained index. · The one thing worth carrying forward is the `WorkspaceInstance` → `WorkspaceInstanceRow` rename, recorded here because five documents cite this ADR for that type and none of them will mention the suffix. · Body left entirely as written, including its `crates/oz-core` and `apps/desktop-client` references. Prior stamp retained as original evidence; stacked footer lines collapsed. -->
+[[ STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence.
+     Rendered as blockquote text (not nested HTML comments) so the outer comment cannot be closed by their delimiters. ]]
+
+>
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the most load-bearing document in this batch still describes live structures. At 871 lines this is the foundational ADR the workspace-type/instance model rests on, so the audit question is whether the types it defines still exist in the shape it gave them. They do, with one rename. `SessionContext` is at `crates/kasirmu-core/src/session.rs:44` and `InstanceStatus` at `crates/kasirmu-core/src/subscription.rs:50`, both as recorded. `WorkspaceInstance` has become `WorkspaceInstanceRow` at `crates/kasirmu-core/src/db/workspaces.rs:74` — the `Row` suffix distinguishes the storage record from the domain type, which is a refinement rather than a contradiction; consistently with that split, the domain `WorkspaceType` the prior stamp verified is no longer found as a bare `enum WorkspaceType` in the core crate. `StoreDatabaseManager` is at `platform/core/src/database/manager.rs`, exactly the path the stamp names. · NO REPAIRS, and the reason is this ADR's role: it is a foundational decision that later ADRs cite by number, and rewriting its body to track renames would break the chain of reference that makes it useful. The prior stamp verified the referenced ADRs (#5/#6/#7/#8/#9) all exist; they do, and the ADR status checker reports no drift for this row against the hand-maintained index. · The one thing worth carrying forward is the `WorkspaceInstance` → `WorkspaceInstanceRow` rename, recorded here because five documents cite this ADR for that type and none of them will mention the suffix. · Body left entirely as written, including its `crates/oz-core` and `apps/desktop-client` references. Prior stamp retained as original evidence; stacked footer lines collapsed.
+
+
 # ADR #4: Store-First Tenancy & Workspace Type/Instance Architecture
 
 **Status:** Implemented (2026-07-10)
@@ -718,7 +724,7 @@ Allow a user to have multiple workspaces open simultaneously in tabs.
    - [x] Frontend `createSession`/`destroySession` API wrappers in `ui/src/api/staff.ts`.
    - [x] `sessionToken` lifecycle in `WorkspaceContext`: auto-created on workspace selection, auto-destroyed on logout/store-switch, token rotation on `switchStore()`.
    - [x] `WorkspaceContextValue` exposes `sessionToken: string | null` for commands to pass to backend.
-   - [x] **ADR #7 — ALL 84 desktop commands migrated to session token pattern** (see `docs/decisions/2026-07-10-data-scope-guard.md` for full migration table). `scripts/verify-no-raw-params.sh` enforces 0 violations. 47 deprecated commands coexist with `_scoped` variants during backward-compat period.
+   - [x] **ADR #7 — ALL 84 desktop commands migrated to session token pattern** (see `docs/decisions/2026-07-10-data-scope-guard.md` for full migration table). `scripts/verify-no-raw-params.sh` enforces 0 violations. 47 deprecated commands coexist with `_scoped` variants during backward-compat period. **(2026-10-11: the deprecated layer has since been REMOVED — the unscoped twins are gone and accepted by no registry; see that ADR's correction note.)**
    - [x] `session_context()` extractor: `resolve_session()` on `AppState` validates opaque tokens and returns `SessionContext` — implemented as convenience method, not Tauri middleware (Tauri v2 has none).
    - [x] All 84 domain commands (`list_orders`, `get_products`, `adjust_stock`, etc.) have `_scoped` variants accepting `session_token: String` instead of raw `store_id`/`user_id`.
    - [x] `clippy` lint rule: `scripts/verify-no-raw-params.sh` grep-based guard enforces no new raw `store_id`/`user_id` params in CI. Custom Clippy plugin tracked as future enhancement.
@@ -851,6 +857,27 @@ Allow a user to have multiple workspaces open simultaneously in tabs.
 
 ## Related
 
+> **Correction note (2026-10-11, docs-auditor).** This list was written against the pre-rebrand
+> tree and mixes two kinds of entry. **(a) The UI components are real but the paths are bare
+> filenames.** `ui/src/contexts/WorkspaceContext.tsx` and
+> `ui/src/features/workspaces/WorkspaceHome.tsx` both exist; `AppShell.tsx` and
+> `TabletAppShell.tsx` are now `ui/src/app/AppShell.tsx` and
+> `ui/src/app/tablet/TabletAppShell.tsx` (they moved during the app-shell extraction).
+> **(b) The backend and migration paths are dead under both spellings:**
+> `crates/oz-core/src/db/workspaces.rs` is `crates/kasirmu-core/src/db/workspaces.rs`;
+> `apps/desktop-client/src/commands/workspaces.rs` is
+> `apps/desktop-tauri/src/commands/workspaces.rs`; `apps/desktop-client/src/commands/store_profiles.rs`
+> has **no current counterpart** under that name; and
+> `crates/oz-core/migrations/016_terminals.sql` / `025_store_profiles.sql` do not exist under
+> any name — the numbered migration scheme was replaced by timestamp-named files consolidated
+> into `crates/kasirmu-core/migrations/20260813_init.sql`, which is where the `terminals` and
+> `store_profiles` tables (and the binding columns Phase 1 records) actually live
+> (`20260813_init.sql:926` and the `store_profiles` table). **(c) The same 47-commands claim
+> as ADR #7 appears in Phase 1 below, with the same correction:** the unscoped twins were later
+> removed, not kept. See `docs/decisions/2026-07-10-data-scope-guard.md` for the measured
+> detail. Left in place because this is a decision record; the numbers and paths are how the
+> work was written down, not a map of the current tree.
+
 - `WorkspaceContext.tsx` — Current workspace state (needs instance awareness)
 - `WorkspaceHome.tsx` — Workspace picker (needs store-scoped instance rendering)
 - `AppShell.tsx` — Workspace routing (needs type-based dispatch + device binding)
@@ -866,4 +893,4 @@ Allow a user to have multiple workspaces open simultaneously in tabs.
 - ADR #5 — Subscription Tier & Entitlement (planned)
 - ADR #6 — CRDT Delta Ledger & Offline Sync (planned)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

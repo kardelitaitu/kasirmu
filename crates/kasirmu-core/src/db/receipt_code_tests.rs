@@ -683,3 +683,42 @@ fn eager_allocation_and_code_lookups_for_staff() {
     );
     assert_eq!(s.get_staff_code(&u3.id).unwrap().as_deref(), Some("01"));
 }
+
+#[test]
+fn ensure_receipt_counters_table_recovers_legacy_table_lacking_tenant_id() {
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
+    let tx = s.conn.unchecked_transaction().unwrap();
+    // Simulate legacy table without tenant_id
+    tx.execute_batch(
+        "DROP TABLE receipt_number_counters;
+         CREATE TABLE receipt_number_counters (
+             terminal_idx  TEXT NOT NULL,
+             fiscal_year   TEXT NOT NULL,
+             counter       INTEGER NOT NULL DEFAULT 0,
+             updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+             PRIMARY KEY (terminal_idx, fiscal_year)
+         );
+         INSERT INTO receipt_number_counters (terminal_idx, fiscal_year, counter)
+         VALUES ('01', '2026', 42);",
+    )
+    .unwrap();
+
+    // claim_receipt_sequence should detect missing tenant_id, rebuild table,
+    // preserve existing counter (42), and return next counter (43).
+    let next = s
+        .claim_receipt_sequence(&tx, "default", "01", "2026")
+        .unwrap();
+    assert_eq!(next, 43);
+
+    // Verify tenant_id column now exists
+    let has_tenant_id: bool = tx
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('receipt_number_counters') WHERE name = 'tenant_id'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap();
+    assert!(has_tenant_id);
+}

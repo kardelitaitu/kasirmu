@@ -34,7 +34,7 @@ This roadmap outlines the sequenced expansion of `kasir.mu` from its Indonesian 
     - Thailand: PromptPay / Thai QR (`THB`)
     - Philippines: QR Ph / GCash / Maya (`PHP`)
     - Vietnam: VietQR (`VND`)
-  - Multi-currency display and regional tax presets in `crates/kasirmu-core/src/regional.rs`.
+  - Multi-currency display and regional tax presets in `crates/kasirmu-core/src/regional.rs`. *(Re-measured 2026-10-11: this module exists and is real — `RegionalConfig` at `:333`, `tax_regime()` at `:446`, `validate_regional_axis_value` at `:183` — and it resolves narrowest-first (Location, then Legal Entity, then default) with a country-code branch at `:630`. "Regional tax presets" is slightly generous: what the module holds today is an Indonesian tax-regime resolution plus a validation axis, not a per-country preset table.)*
 
 ### Phase 3: Major Emerging Markets (India & Brazil) (Backlog)
 * **Prerequisite:** Commercial market sponsor & certified local legal counsel.
@@ -63,3 +63,26 @@ This roadmap outlines the sequenced expansion of `kasir.mu` from its Indonesian 
 1. **No Speculative Modules (ADR-59 §Q3):** Never write concrete fiscal signing or e-invoicing code for an uncommitted country. Build adapters only when a verified customer contract exists.
 2. **Software-Only & Non-Custodial (ADR-64 D6):** Never hold customer funds, process unencrypted raw card data (PAN/CVV), or act as a financial intermediary. Rely on regulated PSPs and certified SoftPOS hardware partners.
 3. **Data Residency (ADR-59 Q1):** Transactional data must remain within the merchant's home sovereignty zone. Global control planes manage identity, subscription licensing, and feature flags only.
+
+---
+
+## 4. Status, re-measured 2026-10-11
+
+This is a **backlog** roadmap: nothing in Phases 2-4 has started, and that is the intended state
+(Invariant 1 forbids building for an uncommitted market). What the re-measurement does establish is
+that the plan's *foundations* are real rather than aspirational, which is what a backlog entry
+should be judged on:
+
+- **Phase 1's localisation and currency claims hold** - `shared-ui/locales/shared.id.ftl` exists (the
+  locale set is 54 `.ftl` files across two variants, 27 `(default)` + 27 `id`), IDR minor units are
+  the money standard (ADR-30), and the ESC/POS path the phase names is `crates/kasirmu-hal`.
+- **`crates/kasirmu-core/src/regional.rs` is real** and is the module Phase 2 would extend.
+- **The three ADR links resolve**, with the numbers their filenames claim (ADR-59 `num: 59`,
+  ADR-64 `num: 64`).
+- **ADR-64's tender vocabulary has since shipped** (twelve-value `method` CHECK, nine-value
+  `gateway_status` CHECK, one canonical UI union) - which is the part of this roadmap's
+  payment-side prerequisite that is genuinely done. Its classification axis and state machine are
+  not; see ADR-64 section 2.2.
+- **Not re-measured, and deliberately so:** every market-entry prerequisite (partner PSP
+  agreements, local counsel, sponsor commitments). Those are commercial facts this repository does
+  not hold, and Invariant 1 makes them the gate.

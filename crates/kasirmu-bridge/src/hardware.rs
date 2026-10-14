@@ -180,6 +180,12 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Optional statutory rounding mode.
     pub statutory_rounding: Option<String>,
+    #[serde(default)]
+    /// Optional document kind (e.g. "receipt", "kitchen", "kot").
+    pub document_kind: Option<String>,
+    #[serde(default)]
+    /// Optional printer target instance ID (e.g. "kitchen", "default").
+    pub printer_target: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -466,11 +472,33 @@ pub async fn run_print_receipt_inner(
     config: receipt::ReceiptConfig,
     store_info: receipt::StoreInfo,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
-    let printer = ctx
-        .registry
-        .printer("default")
-        .await
-        .ok_or_else(|| BridgeError::Invalid("no receipt printer registered".into()))?;
+    let target = args.printer_target.as_deref().or_else(|| {
+        if args.document_kind.as_deref() == Some("kitchen")
+            || args.document_kind.as_deref() == Some("kot")
+        {
+            Some("kitchen")
+        } else if args.document_kind.as_deref() == Some("bar") {
+            Some("bar")
+        } else {
+            None
+        }
+    });
+
+    let printer = if let Some(target_id) = target {
+        match ctx.registry.printer(target_id).await {
+            Some(p) => p,
+            None => ctx.registry.printer("default").await.ok_or_else(|| {
+                BridgeError::Invalid(format!(
+                    "no printer registered for '{target_id}' or 'default'"
+                ))
+            })?,
+        }
+    } else {
+        ctx.registry
+            .printer("default")
+            .await
+            .ok_or_else(|| BridgeError::Invalid("no receipt printer registered".into()))?
+    };
 
     // Check printer status before printing
     let status = printer.get_status().await?;

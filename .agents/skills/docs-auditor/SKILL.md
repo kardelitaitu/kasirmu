@@ -3,9 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: both helper scripts exist (`.agents/skills/docs-auditor/scripts/check-nav-paths.py`, `check-orphans.py`); all 12 other paths the file cites exist, including `docs/guides/developer/QUICKSTART.md`, `docs/operations/ci-pipeline.md`, `docs/specs/_active/`, `website/src/content/docs/en/user-roles.md`, `ui/src/features/staff/register.tsx` and `crates/kasirmu-hal/src/drivers/mock.rs`. The `oz-*` cross-skill-protocol drift the 18-09-26 audit found at `:260` is confirmed repaired. Left alone deliberately, as the previous pass did: this stamp's predecessor closes with `)>` rather than `-->`, which the file documents in-file as intentional and benign. · NOT re-measured: the audit-classification taxonomy's behaviour against a live document. -->
-
-<!-- Superseded audit stamp: 2026-09-08 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Full audit of the skill that defines this audit; the 2026-09-22 and 2026-09-08 stamps are merged at the bottom as original evidence. · MAJOR: §13's stranded-footer sweep command was WRONG, and wrong in the worst direction — it reported 579 hits across every markdown file in the repo. The awk guard `{n=NR}` was paired with an unguarded `NR>n`, so on a file with NO footer `n` stayed empty, `NR>n` was true for every line, and each file printed as `file:  <line-count>` with a blank line number. A checker that cannot tell "no footer" from "stranded content" is the loudest false positive this file could have shipped, and it is the same family as the placeholder-character-class bug §4 records: a new checker whose first output was never sanity-checked against something known-clean. FIXED by gating both the counter and the print on `n &&`; the corrected command now returns exactly 8 files, all exempt dated records, cross-checked against an independent JS re-measurement. The near-miss is itself recorded in the body, because the next author of a sweep will write this arm. · MINOR: §13's measurement paragraph was STALE IN ITS OWN TEXT — it stated "9 live docs carry real stranded content" when the number is now 0, because the campaign that discovered the class repaired all nine in the same session (`adr53-ui-vocabulary-boundary` 192 lines, `2026-07-20-sync-conflict-resolution-strategy` 224, `0.0.36-backlog` 156, `2026-09-15-frontend-architecture-todo-appraisal` 123, and five smaller). A rule that cites a count is citing a reading, and this one outlived its reading by hours; the paragraph now records both the discovery measurement (29 total / 12 benign / 9 live) and the post-fix measurement (19 / 11 / 0) and names the trap. · VERIFIED AND LEFT ALONE: all 9 scripts this file names exist under `.agents/skills/docs-auditor/scripts/` (check-nav-paths, check-orphans, check-dead-refs, check-api-surface, check-adr-status, check-site-links, check-audit-stamps, check-env-docs, check-ci-claims); `scripts/check-auditor-selftests.sh` and `scripts/check.sh` exist; all 15 doc/code paths resolve; §4b's six exclusion names all appear in the scanner source; the "standalone `scripts/` folder holds no copy of the orphan checker" note is TRUE (no such file lives directly under scripts/); `scripts/verify-agents-mirrors.py` exits 0; `detect.sh --check=audit-format` reports no drift; the footer is the last non-empty line with no trapped footer. The older counts ("332 live docs", "333 docs", "124 stamped files", "116 stamps") are DATE-STAMPED readings and are left as evidence, not corrected — the same rule the file states for ADRs. · NOT re-measured: the taxonomy's behaviour against a live document, the self-test suites' verdicts, and the site-links/API-surface checkers' output (they need their own inputs, not this file). · Prior evidence retained verbatim below: -->
 
 # Skill: docs-auditor
 
@@ -163,7 +161,6 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 > rather than trusting a clean tree run - a scope change is exactly the edit that can
 > silence a gate while leaving it green.
 
-
 ### Usage
 
 ```bash
@@ -285,6 +282,444 @@ Before starting any verification:
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
 
+### Citation traps that survive every automated check
+
+Both were found repeatedly between 2026-10-11 batches (the oldest-markdown campaign):
+two-thirds of the findings in that campaign were coordinates that were *correct when
+written* and moved afterwards, and `check-dead-refs.py` cannot see either of these.
+
+1. **A module that was a FILE is now a DIRECTORY.** `db/tax.rs` -> `db/tax/rates.rs`,
+   `sync_store.rs` -> `sync_store/tenant.rs`, `subscription.rs` ->
+   `subscription/tier.rs`, `pg.rs` -> `pg/users.rs`, `commands/pos.rs` ->
+   `commands/pos/checkout.rs`. The old path resolves to **nothing**, or (worse) the
+   shim file still exists and no longer holds the symbol. Confirmed three times in one
+   batch alone. Sweep target: any doc citing `<module>.rs` where that path is now a
+   directory.
+
+2. **A stale citation that names a REAL file is more dangerous than a dead path,** because
+   a grep finds the file and stops. `docs/security/data-residency-and-retention.md`
+   cited `subscription.rs` for `audit_retention_days`; that file exists and does not
+   hold the function, which actually lives in `subscription/tier.rs`. A reader grepping
+   the named file concludes the claim is unsupported and moves on. **When repairing, check
+   that the cited FILE still contains the cited SYMBOL**, not merely that the path resolves.
+
+A third, related class: **a copy-pasteable command is not the same as a prose reference.**
+An ADR's baseline definition — the line that says no phase starts on a red baseline — carried
+a `cargo test` invocation against a package that no longer exists; it fails with *"package ID
+specification did not match any packages"*. Prior passes logged that as "stale paths left as
+written", which under-states a command a reader runs verbatim. `cargo metadata` is the
+authority on package names (`apps/desktop-tauri` is package **`kasirmu-app`**, not
+`desktop-tauri`).
+
+**And a re-audit rule that follows from all of it:** a prior stamp's *"not found under any
+spelling"* can be a **search-scope error, not a gap** — `Settings::write_delta` was
+recorded as missing while it sat in `platform/core/src/settings/raw.rs`, a file the
+earlier search never opened because the module had split into a directory. Search the whole
+module DIRECTORY, and prefer pinning evidence by TEST NAME over line number when the target
+is a large file.
+
+
+> **Discipline for traps 1 and 2: grep the SYMBOL, not the pattern.** A module that split
+> leaves the old file in place as a partial, so the path resolves while the symbol has moved
+> (`subscription.rs` survives but `SubscriptionTier` is at `subscription/tier.rs:20`;
+> `auth.rs` survives as a directory but `invalidate_all_sessions` is at `auth/session.rs:94`).
+> And the reverse error is real: one auditor repointed `payload_feature_grant` to
+> `subscription/quota.rs` on the assumption the split moved it, then found it still at
+> `subscription.rs:677`. Confirm the new file **contains** the symbol before repointing.
+
+**3. A gate that was "wired to nothing" can be PROMOTED later.** A record asserting a gate is
+unwatched must be re-checked against the gate's **status in `scripts/gates.json`**, not just
+against the hook it was missing from. Found 2026-10-11: `.agents/gates/hook-gate-removal-1c59fea5f5.md`
+correctly diagnosed that the `typecheck-tripwire` gate had no runner — and the diagnosis was
+acted on, because the gate is now `status: required` (promoted 2026-09-30) and wired at
+`dev-ci.yml:1314` and `check.sh:1072`. The record's diagnosis stayed true; only its
+present-tense "nothing reads it" half went stale. Repair with a **dated addendum**, not a
+rewrite: the finding was right and the fix is the news.
+
+**4. A guard that GREW can falsify a skill's "it does not check X" claim with no path going
+dead.** `check-dead-refs.py` stays green because the path still resolves — the scope changed, not
+the location. Found 2026-10-11: a skill asserted a checker "validates manifest COPYs and dummy src
+dirs only … It does NOT look at apt lists"; the script had since gained an `apt_divergence()` check,
+an exemption table, per-package reporting and a `--self-test`, and reported 43 members rather than
+42. The docstring now names the omission as its reason to exist — the unified image was unbuildable
+for five days because two Dockerfiles disagreed and nothing compared them. **Any doc describing a
+guard's SCOPE must be re-read against the script's own functions, not just its exit code.**
+
+**5. Spliced prose — an edit that inserts a note between the two halves of an existing sentence.**
+The signature: a continuation line starting lowercase immediately after a line ending in terminal
+punctuation, or a sentence whose ends do not join. Found five live instances in two ADRs on
+2026-10-11, on top of eight already repaired in their history — these files are built by many small
+"record the shipped X" commits, which is exactly the shape that produces it. Two of the five left a
+**direct self-contradiction** (a section still saying "unresolved" about an item another section
+records as RESOLVED). Repair by REJOINING when both halves carry unique true content, and by
+deleting the orphan when a superseding bullet already restates it — then check the original commit
+to recover the intended sentence. **When a note supersedes prose, delete the superseded half.**
+
+**6. Stranded footers are endemic in the record corpus.** Of five footered `.agents/reviews/` files
+audited in one pass, FOUR had 59–379 lines of dated content below their footer — and the hidden
+part is always the newest. One file carried **two** footers. Any record with a `> last audited`
+line is worth the same one-line check.
+
+**7. A "verbatim from <file>:<line>" quote can go wrong while the PATH still resolves.** If the
+file was split into a directory, the old path survives as a router or a partial and the quote is
+simply no longer there. Found 2026-10-11: a guide quoted a dev-mock handler "verbatim from
+`tauri-api.ts:2089`" — that file is now a 369-line router and the handler moved to
+`handlers/system.ts:661` with a changed body. A path-only check passes and the reader gets the
+wrong code. **For any quoted code block, re-read the quoted lines, not just the file.**
+
+**8. A stamp that CLAIMS a repair the file does not contain — in three shapes.** Measured
+2026-10-11: (a) an ADR stamp asserted it had repointed a crate path, and a guide stamp asserted it
+had renamed `oz` to `kasir` — both claims absent from the file; (b) **the stamp is RIGHT ABOUT THE
+CODE and wrong about the file it sits on**: the Windows launch guide's stamp correctly cited
+`build-exe-release.ps1:211` and `kasirmu-app.exe`, while the guide body below it still said
+`kasir.mu.exe` in nine places; (c) **the file's own MATCHED SIBLING disagrees**: the Linux guide
+already used `kasirmu-app` twenty times for the same binary. A stamp is evidence of intent, not of
+outcome. **When you read a stamp, spot-check the repairs it names — and diff the file against its
+matched sibling, which is often the cheapest test that something drifted one-sidedly.**
+
+**9. A guard whose reported number is the DOC'S OWN gate can be red at HEAD.** `check-api-surface.py`
+compares registered IPC commands against the guide's table. Found 2026-10-11: it reported
+`DRIFT: 6` — six registered commands had no row, three of them in a section that did not exist.
+The dev-guides audit restored it to CLEAN (519 documented / 519 distinct, all buckets zero). **Run
+a guide's own gate before auditing the prose; the number it prints is a finding, not a nuisance.**
+
+**10. A status WORD in an ADR front matter is shared state with two generated files.** Changing the
+word turns two correctness gates red: `check-adr-status.py` (the hand table in
+`docs/decisions/README.md` mirrors the word) and `generate-records-index.mjs --check`
+(`docs/records/README.md` is generated from front matter). Any status edit must be paired with
+the table cell and a regeneration, in the same commit. Measured 2026-10-11.
+
+**11. "Shipped, but not under the name the plan gives."** A plan's work can land in a DIFFERENT
+shell, package, crate or layer than the plan specified, and the plan's own paths are then simply
+absent — so a path-only checker (and `check-dead-refs`, which exempts `docs/plans/`) sees nothing.
+Found 2026-10-11: a QRIS listener plan specified the pre-rename `apps/<tablet>-client` and `mu.kasir.<tablet>` identities while the
+Kotlin service shipped in `apps/mobile-tauri` packaging `mu.kasir.mobile`; a payment-methods plan
+designed a settings-key axis while the shipped form is a rails system plus a
+`local_payment_methods` migration on the regional-configuration track. **Only re-deriving the
+SUBJECT surfaces it** — grep for what the feature DOES, not for where the plan said it would live.
+The repair is a dated STATUS UPDATE naming the shipped home; never rewrite the plan's design.
+
+**12. A plan's own correction block can go wrong in BOTH detail and remedy.** A remedy that copies
+from a directory is only as good as the directory: one plan prescribed `docs/archived/*.md` as the
+fix for an empty docs category, but that directory became a tombstone and the build script had
+already been reworked to copy `docs/guides/` instead — so the flagged defect was RESOLVED and the
+prescribed remedy pointed at nothing. Re-check a correction's remedy, not just its claim.
+
+**13. Writing a stamp is itself a mutation risk — three ways a stamp edit broke a file on
+2026-10-11.** (a) **Unterminated comment**: a new `<!-- Audit stamp:` written without its closing
+`-->` swallows everything after it, including the H1 — the depth check reports 1 and you will not
+see it in a casual read. Two auditors hit this in one batch. (b) **Replaced instead of merged**: a
+rebuild that overwrites the prior stamp body loses the older audit's evidence — re-extract the
+prior body from `git show HEAD:<path>` and rebuild, rather than writing over it. (c) **Merged as
+`>`-quoted blockquotes**: prior text wrapped in `>` renders as visible page text below the
+footer. Merge prior bodies as plain text inside the ONE comment. **Always verify, after writing:
+`d=0 m=1`, one footer as the last non-empty line, and — render-aware — that the file's first
+VISIBLE line is its own H1 and no stamp text leaks.**
+
+**14. A frozen spec's Status line can go stale in the gate's FAVOUR.** A spec that says
+"TODO (not implemented)" may describe a gate that has since shipped, because nothing reads a spec's
+status. Found 2026-10-11: `docs/plans/_done/done-testid-checker-spec.md` read "Status: TODO (not
+implemented)" while the script, its tests, its baseline, its `gates.json` entry (`required`), its
+npm script and its `check-ui.mjs` leg all existed — and running the checker exited 0, satisfying
+the spec's own acceptance row. **Sweep target: any spec or plan with a Status line, cross-checked
+against `scripts/gates.json`.** Note the asymmetry with trap 3: there a guard grew and a doc's
+"it does not check X" went false; here the gate arrived and a doc's "it does not exist" went false.
+
+**15. A checked box can name a gate that NEVER existed.** Distinct from trap 14 (a gate that
+shipped late) and trap 3 (a guard that grew): here the named artifact is not merely stale but was
+never created, so `git log --all -- <path>` is empty. Found 2026-10-11: a plan's `[x]` row claimed
+"Fail if secrets appear in release assets (naming a check-secrets script)" — that script never existed at any
+commit; the real artifact is `.gitleaks.toml`, and it is **referenced by one script and wired into
+no workflow at all**, so the row was a green tick over a gate that does not run under either name.
+This is the FOURTH instance of the `[x]`-without-evidence class in this campaign. **For every
+checked row that names a script or a gate: test the path AND test that something invokes it.**
+
+**16. A loose path-extraction regex INVENTS dead paths.** A sweep pattern that stops at the first
+`.` reports `manifest.js` for `manifest.json` and then "finds" that it does not exist. An auditor
+caught this in their own extraction on 2026-10-11 (6 apparent dead paths, 5 real). **Require a
+closing delimiter (`\.(rs|md|json|ts|tsx|toml|sh|py)` at a word boundary) and spot-check one hit
+from each file before reporting a count.**
+
+**17. When a named file is gone, test the SUBSTANCE before annotating it away.** A finding can
+survive a module's deletion under a different name. Found 2026-10-11: an O-M54 item named
+`kasirmu-reporting/src/daily_summary.rs` (deleted) — but the *defect it described* (a non-sargable
+`DATE(col)` predicate with no `LIMIT`) is still live in `menu_engineering.rs` and `margin.rs`, so
+the item stayed actionable under new names. A neighbouring item's module had been reimplemented
+away entirely, carrying none of the named defects. **Repoint when the substance survives; record a
+retirement when it does not.** Same discipline in reverse for trap 12.
+
+**18. A doc can PREDICT its own decay — and be right.** `docs/architecture/CRITICAL_PATH_INVARIANTS.md`
+carries a "Not a gate" note saying nothing checks its citations and that drift there would be silent.
+Measured 2026-10-11: six of eleven cited test line numbers had moved, two source anchors had moved, and
+one cited test never existed under its given name — while every named test still existed and every
+invariant still held. **A page that declares itself unchecked is a high-yield audit target; audit it
+first, not last.** The same pass found eleven drifted anchors in `module-boot-sequence.md` with the
+sequence itself unchanged — coordinates age, substance does not.
+
+**19. A documented ceiling with a RED gate: report, never re-baseline.** `module-namespace-firewall.md`
+§6 states a conscious core-size ceiling of 37,176 lines and says the ratchet fails if core grows past
+it. At HEAD it IS failing: `scripts/verify-core-size.py` reports 38,703 (+1,527), exit 1, with the
+baseline file committed-clean and only a README dirty under `crates/kasirmu-core/` — so it is MERGED
+work that never got the deliberate ceiling edit the section itself demands. The gate's own message
+says the ceiling is lowered "deliberately … in a commit that says why". **Lowering a ceiling is a code
+owner's act, not a documentation repair.** Report it with the exact command and numbers; do not edit
+the baseline. This is the same red-gate class as a guard that grew (trap 4), but the fix belongs to
+someone else.
+
+**20. "Green at a NUMBER" is the row that rots — and one gate can be cited by many docs.**
+A plan or architecture page that certifies a gate green **with a specific ceiling or count** is
+falsified the moment the number moves, while every path in it still resolves. Measured 2026-10-11:
+`scripts/verify-core-size.py` is RED (38,703 vs a 37,176 ceiling) and TWO separate documents still
+certify it green — `docs/architecture/module-namespace-firewall.md` §6 (batch 21) and
+`docs/plans/_done/done-todo-modular-scaffolding.md` Phase 5 (batch 22). **Sweep target: grep for a
+quoted ceiling/count attached to a gate name; re-run the gate, not just the path check.** When one
+red gate is found, search the tree for other docs quoting the same number — the second doc is
+cheap to find and expensive to miss.
+
+**21. `_done/` plans have TWO conventions and neither is the footer.** Of four `docs/plans/_done/`
+files audited together, two carried an inline `<!-- Audit stamp:` comment and two carried no stamp
+at all (0 of 4 had a `> last audited` footer). **Match the file as found; do not add a footer or a
+stamp to a `_done/` plan.** A completed plan is a record of work, and inventing a footer would
+misrepresent it as a live claim doc — the same reasoning as the `.agents/` record corpus, which is
+why the two are separate traps: the `.agents/` rule is by directory, this one is by prefix.
+
+**22. A stamp that records a repair whose before/after paths render IDENTICALLY.** Distinct from
+trap 8 (a repair claimed but absent) and from trap 1 (a path that moved): here the repair WAS made,
+and the sentence describing it is garbled so a reader cannot see what changed. Found 2026-10-11:
+`modal-audit-checklist.md`'s stamp said it fixed pointers aimed at "`ui/src/theme/tokens.css`" because
+"that directory no longer exists. The token sheet is now `ui/src/theme/tokens.css`" — both halves
+the same path, so the sentence proves nothing. The real move was the old styles-directory token sheet -> 
+`ui/src/theme/tokens.css` (six commits under the old path). **When a stamp quotes a before/after
+pair, check the two are actually different** — and recover the truth from `git log -- <oldpath>`.
+The shape has at least THREE wordings, and a sweep must match all of them: (a) `from X to X`;
+(b) `X … and that directory does not exist — it is X`; (c) `X does not exist anywhere in the tree; the
+<thing> is X`. Measured 2026-10-11: a single 7-file corpus held THREE instances of this class
+(`a11y.md`: the true old path was `ui/src/styles/tokens.css`; `i18n-todo.md`: the pre-move
+locales directory under `ui/src/`; `api-client.md`: the true old name was `OZPosClient`) after one more in batch 23. **Any corpus of
+2026-09-29 stamps is worth scanning with all three patterns** — the sentence is a no-op and a reader
+cannot tell what changed.
+
+**23. Counts of HOOK STEPS and GATE SETS rot the same way ceilings do.** The pre-commit hook gained
+an eighth step on 2026-10-09, and a "steps 2–7 are extension-locked" range (or a "seven steps" count)
+was found stale in FOUR separate documents across this campaign. **Trap 20's shape generalizes: any
+doc quoting a step count, a step range, or a suite count should be re-derived against the hook's own
+`# ──` section headings, not read.**
+
+**24. Read a heading's SCOPE before calling a count wrong.** A page headed "five walker suites" whose
+command block names six files is not contradicting itself if it labels the sixth "a separate shape the
+five do not grade". Measured 2026-10-11: the same "five vs six" concern was raised from a batch-16
+reading of the heading alone, and THREE independent auditors re-deriving it in full all concluded NOT A
+DEFECT — the five are one family and the sixth is a deliberately separate run. Its companion complaint
+("the page never mentions orientation") was literally true and beside the point: orientation is graded by
+a different suite outside that page's declared scope. **A page that states its own scope and its own
+boundary is usually right; check whether the thing you are missing is simply out of scope.**
+
+**25. An INCOMPLETE enumerated range is different from a FALSE one — and both differ from a wrong
+count.** The hook gained an eighth step, so "steps 2–7 are extension-locked" understated the range; but
+step 8 is `.rs`-locked, cannot match a `.css` path, and the pre-commit has no `.css` reference, so the
+page's conclusion still held. **Qualify the range in place; do not rewrite the conclusion, and say which
+half changed.** Deciding between "incomplete" and "false" is the whole repair.
+
+**26. A RECORDS RELOCATION invalidates the LOCATION SENTENCES inside old stamps.** When a batch of
+records moves directory, every stamp written before the move that names **its own location** becomes
+false — while every path in the BODY still resolves, so no checker sees anything. The tell is a stamp
+saying "this file lives in X", "the only such record in Y", or "placed among Z". Measured 2026-10-11:
+`cd8d671a6` (2026-10-02) moved nine security audits from `docs/security/` to
+`docs/records/audits/security/`, four days AFTER their 2026-09-29 stamps were written — and
+`docs/security/` still EXISTS holding three entirely different files, so the claim named the wrong
+directory's contents rather than merely a stale path. **Sweep target: grep a corpus for stamps naming
+a DIRECTORY, then confirm the file is still there.** Distinct from trap 8 (a repair claimed but
+absent) and trap 22 (a before/after pair that renders identically).
+
+**27. A relocation commit can repoint SOME references and miss others in the same corpus.** The same
+class of move leaves internal cross-links dead: `a0c4f7b90` (2026-10-02, "move 14 audit reports …
+and repoint 11 references") listed and fixed eleven, and missed at least one more
+(the setup-wizard audit, cited by its OWN companion plan under its pre-move audit path, and the journal's
+mentions, which are historical and correctly left). **When a commit's subject says "repoint N
+references", verify N covered the corpus — the misses are the ones left behind.** This is why the
+by-hand sibling grep is mandatory for these corpora: `check-dead-refs` exempts them outright.
+
+**28. A live-set COUNT with no owner rots at every value.** Found 2026-10-11 in a skill audit that
+had already recorded the same claim rotting TWICE: "N active workflows" read one, then two, then three
+— and `ls .github/workflows/*.yml` now returns **four** (`android.yml`, `dev-ci.yml`, `release.yml`,
+`website.yml`; 11 more sit under `attic/`). Every restoration and retirement moves the total, and no
+commit owns it. **The durable row names each member and its trigger; the total is the part that rots.**
+Sweep target: any "there are N active <live set>" claim — re-derive with the lister, not the prose.
+
+**29. A quotation of a file is not a claim BY the document — check the FENCE before repointing.** A
+record that quotes a shipped file verbatim will contain that file's own paths, including any that have
+since moved. Found 2026-10-11: a review's §5.1 reproduced `website/public/robots.txt` exactly,
+carrying its `# Rationale: docs/records/<name>.md` comment — and the record itself had moved into
+`docs/records/audits/seo/`. **The fenced line is correct as written and must NOT be repointed;
+rewriting it would make the quotation false.** Repair by adding a dated note that names the real
+location, and report the genuine stale citations separately — here six of the seven were in shipped
+**code comments** (`robots.txt`, `_headers`, `worker.ts`, `SiteHead.astro`), which is a code owner's
+call, not a documentation edit.
+
+**30. The 2026-10-02 records restructure is a MULTI-CORPUS sweep target, and it hit 3 batches running.**
+Four commits moved whole corpora into subfolders on that day, each leaving LOCATION SENTENCES in the stamps
+written four days earlier plus dead paths inside runnable command sequences: `afca83144` (benchmarks +
+releases), `cd8d671a6` (security + observability), `a0c4f7b90` (14 audit reports), `2daaabdfe`
+(campaign journals). Measured across 2026-10-11: batches 24 and 25 found the same class in security,
+setup, benchmarks, findings and campaigns. **Expect it in `docs/records/releases/**` and
+`docs/records/findings/**` for whatever remains.** The highest-value variant is not the stamp's prose but
+a **runnable command**: `regression-tracking.md` told a reader to `cp …` into the benchmarks directory
+under `docs/` — a directory that no longer exists at that path, so the instruction whose whole job is
+updating a baseline writes nowhere.
+
+**31. A record can cite a commit that matches NO object — and still be right.** Three restore SHAs in an
+I18N-05 evidence list (`ecbcc635`, `af246396`, `6e270d70`) match no object anywhere: `git cat-file` fails,
+`rev-list --all` prefix matching returns nothing, they are not 8-hex role ids, not checksums, and not within
+Hamming 2 of any real commit. **The finding's SUBSTANCE still held** — both gates the entry describes are
+restored and the checker exits 0 today. **Record the SHA problem; do not call the finding false.** Compare
+trap 15 (a gate that never existed) and trap 3 (a guard that grew): here the evidence pointer is broken while
+the conclusion is sound.
+
+> **Authoring note — documenting a trap can itself trip a checker.** Four times on 2026-10-11 a
+> path written into this file ONLY as an example (a deleted directory, a pre-rebrand crate, a
+> pre-rename app dir) was read by `check-dead-refs.py` as a live claim, because this file is a LIVE
+> doc and is scanned. **When a trap needs to show a path that no longer exists, spell it
+> non-literally** (a prose description, or a placeholder like `apps/<tablet>-client`) **or mark it
+> explicitly as a historical spelling.** Run `check-dead-refs.py .agents/skills/docs-auditor/SKILL.md`
+> after any edit that adds an example path.
+
+**32. A NEGATIVE grep is the most perishable evidence a doc can carry.** The dangerous variant of
+trap 14 is not "the doc was wrong" but "**the doc was RIGHT and the fix landed the next day**". Measured
+2026-10-11: a status row re-verified `init_rate_sync` had "zero callers" on 2026-09-27 — correctly — and
+both shells wired it on **2026-09-29**, two days later; the daemon's own module header now says "The
+daemon now has callers". No path moved and nothing for a path checker to see. **The tell to sweep for is a
+row that quotes a grep RESULT as its evidence** ("returns only its own definition", "zero callers",
+"0 hits", "no such file"). **Re-grep every doc that asserts a NEGATIVE** as a matter of course; a single
+later commit falsifies it silently. `grep -rnE 'uncommitted|not yet fixed|still open|no caller|0 hits|never runs|no such file'`
+over root plans and stamps is a cheap first sweep — measured 2026-10-11, that pattern yielded a clean
+instance in each of two consecutive batches (a status row claiming "zero callers", and a stamp claiming
+"UNCOMMITTED" / "not yet fixed anywhere" for a guard that landed the SAME DAY the stamp was written).
+
+**33. A directory-wide regex is a mutation, not a scan.** An auditor assigned 6 files in a shared directory
+ran a substitution over the WHOLE directory and wrote 11, touching 5 files belonging to a concurrent lane
+(2026-10-11). It caught the breach with `git diff --name-only` and reverted byte-for-byte, but the risk is
+structural: **scope every write to the assigned paths, and after any bulk edit confirm the changed-file
+list equals the assigned list.** This is trap 27 (a relocation commit repointing some references) and
+trap 16 (a loose regex inventing paths) applied to the WRITE side rather than the read side.
+
+**34. A `done-` file whose STAMP contradicts its own filename.** The filename and the stamp are two
+independent claims about the same file, and they can disagree: measured 2026-10-11, a `done-todo-*` plan
+carried `status: PLANNED` while its body held **43 `[x]` and zero `[ ]`** and every phase commit
+resolved — so the filename was the correct half and the stamp misrepresented it. **Sweep pattern: a
+`done-` file whose stamp says PLANNED / proposed / in-progress.** This is trap 14 in a new place, and it
+is cheap to grep: the two tokens sit within a few lines of each other.
+
+**35. A stamp's own STATUS for a milestone can lag the body by one day, in the unfavourable direction.**
+Same batch: a plan dated 2026-10-05 recorded chain-hash tamper detection as "DEFERRED"; it shipped
+2026-10-06 in a named commit, and a sibling plan records the same work as Completed. **A reader of the
+first plan would conclude the feature does not exist.** When two sibling plans cover the same milestone,
+diff their status words — the disagreement localises the stale one.
+
+**36. Discriminating "never true" from "dated drift": count the named file's REVISIONS.** A table
+whose rows name files that still EXIST is a present-tense claim, unlike a reading of a since-changed tree.
+The test is one command per row: if the named file has exactly ONE revision and its value never matched,
+the number was **never true** (case (a) — repair it); if the file gained revisions after the record's date,
+the number is **dated drift** (name the new value, leave the old). Measured 2026-10-11: a split table's
+four line counts (3,021/2,926/2,597/3,782) were never true at any commit — each file had one revision and
+the real values are 3,004/2,908/2,580/3,767 — while the SAME table's describe and it() counts were exact.
+**Without this discriminator, a "never true" number gets excused as dated drift forever.**
+
+**37. A doc's own fix can invalidate the citations beneath it.** Trap 7 (a "verbatim" quote whose path
+resolves but whose content moved) fired from inside a single record: its display fix added a banner ABOVE a
+cited block, pushing a cited comment from `:735-743` to `:855-862` — 120 lines. **A record whose remedy
+adds or removes markup deserves a re-read of every line citation below the change**, because the fix and
+the citation rot are the same edit.
+
+**38. A NUMBER in a table can be wrong WHEN WRITTEN, and that is a different repair from dated
+drift.** Trap 36 separates "never true" from "drift" by counting revisions; this is the same
+discriminator applied to a figure that names no file, so there is nothing to count. The test is the
+count itself **at the record's own commit**: `git grep -c <pattern> <record-commit> -- <path>`.
+Measured 2026-10-14, auditing `docs/records/audits/restaurant-pos-clean-classes.md`: it claimed 23
+`getString(…, null, …)` sites and 25 `html[data-shell='tablet']` sites. The tree at the record's
+commit returns **28 and 23** — identical to HEAD, because only four commits had landed in between.
+So both figures were miscounts at write time, not drift, and the **verdicts survived** (all 28
+fallback keys do resolve against 5,557 en bundle keys). Repair the NUMBER and record that the
+verdict held; do not withdraw the row. **The reason this needs saying: a hand tally in a table
+reads exactly like a measured value**, and a reader with no discriminator has only two options —
+believe it forever, or re-measure every number in the corpus. The one-command test above is what
+makes "it was careless" distinguishable from "the tree moved", and the answer changes the repair:
+drift earns a dated addendum, a miscount earns a corrected figure plus the method.
+
+**39. An owner decision recorded as OPEN after it was TAKEN.** A record's final section that names
+two candidate fixes ("what is left for an owner") is a present-tense claim about the repo's state,
+and it goes stale the moment either candidate ships — with no path, symbol or count changing, so
+every automated check stays green. Measured 2026-10-14: `receipt-grouping-two-settings.md` closed
+with two candidates for connecting two grouping settings; **candidate 1 had already been
+implemented** across three commits (`e84ccdc62` DTO field, `e0ffa8213` bridge, `443349a60` second
+load path) and the pin recording the divergence was retired by `e295a13f0`. A reader would have
+spent a round re-deciding a settled question. **Sweep pattern: any record whose last section offers
+options — grep for "left for an owner", "two candidates", "either … or", "the decision is" — then
+check whether either option is already in the tree.** Repair by recording which candidate WON and
+naming the commits, keeping both candidates as the history that produced the choice.
+
+**40. A negative result is the most perishable claim a record can carry, and it has TWO failure
+modes.** Trap 32 names the first: a grep that returned nothing goes stale as soon as
+something appears. The second is that the NEGATIVE may never have been established at all — the
+sweep found nothing because the search was mis-scoped, not because the tree was clean. Measured
+2026-10-14: a "negative grep" sweep over 12 root plans produced 66 raw hits, and the filter that
+mattered was not the pattern but **the tense**. Dated records that also state their own resolution in
+the same paragraph ("✅ And the break is now CLOSED") are history and need nothing; a clause in the
+PRESENT tense about current state — "another session currently has uncommitted work in X, Y, Z" —
+is a live claim, and all four named files were `clean` when checked. **Filter by tense, then
+re-measure only the present-tense residue**, and prefer recording the measurement's SCOPE over its
+sign: "0 hits in <these paths>" survives; "there are none" does not.
+
+### The dated-record corpus: default to ZERO edits
+
+Two corpora are **records by convention**, and the correct audit outcome for them is usually
+*verify and report, change nothing*:
+
+| Corpus | Footer convention | Tooling |
+|---|---|---|
+| `.agents/planning/**`, `.agents/reviews/**` | **none** — inline HTML-comment stamps only | `check-dead-refs.py` lists these in its `SCRATCH` tuple (not `HIST_DIR_PREFIXES`) and skips them |
+| `.agents/archived/**`, `.agents/management-journal/**`, `.agents/gates/**`, `.agents/incidents/**` | **none** | skipped by the dated-record rules |
+| `docs/records/**`, `docs/specs/_done/**`, `docs/plans/**`, any `todo-`/`plan-`-named file | mixed | in `HIST_DIR_PREFIXES`, skipped |
+| `.agents/skills/**`, `.agents/management/` | the SKILL footer convention | **SCANNED** — deliberately not exempt, because these are live contracts |
+
+**Do not read a scoped checker run on this corpus as coverage.** Running
+`check-dead-refs.py <an .agents/planning file>` prints `scanned 0 markdown files` and
+`dated records skipped: 0` while the file is in fact exempt via the `SCRATCH` list — the
+counter tracks the other list. A real blind spot follows from that: verify `cargo -p` package
+names in these records with `cargo metadata`, not with the checker's exit code. Measured
+2026-10-11: a record cited `-p oz-cloud-server` 25 times (the package is `kasirmu-cloud`) and
+the scoped run still exited 0.
+
+Do NOT add a `> last audited` footer to these. It would misrepresent a completed record as a
+live claim document. A record citing a pre-rebrand path, a moved corpus, a consolidated
+migration or a pre-reorg `.agents/<name>.md` is **expected drift**: name the live equivalent in
+your report, do not rewrite the record. Edit only when (a) a claim is false **about the
+present**, or (b) an **internal cross-link between records is broken** — and then append a
+dated correction under the corpus's own convention if it has one.
+
+**Three `.agents/` traps found on 2026-10-11:**
+
+- **An internal cross-link is invisible to the checker.** `check-dead-refs.py` treats the
+  corpus as records, so a broken pointer like `.agents/naked-read-sync-conflicts.md` (moved to
+  `.agents/planning/`) passes every automated check. Grep sibling pointers by hand.
+- **A moved target reads as alive.** The checker falls back to whole-tree **basename** matching,
+  so `.agents/egress-surface.md` resolves even though the file is at `.agents/planning/egress-surface.md`.
+  A reader pasting the literal path fails. Any doc citing a sibling by absolute path is a sweep target.
+- **8-hex tokens in these journals are AGENT ROLE IDS, not commit SHAs** (`ops 7cca72fe`,
+  `writer W1 6d5670ed`, `coder C1 737bd54c`). Exclude the 8-hex role-id form from any SHA sweep
+  over `.agents/`, or it reports a dozen false dead commits. Measured on one 6,495-line journal:
+  42 of 247 hex tokens were role ids.
+- **32-hex and 12-hex tokens can be md5/sha1 CHECKSUMS**, not commits — and some journals cite
+  non-resolving SHAs **on purpose** (a superseded round-log tip, a documented typo, or a token
+  carrying its own `dead-ref: ok` pragma). Before reporting a non-object as drift, read the
+  surrounding line: in the same 6,495-line file all six odd-length non-objects were self-explained
+  by the record's own text, giving **0 unexplained dead SHAs** out of 247.
+
+The 2026-09-13 reorg (`edd97e5c0`) moved or deleted 40+ files, including `.agents/AGENTS.md`
+(206 lines, deleted with no rename destination). **Assume a bare `.agents/<name>.md` citation
+has moved until you check.**
+
+---
+
 ## 10. Cross-Skill Protocol
 
 When a truth anchor belongs to a domain covered by another skill:
@@ -386,6 +821,65 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 - If the audit was not completed (blocked or ambiguous with no user answer), do not stamp.
 - If a stamp already exists, compute `git diff <last-date> -- <path>` and mention what changed in the report.
 
+### The footer must be the LAST non-empty line — check it, do not assume it
+
+A `> last audited` line that is not at end-of-file makes everything appended after it
+**invisible** to the two tools that read that line: `detect.sh` Checks 9/10
+(`skill-drift-guard`) and `.agents/skills/docs-auditor/scripts/check-audit-stamps.py`.
+Both take the footer as the document's freshness signal, so an addendum parked below it is
+read as if it did not exist — the same class as an unversioned backfill block, one level
+down. Found 2026-10-11 during the oldest-markdown campaign in two distinct shapes:
+
+* **Footer placed early, body after it.** `docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`
+  carried its footer at line 18, directly under the header blockquote and *above* the entire
+  body — so the machine-read date described a document that had not been written yet at that
+  point. A 192-line gap.
+* **Addendum appended below the footer.** `docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md`
+  had a 2026-10-04 section added under a 29-09-26 footer. A 224-line gap. Same pattern in
+  `docs/decisions/2026-07-10-crdt-delta-ledger-offline-sync.md` (17), `docs/decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (7),
+  `docs/guides/developer/admin-guide.md` (9) and `docs/guides/product/SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS.md` (10).
+
+Both are repaired by MOVING the footer to the true end of file, never by deleting the
+appended content — the content is usually the newest and most correct part.
+
+Re-derive the whole class with this one-liner (prints `file:line  N` for each doc whose
+footer has N non-empty, non-blockquote-continuation lines after it):
+
+```bash
+git ls-files '*.md' | while read -r f; do
+  awk '/^> last audited /{n=NR} {if(n && NR>n && $0 !~ /^[[:space:]]*>/ && $0 !~ /^[[:space:]]*$/) c++} END{if(n && c) print FILENAME ":" n "  " c}' "$f"
+done
+```
+
+> ⚠️ **The `n &&` guard is load-bearing, and its absence shipped for a few hours on
+> 2026-10-11.** The first version of this command omitted it, so on a file with no footer at
+> all `n` stayed empty, `NR>n` was true for every line, and the command reported **579
+> "hits"** — every markdown file in the repo, including the 500-odd with nothing after any
+> footer, each printed as `file:  <line-count>` with a blank line number. A checker that
+> cannot distinguish "no footer" from "stranded content" is the loudest possible false
+> positive, and it is the same family as the placeholder-character-class bug recorded in §4:
+> **the first result of a new checker must be sanity-checked against something you know is
+> clean.** Fixed here; the corpus below is the guard-applied reading.
+
+**Measured 2026-10-11, twice — and the second reading is the one to trust.** On discovery,
+  with the guard applied: **29** tracked `.md` files had *something* after a footer, **12** of
+  those benign (only `>`-continuation lines, i.e. the footer is a multi-line blockquote), and
+  **9 live docs** carried real stranded content — `adr53-ui-vocabulary-boundary` (192 lines),
+  `2026-07-20-sync-conflict-resolution-strategy` (224), `0.0.36-backlog` (156),
+  `2026-09-15-frontend-architecture-todo-appraisal` (123), `2026-07-10-crdt-delta-ledger-offline-sync` (17),
+  `SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS` (10), `admin-guide` (9),
+  `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap` (7), `website/…/id/inventory` (1).
+
+  All nine were then repaired in the same campaign (footers moved, content kept), so the
+  **live count is now 0**. Re-measured after the fix: **19** files have something after a
+  footer, **11** benign, **0 live** — every remaining hit is an exempt dated record
+  (`.agents/`, `todo-`, `done-`, `plan-`): a plan appending after a footer is a plan. Do not
+  exempt `docs/`. **A count in a rule is a reading, not an invariant** — this paragraph said
+  "9 live docs" for hours after there were none, which is the drift this skill exists to catch,
+  in the skill's own text.
+
+---
+
 ## 14. Operational Guidelines
 
 - Run the entire audit synchronously and immediately in the current chat turn — never schedule it for later.
@@ -409,4 +903,74 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim below as original evidence:
+
+> Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: both helper scripts exist (`.agents/skills/docs-auditor/scripts/check-nav-paths.py`, `check-orphans.py`); all 12 other paths the file cites exist, including `docs/guides/developer/QUICKSTART.md`, `docs/operations/ci-pipeline.md`, `docs/specs/_active/`, `website/src/content/docs/en/user-roles.md`, `ui/src/features/staff/register.tsx` and `crates/kasirmu-hal/src/drivers/mock.rs`. The `oz-*` cross-skill-protocol drift the 18-09-26 audit found at `:260` is confirmed repaired. Left alone deliberately, as the previous pass did: this stamp's predecessor closes with `)>` rather than `-->`, which the file documents in-file as intentional and benign. · NOT re-measured: the audit-classification taxonomy's behaviour against a live document.
+
+> Superseded audit stamp: 2026-09-08 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean.
+-->
+
+
+### Merging a stamp must not NEST a comment
+
+A preserved superseded stamp carries its own comment delimiters. Dropping that text inside a
+new comment nests the two, and **markdown comments do not nest** — the FIRST close ends the
+comment, so the merge note and every preserved body after it render as **visible page text**.
+Measured 2026-10-11: **45 files nested and 5 were unbalanced**, and **9 leaked** the literal
+string "STAMP MERGED INTO THIS ONE" onto the page. Every batch of this campaign contributed;
+it is not one author's error.
+
+**The repair is a close-counted, per-shape edit — but it IS mechanizable if you verify each
+file.** Three shapes occur, and each needs its own handling:
+
+| Shape | Example | Fix |
+|---|---|---|
+| `<!-- merge marker` … `<!-- old stamp -->` … `-->` | `docs/decisions/2026-01-15-*` | de-delimit the nested opens AND strip the preserved bodies' trailing closes; keep ONE close |
+| blockquote merge note (`> **STAMP MERGED …**`) over bodies with `<!--` | `docs/specs/_active/c4-*` | replace the whole blockquote region with a single comment; bodies as plain quoted text |
+| plain-text merge marker above preserved bodies | `docs/decisions/2026-08-11-adr37-*` | wrap the region in one comment; de-delimit the bodies |
+
+**Verify after every file; write only when the result is clean.** A transform that overshoots
+drives `finalDepth` negative, and that is a *worse* file than the nest it replaced — two bulk
+attempts on 2026-10-11 had to be abandoned for exactly that reason before the third, which
+checked each output, fixed 42 of the 45.
+
+**The checker must be line-wise, fence-aware, AND inline-code-aware.** Two false-positive
+sources bit this campaign:
+
+- **Mermaid arrows.** A non-greedy fence-strip regex (````.*?`````) mis-pairs when an
+  *inline* triple-backtick appears in prose, and then counts `-->` flowchart arrows as
+  comment closes — it reported `finalDepth=-4` on a clean file. Toggle fence state on a line
+  that STARTS with three backticks instead.
+- **Inline code.** A `-->` inside backticks (a diagram arrow in a sentence, or a doc
+  documenting its own syntax) is not a delimiter. Strip `\`[^\`]*\`` spans before counting.
+
+```bash
+python3 - <<'PY'
+import re, sys, pathlib
+for f in sys.argv[1:]:
+    lines = pathlib.Path(f).read_text(encoding='utf-8', errors='replace').replace('\r\n','\n').split('\n')
+    fence = False; depth = maxd = 0
+    for raw in lines:
+        if raw.lstrip().startswith('```'):
+            fence = not fence; continue
+        if fence: continue
+        line = re.sub(r'`[^`]*`', '', raw)          # drop inline code
+        pos = 0
+        while pos < len(line):
+            o = line.find('<!--', pos); c = line.find('-->', pos)
+            if o >= 0 and (c < 0 or o < c): depth += 1; maxd = max(maxd, depth); pos = o + 4
+            elif c >= 0: depth -= 1; pos = c + 3
+            else: break
+    print(('OK ' if depth == 0 and maxd <= 1 else '!!'), f, 'finalDepth=%d maxDepth=%d' % (depth, maxd))
+PY
+```
+
+`finalDepth == 0` and `maxDepth <= 1` is the only pass. A negative depth is a stray close; a
+`maxDepth of 2` is a nest. **Then render-check**: strip `<!-- … -->` and confirm the first
+non-blank visible line is the document's own title, not a stray `-->` or merge-note text.
+
+**Two rules that are always safe, and worth stating because both were violated here:** never
+write a comment-open token literally inside a comment (not even to explain this hazard), and
+never nest a preserved stamp — quote its text, or wrap the whole region in one comment.
+
+> last audited 11-10-26 by docs-auditor

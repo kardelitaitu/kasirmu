@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   parsePriceToMinor,
@@ -6,8 +17,10 @@ import {
   filterMenuItems,
   sortMenuItems,
   createDuplicateDraft,
+  parseDraftNotes,
   parseDraftModifierGroups,
   serializeDraftModifierGroups,
+  serializeDraftMenuNotes,
 } from '../features/restaurant/screens/menuEditorLogic';
 
 // The price field is the one place a menu edit can silently corrupt an invoice,
@@ -15,45 +28,51 @@ import {
 
 describe('parsePriceToMinor', () => {
   it('accepts a whole number of major units', () => {
-    expect(parsePriceToMinor('50', 'IDR')).toBe(5000);
+    expect(parsePriceToMinor('5000', 'IDR')).toBe(5000);
+    expect(parsePriceToMinor('50', 'USD')).toBe(5000);
   });
 
-  it('accepts two decimals as minor units', () => {
-    expect(parsePriceToMinor('50.50', 'IDR')).toBe(5050);
-    expect(parsePriceToMinor('50,50', 'IDR')).toBe(5050);
+  it('accepts two decimals as minor units for decimal currencies', () => {
+    expect(parsePriceToMinor('50.50', 'USD')).toBe(5050);
+    expect(parsePriceToMinor('50,50', 'USD')).toBe(5050);
   });
 
-  it('pads a single decimal to two minor digits', () => {
-    expect(parsePriceToMinor('50.5', 'IDR')).toBe(5050);
+  it('pads a single decimal to two minor digits for decimal currencies', () => {
+    expect(parsePriceToMinor('50.5', 'USD')).toBe(5050);
   });
 
   it('strips dot grouping before deciding the decimal mark', () => {
-    // 1.234.567 as grouping -> 1234567 major units, not 1.234567.
-    expect(parsePriceToMinor('1.234.567', 'IDR')).toBe(123456700);
+    // 1.234.567 as grouping -> 1234567 major units
+    expect(parsePriceToMinor('1.234.567', 'IDR')).toBe(1234567);
+    expect(parsePriceToMinor('1.234.567', 'USD')).toBe(123456700);
   });
 
   it('reads a three-digit dot-group as IDR grouping, not as three decimals', () => {
     // 50.123 is syntactically ambiguous. For IDR the grouped reading is the one
-    // an operator means: a rupiah price is never written with three decimals,
-    // and 50.123 as a decimal would not be representable in minor units anyway.
-    expect(parsePriceToMinor('50.123', 'IDR')).toBe(5012300);
+    // an operator means: a rupiah price is never written with three decimals.
+    expect(parsePriceToMinor('50.123', 'IDR')).toBe(50123);
   });
 
   it('rejects a genuinely over-precise amount', () => {
     // Four decimals cannot be grouped into threes, so this is unambiguously a
     // decimal that IDR cannot hold.
     expect(parsePriceToMinor('50.1234', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('50.1234', 'USD')).toBeNull();
   });
 
   it('handles zero prices accurately', () => {
     expect(parsePriceToMinor('0', 'IDR')).toBe(0);
     expect(parsePriceToMinor('0.00', 'IDR')).toBe(0);
     expect(parsePriceToMinor('0,00', 'IDR')).toBe(0);
+    expect(parsePriceToMinor('0', 'USD')).toBe(0);
+    expect(parsePriceToMinor('0.00', 'USD')).toBe(0);
   });
 
   it('strips underscores and spaces commonly found in copy-pasted numbers', () => {
-    expect(parsePriceToMinor(' 50_000 ', 'IDR')).toBe(5000000);
-    expect(parsePriceToMinor('1_234_567', 'IDR')).toBe(123456700);
+    expect(parsePriceToMinor(' 50_000 ', 'IDR')).toBe(50000);
+    expect(parsePriceToMinor(' 50_000 ', 'USD')).toBe(5000000);
+    expect(parsePriceToMinor('1_234_567', 'IDR')).toBe(1234567);
+    expect(parsePriceToMinor('1_234_567', 'USD')).toBe(123456700);
   });
 
   it('rejects negative prices and ill-formed numeric strings', () => {
@@ -61,6 +80,11 @@ describe('parsePriceToMinor', () => {
     expect(parsePriceToMinor('-0.50', 'IDR')).toBeNull();
     expect(parsePriceToMinor('50..00', 'IDR')).toBeNull();
     expect(parsePriceToMinor('.50.50', 'IDR')).toBeNull();
+  });
+
+  it('rejects fractional amounts for zero-decimal currencies like IDR', () => {
+    expect(parsePriceToMinor('50.5', 'IDR')).toBeNull();
+    expect(parsePriceToMinor('50.50', 'IDR')).toBeNull();
   });
 
   it('rejects empty and non-numeric input rather than coercing to zero', () => {
@@ -74,22 +98,26 @@ describe('parsePriceToMinor', () => {
 
 describe('formatMinorForInput', () => {
   it('renders whole major units without a decimal part', () => {
-    expect(formatMinorForInput(5000)).toBe('50');
+    expect(formatMinorForInput(5000, 'USD')).toBe('50');
+    expect(formatMinorForInput(5000, 'IDR')).toBe('5000');
+    expect(formatMinorForInput(5000)).toBe('5000');
   });
 
   it('renders zero accurately', () => {
+    expect(formatMinorForInput(0, 'IDR')).toBe('0');
+    expect(formatMinorForInput(0, 'USD')).toBe('0');
     expect(formatMinorForInput(0)).toBe('0');
   });
 
   it('renders a fractional part with two digits', () => {
-    expect(formatMinorForInput(5050)).toBe('50.50');
-    expect(formatMinorForInput(5005)).toBe('50.05');
+    expect(formatMinorForInput(5050, 'USD')).toBe('50.50');
+    expect(formatMinorForInput(5005, 'USD')).toBe('50.05');
   });
 
   it('renders small sub-unit amounts with leading zero', () => {
-    expect(formatMinorForInput(5)).toBe('0.05');
-    expect(formatMinorForInput(50)).toBe('0.50');
-    expect(formatMinorForInput(99)).toBe('0.99');
+    expect(formatMinorForInput(5, 'USD')).toBe('0.05');
+    expect(formatMinorForInput(50, 'USD')).toBe('0.50');
+    expect(formatMinorForInput(99, 'USD')).toBe('0.99');
   });
 
   it('returns empty for values an operator could not have entered', () => {
@@ -136,11 +164,19 @@ describe('generateMenuSku', () => {
 });
 
 describe('round trip', () => {
-  it('survives parse -> format for representative prices', () => {
-    for (const minor of [0, 1, 100, 5050, 123456700]) {
-      const text = formatMinorForInput(minor);
+  it('survives parse -> format for representative prices in IDR', () => {
+    for (const minor of [0, 1, 100, 5000, 35000, 1234567]) {
+      const text = formatMinorForInput(minor, 'IDR');
       if (text === '') continue;
       expect(parsePriceToMinor(text, 'IDR')).toBe(minor);
+    }
+  });
+
+  it('survives parse -> format for representative prices in USD', () => {
+    for (const minor of [0, 5, 100, 5050, 123456700]) {
+      const text = formatMinorForInput(minor, 'USD');
+      if (text === '') continue;
+      expect(parsePriceToMinor(text, 'USD')).toBe(minor);
     }
   });
 });
@@ -489,5 +525,72 @@ describe('modifier groups serialization & parsing', () => {
         { id: '1', name: 'Empty Opts', minSelections: 0, maxSelections: 1, options: [{ id: '2', name: '  ', priceMinor: 0 }] },
       ]),
     ).toBeNull();
+  });
+
+  it('parses modifier groups and description from compound JSON object notes', () => {
+    const compoundJson = JSON.stringify({
+      description: 'Aromatic basmati rice with slow-cooked lamb and spices.',
+      modifierGroups: [
+        {
+          id: 'mg-spice',
+          name: 'Spice Level',
+          minSelections: 1,
+          maxSelections: 1,
+          modifiers: [
+            { id: 'opt-med', name: 'Medium', priceMinor: 0 },
+            { id: 'opt-spicy', name: 'Extra Spicy', priceMinor: 5000 },
+          ],
+        },
+      ],
+    });
+
+    const parsedGroups = parseDraftModifierGroups(compoundJson);
+    expect(parsedGroups).toHaveLength(1);
+    expect(parsedGroups[0]?.name).toBe('Spice Level');
+    expect(parsedGroups[0]?.options).toHaveLength(2);
+
+    const parsedDesc = parseDraftNotes(compoundJson);
+    expect(parsedDesc).toBe('Aromatic basmati rice with slow-cooked lamb and spices.');
+  });
+
+  it('extracts plain text notes from non-JSON strings', () => {
+    expect(parseDraftNotes('Freshly brewed Arabica beans with oat milk')).toBe(
+      'Freshly brewed Arabica beans with oat milk',
+    );
+    expect(parseDraftNotes(null)).toBe('');
+    expect(parseDraftNotes('')).toBe('');
+    expect(parseDraftNotes('[]')).toBe('');
+  });
+
+  it('serializes description and modifier groups together without data loss', () => {
+    const draftGroups = [
+      {
+        id: 'mg-1',
+        name: 'Sweetness',
+        minSelections: 1,
+        maxSelections: 1,
+        options: [
+          { id: 'opt-less', name: 'Less Sweet', priceMinor: 0 },
+        ],
+      },
+    ];
+
+    // Both description and modifiers present
+    const both = serializeDraftMenuNotes('Fresh hand-pressed iced tea', draftGroups);
+    expect(both).not.toBeNull();
+    const decodedBoth = JSON.parse(both!);
+    expect(decodedBoth.description).toBe('Fresh hand-pressed iced tea');
+    expect(decodedBoth.modifierGroups).toHaveLength(1);
+
+    // Only modifiers present (backward compatible JSON array)
+    const onlyMods = serializeDraftMenuNotes('   ', draftGroups);
+    expect(onlyMods?.startsWith('[')).toBe(true);
+
+    // Only description present (plain text string)
+    const onlyDesc = serializeDraftMenuNotes('Contains crustacean shellfish', []);
+    expect(onlyDesc).toBe('Contains crustacean shellfish');
+
+    // Neither present
+    expect(serializeDraftMenuNotes('   ', [])).toBeNull();
   });
 });

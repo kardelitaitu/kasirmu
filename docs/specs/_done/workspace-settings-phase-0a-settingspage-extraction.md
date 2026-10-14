@@ -1,4 +1,6 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — this is the best-evidenced file in the 0-series. The phase claims IMPLEMENTED and every acceptance criterion with a checkable artifact holds. All five extracted section components exist under `ui/src/features/settings/sections/`: `GeneralSection.tsx`, `AppearanceSection.tsx`, `ReceiptSection.tsx`, `SyncSection.tsx` and `AboutSection.tsx`, exactly the five the spec says needed extraction (the other 13 already rendered as imported components). The headline criterion — "`SettingsPage.tsx` is reduced to < 500 lines" — is met with room to spare: `ui/src/features/settings/SettingsPage.tsx` is now **456 lines**, down from the "~2,000+ lines with a 18-case renderSection() switch" the Baseline describes. That single number is the strongest evidence in this file and it was worth measuring rather than assuming. · The Residual section is honest about its own cost: it admits the `SectionProps` interface is "intentionally broad" and names Phase 0b as the cleanup. That is the right way to close a refactor whose real debt was deferred. · NOT repaired, deliberately: the acceptance criteria are all `- [ ]` unchecked while Status says IMPLEMENTED. That is a real inconsistency, but the checkboxes belong to the plan-as-approved and ticking them would assert a verification I did not perform — I confirmed the artifacts exist, not that the "all existing E2E tests pass unchanged" and "zero behavioral changes" criteria were run. Recording the gap rather than closing it. · The Parent reference `docs/specs/2026-07-23-unified-2tier-workspace-settings-architecture.md` resolves. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: REPAIRED (1 major, 1 minor) · TWO CLAIMS ASSERTED TRUE BY THE 2026-09-29 STAMP HAVE SINCE GONE FALSE. (1) MAJOR: `sections/ReceiptSection.tsx` no longer exists — it was REMOVED AS DEAD CODE, and the removal is recorded in the tree (`ui/src/__tests__/SettingsToggleButtons.test.tsx:312-313`), with the live receipt surface now `ui/src/features/restaurant/screens/RestaurantReceiptsScreen.tsx` + `ui/src/features/settings/screens/ReceiptFormatSettingsCard.tsx`. The prior stamp listed it among five present sections and was right at the time. Four of the five still exist (GeneralSection, AppearanceSection, SyncSection, AboutSection), and the directory has since GAINED DiagnosticsSection.tsx and LocalApiSection.tsx. (2) MINOR: the headline criterion '`SettingsPage.tsx` < 500 lines' is no longer met — measured 533 at HEAD, against 456 when the 2026-09-29 stamp read it; the growth is later settings-shell work, not a re-monolith, and the `renderSection` delegator this phase introduced is still there. A dated correction block was added under the title; the Baseline and the spec body are left as the plan-as-approved. VERIFIED AT HEAD: all five named extraction targets that still exist, `SettingsPage.tsx` line count (533), and the four surviving section components. NOT re-measured: the typecheck/lint/vitest/Playwright criteria (a test run, not a doc read) — and the acceptance boxes are deliberately still unticked, as every pass has recorded. · Superseded 2026-09-29 body preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — this is the best-evidenced file in the 0-series. The phase claims IMPLEMENTED and every acceptance criterion with a checkable artifact holds. All five extracted section components exist under `ui/src/features/settings/sections/`: `GeneralSection.tsx`, `AppearanceSection.tsx`, `ReceiptSection.tsx`, `SyncSection.tsx` and `AboutSection.tsx`, exactly the five the spec says needed extraction (the other 13 already rendered as imported components). The headline criterion — "`SettingsPage.tsx` is reduced to < 500 lines" — is met with room to spare: `ui/src/features/settings/SettingsPage.tsx` is now **456 lines**, down from the "~2,000+ lines with a 18-case renderSection() switch" the Baseline describes. That single number is the strongest evidence in this file and it was worth measuring rather than assuming. · The Residual section is honest about its own cost: it admits the `SectionProps` interface is "intentionally broad" and names Phase 0b as the cleanup. That is the right way to close a refactor whose real debt was deferred. · NOT repaired, deliberately: the acceptance criteria are all `- [ ]` unchecked while Status says IMPLEMENTED. That is a real inconsistency, but the checkboxes belong to the plan-as-approved and ticking them would assert a verification I did not perform — I confirmed the artifacts exist, not that the "all existing E2E tests pass unchanged" and "zero behavioral changes" criteria were run. Recording the gap rather than closing it. · The Parent reference `docs/specs/2026-07-23-unified-2tier-workspace-settings-architecture.md` resolves. -->
 # Phase 0a — SettingsPage Section Extraction
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -7,6 +9,30 @@
 - **Severity:** PREREQUISITE (blocks Phase 3)
 - **Owner:** TBD
 - **Est. effort:** 1-2 days
+
+## ⚠️ Audit correction (2026-10-11)
+
+Two claims in this spec have since gone false, and both were asserted as true by the
+2026-09-29 stamp this file carried. They are recorded here rather than silently edited,
+because the spec is the plan-as-approved:
+
+1. **`sections/ReceiptSection.tsx` no longer exists.** The 2026-09-29 stamp listed five
+   extracted sections and named that file among them; it was subsequently **removed as dead
+   code**. The live receipt surfaces are now `ui/src/features/restaurant/screens/RestaurantReceiptsScreen.tsx`
+   and `ui/src/features/settings/screens/ReceiptFormatSettingsCard.tsx`. The removal is
+   recorded in the tree itself: `ui/src/__tests__/SettingsToggleButtons.test.tsx:312-313`
+   ("The receipt toggle owner, sections/ReceiptSection.tsx, was removed as dead code: the live
+   receipt surface is RestaurantReceiptsScreen / ReceiptFormatSettingsCard"). Four of the five
+   named sections still exist: `GeneralSection.tsx`, `AppearanceSection.tsx`, `SyncSection.tsx`,
+   `AboutSection.tsx`.
+2. **`SettingsPage.tsx` is no longer under 500 lines.** The acceptance criterion
+   "reduced to < 500 lines" is now **533** (measured 2026-10-11; it was 456 at the 2026-09-29
+   audit). The growth is from later feature work on the settings shell — it is not a
+   re-monolith, and the file still carries the `renderSection` delegator the phase introduced —
+   but the numeric criterion this phase set for itself is not currently met.
+
+Also worth knowing, since the Baseline describes a fixed set: the sections directory has gained
+`DiagnosticsSection.tsx` and `LocalApiSection.tsx`, which this phase predates.
 
 ## Summary
 
@@ -35,7 +61,7 @@ Extract each section case from `SettingsPage.tsx`'s monolithic `renderSection()`
 | :--- | :--- | :--- |
 | `general` | `GeneralSection` | `sections/GeneralSection.tsx` |
 | `appearance` | `AppearanceSection` | `sections/AppearanceSection.tsx` |
-| `receipt` | `ReceiptSection` | `sections/ReceiptSection.tsx` |
+| `receipt` | ~~`ReceiptSection`~~ | **removed as dead code** — the file was deleted; the live receipt surface is `RestaurantReceiptsScreen` / `ReceiptFormatSettingsCard` |
 | `sync` | `SyncSection` | `sections/SyncSection.tsx` |
 | `about` | `AboutSection` | `sections/AboutSection.tsx` |
 | `features` | (already `FeatureToggleScreen`) | no change |
@@ -133,4 +159,4 @@ interface SectionProps {
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

@@ -111,15 +111,39 @@ function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: Swipe
     onSwipeRight: () => setRevealed(false),
   });
 
+  const handleRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, select')) return;
+    onView(sale.id);
+  };
+
+  const handleRowKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const target = e.target as HTMLElement;
+      if (target.closest('button, a, input, select')) return;
+      e.preventDefault();
+      onView(sale.id);
+    }
+  };
+
   return (
     <tr
       className="sales-history-row-wrap"
       data-revealed={revealed ? 'true' : undefined}
+      onClick={handleRowClick}
+      onKeyDown={handleRowKeyDown}
+      tabIndex={0}
       {...swipe}
     >
-      <td className="sales-history-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
       <td className="sales-history-cell-receipt">
-        <div>{sale.displayCode ?? '\u2014'}</div>
+        <div className="sales-history-receipt-code">
+          {sale.displayCode ?? `${sale.id.slice(0, 8)}\u2026`}
+        </div>
+        {sale.displayCode && (
+          <div className="sales-history-cell-subid">
+            ID: {sale.id.slice(0, 8)}&hellip;
+          </div>
+        )}
         {sale.fakturPajak && (
           // The native `title=` that used to sit on this span was a real a11y
           // defect, not just a lint hit: a browser tooltip is mouse-only, so the
@@ -140,7 +164,6 @@ function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: Swipe
       <td>{new Date(sale.createdAt).toLocaleString()}</td>
       <td className="sales-history-cell-total">{formatMoney(sale.total)}</td>
       <td>{sale.lineCount}</td>
-      { }
       <td>
         <Badge variant={statusBadgeVariant(sale.status)}>
           <Localized id={statusFluentId(sale.status)}>
@@ -206,7 +229,12 @@ function SalesHistoryCapTeaser({ onUpgrade }: { onUpgrade: () => void }) {
   );
 }
 
-export default function SalesHistoryScreen() {
+export interface SalesHistoryScreenProps {
+  /** Optional back button callback when hosted as an embedded sub-screen. */
+  onBack?: () => void;
+}
+
+export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps = {}) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   // C1.2 upgrade link needs the active locale for the pricing URL; tests
@@ -322,6 +350,16 @@ export default function SalesHistoryScreen() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [cashierFilter, setCashierFilter] = useState('');
+
+  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' || dateFrom !== '' || dateTo !== '' || cashierFilter !== '';
+
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setStatusFilter('All');
+    setDateFrom('');
+    setDateTo('');
+    setCashierFilter('');
+  }, []);
 
   // ── Pagination ────────────────────────────────────────────────────
   const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -589,6 +627,10 @@ export default function SalesHistoryScreen() {
         statutoryNumber: detail.statutoryNumber ?? null,
         isInvoice: Boolean(detail.statutoryNumber),
       });
+      addToast({
+        message: l10n.getString('sales-history-reprint-success') || 'Receipt reprinted successfully',
+        type: 'success',
+      });
     } catch (printErr) {
       // Was `catch { /* Ignore print errors. */ }` — the quietest failure on this
       // screen: the reprint button stopped doing anything and said nothing. On the
@@ -623,8 +665,17 @@ export default function SalesHistoryScreen() {
     setStampError(null);
   }, []);
 
+  const stampExit = useExitAnimation(showStampModal, handleCloseStamp);
+
   const handleConfirmStamp = useCallback(async () => {
-    if (!detail || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. `!detail` below stays silent — the screen renders its own
+      // empty state — but a missing token means the stamp cannot be recorded, and the
+      // operator has to know or they retry the same 13 digits.
+      setStampError(requiredLocalized(l10n, 'pos-toast-auth-required'));
+      return;
+    }
+    if (!detail) return;
     const cleanNsfp = stampNsfp.replace(/\D/g, '');
     if (cleanNsfp.length !== 13) {
       setStampError('NSFP must be exactly 13 digits (PER-11/PJ/2025)');
@@ -643,7 +694,7 @@ export default function SalesHistoryScreen() {
       load();
       setShowStampModal(false);
       addToast({
-        message: 'e-Faktur NSFP successfully stamped',
+        message: requiredLocalized(l10n, 'sales-history-nsfp-stamped'),
         type: 'success',
       });
     } catch (err) {
@@ -659,7 +710,12 @@ export default function SalesHistoryScreen() {
   }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
 
   const handleCreatePengganti = useCallback(async () => {
-    if (!detail || !sessionToken || !detail.fakturPajak) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleConfirmStamp above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!detail || !detail.fakturPajak) return;
     setPenggantiLoading(true);
     try {
       const updated = await createFakturPenggantiScoped(sessionToken, detail.id);
@@ -667,7 +723,7 @@ export default function SalesHistoryScreen() {
       invalidateCache(detail.id);
       load();
       addToast({
-        message: `Faktur Pengganti created (${updated.formatted})`,
+        message: l10n.getString('sales-history-pengganti-created', { number: updated.formatted ?? '' }),
         type: 'success',
       });
     } catch (err) {
@@ -688,7 +744,12 @@ export default function SalesHistoryScreen() {
   const [issuingInvoice, setIssuingInvoice] = useState(false);
 
   const handleIssueTaxInvoice = useCallback(async () => {
-    if (!detail || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped. See handleConfirmStamp above.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!detail) return;
     setIssuingInvoice(true);
     try {
       const invNumber = await issueTaxInvoiceScoped(sessionToken, detail.id);
@@ -697,18 +758,19 @@ export default function SalesHistoryScreen() {
       invalidateCache(detail.id);
       load();
       addToast({
-        message: `Statutory Tax Invoice issued: ${invNumber}`,
+        message: l10n.getString('sales-history-statutory-issued', { number: invNumber }),
         type: 'success',
       });
     } catch (err) {
       addToast({
-        message: plainErrorMessage(err, 'Failed to issue statutory tax invoice'),
+        message: plainErrorMessage(err, l10n.getString('sales-history-statutory-issue-failed')),
         type: 'error',
       });
     } finally {
       setIssuingInvoice(false);
     }
-  }, [detail, sessionToken, invalidateCache, load, addToast]);
+    // l10n is read by the e-Faktur outcome toasts this handler raises.
+  }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {
@@ -869,8 +931,10 @@ export default function SalesHistoryScreen() {
   // ── Focus trap refs ───────────────────────────────
   const voidPanelRef = useRef<HTMLDivElement>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
+  const stampPanelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(voidPanelRef, voidExit.shouldRender && !voidExit.exiting, voidExit.requestClose);
   useFocusTrap(detailPanelRef, detailExit.shouldRender && !detailExit.exiting, detailExit.requestClose);
+  useFocusTrap(stampPanelRef, stampExit.shouldRender && !stampExit.exiting, stampExit.requestClose);
 
   return (
     <div className="sales-history" {...pullRefreshProps}>
@@ -898,6 +962,20 @@ export default function SalesHistoryScreen() {
       )}
       <div className="sales-history-header">
         <div className="sales-history-header-left">
+          {onBack && (
+            <button
+              type="button"
+              className="sales-history-back-btn"
+              onClick={onBack}
+              aria-label={l10n.getString('back') || 'Back'}
+              data-testid="sales-history-back-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+          )}
           <Localized id="sales-history-title">
             <h1 className="sales-history-title">Sales History</h1>
           </Localized>
@@ -917,45 +995,34 @@ export default function SalesHistoryScreen() {
           )}
         </div>
         <div className="sales-history-header-actions">
-          <Localized id="sales-history-export-csv">
-            <button type="button" className="sales-history-export-btn" onClick={handleExportCsv} disabled={csvExporting}>
-              {csvExporting ? (
-                <Localized id="sales-history-exporting"><span>Exporting…</span></Localized>
-              ) : (
-                <span>Export CSV</span>
-              )}
-            </button>
-          </Localized>
+          <Button
+            variant="primary"
+            size="sm"
+            className="sales-history-export-btn"
+            onClick={handleExportCsv}
+            disabled={csvExporting}
+            aria-label={l10n.getString('sales-history-export-csv')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {csvExporting ? (
+              <Localized id="sales-history-exporting"><span>Exporting…</span></Localized>
+            ) : (
+              <Localized id="sales-history-export-csv"><span>Export CSV</span></Localized>
+            )}
+          </Button>
         </div>
       </div>
 
       {/* ── Filter bar ──────────────────────────────────────────── */}
       <Localized id="sales-history-filter-aria" attrs={{ 'aria-label': true }}>
         <div className="sales-history-filters" role="search" aria-label={l10n.getString('filter-sales-aria')}>
-        {/* Search */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-search-label">
-            <label className="sales-history-filter-label" htmlFor="sh-search"><span>Search</span></label>
-          </Localized>
-          <Localized id="sales-history-search-placeholder" attrs={{ placeholder: true }}>
-            <Localized id="sales-history-search-aria" attrs={{ 'aria-label': true }}>
-              <input
-                id="sh-search"
-                type="text"
-                className="sales-history-filter-input"
-                placeholder="Search sale ID, payment, cashier…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label={l10n.getString('search-aria')}
-              />
-            </Localized>
-          </Localized>
-        </div>
-
-        {/* Status filter */}
-        <div className="sales-history-filter-group">
+          {/* Status filter chips */}
           <Localized id="sales-history-status-label">
-            <span className="sales-history-filter-label"><span>Status</span></span>
+            <span className="sales-history-sr-only"><span>Status</span></span>
           </Localized>
           <Localized id="sales-history-status-filter-aria" attrs={{ 'aria-label': true }}>
             <div className="sales-history-filter-chips" role="radiogroup" aria-label={l10n.getString('filter-status-aria')}>
@@ -982,67 +1049,151 @@ export default function SalesHistoryScreen() {
               })}
             </div>
           </Localized>
-        </div>
 
-        {/* Date range */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-from-label">
-            <label className="sales-history-filter-label" htmlFor="sh-date-from"><span>From</span></label>
-          </Localized>
-          <Localized id="sales-history-date-from-aria" attrs={{ 'aria-label': true }}>
-            <input
-              id="sh-date-from"
-              type="date"
-              className="sales-history-filter-date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              aria-label={l10n.getString('from-date-aria')}
-            />
-          </Localized>
-        </div>
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-to-label">
-            <label className="sales-history-filter-label" htmlFor="sh-date-to"><span>To</span></label>
-          </Localized>
-          <Localized id="sales-history-date-to-aria" attrs={{ 'aria-label': true }}>
-            <input
-              id="sh-date-to"
-              type="date"
-              className="sales-history-filter-date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              aria-label={l10n.getString('to-date-aria')}
-            />
-          </Localized>
-        </div>
-
-        {/* Cashier filter */}
-        <div className="sales-history-filter-group">
-          <Localized id="sales-history-cashier-label">
-            <label className="sales-history-filter-label" htmlFor="sh-cashier"><span>Cashier</span></label>
-          </Localized>
-          <Localized id="sales-history-cashier-aria" attrs={{ 'aria-label': true }}>
-            <select
-              id="sh-cashier"
-              className="sales-history-filter-select"
-              value={cashierFilter}
-              onChange={(e) => setCashierFilter(e.target.value)}
-              aria-label={l10n.getString('filter-cashier-aria')}
+          {/* Cohesive date range pairing */}
+          <div className="sales-history-date-range">
+            <svg
+              className="sales-history-date-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              width="14"
+              height="14"
+              aria-hidden="true"
             >
-            <Localized id="sales-history-cashier-all">
-              <option value=""><span>All Cashiers</span></option>
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <Localized id="sales-history-from-label">
+              <label className="sales-history-sr-only" htmlFor="sh-date-from"><span>From</span></label>
             </Localized>
-            {/* No `staffUnknown` guard here, and deliberately: the map is already
-                empty when the read failed, so a guard would be a dead condition. The
-                alert below the filters is the load-bearing part -- an option list of
-                only 'All Cashiers' is the claim being made wrong. */}
-            {staff.map((m) => (
-              <option key={m.id} value={m.id}>{m.display_name}</option>
-            ))}
-          </select>
-          </Localized>
+            <Localized id="sales-history-date-from-aria" attrs={{ 'aria-label': true }}>
+              <input
+                id="sh-date-from"
+                type="date"
+                className="sales-history-filter-date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                aria-label={l10n.getString('from-date-aria')}
+              />
+            </Localized>
+            <span className="sales-history-date-sep" aria-hidden="true">&ndash;</span>
+            <Localized id="sales-history-to-label">
+              <label className="sales-history-sr-only" htmlFor="sh-date-to"><span>To</span></label>
+            </Localized>
+            <Localized id="sales-history-date-to-aria" attrs={{ 'aria-label': true }}>
+              <input
+                id="sh-date-to"
+                type="date"
+                className="sales-history-filter-date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                aria-label={l10n.getString('to-date-aria')}
+              />
+            </Localized>
+          </div>
+
+          {/* Cashier filter dropdown */}
+          <div className="sales-history-select-wrap">
+            <Localized id="sales-history-cashier-label">
+              <label className="sales-history-sr-only" htmlFor="sh-cashier"><span>Cashier</span></label>
+            </Localized>
+            <Localized id="sales-history-cashier-aria" attrs={{ 'aria-label': true }}>
+              <select
+                id="sh-cashier"
+                className="sales-history-filter-select"
+                value={cashierFilter}
+                onChange={(e) => setCashierFilter(e.target.value)}
+                aria-label={l10n.getString('filter-cashier-aria')}
+              >
+                <Localized id="sales-history-cashier-all">
+                  <option value=""><span>All Cashiers</span></option>
+                </Localized>
+                {staff.map((m) => (
+                  <option key={m.id} value={m.id}>{m.display_name}</option>
+                ))}
+              </select>
+            </Localized>
+            <svg className="sales-history-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+
+          {/* Reset / Clear filters button */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              className="sales-history-clear-filters-btn"
+              onClick={handleClearFilters}
+              aria-label={l10n.getString('sales-history-clear-filters') || 'Clear filters'}
+              data-testid="sales-history-clear-filters-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              <Localized id="sales-history-clear-filters">
+                <span>Clear filters</span>
+              </Localized>
+            </button>
+          )}
+
+          {/* Search (moved to the right) */}
+          <div className="sales-history-search-group">
+            <Localized id="sales-history-search-label">
+              <label className="sales-history-sr-only" htmlFor="sh-search"><span>Search</span></label>
+            </Localized>
+            <div className="sales-history-search-wrap">
+              <svg
+                className="sales-history-search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="15"
+                height="15"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <Localized id="sales-history-search-placeholder" attrs={{ placeholder: true }}>
+                <Localized id="sales-history-search-aria" attrs={{ 'aria-label': true }}>
+                  <input
+                    id="sh-search"
+                    type="text"
+                    className="sales-history-filter-input"
+                    placeholder="Search sale ID, payment, cashier…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label={l10n.getString('search-aria')}
+                  />
+                </Localized>
+              </Localized>
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="sales-history-search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  aria-label={l10n.getString('retail-search-clear-aria') || 'Clear search'}
+                  data-testid="sales-history-search-clear-btn"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
       </Localized>
 
       {/* ── The roster read that did not answer ────────────── */}
@@ -1072,22 +1223,22 @@ export default function SalesHistoryScreen() {
             <Skeleton variant="block" width="7rem" height="2rem" />
           </div>
           <div className="sales-history-filters">
-            <div className="sales-history-filter-group">
+            <div>
               <Skeleton width="3rem" height="0.75rem" />
-              <Skeleton variant="block" width="12.5rem" height="2.125rem" style={{ borderRadius: 'var(--radius-md)' }} />
+              <Skeleton variant="block" width="12.5rem" height="2.125rem" className="sales-history-skeleton-round" />
             </div>
-            <div className="sales-history-filter-group">
+            <div>
               <Skeleton width="3rem" height="0.75rem" />
-              <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+              <div className="sales-history-skeleton-chips">
                 {[0, 1, 2, 3].map((i) => (
-                  <Skeleton key={i} variant="block" width="4rem" height="1.75rem" style={{ borderRadius: 'var(--radius-full)' }} />
+                  <Skeleton key={i} variant="block" width="4rem" height="1.75rem" className="sales-history-skeleton-pill" />
                 ))}
               </div>
             </div>
             {[0, 1, 2].map((g) => (
-              <div key={g} className="sales-history-filter-group">
+              <div key={g}>
                 <Skeleton width="2.5rem" height="0.75rem" />
-                <Skeleton variant="block" width="7rem" height="2.125rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                <Skeleton variant="block" width="7rem" height="2.125rem" className="sales-history-skeleton-round" />
               </div>
             ))}
           </div>
@@ -1095,23 +1246,22 @@ export default function SalesHistoryScreen() {
             <table className="sales-history-table" aria-hidden="true">
               <thead>
                 <tr>
-                  {['Sale ID', 'Receipt', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
+                  {['Receipt', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
                     <th key={i}><Skeleton width="4rem" height="0.75rem" /></th>
                   ))}
                 </tr>
               </thead>
               <tbody>{Array.from({ length: 5 }, (_, r) => (
                   <tr key={r}>
-                    <td><Skeleton width="5rem" height="0.875rem" /></td>
                     <td><Skeleton width="6rem" height="0.875rem" /></td>
                     <td><Skeleton width="7rem" height="0.875rem" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
                     <td><Skeleton width="2rem" height="0.875rem" /></td>
-                    <td><Skeleton variant="block" width="4.5rem" height="1.125rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
+                    <td><Skeleton variant="block" width="4.5rem" height="1.125rem" className="sales-history-skeleton-pill" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
                     <td><Skeleton width="5rem" height="0.875rem" /></td>
                     <td className="sales-history-cell-actions">
-                      <Skeleton variant="block" width="3rem" height="1.375rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                      <Skeleton variant="block" width="3rem" height="1.375rem" className="sales-history-skeleton-round" />
                     </td>
                   </tr>
                 ))}
@@ -1147,7 +1297,7 @@ export default function SalesHistoryScreen() {
                   title={requiredLocalized(l10n, 'sales-history-empty-filtered')}
                   action={{
                     label: requiredLocalized(l10n, 'sales-history-clear-filters'),
-                    onClick: () => { setSearchQuery(''); setStatusFilter('All'); setDateFrom(''); setDateTo(''); setCashierFilter(''); },
+                    onClick: handleClearFilters,
                   }}
                 />
               )}
@@ -1165,17 +1315,14 @@ export default function SalesHistoryScreen() {
             <table className="sales-history-table" aria-label={l10n.getString('sales-history-aria')}>
             <thead>
               <tr>
-                <Localized id="sales-history-col-id">
+                <Localized id="sales-history-col-receipt">
                   <th className="sales-history-th" aria-sort={sortKey === 'id' ? (sortAsc ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" className="sales-history-sort-btn" onClick={() => toggleSort('id')}>
-                      Sale ID
+                      Receipt
                       {sortKey === 'id' && <span className="sales-history-sort-arrow" aria-hidden="true">{sortAsc ? ' \u25B2' : ' \u25BC'}</span>}
                     </button>
                   </th>
                 </Localized>
-                {/* Phase 4: frozen receipt hierarchy code column (no sort —
-                    the code is not a useful sort key). */}
-                <th><span>Receipt</span></th>
                 <Localized id="sales-history-col-date">
                   <th className="sales-history-th" aria-sort={sortKey === 'createdAt' ? (sortAsc ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" className="sales-history-sort-btn" onClick={() => toggleSort('createdAt')}>
@@ -1391,34 +1538,34 @@ export default function SalesHistoryScreen() {
       )}
 
       {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
-      {showStampModal && (
-        <div className="sales-history-overlay" role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
-          <div className="sales-history-modal sales-history-stamp-modal" style={{ maxWidth: '460px' }}>
+      {stampExit.shouldRender && (
+        <div className={`sales-history-overlay${stampExit.exiting ? ' sales-history-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
+          <div ref={stampPanelRef} className={`sales-history-modal sales-history-stamp-modal${stampExit.exiting ? ' sales-history-modal--exiting' : ''}`}>
             <div className="sales-history-modal-header">
               <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
               <button
                 type="button"
                 className="sales-history-modal-close"
-                onClick={handleCloseStamp}
+                onClick={stampExit.requestClose}
                 aria-label="Close"
               >
                 &times;
               </button>
             </div>
             <div className="sales-history-modal-body">
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted, #64748b)', marginBottom: '1rem' }}>
+              <p className="sales-history-stamp-desc">
                 Masukkan 13-digit Nomor Seri Faktur Pajak (NSFP) yang diterbitkan oleh DJP Coretax untuk transaksi ini.
               </p>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label htmlFor="stamp-kode-transaksi" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              <div className="sales-history-stamp-field">
+                <label htmlFor="stamp-kode-transaksi" className="sales-history-stamp-label">
                   Kode Transaksi (PER-11/PJ/2025)
                 </label>
                 <select
                   id="stamp-kode-transaksi"
+                  className="sales-history-stamp-select"
                   value={stampKodeTransaksi}
                   onChange={(e) => setStampKodeTransaksi(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)' }}
                 >
                   <option value="01">01 - Penyerahan BKP/JKP kepada selain Pemungut PPN</option>
                   <option value="02">02 - Penyerahan BKP/JKP kepada Pemungut Bendaharawan Pemerintah</option>
@@ -1433,8 +1580,8 @@ export default function SalesHistoryScreen() {
                 </select>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label htmlFor="stamp-nsfp" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              <div className="sales-history-stamp-field">
+                <label htmlFor="stamp-nsfp" className="sales-history-stamp-label">
                   13-Digit NSFP
                 </label>
                 <input
@@ -1442,23 +1589,23 @@ export default function SalesHistoryScreen() {
                   type="text"
                   maxLength={13}
                   placeholder="e.g. 2600000000123"
+                  className="sales-history-stamp-input"
                   value={stampNsfp}
                   onChange={(e) => setStampNsfp(e.target.value.replace(/\D/g, ''))}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)', fontFamily: 'monospace' }}
                 />
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
-                  Format Faktur Pajak: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
+                <div className="sales-history-stamp-preview">
+                  Format Faktur Pajak: <span className="sales-history-stamp-preview-code">{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
                 </div>
               </div>
 
               {stampError && (
-                <div className="sales-history-void-error" role="alert" style={{ marginBottom: '1rem' }}>
+                <div className="sales-history-void-error" role="alert">
                   {stampError}
                 </div>
               )}
 
               <div className="sales-history-modal-actions">
-                <Button variant="ghost" onClick={handleCloseStamp} disabled={stamping}>
+                <Button variant="ghost" onClick={stampExit.requestClose} disabled={stamping}>
                   Cancel
                 </Button>
                 <Button
@@ -1500,9 +1647,9 @@ export default function SalesHistoryScreen() {
               <div className="sales-history-detail-skeleton" aria-hidden="true">
                 <div className="sales-history-detail-meta">
                   {Array.from({ length: 6 }, (_, i) => (
-                    <div key={i}>
+                    <div key={i} className="sales-history-detail-skeleton-item">
                       <Skeleton width="3rem" height="0.75rem" />
-                      <Skeleton width="70%" height="0.875rem" style={{ marginTop: '0.25rem' }} />
+                      <Skeleton width="70%" height="0.875rem" className="sales-history-detail-skeleton-val" />
                     </div>
                   ))}
                 </div>
@@ -1530,16 +1677,16 @@ export default function SalesHistoryScreen() {
               <div className="sales-history-modal-body">
                 <div className="sales-history-detail-meta">
                   <div>
+                    <Localized id="sales-history-detail-receipt">
+                      <strong><span>Receipt:</span></strong>
+                    </Localized>
+                    {' '}{detail.displayCode ?? detail.id}
+                  </div>
+                  <div>
                     <Localized id="sales-history-detail-id">
                       <strong><span>ID:</span></strong>
                     </Localized>
                     {' '}{detail.id}
-                  </div>
-                  {/* Phase 4: show the frozen receipt hierarchy code (the
-                      statutory nomor faktur), never the raw sale UUID. */}
-                  <div>
-                    <strong><span>Receipt:</span></strong>
-                    {' '}{detail.displayCode ?? detail.id}
                   </div>
                   <div>
                     <Localized id="sales-history-detail-date">
@@ -1576,6 +1723,48 @@ export default function SalesHistoryScreen() {
                     </Localized>
                     {' '}{formatMoney(detail.subtotal ?? detail.total)}
                   </div>
+                  {/* Financial breakdown: Discounts, Service Charge, Tips, Taxes */}
+                  {(() => {
+                    const subtotalMinor = detail.subtotal?.minor_units ?? detail.total.minor_units;
+                    const taxMinor = detail.taxTotal?.minor_units ?? 0;
+                    const serviceChargeMinor = detail.serviceChargeMinor ?? 0;
+                    const tipMinor = detail.tipMinor ?? 0;
+                    const totalMinor = detail.total.minor_units;
+                    const calculatedDiscountMinor = Math.max(0, subtotalMinor + taxMinor + serviceChargeMinor + tipMinor - totalMinor);
+                    if (calculatedDiscountMinor > 0) {
+                      return (
+                        <div className="sales-history-detail-discount">
+                          <Localized id="sales-history-detail-discount">
+                            <strong><span>Discount:</span></strong>
+                          </Localized>
+                          {' '}
+                          {detail.discountLabel ? (
+                            <span className="sales-history-detail-discount-label">({detail.discountLabel}) </span>
+                          ) : detail.discountPercent ? (
+                            <span className="sales-history-detail-discount-label">({detail.discountPercent}%) </span>
+                          ) : null}
+                          -{formatMoney({ minor_units: calculatedDiscountMinor, currency: detail.total.currency })}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  {(detail.serviceChargeMinor ?? 0) > 0 && (
+                    <div className="sales-history-detail-service-charge">
+                      <Localized id="sales-history-detail-service-charge">
+                        <strong><span>Service Charge:</span></strong>
+                      </Localized>
+                      {' '}+{formatMoney({ minor_units: detail.serviceChargeMinor!, currency: detail.total.currency })}
+                    </div>
+                  )}
+                  {(detail.tipMinor ?? 0) > 0 && (
+                    <div className="sales-history-detail-tip">
+                      <Localized id="sales-history-detail-tip">
+                        <strong><span>Tip:</span></strong>
+                      </Localized>
+                      {' '}+{formatMoney({ minor_units: detail.tipMinor!, currency: detail.total.currency })}
+                    </div>
+                  )}
                   {(detail.taxTotal?.minor_units ?? 0) > 0 && (
                     <div>
                       <Localized id="sales-history-detail-tax">
@@ -1583,11 +1772,13 @@ export default function SalesHistoryScreen() {
                       </Localized>
                       {' '}{detail.taxTotal ? formatMoney(detail.taxTotal) : '\u2014'}
                       {isTaxEstimated(detail.taxEstimateNote) && (
-                        <Badge variant="warning" style={{ marginLeft: 8 }}>
-                          <Localized id="sales-history-tax-estimated-badge">
-                            <span>Estimated</span>
-                          </Localized>
-                        </Badge>
+                        <span className="sales-history-badge-spacing">
+                          <Badge variant="warning">
+                            <Localized id="sales-history-tax-estimated-badge">
+                              <span>Estimated</span>
+                            </Localized>
+                          </Badge>
+                        </span>
                       )}
                     </div>
                   )}
@@ -1600,47 +1791,56 @@ export default function SalesHistoryScreen() {
                         the list, so `refunds.length > 0` is already false. The flag is
                         not repeated here. */}
                     {refunds.length > 0 && (
-                      <Badge variant="warning" style={{ marginLeft: 8 }}>
-                        <Localized id="refund-status-refunded">
-                          <span>Refunded</span>
-                        </Localized>
-                      </Badge>
+                      <span className="sales-history-badge-spacing">
+                        <Badge variant="warning">
+                          <Localized id="refund-status-refunded">
+                            <span>Refunded</span>
+                          </Localized>
+                        </Badge>
+                      </span>
                     )}
                   </div>
+                  {detail.tenderedMinor !== null && detail.tenderedMinor > 0 && (
+                    <>
+                      <div>
+                        <Localized id="sales-history-detail-tendered">
+                          <strong><span>Tendered:</span></strong>
+                        </Localized>
+                        {' '}{formatMoney({ minor_units: detail.tenderedMinor, currency: detail.total.currency })}
+                      </div>
+                      <div>
+                        <Localized id="sales-history-detail-change">
+                          <strong><span>Change:</span></strong>
+                        </Localized>
+                        {' '}{formatMoney({ minor_units: Math.max(0, detail.tenderedMinor - detail.total.minor_units), currency: detail.total.currency })}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* ── e-Faktur Section (DJP Coretax / PER-11/PJ/2025) ── */}
-                <div
-                  className="sales-history-efaktur-section"
-                  style={{
-                    margin: '1rem 0',
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-subtle, #f8f9fa)',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color, #e2e8f0)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="sales-history-efaktur-section">
+                  <div className="sales-history-efaktur-header">
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>e-Faktur (DJP Coretax)</div>
+                      <div className="sales-history-efaktur-title">e-Faktur (DJP Coretax)</div>
                       {detail.fakturPajak ? (
-                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.fakturPajak.formatted}</span>
+                        <div className="sales-history-efaktur-content">
+                          <span className="sales-history-efaktur-code">{detail.fakturPajak.formatted}</span>
                           <Badge variant="success">
                             {detail.fakturPajak.status === '00' ? 'Normal' : `Pengganti (${detail.fakturPajak.status})`}
                           </Badge>
-                          <span style={{ color: 'var(--text-muted, #64748b)' }}>
+                          <span className="sales-history-efaktur-meta">
                             NSFP: {detail.fakturPajak.nsfp} | Kode: {detail.fakturPajak.kodeTransaksi}
                           </span>
                         </div>
                       ) : (
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                        <div className="sales-history-efaktur-empty">
                           Belum ada e-Faktur (Unstamped)
                         </div>
                       )}
                     </div>
                     {session && canCreatePengganti && (
-                      <div>
+                      <div className="sales-history-efaktur-actions">
                         {detail.fakturPajak ? (
                           <Button
                             variant="secondary"
@@ -1665,39 +1865,32 @@ export default function SalesHistoryScreen() {
                 </div>
 
                 {/* ── Statutory Tax Invoice Section (Cross-border B2B Invoicing) ── */}
-                <div
-                  className="sales-history-statutory-invoice-section"
-                  style={{
-                    margin: '1rem 0',
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-subtle, #f8f9fa)',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color, #e2e8f0)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="sales-history-statutory-invoice-section">
+                  <div className="sales-history-statutory-invoice-header">
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Statutory Tax Invoice</div>
+                      <div className="sales-history-statutory-invoice-title">Statutory Tax Invoice</div>
                       {detail.statutoryNumber ? (
-                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.statutoryNumber}</span>
+                        <div className="sales-history-statutory-invoice-content">
+                          <span className="sales-history-statutory-invoice-code">{detail.statutoryNumber}</span>
                           <Badge variant="success">Issued</Badge>
                         </div>
                       ) : (
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                        <div className="sales-history-statutory-invoice-empty">
                           No statutory tax invoice issued
                         </div>
                       )}
                     </div>
                     {session && detail.status === 'Completed' && !detail.statutoryNumber && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleIssueTaxInvoice}
-                        loading={issuingInvoice}
-                      >
-                        Issue Tax Invoice
-                      </Button>
+                      <div className="sales-history-statutory-invoice-actions">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleIssueTaxInvoice}
+                          loading={issuingInvoice}
+                        >
+                          Issue Tax Invoice
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1714,12 +1907,6 @@ export default function SalesHistoryScreen() {
                       <Localized id="sales-history-line-qty"><th><span>Qty</span></th></Localized>
                       <Localized id="sales-history-line-unit-price"><th><span>Unit Price</span></th></Localized>
                       <Localized id="sales-history-line-total"><th><span>Total</span></th></Localized>
-                      {/* No `!marginsUnknown` guard on the two column gates, and
-                          deliberately: a failed read already clears `lineMargins`, so
-                          `lineMargins.length > 0` is false on its own. Mutations that
-                          added the flag to either gate passed every test, so it was a dead
-                          condition. The load-bearing gate is the alert below, which is
-                          what makes the absence visible. */}
                       {lineMargins.length > 0 && (
                         <>
                           <Localized id="sales-history-line-cost"><th><span>Cost</span></th></Localized>
@@ -1734,8 +1921,33 @@ export default function SalesHistoryScreen() {
                   </thead>
                   <tbody>{detail.lines.map((line) => (
                       <tr key={line.id}>
-                        <td>{line.sku}</td>
-                        <td>{line.name || line.sku}</td>
+                        <td className="sales-history-cell-mono">{line.sku}</td>
+                        <td>
+                          <div className="sales-history-line-name">
+                            {line.name || line.sku}
+                            {line.course && (
+                              <span className="sales-history-line-course">{line.course}</span>
+                            )}
+                          </div>
+                          {(() => {
+                            if (!line.modifiers_json) return null;
+                            try {
+                              const mods = JSON.parse(line.modifiers_json);
+                              if (Array.isArray(mods) && mods.length > 0) {
+                                return (
+                                  <div className="sales-history-line-modifiers">
+                                    {mods.map((m: { name?: string; choice?: string }, idx: number) => (
+                                      <span key={idx} className="sales-history-line-modifier-pill">
+                                        {m.choice || m.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                            } catch { /* ignore invalid json */ }
+                            return null;
+                          })()}
+                        </td>
                         <td>{line.qty}</td>
                         <td>{line.unit_price ? formatMoney(line.unit_price) : '\u2014'}</td>
                         <td>{formatMoney({ minor_units: line.total_minor ?? (line as { line_total?: { minor_units: number } }).line_total?.minor_units ?? ((line.unit_price?.minor_units ?? 0) * (line.qty || 1)), currency: line.unit_price?.currency ?? detail.total?.currency ?? 'IDR' })}</td>

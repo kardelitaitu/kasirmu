@@ -84,6 +84,7 @@ pub mod error;
 pub mod mcc;
 pub mod merchant;
 pub mod nmid;
+pub mod notification;
 pub mod payload;
 pub mod tag;
 pub mod validate;
@@ -103,6 +104,7 @@ pub use builder::QrisBuilder;
 pub use error::QrisError;
 pub use merchant::{AdditionalData, MerchantAccountInfo};
 pub use nmid::NmidInfo;
+pub use notification::{BankNotification, MatchResult, QrisMatchEngine, parse_notification};
 pub use payload::{QrisPayload, Tip, is_valid_qris};
 pub use tag::InitiationMethod;
 

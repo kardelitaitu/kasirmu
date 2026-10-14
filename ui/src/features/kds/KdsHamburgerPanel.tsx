@@ -315,9 +315,9 @@ export function KdsHamburgerPanel({
                 <div className="kds-setting-row">
                   <span className="kds-setting-label"><Localized id="kds-settings-density">Column</Localized></span>
                   <div className="kds-zoom-row">
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'down'))} disabled={isDensityAtMin(settings.density)} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'down'))} disabled={isDensityAtMin(settings.density)} aria-label={requiredLocalized(l10n, 'kds-density-decrease-aria')} data-testid="kds-settings-density-out">−</button>
                     <span className="kds-zoom-value" data-testid="kds-settings-density-value">{settings.density}</span>
-                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'up'))} disabled={isDensityAtMax(settings.density)} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(stepDensity(settings.density, 'up'))} disabled={isDensityAtMax(settings.density)} aria-label={requiredLocalized(l10n, 'kds-density-increase-aria')} data-testid="kds-settings-density-in">+</button>
                   </div>
                 </div>
 
@@ -446,6 +446,10 @@ export function KdsHamburgerPanel({
                         onBlur={() => {
                           if (hexDraft?.key === key) setHexDraft(null);
                         }}
+                        // The sibling picker is named; this field had no name at
+                        // all, leaving six unnamed text inputs in the panel. Same
+                        // localized row label, different suffix.
+                        aria-label={requiredLocalized(l10n, 'kds-color-hex-aria', { name: requiredLocalized(l10n, labelId) })}
                         maxLength={7}
                         aria-invalid={hexDraft?.key === key && hexDraft.value && !/^#[0-9a-f]{6}$/i.test(hexDraft.value) ? 'true' : undefined}
                         data-testid={`kds-settings-colors-hex-${key}`}

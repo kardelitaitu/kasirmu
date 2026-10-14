@@ -27,3 +27,24 @@
 *   [ ] Database Schema Freeze: Keep raw `.sql` schemas and migrations pristine in an isolated folder. This provides an exact roadmap for future Kotlin Room `@Entity` data classes.
 
 Pre-Release Checklist (The Final Safety Gate)Before handing the APK/AAB to your first store location, complete these tests using Android Studio's Profiler or ADB:The 8-Hour Idle Test: Leave the app running overnight on the terminal with the screen on to ensure the Rust sync loops do not have slow memory accumulation.The Rapid Checkout Stress Test: Tap through 30 mock sales in quick succession while scanning barcodes to confirm the React state resets memory properly after each transaction.Offline Drop Test: Cut Wi-Fi mid-transaction to verify that local rusqlite writes cleanly without unhandled JavaScript exceptions hanging the WebView thread.
+
+<!-- Audited 2026-10-11 by docs-auditor (dated-record scope, no stamp/footer by this directory's convention).
+
+**Verify-and-record result:** this is a rough pre-implementation idea sketch, and its own first line says so
+("only rough plan, need to be audited first"). No repo path is cited, so nothing here can go dead. Its
+concrete proposals were checked against the tree and are a MIXED record of what the product did and did not
+adopt:
+
+- **Adopted, and live today:** DOM virtualization for large grids (the project ships `@tanstack/react-virtual`),
+  pagination of SQLite inventory fetches (see `ui/src/utils/list-policy.ts`, `LIST_PAGE_SIZE = 50`), keeping
+  React as a presentation layer with computation in Rust, and IPC payload trimming — the same concerns the
+  Android 4GB audit (`todo-android-4gb-optimization-audit.md`, ranks 398) re-states with measurements.
+- **Not adopted under these names:** `r2d2` connection pooling (the workspace does not depend on it),
+  Tailwind responsive utilities (the project styles with plain CSS + tokens, not Tailwind breakpoints),
+  `resizeToAvoidBottomInset` (a Flutter API — this is a WebView app), and the proposed Kotlin
+  `WakeLock`/`Foreground Service` plugin pair, which this file names as FUTURE work.
+
+**Why no repair:** a dated sketch is not a claim about the present, and every unchecked box here is a
+proposal rather than an assertion. The value of the row is that it records which of the ideas survived. The
+successor document for this subject is `todo-android-4gb-optimization-audit.md`.
+-->

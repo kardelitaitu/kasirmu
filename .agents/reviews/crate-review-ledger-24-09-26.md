@@ -3184,7 +3184,7 @@ Two security warnings, both guarded by a `std::sync::Once` so they fire once per
 
 Both wrote with `eprintln!`. **The server does not log through stderr.** `apps/cloud-server`
 calls `kasirmu_logging::try_init_json()` / `try_init()`, and that subscriber installs a
-**syslog layer** (`crates/kasirmu-logging/src/syslog.rs:104-108`) alongside the fmt layer. So
+**syslog layer** (`crates/kasirmu-logging/src/syslog.rs:104-108` — **the file has since been DELETED**; the crate's `src/` is now `{error,lib,visitor}.rs` and its README records the syslog/eventlog removal. Read this as the reading it was, audited 11-10-26) alongside the fmt layer. So
 on a syslog deployment the two messages that matter most — "tokens are forgeable" and
 "terminal tokens keep full read" — never reach the log an operator reads. Measured: 2
 production `eprintln!` sites against **50** `tracing::` calls in the same crate, and **zero**
@@ -5513,7 +5513,7 @@ itself. Every gate needs that correction, so a copy that drifts hands the front 
 for a denial, silently.
 
 **The duplication is deliberate and already ruled on — I checked before touching it.** The port journal
-(`docs/archived/manager-2-journal.md`) records the ruling per wave: *"Tax gate STAYS non-scope-aware
+(`docs/archived/manager-2-journal.md`, now **`docs/records/campaigns/manager-2-journal.md`** — `docs/archived/` is a tombstone holding only a README, corrected 11-10-26) records the ruling per wave: *"Tax gate STAYS non-scope-aware
 `Store::require_permission` with `map_gate_error` mirror (D-B12 categories ruling applied)"*, and names a
 dedupe that was to ride a later gate-fix. It did not land: `ctx::map_gate_error` is still private, is not
 re-exported, and the scheduled cleanup lost its tracker when the journal was **archived** — the active
@@ -6146,7 +6146,7 @@ The column is plain `TEXT` on both schemas with **no length constraint** (`20260
 `('products', 'name', 'TEXT', NULL::text, true)`), so the guard is the whole rule on both sides — not a
 backstop behind a CHECK.
 
-**This was already known, and I found that before acting.** `docs/archived/2026-08-31-glm-5.3f-crates-audit.md:669`
+**This was already known, and I found that before acting.** `docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:669` (**moved from `docs/archived/`, which is now a tombstone**, corrected 11-10-26)
 records **COR-12 (LOW)**: "Name-length asymmetry. `create_product` rejects names >255 chars; `update_product`
 only checks non-empty". It was still open — and still **tracked**, in the module's own audit stamp
 (`db/products.rs:18`), with `next: add 255-char check to update_product (COR-12)`. So this pass is closing a

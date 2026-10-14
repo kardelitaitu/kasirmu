@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's entire import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // ── The plan's own status header must match its body (F32) ─────────────
 //
 // `todo-restaurant-pos-reliability.md` opens with a status header that summarises
@@ -122,22 +133,54 @@ describe('the plan status header matches the tree (F32)', () => {
       .not.toMatch(/P1's[^\n]*owner decision/i);
   });
 
-  it('the dead-key guard really is empty, which is what makes P1 complete', () => {
-    // The load-bearing fact behind the claim above. If a new dead key is
-    // declared, this fails and the header line above must be revisited too.
+  // ── P1 is NOT complete, and this asserts the pair stays in step ──────────
+  //
+  // This test used to assert `DECLARED_DEAD` was EMPTY, which was true from
+  // rounds 57-58 (when the last two keys were wired) until the pre-bill /
+  // table-transfer / split-bill feature added `restaurant.dispatch_on_tab_save`
+  // — a toggle that writes a key nothing reads.
+  //
+  // The old assertion was the RIGHT question asked at the wrong time: the moment a
+  // dead key was declared it failed, correctly, and the old fix was to re-word the
+  // header. That re-wording is what makes a plan untrustworthy — the summary drifts
+  // and nothing makes it come back.
+  //
+  // So the invariant is inverted rather than deleted. P1's state is now "one
+  // declared-dead key", and what must stay true is that the HEADER SAYS SO: the
+  // declared set and the header is a pair, and neither may move alone.
+  it('the header and the dead-key guard agree on whether P1 is clean', () => {
     const src = read(DEAD_GUARD);
     const list = src.slice(src.indexOf('const DECLARED_DEAD'));
     const body = list.slice(list.indexOf('[') + 1, list.indexOf('];'));
-    // Strip comments; only real entries count.
     const entries = body
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n');
+    const declaredCount = (entries.match(/\{\s*key:/g) ?? []).length;
+
+    // The header must own the fact, in the same round that changed it.
+    if (declaredCount === 0) {
+      expect(
+        header,
+        'DECLARED_DEAD is empty again, but the header still describes a dead key — ' +
+          're-measure it, the same way the round-75 correction did.',
+      ).not.toMatch(/P1 is no longer clean/i);
+    } else {
+      expect(
+        header,
+        'DECLARED_DEAD holds ' +
+          declaredCount +
+          ' key(s), so P1 is NOT complete — the header must say so. A plan whose ' +
+          'summary disagrees with its own guard is the failure this pair exists to catch.',
+      ).toMatch(/P1 is no longer clean/i);
+    }
+
+    // And every declared key must still record what wiring it would need, so the
+    // entry is a debt with a shape rather than a shrug.
     expect(
       entries,
-      'DECLARED_DEAD gained an entry — a restaurant setting has no reader again, and the ' +
-        "plan's P1-complete claim needs re-measuring",
-    ).not.toMatch(/\{\s*key:/);
+      'every DECLARED_DEAD entry needs a wouldNeed clause describing the work',
+    ).not.toMatch(/key:\s*'[^']+',\s*\}/);
   });
 
   it("F1's evidence row does not claim its keys are unread", () => {
@@ -253,5 +296,73 @@ describe('the plan status header matches the tree (F32)', () => {
       'these keys lost their production reader — the F1 resolution note is now wrong, and the ' +
         'P1-complete claim with it: ' + missing.join(', '),
     ).toEqual([]);
+  });
+
+  // ── The D6 residual: the SIXTH stale-header correction, pinned (2026-10-14) ──────
+  //
+  // The header told readers for three commits that the receipt-grouping fix "is left to
+  // the owner… a real design decision". It had already landed: `e84ccdc62` exposed the
+  // setting, `e0ffa8213` resolved it through the storage bridge, and `formatMoney` now
+  // groups the integer part itself with `useGrouping: false`. The plan file's own opening
+  // paragraph counts FIVE prior corrections of this same shape — "a pin lands, the summary
+  // is not re-read" — so this is the sixth, and the first to get a pin rather than another
+  // dated note.
+  //
+  // The guard above polices the DEFICIT direction (a header claiming no open defects while
+  // guards pin some). This one polices the STALE-WORK direction: a header claiming open work
+  // that has landed. Same file, opposite failure, and the second is the one this file's
+  // history is made of.
+  it('does not claim the D6 receipt-grouping fix is still left to the owner', () => {
+    const header = read(PLAN);
+    // The dated reasoning is KEPT — that is this corpus's convention, and the CLOSED block
+    // says so explicitly ("everything from here down is kept as the dated reasoning that
+    // produced the fix"). So the pin is not "the old sentence is absent"; it is that the
+    // CLOSED verdict sits BESIDE it, after it, so no reader meets the open question without
+    // its answer. A future edit that re-opens the work must remove or supersede the CLOSED
+    // block, which is exactly what fails here.
+    const closedAt = header.indexOf('✅ CLOSED 2026-10-14');
+    const staleAt = header.indexOf('one-line change, and it is left to the owner.');
+    expect(
+      closedAt,
+      'the D6 CLOSED block is gone. It landed in e84ccdc62 + e0ffa8213, and ' +
+        'ReceiptPreviewGroupingParity.test.ts EMPTIED its own ledger. Re-measure before ' +
+        'removing it, or record why the work is open again.',
+    ).toBeGreaterThan(-1);
+    expect(
+      staleAt === -1 || closedAt > staleAt,
+      'the D6 CLOSED block appears BEFORE the open question it answers, so a reader meets ' +
+        '"left to the owner" and may never reach the verdict. The correction must follow the ' +
+        'claim it supersedes.',
+    ).toBe(true);
+    // And the dated note names the commits, so the verdict cannot rot into an assertion
+    // without evidence.
+    expect(header).toContain('e84ccdc62');
+    expect(header).toContain('e0ffa8213');
+  });
+
+  it('the three claims the D6 note says are now false really are false in the tree', () => {
+    // Each of the three claims the header made, re-derived against the tree:
+    // (a) "No UI writer exists" — the writer is storage.setThousandsSep, called twice.
+    const storage = read('ui/src/utils/storage.ts');
+    expect(
+      storage,
+      'setThousandsSep is gone — the "no UI writer" claim may be true again',
+    ).toContain('export function setThousandsSep');
+    const ctx = read('ui/src/contexts/SettingsContext.tsx');
+    const writerCalls = ctx.split('setThousandsSep(').length - 1;
+    expect(
+      writerCalls,
+      'SettingsContext no longer writes the separator on both load paths (expected 2 calls)',
+    ).toBe(2);
+    // (b) "the preview formats through Intl/locale and ignores the setting" — it honours it.
+    const domain = read('ui/src/types/domain.ts');
+    expect(
+      domain,
+      'formatMoney no longer reads the store separator — the divergence the pin recorded is back',
+    ).toContain('getThousandsSep');
+    expect(
+      domain,
+      'the load-bearing useGrouping: false is gone, so Intl will ALSO group and the setting will double-apply',
+    ).toContain('useGrouping: false');
   });
 });

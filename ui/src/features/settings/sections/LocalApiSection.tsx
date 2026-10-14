@@ -418,7 +418,7 @@ export default function LocalApiSection() {
                   <Localized id="settings-local-api-token-hint">
                     <span>
                       The token grants read access to all local data for 30 days. Master-data
-                      writes additionally require the operator key — see docs/guides/EXTENDING.md.
+                      writes additionally require the operator key — see docs/guides/developer/EXTENDING.md.
                     </span>
                   </Localized>
                 </p>

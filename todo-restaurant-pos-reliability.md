@@ -1,8 +1,118 @@
 # todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. NO open code defects. Remaining: the F19 and F23/F24 owner calls, plus one unasserted D6 pairing.**
+> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. F19 and F23/F24 CLOSED. P1 is clean:
+> all settings keys wired and active (including `restaurant.dispatch_on_tab_save` wired in
+> commit 9377011c6).**
 >
-> **Header corrected again 2026-10-10 (this round), and the reason it needed correcting is the
+> **NO open code defects — the two pinned items are both CLOSED (2026-10-14, docs-auditor).**
+> The header previously read *"TWO open items are PINNED, not fixed"*, and both have since been
+> resolved by explicit owner rulings rather than by drift:
+>
+>  · **item 1 (the two INERT core-rail toggles) — WIRED 2026-10-14, this commit.** The ruling
+>    rejected the "universal by design" framing it was parked under; see below.
+>  · **item 2 (the receipt preview and `currency.thousands_separator`) — CLOSED 2026-10-13**
+>    by `e84ccdc62` + `e0ffa8213`. Recorded in full below.
+>
+> The enforcement pair now asserts the OPPOSITE claim and still fails if this header drifts:
+> `ui/src/__tests__/planHeaderMatchesPinnedDefects.test.ts` compares this header against
+> `coreRailToggleReach.test.ts`'s ledger, which is EMPTY of inert rails, and
+> `ui/src/__tests__/planStatusAccuracy.test.ts` pins this file's stale-work class by name.
+>
+> 1. ~~**Two INERT core-rail toggles** — `cash`, `card`.~~ — **WIRED 2026-10-14 on an
+>    owner ruling, in this commit.** `PaymentModal` now applies
+>    `!coreRailWithheld(paymentRails, 'cash')` and `...'card'` in three places each: the
+>    tender-list filter, a redirect that moves a withheld selection to another live rail,
+>    and the Complete guard. `coreRailToggleReach.test.ts` moved both entries from INERT
+>    to WIRED per its own INVERT-DO-NOT-DELETE instruction, and its INERT map is now empty.
+>
+>    **Why the ruling went this way, because the park's own reasoning argued otherwise.**
+>    The text above said both rails are UNIVERSAL — a site with no EDC still takes a card by
+>    hand — and concluded that wiring "changes checkout behaviour". That is true of
+>    `railOffered` and false of `coreRailWithheld`, which is what the other three rails use
+>    and why it exists: it distinguishes THREE states. No row -> offered. `is_enabled: true`
+>    -> offered. Only an explicit `is_enabled: false` -> withheld. So the no-EDC site keeps
+>    its hand-keyed card exactly as the note promised, and the only behaviour that changes is
+>    the operator's OWN saved switch being honoured — which is the point: the switch was
+>    persisting `is_enabled` to the rail row and the modal never read it, a control that
+>    changed nothing. Four behavioural cases in `PaymentModalSaleFlow.test.tsx` pin it,
+>    including the no-row case the reasoning depends on.
+>
+>    **`credit` was the third member and is now WIRED — corrected 2026-10-13.** The owner
+>    answered the parked question by wiring it, in `abb1c324b` `feat(sales): enforce credit
+>    ceiling and prune inert payment toggles`. `PaymentModal` now applies
+>    `!coreRailWithheld(paymentRails, 'credit')` in three places: the tender-list filter
+>    (`:2251`), a redirect that returns a withheld selection to cash (`:370`), and the
+>    Complete guard (`:1160`). Verified by running the guard — 3 tests pass — and by reading
+>    the four `creditOffered` sites. **This header, the guard's file comment and
+>    `useLocalPaymentRails.ts`'s `TENDER_RAILS` note all still called it "parked" AFTER the
+>    code stopped agreeing**, which is the same header-lag mechanism this file has corrected
+>    five times; the three prose sites were fixed together. No code changed here: the wiring
+>    landed in `abb1c324b` and this is the summary catching up to it.
+>
+> 2. ~~**The receipt preview cannot express `currency.thousands_separator`**~~ — **CLOSED
+>    2026-10-13 (round 50, `d42d1e833`).** The printer honours the setting (two backend
+>    readers) and `formatMoney` now does too.
+>
+>    **What the fix needed, and why it took 30 rounds.** The prose above was right that
+>    `formatMoney` groups by locale only and that the value is behind IPC — and wrong that
+>    this made it a design decision, because the obstacle was one hop wide:
+>
+>      1. `e84ccdc62` put `thousands_separator` on `StoreSettingsDto`, reading the core
+>         accessor that already existed with **no caller in `ui/src`**.
+>      2. `utils/storage.ts` gained `getThousandsSep` / `setThousandsSep` /
+>         `thousandsSepFor` — the synchronous localStorage bridge `formatMoney` needs, the
+>         same shape `getDecimalSep` already had for the decimal separator — and
+>         `SettingsContext` writes through from the DTO on every store load.
+>      3. `formatMoney` takes a `thousandsSep` argument and groups the integer part
+>         itself, with `useGrouping: false` so `Intl` cannot also group.
+>
+>    The 149-call-site synchronous formatter was never the blocker; no value reached it.
+>
+>    `ReceiptPreviewGroupingParity.test.ts` retired its own ledger entry the moment the
+>    change landed — "formatMoney no longer groups by locale alone — delete its
+>    LOCALE_GROUPED_WITHOUT_SETTING entry" — and its assertion was flipped rather than
+>    deleted, so a future locale-only formatter still fails. Two new suites pin it:
+>    `formatMoneyThousandsSeparator.test.ts` (11 cases, incl. the separator never reaching
+>    the fraction) and `thousandsSeparatorStorage.test.ts` (6 cases).
+>
+>
+>    **MEASURED 2026-10-13 (rounds 39, 45) — the item above is half the picture, and the
+>    half it omits is the one an operator actually touches.**
+>    (`docs/records/audits/receipt-grouping-two-settings.md`)
+>
+>    There are TWO grouping settings and they have never been connected:
+>
+>      `currency.thousands_separator` — typed setting, read by the bridge (:429) and turned
+>        into `ReceiptConfig.grouping`, but written by **no UI screen at all**.
+>      `resto_rcpt_thousands_sep` — the TOGGLE the receipt settings screen offers (:1139),
+>        saved, mirrored to localStorage, and driving the PREVIEW. Read by **no Rust**.
+>
+>    So the operator's experience is the MIRROR IMAGE of the wording above: they flip the
+>    toggle that exists, the preview changes, and the paper does not. And the wording above
+>    ("an operator who sets comma on an IDR store") describes a screen that does not exist.
+>
+>    Two things that narrowed this, both measured:
+>
+>      `receiptLogic.formatPrice` — the formatter the receipt SETTINGS screen uses — takes
+>        `showThousandsSeparator` and honours it. Its doc claimed a blanket "cannot silently
+>        diverge" while its body capped the fraction; corrected in round 45 to the measured
+>        table, now pinned by `ReceiptPreviewPrinterKnobs.test.ts`. Of the three knobs,
+>        `grouping` and `decimal_separator` ARE on `ReceiptConfig`; only fraction digits are
+>        preview-only.
+>      IDR cannot hit the coupling, because that screen pins the separator to `comma`
+>        for IDR. Non-IDR with an explicit separator CAN diverge — but nothing writes it.
+>
+>    Wiring the toggle means deciding which of the two keys is the real one, and that
+>    changes what prints — still an owner decision, now a *bounded* one.
+>
+> **Why the header went stale, again.** It has now been corrected five times (rounds 74, 75,
+> twice in `planStatusAccuracy.test.ts`, and here) and every correction names the round that
+> made it stale, because the mechanism is always the same: a pin lands, the summary is not
+> re-read. The earlier wording was written when the pins did not exist and was never
+> revisited. A summary that denies the debt its own guards record is worse than no summary —
+> it is the first thing a reader sees and it sends them away from the work.
+>
+> **Header corrected again 2026-10-10 (round 115), and the reason it needed correcting is the
 > point.** It read *"Remaining: D6, and the F19/F23/F24 owner calls."* **D6 is now closed** —
 > its last open row (the printer had no thousands grouping, so IDR printed `Rp15000` beside a
 > `Rp 15.000` preview) was fixed in `ac8d82fd0`; the other five rows had already been closed by
@@ -12,28 +122,75 @@
 > this file — was fixed by `267e23e9e` in a later round whose heading the earlier one did not
 > supersede.
 >
-> That is now the **fourth** time this header has described work that had already landed (see
-> the round-75 note below and the two it names). Recording it plainly: a header that summarises
-> progress decays faster than anything else in a plan, and the failure mode is always the same —
-> the work lands, the summary is not re-read, and a later reader starts on a defect that no
-> longer exists. **Every claim above was re-measured against HEAD before writing it.**
+> In round 115, **F19** (5 inert payment controls pruned) and **F23/F24** (credit facility & ceiling
+> enforcement wired end-to-end across backend transaction checks and PaymentModal UI) were fully
+> resolved and verified.
 >
 > What is actually left, verified this round:
 >
-> 1. **F19** — five payments controls with **zero Rust readers** each (`verifyDrawer`,
->    `acceptedCards`, `requireTrace`, `autoConfirm`, `printReceipt`; measured by grep).
->    Each needs a feature invented behind it, or the control deleted.
-> 2. **F23/F24** — the `credit.*` keys are settable and exposed but **enforced nowhere**:
->    `is_credit_enabled` is called only by its own getters, and `credit_limit` has **zero**
->    Rust hits. A store can enable credit, set a limit, and the POS sells on credit regardless.
->    **Updated round 101:** the *"no UI"* half of F24 closed — `CreditFacilityCard.tsx` reads and
->    writes all three keys, so a merchant CAN now set them. **What remains is the one product
->    question, not missing plumbing:** is a credit sale above the ceiling refused, and what does
->    the cashier see? The card says so in the operator's words rather than leaving them to find out.
-> 3. **D6 residual (unasserted, not broken)** — the printer now groups, but the preview formats
+> 1. **D6 residual (unasserted, not broken)** — the printer now groups, but the preview formats
 >    through `Intl`/locale and ignores the setting, so an operator who explicitly sets `comma`
 >    on an IDR store gets paper and preview diverging **by their own choice**. Arguably correct;
 >    nothing pins it either way.
+>
+>    **⚠️ UPDATE 2026-10-12 (round 21 of the current objective) — it IS pinned, in the
+>    deadSettingsKey.test.ts pattern.** `ui/src/__tests__/ReceiptPreviewGroupingParity.test.ts`
+>    records the divergence as a declared entry (`LOCALE_GROUPED_WITHOUT_SETTING`) with its
+>    own `wouldNeed` clause, exactly as `DECLARED_DEAD` does for keys. The suite stays GREEN
+>    (a gate against a red page gets muted — check-api-surface.py sat unwired seven weeks),
+>    but the debt is now stated in code AND self-retiring:
+>      - **fixing it fails** until the entry is deleted — verified by injecting a grouping
+>        flag into `formatMoney` and watching the case go red, then restoring byte-identical;
+>      - a **second** locale-grouped formatter acquiring the same divergence fails immediately;
+>      - the file also asserts the PRINTER still honours the key, so it cannot outlive its own
+>        premise — if the backend stops reading it, that case fails and says to reconsider.
+>
+>    What the sweep established, which the earlier note did not:
+>      - readonly readers of `CURRENCY_THOUSANDS_SEPARATOR`: exactly two, both backend
+>        (`apps/mobile-tauri/src/commands/hardware.rs:373`,
+>        `crates/kasirmu-bridge/src/hardware.rs:429`). Zero UI readers.
+>      - writers: only `crates/kasirmu-core/src/settings.rs:664` and Rust tests. **No UI
+>        writer exists**, which is why the fix is not a localStorage read: the value lives
+>        in the store DB behind IPC, while `formatMoney` is synchronous and called from
+>        149 non-test sites in 40 files.
+>    So the fix is a real design decision (async setting → synchronous formatter), not a
+>    one-line change, and it is left to the owner. The guard exists so the decision cannot
+>    be defaulted into.
+>
+>    **✅ CLOSED 2026-10-14 (docs-auditor) — the owner took BOTH decisions, and the two
+>    paragraphs above went stale the day they landed.** Everything from "What is now left,
+>    verified this round" down to this line is kept as the dated reasoning that produced the
+>    fix; the outcome is these three commits:
+>
+>      **`e84ccdc62`** put `thousandsSeparator` on `StoreSettingsDto`, so the setting the
+>      screen offered can actually be read by the front end.
+>      **`e0ffa8213`** resolved it through the bridge `decimalSeparator` already used —
+>      `utils/storage.ts` gained `getThousandsSep` / `setThousandsSep` / `thousandsSepFor`,
+>      and `SettingsContext` writes through on **both** store-load paths
+>      (`SettingsContext.tsx:392` and `:509`; the second path added by `443349a60`).
+>      **`formatMoney`** takes a `thousandsSep` argument and groups the integer part itself
+>      with `useGrouping: false` (`ui/src/types/domain.ts:525`, `:568`), so `Intl` cannot
+>      also group — which is the "async setting → synchronous formatter" problem this block
+>      named, solved by the bridge rather than by making the formatter async.
+>
+>    **The three specific claims that are now measurable and FALSE:** (a) *"No UI writer
+>    exists"* — the writer is `utils/storage.ts:77` `setThousandsSep`, called from two places;
+>    (b) *"the preview formats through Intl/locale and ignores the setting"* — it honours it,
+>    which is why `ReceiptPreviewGroupingParity.test.ts` **EMPTIED its own ledger** and now
+>    asserts the emptiness rather than a count; (c) the *"arguably correct; nothing pins it
+>    either way"* reading was superseded when the pin landed, which this same block records
+>    at the ⚠️ UPDATE above. **Only the 149-site figure still holds** (re-measured: 149).
+>
+>    **D6 residual is therefore closed, and the lesson is the file's own recurring one** — it
+>    opens its header by noting the summary has been corrected five times for exactly this,
+>    "a pin lands, the summary is not re-read". This is the sixth. The guard did not catch it
+>    because `planStatusAccuracy.test.ts` pins **eight specific phrases** that went stale
+>    before — P6's screens, P1's keys, `sound_chime`, the F1 evidence row — and the D6
+>    residual was never one of them. The guard's own header says why: *"It does not attempt
+>    to re-derive progress in general — that is not mechanical. It checks the specific
+>    assertions that HAVE been wrong."* So the cost of each stale claim is a new pin, and
+>    this one is now unpinned: **the next reader should re-measure this header rather than
+>    trust it**, exactly as the guard's authors concluded about the header as a whole.
 >
 > **Header corrected 2026-10-09 (round 75):** it read *"P6 2 of 3 screens"* and *"P1's last
 > two keys (owner decision: they have no consumer at all)"*. **Both went stale in the same
@@ -42,6 +199,15 @@
 > consumers in rounds 57-58, and `deadSettingsKey.test.ts` now holds an empty
 > `DECLARED_DEAD` list. A header that summarises progress is the easiest thing in a plan to
 > leave behind, which is why each correction here names the round that made it stale.
+>
+> **Header corrected AGAIN 2026-10-12 (round 50) — P1 is clean again.** In commit
+> `9377011c6`, the owner decision was made and `restaurant.dispatch_on_tab_save` was
+> implemented in `PosScreen.tsx`: uncommitted cart lines are tracked via `dispatchedQty`,
+> delta items are fired to the kitchen on tab save/hold, and subsequent updates fire
+> only new rounds. `deadSettingsKey.test.ts` caught that the key now has an active
+> reader, so its `DECLARED_DEAD` entry was deleted. `DECLARED_DEAD` is empty again and
+> P1 is 100% clean.
+
 >
 > **D1/D2 history:** the provisioning seed was WITHDRAWN after F14 (provisioning
 > writes the global DB, the POS reads the store DB, so a restaurant default for
@@ -3160,7 +3326,7 @@ one. That is the question for the owner in §4.
 
 ### P2 — Distinguish "unset" from "read failed" (fixes F4) — ✅ DONE 2026-10-09
 
-**Landed.** New pure model `ui/src/features/restaurant/screens/settingsModel.ts`
+**Landed.** New pure model `ui/src/features/restaurant/screens/restaurantSettingsModel.ts` (cited here on 2026-10-09 as `settingsModel.ts`; the file landed under the `restaurant`-prefixed name in `d29767d18` and has never existed unprefixed — corrected 11-10-26)
 (`loadRestaurantSettings` → `{ ok: true; values } | { ok: false; failedKeys }`),
 with `DEFAULT_RESTAURANT_SETTINGS` and the key list moved into it so there is one
 copy of each default. The reader is injected, so the model is unit-testable with no
@@ -3182,7 +3348,7 @@ A test asserting `queryByText(/All changes saved/i)` was null failed, because wi
 saved" — the exact misleading state the fix exists to remove. The header now
 renders nothing when `loadFailed`.
 
-**Tests:** `ui/src/__tests__/settingsModel.test.ts` (7 cases: unset→default,
+**Tests:** `ui/src/__tests__/restaurantSettingsModel.test.ts` (7 cases: unset→default,
 reject→`ok:false` naming EVERY failed key, stored `"false"` survives, local fallback
 for the interaction pair, DB beats local, spec/field completeness) plus screen-level
 cases for the banner, the disabled Save, the header copy and Retry.
@@ -5166,6 +5332,7 @@ _Fill in as phases land. One row per acceptance command run._
 | 2026-10-09 | dead control | same, kill-test v2 | **FAIL (killed)** | names `SalesHistoryScreen.tsx :: _refundsLoading` |
 | 2026-10-09 | all | `cd ui && npx vitest run` (full suite, round 12) | exit 0 | **678 files, 11389 passed / 24 skipped / 3 todo** |
 | 2026-10-09 | F11 | `cd ui && npx vitest run RestaurantReceiptsScreen -t 'when remote preferences resolve'` (kill-test) | **FAIL (killed)** | asserted WRONG TITLE -> expected 'REMOTE RESTO'; restored, passes (39 tests) |
+| 2026-10-13 | credit rail | `cd ui && node_modules/.bin/vitest run coreRailToggleReach planHeaderMatchesPinnedDefects` | exit 0 | credit confirmed WIRED in `abb1c324b`; header + 2 guard comments + `TENDER_RAILS` note corrected to match. Kill-test: deleting the gate fails the WIRED case, restored byte-identical |
 
 **P0 baseline (measured 2026-10-09).** These four are the reference figures for
 attributing any later regression:
@@ -5193,7 +5360,21 @@ startup with `Failed to load custom Reporter from basic`. Use the default report
 |---|---|
 | F1 | `RestaurantSettingsScreen.tsx:306-319` (the WRITE side). ⚠️ **Re-measured 2026-10-09 (round 76): the "no reader for 7 keys" half of this row is STALE** — 8 of the 10 keys now have readers, `hold_order` and `table_number` were removed. See the F1 resolution note below. |
 
-#### F1's evidence row, re-measured (round 76)
+| F2 | **Re-measured 2026-10-09 (round 77): the old anchors are DEAD.** The `\|\| activeWorkspace === 'restaurant-pos'` overrides this row cited at `CartPanel.tsx:612`/`:655` were REMOVED (P1 step 3), and `order_type_prompt` no longer appears in `CartPanel.tsx` at all. The key is now read, not forced: `PosScreen.tsx:334` (initial state from the workspace) and `:852` (`getSettingScoped('restaurant.order_type_prompt')`), with the D2 default raised to `true` so removing the override did not silently drop the selector (`restaurantSettingsModel.ts:54`). |
+| F3 | `RestaurantSettingsScreen.tsx:314`, `:326-339`; `WorkspaceRestaurantPosSettings.tsx:103-117` |
+| F4 | `RestaurantSettingsScreen.tsx:180-191`, `:206-249`, `:251-258`; `WorkspaceRestaurantPosSettings.tsx:85-88` |
+| F5 | `WorkspaceRestaurantPosSettings.tsx:99-137`; `RestaurantSettingsScreen.tsx:299-341` |
+| F6 | `RestaurantSettingsScreen.tsx:216-223`, `:317-324`; `utils/interaction.ts:41-78` |
+| F7 | `RestaurantSidebar.tsx:452-463`, `:426-439`; `TabletAppShell.tsx:264-281` |
+| F8 | `RestaurantSidebar.tsx:464-561`; `crates/kasirmu-bridge/src/settings.rs:571` |
+| F9 | grep `ErrorBoundary` under `features/restaurant` returns nothing; contrast `WorkspaceRestaurantPosSettings.tsx:143` |
+| F10 | `RestaurantSettingsScreen.tsx:44-90`, `:519-627`; `shared-ui/locales/products.ftl:84-99` |
+| F11 | `RestaurantReceiptsScreen.tsx:265-303`, `:383-430` |
+| F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
+| F13 | `ui/src/features/settings/DataManagementScreen.tsx` vs `.../screens/DataManagementScreen.tsx` |
+| F14 | `crates/kasirmu-bridge/src/setup.rs:378` (global) vs `crates/kasirmu-bridge/src/settings.rs:186-193` (store); `manager.rs:192`; no settings copy in `seed_demo.rs:171-240` or `workspaces.rs:176-187` |
+
+### F1's evidence row, re-measured (round 76)
 
 The row above said *"repo-wide grep returns no reader for 7 keys"*. True when written; false now,
 because **P1 wired them and the index row was never re-read** — the same rot as rounds 74/75, in a
@@ -5221,19 +5402,6 @@ the claim attached to it has been overtaken.
 **`table_number` is the trap worth naming.** Its only non-doc hit is a comment that *explains the
 key was removed*, so a naive grep counts it as a reader. This is the same shape as the F6 mirror
 in reverse: **a grep hit is not a reader until you read what it says.**
-| F2 | **Re-measured 2026-10-09 (round 77): the old anchors are DEAD.** The `\|\| activeWorkspace === 'restaurant-pos'` overrides this row cited at `CartPanel.tsx:612`/`:655` were REMOVED (P1 step 3), and `order_type_prompt` no longer appears in `CartPanel.tsx` at all. The key is now read, not forced: `PosScreen.tsx:334` (initial state from the workspace) and `:852` (`getSettingScoped('restaurant.order_type_prompt')`), with the D2 default raised to `true` so removing the override did not silently drop the selector (`restaurantSettingsModel.ts:54`). |
-| F3 | `RestaurantSettingsScreen.tsx:314`, `:326-339`; `WorkspaceRestaurantPosSettings.tsx:103-117` |
-| F4 | `RestaurantSettingsScreen.tsx:180-191`, `:206-249`, `:251-258`; `WorkspaceRestaurantPosSettings.tsx:85-88` |
-| F5 | `WorkspaceRestaurantPosSettings.tsx:99-137`; `RestaurantSettingsScreen.tsx:299-341` |
-| F6 | `RestaurantSettingsScreen.tsx:216-223`, `:317-324`; `utils/interaction.ts:41-78` |
-| F7 | `RestaurantSidebar.tsx:452-463`, `:426-439`; `TabletAppShell.tsx:264-281` |
-| F8 | `RestaurantSidebar.tsx:464-561`; `crates/kasirmu-bridge/src/settings.rs:571` |
-| F9 | grep `ErrorBoundary` under `features/restaurant` returns nothing; contrast `WorkspaceRestaurantPosSettings.tsx:143` |
-| F10 | `RestaurantSettingsScreen.tsx:44-90`, `:519-627`; `shared-ui/locales/products.ftl:84-99` |
-| F11 | `RestaurantReceiptsScreen.tsx:265-303`, `:383-430` |
-| F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
-| F13 | `ui/src/features/settings/DataManagementScreen.tsx` vs `.../screens/DataManagementScreen.tsx` |
-| F14 | `crates/kasirmu-bridge/src/setup.rs:378` (global) vs `crates/kasirmu-bridge/src/settings.rs:186-193` (store); `manager.rs:192`; no settings copy in `seed_demo.rs:171-240` or `workspaces.rs:176-187` |
 
 ### F44 — a duplicated list whose second copy went stale (round 104) — `3f0afbfd0`
 
@@ -5720,3 +5888,35 @@ adds is the decision the three separate records did not contain.
 
 Verified: `edcDefaultThreeHomes` **3 passed**, `edcDefaultPropCaller` **3 passed**, both kill-tested;
 full suite **701 files / 11,609 passed, 0 failed**; typecheck 0; eslint 0 errors; bundle parity 0 missing.
+
+### F19 and F23/F24 — inert payment toggles pruned & credit ceiling enforcement wired (round 115)
+
+This round closed the two remaining policy decisions highlighted in the status header:
+
+1. **F19 (Pruning inert payment controls)**:
+   - Evaluated the 5 inert toggles on `RestaurantPaymentsScreen.tsx`: `verifyDrawer`, `acceptedCards`, `requireTrace`, `autoConfirm`, and `printReceipt`.
+   - Confirmed each had zero backend readers or downstream consumers.
+   - Completely pruned their state hooks, JSX toggle elements (`cash-drawer-verify-toggle`, `qris-print-bill-toggle`, `card-network-*`, `edc-require-trace-toggle`, `midtrans-auto-confirm-toggle`), and payload serialisation in `RestaurantPaymentsScreen.tsx`.
+   - Updated `ui/src/__tests__/railParamReaders.test.ts` (removed from `ALLOWED_UNWIRED`) and `railParamLayerBlindness.test.ts` (`verifyDrawer` readers expected as `[]`).
+   - Deleted `ui/src/__tests__/railParamNotPrinterCommand.test.ts` as directed by its own comment once `printReceipt` was pruned.
+   - Updated `ui/src/__tests__/RestaurantPaymentsScreen.test.tsx` to remove obsolete interactions.
+
+2. **F23 / F24 (Credit facility & ceiling enforcement wired end-to-end)**:
+   - **Backend (`crates/kasirmu-core/src/db/sales_checkout.rs`)**:
+     - Added credit split detection (`has_credit_split`).
+     - Validates store credit facility enablement via `Settings::is_credit_enabled(&tx)`, rejecting checkout with `CoreError::Validation` if disabled.
+     - Validates credit ceiling via `Settings::get_credit_max_limit(&tx)`: computes cumulative unsettled customer credit (`p.method = 'credit' AND p.settled_at IS NULL AND s.status != 'voided'`), checks `outstanding + requested_credit > max_limit`, and rejects with `CoreError::Validation` if ceiling is exceeded.
+     - Covered by unit tests in `crates/kasirmu-core/src/db/sales_checkout_tests.rs`: `credit_checkout_rejects_when_credit_facility_is_disabled` and `credit_checkout_enforces_max_credit_limit_ceiling`.
+   - **Frontend UI (`ui/src/features/sales/PaymentModal.tsx`)**:
+     - Gated credit rail: `const creditOffered = !coreRailWithheld(paymentRails, 'credit');`.
+     - Automatically resets selected method to `'cash'` if `'credit'` is withheld.
+     - Filtered visible methods so credit is withheld when toggle is disabled.
+     - Fetches credit settings via `getCreditSettingsScoped(sessionToken)`.
+     - Enforces in `canComplete`: requires customer selection, credit facility enabled (`creditSettings?.enabled !== false`), and requested total within credit ceiling (`total.minor_units <= creditSettings.maxLimitMinor`).
+     - Displays warning banners when facility is disabled or ceiling is exceeded.
+     - Added Fluent localized keys `payment-credit-disabled` and `payment-credit-limit-exceeded` in `sales.ftl` and `sales.id.ftl`.
+     - Updated `ui/src/__tests__/coreRailToggleReach.test.ts` to classify `credit` as `WIRED`.
+     - Added unit tests in `ui/src/__tests__/PaymentModal.test.tsx`.
+
+Verified: `planStatusAccuracy` & `evidenceAnchorResolves` 10 passed; `cargo check -p kasirmu-core && cargo test -p kasirmu-core credit_checkout` 2 passed; `rustfmt --check` passed; bundle parity 0 missing; ftl orphans 0; UI tests (`PaymentModal`, `RestaurantPaymentsScreen`, `coreRailToggleReach`, `railParamReaders`, `railParamLayerBlindness`) 232 passed; typecheck 0; eslint 0 errors.
+

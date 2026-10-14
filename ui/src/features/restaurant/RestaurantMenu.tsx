@@ -62,21 +62,33 @@ function key(uid: string, name: string) {
 //   Written by `persistMenuPreference` → `setUserPreferencesScoped`,
 //   rehydrated from `getUserPreferencesScoped` on mount (see the effect
 //   below). These follow the user to another terminal.
+//   `unavailable` reaches the server by a different route — see below.
 //
 // Tier 2 — localStorage only:
-//   `pinned`, `colors`, `unavailable`, `pop`.
-//   Namespaced per user through `key()` above but never sent to the server,
-//   so they do NOT follow the user across terminals. `pinned` and `colors`
-//   are personal curation and read as defensibly terminal-local.
-//   `unavailable` is the odd one out: it is an operational flag (86 an
-//   item), so a waiter marking an item unavailable on one terminal does not
-//   propagate to the others, which looks more like a gap than a choice.
+//   `pinned`, `colors`, `pop`.
+//   Namespaced per user through `key()` above and never sent to the server,
+//   so they do NOT follow the user across terminals. These are personal
+//   curation and usage counts, and read as defensibly terminal-local.
 //
-// This split is recorded in code but is NOT backed by an ADR or product
-// decision — treat it as unresolved rather than settled. If `unavailable`
-// (or the rest of Tier 2) should be shared, promote it to Tier 1; note the
-// preference store is generic string KV (api/settings.ts:198-202), so a set
-// or map needs serialising first. Raised by .agents/resto-pos-ui-review.md §F5.
+// ── UNAVAILABLE IS SHARED, AND THIS NOTE USED TO SAY OTHERWISE ──────────
+//
+// An earlier revision of this block filed `unavailable` under Tier 2 and
+// marked the cross-terminal gap "unresolved and not backed by an ADR" — the
+// .agents/reviews/resto-pos-ui-review.md §F5 finding. The sharing has since been
+// built, and the note was never updated:
+//
+//   * the server key is `restaurant.unavailable.<locationId>` (`unavailableSettingKey`);
+//   * the fetch effect below rehydrates from it and flips `unavailableLoadedRef` ONLY
+//     on a successful read, so a failed read leaves the gate shut and the write effect
+//     cannot push `[]` over the real list (the guard at :488);
+//   * `refetchUnavailable` re-polls on tab visibility, so another terminal's 86 turns
+//     up within a second or two of refocusing;
+//   * localStorage (`saveUnavailable`) is now the offline write-through cache.
+//
+// Measured 2026-10-14 in the browser against the dev mock: 86'ing a tile ran
+// `set_setting_scoped` with `["LATTE"]` for `restaurant.unavailable.store-1`, and the
+// mock's settings slice held that value afterwards. So §F5 is closed by
+// implementation; the residual latency is the visibility re-poll, not the scope.
 
 // Sort options in menu order. Exported, and SortMode derived from it rather
 // than written out separately, so the two cannot drift: the hamburger renders
@@ -127,15 +139,6 @@ function savePop(pop: Record<string, number>, uid: string) {
 
 function unavailableKey(uid: string, locId?: string | null): string {
   return locId ? `restaurant-loc-${locId}-unavail` : key(uid, 'unavail');
-}
-
-function loadUnavailable(uid: string, locId?: string | null): Set<string> {
-  try {
-    const raw = (locId ? localStorage.getItem(unavailableKey(uid, locId)) : null) ?? localStorage.getItem(key(uid, 'unavail'));
-    return new Set<string>(raw ? JSON.parse(raw) : []);
-  } catch {
-    return new Set();
-  }
 }
 
 function saveUnavailable(unavail: Set<string>, uid: string, locId?: string | null) {
@@ -209,6 +212,13 @@ export default function RestaurantMenu({
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [locationId, setLocationId] = useState<string | null>(null);
+  // Gate for the server write in the persistence effect below. It means
+  // "the local set was successfully read back from the server", NOT "the
+  // read was attempted" — until it is true, `unavailable` is untrusted
+  // (it is only the empty seed) and pushing it would overwrite the real
+  // 86'd list with `[]`. It is flipped ONLY in the `.then` of a
+  // successful `getSettingScoped`; every other path (no token, no API,
+  // rejected read, cancelled read) deliberately leaves it false.
   const unavailableLoadedRef = useRef(false);
   const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
 
@@ -269,12 +279,24 @@ export default function RestaurantMenu({
   const [searchQuery, setSearchQuery] = useState('');
   const [pinned, setPinned] = useState<Set<string>>(loadPinned(userId));
   const [colors, setColors] = useState<Record<string, string>>(loadColors(userId));
-  const [unavailable, setUnavailable] = useState<Set<string>>(loadUnavailable(userId, locationId));
+  // Seed the unavailable set EMPTY rather than from localStorage. The
+  // local cache was the previous source of truth, but on open a stale
+  // cache would paint items as "Unavailable" for one frame, then the
+  // remote fetch would replace it — the second suspect for the flash on
+  // opening restaurant-pos (visible in the Tauri mobile build, where
+  // the IPC round trip is long enough to render the intermediate state).
+  // The remote is now authoritative; localStorage below becomes a
+  // write-through cache populated by the fetch effect.
+  const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set<string>());
 
   // Rehydrate unavailable items from backend when sessionToken or locationId resolves.
   useEffect(() => {
+    // No token (or no settings API) yet. Do NOT mark the set as loaded:
+    // nothing has been read, so the persistence effect must keep the server
+    // write closed. Leaving the gate shut is safe — its own guard already
+    // requires a token — and it stops a token arriving later from pushing
+    // our empty seed over the real list before this read lands.
     if (!sessionToken || typeof settingsApi.getSettingScoped !== 'function') {
-      unavailableLoadedRef.current = true;
       return;
     }
     let cancelled = false;
@@ -294,7 +316,13 @@ export default function RestaurantMenu({
         }
       })
       .catch(() => {
-        unavailableLoadedRef.current = true;
+        // A FAILED read must leave the gate shut. `unavailable` is still the
+        // empty seed, so the next state change (86'ing an item, the location
+        // resolving, a user switch) would push `[]` to the server and wipe
+        // the real 86'd list. Losing one local edit is recoverable; wiping
+        // the server's list is not. The visibility re-poll
+        // (`refetchUnavailable`) retries the read; a successful one opens
+        // the gate again.
       });
     return () => { cancelled = true; };
   }, [sessionToken, unavailableSettingKey, userId, locationId]);
@@ -326,10 +354,15 @@ export default function RestaurantMenu({
   }, [sessionToken, unavailableSettingKey, userId, locationId]);
 
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') refetchUnavailable(); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refetchUnavailable();
+        reload();
+      }
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refetchUnavailable]);
+  }, [refetchUnavailable, reload]);
   const addCountRef = useRef<Record<string, number>>(loadPop(userId));
   const [popularityCounts, setPopularityCounts] = useState<Record<string, number>>(() => loadPop(userId));
   const [sortMode, setSortMode] = useState<SortMode>(() => {
@@ -365,7 +398,11 @@ export default function RestaurantMenu({
     setAddedSku(null);
     setPinned(loadPinned(userId));
     setColors(loadColors(userId));
-    setUnavailable(loadUnavailable(userId, locationId));
+    // Match the initial-state policy: seed empty and let the remote
+    // fetch effect (re-keyed by userId+locationId) populate it. A user
+    // switch would otherwise hydrate a stale local cache and flash
+    // again on the next fetch.
+    setUnavailable(new Set<string>());
     addCountRef.current = loadPop(userId);
     setPopularityCounts(addCountRef.current);
     try {
@@ -498,22 +535,48 @@ export default function RestaurantMenu({
     setContextMenu({ sku, x, y, isPinned: pinned.has(sku), isUnavailable: unavailable.has(sku), sourceInStock, currentColor: colors[sku], fromKeyboard });
   }, [pinned, colors, unavailable]);
 
-  // Restaurant and retail are separate workspaces. Category tabs must be
-  // derived from restaurant products rather than the shared catalog category
-  // list, otherwise a retail-only category can leak into this menu.
-  const restaurantProducts = useMemo(
-    () => products.filter((p) => p.productType === 'restaurant' && p.isActive !== false),
-    [products],
+  // Restaurant and retail are separate workspaces. Products tagged for restaurant
+  // that are active are shown on the selling grid.
+  const isRestaurantProduct = useCallback(
+    (p: Product) =>
+      p.productType === 'restaurant' ||
+      !p.productType ||
+      (p.productType as string) === 'standard' ||
+      (p.productType as string) === 'both',
+    [],
   );
 
-  const categoryOptions = useMemo<Category[]>(
-    () => ['All', ...new Set(restaurantProducts.map((p) => p.category))].sort((a, b) => {
+  const restaurantProducts = useMemo(
+    () => products.filter((p) => isRestaurantProduct(p) && p.isActive !== false),
+    [products, isRestaurantProduct],
+  );
+
+  // Category tabs are derived from active restaurant products, plus any category
+  // defined in the store catalog (categoryMeta) that is not exclusive to retail/non-restaurant
+  // products. This ensures newly created categories or categories whose dishes are currently
+  // 86'd appear as tabs, while preventing retail-only categories from leaking in.
+  const categoryOptions = useMemo<Category[]>(() => {
+    const cats = new Set<string>();
+    for (const p of restaurantProducts) {
+      if (p.category) cats.add(p.category);
+    }
+    for (const cm of categoryMeta) {
+      const prodsInCat = products.filter((p) => p.category === cm.name);
+      if (prodsInCat.length === 0) {
+        cats.add(cm.name);
+      } else {
+        const hasRestaurantProd = prodsInCat.some((p) => isRestaurantProduct(p));
+        if (hasRestaurantProd) {
+          cats.add(cm.name);
+        }
+      }
+    }
+    return ['All', ...Array.from(cats)].sort((a, b) => {
       if (a === 'All') return -1;
       if (b === 'All') return 1;
       return a.localeCompare(b);
-    }),
-    [restaurantProducts],
-  );
+    });
+  }, [restaurantProducts, categoryMeta, products, isRestaurantProduct]);
 
   // Keep the selection valid when products are refreshed or removed. The
   // derived value prevents a transient empty result while the state catches

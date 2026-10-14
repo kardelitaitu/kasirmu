@@ -1,12 +1,20 @@
 import { useEffect } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
+import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import './RestaurantCartSheet.css';
 
 export interface RestaurantCartSheetProps {
   open: boolean;
   onClose: () => void;
   tableNumber?: string;
+  /**
+   * The order's type. Same rule as the floating bar beside it, and the same
+   * reason: a table number only identifies a DINE-IN order, while the Table field
+   * renders unconditionally. Optional with a dine-in default so existing renders
+   * are unchanged.
+   */
+  orderType?: 'dine_in' | 'takeaway' | 'delivery' | undefined;
   children: React.ReactNode;
 }
 
@@ -21,6 +29,7 @@ export function RestaurantCartSheet({
   open,
   onClose,
   tableNumber,
+  orderType = 'dine_in',
   children,
 }: RestaurantCartSheetProps) {
   const { l10n } = useLocalization();
@@ -70,12 +79,13 @@ export function RestaurantCartSheet({
             <h2 className="restaurant-cart-sheet-title">
               {l10n.getString('restaurant-cart-sheet-title')}
             </h2>
-            {tableNumber && (
+            {/* DINE-IN ONLY — see the prop doc. */}
+            {orderType === 'dine_in' && tableNumber && (
               <span
                 className="restaurant-cart-sheet-table-chip"
                 data-testid="restaurant-cart-sheet-table-chip"
               >
-                {l10n.getString('restaurant-cart-table-badge', { table: tableNumber })}
+                {l10n.getString('restaurant-cart-table-badge', { table: bareTableNumber(tableNumber) })}
               </span>
             )}
           </div>

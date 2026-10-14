@@ -1,6 +1,12 @@
-<!-- Superseded audit marker (2026-07-25, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/theme/ (no ui/src/styles/) · resolved F2: shared-ui/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: kasirmu-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), kasirmu-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical shared-ui/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/kasirmu-core/benches/ (4 files) re-confirmed -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 5 minor) · A roadmap is a forward-looking commitment document, so the checkable part is narrow and was done: its structure, its shipped-vs-planned separation, and every path its completed checkboxes name. Findings, all the same class — a checkbox marked DONE whose cited path or name had moved: (1) the Phase-1 'Cargo workspace with `oz-*` crate naming convention' row and (2) three further `oz-*`/`oz-pos` rows named the pre-rebrand convention (the workspace is `kasirmu-*`; there is no `oz-pos`); (3) the updater key was named `oz-pos-updater.key` (real: `kasirmu-updater.key.pub`, tracked); (4)(5) two developer-doc checkboxes pointed at `docs/guides/plugin-guide.md` and `docs/guides/QUICKSTART.md`, which now live under `docs/guides/developer/`. Left as written: the two remaining dead tokens (`docs/security/security-audit-completion.md`, `ui/src/styles/rtl.css`) are DELIBERATE NEGATIVES — the first is inside a struck-through 'NOT WIRED' line, the second is a 'planned — no scaffold yet' line — so neither is a drift. Every other repo-root-anchored path the file names resolves (verified by extracting all 66 backticked file tokens). NOT re-measured: any milestone, date, priority or forecast — several target quarters are already past, which is the first thing a reader should re-check and the last thing an auditor can check for them.
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 645 lines, with a prior marker re-verified rather than replaced. A roadmap is a forward-looking commitment document, and the honest audit scope is therefore narrow — what is checkable is whether the product description it contains still matches the product, and whether its structure is navigable. · ON BOTH COUNTS IT HOLDS. A scan finds no pre-restructure crate or app names, which for a 645-line roadmap spanning a period in which six roots were renamed is a good outcome rather than luck, and the product sections describe capabilities this campaign has verified repeatedly — the workspace and tier model, the scoped permission gate, the headless bridge, the multi-location stock model, the plan-gated cloud sync. · WHAT A ROADMAP IS ACTUALLY AUDITED AGAINST, stated here because it differs from every other document class in this queue. A roadmap's failure mode is not a wrong path; it is a plan that quietly stops describing what the team intends to do while continuing to look authoritative. That is a conversation with the roadmap's owner, not a measurement, and this stamp records the distinction rather than manufacturing findings about it. The one thing a reader should treat with care is any date-bound item, since the branch has moved well past several of the quarters a 645-line roadmap would have been written against — a dated milestone is the first thing to re-check, and the last thing an auditor can check for someone else. · The structural convention is the thing worth confirming: a roadmap that separates shipped from planned is doing the hard part, and a reader who cannot tell which is which will misread it in the optimistic direction, which is the dangerous direction. · NOT re-measured: any milestone, date, priority or forecast. · Prior marker retained; footer re-dated to match the new stamp. -->
+· Prior marker retained below, verbatim ·
+
+Superseded audit marker (2026-07-25, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/theme/ (no ui/src/styles/) · resolved F2: shared-ui/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: kasirmu-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), kasirmu-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical shared-ui/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/kasirmu-core/benches/ (4 files) re-confirmed
+
+· Prior marker retained below, verbatim ·
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 645 lines, with a prior marker re-verified rather than replaced. A roadmap is a forward-looking commitment document, and the honest audit scope is therefore narrow — what is checkable is whether the product description it contains still matches the product, and whether its structure is navigable. · ON BOTH COUNTS IT HOLDS. A scan finds no pre-restructure crate or app names, which for a 645-line roadmap spanning a period in which six roots were renamed is a good outcome rather than luck, and the product sections describe capabilities this campaign has verified repeatedly — the workspace and tier model, the scoped permission gate, the headless bridge, the multi-location stock model, the plan-gated cloud sync. · WHAT A ROADMAP IS ACTUALLY AUDITED AGAINST, stated here because it differs from every other document class in this queue. A roadmap's failure mode is not a wrong path; it is a plan that quietly stops describing what the team intends to do while continuing to look authoritative. That is a conversation with the roadmap's owner, not a measurement, and this stamp records the distinction rather than manufacturing findings about it. The one thing a reader should treat with care is any date-bound item, since the branch has moved well past several of the quarters a 645-line roadmap would have been written against — a dated milestone is the first thing to re-check, and the last thing an auditor can check for someone else. · The structural convention is the thing worth confirming: a roadmap that separates shipped from planned is doing the hard part, and a reader who cannot tell which is which will misread it in the optimistic direction, which is the dangerous direction. · NOT re-measured: any milestone, date, priority or forecast. · Prior marker retained; footer re-dated to match the new stamp. -->
 # kasir.mu — Roadmap
 
 > *Small codebase. Limitless possibilities.*
@@ -45,8 +51,8 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 > **Goal:** A working, minimal POS terminal that can scan a barcode and complete a sale. The Setup Wizard gates everything.
 
 ### Infrastructure
-- [x] Project repository: `oz-pos`
-- [x] Cargo workspace with `oz-*` crate naming convention
+- [x] Project repository: `kasirmu`
+- [x] Cargo workspace with `kasirmu-*` crate naming convention
 - [x] Architecture & whitepaper documentation
 - [x] `AGENTS.md` coding standards & rules
 - [x] `Cargo.toml` workspace definition with all crate members
@@ -180,7 +186,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Design tokens applied consistently — no hardcoded hex colours in components
 - [x] `cargo test` passes across all crates (5,800+ tests, 0 failed)
 - [x] `cargo clippy -- -D warnings` passes with zero warnings
-- [x] 5,800+ unit tests across the `oz-*` crate ecosystem, plus ~6,700 UI tests across 405 test files
+- [x] 5,800+ unit tests across the `kasirmu-*` crate ecosystem, plus ~6,700 UI tests across 405 test files
 - [x] Data Management UI wired to real IPC (backup, export/import .kasirpkg)
 - [x] `kasirmu-cli import (was import-ozpkg)` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
 - [x] StaffLoginScreen supports hardware keyboard PIN entry (digits, Backspace, Enter, Escape)
@@ -270,7 +276,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Shared `MessageVisitor` for field formatting (extracted to `visitor.rs`)
 
 ### Testing
-- [x] Unit test `#[cfg(test)]` blocks in all `oz-*` crates
+- [x] Unit test `#[cfg(test)]` blocks in all `kasirmu-*` crates
 - [x] Integration tests with mock HAL drivers (21 tests in `kasirmu-hal/tests/mock_integration.rs`)
 - [x] Front-end: Vitest + React Testing Library (`ui/src/__tests__/`)
 - [x] `eslint-plugin-jsx-a11y` enabled in `ui/eslint.config.js`
@@ -304,7 +310,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 ### Updates & Packaging
 - [x] Tauri auto-update (`tauri.conf.json` updater section → GitHub releases)
   - `tauri-plugin-updater` registered in `lib.rs` + `Cargo.toml`
-  - Updater signing key pair generated (`oz-pos-updater.key` + `.pub`)
+  - Updater signing key pair generated (`kasirmu-updater.key` + `.pub`)
   - Public key set in `tauri.conf.json`
   - Endpoint: GitHub releases `latest.json`
 - [x] Windows: NSIS installer (configured in `tauri.conf.json`)
@@ -578,12 +584,12 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Plugin manifest format (`plugin.toml` — Permission enum with 8 variants, enforced at load time)
 - [x] Plugin sandbox: Lua-based, no unsafe Rust from plugins (14 dangerous globals nil, instruction limit 100k, safe env)
 - [x] Plugin discovery and hot-reload (notify-based file watcher in desktop-tauri, auto-reload on .lua changes)
-- [x] Developer docs: `docs/guides/plugin-guide.md` + CONTRIBUTING.md + `docs/guides/QUICKSTART.md` + HAL example driver (both moved out of `docs/` root into `docs/guides/`)
+- [x] Developer docs: `docs/guides/developer/plugin-guide.md` + CONTRIBUTING.md + `docs/guides/developer/QUICKSTART.md` + HAL example driver (both moved out of `docs/` root into `docs/guides/`)
 
 ### Developer Experience
 - [x] `cargo doc` generated and shipped in the docs portal (hosted on Cloudflare via `website/` + `scripts/build-docs.sh`, sccache, preserves workspace index)
 - [x] `CONTRIBUTING.md` — contribution guide, PR template
-- [x] `docs/guides/QUICKSTART.md` — local dev setup
+- [x] `docs/guides/developer/QUICKSTART.md` — local dev setup
 - [x] Example Lua scripts in `scripts/examples/` (discount_bulk, tax_overrides, validate_order)
 - [x] Example custom HAL driver in `crates/kasirmu-hal/examples/custom_barcode_scanner.rs`
 
@@ -840,5 +846,5 @@ On-Features can be activated at any phase once the core infrastructure is in pla
 
 *Last updated: 2026-08-31 (re-audited by docs-auditor).* (Phases 1–3 ✓. Phase 4 ~96% — R2 currency module extraction complete; Android APK CI exists but physical device testing needs infra. Phase 5 ~95% — scheduled report delivery shipped in 0.0.22; Thai locale removed (not a target market); custom report builder + cloud warehouse export remain. Phase 6 ~98% — all features implemented and verified; voice-controlled checkout research deferred.)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 

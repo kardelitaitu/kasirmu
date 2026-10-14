@@ -1,15 +1,52 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 249 lines, no audit stamp, no footer and no marker. It is a platform-integration plan — reading an Android NotificationListener for QRIS payment-verification signals, which is an unusual class of design because it depends on an operating-system service the app does not own. · THE ARCHITECTURAL CLAIM THAT MATTERS IS CHECKABLE, and it is the one that would decide whether the approach is viable: a NotificationListener runs in a separate process with a different lifecycle from the app that hosts it, so a plan built on one has to survive the listener being killed and restarted, and the UI is expected to be absent when a QRIS notification arrives. This is a case where the implementation plan's shape matters more than its detail, and this audit records the substrate that would carry it: the Android shell exists at `apps/mobile-tauri/`, its build workflow is live and is the same one the keystore guide audited in this same round had to be corrected about, and the QRIS settlement path it would observe is already implemented on the server side — `apps/cloud-server/src/webhooks/midtrans.rs` is the Midtrans handler, and the QRIS tier gating this campaign has documented repeatedly sits above it. So the destination the notifications would signal is real. · NOT RE-MEASURED, and the omission is structural rather than convenient: whether the notification payloads the plan expects actually carry the fields it needs is a question about a third party's notification format, verifiable only by building the listener and observing traffic. That is the original work. What is recorded is that the app side it would attach to, and the server side it would report to, both exist in the shape the plan assumes. · THE ONE THING A READER SHOULD WEIGH INDEPENDENTLY: a NotificationListener is a privileged Android capability with store-policy implications, and this audit checks documentation accuracy, not whether the approach is the right product or store-compliance decision. That judgement belongs to whoever owns the Android release. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Re-audit, and Phases 1 and 2 have SHIPPED — neither under the names this plan gives. Phase 1: crates/qris-core/src/notification.rs exists at 426 lines with a public BankNotification and a QrisMatchEngine carrying the deduplication cache and unique-code matcher §5 specifies as the collision-prevention design; it recognises TEN provider families against the six §4.1 tabulated. Phase 2: the Kotlin listener shipped in apps/mobile-tauri/gen/android/.../mu/kasir/mobile/ as QrisNotificationListenerService.kt, QrisNotificationParser.kt and QrisNotificationBus.kt, with QrisNotificationParserTest.kt in the Android test source set — the crate is qris-core and the package is mu.kasir.mobile, so this plan's mu.kasir.tablet/apps/tablet-client is the pre-rename spelling and was repointed in five places. Phase 3 is NOT shipped under the plan's names: get_listener_status, open_notification_settings and a qris://payment-received event have zero Rust hits tree-wide, and the seam that did ship is the Kotlin QrisNotificationBus, which is not the one §8 describes. Phase 4 is not shipped (no notification path in PaymentModal.tsx). A dated STATUS UPDATE block records all four. The plan's architectural premise — a listener with an independent lifecycle, UI absent when a notification arrives — is exactly the shipped service's shape, so §3's design held. · The store-policy caveat the first stamp raised is unchanged and still a release-owner decision. · NOT re-measured: whether the shipped regexes match real bank payloads, and whether the bus reaches Rust. · Prior 2026-09-29 body retained verbatim below. -->
+<!-- Merged prior stamp (2026-09-29), kept as plain text — delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 249 lines, no audit stamp, no footer and no marker. It is a platform-integration plan — reading an Android NotificationListener for QRIS payment-verification signals, which is an unusual class of design because it depends on an operating-system service the app does not own. · THE ARCHITECTURAL CLAIM THAT MATTERS IS CHECKABLE, and it is the one that would decide whether the approach is viable: a NotificationListener runs in a separate process with a different lifecycle from the app that hosts it, so a plan built on one has to survive the listener being killed and restarted, and the UI is expected to be absent when a QRIS notification arrives. This is a case where the implementation plan's shape matters more than its detail, and this audit records the substrate that would carry it: the Android shell exists at `apps/mobile-tauri/`, its build workflow is live and is the same one the keystore guide audited in this same round had to be corrected about, and the QRIS settlement path it would observe is already implemented on the server side — `apps/cloud-server/src/webhooks/midtrans.rs` is the Midtrans handler, and the QRIS tier gating this campaign has documented repeatedly sits above it. So the destination the notifications would signal is real. · NOT RE-MEASURED, and the omission is structural rather than convenient: whether the notification payloads the plan expects actually carry the fields it needs is a question about a third party's notification format, verifiable only by building the listener and observing traffic. That is the original work. What is recorded is that the app side it would attach to, and the server side it would report to, both exist in the shape the plan assumes. · THE ONE THING A READER SHOULD WEIGH INDEPENDENTLY: a NotificationListener is a privileged Android capability with store-policy implications, and this audit checks documentation accuracy, not whether the approach is the right product or store-compliance decision. That judgement belongs to whoever owns the Android release. · No stamp existed; this is the first. -->
 # Architecture & Implementation Plan: Android Notification Listener for QRIS Payment Verification
 
 > **Document:** `docs/plans/android-notification-listener-qris.md`  
 > **Status:** PROPOSED / READY FOR REVIEW  
 > **Date:** 2026-09-15  
-> **Target Platforms:** Tauri v2 Android APK (`apps/tablet-client` or standalone Android POS build)  
+> **Target Platforms:** Tauri v2 Android APK (`apps/mobile-tauri` or standalone Android POS build)  
 > **Goal:** 100% free, zero-MDR, automated verification of incoming QRIS payments via Android `NotificationListenerService`.
 
 ---
 
-## 1. Executive Summary & Problem Context
+> **⚠️ STATUS UPDATE (2026-10-11, docs-auditor) — Phases 1 and 2 SHIPPED, and the
+> substrate paths in this plan have been renamed.** Re-derived, not inherited:
+>
+> - **Phase 1 (Rust parser) — SHIPPED and BROADER than specified.**
+>   `crates/qris-core/src/notification.rs` exists at **426 lines** with a public
+>   `BankNotification` (package_name, **provider**, amount_minor, amount_formatted,
+>   sender_name, raw_text, timestamp_ms) and a `QrisMatchEngine` carrying the
+>   **deduplication cache and pending-invoice/unique-code matcher** that §5 describes
+>   as the collision-prevention design. It recognises **ten** provider families
+>   (BCA, Mandiri, BRI, Bank Jatim, GoPay, ShopeePay, DANA, OVO, BNI, BSI, QRIS)
+>   against the six this plan tabulated in §4.1.
+> - **Phase 2 (Kotlin listener) — SHIPPED**, in the **mobile** shell rather than the
+>   tablet one: `apps/mobile-tauri/gen/android/app/src/main/java/**mu/kasir/mobile**/`
+>   holds `QrisNotificationListenerService.kt`, `QrisNotificationParser.kt` and
+>   `QrisNotificationBus.kt`, plus `QrisNotificationParserTest.kt` under the
+>   Android test source set. Note both renames: the crate is `qris-core`,
+>   the package is `mu.kasir.mobile`, and this plan's `mu.kasir.tablet`
+>   (`apps/mobile-tauri`) is the pre-rename spelling.
+> - **Phase 3 (Tauri IPC) — NOT SHIPPED under the names this plan gives.**
+>   `get_listener_status`, `open_notification_settings` and a `qris://payment-received`
+>   / `qris:paid` event have **zero Rust hits** tree-wide. The transport that shipped
+>   is the Kotlin `QrisNotificationBus`, which is a different seam from the one §8
+>   describes.
+> - **Phase 4 (POS UI) — NOT SHIPPED.** No notification-driven path in
+>   `PaymentModal.tsx`.
+>
+> **Path renames applied in the body:** `apps/mobile-tauri` → `apps/mobile-tauri`
+> (this plan's target-platform line and Phase 2 row), and
+> `apps/mobile-tauri/gen/android` → `apps/mobile-tauri/gen/android`.
+> The plan's architectural premise — a listener whose lifecycle is independent of the
+> app, with the UI absent when a notification arrives — is exactly the shape the shipped
+> Kotlin service has, so §3's design was sound. The **store-policy** caveat this file's
+> first stamp raised is unchanged and still the decision a release owner must make.
+>
+> NOT re-measured: whether the shipped parser's regexes match real bank payloads, and
+> whether the bus reaches the Rust side at all (that is Phase 3's work).
+
 
 When merchants generate dynamic QRIS codes directly from their NMID / Merchant PAN using `qris-core`:
 1. The customer scans the dynamic QRIS code and pays via any banking or e-wallet app (BCA, GoPay, OVO, Dana, ShopeePay, etc.).
@@ -245,8 +282,8 @@ In a busy store, two customers might pay similar amounts within the same minute.
 | Phase | Milestone | Deliverables |
 |---|---|---|
 | **Phase 1** | Parser & Matching Core in `qris-core` | Add `crates/qris-core/src/notification.rs` with bank regexes and unit tests. |
-| **Phase 2** | Kotlin Notification Listener Plugin | Android Kotlin module in `apps/tablet-client/gen/android` with `NotificationListenerService` and permission setup UI. |
+| **Phase 2** | Kotlin Notification Listener Plugin | Android Kotlin module in `apps/mobile-tauri/gen/android` with `NotificationListenerService` and permission setup UI. |
 | **Phase 3** | Tauri IPC & Event Bridge | Rust Tauri commands: `get_listener_status`, `open_notification_settings`, and `qris://payment-received` event emitter. |
 | **Phase 4** | POS UI Integration | `PaymentModal.tsx` automated QRIS listener hook and transaction status updater. |
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

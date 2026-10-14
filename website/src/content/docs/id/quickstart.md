@@ -6,6 +6,8 @@ order: 2
 updated: "2026-09-30"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · Indonesian counterpart, audited at HEAD in the same pass as the en page. · MINOR: the install line read "paket gratis dimulai saat peluncuran pertama, tanpa perlu akun" (the free plan starts on first launch, no account needed), which overstated the same way its en sibling did — the wizard's default mode is `'linked'` (ProvisioningFlow.tsx:218). Reworded to name both routes. · VERIFIED AND LEFT ALONE: front matter parity with en/quickstart.md is exact (category/order/updated); all nine relative links resolve; the IDR and Asia/Jakarta defaults match ProvisioningFlow.tsx:147-148. · NOT reviewed: the Indonesian prose as copywriting — only the overstated claim was touched. -->
+
 ## Jalur singkat
 
 Halaman ini adalah rute ngebut melewati persiapan: pasang, provisi, tambah
@@ -14,9 +16,10 @@ bila Anda ingin penjelasan lengkapnya.
 
 ## 1. Pasang (3 menit)
 
-Unduh dan pasang kasir.mu untuk Windows — paket gratis dimulai saat
-peluncuran pertama, tanpa perlu akun. Rincian dan kebutuhan sistem ada di
-[Instalasi](../installation/).
+Unduh dan pasang kasir.mu untuk Windows. Paket gratis dimulai saat
+peluncuran pertama; Anda bisa menjalankannya offline tanpa akun, atau
+menautkan akun untuk memakai sinkron cloud dan perangkat keras. Rincian dan
+kebutuhan sistem ada di [Instalasi](../installation/).
 
 ## 2. Provisi (5 menit)
 
@@ -52,4 +55,4 @@ yang akan diulang staf Anda sepanjang hari. Lihat
 
 Lanjut membaca · **Sebelumnya:** [Selamat Datang](../welcome/) · **Berikutnya:** [Instalasi](../installation/)
 
-> last audited 30-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

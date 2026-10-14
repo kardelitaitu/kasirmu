@@ -314,10 +314,13 @@ describe('Solutions disclosure — wiring', () => {
     expect(isExpanded(swapped.trigger)).toBe(true); // one toggle, not open-then-closed
   });
 
-  it('re-inits on astro:page-load and astro:after-swap, which Header.astro relies on', () => {
-    expect(NAV_SRC).toContain("addEventListener('astro:page-load'");
+  it('re-inits on astro:after-swap, which Header.astro relies on', () => {
+    // One event, not two: initHeaderNav()'s own call covers the first view
+    // and astro:after-swap covers every navigation, so an astro:page-load
+    // listener was a second updateAuthNav() per view.
     expect(NAV_SRC).toContain("addEventListener('astro:after-swap'");
-    expect(NAV_SRC).toMatch(/astro:(page-load|after-swap)'[\s\S]{0,120}initSolutionsDisclosure\(\)/);
+    expect(NAV_SRC).not.toContain("addEventListener('astro:page-load'");
+    expect(NAV_SRC).toMatch(/astro:after-swap'[\s\S]{0,400}initSolutionsDisclosure\(\)/);
   });
 
   it('leaves the mobile menu alone', () => {

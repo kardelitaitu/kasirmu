@@ -6,7 +6,9 @@ order: 3
 updated: "2026-10-01"
 ---
 
-<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Indonesian counterpart of en/inventory.md, same single finding repaired: the transaction-log enumeration was extended to all seven movement types the screen actually covers (TransactionLogScreen.tsx:173-179), using the app's own id labels from inventory.id.ftl:140-146 — Penjualan, Void, Refund, Transfer, PO Diterima, Stok Opname, Penyesuaian Manual. The log screen itself is registered nowhere in ui/src (unreachable from navigation) and the page now says so; flagged as app-side drift, not deleted. · All other claims verified and left alone (full evidence list in the en/inventory.md stamp): alasan penyesuaian persis inventory.id.ftl:54-59, shift stok dengan placeholder "e.g., Night shift count" (inventory.ftl:74-75), filter status opname (api/inventoryCounts.ts:9), ambang per lokasi dengan fallback Global (Semua Lokasi) dan aktif/nonaktif terpisah (ThresholdConfigScreen.tsx:152-155,203,279-280), audit transit dengan tanda terlambat (TransitAuditScreen.tsx:68-112), pembatalan transfer mengembalikan stok (stock_transfers.rs:666-679), Terima pesanan pembelian masuk stok otomatis (purchasing.id.ftl:74 po-action-receive = Terima; purchase_orders.rs:395-470), Laporan Stok = nav-inventory-report (shared.id.ftl:261) dengan kolom stok/ambang/harga/biaya/margin/nilai stok cetak+CSV (inventory.ftl:57-65). · Replacement sentence composed from the page's own patterns; rest untouched. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor, parity) · PARITY FIX: the English twin gained a reachability parenthetical on 2026-10-11 (the Inventory Transaction Log is part of the app but is not reachable from any navigation menu) and this page did not, so the pair diverged on the one sentence a reader would act on — the id page still told a reader the log exists without saying they cannot open it. Added in the same register as the sentence it follows. · Superseded 2026-09-09 stamp preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Indonesian counterpart of en/inventory.md, same single finding repaired: the transaction-log enumeration was extended to all seven movement types the screen actually covers (TransactionLogScreen.tsx:173-179), using the app's own id labels from inventory.id.ftl:140-146 — Penjualan, Void, Refund, Transfer, PO Diterima, Stok Opname, Penyesuaian Manual. The log screen itself is registered nowhere in ui/src (unreachable from navigation) and the page now says so; flagged as app-side drift, not deleted. · All other claims verified and left alone (full evidence list in the en/inventory.md stamp): alasan penyesuaian persis inventory.id.ftl:54-59, shift stok dengan placeholder "e.g., Night shift count" (inventory.ftl:74-75), filter status opname (api/inventoryCounts.ts:9), ambang per lokasi dengan fallback Global (Semua Lokasi) dan aktif/nonaktif terpisah (ThresholdConfigScreen.tsx:152-155,203,279-280), audit transit dengan tanda terlambat (TransitAuditScreen.tsx:68-112), pembatalan transfer mengembalikan stok (stock_transfers.rs:666-679), Terima pesanan pembelian masuk stok otomatis (purchasing.id.ftl:74 po-action-receive = Terima; purchase_orders.rs:395-470), Laporan Stok = nav-inventory-report (shared.id.ftl:261) dengan kolom stok/ambang/harga/biaya/margin/nilai stok cetak+CSV (inventory.ftl:57-65). · Replacement sentence composed from the page's own patterns; rest untouched. -->
 
 ## Level stok
 
@@ -83,7 +85,7 @@ serta nilai stok per produk, dan dapat dicetak atau diekspor sebagai CSV.
 **Log Transaksi Stok** adalah buku besar di balik semuanya, mencakup
 penjualan, void, refund, transfer, penerimaan pesanan pembelian (PO
 Diterima), stok opname, dan penyesuaian manual — dari mana stok berasal dan
-ke mana perginya.
+ke mana perginya. (Layar log ini ada di dalam aplikasi, tetapi saat ini tidak
+dapat dijangkau dari menu navigasi mana pun.)
 
-> last audited 09-09-26 by docs-auditor
-terhubung ke menu navigasi mana pun.)
+> last audited 11-10-26 by docs-auditor

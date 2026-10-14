@@ -1371,3 +1371,151 @@ neither command is class 1. `REGISTERED_TOTAL` and the two ledger rows were
 written by the generator, not by hand:
 `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib
 drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`.
+
+## 2026-10-12 — Desktop registration floor 494 → 497, and the census pins the recipe commands had stale (`kasirmu-app`)
+
+**Context:** CI on the `0.0.41 → main` PR was red in six jobs, and five of them were
+ Rust. Every one was reproduced locally before anything was touched. The floor leg had
+ been red since `7c00c1281` (`feat(ipc): expose recipe scoped commands in desktop, mobile,
+ and ui api`) registered three commands against a floor that had last been set by
+ `e86a3531b` — the pins were stale in `origin` itself, so 149 further commits landed on a
+ base that was already red.
+
+**The three additions, named as the floor assertion requires:**
+
+- `commands::products::get_recipe_scoped`
+- `commands::products::set_recipe_scoped`
+- `commands::products::delete_recipe_scoped`
+
+**Why they move the floor but no ledger row.** Each shell wrapper takes a `session_token`
+ and forwards to `kasirmu_bridge::products`, which `gated_bridge_stems()` already reads as
+ gated — `crates/kasirmu-bridge/src/products.rs` names `require_session_permission` at 12
+ sites, and the recipe handlers resolve the session and check `permissions::PRODUCTS_READ`
+ / the write equivalent before touching a store db. So the sweep classifies all three as
+ `State::Gated`: the permission lives bridge-side, not in the shell wrapper, which is the
+ same deliberate split the rest of the shell uses. Consequently
+ `drift_pin_generated_ledger_is_the_sweeps_own_output` and the three-way partition are
+ unchanged, and only `REGISTERED_FLOOR` moved: 494 → 497.
+
+**The census pins, same pass, same cause.** `gate_audit`'s desktop `products` row was
+ pinned at 10 against a measured 13, and the tablet's at 5 against 8 — both +3, exactly
+ the recipe commands. The tablet keys row also lacked `PRODUCTS_READ`, which
+ `get_recipe_scoped` names. Both now measure green.
+
+**Also in this pass, from the same red run:** `foundation/src/inventory.rs:344`,
+ `is_in_stock()` was written as `if !x { true } else { y }` and clippy's
+ `-D warnings` rejected it; rewritten `!x || y`, with
+ `inventory::tests::product_with_details_is_in_stock_rules` run afterwards to prove the
+ rewrite is behaviour-identical rather than merely lint-clean.
+
+**Verification:** `cargo nextest run -p kasirmu-app --lib registration_gate_tests` 14/14;
+ `--test gate_audit census` both pins green (12 of 14 in that filter, the two census rows
+ among them); `cargo clippy -p foundation --lib` clean; `cargo nextest run -p foundation
+ --lib is_in_stock` 1/1. The two UI vitest failures in the same red run were already fixed
+ by the unpushed commits — both suites pass 30/30 locally — so nothing was changed there.
+
+## 2026-10-12 — The CI red list under-reports: `.config/nextest.toml` sets `fail-fast = { max-fail = 1 }` (`kasirmu-core`)
+
+**What was found while clearing the six-job red run.** Every job that failed was
+ reproduced locally first, and that is the only reason this was seen: the
+ repo's nextest profile stops at the first failure, so a CI job's report is the
+ first red it hit, not the full set. Measured concretely — the Coverage Floors
+ job reported two `corruption_recovery` failures; the same command run locally
+ with `--no-fail-fast` found a third (`inventory::products_without_stock_show_
+ none_in_list`), and Nextest (1)'s `desktop_command_census_matches_pin` was
+ likewise the first of an unknown remainder. **A green nextest job therefore
+ means "at most one failure," and a red one means "at least one"** — the number
+ of tests still failing is unknown from either.
+
+**The three core tests, all pinned behaviour `c07279f02` deliberately changed:**
+
+- `corruption_recovery` × 2 — each forged a corrupt `product_type` with a raw
+  UPDATE that the 20261020 CHECK constraint now rejects, so the fixture could
+  not be built at all. The read-path coercion they covered is already pinned
+  four ways by `foundation/src/inventory_tests.rs`
+  (`parse_stored_or_default_*`), and the migration's own write invariant by
+  `db/products_tests.rs`. The replacement forges the row with SQLite's own
+  escape hatch, `PRAGMA ignore_check_constraints = ON`, which is what a value
+  written outside the constraint (external edit, restored file) looks like;
+  removing the pragma fails the test, so it is load-bearing.
+- `integration/inventory` — pinned `stock_qty: None` for a product with no
+  inventory row. `c07279f02` made the zero-stock ledger row the rule precisely
+  so `stock_qty` returns `0` rather than NULL, and that behaviour is identical
+  between the origin tip and HEAD. Rewritten to pin both directions: `Some(0)`
+  for retail at zero stock, `None` for a restaurant item that does not track
+  inventory.
+- **+1 `migrations_tests`** — the backfill, the part of `20261020_product_type_
+  check.sql` that actually retires a legacy database, had **no test anywhere**;
+  the migration file was referenced zero times in the repo. The new test splits
+  the registry at the migration, rebuilds `products` in its pre-migration shape
+  (free-text, nullable `product_type`), seeds `'both'` (the removed variant),
+  free-text garbage and NULL, then asserts all three read back `'retail'`, that a
+  fresh bad write is now rejected, and that all six indexes survived the
+  rebuild.
+
+**Verification:** `cargo nextest run -p kasirmu-core --no-fail-fast` — 4169
+ passed, 1 skipped, exit 0. Every new or mutated test was mutation-checked
+ before being restored: flipping the backfill expectation to `'restaurant'`,
+ removing the pragma, and flipping both `stock_qty` expectations each produce a
+ failure. `cargo fmt -- --check` clean.
+
+## 2026-10-12 — The last reds were the sandbox, and the fixtures now match production
+
+**The proxy two — closed with no code change.** The full-workspace run
+(`cargo nextest run --workspace --no-fail-fast`) had ended 11140/11144, and the
+two local-API lifecycle tests looked like a shutdown-path defect: both assert a
+connection fails after the server stops, and both failed 3/3 nextest retries.
+The sandbox exports `HTTP_PROXY`/`HTTPS_PROXY`/`http_proxy`/`https_proxy` =
+`http://127.0.0.1:16982`, `reqwest` honours them, so the request to the dead
+listener is answered by the proxy (502, `is_ok() == true`) and the assertion can
+never fire. Proven: `curl http://127.0.0.1:1/api/v1/health` returns 502 with
+exit 0, and both tests pass 1/1 with the four variables unset —
+`kasirmu-local-api tests::server_serves_health_protected_routes_and_stops` and
+`kasirmu-app commands::local_api::tests::set_port_restarts_running_server_on_new_port`.
+`stop()` / `stop_async()` are sound; the "investigate the graceful shutdown"
+agenda was avoided by running the control first. This is Trap 1 of the
+env-traps skill, which already carries `set_port_restarts_running_server_on_new_port`
+as a casualty from 2026-09-28 — the durable local fix is
+`NO_PROXY=127.0.0.1,localhost`, which is not set on this box.
+
+**The concurrency reds — one machine-level fact, cited by probe.** With the
+proxy unset the same full run closed **11146 passed (3 flaky), 1 failed, 91
+skipped** of 11147. The reds (membership moves between runs — a second run of
+the filter lost different members) were all multi-connection fixtures:
+`kasirmu-bridge topology_stress_tests::{concurrent_saves_to_same_db,
+concurrent_saves_different_keys_dont_interfere, concurrent_read_write_cycle_stress,
+racing_publishes_to_one_branch_yield_two_ordered_revisions,
+racing_publishes_with_the_same_expected_revision_cas_reject_one}` and
+`platform-core settings::tests::set_tracked_concurrent_threads_independent_keys`.
+The panic is **not** contention: `SqliteFailure(code: ReadOnly, extended_code: 8,
+"attempt to write a readonly database")` — SQLite cannot write the temp-dir
+`-wal`/`-shm` sidecars, so these fixtures cannot run green on this box today.
+Three code-level theories were each disproven by a control before being
+abandoned: a missing `busy_timeout` (the error is ReadOnly, not Busy), the
+Low-Mandatory-Level ACL of Trap N+8 (`icacls "C:\dev\kasirmu"` now reads
+**Medium**), and a blanket rustc-binary write denial (a probe built by `rustc`
+and run from inside `target/` writes both temp dirs fine). CI, which has neither
+the proxy nor whatever blocks these sidecar writes, has always been green — do
+not re-litigate these as defects.
+
+**What did change — `3bf33cb35`.** The five contended writer connections in
+`topology_stress_tests` and the two thread connections in
+`set_tracked_concurrent_threads_independent_keys` now set
+`busy_timeout(Duration::from_secs(5))` after their bare `Connection::open`,
+matching what `migrations::run` gives every production connection — the repo's
+own convention (see `db/sales_tests.rs:3518` and the sibling tests later in the
+same settings file). This is fixture production-parity, **not** a flake fix: the
+local READONLY failures are environmental and the change is CI-neutral.
+
+**Also this pass:** `bce1a2223` (mobile registration floor 422 → 425 with the
+ledger total — the three new commands arrived already gated, so no debt row or
+ceiling moves) and `edb716301` (`get_product_unknown_type_defaults_to_retail`
+forges the out-of-contract row through `PRAGMA ignore_check_constraints = ON`;
+the write-side invariant stays pinned in `products_tests.rs`, the legacy
+backfill in `migrations_tests.rs`).
+
+**Verification:** both local-API tests 1/1 with the proxy vars unset;
+`modules-inventory` pragma test 1/1; mobile registration gate 12/12; the two
+edited suites compiled and ran (their residual reds are the environmental
+READONLY family above). `rustfmt --edition 2024` clean on both edited files,
+purely additive diffs (21 insertions, 0 deletions).

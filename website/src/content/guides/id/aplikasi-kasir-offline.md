@@ -8,6 +8,8 @@ updated: "2026-09-24"
 order: 1
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on the Indonesian sibling of `website/src/content/guides/en/offline-pos-app.md` (that page was stamped in the same campaign). User-facing marketing content, so the audit scope is the falsifiable product claims, not tone: the four offline guarantees match the shipped design — `crates/kasirmu-core/src/db/sales_checkout.rs` writes each sale with `status = 'pending'` and syncs it later, `ui/src/api/offline.ts` is the client surface, and the QRIS-needs-connection caveat is correct because the notification arrives from the bank/gateway (`crates/qris-core` carries the notification listener). Front matter verified for parity with the en sibling: same `commercialParent: kasir-gratis`, reciprocal `pair:` values, same `updated: 2026-09-24` and `order: 1`; both files carry SIX H2 sections in the same order. The `[kasir.mu bisa dipakai gratis untuk warung dan toko kecil](/id/kasir-gratis/)` link resolves — `website/src/pages/[locale]/kasir-gratis.astro` is the route. NOT re-measured: the Indonesian legal wording and any pricing statement, which are marketing/localisation rather than code facts. -->
+
 Warung, toko kelontong, dan kafe kecil jarang punya koneksi internet yang bisa
 diandalkan. Hujan deras, kuota habis, router restart, atau jaringan yang melambat
 di jam sibuk — semuanya terjadi di hari yang sama dengan hari Anda sedang ramai.
@@ -102,3 +104,5 @@ pesawat, dan lakukan lima tes di atas — [kasir.mu bisa dipakai gratis untuk
 warung dan toko kecil](/id/kasir-gratis/), dan mode offline-nya aktif tanpa
 pengaturan tambahan. Kalau hasilnya tidak meyakinkan, Anda tahu itu dalam lima
 menit, bukan setelah setahun berlangganan.
+
+> last audited 11-10-26 by docs-auditor

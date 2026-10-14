@@ -64,15 +64,27 @@ export type DecimalSeparator = 'dot' | 'comma' | 'none';
 /**
  * Format a price for receipt display.
  *
- * Mirrors the ESC/POS renderer (kasirmu-hal `format_amount`): the major part
- * is rendered WITHOUT thousands grouping, an optional fractional part is joined
- * by the configured separator, and the currency prefix (`Rp ` for IDR, the raw
- * code otherwise — or nothing when `showCurrency` is false) is prepended.
+ * ⚠️ WHAT THIS MIRRORS, AND WHAT IT DOES NOT (corrected 2026-10-13, round 45).
  *
- * `decimalSeparator` is the SAME setting the printer resolves: `dot`/`comma`
- * choose the fractional separator and `none` truncates fractional digits, so
- * the preview cannot silently diverge from what actually prints. An integer
- * (`frac === 0`) renders identically under all three, as it does on paper.
+ * This doc used to say "so the preview cannot silently diverge from what actually
+ * prints" — a flat claim contradicted 30 lines later by this function's own body,
+ * which caps the fraction and admits the printer has no decimals field. Both
+ * halves were half-truths. The measured contract, per ReceiptConfig:
+ *
+ * | knob            | ReceiptConfig field            | this fn arg            |
+ * |-----------------|-------------------------------|------------------------|
+ * | grouping        | :193 `grouping` (since D6)     | `showThousandsSeparator` |
+ * | decimal sep     | :181 `decimal_separator`       | `decimalSeparator`    |
+ * | fraction digits | **NONE — the printer cannot**  | `fractionDigits`       |
+ *
+ * So grouping and the separator ARE the printer's settings, and the master toggle
+ * default is what makes the symmetry hold. `fractionDigits` is preview-ONLY:
+ * against the printer an IDR amount renders its bare major regardless of what the
+ * caller asks for, because `format_money` (receipt.rs:333-365) takes the fraction
+ * from `foundation::format_minor`'s canonical exponent and drops `frac` when
+ * that currency has none. An integer renders identically under all three
+ * separators, as it does on paper, so the knob only diverges where an
+ * exp-0 currency is rendered against a finer request — which is the cap below.
  */
 export const formatPrice = (
   amount: number,
@@ -90,18 +102,21 @@ export const formatPrice = (
   const major = showThousandsSeparator
     ? rawMajor.replace(/\B(?=(\d{3})+(?!\d))/g, thousandChar)
     : rawMajor;
-  // ⚠️ The fraction is capped by the CURRENCY'S canonical exponent, because that is the
+  // The fraction is capped by the CURRENCY'S canonical exponent, because that is the
   // only thing the printer can render. `format_money`
-  // (kasirmu-hal/src/drivers/receipt.rs:251) delegates the decimal math to
-  // `foundation::format_minor`, which uses the currency's exponent — IDR is exp-0, so it
-  // yields a bare major part and `fraac` is None. The renderer then falls to its
+  // (kasirmu-hal/src/drivers/receipt.rs:333-365) delegates the decimal math to
+  // `foundation::format_minor`, which uses the currency's exponent — IDR is exp-0, so
+  // it yields a bare major part and `frac` is None. The renderer then falls to its
   // `(_, _)` arm and prints the major ALONE, whatever `decimal_separator` says.
   //
   // Without this cap, a caller passing `showDecimals ? 2 : 0` (as
-  // `RestaurantReceiptsScreen.tsx:1210` does) made the IDR preview render
-  // `Rp 1.500,00` while the paper printed `Rp 1500` — the exact divergence this
-  // function's header promises cannot happen. The setting cannot reach the printer at
-  // all: `ReceiptConfig` (receipt.rs:98-117) has no decimals field.
+  // `RestaurantReceiptsScreen.tsx` does) made the IDR preview render
+  // `Rp 1.500,00` while the paper printed `Rp 1500`. The decimals knob is
+  // preview-only by construction: `ReceiptConfig` (receipt.rs:175-198) has no
+  // fraction-digits field, so no value for it can reach the printer. Verified
+  // 2026-10-13: the OTHER two knobs ARE on ReceiptConfig — `grouping` (:193,
+  // since D6) and `decimal_separator` (:181) — so only this one is preview-only,
+  // and the header above now says so instead of claiming a blanket symmetry.
   const exponent = minorUnitExponent(currency);
   const effectiveDigits = Math.min(fractionDigits, exponent);
   const showFrac = decimalSeparator !== 'none' && effectiveDigits > 0;
@@ -140,11 +155,15 @@ export interface ReceiptPreviewResult {
 /**
  * Compute the thermal-preview sample totals.
  *
- * The three sample gross prices (35.000 / 16.000 / 42.000) are netted to
- * `100/(100+rate)` when tax is shown; subtotal is the rounded net sum, tax is
- * derived from the unrounded net subtotal and rounded per the rounding mode, and
- * the grand total is subtotal + tax. With tax hidden, gross prices are used and
- * the subtotal is a flat 93.000. Change is floored at zero.
+ * The three sample unit prices (35.000 / 16.000 / 42.000) are netted to
+ * `100/(100+rate)` when tax is shown. Quantities (1 / 2 / 1) are then applied, so
+ * `itemPrices` holds LINE TOTALS — exactly the convention the real receipt uses
+ * (`completedSale.ts:132` and `:221` both compute `unit_price.minor_units * qty`).
+ * The preview labels its rows by those same quantities, so a row reading `2x` now
+ * carries twice the unit figure. subtotal is the rounded net sum, tax is derived
+ * from the unrounded net subtotal and rounded per the rounding mode, and the grand
+ * total is subtotal + tax. With tax hidden, gross prices are used and the subtotal
+ * is the rounded gross line sum. Change is floored at zero.
  */
 export const computeReceiptPreview = ({
   taxRatePercent,
@@ -152,9 +171,11 @@ export const computeReceiptPreview = ({
   taxRoundingMode,
 }: ReceiptPreviewInput): ReceiptPreviewResult => {
   const taxMultiplier = showTax ? 100 / (100 + taxRatePercent) : 1;
-  const item1Exact = 35000 * taxMultiplier;
-  const item2Exact = 16000 * taxMultiplier;
-  const item3Exact = 42000 * taxMultiplier;
+  // The quantities the preview's own labels assert: 1x / 2x / 1x.
+  const QUANTITIES: [number, number, number] = [1, 2, 1];
+  const item1Exact = 35000 * taxMultiplier * QUANTITIES[0];
+  const item2Exact = 16000 * taxMultiplier * QUANTITIES[1];
+  const item3Exact = 42000 * taxMultiplier * QUANTITIES[2];
 
   const itemPrices: [number, number, number] = [
     Math.round(item1Exact),
@@ -163,7 +184,7 @@ export const computeReceiptPreview = ({
   ];
 
   const exactSubtotal = item1Exact + item2Exact + item3Exact;
-  const subtotal = showTax ? Math.round(exactSubtotal) : 93000;
+  const subtotal = Math.round(exactSubtotal);
   const rawTax = showTax ? exactSubtotal * (taxRatePercent / 100) : 0;
   const tax = taxRoundingMode === 'truncate' ? Math.floor(rawTax) : Math.round(rawTax);
   const total = showTax ? subtotal + tax : subtotal;
@@ -208,100 +229,65 @@ export type TestPrintCode = (typeof TEST_PRINT_CODES)[keyof typeof TEST_PRINT_CO
 
 export interface TestPrintResult {
   code: TestPrintCode;
-  message: string;
+  /**
+   * Fluent message id for the user-facing text — NOT the text itself.
+   *
+   * The twelve messages below used to be English literals returned from this pure
+   * function, so the status card and every toast rendered in English under every
+   * locale (§6.3). Returning the KEY keeps this function pure and unit-testable
+   * while making the bundle the single source of truth; the screen resolves it
+   * with `l10n.getString(messageId, { detail })`.
+   */
+  messageId: string;
+  /** Interpolated into messages that carry a `{ $detail }` variable. */
+  detail?: string;
   type: 'success' | 'error';
   timestamp: number;
 }
 
-/** Format a canonical test print code with its user-facing message. */
+/**
+ * Map a canonical test print code to its Fluent message id.
+ *
+ * Pure by design: no `l10n` dependency, so the mapping stays cheap to test and
+ * the caller owns rendering. Codes that embed a backend detail pick a
+ * `-detail` variant of the key when one is supplied.
+ */
 export function formatTestPrintResult(
   code: TestPrintCode,
   customDetail?: string,
-): { code: TestPrintCode; message: string; type: 'success' | 'error' } {
+): { code: TestPrintCode; messageId: string; detail?: string; type: 'success' | 'error' } {
   switch (code) {
     case TEST_PRINT_CODES.SUCCESS:
-      return {
-        code,
-        type: 'success',
-        message: 'Test receipt was sent to the printer successfully.',
-      };
+      return { code, type: 'success', messageId: 'restaurant-test-print-msg-success' };
     case TEST_PRINT_CODES.ERR_AUTH_REQUIRED:
-      return {
-        code,
-        type: 'error',
-        message: 'Authentication session token is missing. Please sign in to test print.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-auth-required' };
     case TEST_PRINT_CODES.ERR_PRINTER_DISABLED:
-      return {
-        code,
-        type: 'error',
-        message: 'Receipt printer is currently disabled in settings. Enable a connection (Network, USB, Serial, or Auto) before test printing.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-printer-disabled' };
     case TEST_PRINT_CODES.ERR_MISSING_HOST:
-      return {
-        code,
-        type: 'error',
-        message: 'Network printer IP address or hostname is not specified. Please enter a valid host address.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-missing-host' };
     case TEST_PRINT_CODES.ERR_MISSING_PORT:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer device port or path is not configured. Please enter the port or path.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-missing-port' };
     case TEST_PRINT_CODES.ERR_PRINTER_NOT_FOUND:
-      return {
-        code,
-        type: 'error',
-        message: 'No receipt printer is registered or detected on this device.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-printer-not-found' };
     case TEST_PRINT_CODES.ERR_PAPER_FAULT:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer fault: check paper roll supply, cover latch, or paper jam.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-paper-fault' };
     case TEST_PRINT_CODES.ERR_TIMEOUT:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer communication timed out. Verify network connection, cable, and device power.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-timeout' };
     case TEST_PRINT_CODES.ERR_BUSY:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer or communication port is currently busy with another operation.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-busy' };
     case TEST_PRINT_CODES.ERR_PERMISSION_DENIED:
-      return {
-        code,
-        type: 'error',
-        message: 'Permission denied when accessing printer hardware port.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-permission-denied' };
     case TEST_PRINT_CODES.ERR_COMMUNICATION:
-      return {
-        code,
-        type: 'error',
-        message: customDetail
-          ? `Printer device communication error: ${customDetail}`
-          : 'Communication failed between the system and printer hardware.',
-      };
+      return customDetail
+        ? { code, type: 'error', messageId: 'restaurant-test-print-msg-communication-detail', detail: customDetail }
+        : { code, type: 'error', messageId: 'restaurant-test-print-msg-communication' };
     case TEST_PRINT_CODES.ERR_UNCONFIRMED:
-      return {
-        code,
-        type: 'error',
-        message: 'Printer completed operation without confirming printed receipt output.',
-      };
+      return { code, type: 'error', messageId: 'restaurant-test-print-msg-unconfirmed' };
     case TEST_PRINT_CODES.ERR_GENERAL:
     default:
-      return {
-        code: TEST_PRINT_CODES.ERR_GENERAL,
-        type: 'error',
-        message: customDetail
-          ? `Test print failed: ${customDetail}`
-          : 'An unexpected error occurred while sending the test print job.',
-      };
+      return customDetail
+        ? { code: TEST_PRINT_CODES.ERR_GENERAL, type: 'error', messageId: 'restaurant-test-print-msg-general-detail', detail: customDetail }
+        : { code: TEST_PRINT_CODES.ERR_GENERAL, type: 'error', messageId: 'restaurant-test-print-msg-general' };
   }
 }
 

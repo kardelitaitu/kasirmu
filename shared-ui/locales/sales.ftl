@@ -100,6 +100,9 @@ payment-qris-cancel = Cancel payment
 payment-qris-auto-charge-failed = QRIS Auto charge failed: { $reason }
 payment-qris-auto-no-payload = The payment gateway returned no QR payload
 payment-qris-auto-cancelled = QRIS payment cancelled — pending sale voided
+# Gateway (manual/EDC-asserted) QR failure. The cause is logged, not interpolated:
+# it arrives from the gateway in English and cannot be localized here.
+payment-qris-gateway-failed = QR payment failed — check the terminal and retry
 
 # EDC card-present flow (agents-3 3.2)
 payment-edc-description = Charge the total on the connected card terminal — tap, insert or swipe.
@@ -125,14 +128,17 @@ payment-qris-amount = Amount
 payment-qris-reference = Reference
 payment-qris-merchant = Merchant
 payment-qris-merchant-name = kasir.mu Store
+payment-qris-listener-listening = Auto-verifying via bank push notifications...
+payment-qris-listener-enable-hint = Enable instant auto-verification
+payment-qris-listener-verified = Payment verified via { $provider }!
 
 # Price Override Modal
 price-override-dialog-aria = Price override
 price-override-close-aria = Close
 price-override-title = Price Override
 price-override-current-label = Current price
-price-override-new-label = New price (in minor units)
-price-override-new-aria = Enter new price in minor units
+price-override-new-label = New price
+price-override-new-aria = Enter new price
 price-override-cancel = Cancel
 price-override-next = Next
 price-override-back = Back
@@ -150,6 +156,8 @@ price-override-error-zero = Price must be greater than 0
 price-override-error-max = Price exceeds 10x the current price. Maximum allowed is { $max }.
 price-override-pin-failed = PIN verification failed
 payment-split-title = Split Payments
+payment-split-ways-label = Split:
+payment-split-ways-aria = Split evenly { $count } ways
 payment-split-evenly = Split Evenly
 payment-split-add = + Add Split
 payment-split-method-cash = Cash
@@ -167,6 +175,8 @@ payment-split-toggle = Split payment across methods
 payment-cancel = Cancel
 payment-open-bill = Open Bill
 payment-credit-sale = Credit Sale
+payment-credit-disabled = Store credit facility is currently disabled in Settings.
+payment-credit-limit-exceeded = Sale total exceeds maximum credit ceiling.
 payment-customer-name = Customer Name
 payment-customer-change = Change
 payment-customer-select = Select Customer
@@ -198,6 +208,11 @@ payment-toast-print-failed = Nothing was printed — check that a printer is set
 payment-toast-receipt-unavailable = Payment succeeded, but the receipt could not be prepared — the sale is saved, check the sale history to reprint
 payment-toast-invoice-issued = Tax invoice issued successfully
 payment-toast-invoice-failed = Failed to issue tax invoice
+# Money-path failures. These two are written as INSTRUCTIONS rather than diagnoses:
+# the cashier has to settle a half-completed payment by hand, and the backend cause
+# (which arrives in English and cannot be localized here) is logged, not shown.
+payment-toast-finalize-failed = The sale could not be finalised — check the sale history and settle it manually
+payment-toast-void-failed = The pending sale could NOT be voided — it is still open and must be cleared manually
 payment-customer-placeholder = e.g. John Doe
 payment-loyalty-points-aria = Points
 payment-search-customers-aria = Search customers
@@ -236,7 +251,7 @@ sales-history-count = { $count } sale{ $count ->
   *[other] s
 }
 sales-history-page-info = Page { $current } of { $total }
-sales-history-col-id = Sale ID
+sales-history-col-receipt = Receipt
 sales-history-col-date = Date
 sales-history-col-total = Total
 sales-history-col-items = Items
@@ -289,13 +304,26 @@ sales-history-detail-title = Sale Detail
 sales-history-detail-close = Close
 sales-history-detail-print = Reprint Receipt
 sales-history-detail-id = ID
+sales-history-detail-receipt = Receipt
 sales-history-detail-date = Date
 sales-history-detail-status = Status
 sales-history-detail-payment = Payment
 sales-history-detail-cashier = Cashier
 sales-history-detail-subtotal = Subtotal
+sales-history-detail-discount = Discount:
+sales-history-detail-service-charge = Service Charge:
+sales-history-detail-tip = Tip:
 sales-history-detail-tax = Tax
 sales-history-detail-total = Total
+sales-history-detail-tendered = Tendered:
+sales-history-detail-change = Change:
+sales-history-reprint-success = Receipt reprinted successfully
+# e-Faktur / statutory-invoice outcomes. These were raw English literals in a flow
+# operated by Indonesian finance staff, which is the locale where they matter most.
+sales-history-nsfp-stamped = e-Faktur NSFP stamped successfully
+sales-history-pengganti-created = Faktur Pengganti created ({ $number })
+sales-history-statutory-issued = Statutory tax invoice issued: { $number }
+sales-history-statutory-issue-failed = Failed to issue the statutory tax invoice
 sales-history-lines-title = Line Items
 sales-history-line-sku = SKU
 sales-history-line-name = Name
@@ -559,6 +587,19 @@ eod-refresh-aria = Refresh report
 eod-printing = Printing…
 eod-print = Print
 eod-print-aria = Print EOD report
+eod-print-success = EOD report sent to printer
+eod-close-shift-btn = Close Shift
+eod-close-shift-aria = Close active shift
+eod-shift-closed-success = Shift closed successfully
+eod-close-modal-title = Close Active Shift
+eod-close-counted-label = Counted cash in drawer
+eod-close-counted-placeholder =
+    .placeholder = e.g. 150000
+eod-close-notes-label = Notes (optional)
+eod-close-notes-placeholder =
+    .placeholder = Any notes about this shift…
+eod-close-confirm = Close Shift
+eod-close-closing = Closing…
 eod-error = { $error }
 eod-error-fallback = Failed to load report
 eod-retry = Retry
@@ -601,6 +642,14 @@ eod-summary-voided-sales = Voided Sales
 eod-summary-voided-value = Voided Value
 eod-summary-discounts = Sales with Discounts
 eod-summary-payment-methods = Payment Methods Used
+# CSV export labels. The export wrote these as raw English literals while the screen
+# beside it rendered the same facts through eod-summary-* keys; the row VALUES reuse
+# those keys, and only these four have no screen equivalent.
+eod-csv-col-metric = Metric
+eod-csv-col-value = Value
+eod-csv-row-date = Date
+eod-csv-row-payment = Payment — { $method }
+eod-csv-row-hour = Hour { $hour }:00
 
 pos-cart-add-discount = + Add Discount
 pos-cart-add-promotion = + Promotions
@@ -837,6 +886,14 @@ retail-shortcut-hold = Hold / Resume order
 retail-shortcut-sku = Focus SKU input
 retail-shortcut-shift = Open / Close shift
 retail-shortcut-options = Options
+# Restaurant POS keyboard shortcuts — the manifest in features/restaurant/restaurantShortcuts.ts.
+# Keys are chosen disjoint from RETAIL_SHORTCUTS (F1-F12, ?, Ctrl+K, Ctrl+L, Esc) and from
+# AppShell's global F10, so no restaurant key shadows a working retail or shell binding.
+restaurant-shortcut-send-kitchen = Send to kitchen
+restaurant-shortcut-print-bill = Print bill
+restaurant-shortcut-split-bill = Split bill
+restaurant-shortcut-save-tab = Save tab
+restaurant-shortcut-open-tables = Open tables
 retail-shortcut-list = This shortcut list
 retail-shortcut-close = Close modal / Options
 retail-shortcut-fullscreen = Toggle Fullscreen
@@ -1059,7 +1116,7 @@ pos-promotions-loading = Loading promotions…
 pos-promotions-empty = No active promotions
 pos-promotions-load-failed = Failed to load promotions
 pos-promotions-value-percent = { $value }% off
-pos-promotions-value-fixed = { $value } minor units off
+pos-promotions-value-fixed = { $value } off
 pos-promotions-value-bxgy = Buy X get Y
 pos-promotions-not-applicable = Not applicable in this checkout yet
 pos-promotions-min-order = Requires a minimum order of { $min }
@@ -1104,4 +1161,50 @@ pos-cart-customer-aria = Customer name (optional)
 pos-cart-new-tab = New Tab
 pos-cart-new-tab-title = Clear active cart to start a new tab
 pos-cart-guest-count-label = Guests
+pos-cart-order-type-dine-in = Dine In
+pos-cart-order-type-takeaway = Takeaway
+pos-cart-order-type-delivery = Delivery
+pos-cart-guest-placeholder = Guests
 edit-modifiers = Edit
+pos-cart-print-bill = Print Bill
+pos-cart-print-bill-aria = Print preliminary bill for customer review
+pos-cart-split-bill = Split Bill
+pos-cart-split-bill-aria = Split bill by line items
+pos-split-modal-title = Split Bill by Item
+pos-split-modal-pay-now = Pay Selected Now
+pos-split-modal-remaining = Keep on Tab
+pos-split-modal-confirm-pay = Pay Selected ({ $amount })
+pos-split-modal-cancel = Cancel
+pos-toast-bill-printed = Bill printed for { $table }
+pos-toast-bill-print-failed = Failed to print bill
+pos-cart-send-kitchen = Send to Kitchen
+pos-cart-send-kitchen-aria = Send new items to kitchen printer and KDS
+pos-toast-kitchen-dispatched = Order sent to kitchen for { $table }
+pos-toast-kitchen-dispatch-failed = Failed to send order to kitchen
+pos-toast-held-cart-delete-failed = Failed to delete the held cart
+pos-toast-auth-required = Please sign in again to continue
+pos-toast-tab-balance-failed = Failed to update the remaining tab balance
+pos-toast-drawer-opened = Cash drawer opened
+pos-toast-drawer-unconfirmed = The cash drawer did not confirm it opened — check the device
+pos-line-status-sent = Sent
+pos-line-status-new = New
+pos-cart-tab-conflict-warning = { $terminal } is currently editing this tab
+pos-cart-tab-takeover-btn = Take Over
+pos-product-out-of-stock = { $name } is out of stock (86)
+pos-toast-product-not-found = Product details could not be loaded
+pos-toast-no-modifiers = No modifiers are configured for this item
+# POS cart/held-cart failures. Every one is an instruction the cashier has to act on.
+pos-toast-cart-create-failed = Could not start the sale — try again
+pos-toast-override-recorded = Price override recorded
+pos-toast-override-failed = Could not record the price override
+pos-toast-no-active-cart = No active sale to price
+pos-toast-open-bills-failed = Failed to load open bills
+pos-toast-bill-save-failed = Failed to save the tab
+pos-toast-bill-resume-failed = Failed to reopen the tab
+pos-toast-bill-saved = Tab for { $label } saved
+pos-toast-bill-updated = Tab for { $label } updated
+# POS hardware checks on the store settings card.
+pos-toast-printer-unconfirmed = The printer did not confirm the print — check the device
+pos-toast-test-receipt-sent = Test receipt sent
+pos-toast-drawer-kick-sent = Cash drawer signal sent
+pos-toast-drawer-unconfirmed-short = The cash drawer did not confirm it opened — check the device

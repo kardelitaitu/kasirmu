@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
-  "description": "Ceiling for the kasirmu-core production line count (Phase 3 P3.4, plan section 11.1). scripts/verify-core-size.py fails when the measured count rises above ceiling. Lowering it is a deliberate edit, exactly as a retired namespace edge leaves scripts/namespace-governance-baseline.json.",
-  "measure": "non-blank lines in crates/kasirmu-core/src production .rs files, minus inline #[cfg(test)] mod blocks",
-  "ceiling": 37176,
-  "measured_files": 178
+ "schema_version": 1,
+ "description": "Ceiling for the kasirmu-core production line count (Phase 3 P3.4, plan section 11.1). scripts/verify-core-size.py fails when the measured count rises above ceiling. Lowering it is a deliberate edit, exactly as a retired namespace edge leaves scripts/namespace-governance-baseline.json. Raised 2026-10-14 from 37176 to 38703 (+1527) because the growth is legitimate feature work spread across 56 commits, not one misplaced module — see the commit message for the analysis. Extraction was deliberately NOT chosen: audit.rs's four concerns (redaction, rate-limited write, hash chaining, off-device shipping) share a single insert_audit body whose docstring explains why a second writer would leak AUD-06's redacted keys.",
+ "measure": "non-blank lines in crates/kasirmu-core/src production .rs files, minus inline #[cfg(test)] mod blocks",
+ "ceiling": 38703,
+ "measured_files": 178
 }

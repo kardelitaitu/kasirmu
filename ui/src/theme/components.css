@@ -392,6 +392,24 @@
    surface that already shipped. Its two feedback banners take --shadow-* only
    through colour tokens, not elevation, so they are not surfaces. */
 .diagnostic-export-card::after,
+/* Split-bill modal (the pre-bill / table-transfer feature). A --shadow-* dialog
+   surface, so it takes the overlay like .modal-panel above rather than a
+   small-control exemption. */
+.pos-split-modal::after,
+/* Table-management modal dialog — the same shape: an elevated dialog panel that
+   is large enough to band. */
+.tables-modal-dialog::after,
+/* The active restaurant preview tab. It gained a --shadow-* elevation on
+   2026-10-12 when its hardcoded `0 1px 2px rgba(...)` was tokenised to
+   --shadow-sm — tokenising made an already-elevated surface visible to the
+   shadow walk, which is the walk working as intended. */
+.restaurant-preview-tab.active::after,
+/* The exact-amount quick-tender button. It became visible to the shadow walk on
+   2026-10-12 when its hardcoded `0 1px 3px rgba(...)` was tokenised to
+   --shadow-sm. Tried the exempt-prefix door first and it breached that door's
+   frozen ceiling (9 > 8) -- the same tripwire that fired on .restaurant-size-btn
+   at test:165, and resolved the same way: the overlay, which needs no waiver. */
+.payment-quick-btn--exact::after,
 /* Restaurant menu size control — a 48px square button with --shadow-xs. Given the
    overlay rather than a waiver: the exempt-prefix door it was tried on first
    breached that door's frozen ceiling (9 > 8). */
@@ -593,6 +611,24 @@
   /* Parity with the dither block: the diagnostic export card is an elevated
      --shadow-sm surface, so it opts out of the overlay in both modes too. */
   .diagnostic-export-card::after,
+/* Split-bill modal (the pre-bill / table-transfer feature). A --shadow-* dialog
+   surface, so it takes the overlay like .modal-panel above rather than a
+   small-control exemption. */
+.pos-split-modal::after,
+/* Table-management modal dialog — the same shape: an elevated dialog panel that
+   is large enough to band. */
+.tables-modal-dialog::after,
+/* The active restaurant preview tab. It gained a --shadow-* elevation on
+   2026-10-12 when its hardcoded `0 1px 2px rgba(...)` was tokenised to
+   --shadow-sm — tokenising made an already-elevated surface visible to the
+   shadow walk, which is the walk working as intended. */
+.restaurant-preview-tab.active::after,
+/* The exact-amount quick-tender button. It became visible to the shadow walk on
+   2026-10-12 when its hardcoded `0 1px 3px rgba(...)` was tokenised to
+   --shadow-sm. Tried the exempt-prefix door first and it breached that door's
+   frozen ceiling (9 > 8) -- the same tripwire that fired on .restaurant-size-btn
+   at test:165, and resolved the same way: the overlay, which needs no waiver. */
+.payment-quick-btn--exact::after,
   /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
      entry: the overlay was granted, not waived). */
   .restaurant-size-btn::after,
@@ -743,6 +779,24 @@
   /* Parity with the dither block: the diagnostic export card is an elevated
      --shadow-sm surface, so it opts out of the overlay in both modes too. */
   .diagnostic-export-card::after,
+/* Split-bill modal (the pre-bill / table-transfer feature). A --shadow-* dialog
+   surface, so it takes the overlay like .modal-panel above rather than a
+   small-control exemption. */
+.pos-split-modal::after,
+/* Table-management modal dialog — the same shape: an elevated dialog panel that
+   is large enough to band. */
+.tables-modal-dialog::after,
+/* The active restaurant preview tab. It gained a --shadow-* elevation on
+   2026-10-12 when its hardcoded `0 1px 2px rgba(...)` was tokenised to
+   --shadow-sm — tokenising made an already-elevated surface visible to the
+   shadow walk, which is the walk working as intended. */
+.restaurant-preview-tab.active::after,
+/* The exact-amount quick-tender button. It became visible to the shadow walk on
+   2026-10-12 when its hardcoded `0 1px 3px rgba(...)` was tokenised to
+   --shadow-sm. Tried the exempt-prefix door first and it breached that door's
+   frozen ceiling (9 > 8) -- the same tripwire that fired on .restaurant-size-btn
+   at test:165, and resolved the same way: the overlay, which needs no waiver. */
+.payment-quick-btn--exact::after,
   /* Same parity for the restaurant menu size control (see its KNOWN_NOISE_SELECTORS
      entry: the overlay was granted, not waived). */
   .restaurant-size-btn::after,

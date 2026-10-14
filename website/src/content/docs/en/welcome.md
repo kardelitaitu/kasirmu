@@ -6,6 +6,8 @@ order: 1
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings (0 major, 0 minor, 0 ambiguous) · First audit stamp this page has carried. Every in-page route link resolved and every product claim re-derived at HEAD. LINKS: all 14 internal links resolve to real content docs (quickstart, installation, setup-wizard, activation, first-sale, inventory, workspaces, terminals, location, first-day, licensing, cloud-sync — the checker check-site-links.py reports every site link resolving, 46 content docs). The recovery anchor ../activation/#reinstalling-or-recovering-your-license and the ../pricing/ and ../../support/ links are route-valid. PRODUCT CLAIMS: the shop-shape labels the page uses to provision match the wizard's own strings — "Shop" (settings.ftl:94 setup-provision-step-store, :106 setup-store-type-simple-retail) and "Restaurant or cafe" (:108). The free-trial facts are real: 6-digit recovery code (apps/license-server/activate.go:56, desktop_link_email.go:109) and the at-most-once-per-24h rotation notice (activate.go:67-73, window 24h). "Works on Windows today, macOS/Linux/Android/iOS on the way" matches the published support stance (README.md) — the release pipeline builds preview installers for the other desktops, which is exactly the distinction that makes the narrower SUPPORT claim correct. Hardware list (scanners, printers, drawers, customer displays, NFC) matches the HAL driver set. NOT re-measured: the setup-wizard flow end to end, the workspace picker's actual card grid, and a live activation/recovery round-trip. -->
+
 ## What is kasir.mu?
 
 kasir.mu is an offline-first point-of-sale platform for cafes, restaurants, and
@@ -131,3 +133,5 @@ these docs cover activation, payments, sync, and more.
 ---
 
 Keep reading · **Next:** [Quickstart](../quickstart/) — the 15-minute path to a working counter.
+
+> last audited 11-10-26 by docs-auditor

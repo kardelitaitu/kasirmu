@@ -1,4 +1,9 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 500 lines, with no prior stamp, footer and no marker. It is the PARENT audit for several specifications this campaign has already audited, which makes it a hub rather than a leaf — the money-closure specification audited two rounds ago closes a finding from here, and so does the card-terminal and environment work. Reading it last, after those, is the right order: the children were judged on their own terms and this is the document they answer to. · THE HEADER CORRECTS A FALSE CLAIM ABOUT ITS OWN PROVENANCE, and that is the first thing a reader should know. It states that the audit followed a named framework, and then — in the same line — records that the previous version of that line was a link to a skill file which has never existed in this repository, and that the skills directory ships a different set. A document that removes its own false citation, in place, with the reason, is doing something almost no document does. It is the same principle this campaign has been applying to audit stamps all session: a claim about provenance that cannot be supported should be deleted rather than softened, and the deletion should say why. · THE BASELINE SECTION IS HISTORICAL EVIDENCE AND MUST NOT BE READ AS CURRENT, and the stamp says so explicitly because the names in it will mislead. The commands quoted use the pre-restructure crate and application names, and they are correct FOR THE DATE THE AUDIT RAN. This is the frozen-record case this campaign has applied throughout: a changelog, an archived plan, and a dated baseline are records, and editing their identifiers would destroy the evidence of what was true. A reader who needs today's command has the quickstart; a reader auditing what the audit actually did needs this section unchanged. · THE CLOSURE CLAIMS ARE FALSIFIABLE AND THE CHILDREN CONFIRM THEM. The document reports all critical and high findings resolved, and names the resolutions — the exchange-rate conversion to integer millionths closed in a specific epic, and LAN retry, sync pull safety and brand validation closed in a specific version. The money-closure specification audited in this campaign is that first resolution, and this campaign verified its invariant in the tree. A parent audit whose children are individually verified is the strongest form this evidence takes. · NOT re-measured: the lints and builds in the baseline, the severity judgements, and whether the medium findings were subsequently resolved. The baseline is history by construction and the medium items are backlog, which is the correct place for them. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor — a stale status block) · Re-audit of the 2026-09-29 pass, whose evidence is merged below. This is a CLOSURE RECORD, so the frozen baseline (§1), the pre-rebrand commands and the per-finding write-ups are left exactly as written — a decision/case record's identifiers are evidence of what was true, not a worklist to re-run. · THE FINDING is narrow and is the one class this kind of document can still get wrong: its STATUS claims about the present. §6, §7 and §10 asserted M-1, M-2 and M-6 still open, and §10 captioned two re-audit greps "still open". Verified this pass at source and all three are FIXED — M-6's silent USD default is gone (the body moved to kasirmu-bridge and resolves the store-profile currency, crates/kasirmu-bridge/src/pos/cart.rs:137-146, and \`grep '"USD"' apps/desktop-tauri/src/commands/pos.rs\` is empty); M-1's mixed primitives were consolidated with a documented policy table (apps/desktop-tauri/src/state.rs:48-58); M-2 gained the kernel_shutdown oneshot signalled from Drop (state.rs:167,443-444,908); and M-3's eviction is now deterministic by created_at (crates/kasirmu-bridge/src/auth.rs:320-334). Repaired by a single dated correction note under §4 plus the four status lines, NOT by rewriting the item write-ups — a resolution recorded against the wrong mechanism (as this file already does for C-5) is a hazard the record should keep visible. · ALSO CORRECTED: the §10 "still open" grep captions for M-1/M-6, which told the next auditor to expect hits that no longer exist. · RE-VERIFIED and left alone: C-1's closure (rate_millionths i64 in modules/currency), C-3's CSP (non-null in both tauri.conf.json files), C-5's field-level encryption (kasirmu-bridge/src/license.rs seals api_key via kasirmu_crypto, legacy plaintext passed through — the C-5 correction note was already right), and the §7 "all CRITICAL+HIGH resolved" header, which holds. · NOT re-measured: the original baseline lints/builds (history by construction), and M-4/M-5, which need a wider code reading than a docs audit and are neither confirmed open nor re-opened — the correction note says so explicitly. The 2026-09-29 stamp is retained as original evidence. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 500 lines, with no prior stamp, footer and no marker. It is the PARENT audit for several specifications this campaign has already audited, which makes it a hub rather than a leaf — the money-closure specification audited two rounds ago closes a finding from here, and so does the card-terminal and environment work. Reading it last, after those, is the right order: the children were judged on their own terms and this is the document they answer to. · THE HEADER CORRECTS A FALSE CLAIM ABOUT ITS OWN PROVENANCE, and that is the first thing a reader should know. It states that the audit followed a named framework, and then — in the same line — records that the previous version of that line was a link to a skill file which has never existed in this repository, and that the skills directory ships a different set. A document that removes its own false citation, in place, with the reason, is doing something almost no document does. It is the same principle this campaign has been applying to audit stamps all session: a claim about provenance that cannot be supported should be deleted rather than softened, and the deletion should say why. · THE BASELINE SECTION IS HISTORICAL EVIDENCE AND MUST NOT BE READ AS CURRENT, and the stamp says so explicitly because the names in it will mislead. The commands quoted use the pre-restructure crate and application names, and they are correct FOR THE DATE THE AUDIT RAN. This is the frozen-record case this campaign has applied throughout: a changelog, an archived plan, and a dated baseline are records, and editing their identifiers would destroy the evidence of what was true. A reader who needs today's command has the quickstart; a reader auditing what the audit actually did needs this section unchanged. · THE CLOSURE CLAIMS ARE FALSIFIABLE AND THE CHILDREN CONFIRM THEM. The document reports all critical and high findings resolved, and names the resolutions — the exchange-rate conversion to integer millionths closed in a specific epic, and LAN retry, sync pull safety and brand validation closed in a specific version. The money-closure specification audited in this campaign is that first resolution, and this campaign verified its invariant in the tree. A parent audit whose children are individually verified is the strongest form this evidence takes. · NOT re-measured: the lints and builds in the baseline, the severity judgements, and whether the medium findings were subsequently resolved. The baseline is history by construction and the medium items are backlog, which is the correct place for them. · No stamp existed; this is the first.
+-->
+
 
 # Desktop App Audit (kasir.mu)
 
@@ -153,6 +158,34 @@ Tighten incrementally as the audit progresses.
 
 ## 4. MEDIUM findings — BACKLOG
 
+> **CORRECTION 2026-10-11 — several of the items below are now FIXED in the tree, and the**
+> **"still open" language scattered through §6/§7/§10 is stale for them.** This is a closure
+> audit record, so the original write-ups are left intact and the current state is recorded
+> here, once, verified at source this pass:
+>
+> - **M-6 (silent \`USD\` default) — FIXED.** The cart now resolves the store profile's default
+>   currency. The \`start_sale\` body moved to \`kasirmu-bridge\` and reads
+>   \`Settings::get_default_currency(&db)\` before falling back, so an unset currency no longer
+>   silently becomes USD for an IDR merchant. \`grep -rn '"USD"' apps/desktop-tauri/src/commands/pos.rs\`
+>   returns nothing. *Code ref: crates/kasirmu-bridge/src/pos/cart.rs:137-146.*
+> - **M-1 (mixed sync primitives) — FIXED.** \`AppState\` now documents its primitive policy and the
+>   exception list in a module-level table, and the fields were consolidated
+>   (\`tokio::sync::Mutex\` for async-accessible fields; \`std::sync::RwLock\` only for the two sync-reader
+>   caches, each with a stated reason). *Code ref: apps/desktop-tauri/src/state.rs:48-58.*
+> - **M-2 (Drop leaks kernel modules under contention) — FIXED.** \`AppState\` carries a
+>   \`kernel_shutdown: Option<tokio::sync::oneshot::Sender<()>>\` signalled from \`Drop\` so the shutdown
+>   path is no longer a contended \`try_lock\`. *Code ref: apps/desktop-tauri/src/state.rs:167,443-444,908.*
+> - **M-3 (non-deterministic session eviction) — FIXED.** Eviction now picks the oldest by
+>   \`created_at\` (\`min_by_key\`) instead of \`keys().next()\`. *Code ref: crates/kasirmu-bridge/src/auth.rs:320-334.*
+> - **M-4, M-5 — re-checked, and the write-ups no longer describe the code.** M-5 in particular
+>   described "a 1-second polling loop"; the watcher is a passive \`notify::RecommendedWatcher\` with no
+>   polling task to cancel, so the finding's premise is gone. Neither is re-opened here because
+>   both need a code reading wider than a docs audit, and neither is asserted open below.
+>
+> Treat the per-item "**still open**" tags further down as part of the original record, not as a
+> status you can rely on: this note supersedes them for M-1/M-2/M-3/M-6.
+
+
 ### M-1 — Four different sync primitives in `AppState`
 
 **Location:** `apps/desktop-client/src/state.rs` AppState struct fields:
@@ -299,7 +332,7 @@ vs. the workspace-pinned style (`tokio = { workspace = true }`) used for everyth
 ## 6. Cross-cutting epics (consolidation)
 
 ### Epic X-1 — "State & Concurrency Refactor" *(folded X-4 here for H-1)*
-Bundles: **C-2** (CLOSED), **M-1**, **M-2**, **M-5**, ~~**H-1**~~ (CLOSED). Touches `state.rs`, `lib.rs::run()`, `commands::features.rs`, `commands::auth.rs`. C-2 and H-1 resolved; M-1, M-2, M-5 remain.
+Bundles: **C-2** (CLOSED), **M-1**, **M-2**, **M-5**, ~~**H-1**~~ (CLOSED). Touches `state.rs`, `lib.rs::run()`, `commands::features.rs`, `commands::auth.rs`. C-2 and H-1 resolved; **M-1 and M-2 fixed (see the §4 correction note)**, M-5's premise superseded.
 
 ### Epic X-2 — "Network & Content Security Posture"
 Bundles: **C-3** (CLOSED), **C-4** (CLOSED), ~~**H-2**~~ (CLOSED). Touches `tauri.conf.json`, `lan_server.rs`, `commands::sync.rs`. All findings in this epic resolved.
@@ -324,7 +357,7 @@ Initial audit pass on `apps/desktop-tauri/src/**/*.rs` returned only `commands/e
 ### Epic X-5 — "Input validation hardening" *(newly added)*
 Bundles: ~~**H-3**~~ **— H-3 CLOSED** and **M-6** (`start_sale` empty currency). Touches `commands/branding.rs`, `commands/pos.rs`.
 
-H-3 resolved (path validation + canonicalization + extension allowlist). **M-6 remains open.**
+H-3 resolved (path validation + canonicalization + extension allowlist). **M-6 fixed (see the §4 correction note).**
 
 ---
 
@@ -341,7 +374,7 @@ All CRITICAL and HIGH findings are now resolved across the 0.0.22 / 0.0.23 relea
 7. ~~**H-2** — Sync pull `confirm_destructive` + backup.~~ **CLOSED.**
 8. ~~**H-3** — Brand logo path validation.~~ **CLOSED.**
 
-Remaining items (M-1 through M-6) are MEDIUM-priority backlog.
+Remaining items (M-1 through M-6) were MEDIUM-priority backlog; M-1, M-2, M-3 and M-6 have since been fixed in the tree — see the §4 correction note.
 
 ---
 
@@ -399,11 +432,11 @@ grep -rn 'license\.' apps/desktop-tauri/src/commands/ | grep -i 'set\|set_batch'
 # H-3: brand logo path validation — CLOSED (expect canonicalize + app_data_dir)
 grep -rn 'canonicalize\|app_data_dir' apps/desktop-client/src/commands/branding.rs
 
-# M-6: currency fallback — still open
-grep -rn '\"USD\"' apps/desktop-client/src/commands/pos.rs
+# M-6: currency fallback — FIXED (2026-10-11); expect no hits in the current shell path
+grep -rn '\"USD\"' apps/desktop-tauri/src/commands/pos.rs
 
-# M-1: mixed sync primitives in AppState — still open
-grep -nE 'Mutex|RwLock|mpsc|AtomicBool|AtomicU' apps/desktop-client/src/state.rs
+# M-1: mixed sync primitives in AppState — FIXED (2026-10-11); the policy table is in the module header
+grep -nE 'Mutex|RwLock|mpsc|AtomicBool|AtomicU' apps/desktop-tauri/src/state.rs
 ```
 
 - **Trigger:** each Epic's PR lands or new findings are filed.
@@ -501,4 +534,4 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 
 *End of audit (revision 3: all CRITICAL + HIGH findings closed).*
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

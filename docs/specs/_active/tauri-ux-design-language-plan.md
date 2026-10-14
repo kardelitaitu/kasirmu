@@ -1,7 +1,11 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 203 lines, no audit stamp, no footer, no marker. A design-language adoption plan for the Tauri app, living in `_active/` — which is the correct folder for it, since a plan that has not landed is not a `_done/` artifact and this campaign has been careful never to infer completion from a document's location. · WHAT CAN BE CHECKED, and the honest limit of it. A design-language plan is prescriptive — it specifies tokens, components, and a migration order — and the repository can confirm only that the surfaces it would act on still exist and have not been superseded by a different design. They have not: the theming system this plan would extend is the one ADR-15 (shadow banding) and the modal checklist (round 9) both operate on, and the frontend-shell structure it assumes is the same `frontend/` to `app` reorganisation this campaign has been tracking since round 15. That the plan is still relevant is therefore a real, checkable result, and it is the right result for a file sitting in `_active/`. · THE RELATED SPEC IS AUDITED AND AGREES. `docs/specs/_active/kds-redesign-ux.md` (round 3) specifies a single production KDS view with an explicit CSS token table — card background, checkmark colour, category progress, rush badge, SLA colours, radius, grid gap, font — which is the same vocabulary a design-language plan would consolidate. The two documents are consistent about the direction of travel, which is the useful thing to establish between a plan and the spec that shares its subject. · NOT re-measured: the specific tokens, component inventory and migration sequence, which are the plan's own prescription. A plan in `_active/` should be read for intent, not audited for compliance, until it either lands or is withdrawn. · Stamp and footer added; the file had neither. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · MINOR, all pre-rename coordinates in a proposal that is otherwise still relevant. The §Related-Effort list named `ui/src/main.tablet.tsx` (the tablet entry point is `ui/src/main.mobile.tsx`), and the scope line and screenshot task named `desktop-client`/`tablet-client` (the shells are `apps/desktop-tauri/` and `apps/mobile-tauri/`); all repointed. The plan itself is UNCHANGED in substance — it remains a design-language proposal sitting correctly in `_active/`, and the surfaces it would act on have not been superseded. · VERIFIED: the four paths in the list resolve at their corrected names; the KDS spec it cross-references (`kds-redesign-ux.md`) is consistent about direction. · NOT re-measured: the token set, component inventory and migration sequence, which are the plan's own prescription.
+
+Superseded 2026-09-29 stamp preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 203 lines, no audit stamp, no footer, no marker. A design-language adoption plan for the Tauri app, living in `_active/` — which is the correct folder for it, since a plan that has not landed is not a `_done/` artifact and this campaign has been careful never to infer completion from a document's location. · WHAT CAN BE CHECKED, and the honest limit of it. A design-language plan is prescriptive — it specifies tokens, components, and a migration order — and the repository can confirm only that the surfaces it would act on still exist and have not been superseded by a different design. They have not: the theming system this plan would extend is the one ADR-15 (shadow banding) and the modal checklist (round 9) both operate on, and the frontend-shell structure it assumes is the same `frontend/` to `app` reorganisation this campaign has been tracking since round 15. That the plan is still relevant is therefore a real, checkable result, and it is the right result for a file sitting in `_active/`. · THE RELATED SPEC IS AUDITED AND AGREES. `docs/specs/_active/kds-redesign-ux.md` (round 3) specifies a single production KDS view with an explicit CSS token table — card background, checkmark colour, category progress, rush badge, SLA colours, radius, grid gap, font — which is the same vocabulary a design-language plan would consolidate. The two documents are consistent about the direction of travel, which is the useful thing to establish between a plan and the spec that shares its subject. · NOT re-measured: the specific tokens, component inventory and migration sequence, which are the plan's own prescription. A plan in `_active/` should be read for intent, not audited for compliance, until it either lands or is withdrawn. · Stamp and footer added; the file had neither. -->
 # Tauri App UX Update Plan — Design Language Adoption
 
-> **Status:** Proposed · **Area:** desktop-client + tablet-client UI · **Version:** 1.0
+> **Status:** Proposed · **Area:** desktop + mobile (tablet) UI · **Version:** 1.0
 > **Guideline source:** `prototypes/design-language.html` (the single source of truth — tabs: Color Palette, Buttons, Typography, Spacing & Layout, Icons, Elements, Components, Feedback, Forms, Audit)
 > **Reference prototype:** `prototypes/kds-prototype.html` (what the design language looks like applied to a real screen)
 > **Plan type:** Checklist — tick each item as it lands.
@@ -18,7 +22,7 @@ Each section maps one design-language tab to concrete work in the Tauri apps. Ch
 
 - [ ] Confirm `prototypes/design-language.html` is the canonical guideline; any conflict between this plan and the page is resolved in favour of the page.
 - [ ] Audit `ui/src/features/design/` — decide if the in-app DesignSystem showcase (tokens, swatches) is kept in sync with `design-language.html` or retired in favour of the static page.
-- [ ] Capture current screenshots of desktop-client + tablet-client for before/after comparison.
+- [ ] Capture current screenshots of the desktop and mobile (tablet) shells for before/after comparison.
 - [ ] Enumerate the surfaces the plan touches: shell (topbar/nav/footer), settings panels, order forms, tables/menu, reports, modals/dialogs, empty/error states, toasts.
 
 ---
@@ -196,11 +200,11 @@ Reference: design-language #audit.
 
 ## Source files this plan touches (indicative)
 
-- `ui/src/App.tsx`, `ui/src/main.tsx`, `ui/src/main.tablet.tsx` — shells
+- `ui/src/App.tsx`, `ui/src/main.tsx`, `ui/src/main.mobile.tsx` — shells
 - `ui/src/features/design/` — tokens + showcase
 - `ui/src/components/` — shared primitives (Button, Badge, Spinner, etc.)
 - `ui/src/features/*` (settings, sales, orders, tables, reports, kds, …) — per-screen adoption
-- `apps/desktop-client/`, `apps/tablet-client/` — Tauri entry/registration (commands stay per AGENTS.md)
+- `apps/desktop-tauri/`, `apps/mobile-tauri/` — Tauri entry/registration (commands stay per AGENTS.md)
 - `prototypes/design-language.html`, `prototypes/kds-prototype.html` — guideline + reference prototype (read-only here)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

@@ -145,4 +145,6 @@ recommendation. A **third** option is what the evidence supports:
 
 **Nothing here is started. No code changed.**
 
+> **Cross-link repaired 11-10-26 · docs-auditor.** The pointer above reads `docs/audits/setup/setup-wizard-audit.md`, the path this record used on its own date. The audits corpus moved into `docs/records/` on 2026-10-02 (`a0c4f7b90`, "move 14 audit reports into records/audits and repoint 11 references"); that commit repointed the references it listed but not this one, so the companion is now at `docs/records/audits/setup/setup-wizard-audit.md`. The dated sentence is left as written.
+
 > last audited 29-09-26 by docs-auditor

@@ -16,7 +16,7 @@
  * Extracted from Header.astro so it is unit-testable without executing the
  * Astro-bundled `<script>` block.
  */
-import { hasSession } from './session';
+import { getCachedHasSession, hasSession } from './session';
 
 /**
  * How long a hover-opened Solutions panel stays open after the pointer leaves.
@@ -28,20 +28,51 @@ import { hasSession } from './session';
  */
 export const HOVER_CLOSE_MS = 200;
 
-/** Point every `[data-auth-nav]` link at login or account for its locale. */
-export async function updateAuthNav(): Promise<void> {
-  const isAuth = await hasSession();
+/**
+ * Point every `[data-auth-nav]` link at login or account for its locale.
+ *
+ * Each attribute is only written when it disagrees with what is already on the
+ * element. That keeps this idempotent against a freshly swapped-in header —
+ * the router rebuilds the markup every navigation — and makes the async
+ * revalidate a no-op when the answer has not changed, so the label is never
+ * rewritten (and never re-laid-out) without cause.
+ */
+function applyAuthNav(isAuth: boolean): void {
   const loginLinks = document.querySelectorAll<HTMLAnchorElement>('[data-auth-nav]');
   loginLinks.forEach((link) => {
     const loc = link.getAttribute('data-locale') || 'en';
-    if (isAuth) {
-      link.href = `/${loc}/account`;
-      link.textContent = link.getAttribute('data-account-text') || 'Account';
-    } else {
-      link.href = `/${loc}/login`;
-      link.textContent = link.getAttribute('data-login-text') || 'Sign in';
-    }
+    const href = isAuth ? `/${loc}/account` : `/${loc}/login`;
+    const text = isAuth
+      ? link.getAttribute('data-account-text') || 'Account'
+      : link.getAttribute('data-login-text') || 'Sign in';
+    if (link.getAttribute('href') !== href) link.setAttribute('href', href);
+    if (link.textContent !== text) link.textContent = text;
   });
+}
+
+/** Resolve the session and bring the auth links in line with it. */
+export async function updateAuthNav(): Promise<void> {
+  applyAuthNav(await hasSession());
+}
+
+/**
+ * Paint the auth links from the last resolved session state, synchronously.
+ *
+ * This is the flicker fix. A client-router swap replaces the header with fresh
+ * server markup, which always ships the signed-out label; `updateAuthNav()`
+ * then waits a full `/__oz/session` round trip before correcting it, and the
+ * browser paints the wrong label in between. `astro:after-swap` runs before
+ * that paint, so applying the cached answer here puts the correct label on
+ * screen in the swap's own frame and the correction never becomes visible.
+ *
+ * Synchronous and void on purpose — an `await` here would reintroduce the gap.
+ * Does nothing until a session has resolved once, which is only the first
+ * page view: its label genuinely cannot be known before the round trip.
+ */
+export function paintCachedAuthNav(): void {
+  const cached = getCachedHasSession();
+  if (cached === null) return;
+  applyAuthNav(cached);
 }
 
 /**
@@ -209,19 +240,28 @@ export function initMobileMenuDismissal(): void {
 }
 
 /**
- * Wire the header once per page: initial resolve, SPA swap/page-load re-resolve,
+ * Wire the header once per page: initial resolve, re-resolve on every SPA swap,
  * cross-tab storage sync, close the mobile menu when a link inside it is
  * clicked, and (re)bind the Solutions disclosure for the swapped-in header.
+ *
+ * There is deliberately NO `astro:page-load` listener. `initHeaderNav()` itself
+ * covers the first page view (the script runs at execution, so an initial-load
+ * listener is a second call for the same page), and `astro:after-swap` covers
+ * every navigation. Listening to both fired `updateAuthNav()` twice per view:
+ * measured 2026-10-12, a fast `/__oz/session` cost 2 probes on first load and
+ * 1-or-2 per navigation, because the dedupe in `session.ts` only collapses
+ * CONCURRENT probes. Dropping it makes the cost a deterministic 1 without
+ * introducing any staleness window, which a short-lived cache would have.
  */
 export function initHeaderNav(): void {
   void updateAuthNav();
   initSolutionsDisclosure();
   initMobileMenuDismissal();
-  document.addEventListener('astro:page-load', () => {
-    void updateAuthNav();
-    initSolutionsDisclosure();
-  });
   document.addEventListener('astro:after-swap', () => {
+    // Order matters and must not change: paint the known answer first, in this
+    // handler's own synchronous turn, then revalidate. Awaiting before the
+    // paint is exactly what let the signed-out label show for ~160ms.
+    paintCachedAuthNav();
     void updateAuthNav();
     initSolutionsDisclosure();
   });

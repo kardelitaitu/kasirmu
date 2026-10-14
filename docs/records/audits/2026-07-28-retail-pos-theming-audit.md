@@ -270,5 +270,34 @@ This audit doc is the only deliverable for 0.0.24's theming investigation. No co
    - Theme-adaptive: POS blends with the rest of the UI; primary colour shifts per theme.
 2. Should `localStorage['oz-pos-theme-v4']` be **retired in favour of themed session** so that POS stops writing its own `retail-theme`? (yes, implicit in Step A — drop the local key entirely).
 
-> last audited 29-09-26 by docs-auditor
 
+
+---
+
+## Re-verified 2026-10-11 (docs-auditor) — claims hold; one coordinate corrected
+
+This record is a model of the class: its stamp already carries the two current-state notes and it
+is verified here rather than restated. Re-derived at HEAD, not inherited:
+
+- **P0-1 / P0-3 / P2-6 are genuinely closed.** `ui/src/features/retail/RetailPosScreen.tsx`
+  consumes the global theme via `useOptionalTheme()?.theme` (`:264`), and the dead setter and
+  private storage key are gone from the source. The six remaining `retail-theme` / `_setTheme`
+  matches under `ui/src/` are all in `ui/src/__tests__/themeRegressionRetailPosScreen.test.tsx`,
+  where they are **assertions of absence** (`expect(source).not.toContain("'retail-theme'")` at
+  `:41-42`, and the `_setTheme` guard at `:45`) — regression pins for exactly these findings, not
+  a reintroduction.
+- **P0-2 is genuinely closed.** `--color-primary-pos` and its siblings are now defined in
+  `ui/src/theme/tokens.css` (`:419-421`), which is the file the stamp names.
+- **COORDINATE CORRECTION:** the stamp says `useOptionalTheme` is called "at line 36". At HEAD the
+  **import** is at `:37` and the **call** is at `:264`; `:36` is now `useSound`. The substance
+  (the component subscribes to the global theme) is unchanged — only the number moved, on a file
+  that has grown since the reading.
+- **The stamp's two current-state notes are both still accurate:** `ui/src/frontend/themes/` no
+  longer exists (the token sheet is `ui/src/theme/tokens.css`), and the four `data-theme={theme}`
+  sites have consolidated to the root wrapper.
+
+**NOT re-measured:** the three named test suites' pass counts (`RetailPosScreen.test.tsx` 25,
+`themeRegression.test.tsx` 10, `themeRegressionRetailPosScreen.test.tsx` 4) — those are vitest runs
+with a real dependency tree, and the record states them as readings of branch `0.0.24`.
+
+> last audited 29-09-26 by docs-auditor

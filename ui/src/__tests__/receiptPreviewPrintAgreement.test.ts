@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // ── Preview vs printer: the separator/decimals contract ──────────────
 //
 // `receiptLogic.formatPrice` documents itself as mirroring the ESC/POS renderer
@@ -17,6 +28,15 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { formatPrice } from '@/features/restaurant/screens/receiptLogic';
+
+/**
+ * A path from the repo root, for citing a file this test does not own.
+ *
+ * The printer's grouping behaviour lives in Rust and is asserted there; reading it
+ * from here lets this file cite that proof instead of restating it, so a Rust-side
+ * regression fails BOTH legs rather than only the one that stopped being copied.
+ */
+const resolveTraverse = (rel: string) => path.resolve(__dirname, '../../..', rel);
 
 describe('receipt preview/print agreement (IDR)', () => {
   it('IDR is exp-0: the paper never emits a fraction, so neither should the preview', () => {
@@ -47,21 +67,48 @@ describe('receipt preview/print agreement (IDR)', () => {
     expect(formatPrice(15, false, 'KWD', 'dot', 3, false)).toBe('15.000');
   });
 
-  it('never groups thousands: the printer has no grouping at all', () => {
-    // ⚠️ RECORDED FINDING, not a pass. `showThousandsSeparator` is a second preview
-    // control the printer cannot honour: `format_money` (receipt.rs:251) delegates to
-    // `foundation::format_minor`, which emits no grouping, and `ReceiptConfig`
-    // (:98-117) has no field for one. `currency.thousands_separator` is stored
-    // (platform/core/src/settings/keys.rs:71) but read by NO formatter.
+  it('groups thousands when configured, which D6 made the printer able to do', () => {
+    // ⚠️ CORRECTED 2026-10-13 (round 39). This case was titled "never groups thousands:
+    // the printer has no grouping at all" and hardcoded printed = 'Rp 1500'. Both halves
+    // are superseded by D6:
     //
-    // Asserted as the printer's real behaviour so the divergence is stated rather than
-    // assumed absent. Changing the preview to stop grouping is a separate decision
-    // (it would also make `showThousandsSeparator` a dead toggle), so it is not taken
-    // here.
+    //   receipt.rs:193    pub grouping: ThousandSeparator
+    //   receipt.rs:351-358  group_thousands(major, config.grouping.separator())
+    //
+    // The printer's grouping is PROVEN at receipt_tests.rs:101-153 (Dot/Comma/Space,
+    // the from_setting vocabulary, and group_thousands' boundary) and this file does not
+    // restate it — a second copy is a second thing to keep true. What it asserts is that
+    // the PREVIEW agrees with the grouped form, which is this file's actual contract.
+    //
+    // What the old case recorded as a finding is still real, but it is the OTHER half:
+    // the preview's thousands toggle is resto_rcpt_thousands_sep, which no Rust reads at
+    // all, so the preview changes and the paper does not. Recorded in
+    // docs/records/audits/receipt-grouping-two-settings.md rather than here, because
+    // every resto_rcpt_* value is a UI-only preference and this file can only speak to
+    // what format_money does.
+    //
+    // The printer's ungrouped output is its DEFAULT (ThousandSeparator::None), which is
+    // why 'Rp 1500' was true — but as a default, not as an invariant. Asserting the
+    // default as the only possible output is what made the old title misleading.
     const previewed = formatPrice(1500, true, 'IDR', 'comma', 2, true);
+
+    // Reads the printer's own proof so this file cannot drift from it. If the Rust side
+    // regresses — grouping removed, a variant renamed — this fails naming the fact.
+    const receiptRs = fs.readFileSync(resolveTraverse('crates/kasirmu-hal/src/drivers/receipt.rs'), 'utf-8');
+    expect(
+      receiptRs,
+      'the printer must still apply a grouping separator — the old claim that it had ' +
+        'no grouping at all was superseded by D6',
+    ).toMatch(/config\.grouping\.separator\(\)/);
+    const receiptTests = fs.readFileSync(resolveTraverse('crates/kasirmu-hal/src/drivers/receipt_tests.rs'), 'utf-8');
+    expect(
+      receiptTests,
+      'the printer grouping must stay PROVEN by a Rust test, not asserted only from ' +
+        'here; see receipt_tests.rs',
+    ).toMatch(/group_thousands\(/);
+
+    // The preview agrees with the configured (grouped) form — the point of this file.
     expect(previewed).toBe('Rp 1.500');
-    const printed = 'Rp 1500';
-    expect(previewed).not.toBe(printed);
   });
   it('lists which receipt toggles the PRINTER can actually honour', () => {
     // ⚠️ A MEASUREMENT, not a pass/fail gate on behaviour: it states the mapping between

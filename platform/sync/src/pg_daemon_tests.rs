@@ -15,6 +15,34 @@ fn setup_db() -> DbConnection {
     Arc::new(Mutex::new(migrations::fresh_db()))
 }
 
+/// Wait for a daemon CONDITION by polling `status()`, not by sleeping a fixed
+/// multiple of the tick — the helper `daemon_tests.rs` gained in O-T05, applied here
+/// because this file was still on the old fixed 80ms/100ms start-and-stop pattern.
+///
+/// WHY NOT A FIXED SLEEP: it buys the same margin on a fast machine and a loaded one,
+/// so it is either wasteful or flaky and never tells you which. A fixed sleep also
+/// makes the SLOWEST host set the floor for every run, which is how 16.6s of stated
+/// floor accumulated in `platform/sync` (§10B).
+///
+/// Polls every 10ms with a 1s ceiling — 2x the old start allowance — and names `what`
+/// in the panic, because a timeout that only says "timed out" is the least useful
+/// failure a test can produce.
+async fn wait_for_pg_daemon<F>(daemon: &PgSyncDaemon, what: &str, mut ok: F)
+where
+    F: FnMut(PgDaemonStatus) -> bool,
+{
+    for _ in 0..100 {
+        if ok(daemon.status().await) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let status = daemon.status().await;
+    panic!(
+        "pg daemon never reached `{what}` within 1s — running={}, last_sync_at={:?}, last_error={:?}",
+        status.running, status.last_sync_at, status.last_error
+    );
+}
 fn seed_product_and_inventory(conn: &rusqlite::Connection) {
     conn.execute_batch(
             "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
@@ -678,7 +706,10 @@ async fn tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle() {
 
     let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    wait_for_pg_daemon(&daemon, "a completed first tick", |s| {
+        s.last_sync_at.is_some()
+    })
+    .await;
 
     let status = daemon.status().await;
     assert!(
@@ -691,7 +722,7 @@ async fn tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_pg_daemon(&daemon, "stopped", |s| !s.running).await;
 }
 
 /// An unreadable pull anchor must surface on `last_error`, not silently force a
@@ -715,7 +746,10 @@ async fn tick_with_an_unreadable_pull_anchor_reports_an_error() {
 
     let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    wait_for_pg_daemon(&daemon, "a completed first tick", |s| {
+        s.last_sync_at.is_some()
+    })
+    .await;
 
     let status = daemon.status().await;
     assert!(
@@ -724,7 +758,7 @@ async fn tick_with_an_unreadable_pull_anchor_reports_an_error() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_pg_daemon(&daemon, "stopped", |s| !s.running).await;
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────
@@ -749,7 +783,7 @@ async fn daemon_stops_cleanly_with_short_interval() {
     // Let it tick a few times
     tokio::time::sleep(Duration::from_millis(120)).await;
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_pg_daemon(&daemon, "stopped", |s| !s.running).await;
     assert!(!daemon.is_running().await);
 }
 
@@ -832,7 +866,10 @@ async fn daemon_status_shows_pending_count_after_tick() {
     let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
     daemon.start(db).await;
     // Wait for at least one tick
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    wait_for_pg_daemon(&daemon, "a completed first tick", |s| {
+        s.last_sync_at.is_some()
+    })
+    .await;
 
     let status = daemon.status().await;
     assert!(
@@ -844,7 +881,7 @@ async fn daemon_status_shows_pending_count_after_tick() {
     assert_eq!(status.last_pushed, 0);
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_pg_daemon(&daemon, "stopped", |s| !s.running).await;
 }
 
 /// A pg_sync setting that cannot be READ must surface as the cycle's error.
@@ -884,7 +921,10 @@ async fn a_malformed_pg_sync_setting_surfaces_as_the_cycle_error() {
 
     let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    wait_for_pg_daemon(&daemon, "a completed first tick", |s| {
+        s.last_sync_at.is_some()
+    })
+    .await;
 
     let status = daemon.status().await;
     let err = status
@@ -897,7 +937,7 @@ async fn a_malformed_pg_sync_setting_surfaces_as_the_cycle_error() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_pg_daemon(&daemon, "stopped", |s| !s.running).await;
 }
 
 // ── Concurrent daemon instances (advisory lock simulation) ──────

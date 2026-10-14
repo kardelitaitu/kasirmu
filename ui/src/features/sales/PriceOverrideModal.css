@@ -1,7 +1,7 @@
 /* ============================================================
  * PriceOverrideModal — two-step price override with PIN auth
  *
- * Step 1: enter new price in minor units
+ * Step 1: enter new price
  * Step 2: verify with manager username + PIN
  * ============================================================ */
 

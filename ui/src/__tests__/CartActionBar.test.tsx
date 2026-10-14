@@ -98,8 +98,14 @@ describe('CartActionBar', () => {
     expect(clearBtn().textContent).toBe('Clear');
     expect(payBtn().textContent).toBe('Charge');
     expect(openBillBtn().textContent).toBe('Save Tab');
-    // Clear mirrors its aria-label into title (CartActionBar.tsx:43).
-    expect(clearBtn().getAttribute('title')).toBe('Clear all items from cart');
+    // The accessible name comes from aria-label and ONLY from there. This used to
+    // assert a `title` mirroring the same string, which pinned a defect rather than
+    // a contract: a native title= renders the browser's own unlocalized tooltip on
+    // top of the app's, and nativeTooltipCompliance bans it on intrinsic elements.
+    // The duplicate was deleted 2026-10-12; assert the NAME, which is what a screen
+    // reader actually uses.
+    expect(clearBtn().getAttribute('aria-label')).toBe('Clear all items from cart');
+    expect(clearBtn().getAttribute('title')).toBeNull();
   });
 
   it('renders Update Tab when an open bill is active', () => {

@@ -626,7 +626,7 @@ export default function ShiftManagementScreen() {
                 {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
                 <label htmlFor="open-balance" className="shift-mgmt-label">
                   <Localized id="shift-open-balance-label">
-                    <span>Opening balance (minor units)</span>
+                    <span>Opening balance</span>
                   </Localized>
                 </label>
                 <Localized id="shift-open-balance-placeholder" attrs={{ placeholder: true }}>
@@ -692,7 +692,7 @@ export default function ShiftManagementScreen() {
                 {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
                 <label htmlFor="payout-amount" className="shift-mgmt-label">
                   <Localized id="shift-payout-amount-label">
-                    <span>Amount (minor units)</span>
+                    <span>Amount</span>
                   </Localized>
                 </label>
                 <Localized id="shift-payout-amount-placeholder" attrs={{ placeholder: true }}>
@@ -825,7 +825,7 @@ export default function ShiftManagementScreen() {
                 {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
                 <label htmlFor="close-balance" className="shift-mgmt-label">
                   <Localized id="shift-close-counted-label">
-                    <span>Counted cash in drawer (minor units)</span>
+                    <span>Counted cash in drawer</span>
                   </Localized>
                 </label>
                 <Localized id="shift-close-counted-placeholder" attrs={{ placeholder: true }}>

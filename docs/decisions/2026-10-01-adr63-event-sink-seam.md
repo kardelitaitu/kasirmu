@@ -57,7 +57,7 @@ delegation the trait wants. The exemption is derived from the source (the `impl`
 row, so it cannot silently widen.
 
 **D3 — The platform emit hook is exempt by paren-walking its argument list.** The desktop composition root
-installs `platform_startup::event_handlers::set_settings_emit_fn` (`platform/startup/src/event_handlers.rs:559`)
+installs `platform_startup::event_handlers::set_settings_emit_fn` (`platform/startup/src/event_handlers.rs:577`)
 with a closure over its own handle. That hook speaks a plain
 `Box<dyn Fn(&str, serde_json::Value) + Send + Sync>`, not `EventSink`, so the handle conversion at exactly
 this boundary is the hook's *installation*, not a second event path. `EVENT_SINK_HOOK_PATTERN` skips the
@@ -76,7 +76,7 @@ line numbers still match), and only then is the text masked.
 `print_sales_receipt_scoped`), `emit_orders_changed` in `apps/mobile-tauri/src/commands/kds.rs`, and the
 sync daemon's settings sink in `apps/desktop-tauri/src/commands/sync.rs` /
 `apps/desktop-tauri/src/lib.rs` — were routed through the seam as part of this decision. `emit_orders_changed`
-now emits `serde_json::Value::Null`, matching `crates/kasirmu-bridge/src/kds.rs:378`. The gate reports
+now emits `serde_json::Value::Null`, matching `crates/kasirmu-bridge/src/kds.rs:385` (the first of its four `orders-changed` emits). The gate reports
 0 tracked / 0 blocking / 0 stale with the new rule live, which is the R10 shape: no entry exists to expire.
 
 **D6 — The other three invariants are disposed of by measurement, not left as aspiration.** R10 asks for a
@@ -125,13 +125,50 @@ the failure this repository has already named — a rule that arrives with a bas
   `cargo test -p kasirmu-app --lib` 174 passed, `cargo test -p kasirmu-mobile --lib` 692 passed.
   Commit `db321e3a1`.
 
+## Re-verified 2026-10-11 (docs-auditor)
+
+Re-derived at HEAD rather than inherited. **The decision is intact and the rule is live:** `event-sink-seam`
+sits in `RULES` with `category: renderer`, `severity: P1` (`scripts/verify-architecture-boundaries.py:102`),
+its implementation is `event_sink_findings` (:829) and it is wired at :1180. `verify-architecture-boundaries.py
+--strict` exits 0 with **0 tracked / 0 blocking / 0 stale**, and the exemption walkers D2/D3 describe are
+present. The four seam trait coordinates are EXACT: `ctx.rs:57` (`pub trait EventSink`), `ctx.rs:96`
+(`BridgeCtx::emitter`), `authz.rs:31` (`struct TauriEventSink`), and the D5 sites carry no raw-handle
+emit — `apps/mobile-tauri/src/commands/{hardware,kds}.rs` and `apps/desktop-tauri/src/commands/sync.rs` all
+return NONE for `app.emit(`/`app_handle.emit(`/`handle.emit(`. The eight remaining raw emits in
+`apps/desktop-tauri/src/lib.rs` are correctly handled by this decision's own two exemptions: :294 sits inside
+the `set_settings_emit_fn` hook closure (D3), and :1179-:1239 are the `lan_server` event FORWARDING arms,
+which re-broadcast an event the shell already received rather than opening a second broadcast path.
+
+**Three dated readings have moved, and none is a defect** (each was true on its date; recorded rather than
+rewritten):
+- **D3's coordinate drifted in a grown file.** `set_settings_emit_fn` is at `event_handlers.rs:577`, not
+  `:559` (the fn body is unchanged). The `EVENT_SINK_HOOK_PATTERN` exemption is keyed to the hook, not to
+  the line, so the rule's behaviour is unaffected.
+- **D5's twin coordinate drifted the same way.** The matching emit is `kasirmu-bridge/src/kds.rs:385`
+  (`sink.emit("kds:orders-changed", Value::Null)`, the first of four at :385/:419/:476/:644), not `:378`
+  — which today is a `store db lock` error-map line.
+- **D6's #1 count has moved in the FAVOURABLE direction again.** The tier is now **94 distinct** `pub struct
+  *Dto` declarations / 109 total occurrences (from 101 distinct on 2026-10-04), and the two structural
+  figures are still exact: **0** `.slint` files and **2** shells carrying a `src/lib.rs`. D6's *predicate*
+  — presentation only when the field's TYPE is a renderer type — is what makes this a convention rather than
+  a gate, and that reasoning is unaffected by the count.
+- **D5's population line reads 297** shell `.rs` files scanned for the event seam at HEAD, against the
+  `286` quoted in Verification. Ordinary growth; the gate still reports zero.
+
+**D4's lifetime analysis is confirmed load-bearing, not hypothetical:** `mask_comments_and_strings` is not
+lifetime-aware, and `neutralize_lifetimes` blanks each lifetime to equal-width spaces so reported line
+numbers stay offset-correct — both functions are present in the file D4 names.
+
+**NOT re-measured:** whether `cargo check`/`clippy`/`cargo test` pass on a real toolchain today (this
+checkout cannot link Rust), and the runtime behaviour of the seam.
+
 ## References
 
 - `scripts/verify-architecture-boundaries.py` — `RULES`, `event_sink_findings`,
   `exempt_event_impl_lines`, `neutralize_lifetimes`, `EVENT_SINK_HOOK_PATTERN`
 - `crates/kasirmu-bridge/src/ctx.rs` — `trait EventSink` (:57), `BridgeCtx::emitter` (:96)
 - `apps/desktop-tauri/src/commands/authz.rs` — `struct TauriEventSink` (:31)
-- `platform/startup/src/event_handlers.rs` — `set_settings_emit_fn` (:559)
+- `platform/startup/src/event_handlers.rs` — `set_settings_emit_fn` (:577)
 - `docs/plans/_active/notes.md:1558` — the R10 ruling; `:1560-1565` — the census addendum
   (the disposition D6 re-measures), `:1573` — the ten-item disposal table
 - ADR-61 — the tier/named-rule precedent; ADR-62 — the module seam taxonomy; ADR #49 / #53 — the headless

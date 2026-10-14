@@ -119,7 +119,7 @@ const mockPromotion = (p: Partial<MockPromotion> & { id: string; name: string })
 const MOCK_PROMOTIONS: MockPromotion[] = [
   mockPromotion({ id: 'promo-1', name: 'Buy 1 Get 1', description: 'Free croissant with any latte', promo_type: 'buy_x_get_y', trigger_sku: 'LATTE', reward_sku: 'CROISS', min_qty: 1, reward_qty: 1 }),
   mockPromotion({ id: 'promo-2', name: 'Happy Hour 15%', description: '15% off the whole order', promo_type: 'percentage', value_minor: 15 }),
-  mockPromotion({ id: 'promo-3', name: 'VIP 5000 Off', description: '5000 minor units off', promo_type: 'fixed_amount', value_minor: 5000, min_order_minor: 20000 }),
+  mockPromotion({ id: 'promo-3', name: 'VIP 5000 Off', description: '5000 off', promo_type: 'fixed_amount', value_minor: 5000, min_order_minor: 20000 }),
 ];
 
 /**
@@ -307,9 +307,24 @@ interface MockSaleDetails extends Omit<MockCompletedSale, 'fakturPajak'> {
 function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<string, MockSaleDetails> } {
   const createdAt = new Date(Date.now() - 3600000).toISOString();
   // Pre-seeded sale so sales history always has at least one row.
+  //
+  // ⚠️ The prices and the currency are READ FROM MOCK_PRODUCTS, not written as
+  // literals. This fixture used to hardcode 'USD' with 100x-small values while
+  // the catalogue's own LATTE/CROISS are IDR — so Sales History rendered
+  // "\$ 12,502" on an Indonesian rupiah POS, and disagreed with the menu about
+  // what a latte costs. Deriving both keeps them tied together in either
+  // direction; pinned by __tests__/dev-mock-seed-sale-currency.test.ts.
+  const priceOf = (sku: string) =>
+    MOCK_PRODUCTS.find((p) => p.sku === sku)?.price ?? { minor_units: 0, currency: 'IDR' };
+  const latte = priceOf('LATTE');
+  const croissant = priceOf('CROISS');
+  const currency = latte.currency;
+  // 1 latte + 2 croissants, the lines listed below.
+  const subtotalMinor = latte.minor_units * 1 + croissant.minor_units * 2;
+
   const seed: MockCompletedSale = {
     id: 'seed-sale-001',
-    total: { minor_units: 1250, currency: 'USD' },
+    total: { minor_units: subtotalMinor, currency },
     lineCount: 2,
     status: 'Completed',
     paymentMethod: 'cash',
@@ -322,13 +337,14 @@ function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
     details: {
       'seed-sale-001': {
         ...seedDetail,
-        subtotal: { minor_units: 1250, currency: 'USD' },
-        taxTotal: { minor_units: 0, currency: 'USD' },
-        tenderedMinor: 2000,
+        subtotal: { minor_units: subtotalMinor, currency },
+        taxTotal: { minor_units: 0, currency },
+        // Tendered over the total, so the receipt's change line is non-zero.
+        tenderedMinor: subtotalMinor + Math.round(subtotalMinor * 0.1),
         fakturPajak: null,
         lines: [
-          { id: 'seed-line-1', sku: 'LATTE', name: 'Caffè Latte', qty: 1, unit_price: { minor_units: 450, currency: 'USD' }, total_minor: 450, tax_amount: null, tax_rate_id: null },
-          { id: 'seed-line-2', sku: 'CROISS', name: 'Butter Croissant', qty: 2, unit_price: { minor_units: 320, currency: 'USD' }, total_minor: 640, tax_amount: null, tax_rate_id: null },
+          { id: 'seed-line-1', sku: 'LATTE', name: 'Caffè Latte', qty: 1, unit_price: latte, total_minor: latte.minor_units * 1, tax_amount: null, tax_rate_id: null },
+          { id: 'seed-line-2', sku: 'CROISS', name: 'Butter Croissant', qty: 2, unit_price: croissant, total_minor: croissant.minor_units * 2, tax_amount: null, tax_rate_id: null },
         ],
       },
     },
@@ -340,8 +356,91 @@ function loadMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
 const mockSalesStore = loadMockSalesStore();
 const completedSales: MockCompletedSale[] = mockSalesStore.sales;
 const saleDetails: Record<string, MockSaleDetails> = mockSalesStore.details;
+// `refunds` postdates the other two keys, so a store persisted by an older
+// build has no such property. `?? []` keeps those stores loading rather than
+// handing back undefined for every refund read.
+const mockRefunds: MockRefund[] =
+  (mockSalesStore as { refunds?: MockRefund[] }).refunds ?? [];
 function saveMockSales(): void {
-  writeSlice(MOCK_SALES_KEY, { sales: completedSales, details: saleDetails });
+  writeSlice(MOCK_SALES_KEY, { sales: completedSales, details: saleDetails, refunds: mockRefunds });
+}
+
+// ── Refunds (persisted so a refund is listable after it is processed) ──
+//
+// process_refund used to mint a refundId and DISCARD it, while list_refunds
+// answered `[]` unconditionally — so a refund appeared to succeed and then
+// vanished, and Sales History showed no refunds for any sale. Same defect shape
+// as the KDS create stub fixed in 0e2ddc7ac: a stateful command whose read-back
+// lied about what the command did.
+//
+// Kept in the sales store rather than a new key: a refund belongs to a sale and
+// is read back per sale, so colocating keeps one write path (saveMockSales) and
+// one load path for both.
+type MockRefundLine = {
+  id: string;
+  refundId: string;
+  saleLineId: string;
+  sku: string;
+  qty: number;
+  unitPrice: { minor_units: number; currency: string };
+  lineTotal: { minor_units: number; currency: string };
+};
+type MockRefund = {
+  id: string;
+  saleId: string;
+  total: { minor_units: number; currency: string };
+  reason: string;
+  note: string;
+  processedBy: string;
+  createdAt: string;
+  lines: MockRefundLine[];
+};
+
+/** Record a refund and return the id/total the command contract promises. */
+function recordMockRefund(a: {
+  saleId?: string;
+  reason?: string;
+  note?: string | null;
+  userId?: string;
+  lines?: Array<{ sku?: string; qty?: number; lineTotalMinor?: number; currency?: string }>;
+}): { refundId: string; totalMinor: number } {
+  const lines = a.lines ?? [];
+  const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
+  const refundId = `refund-${Date.now()}`;
+  const currency = lines[0]?.currency ?? 'IDR';
+  const now = new Date().toISOString();
+  mockRefunds.push({
+    id: refundId,
+    saleId: a.saleId ?? '',
+    total: { minor_units: totalMinor, currency },
+    reason: a.reason ?? '',
+    note: a.note ?? '',
+    processedBy: a.userId ?? 'admin-1',
+    createdAt: now,
+    lines: lines.map((l, i) => ({
+      id: `${refundId}-line-${i}`,
+      refundId,
+      saleLineId: '',
+      sku: l.sku ?? '',
+      qty: l.qty ?? 1,
+      unitPrice: { minor_units: l.lineTotalMinor ?? 0, currency: l.currency ?? currency },
+      lineTotal: { minor_units: l.lineTotalMinor ?? 0, currency: l.currency ?? currency },
+    })),
+  });
+  saveMockSales();
+  return { refundId, totalMinor };
+}
+
+/**
+ * List a sale's persisted refunds. `saleId` arrives the way the other scoped
+ * list handlers read theirs (flat, or inside an `args` envelope); an absent
+ * saleId returns every refund rather than none, so a no-arg call is a listing
+ * rather than a silent empty answer.
+ */
+function listMockRefunds(args: unknown): MockRefund[] {
+  const raw = (args as { args?: { saleId?: string } })?.args ?? (args as { saleId?: string });
+  const saleId = raw?.saleId;
+  return saleId ? mockRefunds.filter((r) => r.saleId === saleId) : mockRefunds.slice();
 }
 // ═══════════════════════════════════════════════════════════════════
 // HANDLER MAP
@@ -643,23 +742,33 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     // args?.['args'] ?? args, so the envelope is already unwrapped here. The
     // helper's own '?? {}' tail preserves the old third fallback exactly, so a
     // no-argument call still yields an empty object rather than undefined.
-    const a = mockHandlerPayload<{ lines?: Array<{ lineTotalMinor: number }> }>(args);
-    const lines = a.lines ?? [];
-    const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
-    return { refundId: `refund-${Date.now()}`, totalMinor };
+    const a = mockHandlerPayload<{
+      saleId?: string;
+      reason?: string;
+      note?: string | null;
+      userId?: string;
+      lines?: Array<{ sku?: string; qty?: number; lineTotalMinor?: number; currency?: string }>;
+    }>(args);
+    return recordMockRefund(a);
   },
   'process_refund_scoped': (args) => {
-    // mockHandlerPayload rather than a nested read: invoke() hands a handler
-    // args?.['args'] ?? args, so the envelope is already unwrapped here. The
-    // helper's own '?? {}' tail preserves the old third fallback exactly, so a
-    // no-argument call still yields an empty object rather than undefined.
-    const a = mockHandlerPayload<{ lines?: Array<{ lineTotalMinor: number }> }>(args);
-    const lines = a.lines ?? [];
-    const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
-    return { refundId: `refund-${Date.now()}`, totalMinor };
+    // Same handler body as the unscoped twin: the scoped command reads the
+    // userId from the session rather than from args, so the only difference is
+    // which key the caller used.
+    const a = mockHandlerPayload<{
+      saleId?: string;
+      reason?: string;
+      note?: string | null;
+      userId?: string;
+      lines?: Array<{ sku?: string; qty?: number; lineTotalMinor?: number; currency?: string }>;
+    }>(args);
+    return recordMockRefund(a);
   },
-  'list_refunds': () => [],
-  'list_refunds_scoped': () => [],
+  // `saleId` is part of the real command's arguments (api/sales.ts:838), and the
+  // screen passes it — a sale's refunds, not every refund in the store. Read it
+  // the same way the other scoped list handlers read theirs.
+  'list_refunds': (args) => listMockRefunds(args),
+  'list_refunds_scoped': (args) => listMockRefunds(args),
 
   'finalize_sale': () => null,
   'void_pending_sale': () => null,

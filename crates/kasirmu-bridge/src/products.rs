@@ -34,7 +34,10 @@ use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
 pub mod dto;
-pub use dto::{MoneyDto, ProductDto, ProductImageDto, SerialTrackRow};
+pub use dto::{
+    CatalogItemDto, MoneyDto, ProductDto, ProductImageDto, RecipeIngredientInputDto, RecipeItemDto,
+    RestaurantMenuItemDto, RetailProductDto, SerialTrackRow, ServiceItemDto, SetRecipeScopedArgs,
+};
 
 /// Business logic for listing products over a locked store connection.
 ///
@@ -67,6 +70,7 @@ fn map_products_to_dtos(
                 .to_owned();
             let sku = pwd.product.sku.to_string();
             let tax_rate_ids = tax_rates_by_sku.get(&sku).cloned().unwrap_or_default();
+            let in_stock = pwd.is_in_stock();
             ProductDto {
                 id: pwd.product.id.clone(),
                 sku,
@@ -77,7 +81,7 @@ fn map_products_to_dtos(
                     currency: cur_str,
                 },
                 barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-                in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
+                in_stock,
                 stock_qty: pwd.stock_qty,
                 created_at: pwd.product.created_at,
                 price_updated_at: pwd.product.price_updated_at,
@@ -151,6 +155,7 @@ fn map_pwd_to_dto(
         let cur_str = std::str::from_utf8(&pwd.product.price.currency.0)
             .unwrap_or("USD")
             .to_owned();
+        let in_stock = pwd.is_in_stock();
         ProductDto {
             id: pwd.product.id.clone(),
             sku: pwd.product.sku.to_string(),
@@ -161,7 +166,7 @@ fn map_pwd_to_dto(
                 currency: cur_str,
             },
             barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-            in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
+            in_stock,
             stock_qty: pwd.stock_qty,
             tax_rate_ids,
             product_type: pwd.product.product_type.as_str().to_owned(),
@@ -880,6 +885,149 @@ pub async fn delete_scoped(
 
     tracing::info!(sku = %args.sku, "product deleted (scoped)");
     Ok(())
+}
+
+/// Look up recipe ingredients for a composite product with details, store-scoped.
+///
+/// Requires [`permissions::PRODUCTS_READ`].
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
+/// or [`BridgeError::Core`].
+pub async fn get_recipe_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    parent_product_id: &str,
+) -> Result<Vec<RecipeItemDto>, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_READ)
+        .await?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    let details = {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        store.get_recipe_details(parent_product_id)?
+    };
+
+    Ok(details
+        .into_iter()
+        .map(|d| RecipeItemDto {
+            id: d.id,
+            parent_product_id: d.parent_product_id,
+            ingredient_product_id: d.ingredient_product_id,
+            ingredient_sku: d.ingredient_sku,
+            ingredient_name: d.ingredient_name,
+            quantity_required: d.quantity_required,
+            unit: d.unit,
+            cost_minor: d.cost_minor,
+        })
+        .collect())
+}
+
+/// Set or update the recipe for a composite product, store-scoped.
+///
+/// Requires [`permissions::PRODUCTS_UPDATE`]. Atomically replaces existing
+/// recipe items with the supplied ingredients list in a single transaction.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
+/// or [`BridgeError::Core`].
+pub async fn set_recipe_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: &SetRecipeScopedArgs,
+) -> Result<Vec<RecipeItemDto>, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_UPDATE)
+        .await?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    let inputs: Vec<kasirmu_core::recipe::RecipeIngredientInput> = args
+        .ingredients
+        .iter()
+        .map(|i| kasirmu_core::recipe::RecipeIngredientInput {
+            ingredient_product_id: i.ingredient_product_id.clone(),
+            quantity_required: i.quantity_required,
+            unit: i.unit.clone(),
+        })
+        .collect();
+
+    let details = {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        store.set_recipe(&args.parent_product_id, &inputs)?
+    };
+
+    tracing::info!(
+        parent_product_id = %args.parent_product_id,
+        ingredient_count = details.len(),
+        "recipe updated (scoped)"
+    );
+
+    Ok(details
+        .into_iter()
+        .map(|d| RecipeItemDto {
+            id: d.id,
+            parent_product_id: d.parent_product_id,
+            ingredient_product_id: d.ingredient_product_id,
+            ingredient_sku: d.ingredient_sku,
+            ingredient_name: d.ingredient_name,
+            quantity_required: d.quantity_required,
+            unit: d.unit,
+            cost_minor: d.cost_minor,
+        })
+        .collect())
+}
+
+/// Delete the recipe for a composite product, store-scoped.
+///
+/// Requires [`permissions::PRODUCTS_UPDATE`].
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`], [`BridgeError::PermissionDenied`],
+/// or [`BridgeError::Core`].
+pub async fn delete_recipe_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    parent_product_id: &str,
+) -> Result<usize, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_UPDATE)
+        .await?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    let count = {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        store.delete_recipe(parent_product_id)?
+    };
+
+    tracing::info!(
+        parent_product_id = %parent_product_id,
+        deleted_count = count,
+        "recipe deleted (scoped)"
+    );
+
+    Ok(count)
 }
 
 #[cfg(test)]

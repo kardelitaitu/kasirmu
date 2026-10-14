@@ -170,3 +170,36 @@ So registering this handler is *unimplemented future work*, not a live path.
 2. **Fix plan §9.3 table rows 569–570** so the verdict column reflects §3/§4 above.
 3. **Feed §11.3 (handler classification gate).** The `handler_type` metadata the gate will require is exactly the §3 "Class" column; no production handler lacks a classification.
 4. **Stale diagram.** Optionally annotate `docs/architecture/MODULAR_APP_PLAN.md:77` (already superseded, body left verbatim by policy).
+
+
+---
+
+## Re-measured 2026-10-11 (docs-auditor)
+
+This census was **verified against HEAD** and its substance holds: `InventoryStockHandler` still appears
+**nowhere under `platform/`** (0 hits) and only in its own definition plus `modules/inventory/src/handlers_tests.rs`
+— so the §2 correction ("no production code path ever subscribes it") is exactly right, and `SaleCompletedReporter`
+is still absent from every production subscription. All 15 source paths this census cites resolve.
+
+**Two coordinates have drifted** on grown files (the census measured an earlier revision; §2 and §4 read
+the same structure, just further down):
+
+| Cited | Actual at HEAD |
+|---|---|
+| `platform/startup/src/lib.rs:86` (`init_module_system`) | `:109` |
+| `platform/startup/src/lib.rs:101` (first `k.register`) | `:124` |
+| `crates/kasirmu-core/src/db/sales_lifecycle.rs:152` (`complete_sale_with_resolved_shortfalls`) | `:183` |
+
+`crates/kasirmu-core/src/db/recipes.rs:25` (`get_recipe_ingredients`) and
+`platform/startup/src/event_handlers.rs:44` (`SaleCompletedReporter`'s siblings) are still line-exact.
+
+**One §6 action item is now OUT OF DATE — the diagram it asks to annotate has already been annotated.**
+§4.1 and §6 item 4 say `docs/architecture/MODULAR_APP_PLAN.md:77` still draws
+`LocalBus -->|Subscribed: SaleCompletedReporter|`. Three things changed: the file moved to
+`docs/records/superseded/MODULAR_APP_PLAN.md`, the diagram line is now `:84`, and it already carries an
+inline correction on the following line — `%% (never subscribed in production); the BOM deduction runs on
+the sale path.` — which is precisely the annotation §6 asked for. That item can be closed.
+
+**No stamp or footer is added here**: 8 of the 23 files in `docs/records/superseded/` carry none, and this
+one is a superseded inventory rather than a live claim document. This note is the dated record, in the
+corpus's own convention.

@@ -380,6 +380,33 @@ describe('usePosState', () => {
       expect(result.current.lines[2]!.note).toBeUndefined();
     });
 
+    it('does not merge lines with different courseId', () => {
+      const { result } = renderHook(() => usePosState());
+
+      act(() => { result.current.addProduct(makeProduct(), 1, { courseId: 'appetizer' }); });
+      act(() => { result.current.addProduct(makeProduct(), 1, { courseId: 'main' }); });
+
+      expect(result.current.lines).toHaveLength(2);
+      expect(result.current.lines[0]!.courseId).toBe('appetizer');
+      expect(result.current.lines[1]!.courseId).toBe('main');
+    });
+
+    it('does not merge lines with different coursingStatus', () => {
+      const { result } = renderHook(() => usePosState());
+
+      act(() => { result.current.addProduct(makeProduct(), 1, { courseId: 'appetizer' }); });
+      // Fire the first course
+      act(() => { result.current.fireCourse('appetizer'); });
+      expect(result.current.lines[0]!.coursingStatus).toBe('fired');
+
+      // Add another item of the same course on hold
+      act(() => { result.current.addProduct(makeProduct(), 1, { courseId: 'appetizer' }); });
+
+      expect(result.current.lines).toHaveLength(2);
+      expect(result.current.lines[0]!.coursingStatus).toBe('fired');
+      expect(result.current.lines[1]!.coursingStatus).toBe('hold');
+    });
+
     it('merges lines when notes match', () => {
       const { result } = renderHook(() => usePosState());
 

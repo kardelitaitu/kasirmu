@@ -5,6 +5,11 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
+import salesIdFtl from '@/locales/sales.id.ftl?raw';
+import tablesIdFtl from '@/locales/tables.id.ftl?raw';
+import kdsIdFtl from '@/locales/kds.id.ftl?raw';
+import settingsIdFtl from '@/locales/settings.id.ftl?raw';
+import { withFluentLocale } from '@/i18n/test-utils';
 import {
   CartPanel,
   type CartPanelProps,
@@ -116,6 +121,70 @@ function renderPanel(overrides: Partial<CartPanelProps> = {}) {
   );
   return { ...result, props, panel: screen.getByRole('region', { name: 'Cart' }) };
 }
+
+/**
+ * Render the panel under INDONESIAN.
+ *
+ * Needed because the English bundle resolves the order-type keys to the same
+ * words the source used to hardcode ("Dine In"), so an English assertion cannot
+ * tell a localized label from a literal. Indonesian differs, so a regression
+ * fails here. Same technique as the receipt-logo sentinel case.
+ */
+function renderPanelId(overrides: Partial<CartPanelProps> = {}) {
+  const props = makeCartPanelProps(overrides);
+  const result = render(
+    withFluentLocale('id', <CartPanel {...props} />, salesIdFtl, tablesIdFtl, kdsIdFtl, settingsIdFtl),
+  );
+  return { ...result, props };
+}
+
+describe('CartPanel — order type vs the table field', () => {
+  // ⚠️ Rounds 40-42 fixed three READERS of `tableNumber` (the claim, the release,
+  // the open-bill payload) that ignored the order type. Those guards stop the
+  // damage, but the FIELD itself is still offered and still honoured for DISPLAY
+  // on every order type: the panel renders the bare table name in the active-tab
+  // banner (CartPanel.tsx:669) with no orderType check. So a cashier who switches
+  // Dine-In -> Takeaway keeps a Table badge on an order that has no table.
+  //
+  // This pins the DISPLAY half, which the earlier fixes did not touch.
+  const restaurant = { activeWorkspace: 'restaurant-pos' as const };
+
+  it('shows a table name for a dine-in order', () => {
+    const { panel } = renderPanel({
+      ...restaurant,
+      lines: [makeLine('Espresso')],
+      tableNumber: 'Table 12',
+      orderType: 'dine_in',
+      activeOpenBillId: 'tab-1',
+    });
+    expect(
+      panel.querySelector('.pos-cart-active-tab-text')?.textContent,
+      'the active-tab banner names the table on a dine-in order',
+    ).toContain('Table 12');
+  });
+
+  it('does NOT show a table name for a takeaway or delivery order', () => {
+    for (const orderType of ['takeaway', 'delivery'] as const) {
+      const { panel, unmount } = renderPanel({
+        ...restaurant,
+        lines: [makeLine('Espresso')],
+        tableNumber: 'Table 12',
+        orderType,
+        activeOpenBillId: 'tab-1',
+      });
+      const text = panel.querySelector('.pos-cart-active-tab-text')?.textContent ?? '';
+      expect(
+        text.includes('Table 12'),
+        'a ' +
+          orderType +
+          ' order has no table, so the banner must not name one — a stray value ' +
+          'in the Table field would otherwise read as this order\'s table. banner was: ' +
+          text,
+      ).toBe(false);
+      unmount();
+    }
+  });
+});
 
 describe('CartPanel (smoke)', () => {
   it('renders the resizable cart as a named region carrying the header, width, and delegated key handler', () => {
@@ -390,7 +459,7 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
       isManager: true, // the role says manager...
       canOverridePrice: false, // ...the grant says no
     });
-    expect(screen.queryByText('Override')).toBeNull();
+    expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
   });
 
   it('shows the override for a non-manager role that HOLDS the grant', () => {
@@ -401,15 +470,176 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
       isManager: false,
       canOverridePrice: true,
     });
-    expect(screen.getByText('Override')).toBeInTheDocument();
+    expect(screen.getByTestId('cart-line-override-btn')).toBeInTheDocument();
   });
 
   it('falls back to isManager when the host supplies no permission answer', () => {
     // `canOverridePrice` is optional precisely so this stays true.
     const asManager = renderPanel({ lines: [makeLine('Kopi')], isManager: true });
-    expect(within(asManager.panel).getByText('Override')).toBeInTheDocument();
+    expect(within(asManager.panel).getByTestId('cart-line-override-btn')).toBeInTheDocument();
     asManager.unmount();
     renderPanel({ lines: [makeLine('Kopi')], isManager: false });
-    expect(screen.queryByText('Override')).toBeNull();
+    expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
+  });
+
+  // ── Order-type labels come from the bundle, not literals (F10) ──────
+  //
+  // The three labels were hardcoded in the ORDER_TYPES array, so the restaurant
+  // POS — which renders this shared panel — showed "Dine In / Takeaway /
+  // Delivery" in every locale. The Indonesian render is the discriminating one:
+  // English resolves the keys to the same words, so only a non-English bundle
+  // can tell a localized label from a literal.
+  it('renders the order-type labels from the bundle under a NON-English locale (F10)', () => {
+    renderPanelId({ orderTypePromptEnabled: true, setOrderType: noop, orderType: 'dine_in' });
+
+    // Read the LABEL span, not the button: the button also carries its icon,
+    // which is decorative and locale-independent.
+    const ids = ['dine_in', 'takeaway', 'delivery'];
+    const labels = ids.map((id) => {
+      const btn = screen.getByTestId('pos-order-type-' + id);
+      return btn.querySelector('.pos-cart-order-type-label')?.textContent ?? '';
+    });
+    expect(labels).toEqual(['Makan di Tempat', 'Bawa Pulang', 'Antar']);
+    // And explicitly NOT the English literals that used to be hardcoded.
+    for (const english of ['Dine In', 'Takeaway', 'Delivery']) {
+      expect(screen.queryByText(english)).toBeNull();
+    }
+  });
+
+  it('renders the guest-count placeholder from the bundle, not a literal', () => {
+    // The placeholder was hardcoded 'Pax' while the aria-label already read the
+    // bundle's `pos-cart-guest-count-label` ("Guests") — two names for one field,
+    // and the visible one ignored the locale entirely.
+    renderPanelId({ ...withFields(), guestCountEnabled: true });
+
+    const guest = screen.getByTestId('pos-cart-guest-input') as HTMLInputElement;
+    expect(guest.placeholder).toBe('Tamu');
+    expect(guest.placeholder).not.toBe('Pax');
+  });
+
+  it('renders Print Bill button when tableNumber and lines exist, invoking handlePrintBill', () => {
+    const handlePrintBill = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng')],
+      subtotal: SUBTOTAL,
+      tableNumber: 'Table 4',
+      printBillEnabled: true,
+      handlePrintBill,
+    });
+
+    const printBtn = screen.getByTestId('pos-cart-print-bill-btn');
+    expect(printBtn).toBeDefined();
+    fireEvent.click(printBtn);
+    expect(handlePrintBill).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders Split Bill button when lines exist, invoking setShowSplitBillModal', () => {
+    const setShowSplitBillModal = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      splitBillEnabled: true,
+      setShowSplitBillModal,
+    });
+
+    const splitBtn = screen.getByTestId('pos-cart-split-bill-btn');
+    expect(splitBtn).toBeDefined();
+    fireEvent.click(splitBtn);
+    expect(setShowSplitBillModal).toHaveBeenCalledWith(true);
+  });
+
+  it('renders SplitBillModal when showSplitBillModal is true', () => {
+    const handleConfirmSplitBill = vi.fn();
+    const setShowSplitBillModal = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      showSplitBillModal: true,
+      setShowSplitBillModal,
+      handleConfirmSplitBill,
+      tableNumber: 'Table 10',
+    });
+
+    const modal = screen.getByTestId('pos-split-bill-modal');
+    expect(modal).toBeDefined();
+    expect(within(modal).getByText('Nasi Goreng')).toBeDefined();
+    expect(within(modal).getByText('Es Teh')).toBeDefined();
+  });
+
+  it('hides the split modal table header on a NON-dine-in order', () => {
+    // The THIRTEENTH consumer of the stray-table rule. The modal header renders
+    // `(tableNumber)` from the field alone, and the dialog is reachable on any
+    // order type (CartActionBar gates its button on splitBillEnabled + hasLines
+    // only), so a takeaway with a stray number announced a table on the split
+    // dialog. Hidden here rather than left to the caller, because the modal is the
+    // only place that knows what it is displaying.
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      showSplitBillModal: true,
+      setShowSplitBillModal: vi.fn(),
+      handleConfirmSplitBill: vi.fn(),
+      tableNumber: '99',
+      orderType: 'takeaway',
+    });
+
+    const modal = screen.getByTestId('pos-split-bill-modal');
+    expect(
+      within(modal).queryByText('(99)'),
+      'a takeaway must not announce a table on the split dialog; it has none.',
+    ).toBeNull();
+  });
+
+  it('still shows the split modal table header on a dine-in order', () => {
+    renderPanel({
+      lines: [makeLine('Nasi Goreng'), makeLine('Es Teh')],
+      subtotal: SUBTOTAL,
+      showSplitBillModal: true,
+      setShowSplitBillModal: vi.fn(),
+      handleConfirmSplitBill: vi.fn(),
+      tableNumber: '7',
+      orderType: 'dine_in',
+    });
+    const modal = screen.getByTestId('pos-split-bill-modal');
+    expect(within(modal).getByText('(7)')).toBeDefined();
+  });
+
+  it('renders Send to Kitchen button when hasUndispatchedItems is true and invokes handleSendToKitchen', () => {
+    const handleSendToKitchen = vi.fn();
+    renderPanel({
+      lines: [makeLine('Nasi Goreng')],
+      tableNumber: 'Table 4',
+      subtotal: SUBTOTAL,
+      hasUndispatchedItems: true,
+      handleSendToKitchen,
+    });
+
+    const sendKitchenBtn = screen.getByTestId('pos-cart-send-kitchen-btn');
+    expect(sendKitchenBtn).toBeDefined();
+    fireEvent.click(sendKitchenBtn);
+    expect(handleSendToKitchen).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Send to Kitchen button when hasUndispatchedItems is false', () => {
+    renderPanel({
+      lines: [makeLine('Nasi Goreng')],
+      subtotal: SUBTOTAL,
+      hasUndispatchedItems: false,
+    });
+
+    expect(screen.queryByTestId('pos-cart-send-kitchen-btn')).toBeNull();
+  });
+
+  it('renders line status badges: New when undispatched and Sent when dispatched', () => {
+    const newLine = { ...makeLine('Ayam Bakar'), qty: 2, dispatchedQty: 0 };
+    const sentLine = { ...makeLine('Es Teh'), qty: 1, dispatchedQty: 1 };
+    renderPanel({
+      lines: [newLine, sentLine],
+      subtotal: SUBTOTAL,
+    });
+
+    // In English locale, pos-line-status-new -> "New", pos-line-status-sent -> "Sent"
+    expect(screen.getByText('New')).toBeDefined();
+    expect(screen.getByText('Sent')).toBeDefined();
   });
 });

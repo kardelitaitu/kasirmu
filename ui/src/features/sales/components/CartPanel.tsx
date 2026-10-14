@@ -20,11 +20,75 @@ import { CartLineItem } from './CartLineItem';
 import { CourseSelectorBar } from './CourseSelectorBar';
 import { CartFooterTotals } from './CartFooterTotals';
 import { CartActionBar } from './CartActionBar';
+import { SplitBillModal } from './SplitBillModal';
+import { useTabLeases } from '@/features/sales/hooks/useTabLeases';
 
+/**
+ * The order-type slider's glyph, as an inline MONOCHROME svg.
+ *
+ * These were emoji (utensils / bag / scooter). Emoji are not monochrome and not
+ * themeable: each platform renders its own full-colour artwork, so the glyph read
+ * as a different weight from the label beside it, ignored `currentColor` (an
+ * inactive row could not dim it), and changed shape between Windows, macOS and
+ * Android. Stroked paths inherit the text colour instead, so active/inactive and
+ * hover states apply to the icon exactly as they do to the label — which is what
+ * every other icon in this codebase does (see VoidOrdersScreen, SalesHistoryScreen).
+ *
+ * Drawn on the shared 24x24 grid with strokeWidth 2, matching those call sites.
+ */
+function OrderTypeIcon({ id }: { id: (typeof ORDER_TYPES)[number]['id'] }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {id === 'dine_in' && (
+        // Fork and knife: a seated meal served on a plate.
+        <>
+          <path d="M4 3v7a2 2 0 0 0 2 2h1v9" />
+          <path d="M4 3v5M7 3v5" />
+          <path d="M17 3c-1.7 0-3 1.3-3 3v5a2 2 0 0 0 2 2h1v9" />
+          <path d="M17 3v10" />
+        </>
+      )}
+      {id === 'takeaway' && (
+        // A bag with handles: food carried away.
+        <>
+          <path d="M5 8h14l-1 12H6L5 8Z" />
+          <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+        </>
+      )}
+      {id === 'delivery' && (
+        // A scooter: food ridden to the address.
+        <>
+          <circle cx="6" cy="18" r="2.5" />
+          <circle cx="18" cy="18" r="2.5" />
+          <path d="M8.5 18h7M15 4h2l2 14" />
+          <path d="M13 4H9l4 8h5" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+// Each option carries its Fluent KEY rather than a label: the restaurant POS
+// renders these on the shared cart panel, so hardcoding them left the order-type
+// selector in English under every other locale. Resolved at render, below.
+//
+// `icon` is gone: the glyph is now <OrderTypeIcon> below, keyed by `id`, so the
+// option list stays pure data and the artwork cannot be duplicated per entry.
 const ORDER_TYPES = [
-  { id: 'dine_in', label: 'Dine In', icon: '🍽️' },
-  { id: 'takeaway', label: 'Takeaway', icon: '🛍️' },
-  { id: 'delivery', label: 'Delivery', icon: '🛵' },
+  { id: 'dine_in', labelKey: 'pos-cart-order-type-dine-in' },
+  { id: 'takeaway', labelKey: 'pos-cart-order-type-takeaway' },
+  { id: 'delivery', labelKey: 'pos-cart-order-type-delivery' },
 ] as const;
 
 /**
@@ -251,6 +315,15 @@ export interface CartPanelProps {
   activeOpenBillId?: string | null | undefined;
   setActiveOpenBillId?: ((id: string | null) => void) | undefined;
   handleOpenBill?: (() => Promise<void>) | undefined;
+  printBillEnabled?: boolean | undefined;
+  handlePrintBill?: (() => Promise<void> | void) | undefined;
+  splitBillEnabled?: boolean | undefined;
+  showSplitBillModal?: boolean | undefined;
+  setShowSplitBillModal?: Dispatch<SetStateAction<boolean>> | undefined;
+  handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void) | undefined;
+  hasUndispatchedItems?: boolean | undefined;
+  sendingToKitchen?: boolean | undefined;
+  handleSendToKitchen?: (() => Promise<void> | void) | undefined;
 }
 
 export function CartPanel({
@@ -352,8 +425,19 @@ export function CartPanel({
   activeOpenBillId,
   setActiveOpenBillId,
   handleOpenBill,
+  printBillEnabled,
+  handlePrintBill,
+  splitBillEnabled,
+  showSplitBillModal,
+  setShowSplitBillModal,
+  handleConfirmSplitBill,
+  hasUndispatchedItems,
+  sendingToKitchen,
+  handleSendToKitchen,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
+  const { getConflict, forceTakeover, releaseLease } = useTabLeases();
+  const tabConflict = getConflict(activeOpenBillId);
   // In the restaurant workspace the cart header's buttons do not live here at
   // all: PosScreen hands them to the sidebar popover (MenuPreferencesMenu's
   // `cartActions`) and this panel keeps only what identifies the order — title,
@@ -364,6 +448,14 @@ export function CartPanel({
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
   const orderTypeIndex = Math.max(0, ORDER_TYPES.findIndex((opt) => opt.id === orderType));
+
+  /**
+   * Whether this order can name a table at all. Only a dine-in order has one, so
+   * the table badge is withheld for takeaway and delivery even when the field
+   * holds a value — the field is deliberately offered on every order type, which
+   * is exactly why each READER has to apply this rule.
+   */
+  const showTableForOrder = orderType === 'dine_in' && !!tableNumber;
 
   const handleOrderTypePrev = () => {
     if (!setOrderType) return;
@@ -650,14 +742,24 @@ export function CartPanel({
                 {/* `bareTableNumber`: the stored names already read "Table 12"
                     (see features/sales/utils/tableLabel.ts), so the raw value
                     composed "Table Table 12" in this banner. */}
-                {tableNumber ? `Table ${bareTableNumber(tableNumber)}` : ''}
-                {tableNumber && customerName ? ` (${customerName})` : customerName || 'Active Tab'}
+                {/* ⚠️ DINE-IN ONLY — the DISPLAY half of the stray-table defect.
+                    Rounds 40-42 stopped a non-dine-in order CLAIMING (206462b4d),
+                    RELEASING (035d1d01b) and PERSISTING (795fc18d4) a table, but
+                    this banner still NAMED one: the field is offered on every
+                    order type (CartPanel.tsx:735-743), so switching Dine-In ->
+                    Takeaway left "Table 12" reading as this order's table. A
+                    takeaway has no table to name. */}
+                {showTableForOrder ? `Table ${bareTableNumber(tableNumber!)}` : ''}
+                {(showTableForOrder && customerName) ? ` (${customerName})` : customerName || 'Active Tab'}
               </span>
             </span>
             <button
               type="button"
               className="pos-cart-new-tab-btn"
               onClick={() => {
+                if (activeOpenBillId) {
+                  void releaseLease(activeOpenBillId);
+                }
                 resetCart();
                 setTableNumber('');
                 setCustomerName?.('');
@@ -666,6 +768,26 @@ export function CartPanel({
               data-testid="pos-cart-new-tab-btn"
             >
               + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
+            </button>
+          </div>
+        )}
+
+        {activeOpenBillId && tabConflict && (
+          <div className="pos-cart-conflict-alert" role="alert" data-testid="pos-cart-conflict-alert">
+            <span>
+              <Localized id="pos-cart-tab-conflict-warning" vars={{ terminal: tabConflict.terminalName }}>
+                <span>{tabConflict.terminalName} is currently adding items to this tab</span>
+              </Localized>
+            </span>
+            <button
+              type="button"
+              className="pos-cart-conflict-takeover-btn"
+              data-testid="pos-cart-conflict-takeover-btn"
+              onClick={() => void forceTakeover(activeOpenBillId, tableNumber)}
+            >
+              <Localized id="pos-cart-tab-takeover-btn">
+                <span>Take Over</span>
+              </Localized>
             </button>
           </div>
         )}
@@ -720,8 +842,10 @@ export function CartPanel({
                     aria-checked={active}
                     data-testid={`pos-order-type-${opt.id}`}
                   >
-                    <span className="pos-cart-order-type-icon" aria-hidden="true">{opt.icon}</span>
-                    <span className="pos-cart-order-type-label">{opt.label}</span>
+                    <span className="pos-cart-order-type-icon">
+                      <OrderTypeIcon id={opt.id} />
+                    </span>
+                    <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
                   </button>
                 );
               })}
@@ -774,7 +898,14 @@ export function CartPanel({
                 />
               </div>
             )}
-            {setGuestCount && guestCountEnabled !== false && (
+            {/* ⚠️ DINE-IN ONLY. products.ftl:105 defines pax as "party size and
+                number of SEATED GUESTS PER TABLE", so a takeaway or delivery order
+                has nothing to answer it with — yet the field was offered on every
+                order type, the same mistake the table DISPLAY had (547bf031d).
+                The setting gate below is unchanged: an unset key still SHOWS the
+                field for a dine-in order, which retail and the restaurant default
+                both rely on. */}
+            {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
               <div className="pos-cart-guest-field">
                 <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
                   {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
@@ -787,8 +918,8 @@ export function CartPanel({
                   className="pos-cart-customer-input"
                   value={guestCount ?? ''}
                   onChange={(e) => setGuestCount(e.target.value)}
-                  aria-label={l10n.getString('pos-cart-guest-count-label') || 'Pax'}
-                  placeholder="Pax"
+                  aria-label={l10n.getString('pos-cart-guest-count-label')}
+                  placeholder={l10n.getString('pos-cart-guest-placeholder')}
                   data-testid="pos-cart-guest-input"
                 />
               </div>
@@ -958,10 +1089,19 @@ export function CartPanel({
               setDeductionOverridden={setDeductionOverridden}
               resetCart={resetCart}
               tableNumber={tableNumber}
+              orderType={orderType}
               customerName={customerName}
               activeOpenBillId={activeOpenBillId}
               handleOpenBill={handleOpenBill}
               saveTabEnabled={saveTabEnabled}
+              hasLines={lines.length > 0}
+              printBillEnabled={printBillEnabled}
+              handlePrintBill={handlePrintBill}
+              splitBillEnabled={splitBillEnabled}
+              handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
+              hasUndispatchedItems={hasUndispatchedItems}
+              sendingToKitchen={sendingToKitchen}
+              handleSendToKitchen={handleSendToKitchen}
             />
           </CartFooterTotals>
         )}
@@ -981,6 +1121,19 @@ export function CartPanel({
             <span>{l10n.getString('pos-cart-open-bills')}</span>
             <span className="pos-cart-held-count">{openBills.length}</span>
           </button>
+        )}
+
+        {/* ── Split Bill by Item Modal ── */}
+        {showSplitBillModal && setShowSplitBillModal && handleConfirmSplitBill && (
+          <SplitBillModal
+            isOpen={showSplitBillModal}
+            onClose={() => setShowSplitBillModal(false)}
+            lines={lines}
+            currency={lines[0]?.unit_price.currency || 'IDR'}
+            tableNumber={tableNumber}
+            orderType={orderType}
+            onConfirmSplit={handleConfirmSplitBill}
+          />
         )}
       </aside>
     </>

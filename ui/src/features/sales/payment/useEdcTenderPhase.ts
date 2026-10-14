@@ -115,6 +115,21 @@ export function useEdcTenderPhase({
   } | null>(null);
 
   const [terminals, setTerminals] = useState<EdcTerminalDto[]>([]);
+  // True once a card-terminal attempt has FAILED in this modal session, and it
+  // stays true until the cashier retries or leaves the card tender.
+  //
+  // WHY THIS EXISTS (measured live, round 36-37): a failed terminal attempt only
+  // raised a toast and returned to the tender screen with `method` still 'card',
+  // and the settle predicate treats every non-cash method as automatically
+  // sufficient (useTenderMath.ts:158) — so Complete stayed enabled and settled
+  // the sale as CARD even though the terminal never charged it. The POS booked a
+  // card sale with no money taken.
+  //
+  // It cannot simply disable Complete for 'card': card is also a MANUAL tender —
+  // a payment taken on some other machine — and that path is intended
+  // (PaymentModalSaleFlow.test.tsx:1825 "keeps manual card"). So the gate keys on
+  // the EVIDENCE of a failed attempt, not on the method.
+  const [terminalFailed, setTerminalFailed] = useState(false);
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(
     defaultTerminalId ?? null,
   );
@@ -148,7 +163,19 @@ export function useEdcTenderPhase({
 
   const handleTerminalPay = useCallback(async (targetTerminalId?: string | null) => {
     setProcessing(true);
-    const terminalIdToUse = targetTerminalId !== undefined ? targetTerminalId : selectedTerminalId;
+    // A new attempt clears the previous failure: the cashier is retrying, so the
+    // gate must not block the retry it is asking for.
+    setTerminalFailed(false);
+    // Guard on the TYPE, not on `!== undefined`. CardTenderPanel wires this
+    // straight to `onClick` (CardTenderPanel.tsx:115), so React calls it with a
+    // SyntheticBaseEvent — which is `!== undefined`, so an undefined-check
+    // adopted the EVENT as the terminal id. Measured live: the app logged
+    // `terminalId: SyntheticBaseEvent` and pre-flight failed with
+    // "EDC card terminal '[object Object]' not found", so every card payment
+    // died before reaching the terminal. A non-string argument means "no
+    // explicit terminal" — resolve the selected one instead.
+    const explicitTerminalId = typeof targetTerminalId === 'string' ? targetTerminalId : null;
+    const terminalIdToUse = explicitTerminalId ?? selectedTerminalId;
     try {
       // Preflight is `edc_terminal_status_scoped`: the never-shipped
       // `test_edc_connection_scoped` (agents-2 residual) is decided INTO this
@@ -160,6 +187,7 @@ export function useEdcTenderPhase({
       const status = await edcTerminalStatusScoped(sessionToken!, terminalIdToUse);
       if (status.status !== 'ready') {
         setEdc(null);
+        setTerminalFailed(true);
         addToast({
           message: requiredLocalized(l10nRef.current, 'payment-edc-not-ready', {
             status: status.status,
@@ -181,6 +209,10 @@ export function useEdcTenderPhase({
       );
       if (!result.success) {
         setEdc({ phase: 'declined', reason: result.message });
+        // A declined card is proof the terminal is this sale's payment route and
+        // that it did not take the money — so Complete must not be offered as if
+        // it had.
+        setTerminalFailed(true);
         return;
       }
       const saleResult = await buildGatewaySale({
@@ -203,12 +235,14 @@ export function useEdcTenderPhase({
         cardLastFour: result.cardLast4,
       });
       setEdc(null);
+      setTerminalFailed(false);
     } catch (err) {
       // Back to tender selection with the reason (the capture, if any, is
       // the terminal's record; nothing local was created yet at this
       // point except a possibly-built sale — settleGatewaySale throws only
       // after its own surfacing, and its pending-on-failure branch applies).
       setEdc(null);
+      setTerminalFailed(true);
       addToast({
         message: requiredLocalized(l10nRef.current, 'payment-edc-failed', {
           reason: plainErrorMessage(err),
@@ -224,6 +258,13 @@ export function useEdcTenderPhase({
 
   const handleTerminalDismiss = useCallback(() => setEdc(null), []);
 
+  /**
+   * Clear the failure gate. Called when the cashier leaves the card tender or
+   * switches method: the failure belongs to THAT route, and abandoning it must
+   * not leave Complete permanently blocked.
+   */
+  const clearTerminalFailed = useCallback(() => setTerminalFailed(false), []);
+
   return {
     edc,
     handleTerminalPay,
@@ -231,5 +272,7 @@ export function useEdcTenderPhase({
     terminals,
     selectedTerminalId,
     setSelectedTerminalId,
+    terminalFailed,
+    clearTerminalFailed,
   };
 }

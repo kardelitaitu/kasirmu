@@ -1,12 +1,21 @@
 import { useMemo } from 'react';
 import { useLocalization } from '@fluent/react';
 import { formatMoney, type CartLine, type Money } from '@/types/domain';
+import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import './RestaurantFloatingCartBar.css';
 
 export interface RestaurantFloatingCartBarProps {
   lines: CartLine[];
   total: Money | null;
   tableNumber?: string;
+  /**
+   * The order's type. A table number only identifies a DINE-IN order, and the
+   * Table field renders on restaurant POS unconditionally (CartPanel.tsx:864), so
+   * a takeaway with a stray number would otherwise advertise a table it does not
+   * have on the bar the cashier looks at all service. Optional with a dine-in
+   * default so retail and every existing render are unchanged.
+   */
+  orderType?: 'dine_in' | 'takeaway' | 'delivery' | undefined;
   onOpenCart: () => void;
 }
 
@@ -21,6 +30,7 @@ export function RestaurantFloatingCartBar({
   lines,
   total,
   tableNumber,
+  orderType = 'dine_in',
   onOpenCart,
 }: RestaurantFloatingCartBarProps) {
   const { l10n } = useLocalization();
@@ -30,9 +40,10 @@ export function RestaurantFloatingCartBar({
     [lines],
   );
 
+  const cartCurrency = total?.currency ?? lines[0]?.unit_price?.currency ?? 'IDR';
   const formattedTotal = total
     ? formatMoney(total)
-    : formatMoney({ minor_units: 0, currency: 'IDR' });
+    : formatMoney({ minor_units: 0, currency: cartCurrency });
 
   return (
     <aside
@@ -75,12 +86,14 @@ export function RestaurantFloatingCartBar({
                 ? l10n.getString('restaurant-cart-empty')
                 : l10n.getString('restaurant-cart-items-count', { count: totalQty })}
             </span>
-            {tableNumber && (
+            {/* DINE-IN ONLY — see the prop doc. The same rule the ten other table
+                consumers apply; this is the one on the always-visible bar. */}
+            {orderType === 'dine_in' && tableNumber && (
               <span
                 className="restaurant-floating-cart-table-pill"
                 data-testid="restaurant-floating-cart-table"
               >
-                {l10n.getString('restaurant-cart-table-badge', { table: tableNumber })}
+                {l10n.getString('restaurant-cart-table-badge', { table: bareTableNumber(tableNumber) })}
               </span>
             )}
           </div>

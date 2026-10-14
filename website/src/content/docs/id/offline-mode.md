@@ -6,6 +6,8 @@ order: 7
 updated: "2026-08-16"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page (its en twin carries none either). Verified against the tree: the offline-first flow diagram's claims are the implemented model — every mutation writes to the local SQLite database first and queues for cloud (crates/kasirmu-core/src/db/offline/, platform/sync); the queue item states pending/synced/failed are the real ones (ui/src/features/offline/OfflineQueueScreen.tsx:91,127); the queue screen is manager-gated exactly as the page says (ui/src/features/offline/register.tsx:8-15 requiredRole: 'manager'; label nav-offline-queue); "Sinkron Semua" and per-item delete/retry are real (:337-339); remote items quarantined after repeated pull-apply failures and requeue-able is SYNC-11 and is what the quarantine section renders (:133-160,632-637); cloud sync is a paid feature (SubscriptionTier::supports_cloud_sync(), crates/kasirmu-core/src/subscription/tier.rs:209-214 — false on Free) and the page's "antrean offline tetap bekerja persis sama" holds because the queue is local. Last-write-wins / deterministic merge matches the shipped conflict policy. · NOT re-measured: a live two-register convergence run (needs two running instances) and the rendered SVG diagram. -->
+
 ## Cara kerjanya
 
 <svg class="docs-flow" role="img" aria-label="Alur offline: transaksi ditulis ke database lokal lebih dulu; saat online tersinkron ke cloud, saat offline menunggu di antrean dan mengalir ke cloud saat koneksi kembali; semua register lalu diperbarui." viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg">
@@ -79,3 +81,5 @@ paket berbayar. Pada paket tanpa sinkron, antrean offline tetap bekerja
 persis sama — transaksi aman secara lokal dan mengalir begitu Anda
 meningkatkan paket. Lihat [Sinkron Cloud](../cloud-sync/) untuk apa saja yang
 tersinkron dan cara memeriksa statusnya.
+
+> last audited 11-10-26 by docs-auditor

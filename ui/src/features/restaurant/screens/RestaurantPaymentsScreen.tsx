@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { getPrimaryLocationScoped } from '@/api/locations';
+import { SwitchToggle } from '@/components/SwitchToggle';
 import {
   getLocalPaymentMethodsScoped,
   setLocalPaymentMethodsScoped,
@@ -268,7 +270,6 @@ export function RestaurantPaymentsScreen({
   // ── UI States for Expanded Payment Cards ──────────────────────────
   // Cash
   const [cashDrawerAutoKick, setCashDrawerAutoKick] = useState(true);
-  const [cashDrawerVerify, setCashDrawerVerify] = useState(false);
   const [cashCustomLabel, setCashCustomLabel] = useState('Cash');
   const [activeCashPresets, setActiveCashPresets] = useState<string[]>([
     'exact',
@@ -285,12 +286,8 @@ export function RestaurantPaymentsScreen({
   const [qrisMode, setQrisMode] = useState<'static' | 'dynamic'>('static');
   const [qrisNmid, setQrisNmid] = useState('ID1020030040050');
   const [qrisSurcharge, setQrisSurcharge] = useState('0.7');
-  const [qrisPrintReceipt, setQrisPrintReceipt] = useState(true);
 
-  // EDC
-  const [requireEdcTraceCode, setRequireEdcTraceCode] = useState(true);
-  const [acceptedCards, setAcceptedCards] = useState<string[]>(['gpn', 'visa', 'mastercard', 'bca']);
-
+  // EDC — terminal selection handled by edcDefaultTerminalId
   // Midtrans Gateway
   const [midtransLocalEnabled, setMidtransLocalEnabled] = useState(false);
   const [midtransEnv, setMidtransEnv] = useState<'sandbox' | 'production'>('sandbox');
@@ -305,7 +302,6 @@ export function RestaurantPaymentsScreen({
     bni_va: false,
     bri_va: false,
   });
-  const [midtransAutoConfirm, setMidtransAutoConfirm] = useState(true);
 
   // Stripe Processing
   const [stripeLocalEnabled, setStripeLocalEnabled] = useState(false);
@@ -414,7 +410,6 @@ export function RestaurantPaymentsScreen({
             try {
               const p = JSON.parse(cash.parameters);
               if (typeof p.autoKick === 'boolean') setCashDrawerAutoKick(p.autoKick);
-              if (typeof p.verifyDrawer === 'boolean') setCashDrawerVerify(p.verifyDrawer);
               if (Array.isArray(p.presets) && p.presets.length > 0) setActiveCashPresets(p.presets);
             } catch {
               // Ignore parse error, keep defaults
@@ -429,7 +424,6 @@ export function RestaurantPaymentsScreen({
               if (p.mode === 'static' || p.mode === 'dynamic') setQrisMode(p.mode);
               if (p.nmid) setQrisNmid(p.nmid);
               if (p.surcharge) setQrisSurcharge(p.surcharge);
-              if (typeof p.printReceipt === 'boolean') setQrisPrintReceipt(p.printReceipt);
             } catch {
               // Ignore parse error, keep defaults
             }
@@ -438,13 +432,6 @@ export function RestaurantPaymentsScreen({
           const card = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'card');
           if (card) {
             setCardLocalEnabled(card.is_enabled);
-            try {
-              const p = JSON.parse(card.parameters);
-              if (typeof p.requireTrace === 'boolean') setRequireEdcTraceCode(p.requireTrace);
-              if (Array.isArray(p.acceptedCards) && p.acceptedCards.length > 0) setAcceptedCards(p.acceptedCards);
-            } catch {
-              // Ignore parse error, keep defaults
-            }
           }
 
           const midtrans = fullDrafts.find((d) => d.rail_code.toLowerCase() === 'midtrans');
@@ -457,7 +444,6 @@ export function RestaurantPaymentsScreen({
               if (p.clientKey) setMidtransClientKey(p.clientKey);
               if (p.serverKey) setMidtransServerKey(p.serverKey);
               if (p.channels && typeof p.channels === 'object') setMidtransChannels(p.channels);
-              if (typeof p.autoConfirm === 'boolean') setMidtransAutoConfirm(p.autoConfirm);
             } catch {
               // Ignore parse error, keep defaults
             }
@@ -706,7 +692,7 @@ export function RestaurantPaymentsScreen({
     const label = newRailLabel.trim() || sanitized.toUpperCase();
     if (drafts.some((d) => d.rail_code.toLowerCase() === sanitized)) {
       addToast({
-        message: 'A payment method with this code already exists',
+        message: l10n.getString('restaurant-payment-duplicate-code'),
         type: 'warning',
       });
       return;
@@ -726,7 +712,13 @@ export function RestaurantPaymentsScreen({
 
   // ── Test EDC Terminal ───────────────────────────────────────
   const handleTestEdc = useCallback(async () => {
-    if (!sessionToken) return;
+    if (!sessionToken) {
+      // Reports rather than dropping: the operator presses Test Terminal and
+      // nothing happens, with no clue that the session is the reason. Both
+      // outcomes below already toast.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
     setTestingEdc(true);
     try {
       const res = await edcTerminalStatusScoped(sessionToken, defaultEdcTerminalId || null);
@@ -765,7 +757,6 @@ export function RestaurantPaymentsScreen({
         if (lower === 'midtrans') {
           const clean: Record<string, unknown> = {};
           if (paramsObj['channels']) clean['channels'] = paramsObj['channels'];
-          if (typeof paramsObj['autoConfirm'] === 'boolean') clean['autoConfirm'] = paramsObj['autoConfirm'];
           return {
             rail_code: d.rail_code,
             label: d.label,
@@ -1053,8 +1044,8 @@ export function RestaurantPaymentsScreen({
               id="cash"
               code="cash"
               title={cashDraft?.label || 'Cash'}
-              description="Accept physical cash currency with automatic change calculation and drawer kick"
-              badge="Core Method"
+              description={l10n.getString('restaurant-payment-cash-desc')}
+              badge={l10n.getString('restaurant-payment-badge-core')}
               badgeVariant="primary"
               icon={<CashIcon />}
               enabled={cashDraft ? cashDraft.is_enabled : cashLocalEnabled}
@@ -1085,24 +1076,20 @@ export function RestaurantPaymentsScreen({
                 <div className="resto-compact-row">
                   <span className="resto-compact-label">{l10n.getString('restaurant-payment-auto-cash-drawer')}</span>
                   <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="cash-drawer-kick">
-                        <input
-                          id="cash-drawer-kick"
-                          type="checkbox"
-                          role="switch"
-                          checked={cashDrawerAutoKick}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setCashDrawerAutoKick(val);
-                            updateRailParams('cash', { autoKick: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-auto-cash-drawer')}
-                          data-testid="cash-drawer-kick-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
+                    {/* The shared control (round 181) rather than a THIRD hand-written copy
+                        of this markup. The inline version is where round 179 found `aria-checked`
+                        missing while the rail switch above had it; the requirement now lives
+                        once, in the component, and is pinned by SwitchToggle.test.tsx. */}
+                    <SwitchToggle
+                      id="cash-drawer-kick"
+                      label={l10n.getString('restaurant-payment-auto-cash-drawer')}
+                      checked={cashDrawerAutoKick}
+                      onChange={(val) => {
+                        setCashDrawerAutoKick(val);
+                        updateRailParams('cash', { autoKick: val });
+                      }}
+                      testId="cash-drawer-kick-toggle"
+                    />
                   </div>
                 </div>
 
@@ -1133,29 +1120,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-drawer-verification')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="cash-drawer-verify">
-                        <input
-                          id="cash-drawer-verify"
-                          type="checkbox"
-                          role="switch"
-                          checked={cashDrawerVerify}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setCashDrawerVerify(val);
-                            updateRailParams('cash', { verifyDrawer: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-drawer-verification')}
-                          data-testid="cash-drawer-verify-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
+
               </div>
             </PaymentMethodCard>
 
@@ -1164,8 +1129,8 @@ export function RestaurantPaymentsScreen({
               id="qris"
               code="qris"
               title={qrisDraft?.label || 'QRIS'}
-              description="Universal Indonesian QR payment standard (BCA, GoPay, OVO, Dana, ShopeePay, Mobile Banking)"
-              badge="National QR"
+              description={l10n.getString('restaurant-payment-qris-desc')}
+              badge={l10n.getString('restaurant-payment-badge-national-qr')}
               badgeVariant="success"
               icon={<QrisIcon />}
               enabled={qrisDraft ? qrisDraft.is_enabled : qrisLocalEnabled}
@@ -1265,29 +1230,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-print-pay-at-table')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="qris-print-bill">
-                        <input
-                          id="qris-print-bill"
-                          type="checkbox"
-                          role="switch"
-                          checked={qrisPrintReceipt}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setQrisPrintReceipt(val);
-                            updateRailParams('qris', { printReceipt: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-print-pay-at-table')}
-                          data-testid="qris-print-bill-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
+
               </div>
             </PaymentMethodCard>
 
@@ -1296,8 +1239,8 @@ export function RestaurantPaymentsScreen({
               id="card"
               code="card"
               title={cardDraft?.label || 'Card / EDC Terminal'}
-              description="Physical card payment terminal for Debit and Credit transactions (Visa, Mastercard, GPN)"
-              badge="Hardware Terminal"
+              description={l10n.getString('restaurant-payment-card-desc')}
+              badge={l10n.getString('restaurant-payment-badge-hardware')}
               badgeVariant="primary"
               icon={<EdcIcon />}
               enabled={cardDraft ? cardDraft.is_enabled : cardLocalEnabled}
@@ -1320,7 +1263,7 @@ export function RestaurantPaymentsScreen({
                         updateRailParams('card', { defaultTerminalId: v });
                       }}
                       options={[
-                        { value: '', label: 'None (Manual Card Entry)' },
+                        { value: '', label: l10n.getString('restaurant-payment-edc-none') },
                         ...edcTerminals.map((t) => ({
                           value: t.id,
                           label: `${t.name} (${t.transport} - ${t.address})`,
@@ -1341,63 +1284,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-block">
-                  <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-card-networks')}</span>
-                  <div className="resto-compact-chips">
-                    {[
-                      { id: 'gpn', label: 'Debit GPN' },
-                      { id: 'visa', label: 'Visa' },
-                      { id: 'mastercard', label: 'Mastercard' },
-                      { id: 'bca', label: 'BCA Card' },
-                      { id: 'jcb', label: 'JCB' },
-                      { id: 'amex', label: 'American Express' },
-                    ].map((network) => {
-                      const active = acceptedCards.includes(network.id);
-                      return (
-                        <button
-                          key={network.id}
-                          type="button"
-                          className={`resto-compact-chip ${active ? 'resto-compact-chip--active' : ''}`}
-                          onClick={() => {
-                            const next = active
-                              ? acceptedCards.filter((id) => id !== network.id)
-                              : [...acceptedCards, network.id];
-                            setAcceptedCards(next);
-                            updateRailParams('card', { acceptedCards: next });
-                          }}
-                          aria-pressed={active}
-                          data-testid={`card-network-${network.id}`}
-                        >
-                          {network.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-require-approval')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="edc-require-trace">
-                        <input
-                          id="edc-require-trace"
-                          type="checkbox"
-                          role="switch"
-                          checked={requireEdcTraceCode}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setRequireEdcTraceCode(val);
-                            updateRailParams('card', { requireTrace: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-require-approval')}
-                          data-testid="edc-require-trace-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
               </div>
             </PaymentMethodCard>
 
@@ -1406,8 +1293,8 @@ export function RestaurantPaymentsScreen({
               id="midtrans"
               code="midtrans"
               title={midtransDraft?.label || 'Midtrans Gateway'}
-              description="Automated Indonesian payment gateway for QRIS, Virtual Accounts, and E-Wallets with instant webhook verification"
-              badge="Cloud Gateway"
+              description={l10n.getString('restaurant-payment-midtrans-desc')}
+              badge={l10n.getString('restaurant-payment-badge-cloud')}
               badgeVariant="warning"
               icon={<MidtransIcon />}
               enabled={midtransDraft ? midtransDraft.is_enabled : midtransLocalEnabled}
@@ -1512,12 +1399,12 @@ export function RestaurantPaymentsScreen({
                   <span className="resto-compact-block-title">{l10n.getString('restaurant-payment-payment-channels')}</span>
                   <div className="resto-compact-chips">
                     {[
-                      { key: 'gopay', label: 'GoPay / QRIS' },
-                      { key: 'shopeepay', label: 'ShopeePay' },
-                      { key: 'bca_va', label: 'BCA VA' },
-                      { key: 'mandiri_va', label: 'Mandiri' },
-                      { key: 'bni_va', label: 'BNI VA' },
-                      { key: 'bri_va', label: 'BRI VA' },
+                      { key: 'gopay', label: l10n.getString('restaurant-payment-midtrans-channel-gopay') },
+                      { key: 'shopeepay', label: l10n.getString('restaurant-payment-midtrans-channel-shopeepay') },
+                      { key: 'bca_va', label: l10n.getString('restaurant-payment-midtrans-channel-bca') },
+                      { key: 'mandiri_va', label: l10n.getString('restaurant-payment-midtrans-channel-mandiri') },
+                      { key: 'bni_va', label: l10n.getString('restaurant-payment-midtrans-channel-bni') },
+                      { key: 'bri_va', label: l10n.getString('restaurant-payment-midtrans-channel-bri') },
                     ].map((ch) => {
                       const active = Boolean(midtransChannels[ch.key]);
                       return (
@@ -1540,29 +1427,7 @@ export function RestaurantPaymentsScreen({
                   </div>
                 </div>
 
-                <div className="resto-compact-row">
-                  <span className="resto-compact-label">{l10n.getString('restaurant-payment-instant-webhook')}</span>
-                  <div className="resto-compact-control">
-                    <span className="settings-toggle">
-                      <label className="settings-toggle-switch" htmlFor="midtrans-auto-confirm">
-                        <input
-                          id="midtrans-auto-confirm"
-                          type="checkbox"
-                          role="switch"
-                          checked={midtransAutoConfirm}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setMidtransAutoConfirm(val);
-                            updateRailParams('midtrans', { autoConfirm: val });
-                          }}
-                          aria-label={l10n.getString('restaurant-payment-instant-webhook')}
-                          data-testid="midtrans-auto-confirm-toggle"
-                        />
-                        <span className="settings-toggle-slider" aria-hidden="true" />
-                      </label>
-                    </span>
-                  </div>
-                </div>
+
 
                 <div className="resto-compact-row">
                   <span className="resto-compact-label">{l10n.getString('restaurant-payment-connection')}</span>
@@ -1573,9 +1438,14 @@ export function RestaurantPaymentsScreen({
                       onClick={() => {
                         const isConfigured = Boolean(midtransClientKey && midtransServerKey);
                         addToast({
+                          // Mirrors the Stripe branch just below, which was already
+                          // localized: this screen's credential checks are one pattern
+                          // applied per provider, and only Midtrans was left as literals.
                           message: isConfigured
-                            ? `Midtrans credentials format verified (${midtransEnv.toUpperCase()})`
-                            : 'Please enter Client Key and Server Key',
+                            ? l10n.getString('restaurant-payment-midtrans-keys-valid', {
+                                env: midtransEnv.toUpperCase(),
+                              })
+                            : l10n.getString('restaurant-payment-midtrans-keys-missing'),
                           type: isConfigured ? 'success' : 'warning',
                         });
                       }}
@@ -1593,8 +1463,8 @@ export function RestaurantPaymentsScreen({
               id="stripe"
               code="stripe"
               title={stripeDraft?.label || 'Stripe Processing'}
-              description="International credit and debit card processing with support for Stripe Terminal smart card readers"
-              badge="Global Provider"
+              description={l10n.getString('restaurant-payment-stripe-desc')}
+              badge={l10n.getString('restaurant-payment-badge-global')}
               badgeVariant="default"
               icon={<StripeIcon />}
               enabled={stripeDraft ? stripeDraft.is_enabled : stripeLocalEnabled}
@@ -1688,9 +1558,9 @@ export function RestaurantPaymentsScreen({
                         updateRailParams('stripe', { reader: v });
                       }}
                       options={[
-                        { value: 'wisepos_e', label: 'BBPOS WisePOS E (Wi-Fi)' },
-                        { value: 'reader_s700', label: 'Stripe Reader S700' },
-                        { value: 'tap_to_pay', label: 'Tap to Pay (NFC)' },
+                        { value: 'wisepos_e', label: l10n.getString('restaurant-payment-reader-wisepos') },
+                        { value: 'reader_s700', label: l10n.getString('restaurant-payment-reader-s700') },
+                        { value: 'tap_to_pay', label: l10n.getString('restaurant-payment-reader-tap-to-pay') },
                       ]}
                     />
                   </div>
@@ -1698,7 +1568,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-currency" className="resto-compact-label">
-                    Currency
+                    {l10n.getString('restaurant-payment-currency-label')}
                   </label>
                   <div className="resto-compact-control">
                     <SettingsSelect
@@ -1710,10 +1580,10 @@ export function RestaurantPaymentsScreen({
                         updateRailParams('stripe', { currency: v });
                       }}
                       options={[
-                        { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
-                        { value: 'USD', label: 'USD - US Dollar' },
-                        { value: 'SGD', label: 'SGD - Singapore Dollar' },
-                        { value: 'EUR', label: 'EUR - Euro' },
+                        { value: 'IDR', label: l10n.getString('restaurant-payment-currency-idr') },
+                        { value: 'USD', label: l10n.getString('restaurant-payment-currency-usd') },
+                        { value: 'SGD', label: l10n.getString('restaurant-payment-currency-sgd') },
+                        { value: 'EUR', label: l10n.getString('restaurant-payment-currency-eur') },
                       ]}
                     />
                   </div>
@@ -1729,14 +1599,14 @@ export function RestaurantPaymentsScreen({
                         const isConfigured = Boolean(stripePublishableKey && stripeSecretKey);
                         addToast({
                           message: isConfigured
-                            ? `Stripe keys format valid (${stripeMode.toUpperCase()})`
-                            : 'Please enter Publishable Key and Secret Key',
+                            ? l10n.getString('restaurant-payment-stripe-keys-valid', { mode: stripeMode.toUpperCase() })
+                            : l10n.getString('restaurant-payment-stripe-keys-missing'),
                           type: isConfigured ? 'success' : 'warning',
                         });
                       }}
                       data-testid="stripe-verify-keys-btn"
                     >
-                      Verify Keys
+                      {l10n.getString('restaurant-payment-verify-keys')}
                     </button>
                   </div>
                 </div>
@@ -1753,8 +1623,8 @@ export function RestaurantPaymentsScreen({
                   id={rail.rail_code}
                   code={rail.rail_code}
                   title={rail.label}
-                  description={`Configured payment option for ${rail.label}`}
-                  badge={isCore ? 'Core Method' : 'Custom Method'}
+                  description={l10n.getString('restaurant-payment-configured-desc', { name: rail.label })}
+                  badge={isCore ? l10n.getString('restaurant-payment-badge-core') : l10n.getString('restaurant-payment-badge-custom')}
                   badgeVariant={isCore ? 'default' : 'warning'}
                   icon={<GenericRailIcon />}
                   enabled={rail.is_enabled}

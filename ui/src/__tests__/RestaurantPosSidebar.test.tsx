@@ -357,10 +357,17 @@ describe('RestaurantPosSidebar', () => {
       within(sidebar).getByTestId('restaurant-sidebar-open-shift').textContent,
     ).toContain('Open a new shift');
 
-    // The row is the header's old button, not a stub: it drives the same
-    // navigation and closes the popover like every other item in it.
-    await user.click(within(sidebar).getByTestId('restaurant-sidebar-kds'));
-    expect(onNavigate).toHaveBeenCalledWith('kds');
+    // Kitchen Display is feature-gated for the same reason Table Management is, and
+    // this harness enables no features — so the row is ABSENT, not rendered-and-disabled.
+    // (Round 128: the row used to be computed with `isPageAccessible` alone, and the
+    // `kds` page carries only a FEATURE gate, which that predicate does not read — so
+    // it returned true for every role and the row never hid. It is now AND-ed with
+    // `FEATURES.KITCHEN_DISPLAY`, which is what makes it hidden here.)
+    expect(within(sidebar).queryByTestId('restaurant-sidebar-kds')).toBeNull();
+
+    // The row is the header's old button, not a stub: it drives the same navigation
+    // and closes the popover. Asserted in its own case, where the feature is on.
+    await user.click(within(sidebar).getByTestId('restaurant-sidebar-history'));
     await waitFor(() => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
     });
@@ -426,8 +433,12 @@ describe('RestaurantPosSidebar', () => {
     const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
     await user.click(toggleBtn);
 
-    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
-    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+    // Addressed by testid, not by bundle copy: commit cf3e064fb moved the sibling
+    // rows onto testids precisely so a translation edit cannot break them, and
+    // these two were missed. A /Receipts/i name match also collides with any
+    // future row that mentions the word.
+    const receiptsBtn = screen.getByTestId('restaurant-sidebar-receipts');
+    const paymentsBtn = screen.getByTestId('restaurant-sidebar-payments');
 
     expect(receiptsBtn).toBeDisabled();
     expect(receiptsBtn).toHaveClass('restaurant-sidebar-item--disabled');
@@ -446,7 +457,7 @@ describe('RestaurantPosSidebar', () => {
     const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
     await user.click(toggleBtn);
 
-    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
+    const receiptsBtn = screen.getByTestId('restaurant-sidebar-receipts');
     expect(receiptsBtn).not.toBeDisabled();
     expect(receiptsBtn).not.toHaveClass('restaurant-sidebar-item--disabled');
     expect(within(receiptsBtn).queryByText('Manager+')).toBeNull();
@@ -463,7 +474,7 @@ describe('RestaurantPosSidebar', () => {
 
     // Open sidebar again and test Payments sub-screen
     await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
-    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+    const paymentsBtn = screen.getByTestId('restaurant-sidebar-payments');
     expect(paymentsBtn).not.toBeDisabled();
     await user.click(paymentsBtn);
     expect(screen.getByText('Payment Settings')).toBeInTheDocument();
@@ -682,41 +693,40 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
 
     // Initial state: default 10% tax, 'half_up' rounding mode
     // Net price is 100/110 of gross price:
-    // Item 1: 35.000 * 100/110 = 31818.1818... -> shown: 31.818
-    // Item 2: 16.000 * 100/110 = 14545.4545... -> shown: 14.545
-    // Item 3: 42.000 * 100/110 = 38181.8181... -> shown: 38.182
-    // Exact subtotal: 93.000 * 100/110 = 84545.4545... -> shown: 84.545
-    // 84545.4545... * 0.10 = 8454.5454... -> round = 8455 -> Total: 84545 + 8455 = 93000 -> Change: 100000 - 93000 = 7000
+    // Item 1: 35.000 * 100/110 * 1 = 31818.1818... -> shown: 31818
+    // Item 2: 16.000 * 100/110 * 2 = 29090.9090... -> shown: 29091
+    // Item 3: 42.000 * 100/110 * 1 = 38181.8181... -> shown: 38182
+    // Exact subtotal: 99090.9090... -> shown: 99091
+    // 99090.9090... * 0.10 = 9909.0909... -> round = 9909 -> Total: 99091 + 9909 = 109000
     // The preview mirrors the ESC/POS renderer: the major part is verbatim,
     // with no thousands grouping (formatPrice in receiptLogic).
     expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
     expect(screen.getByText('31818')).toBeInTheDocument();
-    expect(screen.getByText('14545')).toBeInTheDocument();
+    expect(screen.getByText('29091')).toBeInTheDocument();
     expect(screen.getByText('38182')).toBeInTheDocument();
-    expect(screen.getByText('84545')).toBeInTheDocument();
-    expect(screen.getByText('8455')).toBeInTheDocument();
-    expect(screen.getByText('93000')).toBeInTheDocument();
-    expect(screen.getByText('7000')).toBeInTheDocument();
+    expect(screen.getByText('99091')).toBeInTheDocument();
+    expect(screen.getByText('9909')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
+    expect(screen.getByText('0')).toBeInTheDocument();
 
     // Switch to Truncate (Legacy)
     const truncateBtn = screen.getByRole('button', { name: 'Truncate (Legacy)' });
     await user.click(truncateBtn);
 
     // In truncate mode:
-    // 84545.4545... * 0.10 = 8454.5454... -> floor = 8454 -> Total: 84545 + 8454 = 92999 -> Change: 100000 - 92999 = 7001
+    // 99090.9090... * 0.10 = 9909.0909... -> floor = 9909 -> Total: 99091 + 9909 = 109000
     expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
-    expect(screen.getByText('8454')).toBeInTheDocument();
-    expect(screen.getByText('92999')).toBeInTheDocument();
-    expect(screen.getByText('7001')).toBeInTheDocument();
+    expect(screen.getByText('9909')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
 
     // Switch back to Round Half Up
     const halfUpBtn = screen.getByRole('button', { name: 'Round Half Up' });
     await user.click(halfUpBtn);
 
     expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
-    expect(screen.getByText('8455')).toBeInTheDocument();
-    expect(screen.getByText('93000')).toBeInTheDocument();
-    expect(screen.getByText('7000')).toBeInTheDocument();
+    expect(screen.getByText('9909')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
+
   });
 
   it('renders menu order note pedas under Nasi Goreng Spesial and toggles with showItemNotes', async () => {

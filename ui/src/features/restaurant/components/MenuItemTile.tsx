@@ -15,7 +15,7 @@
 //     RestaurantMenu.test.tsx and restaurantCardHeight.test.ts — never
 //     rename them here.
 
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { requiredLocalized } from '@/components';
 import Tooltip from '@/app/Tooltip';
 import { Localized } from '@/components/Localized';
@@ -74,6 +74,13 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
   const touchLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
+  // A refused add must leave a trace. The refusal itself is deliberate (an 86'd
+  // item must never enter the sale) but it was SILENT, and this card is excluded
+  // from every :hover/:active rule, so on a busy service a dead tap was
+  // indistinguishable from a frozen tablet. Set on a refused tap, cleared on a
+  // timer, so the card visibly recoils and a role="status" line says why.
+  const [rejected, setRejected] = useState(false);
+  const rejectedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productRef = useRef(product);
   productRef.current = product;
   const onContextMenuRef = useRef(onContextMenu);
@@ -102,7 +109,17 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
     }
     // Source-unavailable cards remain context-menu accessible for pin/color
     // actions, but must never add an out-of-stock item to the sale.
-    if (!product.inStock) return;
+    if (!product.inStock) {
+      // Refuse, but SAY SO. Re-arming the timer restarts the flash for a repeated
+      // tap, so a cashier jabbing at the card gets a reaction each time.
+      setRejected(true);
+      if (rejectedTimerRef.current) clearTimeout(rejectedTimerRef.current);
+      rejectedTimerRef.current = setTimeout(() => {
+        setRejected(false);
+        rejectedTimerRef.current = null;
+      }, 600);
+      return;
+    }
     onAdd?.(product);
   }, [product, onAdd]);
 
@@ -163,6 +180,12 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
 
   useEffect(() => () => clearTouchLongPress(), [clearTouchLongPress]);
 
+  // The rejected flash must not outlive the card: an unmounted tile that still
+  // holds a timer is how a stale setState warning starts.
+  useEffect(() => () => {
+    if (rejectedTimerRef.current) clearTimeout(rejectedTimerRef.current);
+  }, []);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
     // A keyboard activation starts a distinct interaction sequence. Clear any
     // stale touch suppression so a long-press cannot swallow Enter or Space.
@@ -190,6 +213,7 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
   if (pinned) cardClass += ' restaurant-card--pinned';
   if (!product.inStock) cardClass += ' restaurant-card--disabled';
   if (added) cardClass += ' restaurant-card--added';
+  if (rejected) cardClass += ' restaurant-card--rejected';
 
   return (
     <button
@@ -230,6 +254,7 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
         <span className="restaurant-card-price">{formatMoney(product.price)}</span>
         {!product.inStock && (
           <span className="restaurant-card-status">
+            <span className="restaurant-card-badge-86" data-testid="restaurant-card-86-badge">86</span>
             <Localized id="restaurant-card-unavailable"><span>Unavailable</span></Localized>
           </span>
         )}
@@ -246,6 +271,14 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
       ) : (
         <span className="restaurant-card-add-icon restaurant-card-add-icon--disabled" aria-hidden="true">
           <AddBadge glyph="minus" />
+        </span>
+      )}
+      {/* role="status" so the refusal is ANNOUNCED, not just drawn — the card is
+          aria-disabled, and a silent no-op is the one outcome a cashier cannot
+          diagnose. Rendered empty until a tap, so it never speaks unprompted. */}
+      {rejected && (
+        <span className="sr-only" role="status">
+          {requiredLocalized(l10n, 'restaurant-card-unavailable-tap')}
         </span>
       )}
     </button>

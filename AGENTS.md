@@ -38,6 +38,24 @@
      `python scripts/verify-agents-mirrors.py` (exit 0, every policed mirror agrees)
      and all eight docs checkers (exit 0). -->
 
+<!-- Audit 2026-10-11 (docs-auditor, full audit): status ACCURATE — 0 findings, no
+     edit made to any rule. Every truth anchor re-verified against the tree: §0's version
+     lock (Cargo.toml `version = "0.0.41"`, branch `0.0.41`), §2's eight step names
+     (exact match to `.githooks/pre-commit`'s eight `# ──` section headings, and
+     `scripts/verify-agents-mirrors.py` re-run → exit 0, "every policed mirror (1)
+     agrees with the repo"), §4's eleven env-var spellings (each traced to its reader:
+     the six KASIRMU_* deploy names, the four OZ_* server knobs in
+     apps/cloud-server/src/config.rs, and KASIRMU_MASTER_KEY as
+     `crates/kasirmu-crypto/src/lib.rs:122` with `OZ_MASTER_KEY` the legacy alias at
+     :125), §5.2's clippy claim (`dev-ci.yml#cargo-clippy` runs
+     `cargo clippy --workspace --all-targets -- -D warnings` — no `--all-features`,
+     exactly as written), §7.2's eleven accepted commit types (`.githooks/commit-msg:58`
+     is the enforced copy and the two agree), and every path the file names, which all
+     resolve. §5.2's "Pre-push / final only" list is guidance to the agent, not a claim
+     about the hook: `.githooks/pre-push` runs `cargo check --workspace`, `rustfmt --check`
+     (diff) and an advisory `cargo fmt --all --check`, and no clippy — which the wording
+     does not contradict, so it is left alone. Footer re-dated to this pass. -->
+
 ## 0. Quick card — read this first
 
 Every value measured 2026-09-27 on branch `0.0.41`. Do not probe to orient (E3); if a
@@ -345,7 +363,7 @@ git config --get core.hooksPath      # gates enabled? (expect: .githooks)
 git rev-parse --show-toplevel        # repo root
 ```
 
-> last audited 27-09-26 by BK
+> last audited 11-10-26 by docs-auditor
 >
 > roundtrip-economy rewrite; prior stamp 08-09-26. The line above IS the audit footer and is
 > shape-checked by the skill drift guard, so it stays exactly `> last audited DD-MM-YY by <name>`:

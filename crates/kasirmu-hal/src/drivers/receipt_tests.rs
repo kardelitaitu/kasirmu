@@ -512,6 +512,29 @@ fn sales_receipt_ends_with_cut() {
     assert!(data.ends_with(escpos::CUT_FULL));
 }
 
+fn strip_esc(s: &str) -> String {
+    let mut out = String::new();
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\x1b' {
+            // Clippy pedantic: the nest and the guard are one condition, and the merge is
+            // semantics-preserving here — both arms fall through to the same no-op, unlike
+            // the products.rs merge that had to be suppressed.
+            if let Some(cmd) = it.next()
+                && matches!(cmd, 'E' | 'a' | 'd' | '3' | '!')
+            {
+                it.next();
+            }
+        } else if c == '\x1d' {
+            it.next();
+            it.next();
+        } else if !c.is_ascii_control() {
+            out.push(c);
+        }
+    }
+    out
+}
+
 #[test]
 fn narrow_width_uses_32_chars() {
     let cfg = ReceiptConfig {
@@ -521,10 +544,45 @@ fn narrow_width_uses_32_chars() {
     let data = format_sales_receipt(&sample_receipt(), &cfg);
     let text = String::from_utf8_lossy(&data);
     for line in text.lines() {
-        let dash_count = line.chars().filter(|&c| c == '─').count();
+        let clean = strip_esc(line);
+        let dash_count = clean.chars().filter(|&c| c == '─').count();
         if dash_count > 0 {
             assert!(dash_count <= 32, "separator too long: {dash_count}");
         }
+        assert!(
+            cell_width(&clean) <= 32,
+            "line exceeds 32 chars: {:?} (width={})",
+            clean,
+            cell_width(&clean)
+        );
+    }
+
+    // Verify IDR high-value items with currency prefix & dot grouping also fit 32 chars
+    let mut idr_receipt = sample_receipt();
+    idr_receipt.items[0] = LineItem {
+        name: "Nasi Goreng Spesial Telur".into(),
+        quantity: 2,
+        unit_price: idr_money(25_000),
+        total_price: idr_money(50_000),
+        tax_amount: Some(idr_money(5_000)),
+        note: Some("pedas level 3".into()),
+    };
+    let idr_cfg = ReceiptConfig {
+        paper_width: PaperWidth::Narrow,
+        show_currency: true,
+        grouping: ThousandSeparator::Dot,
+        ..default_config()
+    };
+    let idr_data = format_sales_receipt(&idr_receipt, &idr_cfg);
+    let idr_text = String::from_utf8_lossy(&idr_data);
+    for line in idr_text.lines() {
+        let clean = strip_esc(line);
+        assert!(
+            cell_width(&clean) <= 32,
+            "IDR receipt line exceeds 32 chars: {:?} (width={})",
+            clean,
+            cell_width(&clean)
+        );
     }
 }
 

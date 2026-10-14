@@ -250,6 +250,7 @@ impl Store<'_> {
         // not "unbound" — it means the binding could not be read, so the store must
         // refuse rather than deduct somewhere arbitrary.
 
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         for line in &sale.lines {
             // Check product info to determine if this line tracks inventory.
             // Phase 5 P5.2: the `products` read lives in `db::inventory_seam`.
@@ -289,6 +290,7 @@ impl Store<'_> {
             let has_recipe = !recipe.is_empty();
 
             let needs_stock = tracks_inventory || has_recipe;
+            let mut current_line_ingredients: Vec<serde_json::Value> = Vec::new();
 
             // If this line has a resolution, use the resolved allocations.
             // Otherwise, for tracked lines, deduct from the primary location.
@@ -363,10 +365,19 @@ impl Store<'_> {
                                         message: "ingredient deduction quantity overflow".into(),
                                     })?;
                                 deductions.push(crate::sale_deduction::StockDeduction {
-                                    sku: ing_sku,
+                                    sku: ing_sku.clone(),
                                     location_id: primary_location.clone(),
                                     delta: -required_qty,
                                 });
+                                current_line_ingredients.push(serde_json::json!({
+                                    "sku": ing_sku,
+                                    "qty_per_unit": ingredient.quantity_required,
+                                    "deductions": [{
+                                        "location_id": primary_location.as_str(),
+                                        "qty": required_qty,
+                                        "sold_at": now,
+                                    }]
+                                }));
                             }
                         }
                     }
@@ -374,8 +385,7 @@ impl Store<'_> {
             }
 
             // Build deduction_locations entry for this line
-            let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            if let Some(resolution) = resolutions_by_sku.get(line.sku.as_str()) {
+            let mut line_obj = if let Some(resolution) = resolutions_by_sku.get(line.sku.as_str()) {
                 let deductions_entry: Vec<serde_json::Value> = resolution
                     .allocations
                     .iter()
@@ -389,23 +399,29 @@ impl Store<'_> {
                     })
                     .collect();
 
-                line_deductions.push(serde_json::json!({
+                serde_json::json!({
                     "sale_line_id": line.id,
                     "sku": line.sku,
+                    "tracks_inventory": tracks_inventory,
                     "deductions": deductions_entry,
-                }));
+                })
             } else {
                 // Non-resolution lines: single-location deduction at primary
-                line_deductions.push(serde_json::json!({
+                serde_json::json!({
                     "sale_line_id": line.id,
                     "sku": line.sku,
+                    "tracks_inventory": tracks_inventory,
                     "deductions": [{
                         "location_id": primary_location.as_str(),
                         "qty": line.qty,
                         "sold_at": now
-                    }]
-                }));
+                    }],
+                })
+            };
+            if !current_line_ingredients.is_empty() {
+                line_obj["ingredients"] = serde_json::Value::Array(current_line_ingredients);
             }
+            line_deductions.push(line_obj);
         }
 
         // MONEY-04: same ledger-integrity contract as complete_sale_deduction.
@@ -668,7 +684,50 @@ impl Store<'_> {
                             field: "sku",
                             message: "missing sku in deduction_locations".into(),
                         })?;
-                        if let Some(deductions) = line["deductions"].as_array() {
+
+                        // 1. Credit recipe ingredients if present
+                        if let Some(ingredients) = line["ingredients"].as_array() {
+                            for ing in ingredients {
+                                let ing_sku =
+                                    ing["sku"].as_str().ok_or_else(|| CoreError::Validation {
+                                        field: "sku",
+                                        message: "missing ingredient sku in deduction_locations"
+                                            .into(),
+                                    })?;
+                                if let Some(ing_deductions) = ing["deductions"].as_array() {
+                                    for d in ing_deductions {
+                                        let loc_id =
+                                            d["location_id"].as_str().ok_or_else(|| {
+                                                CoreError::Validation {
+                                                    field: "location_id",
+                                                    message: "missing location_id in deductions"
+                                                        .into(),
+                                                }
+                                            })?;
+                                        let qty = d["qty"].as_i64().ok_or_else(|| {
+                                            CoreError::Validation {
+                                                field: "qty",
+                                                message: "missing qty in deductions".into(),
+                                            }
+                                        })?;
+                                        self.adjust_stock_at_location_with_reason(
+                                            &tx,
+                                            ing_sku,
+                                            qty,
+                                            &crate::inventory::LocationId::from(loc_id),
+                                            Some("void_pending"),
+                                            None,
+                                            None,
+                                            None,
+                                        )?;
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Credit the dish itself ONLY IF tracks_inventory is true
+                        let tracks_inv = line["tracks_inventory"].as_bool().unwrap_or(true);
+                        if tracks_inv && let Some(deductions) = line["deductions"].as_array() {
                             for d in deductions {
                                 let loc_id = d["location_id"].as_str().ok_or_else(|| {
                                     CoreError::Validation {

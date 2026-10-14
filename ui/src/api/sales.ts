@@ -87,10 +87,21 @@ export interface CompleteSaleArgs {
   baseTotalMinor?: number;
   /** CUR-02: fixed-point rate (millionths) baseCurrency → sale currency. */
   tenderRateMillionths?: number;
-  /** Tip amount in minor units collected at checkout (default 0). */
-  tipMinor?: number;
-  /** Service-charge amount in minor units collected at checkout (default 0). */
-  serviceChargeMinor?: number;
+  /** Tip amount in minor units collected at checkout.
+   *
+   *  NULLABLE, not required — and this doc previously said the opposite. The round-57
+   *  pass cited `history.rs:194-199`, where the field IS a bare `i64` with
+   *  `#[serde(default)]`; but this interface maps to `CompleteSaleArgs`
+   *  (`pos/checkout.rs:46`), whose `tip_minor` is `Option<i64>` (:73) with no serde
+   *  default. Two structs, the same field name, opposite contracts.
+   *
+   *  `| null` and not merely optional: the Rust type accepts an explicit null, so a
+   *  caller omitting the key and a caller sending null are both valid and both mean
+   *  "no tip". Saying `?` alone would leave the null case unrepresentable. */
+  tipMinor?: number | null;
+  /** Service-charge amount in minor units collected at checkout. See `tipMinor` above
+   *  for why this is nullable rather than required. */
+  serviceChargeMinor?: number | null;
   /**
    * PROMO-3 checkout integration: promotions to engine-apply against the
    * post-tax sale. Each reduces the payable total (stacking); the application
@@ -185,10 +196,12 @@ export interface CompleteSaleScopedArgs {
   baseTotalMinor?: number;
   /** CUR-02: fixed-point rate (millionths) baseCurrency → sale currency. */
   tenderRateMillionths?: number;
-  /** Tip amount in minor units collected at checkout (default 0). */
-  tipMinor?: number;
-  /** Service-charge amount in minor units collected at checkout (default 0). */
-  serviceChargeMinor?: number;
+  /** Tip amount in minor units collected at checkout.
+   *  Nullable: the Rust arg is `Option<i64>` (`pos/checkout.rs`), not a bare
+   *  `i64`, so both an absent key and an explicit null are valid. */
+  tipMinor?: number | null;
+  /** Service-charge amount in minor units collected at checkout. See `tipMinor`. */
+  serviceChargeMinor?: number | null;
   /**
    * Identifies one checkout *attempt*, so the backend can make completion
    * idempotent. Minted once when the payment modal mounts and reused by every
@@ -351,9 +364,9 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   cartId: string;
   paymentMethod: string;
   tenderedMinor: number | null;
-  customerId?: string;
+  customerId?: string | null;
   paymentSplits?: PaymentSplitArg[];
-  customerName?: string;
+  customerName?: string | null;
   serialNumbers?: SerialNumberArg[];
   /** Cart line data reconstructed from the in-memory cart (original was deleted). */
   lines: CartLineData[];
@@ -364,19 +377,21 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   /** Discount percentage (0-100). */
   discountPercent: number;
   /** Optional discount label. */
-  discountLabel?: string;
+  discountLabel?: string | null;
   /** Cashier-resolved shortfalls: per-SKU allocation to specific locations. */
   resolutions: ResolvedShortfall[];
-  /** CUR-02: tip collected at checkout (backend defaults to 0 when absent). */
-  tipMinor?: number;
-  /** CUR-02: service charge collected at checkout (defaults to 0). */
-  serviceChargeMinor?: number;
+  /** CUR-02: tip collected at checkout.
+   *  Nullable: `CompleteSaleWithResolvedShortfallsArgs.tip_minor` is `Option<i64>`
+   *  (`pos/checkout.rs:275`), so both an absent key and an explicit null are valid. */
+  tipMinor?: number | null;
+  /** CUR-02: service charge collected at checkout. See `tipMinor`. */
+  serviceChargeMinor?: number | null;
   /** CUR-02: original sale currency when multi-currency checkout is used. */
-  baseCurrency?: string;
+  baseCurrency?: string | null;
   /** CUR-02: original sale total in `baseCurrency` minor units. */
-  baseTotalMinor?: number;
+  baseTotalMinor?: number | null;
   /** CUR-02: fixed-point rate (millionths) `baseCurrency → sale currency`. */
-  tenderRateMillionths?: number;
+  tenderRateMillionths?: number | null;
   /**
    * The SAME value the original `complete_sale_scoped` submission carried.
    *
@@ -529,6 +544,8 @@ export interface SaleLineDto {
   total_minor: number;
   tax_amount: Money | null;
   tax_rate_id: string | null;
+  course?: string | null;
+  modifiers_json?: string | null;
 }
 
 /** Full detail of a completed sale, including line items. */
@@ -563,6 +580,21 @@ export interface SaleDetail {
   tenderRateMillionths?: number | null;
   /** Statutory document number (e.g. Tax Invoice number) stamped on the sale. */
   statutoryNumber?: string | null;
+  /** Discount percentage applied (0-100). 0 means no discount.
+   *  Non-optional: the bridge sends a bare `i64` with `#[serde(default)]`
+   *  (history.rs:188-190), so the key is always present. */
+  discountPercent: number;
+  /** Human-readable discount label (e.g. "Senior 10%"). */
+  discountLabel?: string | null;
+  /** Tip amount in minor units collected at checkout (default 0).
+   *  REQUIRED, not optional: `SaleDetail` (`history.rs:149`) declares
+   *  `tip_minor: i64` with `#[serde(default)]` (:194-196), so serde always emits
+   *  the key. Do not confuse this with `CompleteSaleArgs`, whose same-named field is
+   *  an `Option<i64>` — two structs, opposite contracts. */
+  tipMinor: number;
+  /** Service-charge amount in minor units collected at checkout (default 0).
+   *  REQUIRED for the same reason as `tipMinor`; see there. */
+  serviceChargeMinor: number;
 }
 
 /**
@@ -935,11 +967,12 @@ export interface PrintSalesReceiptArgs {
   taxIdLabel?: string | null | undefined;
   taxRegime?: string | null | undefined;
   statutoryRounding?: string | null | undefined;
-  documentKind?: 'receipt' | 'invoice' | undefined;
+  documentKind?: 'receipt' | 'invoice' | 'kitchen' | 'kot' | 'bar' | undefined;
   isInvoice?: boolean | undefined;
   statutoryNumber?: string | null | undefined;
   customerName?: string | null | undefined;
   customerTaxId?: string | null | undefined;
+  printerTarget?: string | null | undefined;
 }
 
 /** Result of a receipt print request. */

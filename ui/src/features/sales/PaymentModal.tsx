@@ -8,14 +8,16 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
+import { assignTableOrderScoped, listTablesScoped } from '@/api/tables';
 import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
-import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseMoneyInput, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 // W5-a: only the reciprocal helper is still read here (tenderSnapshot); the
 // currency/rate loaders and the fixed-point converter moved to useMultiCurrency.
 import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
+import { getCreditSettingsScoped, type CreditSettingsDto } from '@/api/settings';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { coreRailWithheld, railOffered, railParam, staticQrisPayload, useLocalPaymentRails, visibleMethods, resolveTenderDisplayName } from './useLocalPaymentRails';
@@ -101,7 +103,7 @@ export default function PaymentModal({
   // useCallback dependency arrays, which is what kept it "used" and hid the fact. The backend
   // resolves the cashier from `sessionToken`, so the value is redundant on every ADR #7 path. The
   // prop is left on the interface rather than removed because 62 test call sites pass it; dropping
-  // it is a real cleanup but a separate, wider change. Recorded in docs/plans/0.0.36-backlog.md.
+  // it is a real cleanup but a separate, wider change. Recorded in docs/plans/_backlog/0.0.36-backlog.md.
   sessionToken,
   tableNumber,
   orderType = 'dine_in',
@@ -150,6 +152,25 @@ export default function PaymentModal({
   // written before that row existed — a silent withdrawal nobody asked for, caught by
   // this file's own PINNED tender-list case.) Three states, documented on the helper.
   const openBillOffered = !coreRailWithheld(paymentRails, 'open_bill');
+  const creditOffered = !coreRailWithheld(paymentRails, 'credit');
+  // F23, closed 2026-10-14 on an owner ruling. `cash` and `card` were the two INERT
+  // core rails: RestaurantPaymentsScreen renders each as an enable/disable switch
+  // that persists `is_enabled` on the rail row, and nothing here read it — so the
+  // switch was a control that changed nothing, which the plan classifies as worse
+  // than no control.
+  //
+  // The ruling was to WIRE them rather than accept them as universal, on the grounds
+  // that `coreRailWithheld` already encodes the nuance the "universal" framing missed:
+  // three states, not two. No row for the rail (a store whose list predates it) returns
+  // FALSE — the tender is offered — so a site with no EDC terminal still takes a card
+  // by hand exactly as the TENDER_RAILS note says. Only an EXPLICIT `is_enabled: false`
+  // hides the tender, and that is the operator's own saved switch being honoured.
+  //
+  // So this cannot withdraw a capability anyone did not turn off; it makes an existing
+  // toggle stop lying. Same helper, same shape as `open_bill` and `credit` above.
+  const cashOffered = !coreRailWithheld(paymentRails, 'cash');
+  const cardOffered = !coreRailWithheld(paymentRails, 'card');
+  const [creditSettings, setCreditSettings] = useState<CreditSettingsDto | null>(null);
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
   const manualQrString = staticQrisPayload(paymentRails);
@@ -304,6 +325,7 @@ export default function PaymentModal({
     addSplit,
     removeSplit,
     updateSplit,
+    splitWays,
   } = useSplitTenderState();
 
   const { isEnabled } = useFeatures();
@@ -345,6 +367,48 @@ export default function PaymentModal({
     // hidden surface. Same recovery shape as the QRIS reset above.
     if ((!isRestaurantPos || !openBillOffered) && method === 'open_bill') setMethod('cash');
   }, [isRestaurantPos, openBillOffered, method]);
+
+  useEffect(() => {
+    if (!sessionToken || !open) return;
+    let cancelled = false;
+    getCreditSettingsScoped(sessionToken)
+      .then((settings) => {
+        if (!cancelled) setCreditSettings(settings);
+      })
+      .catch((err) => {
+        console.warn('Failed to load credit settings', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, open]);
+
+  useEffect(() => {
+    if (!creditOffered && method === 'credit') {
+      setMethod('cash');
+    }
+  }, [creditOffered, method]);
+
+  // F23 (closed 2026-10-14): the same recovery for the two newly-wired core rails.
+  // A rail switched off under a chosen tender must not strand the cashier on a
+  // hidden surface — Complete would otherwise submit a tender the operator has
+  // switched off. Mirrors the qris/open_bill/credit resets above.
+  useEffect(() => {
+    if (!cashOffered && !cardOffered) {
+      // Both are gone. Fall back to whichever wired rail is still on, and cash
+      // is universal only in the no-row sense — with BOTH rows explicitly
+      // disabled there is no universal default left to assume.
+      const fallback: PaymentMethod = creditOffered
+        ? 'credit'
+        : qrisOffered
+          ? 'qris'
+          : 'open_bill';
+      if (method === 'cash' || method === 'card') setMethod(fallback);
+      return;
+    }
+    if (!cashOffered && method === 'cash') setMethod(cardOffered ? 'card' : 'qris');
+    if (!cardOffered && method === 'card') setMethod(cashOffered ? 'cash' : 'qris');
+  }, [cashOffered, cardOffered, creditOffered, qrisOffered, method]);
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
@@ -766,15 +830,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
-          ...(line.modifiers && line.modifiers.length > 0
+          ...((line.modifiers && line.modifiers.length > 0) || (line.note && line.note.trim())
             ? {
-                modifiersJson: JSON.stringify(
-                  line.modifiers.map((m) => ({
+                modifiersJson: JSON.stringify([
+                  ...(line.modifiers ?? []).map((m) => ({
                     name: m.groupName,
                     choice: m.modifierName,
                     price_minor: m.priceMinor,
                   })),
-                ),
+                  ...(line.note && line.note.trim()
+                    ? [{ name: 'Note', choice: line.note.trim(), price_minor: 0 }]
+                    : []),
+                ]),
               }
             : {}),
           ...(line.note ? { note: line.note } : {}),
@@ -881,6 +948,32 @@ retryCurrencyLoad,
       }
 
       try {
+        // ⚠️ DINE-IN ONLY. The cart panel renders the Table number field for the
+        // restaurant POS on EVERY order type (CartPanel.tsx:735-743 — table capture
+        // "does not depend on a setting"), so ringing up a TAKEAWAY with a number
+        // left in that field used to claim a real table for the sale: measured live
+        // as `assign_table_order_scoped { tableId: 'table-01', … }`, after which
+        // PosScreen's release path frees that table on completion. A takeaway has no
+        // table, so claiming one corrupts the floor plan. Pinned by
+        // PaymentModalSaleFlow's takeaway/delivery case. (The QRIS/terminal path
+        // below carries the same guard.)
+        if (sessionToken && tableNumber && orderType === 'dine_in') {
+          try {
+            const tbls = await listTablesScoped(sessionToken);
+            const bareInput = bareTableNumber(tableNumber);
+            const match = tbls.find(
+              (t) =>
+                t.id === tableNumber ||
+                t.name === tableNumber ||
+                (bareTableNumber(t.name) === bareInput && bareInput !== ''),
+            );
+            if (match) {
+              await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
+            }
+          } catch (tableErr) {
+            console.warn('assignTableOrderScoped failed', tableErr);
+          }
+        }
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
@@ -908,12 +1001,17 @@ retryCurrencyLoad,
         try {
           await finalizeSale(sessionToken, saleResult.saleId);
         } catch (finalizeErr) {
-          addToast({ message: `Finalize failed, attempting void: ${finalizeErr instanceof Error ? finalizeErr.message : String(finalizeErr)}`, type: 'error' });
+          // The backend cause arrives in English and cannot be localized here, so it
+          // is LOGGED rather than shown: the cashier needs the instruction, and the
+          // diagnostic belongs in the console where support can read it.
+          console.error('finalizeSale failed', saleResult.saleId, finalizeErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-finalize-failed'), type: 'error' });
           if (voidOnFinalizeFailure) {
             try {
               await voidPendingSale(sessionToken, saleResult.saleId);
             } catch (voidErr) {
-              addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+              console.error('voidPendingSale failed', saleResult.saleId, voidErr);
+              addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-void-failed'), type: 'error' });
             }
           }
           throw finalizeErr;
@@ -939,7 +1037,11 @@ retryCurrencyLoad,
 
       setDone(true);
     },
-    [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
+    // orderType is READ in this callback (the dine-in-only table claim) and so must
+    // be listed: without it the callback closes over the value from the render that
+    // created it, and a cashier who switches Dine-In -> Takeaway after mount would
+    // still take the dine-in branch and claim a table.
+    [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, orderType, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
      publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits],
   );
@@ -964,6 +1066,7 @@ retryCurrencyLoad,
     classifyError,
     setProcessing,
     setPaymentError,
+    l10nRef,
     addToast,
   });
 
@@ -1016,6 +1119,8 @@ retryCurrencyLoad,
     terminals: edcTerminals,
     selectedTerminalId: edcSelectedTerminalId,
     setSelectedTerminalId: setEdcSelectedTerminalId,
+    terminalFailed: edcTerminalFailed,
+    clearTerminalFailed: clearEdcTerminalFailed,
   } = useEdcTenderPhase({
     sessionToken,
     effectiveTotalInCartCurrency,
@@ -1026,6 +1131,12 @@ retryCurrencyLoad,
     addToast,
     setProcessing,
   });
+
+  // Leaving the card tender abandons that route's failure, so Complete is not
+  // left blocked for a method the cashier has moved on from.
+  useEffect(() => {
+    if (method !== 'card') clearEdcTerminalFailed();
+  }, [method, clearEdcTerminalFailed]);
 
   const autoSplitEvenly = useCallback(() => {
     // W5-d: the arithmetic itself moved verbatim to ./payment/splitDistribution -
@@ -1051,6 +1162,15 @@ retryCurrencyLoad,
   // and the identity of the array are unchanged in behaviour.
   }, [splits.length, effectiveTotalInCartCurrency, cartCurrency, setSplits]);
 
+  const handleSplitWays = useCallback((ways: number) => {
+    const literals = distributeEvenly(
+      effectiveTotalInCartCurrency,
+      ways,
+      minorUnitExponent(cartCurrency),
+    );
+    splitWays(ways, literals);
+  }, [effectiveTotalInCartCurrency, cartCurrency, splitWays]);
+
   const canComplete = useMemo(() => {
     // CUR-02: settling in a charge currency records `tender_rate_millionths`
     // against the sale. With the rate read failed we do not know that number,
@@ -1062,12 +1182,57 @@ retryCurrencyLoad,
     if (rateUnknown) return false;
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
-    if (method === 'open_bill') return customerName.trim().length > 0 || (tableNumber != null && tableNumber.trim().length > 0);
-    if (method === 'credit') return customerName.trim().length > 0;
-    if (method === 'cash') return sufficient;
+    if (method === 'open_bill') {
+      // ⚠️ The table arm is DINE-IN ONLY. It was unconditional, so on a takeaway a
+      // stray table number alone armed Complete — and since 795fc18d4 the payload
+      // no longer carries that table (correctly), leaving a tab with NO name and
+      // NO table: `heldCartLabel` falls back to "Open Bill #<timestamp>" and the
+      // cashier cannot tell whose bill it is. That fix made the record honest and
+      // this path anonymous, so the gate has to require something the tab can
+      // actually be identified by. A customer name still works on any order type.
+      if (customerName.trim().length > 0) return true;
+      return orderType === 'dine_in' && tableNumber != null && tableNumber.trim().length > 0;
+    }
+    if (method === 'credit') {
+      if (!customerName.trim().length) return false;
+      if (!creditOffered) return false;
+      if (creditSettings?.enabled === false) return false;
+      if (creditSettings && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor) {
+        return false;
+      }
+      return true;
+    }
+    // F23 (closed 2026-10-14): a switch-off core rail cannot be tendered even
+    // if a stale selection survives — the guard is the backstop behind the filter
+    // and the reset effect, and it is what makes the withholding actual.
+    if (method === 'cash') return sufficient && cashOffered;
     if (method === 'qris') return qrReference.length > 0;
+    // A failed card-terminal attempt blocks Complete UNTIL the cashier retries or
+    // leaves the method. Without this, Complete stayed armed after the terminal
+    // declined and settled the sale as CARD with no money taken — measured live:
+    // "Card payment failed" toast, method still card, Complete still enabled, and
+    // a receipt recording CARD Rp 45.000.
+    //
+    // Deliberately NOT "method === 'card' is never completable": card is also a
+    // manual tender for a payment taken on another machine, and that path is
+    // intended (see the "keeps manual card" test). The gate keys on the EVIDENCE
+    // of a failure, so a cashier recording an off-POS card payment still can.
+    // F23 (closed 2026-10-14): the card TAB is now rail-gated on the core
+    // `card` rail, so a switched-off rail cannot be tendered here either. This keeps
+    // the typed comparison effective for both state flags.
+    if (method === 'card') {
+      if (!cardOffered) return false;
+      if (edcTerminalFailed) return false;
+      return true;
+    }
     return true;
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, qrReference]);
+    // orderType is read above (the open-bill dine-in table arm) and so must be
+    // listed: without it this memo closes over the render-time value, and a cashier
+    // who switches Dine-In -> Takeaway after mount would still be allowed to open a
+    // bill on a table number. THIRD occurrence of this exact trap in this area
+    // (see PosScreen's release guard and PaymentModal's claim guard), which is why
+    // the class sweep asserts the rule positively rather than trusting each site.
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
@@ -1090,7 +1255,15 @@ retryCurrencyLoad,
       // ── Open Bill: save cart without payment ──────────────
       if (method === 'open_bill') {
         const trimmedName = customerName.trim();
-        const trimmedTable = (tableNumber ?? '').trim();
+        // ⚠️ DINE-IN ONLY, the same guard the table CLAIM (206462b4d) and RELEASE
+        // (035d1d01b) had to gain. The cart panel renders the Table field for the
+        // restaurant POS on every order type (CartPanel.tsx:735-743), so a stray
+        // number there reached this path and was written into the saved cart_data
+        // AND the tab's label. Measured: a takeaway tab persisted
+        // `{"discountPercent":0,"tableNumber":"T99","orderType":"takeaway"}` — a
+        // record that contradicts itself, and the label outlives the screen.
+        // An open bill is a table's running tab; a takeaway has no table.
+        const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
         const cartData = JSON.stringify({
           lines: lineItems.map((l) => ({
             sku: l.sku,
@@ -1155,15 +1328,18 @@ retryCurrencyLoad,
           // Restaurant coursing: carry the assignment so `sale_lines.course`
           // reaches the KDS fan-out. Normalized backend-side.
           ...(line.courseId ? { course: line.courseId } : {}),
-          ...(line.modifiers && line.modifiers.length > 0
+          ...((line.modifiers && line.modifiers.length > 0) || (line.note && line.note.trim())
             ? {
-                modifiersJson: JSON.stringify(
-                  line.modifiers.map((m) => ({
+                modifiersJson: JSON.stringify([
+                  ...(line.modifiers ?? []).map((m) => ({
                     name: m.groupName,
                     choice: m.modifierName,
                     price_minor: m.priceMinor,
                   })),
-                ),
+                  ...(line.note && line.note.trim()
+                    ? [{ name: 'Note', choice: line.note.trim(), price_minor: 0 }]
+                    : []),
+                ]),
               }
             : {}),
           ...(line.note ? { note: line.note } : {}),
@@ -1174,10 +1350,9 @@ retryCurrencyLoad,
       let paymentSplits: PaymentSplitArg[] | undefined;
 
       if (splitMode) {
-        const exp = minorUnitExponent(cartCurrency);
         paymentSplits = splits.map((s) => ({
           method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
-          amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
+          amountMinor: parseMoneyInput(s.amountMinor || '0', cartCurrency) ?? 0,
         }));
       }
 
@@ -1240,11 +1415,13 @@ retryCurrencyLoad,
           await finalizeSale(sessionToken, saleResult.saleId);
         } catch (finalizeErr) {
           // Attempt to void the pending sale to restore stock
-          addToast({ message: `Finalize failed, attempting void: ${finalizeErr instanceof Error ? finalizeErr.message : String(finalizeErr)}`, type: 'error' });
+          console.error('finalizeSale failed', saleResult.saleId, finalizeErr);
+          addToast({ message: requiredLocalized(l10n, 'payment-toast-finalize-failed'), type: 'error' });
           try {
             await voidPendingSale(sessionToken, saleResult.saleId);
           } catch (voidErr) {
-            addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+            console.error('voidPendingSale failed', saleResult.saleId, voidErr);
+            addToast({ message: requiredLocalized(l10n, 'payment-toast-void-failed'), type: 'error' });
           }
           // Throw the original finalize error so the outer catch handles it
           throw finalizeErr;
@@ -1344,6 +1521,24 @@ retryCurrencyLoad,
       }
 
       try {
+        // Dine-in only — see the guard comment on the earlier assignment block.
+        if (sessionToken && tableNumber && orderType === 'dine_in') {
+          try {
+            const tbls = await listTablesScoped(sessionToken);
+            const bareInput = bareTableNumber(tableNumber);
+            const match = tbls.find(
+              (t) =>
+                t.id === tableNumber ||
+                t.name === tableNumber ||
+                (bareTableNumber(t.name) === bareInput && bareInput !== ''),
+            );
+            if (match) {
+              await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
+            }
+          } catch (tableErr) {
+            console.warn('assignTableOrderScoped failed', tableErr);
+          }
+        }
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
@@ -1423,12 +1618,12 @@ retryCurrencyLoad,
   }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits]);
 
   useEffect(() => {
-    if (!done) return;
+    if (!done || receiptArgs) return;
     const timer = setTimeout(() => {
       animateLeave(onCompleteRef.current);
     }, changeDue ? 3000 : 1500);
     return () => clearTimeout(timer);
-  }, [done, changeDue, animateLeave]); // onComplete via ref — stable deps
+  }, [done, changeDue, animateLeave, receiptArgs]); // onComplete via ref — stable deps
 
   // Auto-dismiss after leave animation completes
   useEffect(() => {
@@ -1487,10 +1682,9 @@ retryCurrencyLoad,
   // Reconstruct payment splits from the current split state (for shortfall retry)
   const paymentSplitsFromState = useCallback((): PaymentSplitArg[] | undefined => {
     if (!splitMode) return undefined;
-    const exp = minorUnitExponent(total.currency);
     return splits.map((s) => ({
       method: s.method === 'other' ? (s.otherLabel.trim().toLowerCase() || 'other') : s.method.toLowerCase(),
-      amountMinor: parseMinorUnits(s.amountMinor || '0', exp) ?? 0,
+      amountMinor: parseMoneyInput(s.amountMinor || '0', total.currency) ?? 0,
     }));
   }, [splitMode, splits, total.currency]);
 
@@ -1506,7 +1700,14 @@ retryCurrencyLoad,
   }, [serialNumbers, lineItems]);
 
   const handleIssueTaxInvoice = useCallback(async () => {
-    if (!completedSaleId || !sessionToken || !receiptArgs) return;
+    if (!sessionToken) {
+      // Reported, not dropped. The other two halves of this condition stay silent —
+      // no completed sale or no receipt args is a screen state — but a missing token
+      // means the invoice cannot be issued and the operator has to know.
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!completedSaleId || !receiptArgs) return;
     setIssuingTaxInvoice(true);
     try {
       const invoiceNumber = await issueTaxInvoiceScoped(sessionToken, completedSaleId);
@@ -2101,7 +2302,11 @@ retryCurrencyLoad,
                         <legend className="payment-section-title">Payment Method</legend>
                       </Localized>
                       <div className="payment-method-options">
-                        {visibleMethods(paymentRails, activeMarketProfile).map((m) => (
+                        {visibleMethods(paymentRails, activeMarketProfile)
+                          .filter((m) => m !== 'credit' || creditOffered)
+                          .filter((m) => m !== 'cash' || cashOffered)
+                          .filter((m) => m !== 'card' || cardOffered)
+                          .map((m) => (
                           <label
                             key={m}
                             className={`payment-method-label payment-method-label--${m}${method === m ? ' payment-method-label--active' : ''}`}
@@ -2123,12 +2328,39 @@ retryCurrencyLoad,
                         ))}
                         <div
                           className={`payment-method-label payment-method-label--other${method === 'other' ? ' payment-method-label--active' : ''}`}
+                          // This row is a div, not a label, because it holds two controls —
+                          // the radio and the name field — so it cannot use a label's native
+                          // click forwarding, and nothing in the row names the radio (the
+                          // inaccessible-name case the aria-label below covers).
+                          //
+                          // ⚠️ Being a div costs the row its click target: the radio is
+                          // `pointer-events: none` (PaymentModal.css:346) and the name field
+                          // is a DISABLED input while unselected, so a pointer landed on the
+                          // disabled field and did nothing. Measured: elementFromPoint at the
+                          // row's centre returned the disabled input, a real mouse click left
+                          // the radio unchecked, and only focus()+Space selected it — so a
+                          // touchscreen cashier could not charge an unlisted method at all.
+                          // The handler restores what <label> would have done. Pinned by
+                          // __tests__/PaymentModalOtherTender.test.tsx.
+                          //
+                          // onPointerDown ONLY, and it is the whole fix. A DISABLED input
+                          // fires no click at all, so a click aimed at the row's centre —
+                          // exactly where that field sits — never reached a click handler on
+                          // the row (measured: the row responded at its 5px padding, not at
+                          // its centre). Pointerdown fires on the row whatever child is
+                          // underneath, for mouse and touch alike.
+                          //
+                          // Deliberately NO onClick counterpart: the row is a plain div, and
+                          // jsx-a11y/no-static-element-interactions rightly forbids a click
+                          // handler on one without a role and keyboard support — which this
+                          // row cannot take, because the radio inside it is already the
+                          // keyboard-reachable control. Keyboard users use that radio's own
+                          // onChange; the row handler exists solely to forward a POINTER.
+                          onPointerDown={() => setMethod('other')}
                         >
-                          {/* This row is a div, not a label, because it holds two controls —
-                              the radio and the name field. Nothing in the row therefore names the
-                              radio, and an unselected "Other" shows an empty DISABLED input, so the
-                              accessible name has to come from here or the radio announces as bare
-                              "radio button". */}
+                          {/* An unselected "Other" shows an empty DISABLED input, so the
+                              accessible name has to come from here or the radio announces as
+                              bare "radio button". */}
                           <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
                           <input
                             type="radio"
@@ -2202,6 +2434,20 @@ retryCurrencyLoad,
                           </Localized>
                       </label>
                     </>
+                    {method === 'credit' && creditSettings?.enabled === false && (
+                      <p className="payment-credit-warning">
+                        <Localized id="payment-credit-disabled">
+                          <span>Store credit facility is currently disabled in Settings.</span>
+                        </Localized>
+                      </p>
+                    )}
+                    {method === 'credit' && creditSettings && creditSettings.enabled && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor && (
+                      <p className="payment-credit-warning">
+                        <Localized id="payment-credit-limit-exceeded">
+                          <span>Sale total exceeds maximum credit ceiling.</span>
+                        </Localized>
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -2257,6 +2503,7 @@ retryCurrencyLoad,
               onRemoveSplit={removeSplit}
               onUpdateSplit={updateSplit}
               onAutoSplitEvenly={autoSplitEvenly}
+              onSplitWays={handleSplitWays}
             />
 
             {loyaltyLicensed && loyaltyAccount && (

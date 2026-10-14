@@ -53,7 +53,10 @@ const lineItem = (overrides: Partial<CartLine> = {}): CartLine => ({
   ...overrides,
 });
 
-const { invokeMock } = vi.hoisted(() => {
+const { invokeMock, mockCreditSettings } = vi.hoisted(() => {
+  const creditSettingsRef = {
+    current: { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 10000000 },
+  };
   const mock = vi.fn((...callArgs: unknown[]) => {
     const cmd = callArgs[0] as string;
     switch (cmd) {
@@ -79,11 +82,13 @@ const { invokeMock } = vi.hoisted(() => {
         return Promise.resolve();
       case 'create_kds_order_from_sale_scoped':
         return Promise.resolve();
+      case 'get_credit_settings_scoped':
+        return Promise.resolve(creditSettingsRef.current);
       default:
         return Promise.resolve({});
     }
   });
-  return { invokeMock: mock };
+  return { invokeMock: mock, mockCreditSettings: creditSettingsRef };
 });
 
 const {
@@ -182,7 +187,22 @@ vi.mock('@/hooks/useFeatures', () => ({
 }));
 
 beforeEach(() => {
+  mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 10000000 };
   invokeMock.mockClear();
+  // `useSubscription` is set PER CASE (`:232` free/no-QRIS, `:254` plus/QRIS) and nothing
+  // restored it, so whichever case ran last left its caps in force. Under
+  // `--sequence.shuffle.tests --sequence.seed=13` that failed 'shows Pay with QR button for
+  // QRIS method' -- a case that assumes nothing about the tier and was handed one anyway.
+  // Restore the harness's neutral default (test-setup.ts:195): caps null, gates open.
+  vi.mocked(useSubscription).mockImplementation(
+    () =>
+      ({
+        caps: null,
+        state: 'active',
+        loading: false,
+        refresh: vi.fn(),
+      }) as never,
+  );
   mockListCurrenciesScoped.mockClear();
   mockListExchangeRates.mockClear();
     // Reset, not clear: the store-default tests make this REJECT rather than
@@ -663,6 +683,77 @@ describe('PaymentModal — rendering & fast interaction', () => {
     expect(screen.getByRole('button', { name: /credit sale/i })).toBeInTheDocument();
   });
 
+  it('disables Credit Sale button and shows warning when credit facility is disabled in settings', async () => {
+    mockCreditSettings.current = { enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 };
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="test-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const creditRadio = screen.getByLabelText(/Credit/);
+    await userEvent.click(creditRadio);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), 'Walk-in Customer');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /credit sale/i })).toBeDisabled();
+      expect(screen.getByText(/Store credit facility is currently disabled in Settings/i)).toBeInTheDocument();
+    });
+  });
+
+  it('disables Credit Sale button and shows ceiling warning when total exceeds credit ceiling', async () => {
+    mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 500 };
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="test-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const creditRadio = screen.getByLabelText(/Credit/);
+    await userEvent.click(creditRadio);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), 'Walk-in Customer');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /credit sale/i })).toBeDisabled();
+      expect(screen.getByText(/Sale total exceeds maximum credit ceiling/i)).toBeInTheDocument();
+    });
+  });
+
+  it('enables Credit Sale button when customer name provided and within credit ceiling', async () => {
+    mockCreditSettings.current = { enabled: true, reminderIntervalHours: 24, maxLimitMinor: 1000 };
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="test-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const creditRadio = screen.getByLabelText(/Credit/);
+    await userEvent.click(creditRadio);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), 'Walk-in Customer');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /credit sale/i })).toBeEnabled();
+    });
+  });
+
   // ── QRIS ──
 
   it('shows Pay with QR button for QRIS method', async () => {
@@ -772,15 +863,20 @@ describe('PaymentModal — rendering & fast interaction', () => {
     // other amount in this modal. Asserted by property rather than by a pasted string:
     // a symbol prefix (not the ISO code) and the two decimal digits a cents currency
     // actually has. Both separators are `[.,]` so this survives a locale switch --
-    // `id` renders "$ 10.000,00", `en` renders "$ 10,000.00" -- where a literal would
+    // `id` renders "$ 10,00", `en` renders "$ 10.00" -- where a literal would
     // fail the day the resolved locale changes, which is how the old assertion went
     // stale: `/USD 10\.000/` pinned the float-era hybrid of an American code, id-ID
     // grouping and no decimals on a 2-decimal currency.
-    const presetBtn = screen.getByText(/^\$ 10[.,]000[.,]00$/);
+    // `$ 10.00`, NOT `$ 10,000.00`. This assertion used to pin the latter, and that WAS
+    // the defect: the quick-tender ladder was IDR-shaped major units whatever the session
+    // currency, so a $7 sale offered a $10,000 shortcut. The ladder is now chosen per
+    // exponent (`defaultTenderPresets`), and the matcher keeps its separators-agnostic
+    // shape so a locale switch cannot make it stale.
+    const presetBtn = screen.getByText(/^\$ 10[.,]00$/);
     await userEvent.click(presetBtn);
 
     const tenderInput = screen.getByLabelText(/amount tendered/i) as unknown as HTMLInputElement;
-    expect(tenderInput.value).toBe('10000.00');
+    expect(tenderInput.value).toBe('10.00');
   });
 
   it('clicking exact tender sets the exact total amount', async () => {

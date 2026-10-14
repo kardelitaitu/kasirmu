@@ -157,6 +157,10 @@ WHITELIST: tuple[Allowed, ...] = (
         "20260831_per_tenant_unique_rebuild.sql", "products_new", "popularity_score",
         "faithful copy of products.popularity_score during the uniqueness rebuild",
     ),
+    Allowed(
+        "20261020_product_type_check.sql", "products_new", "popularity_score",
+        "faithful copy of products.popularity_score during the product_type check rebuild",
+    ),
     # Floor-plan canvas geometry on the restaurant `tables` table —
     # display-only coordinates, never money.
     Allowed("20260813_init.sql", "tables", "pos_x", "floor-plan canvas geometry, display-only"),

@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readScoped } from '@/utils/scopedStorage';
+import fs from 'node:fs';
+import path from 'node:path';
 import userEvent from '@testing-library/user-event';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { ThemeProvider } from '@/app/ThemeProvider';
+import { ZoomProvider } from '@/contexts/ZoomContext';
+import { ToastProvider } from '@/components/Toast';
+import { BrandProvider } from '@/contexts/BrandContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 
@@ -91,18 +98,62 @@ vi.mock('@/api/sales', async (importOriginal) => {
   };
 });
 
+vi.mock('@/api/kds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/kds')>();
+  return {
+    ...actual,
+    printKdsChitScoped: vi.fn().mockResolvedValue(true),
+  };
+});
+
 import { printSalesReceipt } from '@/api/sales';
+import { printKdsChitScoped } from '@/api/kds';
 import { TEST_PRINT_CODES } from '@/features/restaurant/screens/receiptLogic';
 
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
+import productsIdFtl from '@/locales/products.id.ftl?raw';
+import salesIdFtl from '@/locales/sales.id.ftl?raw';
+import inventoryIdFtl from '@/locales/inventory.id.ftl?raw';
+import settingsIdFtl from '@/locales/settings.id.ftl?raw';
+import { withFluentLocale } from '@/i18n/test-utils';
+import { renderInAct } from '@/test-utils/renderInAct';
 
 const FTL = [salesFtl, productsFtl, inventoryFtl, settingsFtl];
 
 const renderScreen = (props: { tablesEnabled?: boolean; terminalId?: string; onBack?: () => void; onSaved?: () => void } = {}) =>
   renderWithProviders(<RestaurantReceiptsScreen {...props} />, ...FTL);
+
+/**
+ * Render the screen under INDONESIAN.
+ *
+ * Why the F10 sentinel guard needs this: under the English bundle the key
+ * `restaurant-logo-custom-uploaded` resolves to the SAME words as the literal
+ * it replaced, so an assertion on the rendered text cannot tell a localized
+ * value from a hardcoded one — the kill-test proved exactly that. Indonesian
+ * resolves the key to different text, so a literal regression fails here.
+ */
+const renderScreenId = (props: { tablesEnabled?: boolean; terminalId?: string; onBack?: () => void; onSaved?: () => void } = {}) =>
+  renderInAct(
+    withFluentLocale(
+      'id',
+      <BrandProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <ZoomProvider>
+              <RestaurantReceiptsScreen {...props} />
+            </ZoomProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </BrandProvider>,
+      salesIdFtl,
+      productsIdFtl,
+      inventoryIdFtl,
+      settingsIdFtl,
+    ),
+  );
 
 describe('RestaurantReceiptsScreen — margins & geometry', () => {
   it('clamps margin inputs to their valid ranges', async () => {
@@ -162,11 +213,11 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     // Default showCurrency false -> bare number in the totals. The preview
     // mirrors the printed receipt, which renders the major part verbatim
     // (no thousands grouping) — see formatPrice in receiptLogic.
-    const total = screen.getByText('93000');
+    const total = screen.getByText('109000');
     expect(total).toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/Show Currency/i));
-    expect(screen.getByText('Rp 93000')).toBeInTheDocument();
+    expect(screen.getByText('Rp 109000')).toBeInTheDocument();
   });
 
   it('PINNED DIVERGENCE: the grouping toggle makes the preview differ from the paper', async () => {
@@ -190,11 +241,11 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     const user = userEvent.setup();
     await renderScreen();
 
-    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
-    expect(screen.getByText('93.000')).toBeInTheDocument();
+    expect(screen.getByText('109.000')).toBeInTheDocument();
     // The paper would print this, whatever the toggle says:
-    expect(screen.queryByText('93000')).toBeNull();
+    expect(screen.queryByText('109000')).toBeNull();
   });
 
   it('does NOT append fractional units for IDR, whatever Show Decimals says', async () => {
@@ -204,19 +255,19 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     // here, claiming a precision the printer cannot produce — and `ReceiptConfig`
     // (:98-117) has no `showDecimals` field, so the toggle could not reach it either way.
     //
-    // This case previously asserted `93000,00`. It now asserts the printer-agreeing
+    // This case previously asserted `109000,00`. It now asserts the printer-agreeing
     // truth: for IDR the decimals toggle is inert, and only grouping changes.
     const user = userEvent.setup();
     await renderScreen();
 
-    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Decimals/i));
-    expect(screen.getByText('93000')).toBeInTheDocument();
-    expect(screen.queryByText('93000,00')).toBeNull();
+    expect(screen.getByText('109000')).toBeInTheDocument();
+    expect(screen.queryByText('109000,00')).toBeNull();
 
     // Grouping still applies (a separate, recorded preview/print divergence).
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
-    expect(screen.getByText('93.000')).toBeInTheDocument();
+    expect(screen.getByText('109.000')).toBeInTheDocument();
   });
 
   it('adjusts the tax rate input (clamped) and reflects it in the preview', async () => {
@@ -254,6 +305,22 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
   });
 });
 
+/**
+ * The English bundle's value for a key, read from disk. Asserting a bundle VALUE
+ * rather than the old literal is what makes a regression to a literal fail: the
+ * test bundle resolves the key to its own text, so the two cannot agree by accident.
+ */
+function bundleValue(key: string): string {
+  const ftl = fs.readFileSync(path.resolve(process.cwd(), '../shared-ui/locales/products.ftl'), 'utf-8');
+  return (ftl.match(new RegExp('^' + key + ' = (.*)$', 'm')) ?? [])[1]?.trim() ?? '';
+}
+
+/** The Indonesian bundle's value for a key. See the non-English sentinel case. */
+function idBundleValue(key: string): string {
+  const ftl = fs.readFileSync(path.resolve(process.cwd(), '../shared-ui/locales/products.id.ftl'), 'utf-8');
+  return (ftl.match(new RegExp('^' + key + ' = (.*)$', 'm')) ?? [])[1]?.trim() ?? '';
+}
+
 describe('RestaurantReceiptsScreen — logo', () => {
   it('removes the logo via the Remove Logo button', async () => {
     const user = userEvent.setup();
@@ -262,11 +329,72 @@ describe('RestaurantReceiptsScreen — logo', () => {
     const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i) as HTMLInputElement;
     await user.clear(logoInput);
     await user.type(logoInput, 'data:image/png;base64,abc');
-    // A data: logo makes the input show the literal placeholder string as its value.
-    expect(logoInput).toHaveValue('Custom uploaded image');
+    // A binary data: logo has no readable text form, so the field shows a LABEL.
+    // Assert the BUNDLE value, not the old literal 'Custom uploaded image' (F10):
+    // the key resolves to its own text here, so a regression to a literal fails,
+    // and a locale that translates the key is proven to reach this field.
+    const sentinel = bundleValue('restaurant-logo-custom-uploaded');
+    expect(sentinel, 'the sentinel key vanished from the bundle').not.toBe('');
+    expect(logoInput).toHaveValue(sentinel);
 
     await user.click(screen.getByRole('button', { name: /Remove Logo/i }));
+    expect(logoInput).not.toHaveValue(sentinel);
+  });
+
+  it('renders the upload sentinel from the bundle under a NON-English locale (F10)', async () => {
+    // The discriminating half. Under English the key resolves to the same words
+    // as the old literal, so the case above cannot tell them apart — a planted
+    // literal PASSED it. Indonesian resolves the key to different text, so this
+    // is the assertion that actually fails on a hardcoded sentinel.
+    const user = userEvent.setup();
+    await renderScreenId();
+
+    const logoInput = screen.getByPlaceholderText(/tempel URL gambar/i) as HTMLInputElement;
+    await user.clear(logoInput);
+    await user.type(logoInput, 'data:image/png;base64,abc');
+
+    const idSentinel = idBundleValue('restaurant-logo-custom-uploaded');
+    expect(idSentinel, 'the sentinel key vanished from the Indonesian bundle').not.toBe('');
+    expect(idSentinel).not.toBe('Custom uploaded image');
+    expect(logoInput).toHaveValue(idSentinel);
     expect(logoInput).not.toHaveValue('Custom uploaded image');
+  });
+
+  it('does not store the localized sentinel back as the logo when it is edited', async () => {
+    // The onChange guard must compare against the SAME localized string the value
+    // renders. While it was hardcoded to 'Custom uploaded', the Indonesian field
+    // treated its own translated label as a real URL and STORED it: the receipt
+    // logo became the words "Gambar yang diunggah khusus" instead of the upload.
+    //
+    // The observable is the STORED value, not the input's own text: the field is
+    // controlled, so it renders the sentinel before and after the edit either way.
+    // The preview <img src> is what reveals whether the logo survived.
+    await renderScreenId();
+
+    const logoInput = screen.getByPlaceholderText(/tempel URL gambar/i) as HTMLInputElement;
+    // A data URL arrives as ONE change (paste, or the file picker's FileReader),
+    // never one keystroke at a time — typing it char-by-char re-renders the
+    // sentinel after 'data:' and can never reach the full value.
+    fireEvent.change(logoInput, { target: { value: 'data:image/png;base64,abc' } });
+    const idSentinel = idBundleValue('restaurant-logo-custom-uploaded');
+    expect(logoInput).toHaveValue(idSentinel);
+
+    const srcBefore = document.querySelector('.resto-receipt-logo')?.getAttribute('src');
+    expect(srcBefore).toBe('data:image/png;base64,abc');
+
+    // The edit: the field is showing the sentinel and the user touches it. The
+    // value must DIFFER from what React last rendered or the framework's value
+    // tracker suppresses onChange — so append a character, which is the real
+    // "user edits the label" path.
+    fireEvent.change(logoInput, { target: { value: idSentinel + 'x' } });
+
+    // The guard's contract is `startsWith(sentinel)`, so an edit that still begins
+    // with the label must NOT be stored as the logo. With the old hardcoded
+    // 'Custom uploaded' check the Indonesian label failed that test and REPLACED
+    // the uploaded image with the words of the label.
+    const srcAfter = document.querySelector('.resto-receipt-logo')?.getAttribute('src');
+    expect(srcAfter, 'the localized sentinel was stored as the logo').toBe('data:image/png;base64,abc');
+    expect(srcAfter).not.toBe(idSentinel);
   });
 
   it('gives the receipt logo an alt from the bundle, not a literal (F10)', async () => {
@@ -427,6 +555,82 @@ describe('RestaurantReceiptsScreen — printer hardware', () => {
     expect(screen.getByText(/Pro Plan or KDS Required/i)).toBeInTheDocument();
     expect(document.querySelector('.resto-kitchen-printer--disabled')).toBeInTheDocument();
   });
+
+  it('dispatches printKdsChitScoped and shows success toast when kitchen test chit button is clicked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printKdsChitScoped).mockResolvedValueOnce(true);
+    await renderScreen();
+
+    const kitchenSel = document.querySelector('#resto-hw-kitchen-conn') as HTMLSelectElement;
+    await user.selectOptions(kitchenSel, 'network');
+
+    const hostInput = screen.getByLabelText(/Kitchen Printer IP \/ Device Path/i) as HTMLInputElement;
+    await user.clear(hostInput);
+    await user.type(hostInput, '192.168.1.200:9100');
+
+    const chitBtn = screen.getByTestId('restaurant-kitchen-test-chit-btn');
+    expect(chitBtn).toBeInTheDocument();
+    await user.click(chitBtn);
+
+    await waitFor(() => {
+      expect(printKdsChitScoped).toHaveBeenCalledWith('mock-session-token', 'test-order-chit');
+    });
+  });
+
+  // The receipt Test Print payload was UNASSERTED until round 135: every case around it
+  // mocked `printSalesReceipt` and checked pass/fail paths only, so nothing pinned WHAT was
+  // printed. Two things matter enough to pin:
+  //
+  //   1. the sample prices EXCLUSIVE tax — subtotal 30000, tax = 30000 * rate/100,
+  //      total = 30000 * (1 + rate/100). The on-screen preview beside it prices INCLUSIVE tax
+  //      (`receiptLogic.ts`: line total * 100/(100+rate)). Those are two configured modes, not
+  //      drift: `sales_tests.rs:1161` exclusive, `:1284` inclusive, both real, chosen on the
+  //      tax rate row. See `docs/records/audits/two-samples-two-tax-modes.md`.
+  //
+  //   2. the items sum to the submitted subtotal. If a future edit changes one and not the
+  //      other, the sample silently prints a receipt that does not add up.
+  it('prints a receipt sample whose items sum to its subtotal, priced EXCLUSIVE tax', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const btn = screen.getByRole('button', { name: /^Test Print$/ });
+    await user.click(btn);
+
+    await waitFor(() => expect(printSalesReceipt).toHaveBeenCalled());
+
+    const [, payload] = vi.mocked(printSalesReceipt).mock.calls[0]!;
+    // self-consistency: the two line prices are the submitted subtotal.
+    const lineTotal = payload.items!.reduce((sum, it) => sum + it.totalPrice!.minorUnits, 0);
+    expect(lineTotal).toBe(payload.subtotal.minorUnits);
+
+    // EXCLUSIVE: tax sits ON TOP of the subtotal rather than being carved out of it.
+    expect(payload.tax!.minorUnits).toBe(
+      Math.round(payload.subtotal.minorUnits * (10 / 100)),
+    );
+    expect(payload.total.minorUnits).toBe(
+      payload.subtotal.minorUnits + payload.tax!.minorUnits,
+    );
+  });
+
+  it('shows error toast when kitchen test chit fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printKdsChitScoped).mockRejectedValueOnce(new Error('Connection refused to kitchen printer'));
+    await renderScreen();
+
+    const kitchenSel = document.querySelector('#resto-hw-kitchen-conn') as HTMLSelectElement;
+    await user.selectOptions(kitchenSel, 'network');
+
+    const hostInput = screen.getByLabelText(/Kitchen Printer IP \/ Device Path/i) as HTMLInputElement;
+    await user.clear(hostInput);
+    await user.type(hostInput, '192.168.1.200:9100');
+
+    const chitBtn = screen.getByTestId('restaurant-kitchen-test-chit-btn');
+    await user.click(chitBtn);
+
+    await waitFor(() => {
+      expect(printKdsChitScoped).toHaveBeenCalledWith('mock-session-token', 'test-order-chit');
+    });
+  });
 });
 
 describe('RestaurantReceiptsScreen — back nav & save', () => {
@@ -566,8 +770,11 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
       expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
       const saveBtn = screen.getByRole('button', { name: /Save/i });
       expect(saveBtn).toBeDisabled();
-      expect(localStorage.getItem('resto_rcpt_header_title')).toBe('REMOTE RESTO');
-      expect(localStorage.getItem('resto_rcpt_tax_rate')).toBe('12');
+      // The keys are STORE-SCOPED since round 169 (`utils/scopedStorage.ts`), so a remote
+      // preference lands under `<base>:<storeId>` rather than the flat name. The claim is
+      // unchanged — the remote value is cached for the next mount — only its address moved.
+      expect(readScoped('resto_rcpt_header_title', 'default')).toBe('REMOTE RESTO');
+      expect(readScoped('resto_rcpt_tax_rate', 'default')).toBe('12');
     });
   });
 
@@ -622,7 +829,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--success');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.SUCCESS)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Test receipt was sent to the printer successfully/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-success'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_DISABLED when printer connection is set to disabled', async () => {
@@ -639,7 +846,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PRINTER_DISABLED)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Receipt printer is currently disabled/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-printer-disabled'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_MISSING_HOST when network printer has empty host', async () => {
@@ -673,7 +880,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PRINTER_NOT_FOUND)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/No receipt printer is registered or detected/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-printer-not-found'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_PAPER_FAULT when printer is out of paper or cover open', async () => {
@@ -688,7 +895,7 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PAPER_FAULT)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Printer fault: check paper roll supply, cover latch, or paper jam/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-paper-fault'))).toBeInTheDocument();
   });
 
   it('produces PRN_ERR_TIMEOUT when connection times out', async () => {
@@ -703,9 +910,28 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(statusEl).toBeInTheDocument();
     expect(statusEl).toHaveClass('resto-test-print-status--error');
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_TIMEOUT)).toBeInTheDocument();
-    expect(within(statusEl).getByText(/Printer communication timed out/i)).toBeInTheDocument();
+    expect(within(statusEl).getByText(bundleValue('restaurant-test-print-msg-timeout'))).toBeInTheDocument();
   });
 
+  it('renders the test-print message from the bundle under a NON-English locale (F10)', async () => {
+    // The discriminating half. Under English the message keys resolve to the
+    // same sentences the literals used, so the cases above cannot tell a
+    // localized string from a hardcoded one — a planted literal PASSED them.
+    // Indonesian differs, so this fails on a regression to a literal.
+    const user = userEvent.setup();
+    vi.mocked(printSalesReceipt).mockRejectedValueOnce(new Error('no receipt printer registered'));
+    await renderScreenId();
+
+    await user.click(screen.getByTestId('restaurant-receipts-test-print-btn'));
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    const idMessage = idBundleValue('restaurant-test-print-msg-printer-not-found');
+    expect(idMessage, 'the message key vanished from the Indonesian bundle').not.toBe('');
+    expect(idMessage).not.toBe('No receipt printer is registered or detected on this device.');
+    expect(within(statusEl).getByText(idMessage)).toBeInTheDocument();
+    // And explicitly NOT the English sentence that used to be hardcoded.
+    expect(within(statusEl).queryByText(/No receipt printer is registered/i)).toBeNull();
+  });
   it('remains clean when scoped receipt format resolves with non-default values', async () => {
     const { getReceiptFormatScoped } = await import('@/api/receipt-format');
     vi.mocked(getReceiptFormatScoped).mockResolvedValueOnce({
@@ -815,5 +1041,145 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(screen.getByText(/Logo Position/i)).toBeInTheDocument();
   });
 });
+
+
+// ── The printer-hardware controls must not hardcode English (F10) ──────────
+//
+// §6.3 requires every user-visible string to route through @fluent/react. This
+// screen's Printer card was the last cluster on it that did not: the connection
+// dropdown, the Bluetooth MAC label/placeholder/grant button, the paired-device
+// option, the network/serial path labels and the kitchen-printer path labels
+// were plain literals, so an Indonesian operator saw English there.
+//
+// The payments screen was swept the same way in `883dd842e`; this is the sibling
+// half. Two cases, because each catches a different regression:
+//   1. the KEYS resolve in both bundles (a deleted translation is a defect even
+//      if the call site is correct);
+//   2. the SOURCE contains no literal again — a literal can render the right
+//      words and still be a literal, and only reading the file catches that.
+describe('RestaurantReceiptsScreen — printer-hardware i18n sweep (no hardcoded English)', () => {
+  const SWEPT = [
+    'restaurant-printer-conn-auto',
+    'restaurant-printer-conn-bluetooth',
+    'restaurant-printer-conn-network',
+    'restaurant-printer-conn-usb',
+    'restaurant-printer-conn-serial',
+    'restaurant-printer-conn-disabled',
+    'restaurant-printer-bt-mac-label',
+    'restaurant-printer-bt-mac-placeholder',
+    'restaurant-printer-bt-grant',
+    'restaurant-printer-bt-paired-placeholder',
+    'restaurant-printer-ip-label',
+    'restaurant-printer-ip-placeholder',
+    'restaurant-printer-port-label',
+    'restaurant-printer-port-placeholder',
+    'restaurant-kitchen-printer-path-label',
+    'restaurant-kitchen-printer-net-placeholder',
+    'restaurant-kitchen-printer-bt-placeholder',
+    'restaurant-kitchen-printer-serial-placeholder',
+    'restaurant-test-kitchen-chit',
+    'restaurant-test-kitchen-chit-desc',
+    'restaurant-test-kitchen-chit-success-title',
+    'restaurant-test-kitchen-chit-success',
+    'restaurant-receipt-logo-too-large',
+    'restaurant-test-print-unsaved-title',
+    'restaurant-test-print-unsaved-message',
+    'restaurant-test-print-bt-mac-required',
+    'restaurant-drawer-auth-title',
+    'restaurant-drawer-auth-message',
+    'restaurant-drawer-sent-title',
+    'restaurant-drawer-sent-message',
+    'restaurant-drawer-unconfirmed-title',
+    'restaurant-drawer-unconfirmed-message',
+    'restaurant-drawer-failed-title',
+    // Test-print result messages. These were English literals RETURNED FROM
+    // receiptLogic.ts (a pure function), so the status card and every toast
+    // rendered English under every locale. They now travel as Fluent keys.
+    'restaurant-test-print-msg-success',
+    'restaurant-test-print-msg-auth-required',
+    'restaurant-test-print-msg-printer-disabled',
+    'restaurant-test-print-msg-missing-host',
+    'restaurant-test-print-msg-missing-port',
+    'restaurant-test-print-msg-printer-not-found',
+    'restaurant-test-print-msg-paper-fault',
+    'restaurant-test-print-msg-timeout',
+    'restaurant-test-print-msg-busy',
+    'restaurant-test-print-msg-permission-denied',
+    'restaurant-test-print-msg-communication',
+    'restaurant-test-print-msg-communication-detail',
+    'restaurant-test-print-msg-unconfirmed',
+    'restaurant-test-print-msg-general',
+    'restaurant-test-print-msg-general-detail',
+    'restaurant-test-print-error-title',
+    'restaurant-test-print-success-title',
+  ];
+
+  function bundle(rel: string): string {
+    return fs.readFileSync(path.resolve(process.cwd(), rel), 'utf-8');
+  }
+
+  it('every swept key exists in BOTH bundles', () => {
+    for (const [locale, rel] of [
+      ['en', '../shared-ui/locales/products.ftl'],
+      ['id', '../shared-ui/locales/products.id.ftl'],
+    ] as const) {
+      const src = bundle(rel);
+      for (const key of SWEPT) {
+        expect(
+          src,
+          `${key} is missing from the ${locale} bundle — if this screen went back ` +
+            'to a hardcoded literal, that is the regression this case exists for',
+        ).toMatch(new RegExp('^' + key + ' = ', 'm'));
+      }
+    }
+  });
+
+  it('leaves no hardcoded English label, placeholder or toast in the source', () => {
+    // TWO files: the screen renders the strings, and receiptLogic.ts used to
+    // RETURN them. A guard that read only the screen would have missed the
+    // twelve literals in the pure function entirely.
+    const src = [
+      'src/features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+      'src/features/restaurant/screens/receiptLogic.ts',
+    ]
+      .map((rel) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf-8'))
+      .join('\n');
+    const offenders = src
+      .split('\n')
+      .map((line, i) => ({ n: i + 1, line }))
+      .filter(({ line }) =>
+        /placeholder="[A-Za-z0-9]/.test(line) ||
+        /label: '[A-Z]/.test(line) ||
+        /(title|message): '[A-Z]/.test(line) ||
+        /^\s*(Bluetooth MAC Address|Grant Bluetooth Permission|Kitchen Printer IP)/.test(line));
+    expect(
+      offenders.map((o) => `${o.n}: ${o.line.trim().slice(0, 70)}`),
+      'these lines hardcode user-visible English again — route them through l10n.getString',
+    ).toEqual([]);
+  });
+
+  it('switches between Customer Receipt and Kitchen Chit preview', async () => {
+    await renderScreen();
+    const customerTab = screen.getByTestId('restaurant-preview-tab-customer');
+    const kitchenTab = screen.getByTestId('restaurant-preview-tab-kitchen');
+    expect(customerTab).toBeInTheDocument();
+    expect(kitchenTab).toBeInTheDocument();
+
+    // Default is customer receipt
+    expect(customerTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('receipt-preview-kitchen-chit')).not.toBeInTheDocument();
+
+    // Click Kitchen Chit tab
+    fireEvent.click(kitchenTab);
+    expect(kitchenTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('receipt-preview-kitchen-chit')).toBeInTheDocument();
+
+    // Click Customer tab back
+    fireEvent.click(customerTab);
+    expect(customerTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('receipt-preview-kitchen-chit')).not.toBeInTheDocument();
+  });
+});
+
 
 

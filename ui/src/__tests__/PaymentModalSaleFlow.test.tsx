@@ -95,6 +95,14 @@ const { invokeMock } = vi.hoisted(() => ({
   }),
 }));
 
+// The factory's own default, captured once so a case that replaces the implementation can
+// be undone. `beforeEach` used `mockClear()`, which keeps IMPLEMENTATIONS (round 92) -- so
+// several cases' `invokeMock.mockImplementation(...)` (lines 754, 794, 960, 1009, ...) stayed
+// in force for every case after them. Under `--sequence.shuffle.tests` that surfaced as four
+// failures in this file. Captured here because the block's own `defaultInvokeImpl` is
+// declared much later and is not in scope from every case.
+const DEFAULT_INVOKE_IMPL = invokeMock.getMockImplementation() as (cmd: string) => Promise<unknown>;
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: null,
@@ -146,7 +154,12 @@ vi.mock('@/components/QrisQrDisplay', () => ({
 }));
 
 beforeEach(() => {
-  invokeMock.mockClear();
+  // mockReset(), not mockClear(): clear() keeps IMPLEMENTATIONS, so a case that replaced
+  // the invoke implementation leaked it into every later case (round 92's rule, measured
+  // again here in round 100). mockReset() clears the implementation AND any once-queue, so
+  // the factory default is re-installed immediately after.
+  invokeMock.mockReset();
+  invokeMock.mockImplementation(DEFAULT_INVOKE_IMPL);
   // The modal is shared by both POS terminals, and the Open Bill tender is now
   // gated on the workspace type: an open bill is the restaurant terminal's own
   // concept, and `hold_cart_scoped` refuses it from anywhere else. The global
@@ -398,6 +411,45 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('prints when the setting was never loaded, which is the fail-safe direction', async () => {
+    // The OMITTED prop, which is the route PosScreen takes when its settings read
+    // fails: it keeps `autoPrintKitchen` null and spreads nothing
+    // (PosScreen.tsx:1795), leaving this component's default (`= true`, :111) to
+    // apply.
+    //
+    // Untested until now, and worth a case because THREE routes reach "print": an
+    // explicit true, an omitted prop, and the null that a failed read produces. Only
+    // the first had coverage, so the difference between "the cashier switched it on"
+    // and "we could not find out" was unpinned — and a kitchen that silently stops
+    // receiving chits during a settings outage is the failure that goes unnoticed
+    // until food does not arrive.
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        // autoPrintKitchen deliberately NOT passed.
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      const printed = calls
+        .filter((c) => c[0] === 'print_kds_chit_scoped')
+        .map((c) => (c[1] as { orderId: string }).orderId);
+      expect(
+        printed.sort(),
+        'an unloaded setting must PRINT: the direction that loses an order is the one ' +
+          'that cannot be noticed from the till.',
+      ).toEqual(['kds-1', 'kds-2']);
+    });
+  });
   it('creates the KDS order but prints NO chit when auto_print_kitchen is off', async () => {
     kdsOrderImpl();
     await renderWithFluent(
@@ -454,6 +506,207 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('assigns table order before creating KDS order when tableNumber is provided', async () => {
+    kdsOrderImpl();
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tables_scoped') {
+        return Promise.resolve([
+          { id: 'tbl-12', name: 'Table 12', status: 'available' },
+        ]);
+      }
+      if (cmd === 'assign_table_order_scoped') {
+        return Promise.resolve({ id: 'tbl-12', status: 'occupied', active_sale_id: 'sale-1' });
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        tableNumber="12"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'assign_table_order_scoped',
+        expect.objectContaining({ tableId: 'tbl-12', saleId: 'sale-1' }),
+      );
+    });
+  });
+
+  it('does NOT assign a table when the order is takeaway or delivery', async () => {
+    // ⚠️ THE DEFECT THIS PINS (measured live, round 40). The assignment guard
+    // was `if (sessionToken && tableNumber)` — tableNumber truthy ALONE. The
+    // cart panel shows the Table number field for the restaurant POS on EVERY
+    // order type (its comment says table capture "does not depend on a setting"),
+    // so a cashier ringing up a TAKEAWAY who happens to leave a number typed in
+    // fires:
+    //
+    //   assign_table_order_scoped { tableId: 'table-01', saleId: 'mock-sale-…' }
+    //
+    // (captured from the live console) — attaching a takeaway sale to a real
+    // table, and then freeing that table on completion via PosScreen's release
+    // path. That corrupts the floor plan's occupancy for an order that has no
+    // table. Only a DINE-IN order may claim one.
+    for (const orderType of ['takeaway', 'delivery'] as const) {
+      invokeMock.mockClear();
+      kdsOrderImpl();
+      const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'list_tables_scoped') {
+          return Promise.resolve([{ id: 'tbl-12', name: 'Table 12', status: 'occupied' }]);
+        }
+        if (cmd === 'assign_table_order_scoped') {
+          return Promise.resolve({ id: 'tbl-12', status: 'occupied', active_sale_id: 'sale-1' });
+        }
+        return prev(cmd);
+      });
+
+      await renderWithFluent(
+        <PaymentModal
+          open
+          lineItems={[lineItem()]}
+          total={usd(700)}
+          userId="test-user-id"
+          sessionToken="mock-token"
+          tableNumber="12"
+          orderType={orderType}
+          onComplete={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      await completeWithKdsOrder();
+
+      // The sale DID complete; only the table claim must be absent.
+      expect(invokeMock).toHaveBeenCalledWith(
+        'complete_sale_scoped',
+        expect.objectContaining({ sessionToken: 'mock-token' }),
+      );
+      const assigns = (invokeMock.mock.calls as unknown[][]).filter(
+        (c) => c[0] === 'assign_table_order_scoped',
+      );
+      expect(
+        assigns,
+        `a ${orderType} order must not claim a table — a stray number in the \
+         cart's Table field would attach the sale to real table '12' and free it \
+         on completion`,
+      ).toEqual([]);
+    }
+  });
+
+  it('does NOT persist a table number on an OPEN BILL that is not dine-in', async () => {
+    // ⚠️ Sibling of the claim/release defect fixed in 206462b4d and 035d1d01b,
+    // on the OPEN BILL path. `complete` builds the held cart from
+    // `(tableNumber ?? '').trim()` and writes it into BOTH the saved cart_data and
+    // the tab's label (PaymentModal.tsx:1178, 1194, 1202) without consulting
+    // `orderType`. The cart panel shows the Table field for the restaurant POS on
+    // every order type (CartPanel.tsx:735-743), so a cashier ringing up a
+    // TAKEAWAY who left a number there saves a tab that claims a table it has no
+    // business owning — and the value is PERSISTED, so it outlives the screen.
+    //
+    // An open bill is a table's running tab; a takeaway has no table.
+    invokeMock.mockClear();
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    let heldPayload: Record<string, unknown> | null = null;
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === 'hold_cart_scoped') {
+        heldPayload = (args as { args?: Record<string, unknown> })?.args ?? (args as Record<string, unknown>);
+        return Promise.resolve({ id: 'tab-1' });
+      }
+      return prev(cmd);
+    });
+
+    try {
+      await renderWithFluent(
+        <PaymentModal
+          open
+          lineItems={[lineItem()]}
+          total={usd(700)}
+          userId="test-user-id"
+          sessionToken="mock-token"
+          tableNumber="T99"
+          orderType="takeaway"
+          onComplete={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      // Choose the Open Bill tender, type the customer (the modal owns this state
+      // — it is NOT a prop; `customerName` is internal and cleared on open), then
+      // save the tab.
+      const openBill = await screen.findByRole('radio', { name: /open bill/i });
+      await userEvent.click(openBill);
+      const nameField = document.querySelector<HTMLInputElement>('.payment-customer-input');
+      expect(nameField, 'the open-bill customer field must render').not.toBeNull();
+      await userEvent.type(nameField!, 'Walk-in');
+      await waitFor(() =>
+        expect(screen.getByTestId('settle-button')).not.toBeDisabled(),
+      );
+      await userEvent.click(screen.getByTestId('settle-button'));
+
+      await waitFor(() => expect(heldPayload).not.toBeNull());
+      const payload = heldPayload as unknown as Record<string, unknown>;
+      const cartData = String(payload['cart_data'] ?? '');
+
+      expect(
+        cartData.includes('T99'),
+        'a takeaway open bill must not persist the cart\'s stray table number — ' +
+          'cart_data was: ' +
+          cartData.slice(0, 220),
+      ).toBe(false);
+      expect(
+        String(payload['label'] ?? '').includes('T99'),
+        'the tab LABEL must not claim a table either — it is saved and outlives ' +
+          'the screen. label was: ' +
+          String(payload['label']),
+      ).toBe(false);
+      // It is still a usable tab: identified by the customer instead.
+      expect(String(payload['label'] ?? '')).toContain('Walk-in');
+    } finally {
+      invokeMock.mockImplementation(prev);
+    }
+  });
+
+  it('serializes line note into modifiersJson as Note for kitchen tickets', async () => {
+    kdsOrderImpl();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem({ note: 'Extra spicy, no onion' })]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'add_line_scoped',
+        expect.objectContaining({
+          sessionToken: 'mock-token',
+          args: expect.objectContaining({
+            modifiersJson: JSON.stringify([
+              { name: 'Note', choice: 'Extra spicy, no onion', price_minor: 0 },
+            ]),
+            note: 'Extra spicy, no onion',
+          }),
+        }),
+      );
+    });
+  });
+
   it('calls onComplete after sale done', async () => {
     const onComplete = vi.fn();
     await renderWithFluent(
@@ -477,6 +730,32 @@ describe('PaymentModal — sale flow', () => {
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalled();
     }, { timeout: 5000 });
+  });
+
+  it('does NOT auto-dismiss while ReceiptPreview is displayed', async () => {
+    const onComplete = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={onComplete}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    expect(await screen.findByRole('button', { name: /Print Receipt/i })).toBeInTheDocument();
+
+    // Wait 3500ms — exceeding both the 1500ms normal and 3000ms change-due dismiss timers
+    await new Promise((r) => setTimeout(r, 3500));
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Print Receipt/i })).toBeInTheDocument();
   });
 
   it('warns instead of reporting success when the receipt cannot print', async () => {
@@ -579,6 +858,8 @@ describe('PaymentModal — sale flow', () => {
     await userEvent.click(screen.getByTestId('settle-button'));
 
     expect(await screen.findByText(/loyalty points were NOT deducted/i)).toBeInTheDocument();
+    const skipBtn = await screen.findByRole('button', { name: /Skip/i });
+    await userEvent.click(skipBtn);
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
   });
 
@@ -1606,6 +1887,18 @@ describe('PaymentModal — EDC card-present tender', () => {
             screen.getByRole('button', { name: /pay on card terminal/i }),
           ).not.toBeDisabled(),
         );
+
+        // ⚠️ THE UNPAID-SALE GUARD. After a declined capture the method is still
+        // 'card' and every non-cash method was treated as automatically
+        // sufficient, so Complete stayed armed: pressing it settled the sale and
+        // printed a receipt reading "CARD $ 7,00" for a card the terminal had
+        // just refused. Measured live before this assertion existed. Complete must
+        // now be withheld until the cashier retries or leaves the card tender.
+        expect(
+          screen.getByTestId('settle-button'),
+          'Complete must NOT be offered after a declined card capture — ' +
+            'pressing it books a card sale with no money taken',
+        ).toBeDisabled();
       },
     );
     view.unmount();
@@ -1671,8 +1964,67 @@ describe('PaymentModal — local payment rails gating', () => {
       await waitFor(() =>
         expect(screen.queryByRole('radio', { name: /qris/i })).toBeNull(),
       );
-      // Cash stays: universal tender, never a market rail.
+      // Cash stays ONLY because its own rail row was not in the list at all — the
+      // rail is universal in the NO-ROW sense, which `coreRailWithheld` encodes as
+      // "offered". (Until 2026-10-14 this comment read "universal tender, never a
+      // market rail", which was the INERT framing the F23 ruling inverted.)
       expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument();
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  // ── F23: cash and card are rail-gated too (owner ruling 2026-10-14) ────────
+  // The pin said they were INERT; the ruling was to wire them, because
+  // `coreRailWithheld` already returns "offered" when there is NO row, so a store
+  // that never touched the switch keeps taking cash and hand-keyed cards. These
+  // cases are the behavioural half — the guard only proves the gate EXPRESSION is
+  // present, not that switching the rail off hides the tender.
+  it('a disabled cash rail removes the Cash tab', async () => {
+    const { view, restore } = await mountWithRails([rail(false, 'cash')]);
+    try {
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /cash/i })).toBeNull(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('a disabled card rail removes the Card tab', async () => {
+    const { view, restore } = await mountWithRails([rail(false, 'card')]);
+    try {
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /card/i })).toBeNull(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('an enabled cash rail keeps the tab', async () => {
+    const { view, restore } = await mountWithRails([rail(true, 'cash')]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('a populated list with NO cash row keeps the tab (the no-row case the ruling relies on)', async () => {
+    const { view, restore } = await mountWithRails([
+      { rail_code: 'qris', label: 'QRIS', is_enabled: true, scope: 'location', parameters: '{}' },
+    ]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument(),
+      );
     } finally {
       restore();
       view.unmount();

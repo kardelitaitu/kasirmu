@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // Unit tests for sameOrders — pure comparator that checks whether two
 // KdsOrder arrays are structurally identical (shallow field comparison).
 // Used to prevent unnecessary re-renders when the KDS queue is re-fetched.

@@ -3,7 +3,28 @@ name: figma-bridge
 description: Connect to live Figma design files via figma-mcp-bridge (Figma desktop plugin + MCP server). Inspect layout trees, extract nodes and variables/tokens, inspect component selections, export screenshots, and map Figma designs to kasir.mu React components and tokens.css without hitting Figma REST API rate limits.
 ---
 
-<!-- Audit stamp: 2026-09-24 · DSH · status: ACCURATE · initial version · REV 2 (28-09-26, DSH docs-auditor, shallow pass): the enforced footer was MISSING and is now added — this was the only one of 22 skills without it, which is exactly what skill-drift-guard check 9 reports as "missing audit date". Re-verified in this pass: the three repo paths this file names all resolve (prototypes/design-language.html, ui/src/theme/tokens.css, shared-ui/locales). The fluent finding in skill-drift-report.md is a FALSE POSITIVE, corrected in this same pass after re-reading the line it came from: the token it resolved was the placeholder id attribute in the example at :139 (its JSX value was a bare ellipsis), and the shape at :136 (feature-element-state) is the same class of placeholder. Neither is an id that should exist in shared-ui/locales, so the finding describes a placeholder as if it were a claim. Left as written rather than rewritten with a concrete id, because a concrete example would simply give the same checker a different unresolvable id to report. · REV 3 (2026-09-28, DSH repair lane): the placeholder in the example at :139 is now written `id={key}` — an expression, not a string literal, so check 7 has nothing to resolve while the example still shows no concrete id. That is the third option the REV 2 note did not consider: leaving it as written kept the drift gate red on a placeholder, and inventing an id would have handed the same checker a different unresolvable name. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Live SKILL
+     contract, re-audited against branch 0.0.41. ·
+     EVERY ANCHOR RE-DERIVED, NOT INHERITED: all three repo paths the file names resolve
+     (prototypes/design-language.html, ui/src/theme/tokens.css, shared-ui/locales/), and every
+     one of the eleven CSS custom properties the Step-3 mapping table names is defined in that
+     tokens.css (--color-primary, --color-bg, --color-bg-surface, --color-bg-input, --color-fg,
+     --color-fg-muted, --color-border, --color-border-focus, --space-4, --space-6, --radius-lg).
+     The REV 3 repair is INTACT and correct: the Step-4 example at :139 really does read
+     `id={key}` — an expression, not a string literal — so skill-drift-guard check 7 has nothing
+     to resolve while the example still shows no concrete id. skill-drift-guard run this pass
+     reports NO finding for this file (its two remaining findings are the pre-existing
+     desktop-ui-automation ones plus a deploy-cloudflare `docs/book` hit that is a dated note
+     about an untracked path, not a claim). ·
+     The MCP tool surface is an EXTERNAL contract (figma-mcp-bridge via npx), so its tool names
+     cannot be verified from this tree and were not treated as drift — the file states the tool
+     list as documentation of the dependency, which is what it can be. ·
+     NOT re-measured: the live bridge connection, any Figma file, the plugin/npx install path,
+     and the auto-layout-to-flexbox mappings as rendered output. No Figma desktop app or MCP
+     server is running in this environment. ·
+     Prior revisions preserved verbatim as original evidence (delimiters stripped, so they cannot
+     nest): Audit stamp: 2026-09-24 · DSH · status: ACCURATE · initial version · REV 2 (28-09-26, DSH docs-auditor, shallow pass): the enforced footer was MISSING and is now added — this was the only one of 22 skills without it, which is exactly what skill-drift-guard check 9 reports as "missing audit date". Re-verified in this pass: the three repo paths this file names all resolve (prototypes/design-language.html, ui/src/theme/tokens.css, shared-ui/locales). The fluent finding in skill-drift-report.md is a FALSE POSITIVE, corrected in this same pass after re-reading the line it came from: the token it resolved was the placeholder id attribute in the example at :139 (its JSX value was a bare ellipsis), and the shape at :136 (feature-element-state) is the same class of placeholder. Neither is an id that should exist in shared-ui/locales, so the finding describes a placeholder as if it were a claim. Left as written rather than rewritten with a concrete id, because a concrete example would simply give the same checker a different unresolvable id to report. · REV 3 (2026-09-28, DSH repair lane): the placeholder in the example at :139 is now written `id={key}` — an expression, not a string literal, so check 7 has nothing to resolve while the example still shows no concrete id. That is the third option the REV 2 note did not consider: leaving it as written kept the drift gate red on a placeholder, and inventing an id would have handed the same checker a different unresolvable name.
+     -->
 
 # Figma MCP Bridge — kasir.mu Design Synchronization
 
@@ -150,4 +171,4 @@ For every text node in the Figma tree:
 3. **Empty selection**:
    - Call `list_files` to ensure correct `fileKey`, or instruct the user to click on the desired frame/component in Figma before re-calling `get_selection`.
 
-> last audited 28-09-26 by DSH
+> last audited 11-10-26 by docs-auditor

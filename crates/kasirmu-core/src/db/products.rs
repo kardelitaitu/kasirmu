@@ -69,6 +69,41 @@ pub struct ProductWithDetails {
     pub images: Vec<ProductImage>,
 }
 
+impl ProductWithDetails {
+    /// Whether the product is available for sale.
+    ///
+    /// Products that do not track inventory (e.g. restaurant menu items, services)
+    /// are orderable by default (`in_stock = true`), UNLESS they have a recipe whose
+    /// ingredient availability is depleted (`stock_qty = Some(0)`).
+    /// Physical retail products depend strictly on available ledger stock (`qty > 0`).
+    // Two clippy lints want this reshaped and BOTH reshapes are wrong.
+    //
+    //   `collapsible_if` wants the two conditions merged. The inner `else` returns `true`,
+    //   which is not the same as falling through to the outer `else`: merging makes an
+    //   untracked product's availability depend on ledger stock it does not use, so a
+    //   restaurant item with no recipe reads as out of stock.
+    //
+    //   `if_not_else` wants the branches swapped. Inverting this to
+    //   `if tracks_inventory { stock } else { recipe }` puts the rare case first and reads
+    //   worse, and the two arms are not symmetric: the `else` arm tests `stock_qty` twice.
+    //
+    // Both were caught by `create_retail_product_zero_stock_has_authoritative_ledger_row`,
+    // which asserts the untracked-no-recipe case directly. The lint is suppressed rather
+    // than satisfied, with the reason here so the next reader does not "fix" it again.
+    #[allow(clippy::collapsible_if, clippy::if_not_else)]
+    pub fn is_in_stock(&self) -> bool {
+        if !self.product.product_type.tracks_inventory() {
+            if let Some(qty) = self.stock_qty {
+                qty > 0
+            } else {
+                true
+            }
+        } else {
+            self.stock_qty.unwrap_or(0) > 0
+        }
+    }
+}
+
 fn row_to_product_with_details(row: &rusqlite::Row) -> rusqlite::Result<ProductWithDetails> {
     let product = row_to_product(row)?;
     Ok(ProductWithDetails {

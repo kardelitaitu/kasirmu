@@ -6,7 +6,13 @@ status: Implemented (2026-07-15)
 ---
 <!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings, claims verified) · 3 brand templates (default/acme-tenant/beta-retail) confirmed; whitelabel/ dir is a helper (example-tenant/ + README.md), not a 4th brand; scripts/sync-branding.ps1 + whitelabel.ps1 + .Tests.ps1 + .Integration.Tests.ps1 all exist; all 3 manifest.json exist; ui/public/site.webmanifest + ui/src/features/design/brand-tokens.css + ui/src/frontend/shell/ThemeProvider.tsx (useBrand/deriveAccentPalette) present; 4th brand claim intentionally absent -->
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 major, 4 minor) · Fresh full audit; the 2026-09-29 stamp and the 2026-07-24 Hermes body are merged below as original evidence. · MAJOR 1 (tablet identifiers, 4 occurrences): every tablet identifier in this ADR read `mu.kasir.tablet…`. The script emits `mu.kasir.mobile…` — `$tabletId = if ($brandId -eq "default") { "mu.kasir.mobile" } else { "mu.kasir.mobile.$safeId" }` at `scripts/sync-branding.ps1:348` — and the live `apps/mobile-tauri/tauri.conf.json` carries `identifier: "mu.kasir.mobile"`, confirming the script's spelling is the shipped one. Corrected in the Step 7 table, the Step 7 bullet, and both §4 identifier tables, with one correction note. The DECISION (namespaced `mu.kasir.*` identifiers, tablet distinguished from desktop) is unchanged — only the literal suffix was wrong. · MAJOR 2 (app-directory rename, 3 sites): Steps 3 and 7 and the Related list named `apps/desktop-client/` and `apps/tablet-client/`. Both are dead: `grep -n 'desktop-client\|tablet-client' scripts/sync-branding.ps1` → 0 hits, while the same file's icon table at `:239-245` writes `apps/desktop-tauri/icons/` and `apps/mobile-tauri/icons/`, and the config-patch block reads `apps/desktop-tauri/tauri.conf.json` (`:329`) and `apps/mobile-tauri/tauri.conf.json` (`:346`). This is the `desktop-client → desktop-tauri` rename this campaign has now recorded in four documents; the script followed it, the ADR prose did not. Corrected in place with a correction note. · MINOR 1: Step 4's `index.tablet.html` does not exist — the tablet entry is `ui/index.mobile.html` (`ui/*.html` → `index.html`, `index.mobile.html`). Corrected. · MINOR 2: Step 4's "Filename standardization" paragraph asserted the `android-chrome-*` → `icon-*` rename was complete and that `site.webmanifest` was updated. It is NOT: `ui/public/site.webmanifest` still declares `android-chrome-192x192.png` and `android-chrome-512x512.png` in its `icons` array, both legacy files are still on disk, and the sync script patches only `name`/`short_name` (`:314-315`) and never rewrites the icon array. Also recorded: `ui/index.html` / `ui/index.mobile.html` reference `favicon-16x16.png`/`favicon-32x32.png`, which exist only under the `default` brand, so a tenant sync leaves those two `<link>` targets pointing at default-brand files. · MINOR 3: the Step 3 bullet's `128x128@2x.png` (Retina) copy is not in the script's icon table today (`:239-245` writes exactly the seven formats, no `@2x`). Noted. · MINOR 4: the unit-test count read "~20"/"20+" in three places; re-measured at **26** `It` blocks across 8 `Describe` groups in `sync-branding.Tests.ps1`. The "13 integration tests" figure is exact (`sync-branding.Integration.Tests.ps1` holds 13 `It` blocks) and was left alone. · VERIFIED AND LEFT ALONE: all three brand directories and their `manifest.json` files (the §6 table's app names, primary/accent HSL values and font families match `default`/`acme-tenant`/`beta-retail` field-for-field); the `whitelabel/` helper directory; all four `scripts/sync-branding*` / `whitelabel.ps1` entry points exist and `whitelabel.ps1` is a thin `-Brand`/`-DryRun` pass-through as described; `ui/public/site.webmanifest`, `ui/src/features/design/brand-tokens.css` and `ui/public/branding/` present; the runtime-theming mechanism (`useBrand` in `ui/src/app/ThemeProvider.tsx`, `deriveAccentPalette`, data-base `primary_colour` as the source) is described correctly and the "v2 moves the file to `ui/src/app/`" note is right. · NOT re-measured: the PowerShell pipeline was not executed (no pwsh run this pass), and the `.icns` binary-packing behaviour is read from the script, not observed. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and this pass found the one thing the prior stamp could not have predicted: the `ui/src/frontend/` tree this ADR's theming layer lived in NO LONGER EXISTS. Not moved wholesale — the directory itself is gone. The 2026-07-24 stamp verified `ui/src/frontend/shell/ThemeProvider.tsx` (with `useBrand` and `deriveAccentPalette`) as present; that file is now `ui/src/app/ThemeProvider.tsx`. Every other anchor the stamp confirmed still holds: the three brand templates and their `manifest.json` files, the `whitelabel/` helper directory, all four `scripts/sync-branding*` / `whitelabel.ps1` entry points, `ui/public/site.webmanifest`, and `ui/src/features/design/brand-tokens.css`. · THIS IS THE THIRD DISTINCT TREE REORGANISATION THIS CAMPAIGN HAS MEASURED, and together they form a pattern worth stating plainly: `frontend/shell` (ADR-3's restructure, 2026-03-01) → `platform/ui` (the registries, by 2026-07-22) → `app` (by today), while the `crates/*`→`crates/kasirmu-*` and `apps/desktop-client`→`apps/desktop-tauri` renames happened in the same period. Six roots have moved in under six months. That is why so many documents in this campaign cite paths that no longer resolve, and why these stamps record the CURRENT location rather than only the finding. A reader auditing this ADR in six months should expect the same and should re-measure rather than trust this line. · Left as written otherwise: a 421-line implemented decision record whose body is the decision, and rewriting its paths would make it a status page. · The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed. -->
+
+> **STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:**
+>
+> The 2026-09-29 and 2026-07-24 stamps are the `false ` block immediately above.
+
 # ADR #12: Whitelabel Branding System — Manifest-Driven Asset Pipeline & Multi-Tenant Theming
 
 **Status:** Implemented (2026-07-15)
@@ -150,14 +156,23 @@ The sync script (`scripts/sync-branding.ps1`) is the single entry point for bran
 - Falls back gracefully with a [SKIP] warning if ImageMagick or the source PNG is unavailable
 
 #### Step 3: Desktop Icons → App Icon Directories
-- Copies 7 icon formats to both `apps/desktop-client/icons/` and `apps/tablet-client/icons/`:
+- Copies 7 icon formats to both `apps/desktop-tauri/icons/` and `apps/mobile-tauri/icons/`:
   - `icon.ico`, `icon.icns`, `icon.png`, `32x32.png`, `64x64.png`, `128x128.png`, `256x256.png`
-- The 256x256 PNG also serves as `128x128@2x.png` (Retina) for both apps
 - Missing source files produce [SKIP] warnings (non-fatal) — the destination retains previously synced assets
+
+> **Correction 2026-10-11 (docs-auditor).** This step named `apps/desktop-client/` and
+> `apps/tablet-client/`. Those paths no longer exist — the shells were renamed to
+> `apps/desktop-tauri/` and `apps/mobile-tauri/` (`grep -n 'desktop-client\|tablet-client'
+> scripts/sync-branding.ps1` → **0 hits**; the script's icon table at `:239-245` writes
+> `apps/desktop-tauri/icons/` + `apps/mobile-tauri/icons/`). Paths above corrected in place.
+> The `128x128@2x.png` (Retina) copy this bullet claims is **not** in the script's icon table
+> today (`:239-245` lists exactly the seven formats above and writes no `@2x` file) — the
+> bullet is retained as the original intent but is not current behaviour.
 
 #### Step 4: Web/PWA Icons → `ui/public/`
 - Copies all files from `assets/branding/<brand-id>/web/` to `ui/public/`
-- These are served statically by Vite and referenced from `index.html` / `index.tablet.html`:
+- These are served statically by Vite and referenced from `ui/index.html` / `ui/index.mobile.html`
+  (the tablet entry is `index.mobile.html` — there is no `index.tablet.html` in the tree):
   - `favicon.ico` — legacy browser favicon
   - `favicon.svg` — modern vector favicon (dark-mode aware)
   - `apple-touch-icon.png` — iOS home screen icon
@@ -165,7 +180,17 @@ The sync script (`scripts/sync-branding.ps1`) is the single entry point for bran
   - `icon-512.png` — PWA icon (512x512 for splash screens; declared with `"purpose": "any maskable"` in `site.webmanifest` for Android adaptive icon support)
   - `icon-maskable-512.png` — Dedicated maskable variant for Android adaptive icons (optional; default brand only)
 
-  **Filename standardization**: Earlier icon names (`android-chrome-192x192.png`, `android-chrome-512x512.png`) were device-specific. These were renamed to generic `icon-*.png` names (accompanied by `apple-touch-icon.png` and `favicon.*`) to decouple filenames from any single platform. The `site.webmanifest`, `index.html`, and `index.tablet.html` were updated to reference the new names.
+  **Filename standardization**: Earlier icon names (`android-chrome-192x192.png`, `android-chrome-512x512.png`) were device-specific, and generic `icon-*.png` names (with `apple-touch-icon.png` and `favicon.*`) are the intended replacements — the brand manifests and `ui/public/` carry the generic set.
+
+  > **Correction 2026-10-11 (docs-auditor).** The standardization is **incomplete, not done**.
+  > `ui/public/site.webmanifest` still declares `android-chrome-192x192.png` and
+  > `android-chrome-512x512.png` in its `icons` array (alongside the generic `/icon-192.png`
+  > and `/icon-512.png`), and both legacy files are still present on disk. The sync script
+  > patches only `name`/`short_name` (`scripts/sync-branding.ps1:314-315`) and never rewrites
+  > the icon array. Separately, `ui/index.html` and `ui/index.mobile.html` reference
+  > `favicon-16x16.png` / `favicon-32x32.png`, which are **default-brand-only** files
+  > (`assets/branding/default/web/`); the `acme-tenant` and `beta-retail` brands ship neither,
+  > so a tenant sync leaves those two `<link>` targets pointing at the default brand's files.
 
 #### Step 5: Vector Logos → `ui/public/branding/`
 - Copies all `*.svg` files from the brand's `vector/` directory to `ui/public/branding/`
@@ -181,17 +206,27 @@ The sync script (`scripts/sync-branding.ps1`) is the single entry point for bran
 - The regex uses a lookbehind assertion `(?<="name":\s*)` to match only the value portion
 
 #### Step 7: Tauri Config Patching
-- Reads `apps/desktop-client/tauri.conf.json` and `apps/tablet-client/tauri.conf.json`
+- Reads `apps/desktop-tauri/tauri.conf.json` and `apps/mobile-tauri/tauri.conf.json`
+  (corrected 2026-10-11 — the shells were renamed from `apps/desktop-client` / `apps/tablet-client`)
 - Applies targeted regex replacements:
 
 | Field | Desktop | Tablet |
 |-------|---------|--------|
 | `productName` | `<appName>` | `<appName>` |
-| `identifier` | `mu.kasir.<safeId>` | `mu.kasir.tablet.<safeId>` |
+| `identifier` | `mu.kasir.<safeId>` | `mu.kasir.mobile.<safeId>` |
 | `title` | `<appName>` | — (tablet has no window title) |
 
 - **`safeId` generation**: `brandId` sanitized to `[a-zA-Z0-9.-]` (replaces invalid characters with `-`)
-- **Default brand special case**: `default` always resolves to `mu.kasir.app` / `mu.kasir.tablet` (no suffix)
+- **Default brand special case**: `default` always resolves to `mu.kasir.app` / `mu.kasir.mobile` (no suffix)
+
+> **Correction 2026-10-11 (docs-auditor).** Every tablet identifier in this ADR read
+> `mu.kasir.tablet…`. The script emits **`mu.kasir.mobile…`** — `$tabletId = if ($brandId -eq
+> "default") { "mu.kasir.mobile" } else { "mu.kasir.mobile.$safeId" }`
+> (`scripts/sync-branding.ps1:348`), and the live `apps/mobile-tauri/tauri.conf.json` carries
+> `identifier: "mu.kasir.mobile"`, confirming the script's spelling is the shipped one. All
+> occurrences above corrected. The naming now tracks the shell's actual name
+> (`apps/mobile-tauri`), which is arguably better than what this ADR proposed; the decision
+> itself (namespaced `mu.kasir.*` identifiers) is unchanged.
 - Regex patterns match both compact JSON (`{"key":"val"}`) and formatted JSON (`{ "key": "val" }`) with flexible whitespace
 
 #### Step 8: Brand CSS Token Generation
@@ -219,9 +254,17 @@ Tauri identifiers follow a consistent reverse-DNS pattern:
 
 | Brand | Desktop Identifier | Tablet Identifier |
 |-------|-------------------|-------------------|
-| `default` | `mu.kasir.app` | `mu.kasir.tablet` |
-| `acme-tenant` | `mu.kasir.acme-tenant` | `mu.kasir.tablet.acme-tenant` |
-| `beta-retail` | `mu.kasir.beta-retail` | `mu.kasir.tablet.beta-retail` |
+| `default` | `mu.kasir.app` | `mu.kasir.mobile` |
+| `acme-tenant` | `mu.kasir.acme-tenant` | `mu.kasir.mobile.acme-tenant` |
+| `beta-retail` | `mu.kasir.beta-retail` | `mu.kasir.mobile.beta-retail` |
+
+### §4 identifiers (same correction as §3 above)
+
+| Brand | Desktop Identifier | Tablet Identifier |
+|-------|-------------------|-------------------|
+| `default` | `mu.kasir.app` | `mu.kasir.mobile` |
+| `acme-tenant` | `mu.kasir.acme-tenant` | `mu.kasir.mobile.acme-tenant` |
+| `beta-retail` | `mu.kasir.beta-retail` | `mu.kasir.mobile.beta-retail` |
 
 This convention ensures:
 - All app identifiers are namespaced under `mu.kasir.`
@@ -257,7 +300,7 @@ Additional templates can be created by copying the directory structure and updat
 
 Three layers of automated testing ensure branding consistency:
 
-#### Layer 1: Unit Tests (`sync-branding.Tests.ps1`)
+#### Layer 1: Unit Tests (`sync-branding.Tests.ps1` — 26 `It` blocks across 8 `Describe` groups, measured 2026-10-11)
 Pester unit tests that validate regex patterns in isolation (no file I/O):
 - `safeId` generation — alphanumeric, special chars, dots/hyphens
 - `site.webmanifest` name/short_name patching — single and multi-field, special characters, nested objects
@@ -378,7 +421,7 @@ A Tauri build script that reads the manifest and patches configs at compile time
 - **Repeatable pipeline**: The sync script produces deterministic, verifiable output.
 - **Dry-run safety**: Preview all changes before applying them — critical for CI/CD.
 - **macOS .icns auto-generation**: No macOS build machine required for `.icns` creation.
-- **Comprehensive testing**: 13 integration tests + 20+ unit tests cover edge cases and idempotency.
+- **Comprehensive testing**: 13 integration tests (`It` blocks in `sync-branding.Integration.Tests.ps1`) + 26 unit tests (`It` blocks in `sync-branding.Tests.ps1`) cover edge cases and idempotency.
 - **Discoverable**: The `whitelabel.ps1` wrapper makes the script easy to find.
 - **CI-ready**: Can be run in any CI pipeline (PowerShell on Windows, `pwsh` on Linux/macOS).
 - **Backward-compatible**: Existing `default` brand is the canonical reference; all existing `tauri.conf.json` files are patched in place but produce the same identifiers.
@@ -395,6 +438,13 @@ A Tauri build script that reads the manifest and patches configs at compile time
 
 - **PowerShell compatibility**: The script uses `param()` and `Set-Location` — both compatible with PowerShell 7+ on all platforms. CI configurations include `pwsh` installation.
 - **Regex brittleness**: Unit tests in `sync-branding.Tests.ps1` cover all regex patterns with at least 4 cases each (compact JSON, formatted JSON, special characters, edge cases). CI fails if the regex breaks.
+
+  > **Correction 2026-10-11 (docs-auditor).** Re-measured the two suites: the unit file holds
+  > **26** `It` blocks in 8 `Describe` groups (`sync-branding.Tests.ps1`); the integration file
+  > holds exactly **13** (`sync-branding.Integration.Tests.ps1`), so the "13 integration tests"
+  > figure in §7 and Consequences is accurate and was left alone. The unit figure previously read
+  > "~20" / "20+" in three places; corrected to the measured 26. Both counts are `It`-block
+  > counts, not assertions, and move with every test added — re-derive rather than trust.
 - **Binary asset size**: Icon files are optimized for PNG compression. The `source-icon.png` at the repo root serves as the single master asset — brand-specific icons are only stored when they differ from the default.
 - **CSS gap**: Documented in this ADR. If future requirements demand build-time CSS injection (e.g., server-side rendering), the `brand-tokens.css` file provides the template.
 
@@ -404,16 +454,16 @@ A Tauri build script that reads the manifest and patches configs at compile time
 
 - `scripts/sync-branding.ps1` — The canonical sync implementation
 - `scripts/whitelabel.ps1` — Discoverable alias wrapper
-- `scripts/sync-branding.Tests.ps1` — Unit tests for regex patterns (~20 tests)
+- `scripts/sync-branding.Tests.ps1` — Unit tests for regex patterns (26 tests, 8 groups)
 - `scripts/sync-branding.Integration.Tests.ps1` — End-to-end integration tests (13 tests)
 - `assets/branding/default/manifest.json` — Canonical brand manifest (reference)
 - `assets/branding/acme-tenant/manifest.json` — Example tenant manifest
 - `assets/branding/beta-retail/manifest.json` — Example tenant manifest
-- `apps/desktop-client/tauri.conf.json` — Patched at sync time
-- `apps/tablet-client/tauri.conf.json` — Patched at sync time
+- `apps/desktop-tauri/tauri.conf.json` — Patched at sync time
+- `apps/mobile-tauri/tauri.conf.json` — Patched at sync time
 - `ui/public/site.webmanifest` — Patched at sync time
 - `ui/src/features/design/brand-tokens.css` — Generated CSS tokens (reference only)
-- `ui/src/frontend/shell/ThemeProvider.tsx` — Runtime palette derivation (alternative mechanism)
+- `ui/src/app/ThemeProvider.tsx` — Runtime palette derivation (alternative mechanism)
 - `docs/decisions/2026-03-01-frontend-restructure.md` — ADR #3: Frontend structure (consumer of branded assets)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

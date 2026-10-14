@@ -1386,6 +1386,131 @@ fn terminals_carry_tenant_id_after_migration() {
     assert_eq!(explicit, "tenant-3", "explicit tenant_id must be preserved");
 }
 
+// ── product_type constraint (20261020) ───────────────────────────────
+//
+// The migration constrains products.product_type to
+// ('retail', 'restaurant', 'service') and backfills legacy values in the same
+// pass. Until this test existed nothing pinned the backfill: the
+// corruption_recovery suite had been the only thing that touched this migration
+// at all, and only by constructing a fixture it can no longer build — the CHECK
+// now rejects that write. This is the leg that retires a legacy database.
+
+#[test]
+fn product_type_check_migration_backfills_legacy_values_then_locks_the_door() {
+    // Split at the product_type migration by id, not by "last entry": later
+    // migrations are appended after it, so a positional guess applies the wrong
+    // one.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20261020_product_type_check.sql")
+        .expect("product_type_check migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // The pre-migration shape: product_type free TEXT with no CHECK and no NOT
+    // NULL, so a NULL legacy row is representable. Every database created before
+    // 20261020 sits in some version of this shape, which is exactly why the
+    // backfill has to run over data the constraint would now refuse.
+    conn.execute_batch(
+        "DROP TABLE products;
+         CREATE TABLE products (
+             id               TEXT PRIMARY KEY,
+             sku              TEXT NOT NULL,
+             name             TEXT NOT NULL,
+             price_minor      INTEGER NOT NULL,
+             currency         TEXT NOT NULL,
+             created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+             updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+             category_id      TEXT,
+             barcode          TEXT,
+             price_updated_at TEXT DEFAULT '',
+             track_serial     INTEGER NOT NULL DEFAULT 0,
+             product_type     TEXT,
+             cost_minor       INTEGER NOT NULL DEFAULT 0,
+             version          INTEGER NOT NULL DEFAULT 1,
+             store_id         TEXT,
+             tenant_id        TEXT NOT NULL DEFAULT 'default',
+             kitchen_zone     TEXT,
+             brand            TEXT,
+             rack_location    TEXT,
+             notes            TEXT,
+             unit             TEXT,
+             is_active        INTEGER NOT NULL DEFAULT 1,
+             default_supplier_id TEXT,
+             popularity_score REAL,
+             image_hash       TEXT
+         )",
+    )
+    .unwrap();
+
+    // 'both' is the variant the codebase removed; the other two are free-text
+    // garbage a pre-constraint build could have written. popularity_score is
+    // given explicitly because the migration copies the column by name, which
+    // defeats the target's DEFAULT 0.
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type, popularity_score)
+         VALUES ('p-both', 'SKU-BOTH', 'Both', 100, 'USD', 'both', 0);
+         INSERT INTO products (id, sku, name, price_minor, currency, product_type, popularity_score)
+         VALUES ('p-quantum', 'SKU-QUANTUM', 'Quantum', 100, 'USD', 'quantum-computing', 0);
+         INSERT INTO products (id, sku, name, price_minor, currency, product_type, popularity_score)
+         VALUES ('p-null', 'SKU-NULL', 'Null', 100, 'USD', NULL, 0);",
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    // The backfill: every legacy value — the dead variant, free-text garbage and
+    // NULL alike — lands on 'retail'.
+    for id in ["p-both", "p-quantum", "p-null"] {
+        let stored: String = conn
+            .query_row(
+                "SELECT product_type FROM products WHERE id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored, "retail",
+            "{id} must be backfilled to retail by the product_type migration"
+        );
+    }
+
+    // The door, now locked: an invalid value can no longer be written.
+    let err = conn
+        .execute(
+            "UPDATE products SET product_type = 'both' WHERE id = 'p-both'",
+            [],
+        )
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("CHECK constraint failed"),
+        "the migrated table must reject an invalid product_type, got: {err}"
+    );
+
+    // The rebuild re-creates all six indexes. A migration that silently dropped
+    // one would surface only as a slow query, never as a failure.
+    let indexes: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'products'")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    for expected in [
+        "idx_products_category_id",
+        "idx_products_sku",
+        "idx_products_store_category",
+        "idx_products_tenant",
+        "uq_products_barcode",
+        "idx_products_tenant_sku",
+    ] {
+        assert!(
+            indexes.iter().any(|i| i == expected),
+            "products must carry {expected} after the rebuild, found: {indexes:?}"
+        );
+    }
+}
+
 #[test]
 fn legal_entity_migration_creates_defaults_and_moves_locations() {
     // Isolate the LE migration by id, not by "last entry" — later migrations

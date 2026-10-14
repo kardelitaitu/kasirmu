@@ -6,7 +6,11 @@ status: Superseded (2026-07-10) — tier lineup & quotas superseded by `subscrip
 ---
 <!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · tenant_subscription migration (061) verified; SubscriptionTier with max_stores()/max_pos_instances()/allows_workspace_type() present in crates/oz-core/src/subscription.rs (lines 113/122/185); InstanceStatus enum (Active/QuotaSuspended/Archived) at subscription.rs:33; crates/oz-core/src/license_verification.rs embeds ../oz-license.key.pub (file exists at crates/oz-core/oz-license.key.pub — distinct from root oz-pos-updater.key.pub named by ADR #9; both real); crates/oz-core/src/db/workspaces.rs + platform/core StoreDatabaseManager present; grace/clock-rollback logic present · Status "Implemented (2026-07-10)" consistent -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and correctly filed as superseded. The front matter is explicit: Superseded (2026-07-10), with the tier lineup and quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17). The supersession target exists and is substantial — `docs/guides/user/subscription-tiers.md` is 895 lines and is itself later in this audit queue, so the chain will be verifiable end to end when it is reached. What makes this filing correct rather than lazy is that the supersession is stated in the front matter and again near the title, so a reader arriving from the ADR index learns the document is historical before reading a word of its body. That is the outcome the archiving convention is for. · The prior stamp on this file is retained below, re-labelled rather than superseded. · Left entirely as written. A superseded decision record is not a document with drift — it is a document that did its job and was replaced, and rewriting its tier lineup to match a document that did not exist when it was written would be exactly the wrong operation. The one thing a reader must not do is take its quotas as current, and the front matter prevents that. · Status checker reports no drift for this row, which is worth noting because the index and the front matter agree that this ADR is superseded — a consistency the checker verifies across all 55 rows. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · MINOR, in the SUPERSESSION NOTE only — the decision body is left entirely as written, per the archived-record rule. The note cited two paths that no longer resolve: `docs/plans/todo.md` (now `docs/plans/_active/todo.md`) and `crates/oz-core/src/subscription.rs` (now `crates/kasirmu-core/src/subscription.rs`), and it called the superseding document `subscription-tiers.md` at the repo root when it lives at `docs/guides/user/subscription-tiers.md`. A dated path-correction paragraph replaced the two dead pointers and records the renames. · VERIFIED at HEAD so the note is not merely re-pointed: `tenant_subscription` is a live table (20 migration references), `InstanceStatus::QuotaSuspended` and `allows_workspace_type` exist in the subscription module, the signed-licence public key is still embedded by `include_str!("../oz-license.key.pub")`, and the tier field the body calls `max_stores` is now `max_locations` (recorded). · LEFT AS WRITTEN: the ADR's own quota matrix, which the front matter already declares superseded and which a historical record must not be rewritten to match. · NOT re-measured: the superseding document's §4, which is audited on its own terms.
+
+Superseded 2026-09-29 stamp preserved below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and correctly filed as superseded. The front matter is explicit: Superseded (2026-07-10), with the tier lineup and quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17). The supersession target exists and is substantial — `docs/guides/user/subscription-tiers.md` is 895 lines and is itself later in this audit queue, so the chain will be verifiable end to end when it is reached. What makes this filing correct rather than lazy is that the supersession is stated in the front matter and again near the title, so a reader arriving from the ADR index learns the document is historical before reading a word of its body. That is the outcome the archiving convention is for. · The prior stamp on this file is retained below, re-labelled rather than superseded. · Left entirely as written. A superseded decision record is not a document with drift — it is a document that did its job and was replaced, and rewriting its tier lineup to match a document that did not exist when it was written would be exactly the wrong operation. The one thing a reader must not do is take its quotas as current, and the front matter prevents that. · Status checker reports no drift for this row, which is worth noting because the index and the front matter agree that this ADR is superseded — a consistency the checker verifies across all 55 rows. -->
 # ADR #5: Subscription Tier & Entitlement Architecture
 
 **Status:** Superseded (2026-07-10) — tier lineup & quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17)
@@ -24,8 +28,19 @@ status: Superseded (2026-07-10) — tier lineup & quotas superseded by `subscrip
 > The architectural
 > mechanism this ADR defines — signed `tenant_subscription`, per-store quota
 > checks, `InstanceStatus` downgrade/recovery, offline grace — remains valid
-> and unchanged. `docs/plans/todo.md` Phase C0/C1 tracks the quota-value migration in
-> `crates/oz-core/src/subscription.rs`.
+> and unchanged.
+>
+> **Path correction (2026-10-11).** The two paths this note originally cited are pre-rebrand
+> and no longer resolve: `docs/plans/todo.md` is now `docs/plans/_active/todo.md`, and
+> `crates/oz-core/src/subscription.rs` is now `crates/kasirmu-core/src/subscription.rs`
+> (the `oz-*` → `kasirmu-*` rename). The supersession target is likewise at
+> `docs/guides/user/subscription-tiers.md`, not at the repo root as the sentence above
+> says. The claims themselves still hold and were re-verified at HEAD: `tenant_subscription`
+> is a live table, `InstanceStatus::QuotaSuspended` and `allows_workspace_type` are real in
+> the subscription module, and the signed-licence public key is still embedded by
+> `include_str!("../oz-license.key.pub")`. One further rename worth knowing: the tier field
+> the body calls `max_stores` is now `max_locations`. The same rename is applied below, in
+> the §Open Questions and §Related lines, which carried the `oz-core` spellings in body text.
 
 ---
 
@@ -204,7 +219,7 @@ pub enum InstanceStatus {
 
 ## Open Questions
 
-1. **✅ Resolved:** The public key is embedded in the binary via `include_str!("oz-license.key.pub")` in `crates/oz-core/src/license_verification.rs` (`LICENSE_PUBLIC_KEY_PEM`) — build-time only; an earlier note claimed an `OZ_LICENSE_PUBLIC_KEY` env override, but the code never reads it, so swapping the key requires recompiling. See ADR #9.
+1. **✅ Resolved:** The public key is embedded in the binary via `include_str!("oz-license.key.pub")` in `crates/kasirmu-core/src/license_verification.rs` (`LICENSE_PUBLIC_KEY_PEM`) — build-time only; an earlier note claimed an `OZ_LICENSE_PUBLIC_KEY` env override, but the code never reads it, so swapping the key requires recompiling. See ADR #9.
 2. **✅ Resolved:** After the per-tier offline grace period elapses (Plus/Pro 14 days, Premium 30, Enterprise custom), `effective_tier()` falls back to Free tier quotas. The register must reconnect to the license server to restore paid tier features. See `is_within_grace_period()` in `crates/oz-core/src/subscription.rs`.
 3. **Deferred:** Device-bound terminals always count as one instance toward the quota. A future ADR may distinguish device-bound instances (fixed hardware) from user-picked instances (floating licenses) for quota purposes.
 
@@ -213,8 +228,8 @@ pub enum InstanceStatus {
 ## Related
 
 - ADR #4 — Store-First Tenancy & Workspace Type/Instance Architecture
-- `crates/oz-core/src/db/workspaces.rs`
+- `crates/kasirmu-core/src/db/workspaces.rs`
 - `platform/core/` — `StoreDatabaseManager` (cross-DB coordination)
 - `apps/cloud-server/` (subscription signing service)
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

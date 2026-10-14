@@ -54,8 +54,7 @@ import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { getCreditSettingsScoped, setCreditSettingsScoped } from '@/api/settings';
 import { getDefaultCurrencyScoped } from '@/api/currency';
-import { minorUnitExponent, parseMinorUnits } from '@/types/domain';
-import { minorUnitsToInputString } from '@/features/sales/payment/moneyFormat';
+import { minorUnitExponent, parseMinorUnits, parseMoneyInput, minorUnitsToInputString } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './CreditFacilityCard.css';
 
@@ -122,10 +121,10 @@ export function CreditFacilityCard() {
 
   const handleSave = useCallback(async () => {
     if (!sessionToken) return;
-    // `parseMinorUnits` returns null for anything that is not a plain decimal
+    // `parseMoneyInput` returns null for anything that is not a plain decimal
     // literal, and null must NEVER become zero — a typo would silently remove
     // the ceiling. Refuse the save instead.
-    const parsedLimit = parseMinorUnits(limitInput, exp);
+    const parsedLimit = parseMoneyInput(limitInput, currency);
     if (parsedLimit === null || parsedLimit < 0) {
       setSaveError(l10n.getString('settings-credit-error-limit') || 'Enter a valid limit amount.');
       return;

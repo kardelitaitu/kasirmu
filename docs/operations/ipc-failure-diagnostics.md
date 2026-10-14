@@ -66,13 +66,19 @@ directly for that reason.
 
 ## Two scripts that already surface it
 
-- **`scripts/android-settings-walk.mjs`** — walks the 15 settings routes and
+- **`scripts/android-settings-walk.mjs`** — walks the settings hub and the topology
+  route (**14 `SECTIONS` entries plus `#/topology`, i.e. 15 routes** by default) and
   records `invokeFailures` per route in its `--json` output, attributing only the
-  delta since the previous route. A failure is therefore attached to the screen
-  that caused it, which a flat dump cannot do.
-- **`scripts/android-homescreen-probe.mjs`** — the same idea for the home screen
-  the settings walk never renders (workspace picker, org selector, tool locks,
-  favorites keys).
+  delta since the previous route (`:307`). A failure is therefore attached to the
+  screen that caused it, which a flat dump cannot do. (Count clarified 11-10-26:
+  `SECTIONS` holds 14 settings sections; the 15th walked route is the topology one.)
+- **`scripts/android-homescreen-probe.mjs`** — the home-screen counterpart the settings
+  walk never renders (workspace picker, org selector, tool locks, favorites keys).
+  It does **not** mirror `invokeFailures`: its four assertions are the org picker
+  appearing *after* the list resolves, per-user favorites keys, a greyed (not merely
+  dimmed) disabled card, and no tool flash-lock during the first entitlement fetch.
+  Run it for those shapes; use the settings walk for IPC-failure attribution.
+  (Clarified 11-10-26 — "the same idea" implied an IPC surface the probe does not have.)
 
 ## Triage: what a failure usually means
 

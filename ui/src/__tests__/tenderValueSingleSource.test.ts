@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's entire import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // ── Guard: a field sent to TWO consumers must be derived once ────────
 //
 // Rounds 28 and 29 found the same defect three times in `PaymentModal`: one value used

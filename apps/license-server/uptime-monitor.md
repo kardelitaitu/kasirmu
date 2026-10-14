@@ -1,6 +1,8 @@
 # Uptime Monitoring — license server gate statuses
 
-<!-- Audit stamp: 2026-08-18 · Buffy · status: ACCURATE · payload fields verified
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Re-audit of the license-server uptime-monitor recipe; the 2026-08-18 stamp is merged at the bottom as original evidence. EVERY TECHNICAL CLAIM RE-VERIFIED against apps/license-server/health.go, because this page's whole value is the exact keyword string a monitor must watch and a wrong one silently never fires: the smtp block emits "verified" (health.go:145, and the fail-closed default at :297), the midtrans block emits "server_key_configured" (:187) and "price_tiers_configured" (:166/:174/:188/:196), and the rsa/discord blocks the stamp of 2026-08-18 cited are at :56/:57. The 60-second probe cache is real and still 60s: smtpHealthRefreshInterval = 60 * time.Second at :261, consulted at :281 — so the page's "alert latency is at most monitor interval + 1 minute" bound holds. The page's central premise — that /api/health returns non-200 ONLY on a DB outage, so every gate is invisible to a plain liveness monitor — is confirmed: the sole non-200 write is http.StatusServiceUnavailable at :43. The OZ_SMTP_HOST / OZ_SMTP_PORT / OZ_SMTP_FROM variables the local reproduction uses are read at :293/:301/:307, and the serve --http form matches the license server's own Dockerfile CMD. · LEFT AS WRITTEN: the UptimeRobot v2 API parameter notes (external product behaviour, out of this repo's scope) and the C3.1 Midtrans section, whose gate still exists as described. · NOT re-measured: an actual UptimeRobot monitor firing, and the live /api/health body on a running host. · Superseded 2026-08-18 stamp preserved below as quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-08-18 · Buffy · status: ACCURATE · payload fields verified
      against health.go (smtp.verified, paddle.*, midtrans.*, rsa.*, discord.*); keyword
      `"verified":false` matches Go's json.Marshal output (no space after colon);
      v2 API params per https://uptimerobot.com/api/legacy/ (type=2 keyword,
@@ -137,4 +139,4 @@ missing) — but keyword monitors on `"server_key_configured":false` (Midtrans)
 and `"secret_configured":false` (Paddle) page you if a billing secret is ever
 rotated out from under the running service.
 
-> last audited 18-08-26 by Buffy
+> last audited 11-10-26 by docs-auditor

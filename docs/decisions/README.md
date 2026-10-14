@@ -1,4 +1,7 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. It is the index of the decision directory, and the count in it matters more than the layout: twenty-eight distinct decision references were resolved against the tree this pass, and all twenty-eight correspond to real files. An index listing decisions that do not exist sends a reader looking for an argument never written, and that failure is absent here. · THE KNOWN DUPLICATE IS ITS MOST INTERESTING PROPERTY, because it is a number that appears twice and the tree says so rather than hiding it. Numbering has collided before in this directory — a companion record audited earlier in this campaign cited the collision explicitly and instructed readers to cite decisions by FILENAME rather than by number, and the top-level documentation index independently records the same collision producing a duplicate row. Three documents agreeing on one known defect is healthy redundancy: the number is ambiguous, everyone says so, and the workaround is written down. A repository that renumbered to hide this would have produced a cleaner index and a worse record. · WHAT THE INDEX IS FOR, given the volume: fifty-plus decisions is past the point where a reader browses. Its job is to let someone find the decision governing a specific question without reading all of them — a lookup problem rather than a reading problem. The companion architecture-boundary decision and the headless bridge decision are both findable here, which is how this campaign reached them. · NOT re-measured: whether each decision's own status line is accurate, beyond the automated drift check this campaign has run every round and which reports no drift across the hand-maintained table. Whether the CODE matches each decision is the per-decision question those documents now carry stamps for. · Prior marker retained; footer re-dated to match the new stamp. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · Fresh full audit of the decision index. MAJOR: the ADR ceiling was stale — the page said "#1–#61" while the range reaches #65 (four records landed after the 61 reading: #62 module-seam-taxonomy, #63 event-sink-seam, #64 tender-vocabulary, #65 compliance-chain). The file's OWN command confirms it: ls docs/decisions/*adr*.md | sed | sort -n | tail -1 → 65. MINOR 1 and 2 are both SELF-REFERENTIAL COUNTS that moved WHILE THIS PASS EDITED THE FILE, so neither is pinned to a new number: the unused-number self-check said "one hit, this sentence" and the #43-collision paragraph said "37 references". Both now LEAD WITH THE COMMAND and state the figure is a reading, because pinning a self-referential count re-creates the drift on the next edit — this pass watched that happen between two of its own writes. COUNTING TRAP: match with a trailing non-digit (ADR #16[^0-9]); a bare "ADR #16" also matches #160 and "ADR #2[4-9]" matches #240–#299. VERIFIED AND LEFT ALONE: "Seven numbers are unused — #16 and #24–#29" is still exactly right, re-derived by filename AND front-matter num: across all 84 files under docs/decisions/. Both archived rows (#5, #23) resolve. The #43 collision still has exactly two claimants. check-adr-status.py reports 0 drift across 59 hand-table rows, every numbered top-level file has exactly one row. A NEAR-MISS: my first repair attempt concluded #37/#38/#47 were "unused" because they lack a YAML num: field — they are adr37-/adr38-/adr47- FILENAMES, all present and heavily cited. That wrong reading came from one derivation method and was reverted before shipping. NOT re-measured: whether each ADR's own status line is accurate beyond the automated check, and whether CODE matches each decision. · Superseded 2026-09-29 stamp preserved verbatim below as quoted text (its delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. It is the index of the decision directory, and the count in it matters more than the layout: twenty-eight distinct decision references were resolved against the tree this pass, and all twenty-eight correspond to real files. An index listing decisions that do not exist sends a reader looking for an argument never written, and that failure is absent here. · THE KNOWN DUPLICATE IS ITS MOST INTERESTING PROPERTY, because it is a number that appears twice and the tree says so rather than hiding it. Numbering has collided before in this directory — a companion record audited earlier in this campaign cited the collision explicitly and instructed readers to cite decisions by FILENAME rather than by number, and the top-level documentation index independently records the same collision producing a duplicate row. Three documents agreeing on one known defect is healthy redundancy: the number is ambiguous, everyone says so, and the workaround is written down. A repository that renumbered to hide this would have produced a cleaner index and a worse record. · WHAT THE INDEX IS FOR, given the volume: fifty-plus decisions is past the point where a reader browses. Its job is to let someone find the decision governing a specific question without reading all of them — a lookup problem rather than a reading problem. The companion architecture-boundary decision and the headless bridge decision are both findable here, which is how this campaign reached them. · NOT re-measured: whether each decision's own status line is accurate, beyond the automated drift check this campaign has run every round and which reports no drift across the hand-maintained table. Whether the CODE matches each decision is the per-decision question those documents now carry stamps for. · Prior marker retained; footer re-dated to match the new stamp. -->
+
 # Architectural Decision Records
 
 Every significant architectural decision in the POS framework is recorded as
@@ -7,13 +10,17 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs run **#1–#61** and are the primary record. Re-derive the ceiling rather than
+- Numbered ADRs run **#1–#65** and are the primary record. Re-derive the ceiling rather than
   trusting it: `ls docs/decisions/*adr*.md | sed 's/.*adr\([0-9]*\).*/\1/' | sort -n | tail -1`
-  → `61` (measured 2026-09-28; the ceiling was 52 when this line was written, which is exactly
-  how a range claim rots — it grows by one per ADR and nothing re-derives it).
+  → `65` (measured 2026-10-11; the ceiling was 52 when this line was written and 61 at the
+  2026-09-28 reading, which is exactly how a range claim rots — it grows by one per ADR and nothing
+  re-derives it).
 - **Seven numbers are unused** — #16 and #24–#29 are claimed by no file. `ADR #16` and
   `ADR #24`–`#29` are cited by nothing anywhere in the repo
-  (re-derive: `grep -rn 'ADR #16\|ADR #2[4-9]' --include='*.md' .` → one hit, this sentence).
+  (re-derive: `grep -rn 'ADR #16\|ADR #2[4-9]' --include='*.md' .` — every hit is this bullet
+  itself, whatever the count reads. It said "one hit" until 2026-10-11 and reads higher now only
+  because the sentence explaining it grew: the cleanest example in this file of why a
+  self-referential count is a reading, not a fact. Trust the command.).
   They are skipped numbers, not lost documents; do not go looking for them.
 - **The hand table below is NOT the authority.** It used to be incomplete — **#53 had
   no row** while the file existed on disk and in the generated `docs/records/README.md`
@@ -31,10 +38,11 @@ implementation-status walkthrough.
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
   Performance & Scale-Out Roadmap). The collision arrived when the newer file took a
-  number already in use, and both meanings are cited in the wild — `docs/guides/EXTENDING.md`
+  number already in use, and both meanings are cited in the world — `docs/guides/developer/EXTENDING.md`
   means the cloud-sync one when it writes "the transactional outbox (ADR #43 D7)" (D7 is a
-  phase of it), while `docs/records/README.md` maps 43 to the React-only decision. 37
-  references to `ADR #43` exist across the repo. Renaming either file would break those
+  phase of it), while `docs/records/README.md` maps 43 to the React-only decision. **Re-derive rather than quote**: the count read 37 when this
+  bullet was written and 26 on 2026-10-11 (eleven files) — run
+  `git grep -o 'ADR #43' -- '*.md' | wc -l` and use what it prints. Renaming either file would break those
   citations, so this is recorded rather than fixed: **cite #43 by filename, not number**,
   until someone decides which one moves.
 - Research notes and phased implementation docs (topology phases, sync
@@ -99,7 +107,7 @@ implementation-status walkthrough.
 | 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade all shipped |
 | 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-09-21-adr56-first-run-provisioning.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 and the `local` tier of §2.3/§2.4 shipped; §2.3's `identify` leg (linked tier) still pending |
 | 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-09-21-adr57-client-tamper-resistance.md) | Proposed (2026-09-21) — part implemented, part to build |
-| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
+| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Implemented, with one residual (2026-09-21; re-audited 2026-09-22, re-verified 2026-10-11) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
 | 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 | 61 | [Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](./2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant, the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied to 0 tracked findings |
@@ -200,4 +208,4 @@ authoritative record.
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

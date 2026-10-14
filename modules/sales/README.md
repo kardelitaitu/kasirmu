@@ -1,4 +1,9 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/kasirmu-core/src/db/sales.rs, apps/desktop-tauri/src/commands/pos.rs, ui/src/features/sales, ui/src/api/sales.ts, shared-ui/locales/sales.ftl; modules/sales/manifest.json deps [inventory] match; Module trait + Kernel::register/load_all/start_all match platform/kernel API · Status "Phase 2.2 POC" consistent with files still in original locations · RE-AUDITED 31-08 (cont) by docs-auditor: manifest deps [inventory] + perms re-verified; boundary_contract.rs present; the crate has a parity-tested SalesRepository/SalesService mirror NOT wired into runtime (live pipeline still in crates/kasirmu-core/src/db/sales.rs). FIXED: Lifecycle claimed on_load 'checks dependencies' and on_start 'Initializes state' — both are "future phases" comments (lib.rs:85-108 are stubs); corrected to describe the stubs. Overview PROMO-3/COR-7/LOY-03 checkout behaviours re-confirmed; normalized footer -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · Full re-audit; the 2026-07-22-31-08 marker is retained as original evidence below. · REPAIRED: §Registration said modules are registered "during `AppState::new()`". They are registered in `platform_startup::init_module_system` (`platform/startup/src/lib.rs:129` for this module), called from `apps/desktop-tauri/src/lib.rs:270`, not from `AppState::new()` — corrected, matching the sibling module READMEs' "during application setup". · VERIFIED AND LEFT ALONE: every owned path resolves; the manifest block matches `modules/sales/manifest.json` (deps `[inventory]`, perms `sales:void`/`sales:refund`/`reports:view`) ; the three lifecycle hooks are stubs and their log strings match lib.rs exactly; the PROMO-3 (promotion engine in checkout), COR-7 (`attemptId` → per-split `idempotency_key` replay guard) and LOY-03 (loyalty reversal inside the refund transaction) behaviours are all present in the tree; the `SalesRepository`/`SalesService` mirror is test-only and pinned by `boundary_contract.rs`, real but not the runtime path. · NOT re-measured: the sale-pipeline DB behaviour. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
+
+  [Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/kasirmu-core/src/db/sales.rs, apps/desktop-tauri/src/commands/pos.rs, ui/src/features/sales, ui/src/api/sales.ts, shared-ui/locales/sales.ftl; modules/sales/manifest.json deps [inventory] match; Module trait + Kernel::register/load_all/start_all match platform/kernel API · Status "Phase 2.2 POC" consistent with files still in original locations · RE-AUDITED 31-08 (cont) by docs-auditor: manifest deps [inventory] + perms re-verified; boundary_contract.rs present; the crate has a parity-tested SalesRepository/SalesService mirror NOT wired into runtime (live pipeline still in crates/kasirmu-core/src/db/sales.rs). FIXED: Lifecycle claimed on_load 'checks dependencies' and on_start 'Initializes state' — both are "future phases" comments (lib.rs:85-108 are stubs); corrected to describe the stubs. Overview PROMO-3/COR-7/LOY-03 checkout behaviours re-confirmed; normalized footer]
+-->
 
 # Sales Module
 
@@ -37,7 +42,7 @@ The module implements `foundation::contracts::Module`. Its lifecycle hooks are c
 
 ## Registration
 
-Registered with the kernel during `AppState::new()`:
+Registered with the kernel during module-system initialization (`platform_startup::init_module_system`, called from `apps/desktop-tauri/src/lib.rs` — at `platform/startup/src/lib.rs:129` for this module):
 
 ```rust
 use modules_sales::SalesModule;
@@ -61,4 +66,4 @@ kernel.start_all()?;
 }
 ```
 
-> last audited 31-08-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

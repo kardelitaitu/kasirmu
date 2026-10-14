@@ -249,7 +249,25 @@ mod debt;
 // 421 -> 422 with `workspaces::list_all_workspaces_scoped` (2026-10-08). Arrives
 // already gated on STAFF_READ on the bridge side, so it moves no debt ledger row
 // or ceiling, moving only the registration floor and ledger total.
-const REGISTERED_FLOOR: usize = 422;
+//
+// 422 -> 425 carrying two steps that landed without this line (2026-10-12): the
+// three `products::*_recipe_scoped` commands (7c00c1281) and
+// `workspaces::list_all_workspaces_scoped` (c1b2ccd7d) — the latter re-counted here
+// because the 422 step above named it but the ledger total was not carried with it.
+// Raised by bce1a2223, which moved the number and not the history; this comment is
+// the entry that step should have carried.
+//
+// 425 -> 428 with three QRIS listener commands (7ff9930ca, 2026-10-12):
+// `qris_listener::get_qris_listener_status_scoped`,
+// `qris_listener::open_qris_listener_settings_scoped` and
+// `qris_listener::simulate_qris_notification_scoped`. All three arrive gated on
+// SALES_PROCESS in the bridge, so they move no debt ledger row or ceiling — only the
+// registration floor and the ledger total, which the regeneration below carried.
+//
+// The floor is an EQUALITY against the tree (see drift_pin_registration_floor_is_met),
+// so this number and the ledger total must move together in the same pass as the
+// registrations. Both were regenerated here rather than typed.
+const REGISTERED_FLOOR: usize = 428;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

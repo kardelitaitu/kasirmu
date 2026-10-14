@@ -1,24 +1,25 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Re-audit of a forward-looking build guide. · ITS CENTRAL HONESTY STILL HOLDS, and I re-derived it rather than inheriting it: `apps/mobile-tauri/gen/apple/` contains no tracked files and does not exist on disk at all, so every `gen/apple/...` path below really is output of `cargo tauri ios init` on a macOS host. The guide's instruction to DISCOVER the project name rather than trust one is the correct response, and its self-declared limitation is the real situation rather than an excuse. · MINOR 1 — THE SIBLING IT BLAMED WAS NOT AT THE PATH IT NAMED. The prerequisite block said this guide and `docs/guides/ios-build-guide.md` disagree on the project filename; that path does not exist — the sibling is `docs/guides/platform/ios-install-test.md`. The disagreement is real and worth stating; the pointer to it was dead. · MINOR 2 — THE RETIRED WORKFLOW HAS MOVED AGAIN. The guide cites `.github/workflows/ios.yml.bak` for the six secret names. That bare path no longer resolves: `54f64de83` parked the file under `attic/`, so it is `.github/workflows/attic/ios.yml.bak:13-19`, which I verified line by line — all six names and their purposes are there as described. The conclusion (no live workflow reads them) is unchanged and still true; only the path needed the extra segment. · MINOR 3 — two counts refreshed: `gen/` holds 50 tracked files under `android/` (was 49) plus 7 under `schemas/`, and the `.gitignore` policy this block quotes lives at `:183-184`. · ALSO: the header's Mobile Release Checklist link pointed at `docs/releases/mobile-checklist.md`, which does not exist; repointed to the mobile build guide that does. · VERIFIED AND LEFT ALONE: the macOS/Xcode/cocoapods prerequisite tables; the `security export`/`base64` certificate-export sequence; the TestFlight distribution steps; the troubleshooting commands; and the forward-looking build instructions, which cannot be executed without a Mac and which the guide itself scopes as such. `release.yml:24` is exactly the desktop-only comment the earlier pass cited. · Prior 2026-09-29 stamp retained below, delimiters stripped; the 2026-09-09 marker beneath it is preserved verbatim. · NOT re-measured: the Xcode configuration, the signing setup, or any build step — none of which can be exercised without a macOS host. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 255 lines, with a prior marker re-verified rather than replaced. It is the build half of a three-document mobile set, and the audit value here was in confirming that its self-declared caveat is the real situation rather than an excuse. · THE CAVEAT IS HONEST, AND IT IS THE CORRECT INSTRUCTION. This guide opens by saying the generated iOS scaffold has never been produced, that every `gen/apple/...` path it contains describes output of `cargo tauri ios init` on a macOS host, and — the part that matters most — that the project filename is NOT STABLE, naming the disagreement between this guide and the install guide and instructing the reader to DISCOVER the project rather than trust either name. · I CHECKED, AND THE TWO CLAIMS HOLD. `apps/mobile-tauri/gen/apple/` contains no tracked files at all, which is consistent with the scaffold being build-time output rather than a committed artefact, and the Tauri config that would generate it declares the current product name and bundle identifier. So the guide is not hand-waving: the thing it says is unstable genuinely is, and the discovery command it prescribes is the right response to that. · THAT CONTRASTS USEFULLY WITH ITS SIBLING AUDITED IN THE SAME ROUND. The Android install guide used the same pre-restructure artefact name with no caveat at all, and has been given one. One document saying a thing is unstable and two not saying it is the same defect in different disguises, and the fix in both cases is to tell the reader how to find out rather than to guess. · A BUILD GUIDE ON A MAC-ONLY PLATFORM also has the property that its claims cannot be tested from this checkout at all, so the audit scope was the documentation contract rather than the build, and that scope is stated in the stamp rather than glossed. · NOT re-measured: the Xcode configuration, the signing setup, or any build step, none of which can be exercised without a Mac. · Prior marker retained; footer re-dated to match the new stamp. -->
 # iOS / iPad Build Guide
 <!-- Superseded audit marker (2026-09-09 · DSH, body kept verbatim) · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Finding: §3 told the reader to "configure the GitHub secrets as documented in .github/workflows/ios.yml" — that file is .github/workflows/ios.yml.bak since 23c963303 (2026-09-02) and GitHub never executes a .bak, so no live workflow consumes any of those secrets; the repair keeps the secret manifest (cited at .github/workflows/ios.yml.bak:13-19) but says plainly that it is revival documentation, not today's pipeline · VERIFIED: git grep -l CLOUDFLARE/APPLE secret names across .github/workflows shows the live pair is dev-ci.yml + release.yml only; git grep -in ios -- .github/workflows/dev-ci.yml .github/workflows/release.yml returns exactly one hit, the comment at .github/workflows/release.yml:24 ("Mobile (android.yml.bak / ios.yml.bak). Never part of this file.") · LEFT ALONE deliberately: the whole guide is still forward-looking because the 08-09-26 prerequisite note at the top is true — apps/mobile-tauri/gen/ has no apple/ scaffold committed, so nothing here can be executed end-to-end and no claim below it was re-verified against Xcode behaviour · The macOS/keychain commands are third-party tool usage, not repo claims; unverified from this workstation. -->
 <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
-> `apps/mobile-tauri/gen/` contains only `android/` (49 tracked files) and `schemas/`.
+> `apps/mobile-tauri/gen/` contains only `android/` (50 tracked files) and `schemas/`.
 > There is no `apple/` directory, committed or on disk. `.gitignore` states the policy
 > explicitly — *"the generated scaffold under `apps/*/gen/` is COMMITTED so CI and
-> contributors don't need the Tauri CLI installed to build"* — and Android follows that
+> contributors don't need the Tauri CLI installed to build"* (`.gitignore:183-184`) — and Android follows that
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
 > The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
-> while `docs/guides/ios-build-guide.md` says `kasir.mu.xcodeproj`, and neither can be
+> while its sibling `ios-install-test.md` says `kasir.mu.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
 > **Purpose:** Build, sign, and distribute kasir.mu tablet client for iOS/iPad.
 >
 > **Related:** [iOS Install Test](./ios-install-test.md) · [Android Keystore Guide](./android-keystore-guide.md)
-> · [Mobile Release Checklist](https://github.com/kardelitaitu/kasirmu/blob/main/docs/releases/mobile-checklist.md)
+> · [Mobile Build Guide](https://github.com/kardelitaitu/kasirmu/blob/main/ops/packaging/mobile/README.md)
 
 ## Prerequisites
 
@@ -135,10 +136,13 @@ base64 -w0 /tmp/dist-cert.p12 > dist-cert.p12.b64
 
 Then keep these credentials somewhere durable — but note that **no live workflow
 consumes them:** the workflow this step pointed at is retired, renamed from
-`.github/workflows/ios.yml` to `.github/workflows/ios.yml.bak` by `23c963303` on
-2026-09-02, and GitHub never executes a `.bak` file. A GitHub Actions secret of
-these names is therefore read by nothing today. The six names and their purposes are still listed in that inert
-workflow's own header (`.github/workflows/ios.yml.bak:13-19`: `APPLE_TEAM_ID`,
+`.github/workflows/ios.yml` to `ios.yml.bak` by `23c963303` on 2026-09-02 and parked under
+`.github/workflows/attic/` by `54f64de83`, and GitHub never executes a `.bak` file. A GitHub Actions secret of
+these names is therefore read by nothing today. (Re-derived 2026-10-11: the retired file has since been
+PARKED under `attic/` by `54f64de83`, so its path is now `.github/workflows/attic/ios.yml.bak` — the
+bare `.github/workflows/ios.yml.bak` the earlier text cited resolves to nothing. GitHub never executes
+a `.bak` wherever it sits.) The six names and their purposes are still listed in that inert
+workflow's own header (`.github/workflows/attic/ios.yml.bak:13-19`: `APPLE_TEAM_ID`,
 `APPLE_BUNDLE_ID`, `APPLE_PROV_PROFILE_BASE64`, `APPLE_CERT_BASE64`,
 `APPLE_CERT_PASSWORD`, `KEYCHAIN_PASSWORD`) and are the manifest for whoever
 restores it. For the local route, the values stay on the macOS host: Xcode's
@@ -253,4 +257,4 @@ find apps/mobile-tauri/target -name "*.ipa" 2>/dev/null
 
 ---
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

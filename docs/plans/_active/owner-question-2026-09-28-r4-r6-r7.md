@@ -1,4 +1,7 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 177 lines, with no prior stamp, footer or marker. Its subject is a BLOCKER rather than a plan, which makes it one of the more useful artefacts in this directory, because blockers are the thing a working plan file structurally cannot express. · IT MAKES THE BLOCKER EXPLICIT AND NAMED, which is the whole discipline. The file states why it exists: the phase's remaining items are blocked on input rather than on code, the tracking document records each as blocked-on-input WITH THE SPECIFIC INPUT NAMED, and this file is the ask that follows — written so the person who can answer does not have to reconstruct the context. Three items, three named inputs. A reader can pick it up and act without reading anything else, which is the entire test of an escalation document and one most of them fail. · WHY THIS DOCUMENT CLASS MATTERS MORE THAN IT LOOKS, and the reason is that its absence is invisible. A plan that is quietly stuck looks exactly like a plan that is quietly slow, and the difference is discoverable only if someone wrote down what they are waiting for and why it is not theirs to supply. This file is that record, and its existence is the reason a stalled phase can be distinguished from an abandoned one. It is the same reasoning the campaign has seen in the settings-ingest census — measure the thing, name its shape, leave the judgement to whoever owns it — and in the licence audit, which reports the limit of what it could establish rather than implying completeness. · A NOTE ON ITS RELATIONSHIP TO ITS SIBLINGS, since all three address the same phase. The resilience design establishes how payment failures are handled, the card-terminal plan establishes how hardware binds, and this file establishes that parts of the phase cannot proceed at all without an answer from outside the codebase. A reader who has only the first two will conclude the phase is nearly finished, because both read as complete. This file is the corrective, and it is DATED — which is what makes it safe to supersede once the answers arrive. · NOT re-measured: whether the three inputs have since been supplied, and whether the tracking document's blocked entries have been updated. Answering that is a question for the owner, and the file's own existence is the record that the question was put. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor) · Re-audit. Every anchor in this file resolves at HEAD: the R4 execution (register_loopback_terminal, the loopback:// scheme, register_card_terminals) is real, 20260824_media_edc.sql still carries NO is_default so option (a) is correctly the shipped shape, and the Q2 credential anchor is EXACT (MIDTRANS_SERVER_KEY at qris.rs:306, STRIPE_SECRET_KEY at stripe.rs:192, PADDLE_API_KEY at paddle.rs:91). TWO MINOR REPAIRS: the integration file was cited without its tests/ directory (crates/kasirmu-payment/tests/qris_integration.rs, 21 cases, 0 #[ignore] — the trap this file describes holds), and the R7 stub line counts had drifted (wired.rs 112->125, wireless.rs 132->145, protocol/*.rs 46->47 at HEAD); both are recorded with the old reading kept. The 2026-09-29 answers section is the document's own content and was left as written. NOT re-measured: whether the owner has since supplied the R6 credential or named an R7 terminal model — that is the owner's answer, and this file is the record that the question was put.
+
+     --- prior stamp, preserved as plain text (delimiters stripped) ---
+ -->
 # Owner question — 2026-09-28: three inputs the payment phase cannot supply itself
 
 **Why this file exists.** Phase 4's remaining items are blocked on input, not on
@@ -84,8 +87,8 @@ activation.
 better a single captured byte trace from a real terminal — plus the terminal
 itself to check the answer against.
 
-Measured: `crates/kasirmu-hal/src/drivers/edc/wired.rs` **112** lines,
-`wireless.rs` **132**, `protocol/{pax,ingenico,verifone}.rs` **46** each, all
+Measured: `crates/kasirmu-hal/src/drivers/edc/wired.rs` **112** lines (**125** at HEAD 11-10-26),
+`wireless.rs` **132** (**145** at HEAD), `protocol/{pax,ingenico,verifone}.rs` **46** each (**47** at HEAD), all
 self-labelled PLANNED stubs returning `HalError::Unsupported`, and
 `protocol/protocol_tests.rs` holds **0** fixtures — no spec text, no capture, no
 golden vectors anywhere in that directory.
@@ -165,7 +168,7 @@ behaviours are **accepted as unproven by this repository**: generic-QR interop, 
 targeted-QR restriction, real refund behaviour, and per-merchant acquirer activation.
 This is recorded rather than papered over, because the existing suite cannot stand in
 for evidence — `qris_tests.rs` asserts in **both** directions, so it is green with and
-without the credential, and all 21 `qris_integration.rs` cases run against a local
+without the credential, and all 21 `tests/qris_integration.rs` cases run against a local
 `wiremock` server. **Nothing here may be cited as proof of acquirer behaviour.** If a
 credential is supplied later, the four behaviours are the checklist for what to
 re-verify.
@@ -177,4 +180,26 @@ execution" block above). The vendor wire framing stays a stub (`wired.rs`,
 `HalError::Unsupported`) until a model is named and a capture is supplied. **Do not
 implement a vendor protocol against a guessed framing.**
 
-> last audited 29-09-26 by docs-auditor
+
+---
+
+## Verified 11-10-26 — every anchor in this file resolves
+
+Re-derived at HEAD on 11-10-26, this pass confirms the file's own claims rather than restating them:
+
+- **Q1/R4** ships as described: `register_loopback_terminal` (3 hits in `kasirmu-hal`), the `loopback://`
+  scheme (4 hits), `register_card_terminals` (`platform/startup/src/hardware.rs`), and
+  `20260824_media_edc.sql` still carries **no** `is_default` — option (a) was taken, so the schema
+  correctly cannot express a default.
+- **Q2/R6's credential anchor is EXACT**: `MIDTRANS_SERVER_KEY` is read at
+  `crates/kasirmu-payment/src/drivers/qris.rs:306`, with `STRIPE_SECRET_KEY` at `stripe.rs:192` and
+  `PADDLE_API_KEY` at `paddle.rs:91` — all three as cited. The trap the file describes holds: the
+  integration file has **21** cases, **0** `#[ignore]`, and uses `wiremock`. (It was cited without its
+  `tests/` directory; qualified in place above.)
+- **Q3/R7** stands: the three vendor protocol stubs still return `HalError::Unsupported` (one each).
+
+**NOT re-measured:** whether the owner has since supplied the R6 credential or named an R7 terminal
+model — that is the owner's answer, and this file is the record that the question was put. The
+2026-09-29 answers recorded above are the document's own content and were left as written.
+
+> last audited 11-10-26 by docs-auditor

@@ -43,7 +43,7 @@ describe('PriceOverrideModal — rendering', () => {
 
   it('shows price input with current value pre-filled', () => {
     renderModal();
-    const input = screen.getByLabelText('Enter new price in minor units') as HTMLInputElement;
+    const input = screen.getByLabelText('Enter new price') as HTMLInputElement;
     expect(input.value).toBe('50000');
   });
 

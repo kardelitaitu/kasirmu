@@ -418,12 +418,12 @@ describe('MenuEngineeringScreen', () => {
     });
   });
 
-  it('table has column headers for all 9 columns', async () => {
+  it('table has column headers for all 10 columns', async () => {
     renderWithLocales(<MenuEngineeringScreen />);
 
     await waitFor(() => {
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.length).toBe(9);
+      expect(headers.length).toBe(10);
     });
   });
 

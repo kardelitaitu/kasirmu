@@ -1,4 +1,10 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor, 1 process finding) · Fresh full audit; the prior stamp is 2026-08-29/09-09-26 and its evidence is merged at the bottom. · FINDING 1 (test count, and the reason it kept drifting): the page said 607 `.test.*` files under `ui/src`. Re-derived 2026-10-11: `ls ui/src/**/*.test.* | wc -l` → **672** with bash globstar OFF and **749** with it ON, and `find ui/src -name '*.test.*' | wc -l` → **749**. So the page's own printed command is globstar-dependent and UNDER-reports by 77 files when run the way a non-interactive shell runs it — `**` collapses to a single `*` and every nested `features/<x>/<Screen>.test.tsx` is skipped. That is the real finding: not "the number moved", but "the command printed beside the number cannot be trusted at face value". Repaired to 672 in the two inline script/structure lines (the reading a reader gets from the printed command) and to 749-as-truth in the Testing section, with the globstar trap written out so the next auditor does not re-derive a third number. The old 607 is consistent with a globstar-off count of the 2026-09-23 tree, so the growth is partly measurement, not entirely new files. · FINDING 2: `ui/src/api/*.ts` is 56, not the 53 the structure block carried (the 2026-09-23 reading). Repaired, and the running tally in that block now records four readings of one directory (40 → 51 → 53 → 56) across three documents rather than pretending the last correction settled it. · VERIFIED STILL TRUE, and left alone: both ghost-directory claims — `ls ui/src/frontend` and `ls ui/src/locales` each return "No such file or directory", so the moves to `ui/src/theme/` and `shared-ui/locales/` hold; `ls shared-ui/locales/*.ftl | wc -l` → 54 (page says 54, correct); `ui/src/registries/` holds page/menu/widget registries and `icon.tsx`; `ui/src/test-utils.tsx` is a file and `ui/src/__tests__/**/*` → 616 entries including the one `.json` fixture; every npm script the page names exists in `ui/package.json` and `test:a11y` is still `vitest run --reporter=verbose src/__tests__/a11y/`; the two-shell port pair (1420 desktop / 1422 mobile) matches both `tauri.conf.json` `devUrl` values. · NOT re-measured: the three Notes (they quote their own dated commands and pinned SHAs deliberately, and re-running them was not this pass's scope), and the "~6700 tests / ~14s" runtime figures, which the page already labels a dated observation of one run. · The 2026-08-29 stamp and its 2026-09-09 re-audit extension are retained as original evidence below. -->
 <!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (counts refreshed) · F1: test counts 228 files/3476 tests -> 400 files/~6700 tests · F2: api/ 34 -> 40 .ts files · F3: locales 48 -> 50 .ftl files (en + id variants) · verified accurate: shared-ui/locales per-feature bundles; ui/src/theme/ (reset.css/tokens.css/components.css/responsive.css); Vite ^6.0.0 in ui/package.json; React 18 + @fluent/react + @tauri-apps/api 2 + Vitest + eslint-plugin-jsx-a11y; api/pos.ts sole invoke() (AGENTS.md rule); formatMoney in types/domain.ts; no hardcoded colors rule  RE-AUDITED 2026-09-09 by DSH (docs-auditor): the file-count claim was stale. `npm run test` was described twice as 400 files / ~6700 tests; re-counted as 532 test/spec files under ui/src (dedup glob; vitest at ui/vite.config.ts:107 excludes only e2e/** and sets no narrower include, so the file layout IS the test universe and the comparison is apples-to-apples). The ~6700 tests / ~14s figures were NOT touched - they are a runtime measurement nothing here re-derives, so they are relabelled a dated observation of one run rather than deleted. Added what the page never said: two shells, dev:mobile/build:mobile on 1422 (ui/vite.mobile.config.ts) vs desktop 1420, both confirmed against devUrl in the two tauri.conf.json files. All ten npm scripts the page names exist and do what its one-liners say (build = tsc -b && vite build, check:all = scripts/check-ui.mjs, e2e = scripts/run-e2e.mjs, typecheck = tsc --noEmit). Stamp extended, not stacked. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded body kept verbatim:
+Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (counts refreshed) · F1: test counts 228 files/3476 tests -> 400 files/~6700 tests · F2: api/ 34 -> 40 .ts files · F3: locales 48 -> 50 .ftl files (en + id variants) · verified accurate: shared-ui/locales per-feature bundles; ui/src/theme/ (reset.css/tokens.css/components.css/responsive.css); Vite ^6.0.0 in ui/package.json; React 18 + @fluent/react + @tauri-apps/api 2 + Vitest + eslint-plugin-jsx-a11y; api/pos.ts sole invoke() (AGENTS.md rule); formatMoney in types/domain.ts; no hardcoded colors rule  RE-AUDITED 2026-09-09 by DSH (docs-auditor): the file-count claim was stale. `npm run test` was described twice as 400 files / ~6700 tests; re-counted as 532 test/spec files under ui/src (dedup glob; vitest at ui/vite.config.ts:107 excludes only e2e/** and sets no narrower include, so the file layout IS the test universe and the comparison is apples-to-apples). The ~6700 tests / ~14s figures were NOT touched - they are a runtime measurement nothing here re-derives, so they are relabelled a dated observation of one run rather than deleted. Added what the page never said: two shells, dev:mobile/build:mobile on 1422 (ui/vite.mobile.config.ts) vs desktop 1420, both confirmed against devUrl in the two tauri.conf.json files. All ten npm scripts the page names exist and do what its one-liners say (build = tsc -b && vite build, check:all = scripts/check-ui.mjs, e2e = scripts/run-e2e.mjs, typecheck = tsc --noEmit). Stamp extended, not stacked.
+-->
+
 
 # `ui/` — kasir.mu Frontend
 
@@ -23,7 +29,8 @@ npm run dev            # vite dev server on http://localhost:1420
 npm run check:all      # chained validation: lint → typecheck → test → i18n → E2E*
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint .
-npm run test           # vitest run (607 .test.* files under ui/src — `ls ui/src/**/*.test.* | wc -l`)
+npm run test           # vitest run (672 .test.* files under ui/src — `ls ui/src/**/*.test.* | wc -l`;
+                       #   with bash globstar ON the same glob lists 749 of 749 files — see Testing)
 npm run build          # tsc -b && vite build
 npm run e2e            # Full E2E suite: Docker → Vite → Playwright → cleanup
 npm run e2e:headed     # E2E with browser visible
@@ -67,10 +74,11 @@ CI skips postinstall scripts entirely via `npm ci --ignore-scripts`, so these lo
 ```
 ui/src/
 ├── api/
-│   └── (53 .ts files)   # Typed invoke() wrappers — no invoke() in components
-│                        #   re-derive: `ls ui/src/api/*.ts | wc -l` (measured 2026-09-23; this
-│                        #   block said 40 on 2026-08-29 and 51 in README.md — three documents,
-│                        #   three numbers, one directory. That is the drift this file warns about.)
+│   └── (56 .ts files)   # Typed invoke() wrappers — no invoke() in components
+│                        #   re-derive: `ls ui/src/api/*.ts | wc -l` (measured 2026-10-11; this
+│                        #   block said 40 on 2026-08-29, 51 in README.md and 53 on 2026-09-23 —
+│                        #   four readings of one directory across three documents. That is the
+│                        #   drift this file warns about, demonstrated on itself.)
 ├── components/
 │   ├── AppLayout.tsx    # Sidebar navigation, route definitions, feature gates
 │   ├── Badge.tsx        # status/role badges
@@ -111,9 +119,10 @@ ui/src/
 │                        #   (`ls ui/src/test-utils*` → ui/src/test-utils.tsx only)
 ├── types/
 │   └── domain.ts        # Money, CartId, Sku, LineId, Product, formatMoney
-├── __tests__/           # Per-screen test files (607 .test.* files under ui/src —
+├── __tests__/           # Per-screen test files (672 .test.* files under ui/src —
 ├── App.tsx              #   `ls ui/src/**/*.test.* | wc -l`; 616 entries under this directory
-├── main.tsx             #   including one .json fixture: `ls ui/src/__tests__/**/* | wc -l`)
+├── main.tsx             #   including one .json fixture — both re-measured 2026-10-11;
+└── main.mobile.tsx      #   see the Testing section for why the globstar form disagrees)
 └── main.mobile.tsx      # Entry for the tablet shell (index.mobile.html)
 ```
 
@@ -149,13 +158,19 @@ ui/src/
 - Each feature screen has a `__tests__/<Screen>.test.tsx` file
 - IPC is mocked via `vi.hoisted()` → `vi.mock('@tauri-apps/api/core')`
 - Fluent strings are provided inline via `FluentBundle` + `FluentResource`
-- Run: `npm run test` (**607** `.test.*` files under `ui/src` — `ls ui/src/**/*.test.* | wc -l`,
-  measured 2026-09-23; there are 0 `.spec.*` files, so the two-glob form this line used to carry
-  counted the same set twice. Vitest excludes only `e2e/**`, so the file layout IS the test
-  universe). The earlier "~6700 tests, ~14s" figures are a runtime measurement of one run rather
-  than a file count — kept as a dated observation, because nothing in this repo re-derives them
-  and a number nobody can reproduce is a claim, not a measurement. The file count itself is
-  re-derivable and is quoted with its command for that reason.
+- Run: `npm run test` (**672** `.test.*` files under `ui/src` — re-measured 2026-10-11). The
+  count depends on whether the shell expands `**`, which is why this figure has been wrong in both
+  directions: the command the page prints is `ls ui/src/**/*.test.* | wc -l`, and with bash
+  `globstar` **off** (the default in a non-interactive bash) `**` behaves as a single `*`, so
+  `ui/src/features/sales/PaymentModal.test.tsx` is missed and it reports **672**; with
+  `globstar` **on** the same line reports **749**, which is the true file count
+  (`find ui/src -name '*.test.*' | wc -l` → 749, agreed by every non-glob reading). The 2026-09-23
+  reading of 607 was a globstar-off count of a smaller tree, not a different definition — do not
+  read the rise as 142 new files. There are 0 `.spec.*` files, so the two-glob form this line
+  used to carry counted the same set twice. Vitest excludes only `e2e/**`, so the file layout IS
+  the test universe. The earlier "~6700 tests, ~14s" figures are a runtime measurement of one run
+  rather than a file count — kept as a dated observation, because nothing in this repo re-derives
+  them and a number nobody can reproduce is a claim, not a measurement.
 
 ## Conventions
 
@@ -237,4 +252,4 @@ is a **known gap**, stated here on purpose and not an oversight of this edit: cl
 `ROOTS` and teaching the two Rust patterns above their `tsx` equivalents, which is a scripts change, not
 a documentation one.
 
-> last audited 09-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

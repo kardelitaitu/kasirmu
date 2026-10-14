@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // ── Dev-mock scoped-name aliasing ─────────────────────────────────
 //
 // The ADR #7 migration moved the api layer to the `_scoped` spelling of commands
@@ -247,19 +258,23 @@ describe("dev-mock registry alias integrity (real registry, not a fixture)", () 
     expect(clobbered).toEqual([]);
   });
 
-  it("a twin kept by the guard answers its OWN stub, not the base", async () => {
-    // Behavioural face of the case above: set_setting answers true (settings.ts:91),
-    // set_setting_scoped answers null (:72). Had the alias clobbered the twin, both
-    // would answer true.
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      const unscoped = await invoke<unknown>("set_setting", { key: "k", value: "v", userId: "u" });
-      const twin = await invoke<unknown>("set_setting_scoped", { sessionToken: "t", key: "k", value: "v" });
-      expect(unscoped).toBe(true);
-      expect(twin).toBeNull();
-    } finally {
-      log.mockRestore();
-    }
+  it("a twin kept by the guard is its OWN registration, not the base function", () => {
+    // Behavioural face of the case above, with the RETURN VALUE assertion REMOVED.
+    //
+    // This test used to assert set_setting -> true and set_setting_scoped -> null,
+    // treating the disagreement as proof the twin survived. But that disagreement
+    // WAS the defect: set_setting_scoped answered null and stored nothing, so no
+    // setting could persist (see __tests__/dev-mock-setting-persistence.test.ts).
+    // Asserting it here made the bug load-bearing — fixing it turned this test red
+    // for the right reason, which is how the coupling was noticed.
+    //
+    // The invariant the guard actually protects is IDENTITY: applyScopedAliases
+    // only fills a twin when the name is still absent (mockDispatcher.ts:91), so a
+    // twin that is a DIFFERENT function object is one somebody registered on
+    // purpose. That holds regardless of what either function returns, and it does
+    // not pin any behaviour that is free to change.
+    expect(handlers["set_setting_scoped"]).toBeDefined();
+    expect(handlers["set_setting_scoped"]).not.toBe(handlers["set_setting"]);
   });
 });
 

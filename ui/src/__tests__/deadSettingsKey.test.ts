@@ -43,6 +43,11 @@ const DECLARED_DEAD: Array<{ key: string; wouldNeed: string }> = [
   // the shared `useSound` hook unless the merchant switched it off. The note above was
   // also slightly wrong — `useSound` was never KDS-only (the retail POS uses it too),
   // the RESTAURANT path simply never called it.
+  //
+  // `restaurant.dispatch_on_tab_save` was here until round 50 (Track 1 of the restaurant
+  // sales flow roadmap): `PosScreen.tsx` now reads it and automatically dispatches
+  // uncommitted cart delta lines to the kitchen printer and KDS upon saving or holding
+  // a tab. Removed because the key now HAS an active reader in production code.
 ];
 
 /** Production source under src/, minus tests and dev mocks. */

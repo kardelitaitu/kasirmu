@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import worker from '../../worker';
 import { RUNTIME_CONFIG_EVENT } from '../lib/runtime-config';
+
+/** The inline pre-paint script's side of the hint-cookie contract. */
+const HEADER_SRC = readFileSync(new URL('../components/Header.astro', import.meta.url), 'utf-8');
 
 describe('Cloudflare Worker — worker.ts', () => {
   const mockEnv = {
@@ -619,5 +623,77 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('X-Frame-Options')).toBe('DENY');
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
+  // ── Signed-in hint cookie ─────────────────────────────────────────
+  //
+  // The session cookie is httpOnly, so the page cannot read it and the header
+  // shipped the signed-out label until a round trip corrected it (measured
+  // 2026-10-11: ~150-200ms on the first view of a session). The Worker
+  // maintains a JS-readable boolean — no token — that an inline script in
+  // Header.astro reads before the first paint.
+
+  describe('signed-in hint cookie', () => {
+    const hintName = /const SIGNED_IN_COOKIE = '([^']+)'/.exec(
+      readFileSync(new URL('../../worker.ts', import.meta.url), 'utf-8'),
+    )?.[1];
+
+    it('is named in worker.ts and spelled identically in Header.astro', () => {
+      // Two spellings are unavoidable — an is:inline script cannot import —
+      // so they are pinned to each other instead of banned.
+      expect(hintName).toBeTruthy();
+      expect(HEADER_SRC).toContain(hintName as string);
+    });
+
+    it('is set to 1 by /__oz/session when a session cookie is present', async () => {
+      const req = new Request('https://kasir.mu/__oz/session', {
+        headers: { Cookie: 'kasirmu_session=abc123' },
+      });
+      const res = await worker.fetch(req, mockEnv);
+
+      expect(res.status).toBe(200);
+      expect(JSON.parse(await res.text())).toEqual({ token: 'abc123' });
+      const cookies = res.headers.get('Set-Cookie') ?? '';
+      expect(cookies).toContain(`${hintName}=1`);
+      expect(cookies).not.toContain('HttpOnly');
+    });
+
+    it('is expired by /__oz/session when there is no session', async () => {
+      const res = await worker.fetch(new Request('https://kasir.mu/__oz/session'), mockEnv);
+
+      expect(JSON.parse(await res.text())).toEqual({ token: null });
+      const cookies = res.headers.get('Set-Cookie') ?? '';
+      expect(cookies).toContain(`${hintName}=;`);
+      expect(cookies).toContain('Max-Age=0');
+    });
+
+    it('is refreshed on every session probe, so existing sessions pick it up', async () => {
+      // The point of setting it here rather than only at login: a visitor who
+      // signed in before this shipped gets the flag on their next page view
+      // instead of at their next login.
+      const legacy = new Request('https://kasir.mu/__oz/session', {
+        headers: { Cookie: 'oz_session=legacy-token' },
+      });
+      const res = await worker.fetch(legacy, mockEnv);
+      expect((res.headers.get('Set-Cookie') ?? '')).toContain(`${hintName}=1`);
+    });
+
+    it('is cleared by /__oz/logout alongside the session cookie', async () => {
+      const res = await worker.fetch(new Request('https://kasir.mu/__oz/logout'), mockEnv);
+
+      const cookies = res.headers.get('Set-Cookie') ?? '';
+      expect(cookies).toContain('kasirmu_session=;');
+      expect(cookies).toContain(`${hintName}=;`);
+      expect(cookies).toContain('Max-Age=0');
+    });
+
+    it('carries no token — only the boolean', async () => {
+      const req = new Request('https://kasir.mu/__oz/session', {
+        headers: { Cookie: 'kasirmu_session=SUPER-SECRET-TOKEN' },
+      });
+      const res = await worker.fetch(req, mockEnv);
+
+      expect(res.headers.get('Set-Cookie') ?? '').not.toContain('SUPER-SECRET-TOKEN');
+    });
   });
 });

@@ -1,5 +1,9 @@
 # Unscoped class-A commands → ui/src/api caller map (the deregistration gate)
 
+> **PATH CORRECTION 2026-10-11 (docs-auditor).** The sibling records cited above by `.agents/<name>.md` were moved into `.agents/planning/` by `a7331612a` (2026-09-18, *"restore planning, analysis, and debt records to planning/"*), so the bare `.agents/<name>.md` form resolves to nothing and a reader pasting it fails. The links are left as written — this is a dated record and the paths were correct when measured — with the mapping below. `.agents/planning/` is the live parent for every file named in this note.
+> - `.agents/registration-gate-audit-findings.md` -> `.agents/planning/registration-gate-audit-findings.md`
+> - `.agents/unscoped-command-inventory.md` -> `.agents/planning/unscoped-command-inventory.md`
+
 > **Citation rule (2026-09-14):** every `:NNN` into a file that is being actively refactored must carry a NAME anchor as well as the number (function name or exact call text), because this repo's extraction campaign moves code out of these files daily — a bare number then cites a brace.
 
 > **CORRECTION 2026-09-13 ~05:30, anchor HEAD `e046e2f26` — the DESKTOP `gated` column here is

@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Re-audit of the Midtrans subscription-payments record; the 2026-09-29 stamp is merged at the bottom as original evidence. · MINOR: the Context justified "Midtrans over Xendit" with "`oz-payment` already integrates Midtrans QRIS for in-store payments" — a present-tense, load-bearing claim naming the PRE-REBRAND crate. `crates/oz-payment` does not exist; the crate is `crates/kasirmu-payment` and it genuinely does integrate Midtrans QRIS (69 Midtrans references, incl. `drivers/mod.rs:12` "qris — Midtrans QRIS (Indonesian QR code standard)" and `webhook.rs:13`). The name is annotated in place with its current spelling; the reasoning is unchanged and still correct. · VERIFIED THIS PASS, because this ADR's decisions are all stated as shipped: the webhook really exists at `apps/license-server/midtrans_webhook.go` (with `midtransDedup` :55 and `paddleDedup` :63), the cloud-server twin at `apps/cloud-server/src/webhooks/midtrans.rs`, and the D3 discriminator columns `payment_provider` / `midtrans_sub_id` / `paddle_sub_id` are real — but they live in the PocketBase schema (`apps/license-server/pb_schema.json:186,200,227` and again at :653,667,694, with the unique indexes at :300-301), NOT in `crates/kasirmu-core/migrations/`. Recorded here because a reader who greps the SQLite migrations finds nothing and may wrongly conclude D3 was never built. The shared provisioning helpers `tierQuotas`/`signSubscription`/`calculateGraceUntil` are all live in `activate.go` (:923,:940,:963), the Midtrans env names resolve (`MIDTRANS_SERVER_KEY`, `MIDTRANS_PRICE_TIERS`), the routes `/api/v1/midtrans/webhook` and `/api/v1/midtrans/snap` are documented in DEPLOY.md, and the front-matter's `docs/plans/_active/todo.md` C3.1 pointer resolves. · NOT re-measured: the Phase C item-by-item completion status and anything requiring a live Midtrans sandbox round-trip. · Superseded stamp below. -->
+
 ---
 num: 39
 area: subscription
@@ -29,7 +31,7 @@ Phase 2 **not optional for Indonesian revenue growth**.
 
 Phase 2 routes Indonesian customers to a **Midtrans** checkout: fixed Rp prices
 and local payment methods (QRIS, virtual accounts, e-wallets) that cards alone
-can't reach. Midtrans over Xendit because `oz-payment` already integrates
+can't reach. Midtrans over Xendit because `kasirmu-payment` (recorded here under its pre-rebrand name `oz-payment`) already integrates
 Midtrans QRIS for in-store payments — one merchant account, one integration
 surface.
 
@@ -220,4 +222,4 @@ intentional refinements, not bugs (except where noted):
    `midtrans_sub_id`). This is the D1 register-first model made symmetric across
    providers.
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

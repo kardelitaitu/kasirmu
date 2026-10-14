@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // ── Mock-factory surface conformance ────────────────────────────────
 //
 // Mocks drift in two directions and only one of them is loud.
@@ -220,10 +231,15 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // with `getFirstRunState`/`provisionDevice`, and the factory was brought
   // forward in the same pass, so those two are mocked rather than listed here —
   // the deletion direction this map is designed to force a visible edit for.
+  // 7 names. `setSettingScoped` left this list in round 94: the factory now defines it,
+  // because a suite that mocked the module without it threw at the CALL SITE and in
+  // PosScreenCoreFlow that error was uncaught during a DOM event dispatch, putting the
+  // screen into its error boundary. Removing it here is the deletion direction this map
+  // forces a visible edit for.
   '@/api/settings <- createSettingsApiMock': [
-    'getCreditSettingsScoped', 'getDeploymentInfo', 'getHardwareSettingsScoped',
+    'getDeploymentInfo', 'getHardwareSettingsScoped',
     'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',
-    'setSetting', 'setSettingScoped', 'setSettingsScoped',
+    'setSetting', 'setSettingsScoped',
   ],
   // 10 names.
   '@/api/products <- createProductsApiMock': [

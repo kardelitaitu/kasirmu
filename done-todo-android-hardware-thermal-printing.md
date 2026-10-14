@@ -1,6 +1,6 @@
 # Plan: Track 1 — Android Hardware & Thermal Printing (HAL) 🖨️
 
-<!-- Audit stamp: 2026-10-05 · AGY · status: PLANNED · version lock: 0.0.41 -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: DONE (all four phases completed; the 2026-10-05 AGY stamp read PLANNED and is preserved below with delimiters stripped) · Prior stamp body (2026-10-05, AGY, status: PLANNED, version lock 0.0.41) recorded the plan before execution. Re-verified 11-10-26 at HEAD: all eight files the plan names EXIST; G1 is fixed (crates/kasirmu-hal/src/registry.rs:88 falls back to drawer:kick:default at :81 with a comment naming it) and G2 is fixed (apps/mobile-tauri/src/commands/settings.rs persists via set_hardware_settings_scoped at :65/:663 and re-registers live via platform_startup::hardware::register_hardware at :729); Phase 2's commit 77af354e8 resolves. NOT re-measured: any on-device Bluetooth/TCP/drawer behaviour (no tablet attached) and the acceptance suites' live pass state (this checkout cannot link Rust). -->
 
 ## Executive Summary
 Track 1 focuses on connecting physical point-of-sale peripherals to the Android tablet client (`apps/mobile-tauri`).

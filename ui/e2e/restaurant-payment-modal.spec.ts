@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import {
+  openRestaurantPosWithItem as openRestaurantPosWithItemShared,
+  openRestaurantCart as openRestaurantCartShared,
+} from './helpers';
 
 /**
  * E2E: Restaurant POS — payment modal (the "Charge" popup)
@@ -42,36 +45,10 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 15_000;
 
-/**
- * Ensure the cart contents are on screen, whichever shell is rendering.
- * Returns nothing: callers just assert against the line items afterwards.
- */
-async function openCart(page: import('@playwright/test').Page): Promise<void> {
-  const lineItem = page.locator('[data-testid="cart-panel-line-item"]');
-  if (await lineItem.first().isVisible().catch(() => false)) return;
-
-  // Portrait restaurant: the cart is a bottom sheet behind the floating bar.
-  const trigger = page.locator('.restaurant-floating-cart-trigger');
-  if (await trigger.isVisible().catch(() => false)) {
-    await trigger.click();
-    await expect(page.locator('.restaurant-cart-sheet-panel')).toBeVisible({ timeout: 5_000 });
-  }
-}
-
-/** Log in as staff, open the restaurant POS, and add one product. */
+// The two-shell cart setup is shared — `openRestaurantPosWithItem` in `helpers.ts`. The
+// 'staff' role is explicit and was this spec's role before the extraction.
 async function openRestaurantPosWithItem(page: import('@playwright/test').Page) {
-  await loginAs(page, 'staff', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-
-  // The restaurant menu renders .restaurant-card tiles, NOT the retail
-  // .retail-product-btn table. The tile's accessible name ends in "Add".
-  const productCards = page.locator('.restaurant-card');
-  await expect(productCards.first()).toBeVisible({ timeout: TIMEOUT });
-  await productCards.first().click();
-
-  await openCart(page);
-  await expect(page.locator('[data-testid="cart-panel-line-item"]').first())
-    .toBeVisible({ timeout: 5_000 });
+  await openRestaurantPosWithItemShared(page, 'staff');
 }
 
 /** Add a product and press Charge, returning the modal locator. */
@@ -157,7 +134,7 @@ test.describe('Restaurant POS — payment modal', () => {
 
     await expect(page.locator('[data-testid="payment-modal"]')).toBeHidden({ timeout: 5_000 });
     // Dismissing a payment is not clearing the sale: the cart survives.
-    await openCart(page);
+    await openRestaurantCartShared(page);
     await expect(page.locator('[data-testid="cart-panel-line-item"]').first())
       .toBeVisible({ timeout: 5_000 });
   });
@@ -187,9 +164,15 @@ test.describe('Restaurant POS — payment modal', () => {
     await expect(complete).toBeEnabled({ timeout: 5_000 });
     await complete.click();
 
+    // The completed sale displays receipt preview; dismiss via Skip to return to POS
+    const skip = page.getByRole('button', { name: /Skip/i });
+    const printReceipt = page.getByRole('button', { name: /Print Receipt/i });
+    await expect(skip.or(printReceipt).first()).toBeVisible({ timeout: 10_000 });
+    await skip.click();
+
     await expect(page.locator('[data-testid="payment-modal"]')).toBeHidden({ timeout: 15_000 });
     // A completed sale empties the cart.
-    await openCart(page);
+    await openRestaurantCartShared(page);
     await expect(page.locator('[data-testid="cart-panel-line-item"]')).toHaveCount(0, { timeout: 8_000 });
     await expect(page.locator('[class*="error-boundary"]')).toHaveCount(0);
   });

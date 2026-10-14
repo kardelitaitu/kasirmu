@@ -62,6 +62,7 @@ impl Store<'_> {
         let rows = stmt.query_map([], row_to_product_with_details)?;
         let mut products: Vec<ProductWithDetails> = rows.collect::<Result<Vec<_>, _>>()?;
         self.attach_images(&mut products)?;
+        self.attach_recipe_stock(&mut products)?;
         Ok(products)
     }
 
@@ -97,6 +98,7 @@ impl Store<'_> {
         let rows = stmt.query_map(params![store_id], row_to_product_with_details)?;
         let mut products: Vec<ProductWithDetails> = rows.collect::<Result<Vec<_>, _>>()?;
         self.attach_images(&mut products)?;
+        self.attach_recipe_stock(&mut products)?;
         Ok(products)
     }
 
@@ -116,7 +118,7 @@ impl Store<'_> {
              FROM products p
              LEFT JOIN categories c ON p.category_id = c.id
              LEFT JOIN inventory i ON p.id = i.product_id
-             WHERE p.product_type != 'service'
+             WHERE p.product_type = 'retail'
              ORDER BY p.name",
         )?;
         let rows = stmt.query_map([], row_to_product_with_details)?;
@@ -145,7 +147,7 @@ impl Store<'_> {
                      COALESCE((SELECT ss.qty FROM stock_summary ss WHERE ss.item_id = p.id AND ss.location_id = ?1), 0) AS stock_qty
              FROM products p
              LEFT JOIN categories c ON p.category_id = c.id
-             WHERE p.product_type != 'service'
+             WHERE p.product_type = 'retail'
              ORDER BY p.name",
         )?;
         let rows = stmt.query_map(params![location_id], row_to_product_with_details)?;
@@ -184,9 +186,10 @@ impl Store<'_> {
             Err(e) => return Err(e.into()),
         };
 
-        // Attach the product's image assignments (spec 0046b §3.4).
+        // Attach the product's image assignments (spec 0046b §3.4) and recipe stock (Track 3).
         if let Some(p) = &mut product {
             self.attach_images(std::slice::from_mut(p))?;
+            self.attach_recipe_stock(std::slice::from_mut(p))?;
         }
 
         if let (Some(cache), Some(p)) = (&self.cache, &product) {
@@ -219,11 +222,16 @@ impl Store<'_> {
              WHERE p.barcode = ?1",
         )?;
         let result = stmt.query_row(params![barcode.trim()], row_to_product_with_details);
-        match result {
-            Ok(p) => Ok(Some(p)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
+        let mut product = match result {
+            Ok(p) => Some(p),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => return Err(e.into()),
+        };
+        if let Some(p) = &mut product {
+            self.attach_images(std::slice::from_mut(p))?;
+            self.attach_recipe_stock(std::slice::from_mut(p))?;
         }
+        Ok(product)
     }
 
     /// Enforce the subscription tier's product/menu-item limit before
@@ -407,8 +415,18 @@ impl Store<'_> {
             }
         }
 
-        // Service products never get inventory rows — they have unlimited stock.
-        if initial_stock > 0 && product_type != "service" {
+        // Parse product type using the canonical helper.
+        let parsed_pt = crate::ProductType::parse_stored_or_default(
+            Some(product_type),
+            sku.trim(),
+            "Store::create_product_with_attributes",
+        );
+
+        // Physical inventory-tracked products (retail) always get an initial stock row,
+        // even when initial_stock == 0, so stock_summary has an authoritative ledger row
+        // and stock_qty returns 0 rather than NULL.
+        // Untracked products (restaurant, service) never get inventory rows.
+        if parsed_pt.tracks_inventory() {
             tx.execute(
                 "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, ?3)",
                 params![id, initial_stock, now],
@@ -458,17 +476,6 @@ impl Store<'_> {
             cache.invalidate_product(sku.trim());
         }
 
-        // The string written above is the caller's verbatim, so an unmapped
-        // value can already be committed by the time we get here. The insert
-        // succeeded, so keep returning the row and let the helper warn. Note
-        // `None` from the caller became "retail" at the unwrap_or above and is
-        // deliberately passed as Some: that is the documented default, not a
-        // failed read.
-        let parsed_pt = crate::ProductType::parse_stored_or_default(
-            Some(product_type),
-            sku.trim(),
-            "Store::create_product_with_attributes",
-        );
         Ok(Product {
             id,
             sku: Sku::new(sku.trim()),
@@ -881,6 +888,57 @@ impl Store<'_> {
         for p in products.iter_mut() {
             if let Some(imgs) = by_product.remove(&p.product.id) {
                 p.images = imgs;
+            }
+        }
+        Ok(())
+    }
+
+    /// Calculate recipe bottleneck stock for composite products (ADR #47 / Track 3).
+    ///
+    /// For any product that has ingredients defined in `product_recipes`, computes:
+    /// max_servings = MIN(ingredient_stock / quantity_required).
+    /// Overwrites `stock_qty` with `Some(max_servings)`.
+    /// Products without recipe rows retain their existing `stock_qty`.
+    pub fn attach_recipe_stock(
+        &self,
+        products: &mut [ProductWithDetails],
+    ) -> Result<(), CoreError> {
+        let ids: Vec<&str> = products.iter().map(|p| p.product.id.as_str()).collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let mut by_parent: std::collections::HashMap<String, i64> =
+            std::collections::HashMap::new();
+        for chunk in ids.chunks(500) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{i}")).collect();
+            let sql = format!(
+                "SELECT r.parent_product_id, \
+                 MIN(MAX(0, COALESCE( \
+                     (SELECT SUM(ss.qty) FROM stock_summary ss WHERE ss.item_id = r.ingredient_product_id), \
+                     (SELECT inv.qty FROM inventory inv WHERE inv.product_id = r.ingredient_product_id), \
+                     0 \
+                 )) / r.quantity_required) AS max_servings \
+                 FROM product_recipes r \
+                 WHERE r.parent_product_id IN ({}) \
+                 GROUP BY r.parent_product_id",
+                placeholders.join(", ")
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut param_refs: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
+            for id in chunk {
+                param_refs.push(id);
+            }
+            let rows = stmt.query_map(param_refs.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (parent_id, max_servings) = row?;
+                by_parent.insert(parent_id, max_servings);
+            }
+        }
+        for p in products.iter_mut() {
+            if let Some(servings) = by_parent.get(&p.product.id) {
+                p.stock_qty = Some(*servings);
             }
         }
         Ok(())

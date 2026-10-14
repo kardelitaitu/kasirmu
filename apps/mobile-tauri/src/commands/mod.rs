@@ -88,6 +88,8 @@ pub mod promotions;
 pub mod purchasing;
 /// QRIS Auto dynamic charge & settlement-poll IPC (cloud Midtrans).
 pub mod qris_auto;
+/// Zero-MDR QRIS push notification listener & simulation IPC.
+pub mod qris_listener;
 /// Receipt format commands (receipt-format axis).
 pub mod receipt_format;
 /// Refund commands.

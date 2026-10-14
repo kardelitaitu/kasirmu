@@ -2,7 +2,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { updateAuthNav, initHeaderNav } from '../../lib/header-nav';
+import { updateAuthNav, initHeaderNav, paintCachedAuthNav } from '../../lib/header-nav';
+import { invalidateSessionCache } from '../../lib/session';
 
 /**
  * Header auth-nav: swaps login buttons between "Sign in" → /login and
@@ -79,10 +80,19 @@ describe('Header source structure', () => {
     expect(NAV_SRC).toContain('data-locale');
   });
 
-  it('registers astro:page-load, astro:after-swap and storage listeners', () => {
-    expect(NAV_SRC).toContain('astro:page-load');
+  it('registers astro:after-swap and storage listeners', () => {
     expect(NAV_SRC).toContain('astro:after-swap');
     expect(NAV_SRC).toContain("window.addEventListener('storage'");
+  });
+
+  it('does NOT listen on astro:page-load — it would double every probe', () => {
+    // initHeaderNav()'s own call covers the first view and astro:after-swap
+    // covers every navigation, so a page-load listener is a second
+    // updateAuthNav() for the same view. Measured 2026-10-12: 2 probes on
+    // first load and 1-or-2 per navigation with it, a deterministic 1 without.
+    // Asserted against the registration, not the bare string: the docstring
+    // above names the event to explain why it is absent.
+    expect(NAV_SRC).not.toContain("addEventListener('astro:page-load'");
   });
 
   it('resolves session state through the shared cookie-first helper', () => {
@@ -238,6 +248,142 @@ describe('Header auth nav behavior', () => {
     initHeaderNav();
     link.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(details.hasAttribute('open')).toBe(true);
+  });
+});
+
+// ─── Pre-paint auth nav (the navigation flicker) ─────────────────────
+//
+// A client-router swap replaces the header with server markup that always
+// ships the signed-out label, and `updateAuthNav()` cannot correct it until a
+// `/__oz/session` round trip resolves — so the browser painted "Masuk" for
+// ~160ms on every navigation (measured on the live site 2026-10-11). The fix
+// is a synchronous paint from the cached session state inside the
+// `astro:after-swap` handler, which runs before that paint.
+//
+// These tests assert the label is correct WITHOUT awaiting: making any part of
+// that path async reintroduces the flicker and fails here.
+
+describe('Header auth nav — pre-paint swap', () => {
+  let desktopLink: HTMLAnchorElement;
+
+  /** Build a header that has just been swapped in: signed-out server markup. */
+  function swappedInHeader(): HTMLAnchorElement {
+    document.body.innerHTML = '';
+    const header = buildHeaderDOM();
+    document.body.appendChild(header);
+    return header.querySelectorAll('[data-auth-nav]')[0] as HTMLAnchorElement;
+  }
+
+  beforeEach(() => {
+    invalidateSessionCache();
+    document.body.innerHTML = '';
+    sessionStorage.clear();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+    desktopLink = swappedInHeader();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    document.body.innerHTML = '';
+    invalidateSessionCache();
+  });
+
+  it('paints nothing before the session has ever resolved', () => {
+    paintCachedAuthNav();
+    // Untouched server markup — there is no answer to paint yet.
+    expect(desktopLink.textContent).toBe('Sign in');
+    expect(desktopLink.getAttribute('href')).toBe('/en/login');
+  });
+
+  it('paints the cached label synchronously, with no await', async () => {
+    sessionStorage.setItem('oz_session', 'session');
+    await updateAuthNav();
+    expect(desktopLink.textContent).toBe('Account');
+
+    // The router swaps in a header that is signed out again.
+    const fresh = swappedInHeader();
+    expect(fresh.textContent).toBe('Sign in');
+
+    paintCachedAuthNav(); // synchronous: no await, no flush
+    expect(fresh.textContent).toBe('Account');
+    expect(fresh.getAttribute('href')).toBe('/en/account');
+  });
+
+  it('paints the cached label for both locales in one pass', async () => {
+    sessionStorage.setItem('oz_session', 'session');
+    await updateAuthNav();
+    const fresh = swappedInHeader();
+    const mobile = document.querySelectorAll('[data-auth-nav]')[1] as HTMLAnchorElement;
+
+    paintCachedAuthNav();
+    expect(fresh.textContent).toBe('Account');
+    expect(mobile.textContent).toBe('Akun');
+    expect(mobile.getAttribute('href')).toBe('/id/account');
+  });
+
+  it('applies the cached label on astro:after-swap before the next paint', async () => {
+    sessionStorage.setItem('oz_session', 'session');
+    await updateAuthNav(); // cache is now "signed in"
+
+    const fresh = swappedInHeader();
+    initHeaderNav();
+    document.dispatchEvent(new Event('astro:after-swap'));
+
+    // No await and no flush: the handler must have painted already.
+    expect(fresh.textContent).toBe('Account');
+    expect(fresh.getAttribute('href')).toBe('/en/account');
+  });
+
+  it('does not rewrite the links again when the revalidate agrees', async () => {
+    sessionStorage.setItem('oz_session', 'session');
+    await updateAuthNav();
+    const fresh = swappedInHeader();
+    initHeaderNav();
+    document.dispatchEvent(new Event('astro:after-swap'));
+    // The synchronous paint has already written the correct label.
+    const spy = vi.spyOn(fresh, 'setAttribute');
+
+    await flush();
+    await flush();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(fresh.textContent).toBe('Account');
+  });
+
+  it('still corrects the label when the session changed since the cache', async () => {
+    sessionStorage.setItem('oz_session', 'session');
+    await updateAuthNav(); // cache: signed in
+
+    const fresh = swappedInHeader();
+    initHeaderNav();
+    sessionStorage.removeItem('oz_session'); // signed out since
+    document.dispatchEvent(new Event('astro:after-swap'));
+
+    // The cached paint is optimistic; the async revalidate must still win.
+    await flush();
+    await flush();
+    expect(fresh.textContent).toBe('Sign in');
+    expect(fresh.getAttribute('href')).toBe('/en/login');
+  });
+
+  it('probes exactly once per swap, and not at all on astro:page-load', async () => {
+    const probe = vi.mocked(fetch);
+    initHeaderNav();
+    await flush();
+    probe.mockClear();
+
+    document.dispatchEvent(new Event('astro:page-load'));
+    await flush();
+    // No listener: a page-load handler here would be a second probe for a
+    // view that already resolved.
+    expect(probe).not.toHaveBeenCalled();
+
+    document.dispatchEvent(new Event('astro:after-swap'));
+    await flush();
+    // Concurrent handlers collapse through the dedupe in session.ts, so the
+    // swap costs one request however many listeners exist.
+    expect(probe.mock.calls.length).toBe(1);
   });
 });
 

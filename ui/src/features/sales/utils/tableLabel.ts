@@ -32,9 +32,9 @@
 export function bareTableNumber(tableNumber: string): string {
   const trimmed = tableNumber.trim();
   if (trimmed.length === 0) return '';
-  const stripped = trimmed.replace(/^table\b[\s:-]*/i, '').trim();
+  const stripped = trimmed.replace(/^(?:table|meja)\b[\s:-]*/i, '').trim();
   // Fall back to the input when stripping would leave nothing (a table literally
-  // named "Table"), so the badge never renders an empty label.
+  // named "Table" or "Meja"), so the badge never renders an empty label.
   return stripped.length > 0 ? stripped : trimmed;
 }
 
@@ -75,7 +75,7 @@ export function heldCartLabel(
 
 /**
  * Match an open bill / held cart to a table name.
- * Handles variations like 'Table 2 (Bapak Budi)', 'Table 2', or bare '2'.
+ * Handles variations like 'Table 2 (Bapak Budi)', 'Table 2', 'Meja 2', or bare '2'.
  * Avoids false substring collisions (e.g. Table 20 matching Table 2).
  */
 export function matchesTableBill(
@@ -86,18 +86,56 @@ export function matchesTableBill(
   const bare = bareTableNumber(tableName);
   if (!bare) return false;
   const escapedBare = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\btable\\s+${escapedBare}\\b`, 'i');
+  const pattern = new RegExp(`\\b(?:table|meja)\\s+${escapedBare}\\b`, 'i');
+
+  const bareLower = bare.toLowerCase();
+  const tableLower = tableName.toLowerCase();
 
   if (bill.label) {
-    if (pattern.test(bill.label) || bill.label.toLowerCase() === tableName.toLowerCase()) {
+    const lblLower = bill.label.toLowerCase();
+    if (pattern.test(bill.label) || lblLower === tableLower || lblLower === bareLower) {
       return true;
     }
   }
   if (bill.customer_name) {
-    if (pattern.test(bill.customer_name) || bill.customer_name.toLowerCase() === tableName.toLowerCase()) {
+    const custLower = bill.customer_name.toLowerCase();
+    if (pattern.test(bill.customer_name) || custLower === tableLower || custLower === bareLower) {
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Extract an attached customer name from a stored open bill customer_name string.
+ *
+ * Stored customer names on held tabs can be:
+ *   "Table 2 (Budi)" -> "Budi"
+ *   "Meja 2 (Budi)"  -> "Budi"
+ *   "Table 2 - Budi" -> "Budi"
+ *   "Table 2"        -> null (table identifier only, no customer)
+ *   "Meja 2"         -> null
+ *   "Budi"           -> "Budi"
+ */
+export function extractCustomerNameFromTableBill(raw?: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Table-only labels like "Table 2", "Meja 12", "Table", "Meja" carry no customer name.
+  if (/^(?:table|meja)\b(?:\s+\w+)?$/i.test(trimmed)) {
+    return null;
+  }
+
+  // Extract name from tab labels like "Table 2 (Budi)", "Meja 2 (Budi)", "Table 2 - Budi"
+  const stripped = trimmed
+    .replace(/^(?:table|meja)\s+\w+\s*[-–(]?\s*/i, '')
+    .replace(/\)$/, '')
+    .trim();
+
+  if (!stripped || /^(?:table|meja)\b/i.test(stripped)) {
+    return null;
+  }
+  return stripped;
 }
 

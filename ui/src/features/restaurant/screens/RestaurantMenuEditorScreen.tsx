@@ -27,6 +27,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties }
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { requiredLocalized } from '@/components';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
@@ -45,6 +46,7 @@ import {
   type ProductDto,
   type CategoryDto,
 } from '@/api/products';
+import { invalidateCatalog } from '@/utils/catalog-cache';
 import {
   CATEGORY_ICON_OPTIONS,
   CATEGORY_ICON_IDS,
@@ -62,13 +64,15 @@ import {
   filterMenuItems,
   sortMenuItems,
   createDuplicateDraft,
+  parseDraftNotes,
   parseDraftModifierGroups,
-  serializeDraftModifierGroups,
+  serializeDraftMenuNotes,
   type MenuItemStatusFilter,
   type MenuItemSortOption,
   type DraftModifierGroup,
   type DraftModifierOption,
 } from './menuEditorLogic';
+import { RecipeEditorModal } from '@/features/products/RecipeEditorModal';
 import './RestaurantSettingsScreens.css';
 import './RestaurantMenuEditorScreen.css';
 
@@ -80,6 +84,7 @@ interface MenuDraft {
   name: string;
   categoryName: string;
   priceMinor: number;
+  priceInput?: string;
   isActive: boolean;
   notes: string;
   modifierGroups: DraftModifierGroup[];
@@ -215,11 +220,33 @@ function CopyGlyph() {
   );
 }
 
+/** Decorative recipe / book glyph for BOM management. */
+function RecipeGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="15"
+      height="15"
+      aria-hidden="true"
+    >
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+      <path d="M6 6h10" />
+      <path d="M6 10h10" />
+    </svg>
+  );
+}
+
 const EMPTY_DRAFT: MenuDraft = {
   sku: null,
   name: '',
   categoryName: '',
   priceMinor: 0,
+  priceInput: '',
   isActive: true,
   notes: '',
   modifierGroups: [],
@@ -249,6 +276,7 @@ export default function RestaurantMenuEditorScreen({
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [categoryModal, setCategoryModal] = useState<CategoryModalState | null>(null);
+  const [recipeModalTarget, setRecipeModalTarget] = useState<{ id?: string | undefined; sku: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
@@ -335,16 +363,28 @@ export default function RestaurantMenuEditorScreen({
 
   /** Resolve category name to id for backend calls. */
   const categoryIdFor = useCallback(
-    (name: string): string | null => categories.find((c) => c.name === name)?.id ?? null,
+    (name: string): string | null => {
+      const trimmed = name.trim().toLowerCase();
+      if (!trimmed || trimmed === 'all') return null;
+      return (
+        categories.find((c) => c.name.trim().toLowerCase() === trimmed)?.id ??
+        categories.find((c) => c.id.toLowerCase() === trimmed)?.id ??
+        null
+      );
+    },
     [categories],
   );
 
   // ── Item Actions ──────────────────────────────────────────────────
 
   const beginCreate = useCallback(() => {
+    const defaultCat =
+      selectedCategoryName && selectedCategoryName !== 'all'
+        ? selectedCategoryName
+        : (categories[0]?.name || '');
     setDraft({
       ...EMPTY_DRAFT,
-      categoryName: selectedCategoryName || categories[0]?.name || '',
+      categoryName: defaultCat,
       notes: '',
       modifierGroups: [],
     });
@@ -355,30 +395,33 @@ export default function RestaurantMenuEditorScreen({
   }, [selectedCategoryName, categories]);
 
   const beginEdit = useCallback((p: ProductDto) => {
-    const isJsonNotes = Boolean(p.notes?.startsWith('['));
     setDraft({
       sku: p.sku,
       name: p.name,
       categoryName: p.category ?? '',
       priceMinor: p.price.minor_units,
+      priceInput: formatMinorForInput(p.price.minor_units, currency),
       isActive: p.is_active !== false,
-      notes: isJsonNotes ? '' : (p.notes ?? ''),
+      notes: parseDraftNotes(p.notes),
       modifierGroups: parseDraftModifierGroups(p.notes),
     });
     setDirty(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }, 50);
-  }, []);
+  }, [currency]);
 
   const handleDuplicateItem = useCallback((p: ProductDto) => {
     const dup = createDuplicateDraft(p);
-    setDraft(dup);
+    setDraft({
+      ...dup,
+      priceInput: formatMinorForInput(p.price.minor_units, currency),
+    });
     setDirty(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }, 50);
-  }, []);
+  }, [currency]);
 
   const cancelDraft = useCallback(() => {
     setDraft(null);
@@ -387,7 +430,11 @@ export default function RestaurantMenuEditorScreen({
 
   const handleToggleItemAvailability = useCallback(
     async (p: ProductDto) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Reported, not dropped: the toggle would flip back with nothing said.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       const nextActive = p.is_active === false;
       // Optimistic update
       setItems((prev) =>
@@ -405,6 +452,7 @@ export default function RestaurantMenuEditorScreen({
           isActive: nextActive,
           notes: p.notes ?? null,
         });
+        invalidateCatalog(sessionToken);
         addToast({
           message: l10n.getString('restaurant-menu-editor-save-success'),
           type: 'success',
@@ -425,7 +473,12 @@ export default function RestaurantMenuEditorScreen({
 
   const handleBulkSetAvailability = useCallback(
     async (targetActive: boolean) => {
-      if (!sessionToken || bulkUpdating) return;
+      if (!sessionToken) {
+        // Reported, not dropped. See handleToggleItemAvailability above.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      if (bulkUpdating) return;
       const targetItems = filteredItems.filter((p) => (p.is_active !== false) !== targetActive);
       if (targetItems.length === 0) return;
 
@@ -453,6 +506,7 @@ export default function RestaurantMenuEditorScreen({
             }),
           ),
         );
+        invalidateCatalog(sessionToken);
         addToast({
           message: l10n.getString('restaurant-menu-editor-bulk-updated', {
             count: targetItems.length,
@@ -586,15 +640,29 @@ export default function RestaurantMenuEditorScreen({
   const handleSaveDraft = useCallback(async () => {
     if (!draft || !sessionToken || !draft.name.trim()) return;
     setSaving(true);
-    const serializedModifiers = serializeDraftModifierGroups(draft.modifierGroups);
-    const trimmedNotes = draft.notes.trim() || null;
-    const finalNotes = serializedModifiers ?? trimmedNotes;
+    const resolvedPriceMinor =
+      draft.priceInput !== undefined
+        ? (parsePriceToMinor(draft.priceInput, currency) ?? draft.priceMinor)
+        : draft.priceMinor;
+
+    const resolvedModifierGroups = draft.modifierGroups.map((g) => ({
+      ...g,
+      options: g.options.map((opt) => ({
+        ...opt,
+        priceMinor:
+          opt.priceInput !== undefined
+            ? (parsePriceToMinor(opt.priceInput, currency) ?? opt.priceMinor)
+            : opt.priceMinor,
+      })),
+    }));
+
+    const finalNotes = serializeDraftMenuNotes(draft.notes, resolvedModifierGroups);
     try {
       if (draft.sku) {
         await updateProductScoped(sessionToken, {
           sku: draft.sku,
           name: draft.name.trim(),
-          priceMinor: draft.priceMinor,
+          priceMinor: resolvedPriceMinor,
           currency,
           categoryId: categoryIdFor(draft.categoryName),
           productType: 'restaurant',
@@ -602,27 +670,12 @@ export default function RestaurantMenuEditorScreen({
           isActive: draft.isActive,
           notes: finalNotes,
         });
-        setItems((prev) =>
-          prev.map((p) =>
-            p.sku === draft.sku
-              ? {
-                  ...p,
-                  name: draft.name.trim(),
-                  category: draft.categoryName || null,
-                  price: { minor_units: draft.priceMinor, currency },
-                  product_type: 'restaurant',
-                  is_active: draft.isActive,
-                  notes: finalNotes,
-                }
-              : p,
-          ),
-        );
       } else {
         const sku = generateMenuSku();
         await createProductScoped(sessionToken, {
           sku,
           name: draft.name.trim(),
-          priceMinor: draft.priceMinor,
+          priceMinor: resolvedPriceMinor,
           currency,
           categoryId: categoryIdFor(draft.categoryName),
           productType: 'restaurant',
@@ -631,25 +684,9 @@ export default function RestaurantMenuEditorScreen({
           isActive: draft.isActive,
           notes: finalNotes,
         });
-        setItems((prev) => [
-          ...prev,
-          {
-            sku,
-            name: draft.name.trim(),
-            category: draft.categoryName || null,
-            price: { minor_units: draft.priceMinor, currency },
-            barcode: null,
-            in_stock: false,
-            stock_qty: 0,
-            tax_rate_ids: [],
-            created_at: new Date().toISOString(),
-            price_updated_at: new Date().toISOString(),
-            product_type: 'restaurant',
-            is_active: draft.isActive,
-            notes: finalNotes,
-          },
-        ]);
       }
+      invalidateCatalog(sessionToken);
+      await reloadData();
       setDraft(null);
       setDirty(false);
       addToast({ message: l10n.getString('restaurant-menu-editor-save-success'), type: 'success' });
@@ -661,14 +698,22 @@ export default function RestaurantMenuEditorScreen({
     } finally {
       setSaving(false);
     }
-  }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency]);
+  }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency, reloadData]);
 
   const handleDeleteItem = useCallback(
     async (sku: string) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Reported, not dropped: the operator taps Delete, the item stays, and
+        // nothing says why. Reachable when the session lapses while the editor is
+        // open. Same repair as StockShortfallDialog (0b9e88694) and
+        // RestaurantSettingsScreen; every other outcome here already toasts.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       try {
         await deleteProductScoped(sessionToken, sku);
-        setItems((prev) => prev.filter((p) => p.sku !== sku));
+        invalidateCatalog(sessionToken);
+        await reloadData();
         if (draft?.sku === sku) cancelDraft();
         addToast({ message: l10n.getString('restaurant-menu-editor-delete-success'), type: 'success' });
       } catch (err) {
@@ -678,7 +723,7 @@ export default function RestaurantMenuEditorScreen({
         });
       }
     },
-    [sessionToken, draft, cancelDraft, addToast, l10n],
+    [sessionToken, draft, cancelDraft, addToast, l10n, reloadData],
   );
 
   // ── Category Actions ──────────────────────────────────────────────
@@ -701,7 +746,12 @@ export default function RestaurantMenuEditorScreen({
   }, []);
 
   const handleSaveCategory = useCallback(async () => {
-    if (!categoryModal || !sessionToken) return;
+    if (!sessionToken) {
+      // Reported, not dropped: the category modal would otherwise sit there mute.
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+      return;
+    }
+    if (!categoryModal) return;
     const trimmedName = categoryModal.name.trim();
     if (!trimmedName) return;
 
@@ -731,20 +781,11 @@ export default function RestaurantMenuEditorScreen({
           colour: categoryModal.colour,
           icon: categoryModal.icon,
         });
-
-        setCategories((prev) =>
-          prev.map((c) =>
-            c.id === categoryModal.id
-              ? { ...c, name: trimmedName, colour: categoryModal.colour, icon: categoryModal.icon }
-              : c,
-          ),
-        );
+        invalidateCatalog(sessionToken);
+        await reloadData();
 
         // Rehome products if the category name changed
         if (oldName && oldName !== trimmedName) {
-          setItems((prev) =>
-            prev.map((p) => (p.category === oldName ? { ...p, category: trimmedName } : p)),
-          );
           if (selectedCategoryName === oldName) setSelectedCategoryName(trimmedName);
         }
 
@@ -761,8 +802,8 @@ export default function RestaurantMenuEditorScreen({
           colour: categoryModal.colour,
           icon: categoryModal.icon,
         });
-        const cats = await listCategoriesScoped(sessionToken);
-        setCategories(asArray<CategoryDto>(cats));
+        invalidateCatalog(sessionToken);
+        await reloadData();
         setSelectedCategoryName(trimmedName);
         addToast({
           message: l10n.getString('restaurant-menu-editor-save-success'),
@@ -778,17 +819,19 @@ export default function RestaurantMenuEditorScreen({
     } finally {
       setCategorySaving(false);
     }
-  }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n]);
+  }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n, reloadData]);
 
   const handleDeleteCategory = useCallback(
     async (category: CategoryDto) => {
-      if (!sessionToken) return;
+      if (!sessionToken) {
+        // Same repair as handleDeleteItem above; see the note there.
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
       try {
         const res = await deleteCategoryScoped(sessionToken, category.id);
-        const cats = await listCategoriesScoped(sessionToken);
-        const prods = await listProductsScoped(sessionToken);
-        setCategories(asArray<CategoryDto>(cats));
-        setItems(asArray<ProductDto>(prods));
+        invalidateCatalog(sessionToken);
+        await reloadData();
         if (selectedCategoryName === category.name) setSelectedCategoryName('');
         if (res?.affected_products) {
           addToast({
@@ -807,7 +850,7 @@ export default function RestaurantMenuEditorScreen({
         });
       }
     },
-    [sessionToken, selectedCategoryName, addToast, l10n],
+    [sessionToken, selectedCategoryName, addToast, l10n, reloadData],
   );
 
   // ── Back Guard ────────────────────────────────────────────────────
@@ -937,7 +980,18 @@ export default function RestaurantMenuEditorScreen({
           <button
             type="button"
             className="btn btn--primary btn--md"
-            disabled={!draft || saving}
+            // ⚠️ The name is part of the gate because `handleSaveDraft` RETURNS SILENTLY on a
+            // blank one (`:641` — `if (!draft || !sessionToken || !draft.name.trim()) return;`).
+            // Measured 2026-10-14 before this fix: New Item opens the form with `name: ''`
+            // (`EMPTY_DRAFT`, `:246`), Save rendered ENABLED, and clicking it produced no
+            // request, no toast and no state change — the operator taps Save and the till does
+            // nothing without saying why.
+            //
+            // Disabled rather than validated-on-click: the field is the first thing in the form
+            // and the ONLY required one, so an enabled button beside an empty required field is
+            // the misleading state. `!draft.name.trim()` matches the handler's own test exactly,
+            // so the button can never be armed for a save the handler would refuse.
+            disabled={!draft || saving || !draft.name.trim()}
             aria-busy={saving || undefined}
             onClick={handleSaveDraft}
             data-testid="restaurant-menu-editor-save-btn"
@@ -956,16 +1010,17 @@ export default function RestaurantMenuEditorScreen({
               <Localized id="restaurant-menu-editor-categories">
                 <span>Categories</span>
               </Localized>
-              <button
-                type="button"
-                className="restaurant-menu-editor-btn-add-cat"
-                onClick={beginCreateCategory}
-                aria-label={l10n.getString('restaurant-menu-editor-create-category')}
-                data-testid="restaurant-menu-editor-btn-add-cat"
-              >
-                +
-              </button>
             </div>
+
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm restaurant-menu-editor-btn-add-cat"
+              onClick={beginCreateCategory}
+              data-testid="restaurant-menu-editor-btn-add-cat"
+            >
+              <span aria-hidden="true">+</span>{' '}
+              <Localized id="restaurant-menu-editor-add-category">Add</Localized>
+            </button>
 
             <ul className="restaurant-menu-editor-category-list">
               {/* All Items Option */}
@@ -1079,7 +1134,8 @@ export default function RestaurantMenuEditorScreen({
                       onClick={beginCreate}
                       data-testid="restaurant-menu-editor-new-item"
                     >
-                      + <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
+                      <span aria-hidden="true">+</span>{' '}
+                      <Localized id="restaurant-menu-editor-new-item">Add item</Localized>
                     </button>
                   )}
                 </div>
@@ -1214,10 +1270,25 @@ export default function RestaurantMenuEditorScreen({
                           id="restaurant-menu-editor-price"
                           type="text"
                           inputMode="decimal"
-                          value={formatMinorForInput(draft.priceMinor)}
+                          value={draft.priceInput !== undefined ? draft.priceInput : formatMinorForInput(draft.priceMinor, currency)}
+                          placeholder="0"
                           onChange={(e) => {
-                            const minor = parsePriceToMinor(e.target.value, currency);
-                            setDraft({ ...draft, priceMinor: minor ?? 0 });
+                            const text = e.target.value;
+                            const minor = parsePriceToMinor(text, currency);
+                            setDraft({
+                              ...draft,
+                              priceInput: text,
+                              priceMinor: minor ?? (text.trim() === '' ? 0 : draft.priceMinor),
+                            });
+                          }}
+                          onBlur={() => {
+                            const minor = parsePriceToMinor(draft.priceInput ?? '', currency);
+                            const resolved = minor ?? 0;
+                            setDraft({
+                              ...draft,
+                              priceInput: draft.priceInput?.trim() === '' ? '' : formatMinorForInput(resolved, currency),
+                              priceMinor: resolved,
+                            });
                           }}
                           data-testid="restaurant-menu-editor-price"
                         />
@@ -1433,12 +1504,31 @@ export default function RestaurantMenuEditorScreen({
                                         type="text"
                                         inputMode="decimal"
                                         className="restaurant-menu-editor-option-price-input"
-                                        value={formatMinorForInput(opt.priceMinor)}
+                                        value={
+                                          opt.priceInput !== undefined
+                                            ? opt.priceInput
+                                            : opt.priceMinor === 0
+                                              ? ''
+                                              : formatMinorForInput(opt.priceMinor, currency)
+                                        }
                                         placeholder="0"
                                         onChange={(e) => {
-                                          const minor = parsePriceToMinor(e.target.value, currency);
+                                          const text = e.target.value;
+                                          const minor = parsePriceToMinor(text, currency);
                                           handleUpdateModifierOption(group.id, opt.id, {
-                                            priceMinor: minor ?? 0,
+                                            priceInput: text,
+                                            priceMinor: minor ?? (text.trim() === '' ? 0 : opt.priceMinor),
+                                          });
+                                        }}
+                                        onBlur={() => {
+                                          const minor = parsePriceToMinor(opt.priceInput ?? '', currency);
+                                          const resolved = minor ?? 0;
+                                          handleUpdateModifierOption(group.id, opt.id, {
+                                            priceInput:
+                                              opt.priceInput?.trim() === ''
+                                                ? ''
+                                                : formatMinorForInput(resolved, currency),
+                                            priceMinor: resolved,
                                           });
                                         }}
                                         data-testid={`modifier-option-price-${gIdx}-${oIdx}`}
@@ -1497,6 +1587,22 @@ export default function RestaurantMenuEditorScreen({
                           <span>Cancel</span>
                         </Localized>
                       </button>
+                      {draft.sku && (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => {
+                            const matched = items.find((it) => it.sku === draft.sku);
+                            setRecipeModalTarget({ id: matched?.id, sku: draft.sku!, name: draft.name });
+                          }}
+                          data-testid="restaurant-menu-editor-manage-recipe-btn"
+                        >
+                          <RecipeGlyph />
+                          <Localized id="recipe-editor-manage-recipe">
+                            <span>Recipe (BOM)</span>
+                          </Localized>
+                        </button>
+                      )}
                     </div>
                   </form>
                 )}
@@ -1570,10 +1676,10 @@ export default function RestaurantMenuEditorScreen({
                               <span className="restaurant-menu-editor-badge-sku">{p.sku}</span>
                             </div>
 
-                            {p.notes && !p.notes.startsWith('[') && (
+                            {parseDraftNotes(p.notes) && (
                               <div className="restaurant-menu-editor-card-notes">
                                 <NoteGlyph />
-                                <span>{p.notes}</span>
+                                <span>{parseDraftNotes(p.notes)}</span>
                               </div>
                             )}
                           </button>
@@ -1598,6 +1704,15 @@ export default function RestaurantMenuEditorScreen({
                             </button>
 
                             <div className="restaurant-menu-editor-card-actions">
+                              <button
+                                type="button"
+                                className="restaurant-menu-editor-card-btn"
+                                onClick={() => setRecipeModalTarget({ id: p.id, sku: p.sku, name: p.name })}
+                                aria-label={l10n.getString('recipe-editor-manage-recipe-aria', { name: p.name })}
+                                data-testid={`restaurant-menu-editor-recipe-${p.sku}`}
+                              >
+                                <RecipeGlyph />
+                              </button>
                               <button
                                 type="button"
                                 className="restaurant-menu-editor-card-btn restaurant-menu-editor-card-btn--duplicate"
@@ -1821,6 +1936,20 @@ export default function RestaurantMenuEditorScreen({
           }
         }}
       />
+
+      {/* ── Recipe (BOM) Editor Modal ─────────────────────────── */}
+      {recipeModalTarget && (
+        <RecipeEditorModal
+          open={Boolean(recipeModalTarget)}
+          onClose={() => setRecipeModalTarget(null)}
+          productId={recipeModalTarget.id}
+          productSku={recipeModalTarget.sku}
+          productName={recipeModalTarget.name}
+          sessionToken={sessionToken}
+          currency={currency}
+          onSaved={reloadData}
+        />
+      )}
     </div>
   );
 }

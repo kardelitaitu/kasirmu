@@ -17,6 +17,7 @@ import PaymentModal from '@/features/sales/PaymentModal';
 import ItemModifierModal from '@/features/sales/components/ItemModifierModal';
 import { overrideLinePriceScoped, startSaleScoped, getProductTrackSerialBatchScoped, lookupSaleByReceiptBarcodeScoped } from '@/api/sales';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
+import { useInvalidSession } from '@/hooks/useInvalidSession';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
@@ -32,7 +33,7 @@ import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { recordMark } from '@/utils/perf-metrics';
-import { DEFAULT_LOW_STOCK_THRESHOLD, minorUnitExponent, parseMinorUnits, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
+import { defaultTenderPresets, DEFAULT_LOW_STOCK_THRESHOLD, parseMoneyInput, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/components/useSound';
 import { useOptionalTheme } from '@/app/ThemeProvider';
 import RetailFnBar from './RetailFnBar';
@@ -63,10 +64,9 @@ function toProduct(p: ProductDto): Product {
 }
 
 // ── Retail sample product fallback (dev/demo builds only — LOAD-03) ──
-// These catalogs may NEVER surface in a production build, even when the
-// live IPC catalog request fails: a cashier could otherwise see and select
-// products that are not in the store. `isDemoMode()` gates them.
-const RETAIL_SAMPLE_PRODUCTS: ProductDto[] = [
+// These catalogs may NEVER surface in a live cart: a cashier could otherwise
+// see and select products that are not in the store (DATA-01).
+export const RETAIL_SAMPLE_PRODUCTS: ProductDto[] = [
   { sku: 'CPU-R7-7800X3D', name: 'AMD Ryzen 7 7800X3D 8-Core',  category: 'cat-cpu',       price: { minor_units: 6250000, currency: 'IDR' }, barcode: '730143314930', in_stock: true,  stock_qty: 15, product_type: 'retail', tax_rate_ids: [], created_at: '', price_updated_at: '' },
   { sku: 'CPU-I7-14700K',  name: 'Intel Core i7-14700K 20-Core', category: 'cat-cpu',       price: { minor_units: 6450000, currency: 'IDR' }, barcode: '503203727850', in_stock: true,  stock_qty: 10, product_type: 'retail', tax_rate_ids: [], created_at: '', price_updated_at: '' },
   { sku: 'CPU-R5-7600',    name: 'AMD Ryzen 5 7600 6-Core',     category: 'cat-cpu',       price: { minor_units: 3150000, currency: 'IDR' }, barcode: '730143314503', in_stock: true,  stock_qty: 25, product_type: 'retail', tax_rate_ids: [], created_at: '', price_updated_at: '' },
@@ -107,6 +107,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { goToWorkspacePicker } = useWorkspaceNav();
+  // A session that expires MID-SHIFT. AppShell's banner covers a REJECTED
+  // `createSession` at boot; this covers `invalidSession` answering a later command,
+  // which would otherwise leave the operator unable to take payment with nothing said.
+  const showSessionBanner = useInvalidSession();
   const { addToast } = useToast();
   const { session, isManager } = useAuth();
   // ADR #36 D7: cost editing is manager+ only (products:edit_cost). The
@@ -154,18 +158,6 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   }, [setSoundEnabled]);
 
   // ── Tender presets from options ───────────────────────────────
-  const tenderPresets = useMemo(() => {
-    try {
-      const saved = localStorage.getItem('retail-tender-presets');
-      if (saved) {
-        const parsed = JSON.parse(saved) as number[];
-        // Filter out zero/NaN values to avoid division-by-zero in PaymentModal
-        const filtered = parsed.filter((n) => Number.isFinite(n) && n > 0);
-        if (filtered.length > 0) return filtered;
-      }
-    } catch { /* ignore */ }
-    return [5000, 10000, 20000, 50000, 100000];
-  }, []);
 
   const { isEnabled } = useFeatures();
 
@@ -252,7 +244,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     setQuickReturnSale(null);
   }, []);
 
-  // P0-1 (audit docs/2026-07-28-retail-pos-theming-audit.md): replace the
+  // P0-1 (retail theming audit, archived by d0fe74814 — the doc is gone): replace the
   // shadow useState that read a per-component localStorage key and matched
   // the OS dark-mode preference on mount but never updated afterwards.
   // useOptionalTheme()?.theme returns Theme | undefined — Theme when
@@ -493,17 +485,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        // LOAD-03: demo catalog only in dev/demo builds; production keeps
-        // the real (empty) state and shows the unavailable banner + Retry.
-        if (isDemoMode()) {
-          setProducts(RETAIL_SAMPLE_PRODUCTS);
-          setCategories(RETAIL_SAMPLE_CATEGORIES);
-          setLoadError(requiredLocalized(l10nRef.current, 'retail-load-error'));
-        } else {
-          setProducts([]);
-          setCategories([]);
-          setLoadError(requiredLocalized(l10nRef.current, 'retail-load-error-unavailable'));
-        }
+        // DATA-01: SQLite is single source of truth. Failed catalog load keeps products empty
+        // in all builds so phantom items never reach the cart. Demo category metadata is preserved.
+        setProducts([]);
+        setCategories(isDemoMode() ? RETAIL_SAMPLE_CATEGORIES : []);
+        setLoadError(requiredLocalized(l10nRef.current, isDemoMode() ? 'retail-load-error' : 'retail-load-error-unavailable'));
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -853,6 +839,19 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // ── Store settings ──────────────────────────────────────────
 
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto>({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
+
+  const tenderPresets = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('retail-tender-presets');
+      if (saved) {
+        const parsed = JSON.parse(saved) as number[];
+        // Filter out zero/NaN values to avoid division-by-zero in PaymentModal
+        const filtered = parsed.filter((n) => Number.isFinite(n) && n > 0);
+        if (filtered.length > 0) return filtered;
+      }
+    } catch { /* ignore */ }
+    return defaultTenderPresets(storeSettings.currency);
+  }, [storeSettings.currency]);
   // A `mounted` flag is the WRONG GUARD here and this used to have one. It only
   // tracks unmount, so it stays true across a store switch -- exactly like
   // SettingsContext.mountedRef, which needed this same correction in 09ac4df43.
@@ -865,32 +864,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // for USD, so a stale currency misreads those amounts by a factor of 100. That is
   // the failure mode the MONEY-02 / MONEY-05 notes at :902 protect against -- they
   // fixed the hardcoded x100 and left the currency itself able to go stale.
-  // UNPINNED, AND THE TRAP IS TEST ORDER, NOT THE GUARD.
   //
-  // Rounds 113 and 114 both attempted a mutation test for this effect and both were
-  // reverted rather than shipped. The diagnostics are reproducible and worth having:
+  // PINNED, and the two attempts to pin it are worth reading before touching this.
   //
-  //   ALONE  -- the test PASSES, and a probe confirms both reads are issued
-  //             (PROBE settings=2 shifts=2, and the badge renders 'Shift . $ 990,00').
-  //   IN SUITE -- it FAILS with 'expected vi.fn() to be called 2 times, but got 1'.
+  // The trap was TEST ORDER, not the guard. `9bba6975e` did the bisect and found the
+  // cause: the store-switch cases MUTATE `wsState.sessionToken` and nothing restored it
+  // between tests, so an earlier case left the token already at the value this case
+  // switches TO. The switch was then a no-op, the effect never re-ran, and the assertion
+  // passed while racing nothing. Resetting the token in beforeEach was the fix.
+  // `4ccb51020` then pinned the guard: deleting `if (!stale()) setStoreSettings(s)` fails
+  // `RetailPosScreen.test.tsx` -> 'ignores a slower earlier store-settings read after a
+  // token change', measured again on 2026-10-13 (kill-test, 1 failed / 35 passed).
   //
-  // So the second store-settings read is NOT issued when the suite runs, though it is
-  // when the file runs that test alone. The guard is not implicated: nothing about this
-  // effect behaves differently, the RE-RENDER does.
-  //
-  // WHAT WAS RULED OUT, so the next attempt does not repeat it:
-  //   - persistent mock leakage. Swapping both arms to once-only did not fix it, and
-  //     the two neighbouring cases that DID break from a persistent implementation
-  //     were fixed by resetting them in beforeEach -- after which only this test failed.
-  //   - the premise. Round 111's method (probe before asserting) is what produced the
-  //     'alone' numbers above; the premise holds in isolation and fails in company.
-  //
-  // WHERE TO START: bisect the suite. Run this test with only the first N cases ahead
-  // of it and find the one that changes the outcome; that case's leftover state is the
-  // cause. Do NOT retry by adding more mock resets -- two attempts have shown that the
-  // cause survives them, so the next step is to identify the specific predecessor.
-  //
-  // The guard itself is unchanged and correct; only its test is missing.
+  // Rounds 113 and 114 were reverted because each tried the assertion FIRST. The bisect
+  // was the missing step, and it is the reason this is now covered.
   const storeSettingsSeq = useRef(0);
   useEffect(() => {
     if (!sessionToken) return;
@@ -997,7 +984,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // MONEY-02: exact decimal parse; MONEY-05: scale by the STORE
     // currency's exponent — the drawer holds store currency, and the
     // old hardcoded ×100 inflated IDR (exponent 0) 100x.
-    const val = parseMinorUnits(openingBalance, minorUnitExponent(storeSettings.currency));
+    const val = parseMoneyInput(openingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
     setOpeningShift(true);
     try {
@@ -1015,7 +1002,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const handleCloseShift = useCallback(async () => {
     if (!activeShift) return;
     // MONEY-02 + MONEY-05: exact parse at the store currency exponent.
-    const val = parseMinorUnits(closingBalance, minorUnitExponent(storeSettings.currency));
+    const val = parseMoneyInput(closingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
     setClosingShift(true);
     setCloseShiftError(null);
@@ -1098,8 +1085,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // MONEY-04: scale by the CART currency's minor-unit exponent — the
     // old hardcoded ×100 inflated IDR (exponent 0) ratios 100x, so any
     // Rp discount ≥ 1% of the subtotal clamped to 100% off. Exact
-    // decimal parse via parseMinorUnits (MONEY-02) replaces parseFloat.
-    const rpMinor = parseMinorUnits(discountRpInput, minorUnitExponent(subtotal?.currency ?? 'IDR'));
+    // decimal parse via parseMoneyInput replaces parseFloat.
+    const rpMinor = parseMoneyInput(discountRpInput, subtotal?.currency ?? 'IDR');
     if (rpMinor === null || rpMinor <= 0 || !subtotal || subtotal.minor_units === 0) return;
     const capped = Math.min(subtotal.minor_units, rpMinor);
     // MONEY-05: project the typed AMOUNT to a percent WITHOUT rounding the
@@ -1616,6 +1603,21 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   return (
     <>
+    {/* Session died MID-SHIFT — see the hook above for why AppShell's banner does not
+        cover this. Styled by RetailPosScreen.css so the desktop shell, which does not
+        load AnalyticsScreen.css, gets a styled alert rather than a bare one. */}
+    {showSessionBanner && (
+      <div className="retail-session-banner" role="alert" data-testid="retail-session-banner">
+        <span>{requiredLocalized(l10nRef.current, 'analytics-session-expired-message')}</span>
+        <button
+          type="button"
+          className="retail-session-banner-action"
+          onClick={goToWorkspacePicker}
+        >
+          {requiredLocalized(l10nRef.current, 'analytics-sign-in-again')}
+        </button>
+      </div>
+    )}
     <div className="retail-pos" data-theme={theme}>
       {/* ── F2-3: cart-tax watcher — the key-bump remount below is the
            banner retry; the banner itself renders in RetailCartPanel ── */}

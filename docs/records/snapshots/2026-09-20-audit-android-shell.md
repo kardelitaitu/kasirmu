@@ -1,4 +1,8 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 433 lines, no audit stamp, no footer and no marker. It is an audit of the Android shell, and the reason it is worth auditing at all is that it audits the same surface this campaign audited from a different angle four rounds ago — the Android build workflow, whose retirement and restoration the keystore guide had to be corrected about. · THE SCOPE IS A CODE AUDIT PRESENTED AS A RECORD, and that is worth naming. Unlike a changelog or an archived plan, the content here is a set of findings about live code, and most are therefore falsifiable. This pass did not re-derive them: re-running an Android shell audit means building the app, driving it on a device, and re-testing each finding, which is the original work. What is recorded is the document's role in the evidence chain, and the specific point that makes it more than a list. · THE CONNECTION TO A FINDING THIS CAMPAIGN MADE INDEPENDENTLY, recorded here so the two are not lost apart. The keystore guide audited in the previous round said the Android workflow was RETIRED and the release engineer had no CI path; the retirement history lives in this same snapshots directory, and the workflow was in fact restored afterwards. A reader of either document alone gets half the picture, and a reader of the shell audit alone has no way to know the build pipeline changed state under it. That is a real navigational hazard in a directory where several records describe the same subsystem from different days. · NOT re-measured: the per-finding verdicts, the device matrix, and any build or size claims. Those are a code audit's own content and would require the build. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · dated re-verification appended; no finding rewritten. The audit's REASONING ARTEFACTS all still resolve, and one live fact about the workspace was recorded: the buildSrc tooling path still carries the pre-rebrand `com/ozpos/tablet` namespace for `RustPlugin.kt`, while the app's own namespace and `applicationId` are `mu.kasir.mobile` (`app/build.gradle.kts:31`/`:34`) with sources under `.../java/mu/kasir/mobile/`. `PermissionHelper.kt` and `RustWebChromeClient.kt` are wry-generated (as the audit states) so their absence from tracked files is expected, and the two commit citations resolve. The per-finding verdicts, the device matrix and every build/size claim are a code audit's own content and were NOT re-derived — that needs a build and a device. NOT re-measured: anything runtime.
+
+SUPERSEDED STAMP (kept verbatim, delimiters stripped — one comment, no nesting):
+  Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 433 lines, no audit stamp, no footer and no marker. It is an audit of the Android shell, and the reason it is worth auditing at all is that it audits the same surface this campaign audited from a different angle four rounds ago — the Android build workflow, whose retirement and restoration the keystore guide had to be corrected about. · THE SCOPE IS A CODE AUDIT PRESENTED AS A RECORD, and that is worth naming. Unlike a changelog or an archived plan, the content here is a set of findings about live code, and most are therefore falsifiable. This pass did not re-derive them: re-running an Android shell audit means building the app, driving it on a device, and re-testing each finding, which is the original work. What is recorded is the document's role in the evidence chain, and the specific point that makes it more than a list. · THE CONNECTION TO A FINDING THIS CAMPAIGN MADE INDEPENDENTLY, recorded here so the two are not lost apart. The keystore guide audited in the previous round said the Android workflow was RETIRED and the release engineer had no CI path; the retirement history lives in this same snapshots directory, and the workflow was in fact restored afterwards. A reader of either document alone gets half the picture, and a reader of the shell audit alone has no way to know the build pipeline changed state under it. That is a real navigational hazard in a directory where several records describe the same subsystem from different days. · NOT re-measured: the per-finding verdicts, the device matrix, and any build or size claims. Those are a code audit's own content and would require the build. · No stamp existed; this is the first.
+-->
 # Android shell audit — 2026-09-20
 
 Scope: `apps/mobile-tauri` (Tauri 2 Android target), the manifest, the generated Gradle
@@ -433,4 +437,21 @@ camera. The one documentation item it raised — the build-cost table in `apps/m
 not naming the command behind its 152.7 MB debug figure, and the command it does document producing
 a ~583 MB build — is fixed in `14c8f58f5`.
 
-> last audited 29-09-26 by docs-auditor
+## Re-verified 2026-10-11
+
+The findings are a code audit's own content and were not re-derived (that needs a build and a
+device). What was re-checked is that every artefact the audit reasons about still exists where
+it says, and one new fact about the workspace:
+
+- `RustPlugin.kt` is still at `apps/mobile-tauri/gen/android/buildSrc/src/main/java/com/ozpos/tablet/kotlin/RustPlugin.kt`
+  — the **buildSrc tooling path still carries the pre-rebrand `com/ozpos/tablet` namespace**,
+  while the application's own namespace and `applicationId` are `mu.kasir.mobile`
+  (`app/build.gradle.kts:31`/`:34`) and the app's Kotlin sources live under
+  `.../java/mu/kasir/mobile/`. The audit cited the tooling path correctly as it existed; the
+  two namespaces coexisting is the thing worth knowing, not an error in this record.
+- `PermissionHelper.kt` and `RustWebChromeClient.kt` remain **wry-generated** files (the audit
+  says so and reads them from the `wry-0.55.1` registry source), so their absence from
+  `git ls-files` is expected and not a dead reference.
+- The two commit citations resolve: `c45497c12` (revision-1 HEAD) and `7e649395c`, `14c8f58f5`.
+
+> last audited 11-10-26 by docs-auditor

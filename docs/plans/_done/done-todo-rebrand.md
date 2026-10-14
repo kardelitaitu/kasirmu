@@ -1,7 +1,7 @@
 # todo-rebrand.md — OZ-POS → kasir.mu
 
 <!-- Rebrand status: COMPLETED — all phases 1 through 9 implemented and verified.
-     Checklist items [x] complete. Tier 3 deferred to todo-rebrand-2.md. -->
+     Checklist items [x] complete. Tier 3 deferred to todo-rebrand-2.md.
      Counts measured 2026-09-16 at `442473337`, each with its command because two defensible greps
      disagree and the population matters:
        git grep -l -i -E "oz[-_ ]?pos" | wc -l                                  -> 692 files
@@ -19,6 +19,7 @@
      Phase 4 needs for the Android Java directory move. (This line previously said a bare "no git
      add", contradicting Phase 4:104-106.) -->
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Re-audit of a COMPLETE plan whose phase PATHSPECS are now historical, which is expected for a completed plan and is repaired here by a dated note rather than by rewriting the phases. · THE MINOR: every path in the Phase 1-9 pathspecs has MOVED since this plan ran, and the moves are all confirmed against the tree: `ui/src/locales/` -> `shared-ui/locales/` (commit 8a2aecec7, "move the Fluent corpus out of ui/ into shared-ui/locales") — the plan names 8 FTL files under the old directory in Phases 1 and 2; `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/` (Phases 3, 4, 6); `install/` -> `ops/install/` (Phases 3 and 9); `crates/oz-bridge/` -> `crates/kasirmu-bridge/` and `crates/oz-cli/` -> `crates/kasirmu-cli/` (Phase 6); `ui/src/frontend/shell/ThemeProvider.tsx` -> `ui/src/app/ThemeProvider.tsx` (Phase 2b). Every live equivalent was verified to exist. The phases are LEFT AS WRITTEN: a path a completed plan names is a record of where the work was done, and repointing it would falsify the pathspec that actually ran. · THE PHASE 4 RETIREMENT, recorded because it changed a path the plan lists: `ui/src/features/setup/SetupWizard.tsx` (Phase 2) no longer exists — it was retired by badd31d2e ("refactor(setup): retire the unreachable setup wizard and move its live atoms"), and its successor is `ui/src/features/setup/ProvisioningFlow.tsx`. · VERIFIED COMPLETE, as the header claims: 0 `OZ-POS` literals remain across `shared-ui/locales/` (the whole Fluent corpus) and exactly ONE string survives repo-wide in `ui/src` — `ui/src/utils/storage.ts:13`, which is the DELIBERATE Phase 2b migration map, not a missed rebrand (it maps the legacy `oz-pos-locale` / `oz-pos-decimal-sep` keys onto the new `kasirmu-*` names so an upgrade carries storage forward). The three deliberate Tier-3 residues this plan defers are all still present and still intentional: `dev-ci.yml:1675` NF_PROJECT_ID defaults to `'oz-pos'` (the Northflank project was never renamed, and the line carries its own comment saying so), the `oz-pos` Cloudflare project name is allow-listed by the drift guard, and `ops/install/uninstall.sh` keeps the legacy binary/desktop names because removing them would strand an upgrade. · NOT re-measured: the 692/462/93 count block in the header (a dated 2026-09-16 reading at `442473337`, kept as evidence) and whether any phase's own pre-commit gate passed on its day. -->
 ## Legend
 - `[ ]` not started
 - `[/]` in progress

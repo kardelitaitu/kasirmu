@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Re-audit of a strategy note whose own premise is "it decides nothing" — verified that it decides nothing, and that every deferral it makes points at a live record. All four ADR links resolve with the numbers their FILENAMES claim (num 30/48/59/64 re-read from front matter), and the three paths it names exist (docs/security/data-residency-and-retention.md, docs/specs/module-manifest.schema.json for the kernel's manifest validation, crates/kasirmu-core/src/db/fiscal.rs). §1's table of "already decided" items was spot-checked: the market-profile-is-data rule, the money/time standards and the @fluent/react localisation standard are all the live state. Repaired one minor present-tense drift: §3 recorded the tender vocabulary as "decided against the tree", which described 2026-10-02 accurately and is now half stale — the vocabulary shipped (twelve-value method CHECK, nine-value gateway_status CHECK, one canonical UI union) while the classification axis and the state machine did not. Recorded in place. Left unchanged deliberately: the §4 commercial estimates, which the note itself labels as having "no basis recorded anywhere in this repository" and later corrects — a stamp on them would be read as an endorsement of numbers this note already disclaims. NOT re-measured: any market commitment, and the regional-deployment material ADR-59 defers. -->
+
 # Global Kernel and Region Packs — strategy note
 
 **Status:** strategy note. **It decides nothing.** Every architectural question below was already
@@ -71,6 +73,17 @@ list) and the offline tender state (a boolean where a state machine is needed, p
 immediately" rule no electronic tender should inherit). See
 [ADR-64](./2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md).
 
+**Re-measured 2026-10-11 — the vocabulary half of that pair has shipped, and this note's phrasing
+("decided against the tree") is now half stale.** The four declarations this note describes have
+converged on two: the TS duplicates are one canonical union
+(`ui/src/api/types/payment.ts:8`) and both Rust enums carry the "presentation, not persistence
+authority" note. `payments.method` is no longer an unconstrained column — it is a twelve-value
+CHECK (`20261017_payments_method_check.sql`) — and `gateway_status` is a nine-value CHECK
+(`20261018_gateway_status_adr64_vocabulary.sql`). What has **not** shipped is the classification
+axis and the state machine, which is the half ADR-64 §2.2 still lists as TO BUILD. The distinction
+matters for anyone reading this section as a status: the *vocabulary* landed, the *structure* did
+not.
+
 ## 4. Commercial material — deliberately not an ADR
 
 ADR-59 §Q3 states the principle: *"Which market first … is a commercial decision, not an
@@ -110,4 +123,4 @@ It is not duplicated here: a second copy of a rule is a second place for it to d
   [ADR-48](./2026-09-09-adr48-timezone-representation.md)
 - `docs/security/data-residency-and-retention.md` — the residency contract ADR-59 defers to
 
-> last audited 02-10-26 by DSH
+> last audited 11-10-26 by docs-auditor

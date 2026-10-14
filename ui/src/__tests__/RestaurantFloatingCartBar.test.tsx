@@ -69,4 +69,69 @@ describe('RestaurantFloatingCartBar', () => {
     // Should not render table pill
     expect(screen.queryByTestId('restaurant-floating-cart-table')).toBeNull();
   });
+
+  it('hides the table pill on a NON-dine-in order, even with a table number set', () => {
+    // ⚠️ The TENTH consumer of the stray-table rule, and the one a tablet cashier
+    // stares at continuously. The bar renders its pill from `tableNumber` alone, so
+    // a takeaway with a stray number in the Table field (the field renders on
+    // restaurant POS unconditionally — CartPanel.tsx:864) advertised "Table 99" on
+    // the persistent bottom bar for an order with no table.
+    //
+    // The prop is optional and defaults to dine-in, so retail and every existing
+    // render are unchanged; this asserts the rule holds when it IS supplied.
+    render(
+      withFluent(
+        <RestaurantFloatingCartBar
+          lines={[makeLine(1)]}
+          total={IDR}
+          tableNumber="99"
+          orderType="takeaway"
+          onOpenCart={vi.fn()}
+        />,
+        productsFtl,
+      ),
+    );
+    expect(
+      screen.queryByTestId('restaurant-floating-cart-table'),
+      'a takeaway must not show a table pill; it has no table.',
+    ).toBeNull();
+  });
+
+  it('still shows the pill on a dine-in order', () => {
+    render(
+      withFluent(
+        <RestaurantFloatingCartBar
+          lines={[makeLine(1)]}
+          total={IDR}
+          tableNumber="7"
+          orderType="dine_in"
+          onOpenCart={vi.fn()}
+        />,
+        productsFtl,
+      ),
+    );
+    expect(
+      screen.getByTestId('restaurant-floating-cart-table').textContent?.trim(),
+    ).toBe('Table 7');
+  });
+
+  it('normalizes Table/Meja prefix to prevent Table Table doubling', () => {
+    const onOpenCart = vi.fn();
+    render(
+      withFluent(
+        <RestaurantFloatingCartBar
+          lines={[makeLine(1)]}
+          total={IDR}
+          tableNumber="Table 12"
+          onOpenCart={onOpenCart}
+        />,
+        productsFtl,
+      ),
+    );
+
+    const tableChip = screen.getByTestId('restaurant-floating-cart-table');
+    // Fluent produces "Table 12", not "Table Table 12"
+    expect(tableChip.textContent?.trim()).toBe('Table 12');
+  });
 });
+

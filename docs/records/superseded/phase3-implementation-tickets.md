@@ -1,3 +1,14 @@
+<!-- Re-verified 11-10-26 · docs-auditor · Cross-link repair, dated records, no content rewritten.
+     The 2026-10-02 records restructure moved NINE of the documents these six records cite from
+     `docs/architecture/` into `docs/records/superseded/` (45e1cd520 and its companions), so every
+     `docs/architecture/<moved>.md` citation in the Predecessors/Successor blocks named a path that no
+     longer resolves — 42 across the six files. Repointed to the live home. The three cited documents
+     that are STILL in `docs/architecture/` (module-namespace-governance.md, module-namespace-firewall.md,
+     module-boot-sequence.md) were deliberately left alone, as were the relative markdown links, which
+     already resolved because the files moved together. No claim, count or ticket status was altered.
+     Verified after the edit: 0 residual stale citations, 42 repointed, 32 correct citations preserved,
+     0 dead relative links, and every cited ticket/decision path still resolving. NOT re-measured: the
+     phases' own per-ticket acceptance runs and the runtime behaviour of the seams they describe. -->
 # Phase 3 Implementation Tickets — Vertical Extraction
 
 **Status:** Draft for execution (2026-10-03) — tickets only, no code changed by this document
@@ -6,14 +17,14 @@ business logic move out of `kasirmu-core` into owned modules, keeping cross-vert
 and checkout behaviour unchanged.
 
 **Predecessors:**
-- `docs/architecture/phase2-implementation-tickets.md` — Phase 2 is closed (P1–P5); the `NamespacedStore`,
+- `docs/records/superseded/phase2-implementation-tickets.md` — Phase 2 is closed (P1–P5); the `NamespacedStore`,
   `ModuleContext` and the capability registry exist and are tested.
-- `docs/architecture/namespaced-store-api-draft.md` §5 — the per-module wrap order (rows 2.1–2.4) this phase
+- `docs/records/superseded/namespaced-store-api-draft.md` §5 — the per-module wrap order (rows 2.1–2.4) this phase
   executes.
-- `docs/architecture/reporting-facade-inventory.md` — the facade surface and its single bypass edge.
+- `docs/records/superseded/reporting-facade-inventory.md` — the facade surface and its single bypass edge.
 - `docs/architecture/module-namespace-governance.md` §3–§4 — the ownership map, the frozen edges, the checker.
 
-**Successor:** `docs/architecture/phase4-implementation-tickets.md` — Phase 4 (strict namespace firewall).
+**Successor:** `docs/records/superseded/phase4-implementation-tickets.md` — Phase 4 (strict namespace firewall).
 
 **Grounding rule (kept from Phases 0–2):** every ticket names a repository fact verified at the time of
 writing. Where the plan's prose disagrees with the tree, the tree wins and the disagreement is recorded.
@@ -49,14 +60,14 @@ genuine cross-vertical edge (P3.3), then the structural gate that keeps the ratc
 `kasirmu_core::db::reports` already ships the capability. `modules/reporting/src/lib.rs` was rewritten to
 the module shell that remains, the `modules/reporting/src/repository.rs` entry was removed from
 `scripts/namespace-governance-baseline.json`, and the live docs
-(`docs/architecture/reporting-facade-inventory.md` §3/§6,
+(`docs/records/superseded/reporting-facade-inventory.md` §3/§6,
 `docs/architecture/module-namespace-governance.md` §4/§5) record the retirement. `--json` now reports
 **1** frozen cross-vertical edge (loyalty) and `stale == 0`; `cargo test -p modules-reporting` 11 pass;
 `cargo check --workspace --all-targets` clean.
 
 **Problem (verified).** `modules/reporting/src/repository.rs:34` `generate_daily_report` reads `sales` with
 its own SQL instead of the sanctioned facade `kasirmu_core::db::reports`. It is the **only** production
-cross-vertical SQL in a module repository (`docs/architecture/reporting-facade-inventory.md` §3, §6): the
+cross-vertical SQL in a module repository (`docs/records/superseded/reporting-facade-inventory.md` §3, §6): the
 bypass set has exactly one member. It is baselined in `scripts/namespace-governance-baseline.json` and carries
 the T3 marker `// namespace: cross-vertical read sales granted (…)`.
 
@@ -280,8 +291,8 @@ except where a `Depends on` line says so.
 ## References
 
 - `todo-modular-scaffolding.md` §10 (Phase 3), §11.1 (core-size ratchet), §13 (acceptance criteria)
-- `docs/architecture/phase2-implementation-tickets.md` (the closed predecessor phase)
-- `docs/architecture/namespaced-store-api-draft.md` §5 (per-module wrap order)
-- `docs/architecture/reporting-facade-inventory.md` §3, §6 (the single bypass edge)
+- `docs/records/superseded/phase2-implementation-tickets.md` (the closed predecessor phase)
+- `docs/records/superseded/namespaced-store-api-draft.md` §5 (per-module wrap order)
+- `docs/records/superseded/reporting-facade-inventory.md` §3, §6 (the single bypass edge)
 - `docs/architecture/module-namespace-governance.md` §3–§4 (ownership map, frozen edges)
 - `scripts/verify-namespace-governance.py` (the checker these tickets must keep green)

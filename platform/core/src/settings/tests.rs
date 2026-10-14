@@ -928,12 +928,18 @@ fn set_tracked_concurrent_threads_independent_keys() {
 
     let t1 = thread::spawn(move || {
         let conn = Connection::open(&p1).unwrap();
+        // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
         for i in 1..=10 {
             Settings::set_tracked(&conn, "thread.a", &format!("v{i}"), "t1").unwrap();
         }
     });
     let t2 = thread::spawn(move || {
         let conn = Connection::open(&p2).unwrap();
+        // Match production: `migrations::run` gives every connection a 5 s busy_timeout.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
         for i in 1..=10 {
             Settings::set_tracked(&conn, "thread.b", &format!("v{i}"), "t2").unwrap();
         }

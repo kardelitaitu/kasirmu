@@ -97,8 +97,13 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
   return (
     <div className="restaurant-grid" role="list" aria-label={requiredLocalized(l10n, 'restaurant-menu-items-aria')}>
       {items.map((product, i) => (
+        // The grid is a role="list", so each tile must be wrapped in a list
+        // item. It cannot go ON the tile: that root is a <button>, and axe
+        // rejects role="listitem" there (aria-allowed-role). Without the
+        // display: contents on the wrapper preserves the CSS grid layout so
+        // cards stretch to their full column cell as intended.
+        <div key={product.sku} role="listitem" className="restaurant-grid-item">
         <MenuItemTile
-          key={product.sku}
           product={{ ...product, inStock: product.inStock && !unavailable.has(product.sku) }}
           sourceInStock={product.inStock}
           pinned={pinned.has(product.sku)}
@@ -108,6 +113,7 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
           added={product.sku === addedSku}
           index={i}
         />
+        </div>
       ))}
     </div>
   );

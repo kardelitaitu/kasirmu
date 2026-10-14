@@ -49,6 +49,10 @@ describe('classifyModifier', () => {
     'omit salt',
     'hold the bun',
     'exclude peanuts',
+    'TANPA BAWANG',
+    'tanpa cabai',
+    'JANGAN PEDAS',
+    'gak pake es',
   ])('reads "%s" as a removal', (choice) => {
     expect(classifyModifier(choice)).toBe('removal');
   });
@@ -62,6 +66,8 @@ describe('classifyModifier', () => {
     'TRIPLE SHRIMP',
     'WITH GARLIC BREAD',
     'side of salad',
+    'EKSTRA KEJU',
+    'tambah nasi',
   ])('reads "%s" as an addition', (choice) => {
     expect(classifyModifier(choice)).toBe('addition');
   });

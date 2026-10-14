@@ -268,7 +268,7 @@ describe('ShiftManagementScreen', () => {
     });
     await user.click(screen.getByLabelText('Record cash payout'));
     await waitFor(() => {
-      expect(screen.getByLabelText('Payout amount in minor units')).toBeInTheDocument();
+      expect(screen.getByLabelText('Payout amount')).toBeInTheDocument();
     });
     return user;
   }
@@ -277,7 +277,7 @@ describe('ShiftManagementScreen', () => {
     mockCreateCashPayout.mockResolvedValue(undefined);
     const user = await renderWithActiveShiftAndOpenPayout();
 
-    await user.type(screen.getByLabelText('Payout amount in minor units'), '20000');
+    await user.type(screen.getByLabelText('Payout amount'), '20000');
     await user.type(screen.getByLabelText('Payout reason'), 'bank deposit');
     await user.click(screen.getByRole('button', { name: 'Record Payout' }));
 
@@ -291,7 +291,7 @@ describe('ShiftManagementScreen', () => {
     // Success closes the modal and reloads, so the totals the cashier just changed
     // are re-fetched rather than left stale.
     await waitFor(() => {
-      expect(screen.queryByLabelText('Payout amount in minor units')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Payout amount')).not.toBeInTheDocument();
     });
     expect(mockListShifts.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -300,7 +300,7 @@ describe('ShiftManagementScreen', () => {
     mockCreateCashPayout.mockResolvedValue(undefined);
     const user = await renderWithActiveShiftAndOpenPayout();
 
-    await user.type(screen.getByLabelText('Payout amount in minor units'), '5000');
+    await user.type(screen.getByLabelText('Payout amount'), '5000');
     await user.click(screen.getByRole('button', { name: 'Record Payout' }));
 
     await waitFor(() => {
@@ -314,7 +314,7 @@ describe('ShiftManagementScreen', () => {
     mockCreateCashPayout.mockRejectedValue(new Error('db busy'));
     const user = await renderWithActiveShiftAndOpenPayout();
 
-    await user.type(screen.getByLabelText('Payout amount in minor units'), '20000');
+    await user.type(screen.getByLabelText('Payout amount'), '20000');
     await user.type(screen.getByLabelText('Payout reason'), 'bank deposit');
     await user.click(screen.getByRole('button', { name: 'Record Payout' }));
 
@@ -326,14 +326,14 @@ describe('ShiftManagementScreen', () => {
     // The input is type="number", so jest-dom compares its value numerically --
     // toHaveValue('20000') fails against 20000 and the failure message renders the
     // difference as blank, which reads like an empty field rather than a type mismatch.
-    expect(screen.getByLabelText('Payout amount in minor units')).toHaveValue(20000);
+    expect(screen.getByLabelText('Payout amount')).toHaveValue(20000);
     expect(mockListShifts.mock.calls.length).toBe(1); // no reload after failure
   });
 
   it('disables the confirm button until the amount is a positive whole number', async () => {
     const user = await renderWithActiveShiftAndOpenPayout();
     const confirm = () => screen.getByRole('button', { name: 'Record Payout' });
-    const amount = screen.getByLabelText('Payout amount in minor units');
+    const amount = screen.getByLabelText('Payout amount');
 
     expect(confirm()).toBeDisabled();
     await user.type(amount, '50.5');

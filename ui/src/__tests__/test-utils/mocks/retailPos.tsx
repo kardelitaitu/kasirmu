@@ -71,6 +71,9 @@ export function createRetailProductsApiMock() {
     getProductTrackSerialScoped: vi.fn(() => Promise.resolve(false)),
     // ADR #37 D3: fire-and-forget popularity search signal (non-blocking).
     recordProductSearchScoped: vi.fn(() => Promise.resolve(undefined)),
+    getRecipeScoped: vi.fn((_token: string, _productId: string) => Promise.resolve(null)),
+    setRecipeScoped: vi.fn((_token: string, _args: unknown) => Promise.resolve()),
+    deleteRecipeScoped: vi.fn((_token: string, _productId: string) => Promise.resolve()),
   };
 }
 

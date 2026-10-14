@@ -120,3 +120,32 @@ path = "tests/integration/main.rs"
 | **Lib Unit Tests** | `cargo test -p kasirmu-core --lib audit` | **PASSED** (119 passed, 0 failed, 1.80s) |
 
 > Acceptance verified on 2026-10-05 on branch `0.0.41`.
+
+---
+
+## Re-verified 2026-10-11 (docs-auditor)
+
+**Every claim in this record verifies EXACTLY at HEAD** — it is one of the cleanest plans the campaign has
+checked, and no repair was needed.
+
+- The target architecture is real: `crates/kasirmu-core/tests/integration/main.rs` exists and declares
+  **25 submodules** (`^mod \w+;`), matching the 25 named files in the tree listing.
+- The consolidation is COMPLETE: `crates/kasirmu-core/tests/` now holds **only** the `integration/`
+  directory — none of the 24 standalone `.rs` binaries the plan enumerated remains at the top level.
+- The Cargo wiring is present verbatim: `[[test]]` / `name = "integration"` / `path = "tests/integration/main.rs"`.
+- The commit the execution record names (`3c6f0f78d`) resolves.
+
+**Two readings have moved and are stated here as dated facts, not corrections:** the plan's §5 quotes a
+**547**-test suite and a **24-module** count; the live file declares **25** modules (matching the 25 files)
+and the suite has grown since — the profile-count figure is quoted in the table as a 2026-10-05 reading,
+which is the right shape for a completed record.
+
+**DONE — the `done-` prefix is earned:** the plan's stated acceptance (`cargo check -p kasirmu-core --tests`,
+the consolidated suite, a scoped module run and the lib unit tests) is recorded as passed on 2026-10-05, the
+structural outcome is verifiable at HEAD, and the one behavioural fix it records (the
+`credential_storage_form::decision_pin_child_probe_under_master_key` child-process re-target) is the kind of
+change that would have failed loudly had it not been applied.
+
+**NOT re-measured:** the live pass state and timing of the four acceptance commands (this checkout cannot
+link Rust; no MSVC import libraries), so the 547/0-failed/1-ignored result is reproduced as the record's own
+date-stamped measurement.

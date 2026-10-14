@@ -1,8 +1,18 @@
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (8 findings) · SUPERSEDES the 2026-08-29 stamp, whose repairs are carried forward: it fixed 156->354 commands and 42 files->52 modules, both of which were true on 29-08 and both of which are wrong today. That is the finding worth keeping: the command count on this page has been re-audited three times in ten days (156 -> 354 -> 385 -> 426) and has been stale every time it was written down, because the number tracks every commit that touches lib.rs. It is now stated as a dated measurement with the command to re-derive it, not as a fact. · RECONCILED the commands/ tree against the directory: 63 entries, 0 dead. Removed store_profiles.rs (the store→location rename made it locations.rs, and the entry also sat in the wrong alphabetical block); added legal_entities.rs, local_api.rs, locations.rs, memo.rs, payables.rs, products_images.rs — six command modules that exist in src/commands/ and appeared in no listing, including local_api.rs, which is the whole desktop extension surface that docs/guides/developer/EXTENDING.md §2 documents. Counts now 58 production modules / 114 .rs files, 426 registered commands. · verified accurate: build.rs, main.rs, lib.rs, error.rs, state.rs at src/ level; the tree's remaining 57 command entries all resolve. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (5 minor) · Re-measurement pass on a page whose own history predicts exactly this: the command count has now been stale five times (156 -> 354 -> 385 -> 426 -> 453 -> 500), so this pass re-derived every count with the page's own commands and corrected four (`generate_handler!` 453->500; commands/ 64/79->67/83; AppState 23->24 pub fields; the `generate_handler!` and `AppState` line coordinates). · THREE COMMAND MODULES WERE IN NO LISTING and are the substantive repair: `avatars.rs` (4 commands), `desktop_link.rs` (8), `qris_listener.rs` (3) are all `pub mod` in `src/commands/mod.rs` and registered in the handler, so a reader of this page's "adding a command" checklist was seeing an incomplete map of where commands live. `sync_test_pins.rs` added too, marked as a test-pin module with no commands. The tree now reconciles against `ls src/commands/*.rs`: 0 missing, 0 dead. · ONE FACTUAL CORRECTION beyond counts: `build.rs` was described as `tauri_build::build()`; it is `tauri_build::try_build(attrs).expect(...)` with Windows application-manifest attributes — a different call with a documented abort-on-failure contract. · THE 08-09-26 AND 2026-09-14 STAMPS ARE DELIBERATELY LEFT VERBATIM below: this page's stated convention is that its figures are dated point-in-time readings and are appended-to, not substituted, and that convention is why the drift is detectable at all. · Verified unchanged (re-read, not inherited): the six `tests/` files, `gen/schemas/`, `capabilities/default.json`, `icons/`, the `src/*.rs` production list, `AppState.db`/`registry` types, and the bridge ownership of the `barcode:scanned` emit. · NOT re-measured: `cargo tauri build` output paths, `tauri.conf.json` contents, the `icons/` regeneration claim, and every per-command description. · Superseded 2026-09-08 body preserved as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (8 findings) · SUPERSEDES the 2026-08-29 stamp, whose repairs are carried forward: it fixed 156->354 commands and 42 files->52 modules, both of which were true on 29-08 and both of which are wrong today. That is the finding worth keeping: the command count on this page has been re-audited three times in ten days (156 -> 354 -> 385 -> 426) and has been stale every time it was written down, because the number tracks every commit that touches lib.rs. It is now stated as a dated measurement with the command to re-derive it, not as a fact. · RECONCILED the commands/ tree against the directory: 63 entries, 0 dead. Removed store_profiles.rs (the store→location rename made it locations.rs, and the entry also sat in the wrong alphabetical block); added legal_entities.rs, local_api.rs, locations.rs, memo.rs, payables.rs, products_images.rs — six command modules that exist in src/commands/ and appeared in no listing, including local_api.rs, which is the whole desktop extension surface that docs/guides/developer/EXTENDING.md §2 documents. Counts now 58 production modules / 114 .rs files, 426 registered commands. · verified accurate: build.rs, main.rs, lib.rs, error.rs, state.rs at src/ level; the tree's remaining 57 command entries all resolve. -->
 
 # `apps/desktop-tauri/` — kasir.mu desktop shell
 
 > **Count note 2026-09-14 · DSH · comment-only pass ·** the 08-09-26 figures above are left exactly as written because they are dated point-in-time records; current values are appended next to them, not substituted. Measured this pass against this checkout: **453 distinct registered command paths** in `src/lib.rs:845-1340` (`python scripts/verify-ipc-parity.py` → 458 UI command strings / 453 registered / 27 unregistered, EXIT 0; an independent `sed -n '/tauri::generate_handler!\[/,/^        \])/p' src/lib.rs | grep -cE '^[[:space:]]*commands::'` returns the same 453), so the `lib.rs` line grew from 426 (08-09-26) to 453 — the same drift that page's own history predicts. **7 command modules that exist on disk were named in no listing** (`fiscal.rs`, `local_payment.rs`, `qris_auto.rs`, `receipt_format.rs`, `regional.rs`, `registration_gate_debt.generated.rs`, and the `topology/` submodule dir), each added to the tree from its own `//!` header; **5 `src/` production modules were likewise unlisted** (`email_scheduler.rs`, `image_push.rs`, `lan_server.rs`, `local_api.rs`, `sync_bootstrap.rs` — `ls src/*.rs`), plus `gen/` and `tests/` at the crate root. **0 dead entries removed**: every path the old listing named still resolves (`comm` of the listing against `ls src/commands/*.rs` returns only `store_profiles.rs`, which is prose inside a comment, not a listing row). `Key state` corrected where the source disagrees: `AppState.db` is `Arc<Mutex<Connection>>` not `Mutex<Connection>`, `registry` is `Arc<DriverRegistry>`, and this shell no longer calls `app.emit("barcode:scanned")` itself — `kasirmu-bridge` owns that emit; `platform_startup::hardware::register_hardware` → `kasirmu_hal::apply_config` (`platform/startup/src/hardware.rs:163`) was checked and is still accurate. **Not verified, therefore unchanged:** `cargo tauri build` output paths, the `icons/` regeneration claim, `tauri.conf.json` contents, and every per-command description in the tree comments (descriptions were spot-checked only for the seven new rows, from each file's own module doc). **Out of fence, reported not fixed:** `docs/guides/developer/api-reference.md:18` still asserts "454 distinct commands … 429 in [desktop]" against today's measured 453 desktop / 322 tablet, and `apps/desktop-tauri` is only one of the two pages it claims to reconcile.
+
+> **Count note 2026-10-11 · docs-auditor · re-measured, four figures superseded ·** the two notes above are left as written (this page appends dated readings rather than substituting them). Re-derived against this checkout today, with the file's own commands:
+> - **registered commands: 500**, not 453/426. `sed -n '/tauri::generate_handler!\[/,/^        \])/p' src/lib.rs | grep -cE '^[[:space:]]*commands::'` → `500`. The `generate_handler!` block now opens at **`src/lib.rs:1360`** (it was 845-1340 on 2026-09-14).
+> - **`src/commands/`: 67 non-test top-level `.rs` (66 domain modules + `mod.rs`) and 83 `.rs` in total**, not the 64/79 of 2026-09-14 — re-derive with the two `find` commands in the tree below.
+> - **`AppState`: 24 `pub` fields**, not 23; the struct opens at **`src/state.rs:96`** and closes at **`:242`** (the 2026-09-14 note cited `:75`/`:211`). Re-derive: `grep -c '^    pub [a-z_]*:' src/state.rs`.
+> - **three command modules were in no listing and are now added**: `avatars.rs` (4 `#[tauri::command]`), `desktop_link.rs` (8), `qris_listener.rs` (3) — all three are `pub mod` in `src/commands/mod.rs` and registered in `lib.rs`; plus `sync_test_pins.rs`, which is a test-pin module and deliberately carries no commands. The tree is now **reconciled against disk: 0 missing, 0 dead**.
+> - **`build.rs` corrected**: it calls `tauri_build::try_build(attrs).expect(...)` with `WindowsAttributes`/`app.manifest`, **not** `tauri_build::build()` as the old inline comment said. The line citation (:8) is still the `fn main()` line.
+> **Verified unchanged:** `tests/` really holds the six named files; `gen/schemas/`, `capabilities/default.json`, `icons/` all exist; the `src/*.rs` production-module list is complete; `AppState.db` is `Arc<Mutex<Connection>>` and `registry` is `Arc<DriverRegistry>`; the `barcode:scanned` emit still lives in the bridge (`crates/kasirmu-bridge/src/hardware.rs:1009`/`:1014`) rather than this shell. **NOT re-measured:** `cargo tauri build` output paths, `tauri.conf.json` contents, the `icons/` regeneration claim, and the per-command descriptions.
 
 Tauri v2 binary that hosts the React front-end, wires `kasirmu-core` + `kasirmu-hal` behind typed IPC commands, and produces installable bundles.
 
@@ -12,7 +22,7 @@ Tauri v2 binary that hosts the React front-end, wires `kasirmu-core` + `kasirmu-
 apps/desktop-tauri/
 ├── Cargo.toml              # kasirmu-app crate
 ├── tauri.conf.json         # Tauri v2 config (window, updater, capabilities)
-├── build.rs                # tauri_build::build() (build.rs:8, verified 2026-09-14)
+├── build.rs                # tauri_build::try_build() with window attrs (build.rs:8, re-verified 2026-10-11 — the script uses `try_build(attrs).expect(...)`, not the bare `build()` this line used to claim)
 ├── gen/schemas/            # tauri-generated ACL/capability/schema JSON — generated, never hand-edited
 ├── tests/                  # 6 integration test files (capability_parity, gate_audit, kernel_lifecycle, window_state_multi_monitor, window_visibility, wiring_audit)
 ├── capabilities/
@@ -20,19 +30,20 @@ apps/desktop-tauri/
 ├── icons/                  # Full platform icon set (generated via cargo tauri icon)
 └── src/
     ├── main.rs             # Binary entry; calls lib::run()
-    ├── lib.rs              # Builder, invoke_handler! (src/lib.rs:845-1340), run() — 426 commands registered as measured 08-09-26; 453 distinct registered command paths as measured 2026-09-14 by `python scripts/verify-ipc-parity.py` (458 UI command strings / 453 registered / 27 unregistered, EXIT 0) — re-measure, this number moves with every commit that touches the handler list (see docs/guides/developer/api-reference.md for the per-command list)
+    ├── lib.rs              # Builder, invoke_handler! (src/lib.rs:1360-…, re-measured 2026-10-11; the 845-1340 range was correct on 2026-09-14 and the file has grown since), run() — 426 commands as measured 08-09-26; 453 paths as measured 2026-09-14; **500 registered `commands::` entries as measured 2026-10-11** by `sed -n '/tauri::generate_handler!\[/,/^        \])/p' src/lib.rs | grep -cE '^[[:space:]]*commands::'` — re-measure, this number moves with every commit that touches the handler list (see docs/guides/developer/api-reference.md for the per-command list)
     ├── error.rs            # AppError (typed, non_exhaustive)
     ├── email_scheduler.rs  # background report-email scheduler
     ├── image_push.rs       # image_push_queue drainer → cloud batch endpoint
     ├── lan_server.rs       # LAN event forwarding for multi-terminal stores
     ├── local_api.rs        # loopback REST server (daemon-residue module)
     ├── sync_bootstrap.rs   # sync daemon wiring at startup
-    ├── state.rs            # AppState (DB, driver registry, scanner cancel channel; 23 `pub` fields as measured 2026-09-14 by `grep -c '^    pub [a-z_]*:' src/state.rs` — run from `apps/desktop-tauri/`; a looser `grep -c "^    pub "` reads 34 because it also catches `pub(crate)` and `pub fn` lines, so use the exact pattern)
-    └── commands/           # 58 production modules (114 .rs files incl. tests) as measured 08-09-26; 64 non-test .rs files here (63 domain modules + mod.rs) and 79 .rs in this dir including the topology/ submodules and 10 *_tests.rs, as measured 2026-09-14 by `find apps/desktop-tauri/src/commands -maxdepth 1 -name '*.rs' ! -name '*_tests.rs' | wc -l` and `find apps/desktop-tauri/src/commands -name '*.rs' | wc -l` — the tree below names each domain module once
+    ├── state.rs            # AppState (DB, driver registry, scanner cancel channel; **24 `pub` fields** as re-measured 2026-10-11 by `grep -c '^    pub [a-z_]*:' src/state.rs` — run from `apps/desktop-tauri/`; the 2026-09-14 reading was 23. A looser `grep -c "^    pub "` reads more because it also catches `pub(crate)` and `pub fn` lines, so use the exact pattern)
+    └── commands/           # 58 production modules as measured 08-09-26; 64 non-test .rs top-level (63 domain + mod.rs) and 79 .rs total as measured 2026-09-14; **67 non-test top-level and 83 .rs total as measured 2026-10-11** by `find apps/desktop-tauri/src/commands -maxdepth 1 -name '*.rs' ! -name '*_tests.rs' | wc -l` and `find apps/desktop-tauri/src/commands -name '*.rs' | wc -l` — the tree below names each domain module once
         ├── analytics.rs    # analytics queries
         ├── audit.rs        # list_audit_log
         ├── auth.rs         # staff_login
         ├── authz.rs        # authorization checks
+        ├── avatars.rs       # avatar image set/get (unlisted until 2026-10-11)
         ├── branding.rs     # store branding config
         ├── browser.rs      # in-app browser
         ├── bundles.rs      # product bundles
@@ -40,6 +51,7 @@ apps/desktop-tauri/
         ├── currencies.rs   # currency_info, list_currencies, get/set_default_currency
         ├── customers.rs    # CRUD for customers
         ├── data.rs         # data management commands
+        ├── desktop_link.rs  # desktop-link pairing surface (unlisted until 2026-10-11)
         ├── edc.rs          # EDC payment terminal
         ├── email.rs        # report email scheduling
         ├── exchange_rates.rs # CRUD for exchange rates
@@ -72,6 +84,7 @@ apps/desktop-tauri/
         ├── promotions.rs   # promotion management
         ├── purchasing.rs   # purchase orders
         ├── qris_auto.rs    # QRIS Auto dynamic-charge IPC (thin shim over kasirmu_bridge::qris_auto)
+        ├── qris_listener.rs  # QRIS listener wiring (unlisted until 2026-10-11)
         ├── receipt_format.rs # regional receipt-format axis (EffectiveReceiptFormat)
         ├── refunds.rs      # refund/void processing
         ├── regional.rs     # regional configuration (saas-2 slices 2–3)
@@ -86,6 +99,7 @@ apps/desktop-tauri/
         ├── stock_transfers.rs # transfer stock between locations
         ├── subscription.rs # subscription status
         ├── sync.rs         # sync commands
+        ├── sync_test_pins.rs # test-only pins asserting relocated bridge tests name their new home (not a command module)
         ├── tables.rs       # restaurant table management
         ├── tax.rs          # CRUD for tax rates
         ├── terminals.rs    # terminal management
@@ -131,4 +145,4 @@ cargo tauri dev               # Terminal 2: Tauri dev shell
 - Scanner background tasks broadcast `barcode:scanned` / `barcode:error` to the UI. As measured 2026-09-14 the emit happens in the bridge, not in this shell: `crates/kasirmu-bridge/src/hardware.rs:577` and `:582` call `sink.emit(...)` on the injected `EventSink` (`apps/desktop-tauri/src/commands/hardware.rs:9` says so in its module doc); `app.emit("barcode:scanned", …)` survives as a direct call only in `apps/mobile-tauri/src/commands/hardware.rs:352` and `:629`.
 - The `app` handle is `Option<AppHandle>` — always unwrap via `if let Some(ref app)`.
 
-> last audited 08-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

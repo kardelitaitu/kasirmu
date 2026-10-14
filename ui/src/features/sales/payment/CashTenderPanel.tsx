@@ -40,7 +40,7 @@
  * same arrangement QrisTenderPanel relies on.
  */
 import { Localized, useLocalization } from '@fluent/react';
-import { formatMoney, minorUnitExponent, type Money } from '@/types/domain';
+import { defaultTenderPresets, formatMoney, minorUnitExponent, type Money } from '@/types/domain';
 import { minorUnitsToInputString } from './moneyFormat';
 
 export interface CashTenderPanelProps {
@@ -81,7 +81,7 @@ export default function CashTenderPanel({
   const exp = minorUnitExponent(total.currency);
   const payableMinor = Number(total.minor_units);
   const payableMinorBig = BigInt(payableMinor);
-  const quickTenderAmounts = (tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).reduce<
+  const quickTenderAmounts = (tenderPresets ?? defaultTenderPresets(total.currency)).reduce<
     { minorUnits: number; input: string }[]
   >((acc, amount) => {
     const denomMinor = BigInt(amount) * 10n ** BigInt(exp);
@@ -129,7 +129,7 @@ export default function CashTenderPanel({
         <Localized id="payment-tender-exact-aria" attrs={{ 'aria-label': true }}>
         <button
           type="button"
-          className="payment-quick-btn"
+          className="payment-quick-btn payment-quick-btn--exact"
           onClick={() => {
             // Exact tender: the total itself, rendered as the input's
             // decimal literal by integer digit placement, not float division.
@@ -149,10 +149,11 @@ export default function CashTenderPanel({
             <span className="payment-change-label">Change</span>
           </Localized>
           <span
-            className={`payment-change-amount ${!sufficient ? 'payment-change-insufficient' : ''}`}
+            className={`payment-change-amount ${!sufficient ? 'payment-change-insufficient' : 'payment-change-amount--sufficient'}`}
+            data-testid="payment-change-amount"
           >
             {sufficient && change
-              ? formatMoney(change)
+              ? formatMoney(change, locale)
               : l10n.getString('payment-insufficient')}
           </span>
         </div>

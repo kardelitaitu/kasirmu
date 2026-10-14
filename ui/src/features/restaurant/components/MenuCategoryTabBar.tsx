@@ -15,87 +15,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
-
-// ── Category icon SVGs ─────────────────────────────────────────────
-function CategoryIconFood() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
-      <line x1="7" y1="11" x2="7" y2="22" />
-      <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3z" />
-      <line x1="21" y1="15" x2="21" y2="22" />
-    </svg>
-  );
-}
-
-function CategoryIconSnack() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M4 12h16" />
-      <path d="M4 12c0 5.5 3.6 9 8 9s8-3.5 8-9" />
-      <circle cx="9" cy="9" r="2" fill="currentColor" stroke="none" />
-      <circle cx="13" cy="8" r="2" fill="currentColor" stroke="none" />
-      <circle cx="17" cy="9" r="2" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function CategoryIconHotDrink() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M6 8h12l-1.5 12h-9L6 8z" />
-      <path d="M17 11h2a2 2 0 0 1 0 4h-2" />
-      <path d="M8 8C8.8 6.5 7.2 5.5 8 4" />
-      <path d="M13 8C13.8 6.5 12.2 5.5 13 4" />
-    </svg>
-  );
-}
-
-function CategoryIconColdDrink() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M5 7h14l-2 15H7L5 7z" />
-      <line x1="3" y1="7" x2="21" y2="7" />
-      <line x1="16" y1="2" x2="12" y2="22" />
-    </svg>
-  );
-}
-
-function CategoryIconDots1() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" aria-hidden="true">
-      <circle cx="8" cy="8" r="3" />
-    </svg>
-  );
-}
-function CategoryIconDots2() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" aria-hidden="true">
-      <circle cx="5" cy="8" r="2.5" />
-      <circle cx="11" cy="8" r="2.5" />
-    </svg>
-  );
-}
-function CategoryIconDots3() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" aria-hidden="true">
-      <circle cx="3" cy="8" r="2" />
-      <circle cx="8" cy="8" r="2" />
-      <circle cx="13" cy="8" r="2" />
-    </svg>
-  );
-}
-
-function CategoryIcon({ icon }: { icon: string }) {
-  if (icon === 'food')       return <CategoryIconFood />;
-  if (icon === 'snack')      return <CategoryIconSnack />;
-  if (icon === 'hot-drink')  return <CategoryIconHotDrink />;
-  if (icon === 'cold-drink') return <CategoryIconColdDrink />;
-  if (icon === 'dots-1')     return <CategoryIconDots1 />;
-  if (icon === 'dots-2')     return <CategoryIconDots2 />;
-  if (icon === 'dots-3')     return <CategoryIconDots3 />;
-  return null;
-}
+import { CategoryIconSvg } from '@/features/categories/CategoryIconSvg';
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -156,7 +76,7 @@ export function MenuCategoryTabBar({ options, active, onSelect, metaMap }: MenuC
             >
               {meta?.icon && (
                 <span className="restaurant-pill-icon">
-                  <CategoryIcon icon={meta.icon} />
+                  <CategoryIconSvg icon={meta.icon} size={14} />
                 </span>
               )}
               {cat}

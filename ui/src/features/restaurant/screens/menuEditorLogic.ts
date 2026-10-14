@@ -10,51 +10,14 @@
 // never by parsing to float and multiplying, which is where the 0.1 + 0.2 class
 // of error enters an invoice.
 
+import { parseMoneyInput, formatMoneyInput } from '@/types/domain';
+
 /**
  * Parse operator input (major units, as typed) into integer minor units.
- *
- * Accepts both conventions because the same field serves IDR and foreign stores:
- * `1.234,50` and `1234.50`. Grouping dots (a dot followed by exactly three
- * digits at a group boundary) are stripped before the decimal mark is decided.
- *
- * @returns the minor-unit value, or null when the text is not a usable amount
- *   (empty, non-numeric, or more precision than the currency has).
+ * Delegated to canonical `parseMoneyInput` in `@/types/domain`.
  */
-export function parsePriceToMinor(input: string, currency: string): number | null {
-  const raw = input.trim();
-  if (raw === '') return null;
-
-  // Drop spaces and underscores first: both are common paste artefacts.
-  const normalised = raw.replace(/[ _]/g, '');
-
-  // A dot is a GROUPING mark only when every dot-group is exactly three digits
-  // AND there is no comma acting as the decimal mark. This is what separates
-  // `1.234.567` (1234567) from `50.123` (a decimal with three places, which
-  // IDR cannot hold). Treating any dot-before-three-digits as grouping reads the
-  // second as 50123 -- the exact mis-parse this branch exists to prevent.
-  // `50.123` is ambiguous by syntax alone: it is either the grouped integer
-  // 50123 or a three-decimal amount. The currency breaks the tie. IDR cannot
-  // hold three decimal places, so for IDR the grouped reading is the only one
-  // that yields a valid amount; for a currency that CAN hold three, the decimal
-  // reading is the one the operator meant.
-  const threePlaceGroups = /^\d{1,3}(\.\d{3})+$/.test(normalised);
-  const multiGroup = threePlaceGroups && (normalised.match(/\./g) ?? []).length > 1;
-  const looksGrouped =
-    !normalised.includes(',') && threePlaceGroups && (currency === 'IDR' || multiGroup);
-  const degrouped = looksGrouped ? normalised.replace(/\./g, '') : normalised;
-
-  // A comma is the decimal mark only when no dot survived.
-  const dotForm = degrouped.includes('.') ? degrouped : degrouped.replace(',', '.');
-
-  if (!/^\d+(\.\d*)?$/.test(dotForm)) return null;
-
-  const [whole = '0', frac = ''] = dotForm.split('.');
-  // IDR has no sub-unit in practice; more than two decimals is a typo, not a value.
-  if (frac.length > 2 && currency === 'IDR') return null;
-
-  const padded = (frac + '00').slice(0, 2);
-  const minor = Number(whole) * 100 + Number(padded);
-  return Number.isFinite(minor) ? minor : null;
+export function parsePriceToMinor(input: string, currency: string = 'IDR'): number | null {
+  return parseMoneyInput(input, currency);
 }
 
 /**
@@ -87,13 +50,11 @@ export function generateMenuSku(seed: number = Date.now()): string {
 
 /**
  * Render integer minor units back into the plain digits the operator edits:
- * no currency symbol, no grouping separators. `5000` -> `"50"`, `5050` -> `"50.50"`.
+ * no currency symbol, no grouping separators.
+ * Delegated to canonical `formatMoneyInput` in `@/types/domain`.
  */
-export function formatMinorForInput(minor: number): string {
-  if (!Number.isFinite(minor) || minor < 0) return '';
-  const whole = Math.trunc(minor / 100);
-  const frac = Math.abs(minor % 100);
-  return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(2, '0')}`;
+export function formatMinorForInput(minor: number, currency: string = 'IDR'): string {
+  return formatMoneyInput(minor, currency);
 }
 
 export type MenuItemStatusFilter = 'all' | 'available' | 'hidden';
@@ -188,18 +149,18 @@ export function createDuplicateDraft<
   name: string;
   categoryName: string;
   priceMinor: number;
+  priceInput?: string;
   isActive: boolean;
   notes: string;
   modifierGroups: DraftModifierGroup[];
 } {
-  const isJsonNotes = Boolean(item.notes?.startsWith('['));
   return {
     sku: null,
     name: `${item.name}${copySuffix}`,
     categoryName: item.category ?? '',
     priceMinor: item.price.minor_units,
     isActive: item.is_active !== false,
-    notes: isJsonNotes ? '' : (item.notes ?? ''),
+    notes: parseDraftNotes(item.notes),
     modifierGroups: parseDraftModifierGroups(item.notes),
   };
 }
@@ -208,6 +169,7 @@ export interface DraftModifierOption {
   id: string;
   name: string;
   priceMinor: number;
+  priceInput?: string;
 }
 
 export interface DraftModifierGroup {
@@ -219,33 +181,74 @@ export interface DraftModifierGroup {
 }
 
 /**
- * Parse modifier groups from dish notes when encoded as JSON.
+ * Extract human-readable dish notes/description when encoded as plain text or JSON metadata.
+ */
+export function parseDraftNotes(notes: string | null | undefined): string {
+  if (!notes) return '';
+  if (notes.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(notes);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        typeof (parsed as { description?: unknown }).description === 'string'
+      ) {
+        return (parsed as { description: string }).description;
+      }
+    } catch {
+      return '';
+    }
+  }
+  if (notes.startsWith('[')) return '';
+  return notes;
+}
+
+/**
+ * Parse modifier groups from dish notes when encoded as JSON array or object.
  */
 export function parseDraftModifierGroups(notes: string | null | undefined): DraftModifierGroup[] {
-  if (!notes || !notes.startsWith('[')) return [];
-  try {
-    const parsed: unknown = JSON.parse(notes);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
-      .map((g, gIdx) => ({
-        id: typeof g['id'] === 'string' ? g['id'] : `mg-${gIdx}`,
-        name: typeof g['name'] === 'string' ? g['name'] : '',
-        minSelections: typeof g['minSelections'] === 'number' ? g['minSelections'] : 0,
-        maxSelections: typeof g['maxSelections'] === 'number' ? g['maxSelections'] : 1,
-        options: Array.isArray(g['modifiers'])
-          ? g['modifiers']
-              .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
-              .map((m, mIdx) => ({
-                id: typeof m['id'] === 'string' ? m['id'] : `opt-${mIdx}`,
-                name: typeof m['name'] === 'string' ? m['name'] : '',
-                priceMinor: typeof m['priceMinor'] === 'number' ? m['priceMinor'] : 0,
-              }))
-          : [],
-      }));
-  } catch {
+  if (!notes) return [];
+  let rawArray: unknown[] = [];
+  if (notes.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(notes);
+      if (Array.isArray(parsed)) rawArray = parsed;
+    } catch {
+      return [];
+    }
+  } else if (notes.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(notes);
+      if (parsed && typeof parsed === 'object') {
+        const candidate =
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifierGroups ||
+          (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifiers;
+        if (Array.isArray(candidate)) rawArray = candidate;
+      }
+    } catch {
+      return [];
+    }
+  } else {
     return [];
   }
+
+  return rawArray
+    .filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
+    .map((g, gIdx) => ({
+      id: typeof g['id'] === 'string' ? g['id'] : `mg-${gIdx}`,
+      name: typeof g['name'] === 'string' ? g['name'] : '',
+      minSelections: typeof g['minSelections'] === 'number' ? g['minSelections'] : 0,
+      maxSelections: typeof g['maxSelections'] === 'number' ? g['maxSelections'] : 1,
+      options: Array.isArray(g['modifiers'])
+        ? g['modifiers']
+            .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
+            .map((m, mIdx) => ({
+              id: typeof m['id'] === 'string' ? m['id'] : `opt-${mIdx}`,
+              name: typeof m['name'] === 'string' ? m['name'] : '',
+              priceMinor: typeof m['priceMinor'] === 'number' ? m['priceMinor'] : 0,
+            }))
+        : [],
+    }));
 }
 
 /**
@@ -274,4 +277,47 @@ export function serializeDraftModifierGroups(groups: DraftModifierGroup[]): stri
 
   if (cleanGroups.length === 0) return null;
   return JSON.stringify(cleanGroups);
+}
+
+/**
+ * Serialize dish description notes and modifier groups together, preserving both without data loss.
+ */
+export function serializeDraftMenuNotes(
+  notes: string,
+  groups: DraftModifierGroup[],
+): string | null {
+  const cleanGroups = groups
+    .filter((g) => g.name.trim() !== '')
+    .map((g, gIdx) => ({
+      id: g.id || `mg-${Date.now().toString(36)}-${gIdx}`,
+      name: g.name.trim(),
+      minSelections: Math.max(0, g.minSelections),
+      maxSelections: Math.max(1, g.maxSelections),
+      sortOrder: gIdx,
+      modifiers: g.options
+        .filter((o) => o.name.trim() !== '')
+        .map((o, oIdx) => ({
+          id: o.id || `opt-${Date.now().toString(36)}-${oIdx}`,
+          name: o.name.trim(),
+          priceMinor: Math.max(0, o.priceMinor),
+          sortOrder: oIdx,
+          isDefault: oIdx === 0 && g.minSelections > 0,
+        })),
+    }))
+    .filter((g) => g.modifiers.length > 0);
+
+  const trimmedDesc = notes.trim();
+
+  if (cleanGroups.length > 0 && trimmedDesc) {
+    return JSON.stringify({
+      description: trimmedDesc,
+      modifierGroups: cleanGroups,
+    });
+  }
+
+  if (cleanGroups.length > 0) {
+    return JSON.stringify(cleanGroups);
+  }
+
+  return trimmedDesc || null;
 }

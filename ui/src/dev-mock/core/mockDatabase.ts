@@ -43,6 +43,7 @@ export const MOCK_SHIFT_HISTORY_KEY = 'oz-dev-mock:shift-history';
 export const MOCK_USER_PREFS_KEY = 'oz-dev-mock:user-prefs';
 export const MOCK_TOPOLOGY_KEY = 'oz-dev-mock:topology';
 export const MOCK_TOPOLOGY_REVISIONS_KEY = 'oz-dev-mock:topology-revisions';
+export const MOCK_LOCAL_PAYMENT_METHODS_KEY = 'oz-dev-mock:local-payment-methods';
 
 /**
  * Persisted marker for a shift that was explicitly closed.

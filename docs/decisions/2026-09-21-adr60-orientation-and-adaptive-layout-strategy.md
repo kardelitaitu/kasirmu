@@ -5,7 +5,9 @@ title: ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (she
 status: Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 249 lines, no audit stamp, no footer and no marker. Its status line is the strongest claim in this batch — all four tiers landed AND GATED, with seven sheets migrated — and it is the kind of statement a repository can partly adjudicate, because GATED means a checker enforces it. · AND THE GATE IS REAL, which is what makes the claim worth checking rather than repeating. The orientation exemption this decision must have had to reconcile is visible in the code as named machinery: the platform-core boundary checker carries the `bridge-toolkit-purity` rule, and the CSS-walker machinery this decision interacts with includes the `orientationAdaptiveWalker` that the setup-wizard retirement record, audited in round 25, described as exempting one sheet BY NAME and whose own meta-test asserts an exemption must resolve. That is the enforcement surface this decision's claim rests on, and it is live. · A CROSS-DOCUMENT CONNECTION THAT CLOSES A LOOP. The setup-wizard retirement emptied the `SLICE_0_EXEMPT_SHEETS` carve-out and recorded that the tree now holds ZERO orientation rules outside the shell — the state a fence wanted. This decision is the origin of that fence. So the sequence is: the fence was built, the wizard was retired, the exemption list was emptied, and the meta-test now asserts that any new exemption must resolve. A document can rarely show its own success, and this one effectively does, through a record audited nine rounds later. · WHAT WAS NOT CHECKED: the seven migrated sheets individually, and whether every tier's gate covers what the document says it covers. That is an implementation-coverage question and the status line is the claim of record. · Stale paths left as written, consistent with the rest of this batch. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 5 minor) · Re-audit. THE DECISION IS SOUND AND LARGELY SHIPPED — T1's shell tier, T2's container queries, T3's declared field and T4's walker gate all exist and the walker runs green with a planted-violation case — so every repair below is a coordinate or a count that moved, not a claim the decision got wrong. · F1 (largest): THE WIZARD SHEET THIS ADR USES AS ITS T1 PATTERN WAS RETIRED. `badd31d2e` ("refactor(setup): retire the unreachable setup wizard and move its live atoms") removed both `ui/src/features/setup/SetupWizard.css` and `ui/src/__tests__/setupWizardLandscape.test.ts`; the rule survives in `ui/src/features/setup/ProvisioningFlow.css` (789 lines, carries the orientation media query). Annotated in all four places the file cites the retired pair (Context 1, Context 3, T1, slice 0) — the historical narrative is left as written and the retirement is recorded beside it, per the ADR rule: the decision was to generalise that pattern, and it still is. · F2: THE ORIENTATION-RULE COUNT MOVED FROM 1 TO 3, and it matters because the count was this section's evidence for "nothing enforces orientation today". Re-derived: 17 tree-wide hits for an orientation `@media`, of which three are live rules — `ui/src/app/AppLayout.css:719` (portrait, max-width 1023px), `ui/src/app/tablet/tablet.css:557` (portrait) and `:585` (landscape). All three are at the SHELL, which is exactly what T1 licenses; the two page-sheet hits (`PaymentModal.css:162`, `RestaurantSettingsScreens.css:137`) are comments citing the rule, not rules. So the tier structure holds and the "one rule" premise is now three. · F3: THE CSS CORPUS GREW 139 to 158 (`find ui/src -name '*.css'`), feature sheets 106 to 124, sheets with any `@media` 66 to 99 — so the quoted "40 of 106 (38%) unresponsive" is now "25 of 124 (20%)". Both readings are kept, dated, because the improvement is the point and a silently-swapped number would hide it. The migration also visibly advanced: `@container` now appears in 13 sheets (31 rules over 35 `container-type` declarations). · F4: TWO LINE COORDINATES DRIFTED in grown files — the `TabletAppShell.tsx` orientation comment is at `:117-131` (cited `:36-57`) and the `--bp-*` token block at `tokens.css:347-350` (cited `:268-272`). · F5: A SPLICED PROVENANCE SENTENCE, the signature defect this campaign recorded in ADR 54/55 — the 2026-09-23 sentence and the "old docs/adr/ series" sentence had merged mid-line. Rejoined. · ALSO RECORDED, NOT REPAIRED: `docs/records/audits/frontend/css-verification.md` is headed "The replacement: five walker suites" while its own command line names SIX test files and it never mentions orientation — so the file this ADR cites as "the family" understates it. That heading is a cross-document staleness in another file's scope; noted here rather than edited there. · VERIFIED UNCHANGED: the walker is real (`orientationAdaptiveWalker.test.ts`, 722 lines, 6 tests including a planted violation), its `SLICE_0_EXEMPT_SHEETS` set is now EMPTY (`new Set([])`) exactly as the retirement required, `useOrientation` still reads `isLandscape` at `TabletAppShell.tsx:142/569/657` for the T3 escape hatch, and the four `--bp-*` tokens are still width-only. · NOT re-measured: how each migrated sheet renders at both orientations, and whether every tier's gate covers what the document claims. · Prior 2026-09-29 stamp merged below as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 249 lines, no audit stamp, no footer and no marker. Its status line is the strongest claim in this batch — all four tiers landed AND GATED, with seven sheets migrated — and it is the kind of statement a repository can partly adjudicate, because GATED means a checker enforces it. · AND THE GATE IS REAL, which is what makes the claim worth checking rather than repeating. The orientation exemption this decision must have had to reconcile is visible in the code as named machinery: the platform-core boundary checker carries the `bridge-toolkit-purity` rule, and the CSS-walker machinery this decision interacts with includes the `orientationAdaptiveWalker` that the setup-wizard retirement record, audited in round 25, described as exempting one sheet BY NAME and whose own meta-test asserts an exemption must resolve. That is the enforcement surface this decision's claim rests on, and it is live. · A CROSS-DOCUMENT CONNECTION THAT CLOSES A LOOP. The setup-wizard retirement emptied the `SLICE_0_EXEMPT_SHEETS` carve-out and recorded that the tree now holds ZERO orientation rules outside the shell — the state a fence wanted. This decision is the origin of that fence. So the sequence is: the fence was built, the wizard was retired, the exemption list was emptied, and the meta-test now asserts that any new exemption must resolve. A document can rarely show its own success, and this one effectively does, through a record audited nine rounds later. · WHAT WAS NOT CHECKED: the seven migrated sheets individually, and whether every tier's gate covers what the document says it covers. That is an implementation-coverage question and the status line is the claim of record. · Stale paths left as written, consistent with the rest of this batch. · No stamp existed; this is the first. -->
 # ADR-60: Orientation & Adaptive Layout Strategy
 
 **Status:** Implemented (2026-09-21). All four tiers (T1 shell media queries, T2 container
@@ -19,8 +21,8 @@ EodReport, CartPanel). The remaining sheets are future Slice-5 work under the sa
 > **Provenance note.** This record was originally written under `docs/adr/ADR-0001-*.md`
 > (a separate directory that predated this unification) and later merged into `docs/decisions/`
 > as `2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md` — the next available
-> number after ADR-59; its future-dated prefix was corrected to the authored date on 2026-09-23. The old `docs/adr/` series used `ADR-0001`; this file is now
-> canonically **ADR-60** in the `docs/decisions/` sequence. **Cite by filename.**
+> number after ADR-59; its future-dated prefix was corrected to the authored date on 2026-09-23. The old
+> `docs/adr/` series used `ADR-0001`; this file is now canonically **ADR-60** in the `docs/decisions/` sequence. **Cite by filename.**
 > Code and tests that reference `ADR-0001` by label are correct historical citations.
 
 
@@ -32,12 +34,15 @@ measurement, not by omission.
 
 **1. The lock never worked.** `TabletAppShell.tsx` used to call
 `useOrientation('landscape-primary')`. It was removed, and the removal is documented in a
-comment at `ui/src/app/tablet/TabletAppShell.tsx:36-57`: `screen.orientation.lock` is absent
+comment at `ui/src/app/tablet/TabletAppShell.tsx:117-131` (cited :36-57 at the 2026-09-29 audit; the file grew): `screen.orientation.lock` is absent
 in the Android WebView, so `useOrientation` reports `supported: false` and the request is a
 silent no-op (`ui/src/hooks/useOrientation.ts:116-146`). Measured 2026-09-20 on the same
 installed build: 1200x1920 (portrait), then 1920x1200 (landscape). **The app rotates freely.**
 The belief that it was locked is precisely why neither `tablet.css` nor `SetupWizard.css`
-carried a single orientation rule.
+carried a single orientation rule. *(The wizard sheet was retired 2026-10-11-era by `badd31d2e`
+"refactor(setup): retire the unreachable setup wizard and move its live atoms"; its live
+replacement is `ui/src/features/setup/ProvisioningFlow.css`. See the correction note at the foot
+of this file.)*
 
 **2. The keyboard trap.** A screen laid out for one orientation on a device that can be in the
 other is not merely ugly — on a height-starved landscape viewport an on-screen keyboard consumes
@@ -48,11 +53,15 @@ axis. Portrait-only layouts on a rotating device produce this state routinely. A
 assumes a fixed orientation inherits the trap.
 
 **3. The gap is 84% of the stylesheets, and nothing measures it.** `ui/src/**/*.css` holds
-**139** files. Exactly **one** of them contains an orientation rule:
+**158** files at HEAD (139 when this section was written; re-derive with the command below).
+The count was **one** rule when written and is now **three live rules in two shell sheets plus one
+page sheet** (see the 2026-10-11 correction note). As written, **one** of them contained an orientation rule:
 `ui/src/features/setup/SetupWizard.css:625` —
 `@media (orientation: landscape) and (min-width: 48rem)` — backed by one test
-(`ui/src/__tests__/setupWizardLandscape.test.ts`). The one design system that owns the real
-breakpoints, `ui/src/theme/tokens.css:268-272`, declares `--bp-desktop: 1024px`,
+(`ui/src/__tests__/setupWizardLandscape.test.ts`). **Both were retired by `badd31d2e` and no
+longer resolve; the rule survives in `ProvisioningFlow.css`, and this ADR's T4 walker now grades
+it as an ordinary sheet.** The one design system that owns the real
+breakpoints, `ui/src/theme/tokens.css:347-350` (cited :268-272 at the 2026-09-29 audit), declares `--bp-desktop: 1024px`,
 `--bp-tablet: 1023px`, `--bp-tablet-portrait: 768px`, `--bp-mobile: 480px` — **width only, no
 orientation axis, and the tokens are not the literal values the sheets actually use.** So:
 
@@ -106,7 +115,8 @@ Adopt a **hybrid, four-tier strategy**, applied in this precedence order:
 
 **T1.** Orientation media queries are permitted **only at the shell**, where the shell owns the
 whole viewport and there is exactly one of them to keep in step. This is the `SetupWizard.css`
-pattern generalized, and it is the tier that fixes the keyboard trap: the shell is where column
+pattern generalized (the sheet has since been retired — `badd31d2e` — but the pattern it set is
+what T1 codifies), and it is the tier that fixes the keyboard trap: the shell is where column
 count, rail collapse and inset padding change together on rotation.
 
 **T2.** Page content adapts to **its container**, not to the viewport. The shell declares the
@@ -198,6 +208,11 @@ consequence.
   and the fallback is a viewport query — which is Option B's shape for that one target.
 - **The gate is new tooling.** The five walker suites grade fixed shapes with printed
   denominators; a sixth inherits the same caveat that a printed denominator is not coverage.
+  *(2026-10-11: `docs/records/audits/frontend/css-verification.md` still says "five walker suites"
+  and does not mention orientation at all, so it names the family as it stood before T4 landed. The
+  live count of `*.test.ts` suites cited in that file is six (`motionImportantEscapes.test.ts` was
+  added without the heading being updated); the orientation suite makes seven in the family. The
+  heading is the stale part.)*
 - **The 97-sheet migration is not free.** It is a per-sheet change (below), each of which is a
   visual change that needs verification at two sizes.
 
@@ -212,7 +227,7 @@ Each slice is independently landable and independently verifiable. **Slices 0-7 
 
 | # | Slice | Content | Done condition |
 |---|---|---|---|
-| **0** | Wizard landscape *(shipped)* | `SetupWizard.css:604-659` — one orientation media query, the container widens, presets go three-up, features two-up, preview moves beside the presets. Pinned by `ui/src/__tests__/setupWizardLandscape.test.ts`. | Exists. This slice is the pattern T1 generalizes. |
+| **0** | Wizard landscape *(shipped, then retired)* | `SetupWizard.css:604-659` — one orientation media query, the container widens, presets go three-up, features two-up, preview moves beside the presets. Pinned by `ui/src/__tests__/setupWizardLandscape.test.ts`. **Both files were removed by `badd31d2e`** (retire the unreachable setup wizard); the rule and its pin moved to `ProvisioningFlow.css` / the tests that now cover it. This slice remains the pattern T1 generalizes. | Shipped, then superseded by the retirement. |
 | **1** | Registry field + shell consumption | Add the layout/orientation preference to `PageRegistration` and read it in the shell. No page sets it yet. | A registration that sets the field changes the shell layout; a registration that does not, does not. **Done** (`9f26373f1`, `17765ab6e`, `cbf4557f2`). |
 | **2** | Shell declares its container | `container-type: inline-size` on the shell content slot; document the slot in the shell CSS. | A page `.css` can use `@container` and see the slot's width, not the viewport's. **Done** (`1e6d6bd8e`). |
 | **3** | Shell orientation tier (T1) | Shell chrome gets its `@media (orientation: …)` rules — rail, tab bar, insets, shell column count. | Rotating the app re-lays-out the shell with no React re-render. **Done** (`c4b26328a`; `AppLayout.css:658`, `tablet.css:437`). |
@@ -250,12 +265,19 @@ find ui/src -name '*.css' | wc -l                           → 139   (all sheet
 find ui/src/features -name '*.css' | wc -l                  → 106   (feature sheets)
 grep -rln '@media' ui/src/features --include='*.css' | wc -l →  66   (feature sheets with ANY @media)
    ⇒ 40 of 106 feature sheets (38%) declare no @media at all
+
+# Re-measured 2026-10-11 (the corpus has grown; the T4 walker prints its own live population):
+find ui/src -name '*.css' | wc -l                           → 158   (all sheets)
+find ui/src/features -name '*.css' | wc -l                  → 124   (feature sheets)
+grep -rln '@media' ui/src/features --include='*.css' | wc -l →  99   (feature sheets with ANY @media)
+   ⇒ 25 of 124 feature sheets (20%) declare no @media at all
+
+# The migration progressed too: @container now appears in 13 sheets (31 rules, 35 container-type
+# declarations), and 17 tree-wide hits for an orientation @media — THREE of them live rules.
 ```
 
 The walker prints the same population live (`139 sheets parsed; 106 feature sheets fenced`), so the
 denominator is self-auditing rather than quoted. The honest figure is **40 of 106 feature sheets
 carry no width or orientation query**; the T4 gate is what keeps it visible.
 
-> last written 21-10-26 — status **Implemented**; not yet audited.
-
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

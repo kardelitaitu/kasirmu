@@ -59,6 +59,12 @@ pub fn run_get_store_settings(
         currency: Settings::get_default_currency(conn)?.unwrap_or_else(|| "IDR".into()),
         branch: Settings::get_store_branch(conn)?.unwrap_or_default(),
         logo: Settings::get_store_logo(conn)?.unwrap_or_default(),
+        thousands_separator: Some(
+            Settings::get_currency_thousands_separator(conn)?
+                .trim()
+                .to_ascii_lowercase(),
+        )
+        .filter(|s| !s.is_empty()),
     })
 }
 

@@ -78,3 +78,58 @@ Also note the write path is **non-atomic across three stores** — `handleSave` 
 4. Add a **parity test** for `RECEIPT_ELEMENT_CODES` and a test that asserts the print path consumes the same source the settings UI writes.
 
 No files were modified. This is audit/review only.
+---
+
+## Re-verified 2026-10-11 (docs-auditor) — the blocker and three findings are CLOSED
+
+This record was written before `b1a6bdf27` (*fix(receipt): converge restaurant receipt settings
+on the scoped `receipt_formats` resolver*, 2026-09-30) and was filed into `docs/records/audits/`
+on 2026-10-02 without a correction. Its §1 BLOCKER is therefore **false about the present**, and
+four of the seven findings have moved. Nothing above is rewritten: the readings were correct on
+the day they were taken, and the sections below say what is true now.
+
+| § | Finding as written | State at 2026-10-11 |
+|---|---|---|
+| 1 | **BLOCKER** — the print path reads only the legacy `receipt.*` keys; `effective_receipt_format` is never called by any print code | **CLOSED.** Both print paths now resolve through the scoped resolver: `read_receipt_config_for_scope` calls `store.effective_receipt_format(terminal_id, None)` at `crates/kasirmu-bridge/src/hardware.rs:347`, and it is called by `print_sales_receipt` (`:278`) **and** `print_sales_receipt_scoped` (`:309`), plus `:715`. The mobile print path resolves the same way (`apps/mobile-tauri/src/commands/hardware.rs:321`). The `receipt_formats` layer is no longer write-only; the legacy keys remain as the documented fallback, not the sole source. |
+| 2 | HIGH — two surfaces own the same concepts; the card's edits are silently ineffective | **ADDRESSED.** The restaurant screen now writes the scoped layer too: `setReceiptLayoutScoped` is imported (`RestaurantReceiptsScreen.tsx:15`) and called (`:1107`), with the workspace scope resolved on load (`:200-204`). Shadowing is reduced but not abolished: the legacy keys are still read as fallback, so a value present in both layers still resolves by precedence rather than by a visible rule. |
+| 4 | MEDIUM — the restaurant screen has no route to the new layer, and `terminalId` is not passed | **PARTLY CLOSED — this is the one item still live.** The screen now accepts `terminalId?: string` (`:62`) and reads the context value (`:109`, `:117`), and it does call `setReceiptLayoutScoped`. **But the mount site still omits the prop**: `ui/src/features/sales/PosScreen.tsx:1389-1392` renders `<RestaurantReceiptsScreen onBack=… tablesEnabled=… />` with no `terminalId`, so the per-terminal layout scope is still unreachable from the restaurant flow. The plumbing exists; the call site does not supply it. |
+| 7 | LOW — `crates/kasirmu-bridge/src/receipt_format.rs` header says content is "read-only on this surface" | **CLOSED — the stale comment is gone** (`grep 'read-only on this surface'` → 0 hits). `ReceiptSection.tsx` is also confirmed **absent** from the tree, so the third entry point was removed as recommended. |
+
+**Verified unchanged** (re-derived at HEAD, not inherited): `RECEIPT_ELEMENT_CODES` is still
+defined twice — the Rust source of truth and the TS mirror in
+`ui/src/features/settings/screens/ReceiptFormatSettingsCard.tsx` — so §7's parity-test
+recommendation still stands. `RestaurantReceiptsScreen.tsx:109` and `:117` show the prop being
+read, and `storageKeyPins.test.ts` still pins the `resto_rcpt_*` user-preference keys, so §3's
+per-user finding is unchanged.
+
+**NOT re-measured:** the print output on real hardware, the `Promise.all` atomicity of
+`handleSave` (§3), the preview geometry heuristics (§6), and whether a statutory
+`required_fields` element now actually appears on a printed receipt — establishing that the
+resolver is *called* is not the same as observing the printer consume it.
+
+### Re-measured 2026-10-14 (docs-auditor): §4's remaining item is NOT a gap
+
+The re-verification above called §4 "PARTLY CLOSED — this is the one item still live",
+on the evidence that the mount site omits the prop. The prop is still omitted at
+`ui/src/features/sales/PosScreen.tsx:1518-1521` (`onBack` and `tablesEnabled` only), so
+that reading was correct. **But omitting it costs nothing, because the screen already
+resolves a terminal id from the workspace context:**
+
+- `RestaurantReceiptsScreen.tsx:121` — `const effectiveTerminalId = propTerminalId || contextTerminalId || ''`
+- `:117` — `const { sessionToken, terminalId: contextTerminalId } = useWorkspace()`
+- `ui/src/contexts/WorkspaceContext.tsx:263` — `getDeviceId().then(setTerminalId)`, the
+  ADR #22 device id resolved once on mount.
+
+So the per-terminal layout scope IS reachable from the restaurant flow; the prop is an
+override for callers that already hold a specific terminal, not a prerequisite. The
+fallback arrived in `b3e68d5c7` (2026-09-29) — *before* this record was written — which
+is why the original §4 read "no `terminalId` prop" as a defect: the prop genuinely was
+absent, and the compensating line was never read. **This is the shape trap 2 warns about
+one level up: a value can be genuinely missing from the place you looked and still be
+supplied elsewhere, so a "not passed" finding needs the consumer traced, not just the
+call site grepped.**
+
+Net: §4 is CLOSED, and the record's own §2/§3 caveats stand unchanged (the legacy keys
+are still read as fallback, and `resto_rcpt_*` keys are still per-user).
+
+> last audited 14-10-26 by docs-auditor

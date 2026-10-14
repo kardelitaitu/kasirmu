@@ -111,6 +111,8 @@ vi.mock('@/api/products', () => ({
   }),
   listProducts: vi.fn(() => Promise.resolve([])),
   listCategories: vi.fn(() => Promise.resolve([])),
+  listProductsScoped: vi.fn(() => Promise.resolve([])),
+  listCategoriesScoped: vi.fn(() => Promise.resolve([])),
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
@@ -218,7 +220,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     lastWorkspace: null,
     switchStore: vi.fn(),
     resolvedStoreId: 'default',
-    sessionToken: null,
+    sessionToken: 'mock-session-token',
     swapSessionToken: vi.fn(),
   }),
   // f27338da6's terminal-identity read reaches this module through PaymentModal.tsx:289-290
@@ -395,7 +397,7 @@ describe('PosScreen – bundle scanning toast', () => {
     // Wait for the bundle lookup to be called (confirms we got past
     // the barcode lookup and into the bundle path before the error).
     await waitFor(() => {
-      expect(vi.mocked(bundlesApi.lookupBundleBySku)).toHaveBeenCalledWith('', 'BUNDLE-SKU-001');
+      expect(vi.mocked(bundlesApi.lookupBundleBySku)).toHaveBeenCalledWith('mock-session-token', 'BUNDLE-SKU-001');
     }, FAST_WAIT);
 
     // No toast should appear — the catch block swallowed the error.
@@ -430,7 +432,7 @@ describe('PosScreen – bundle scanning toast', () => {
     // Wait for the bundle lookup to be called (confirms we got past
     // the barcode lookup and into the bundle path before the error).
     await waitFor(() => {
-      expect(vi.mocked(bundlesApi.lookupBundleBySku)).toHaveBeenCalledWith('', 'BUNDLE-SKU-001');
+      expect(vi.mocked(bundlesApi.lookupBundleBySku)).toHaveBeenCalledWith('mock-session-token', 'BUNDLE-SKU-001');
     }, FAST_WAIT);
 
     // No toast should appear — the catch block swallowed the error.

@@ -2,6 +2,8 @@
 
 <!-- FOLLOW-UP 2026-10-08 (later the same day): the 1-row gap this stamp anticipated was closed. Two commands had landed in the registries after the repair and are now documented — `print_edc_settlement_slip_scoped` [D+T] (`commands::hardware`, 11) and `notify_memory_pressure` [T] (`commands::health`, 13). Live state: `registered desktop=494 tablet=415 distinct=513`, `documented 513 entries`, four buckets 0, `CLEAN`. -->
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (6 added rows) · Full audit — the page and the registries agree again (`CLEAN`, all four drift buckets zero, exit 0). This page's correctness is a property of a script rather than of prose, so the audit was to RUN the script and act on what it said. `check-api-surface.py` reported six registered commands with no row, all six present in BOTH shells: the three recipe commands (`delete_recipe_scoped`, `get_recipe_scoped`, `set_recipe_scoped`) now appear under `commands::products` (12 -> 15) and the three QRIS listener commands (`get_qris_listener_status_scoped`, `open_qris_listener_settings_scoped`, `simulate_qris_notification_scoped`) get a new `commands::qris_listener` section. Summaries come from each command's own `///` line; markers were read from both `generate_handler!` lists. Live state: `registered desktop=500 tablet=428 distinct=519`, `documented 519 entries`, four buckets 0, exit 0. · NOT RE-MEASURED, and the boundary is the same one every stamp on this page has drawn: the tool establishes that the page and the registries AGREE. It does not establish that each command behaves as its one-line summary says, that the surface is the right one, or that parameter and return types are current — those need the command bodies, not the registries. Agreement between a document and its source is necessary for the document to be useful, not sufficient. · Prior stamps retained. -->
+
 <!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (major drift repaired) — doc and registries agree again (all four drift buckets zero, `CLEAN`, exit 0) · Supersedes the 2026-09-29 stamp, which was true when written and went false as the tablet shell gained commands without doc rows. Drift found and repaired this pass: 54 rows carried the wrong availability marker (all said `[D]` for commands now registered in BOTH shells — `edc` 8, `inventory` 17, `kds` 4, `regional` 1, `shifts` 7, `locations` 9, `products_images` 1, `auth::verify_pin` 1; root commit `6fe57ba17` "register shifts, inventory, kds, edc, locations, and pin commands for tablet parity", plus `edc_inquiry`/`edc_settle` from `656f109a0`); 10 registered commands had no row (`edc_inquiry`, `edc_settle` → `commands::edc`; `export_diagnostics`, `get_storage_health`, `record_crash_report` → `commands::health`; `get_sale_statutory_number_scoped`, `issue_tax_invoice_scoped` → `commands::fiscal`; `check_app_update`, `start_apk_download`, `prepare_and_launch_update` → a new `commands::updater` section, all three `[T]` because the Android updater is tablet-only by design); and one row's PROSE was stale as well as its marker — `get_active_market_profile_scoped` claimed "Desktop-only … not in the tablet shell" while `apps/mobile-tauri/src/lib.rs:1250` registers it, so the sentence was corrected with the marker. Section counts regenerated (`edc` 9→11, `fiscal` 5→7, `health` 9→12, new `updater` 3); every `(N)` on every heading now agrees with its own row count (verified programmatically). Final measured state: `registered desktop=493 tablet=413 distinct=511`, `documented 511 entries`, all four buckets 0. The 64-name drift was re-derived by an independent parser over both `generate_handler!` lists (`493/413/511` exactly, zero difference). · Repaired against branch `0.0.41` at `134aaed1b`. -->
 
 <!-- SUPERSEDED audit stamp: 2026-09-29 · docs-auditor · status: CLEAN — doc and registries agree (all four drift buckets zero) · First pass over this file by this campaign, and the one file it deliberately skipped in every previous round. The skip was correct at the time and is worth recording: the file carried a ` M` in the working tree for the whole campaign, and under the root guide's shared-index rule a pathspec commit would have swept another session's in-flight edits into this one. What turned out to be true at the end is that the file's BYTES EQUAL the committed blob exactly — the modification was a stat-cache artifact, the way a file looks under automatic line-ending handling when nothing about its content has changed. The same signature appeared once before in this campaign on a different file and was confirmed the same way, by comparing the working-tree hash with the committed one rather than trusting either the status line or a diff. So the file was never unsafe to touch; it only LOOKED unsafe, and the discipline that kept it untouched was right to be cautious and wrong to be permanent about it. · THE DOCUMENT IS CURRENT, AND THE CHECKER PROVES IT RATHER THAN INFERING IT. The page's own tooling reports the registered command surface, the defined surface, and the documented entry count, and then tests four ways the three could disagree. All four report zero: no entry carries the wrong shell marker, no entry is listed that is registered nowhere, no entry is listed that is defined nowhere, and — the one that matters most — NO REGISTERED COMMAND IS MISSING FROM THE PAGE. The documented count and the distinct registered count are the same number. A generated reference that is regenerated on a cadence will drift; the question is whether anyone notices, and this document ships the command that notices. · AND THE GAP A PRIOR AUDIT RECORDED HAS BEEN CLOSED, which is the strongest evidence this campaign has that documentation maintenance is actually happening rather than merely intended. The earlier stamp on this page recorded, in its own words, that twenty-five registered commands had no row and that the claim of completeness was therefore true only of an earlier set. The count has since moved and the buckets are empty. Somebody regenerated the page, and the page says in advance how to check that they did. · THE SCALE IS WORTH RECORDING because it is what the tooling has to keep honest: four hundred and ninety-six distinct commands across two shells, the desktop registering more than the tablet, with the intersection large enough that a parity checker exists as a gate in its own right. A document that claims to track that surface is making a strong claim, and the strength of the claim is the reason the page was the hardest file in the campaign to audit — its correctness is a property of a script, not of prose, and the right audit was to run the script. · NOT RE-MEASURED, and the boundary is worth stating: the tool establishes that the page and the registries agree. It does not establish that every command behaves correctly, that the summaries match what the code does, or that the surface is the right one. Agreement between a document and its source is a necessary condition for the document being useful, not a sufficient one, and this stamp claims only the former. The prior audit's per-command summaries were copied from the commands' own documentation comments, which is the right method and the one this campaign did not re-derive. · Prior marker retained; footer re-dated to match the new stamp. -->
@@ -156,6 +158,20 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > Section counts moved with the rows: `edc` 9→11, `fiscal` 5→7, `health` 9→12, and the new
 > `updater` section holds 3. Verified by an independent parser over both `generate_handler!`
 > lists that reproduced `493/413/511` exactly.
+
+> **Count note 2026-10-11 · docs-auditor · repair pass ·** the page is green against the
+> checker again: `registered desktop=500 tablet=428 distinct=519`, `documented 519 entries`,
+> and `marker wrong : 0`, `listed, not registered anywhere : 0`,
+> `listed, not defined anywhere : 0`, `registered, not listed : 0` —
+> **`CLEAN: doc and registries agree`**, exit 0. Six registered commands had no row,
+> accumulated since 2026-10-08, and all six are in BOTH shells: three recipe commands
+> (`delete_recipe_scoped`, `get_recipe_scoped`, `set_recipe_scoped`, defined in
+> `apps/*/src/commands/products.rs`) which bring `commands::products` from 12 to 15, and
+> three QRIS listener commands (`get_qris_listener_status_scoped`,
+> `open_qris_listener_settings_scoped`, `simulate_qris_notification_scoped`, defined in
+> `apps/*/src/commands/qris_listener.rs`) which had no section at all and now get the
+> page's **`commands::qris_listener`**. Each summary is taken from the command's own `///`
+> line and each `[D+T]` marker read out of both `generate_handler!` blocks, not inferred.
 
 <!-- regenerate: parse generate_handler! in both lib.rs for the surface, and the /// doc comments in commands/*.rs for the summaries -->
 ### `commands::analytics` (2)
@@ -601,19 +617,22 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`list_product_variants_scoped`** [D+T] — Scoped variant of `list_product_variants` (ADR #7).
 - **`update_product_variant_scoped`** [D+T] — Update an existing product variant (scoped).
 
-### `commands::products` (12)
+### `commands::products` (15)
 
 - **`adjust_stock_scoped`** [D+T] — Adjust stock for the store resolved from a session token.
 - **`create_product_scoped`** [D+T] — Create a product within the store resolved from a session token.
 - **`delete_product_scoped`** [D+T] — Delete a product within the store resolved from a session token.
+- **`delete_recipe_scoped`** [D+T] — Delete the recipe for a composite product, store-scoped.
 - **`get_product_track_serial_batch_scoped`** [D+T] — Store-scoped batch variant of `get_product_track_serial_batch`. ADR #7.
 - **`get_product_track_serial_scoped`** [D+T] — Check whether a product tracks serial numbers, store-scoped. ADR #7.
+- **`get_recipe_scoped`** [D+T] — Look up recipe ingredients for a composite product, store-scoped.
 - **`list_products_scoped`** [D+T] — Fetch all products for the store resolved from a session token.
 - **`list_warehouse_products_at_location`** [D] — Fetch inventory-tracked products with stock at a specific location.
 - **`list_warehouse_products_scoped`** [T] — Session-scoped variant of `list_warehouse_products`.
 - **`lookup_by_barcode_scoped`** [D+T] — Look up a product by barcode for the store resolved from a
 - **`lookup_product_by_sku_scoped`** [D+T] — Look up a product by SKU for the store resolved from a
 - **`record_product_search_scoped`** [D+T] — Record an acted-upon product search for the popularity index.
+- **`set_recipe_scoped`** [D+T] — Set or update the recipe for a composite product, store-scoped.
 - **`update_product_scoped`** [D+T] — Update a product within the store resolved from a session token.
 
 
@@ -658,6 +677,12 @@ Dynamic QRIS, desktop and tablet. Both are scoped, per ADR #7.
 
 - **`qris_auto_charge_scoped`** [D+T] — Issue a dynamic Midtrans QRIS charge for a sale (scoped, ADR #7).
 - **`qris_auto_status_scoped`** [D+T] — Poll a charge's settlement status (scoped, ADR #7).
+
+### `commands::qris_listener` (3)
+
+- **`get_qris_listener_status_scoped`** [D+T] — Query status of the QRIS notification listener on Android.
+- **`open_qris_listener_settings_scoped`** [D+T] — Open OS notification-listener settings (a no-op on desktop).
+- **`simulate_qris_notification_scoped`** [D+T] — Simulate an incoming bank push notification, for test / development.
 
 ### `commands::refunds` (3)
 
@@ -1019,5 +1044,5 @@ sections because this page documents the **callable** surface.
 
 ---
 
-> last audited 08-10-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor
 

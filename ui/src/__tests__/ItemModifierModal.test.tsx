@@ -93,7 +93,9 @@ describe('ItemModifierModal', () => {
   it('pre-selects default modifiers', () => {
     renderModal();
     const mediumBtn = screen.getByTestId('modifier-mod-medium');
-    expect(mediumBtn).toHaveAttribute('aria-selected', 'true');
+    // aria-checked, not aria-selected: these are radio/checkbox controls now —
+    // aria-selected is only valid on option/tab/gridcell-like roles.
+    expect(mediumBtn).toHaveAttribute('aria-checked', 'true');
   });
 
   it('shows price values in footer', () => {
@@ -109,17 +111,17 @@ describe('ItemModifierModal', () => {
     const user = userEvent.setup();
     renderModal();
     const rareBtn = screen.getByTestId('modifier-mod-rare');
-    expect(rareBtn).toHaveAttribute('aria-selected', 'false');
+    expect(rareBtn).toHaveAttribute('aria-checked', 'false');
 
     await user.click(rareBtn);
     await waitFor(() => {
-      expect(rareBtn).toHaveAttribute('aria-selected', 'true');
+      expect(rareBtn).toHaveAttribute('aria-checked', 'true');
     });
 
     // Medium should be deselected (single-select group: maxSelections=1).
     const mediumBtn = screen.getByTestId('modifier-mod-medium');
     await waitFor(() => {
-      expect(mediumBtn).toHaveAttribute('aria-selected', 'false');
+      expect(mediumBtn).toHaveAttribute('aria-checked', 'false');
     });
   });
 
@@ -133,10 +135,10 @@ describe('ItemModifierModal', () => {
     await user.click(saladBtn);
 
     await waitFor(() => {
-      expect(friesBtn).toHaveAttribute('aria-selected', 'true');
+      expect(friesBtn).toHaveAttribute('aria-checked', 'true');
     });
     await waitFor(() => {
-      expect(saladBtn).toHaveAttribute('aria-selected', 'true');
+      expect(saladBtn).toHaveAttribute('aria-checked', 'true');
     });
   });
 
@@ -164,7 +166,7 @@ describe('ItemModifierModal', () => {
     // Try to deselect Medium (minSelections = 1 for doneness).
     await user.click(mediumBtn);
     await waitFor(() => {
-      expect(mediumBtn).toHaveAttribute('aria-selected', 'true');
+      expect(mediumBtn).toHaveAttribute('aria-checked', 'true');
     });
   });
 

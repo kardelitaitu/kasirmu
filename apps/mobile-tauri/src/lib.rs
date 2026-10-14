@@ -864,6 +864,7 @@ pub fn run() {
                                 match event {
                                     kasirmu_lan::LanEvent::Table(kasirmu_lan::TableSyncEvent::StatusChanged(sc)) => {
                                         let _ = lan_app_handle.emit("tables:status-changed", &sc.table);
+                                        let _ = lan_app_handle.emit("tabs:changed", serde_json::Value::Null);
                                     }
                                     // Lease traffic. TableSyncEvent gained these three
                                     // variants in 9d46d3912 while this match kept only
@@ -1354,6 +1355,9 @@ pub fn run() {
                 commands::products::lookup_product_by_sku_scoped,
                 commands::products::record_product_search_scoped,
                 commands::products::update_product_scoped,
+                commands::products::get_recipe_scoped,
+                commands::products::set_recipe_scoped,
+                commands::products::delete_recipe_scoped,
                 // Product image writes (b-full Phase 3): EditProductModal calls
                 // both and the tablet mounts it. Without them the Phase-2 picker
                 // succeeds and then the write fails as "command not found".
@@ -1411,6 +1415,9 @@ pub fn run() {
                 commands::sync::update_sync_settings_scoped,
                 commands::qris_auto::qris_auto_charge_scoped,
                 commands::qris_auto::qris_auto_status_scoped,
+                commands::qris_listener::get_qris_listener_status_scoped,
+                commands::qris_listener::open_qris_listener_settings_scoped,
+                commands::qris_listener::simulate_qris_notification_scoped,
                 commands::tables::assign_table_order_scoped,
                 commands::tables::create_table_scoped,
                 commands::tables::delete_table_scoped,

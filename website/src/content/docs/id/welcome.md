@@ -6,6 +6,8 @@ order: 1
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page (its en twin carries none either). Verified against the tree: the platform claim matches README.md (Windows is the production-ready build; macOS/Linux/Android/iOS in progress) and the two shipped locales are exactly en + id (ui/src/i18n/index.ts:62 LocaleCode = 'en' | 'id', getAvailableLocales :105-106); Free is free-forever with one location, one register and 3-month history (SubscriptionTier::Free, crates/kasirmu-core/src/subscription/tier.rs:21, max_locations :96-104, sales_history_days :173-179 → 90); the warehouse workspace starts at Premium (max_warehouses :124-130 returns 0 below Premium, and allows_workspace_type denies the warehouse type below it); the five role presets named in the settings page are pemilik/admin/manajer/staf/auditor; reinstate-by-email with a 6-digit recovery code and a 24-hour rotation throttle are both real (apps/license-server/activate.go:73 window: 24 * time.Hour; desktop_link_email.go:7,109 "a 6-digit code"); every internal link the page carries resolves to a real sibling page (terminals, location, workspaces, quickstart, first-day, activation, installation, setup-wizard, first-sale, inventory, licensing, user-roles). · NOT re-measured: a live fresh-install walkthrough and the wizard's own screen copy. -->
+
 ## Apa itu kasir.mu?
 
 kasir.mu adalah platform kasir (POS) offline-first untuk kafe, restoran, dan
@@ -135,3 +137,5 @@ dokumentasi lainnya mencakup aktivasi, pembayaran, sinkron, dan lainnya.
 ---
 
 Lanjut membaca · **Berikutnya:** [Mulai Cepat](../quickstart/) — jalur 15 menit menuju konter siap pakai.
+
+> last audited 11-10-26 by docs-auditor

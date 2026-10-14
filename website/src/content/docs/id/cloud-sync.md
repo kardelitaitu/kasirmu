@@ -6,6 +6,8 @@ order: 8
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page; Indonesian translation of en/cloud-sync.md, audited the same day. Verified against the code, not inherited from the twin: the push/pull-per-register model matches the shipped offline queue plus delta-ledger sync (queue in crates/kasirmu-core, transport in platform/sync); the status screen's named fields — queue depth, last successful sync, pending items — are real on the offline queue screen (ui/src/features/offline/OfflineQueueScreen.tsx:122,212,324-326) backed by ui/src/api/offline.ts; the `docs-flow` SVG class is the shipped branded-diagram rule (website/src/styles/global.css:378, :382) with `role="img"` and an `aria-label` describing the flow, which is the convention docs-authoring.md documents. · Tenant isolation per account is the shipped model (the offline queue and every syncable row carry a tenant scope). · NOT re-measured: multi-register sync convergence, which needs two running instances. · The footer below is an internal marker, stripped from the built site by rehype-strip-audit-footer.mjs. -->
+
 ## Cara kerja sinkron
 
 <svg class="docs-flow" role="img" aria-label="Alur sinkron: setiap register menyimpan salinan lokal dan mengirim serta menarik perubahan melalui server cloud bersama." viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg">
@@ -41,3 +43,5 @@ setelah terhubung kembali.
 Transaksi, pergerakan stok, shift, staf, produk, dan perubahan topologi semua
 tersinkron. Tenant diisolasi per akun, sehingga data tidak pernah tercampur
 antar usaha.
+
+> last audited 11-10-26 by docs-auditor

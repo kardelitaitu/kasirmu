@@ -58,7 +58,15 @@ const EXPECTED_KEYS: Record<string, string> = {
 
   // POS / retail
   'pos-cart-width': 'features/sales/hooks/useCartResize.ts',
-  'pos-locked-cart': 'features/sales/posScreenHooks.ts',
+  // `pos-locked-cart` is NOT listed: round 104 store-scoped it to
+  // 'pos-locked-cart:${resolvedStoreId}', and this scanner reads quoted LITERALS. A key
+  // behind an interpolation cannot be pinned by literal, so it is covered by
+  // `posDraftStoreScoping.test.ts` instead -- which asserts the interpolation itself.
+  // The cash-tender quick-button amounts. READ-ONLY here: PosScreen parses it on
+  // mount and falls back to a hardcoded preset list when absent or malformed, so a
+  // rename would silently reset every cashier's custom denominations rather than
+  // crash — the silent-orphan case this file exists to catch.
+  'restaurant-tender-presets': 'features/sales/PosScreen.tsx',
   'oz-retail-cols-': 'features/retail/hooks/useRetailColumnPrefs.ts',
   'retail-cart-width': 'features/retail/RetailPosScreen.tsx',
   'retail-sound-enabled': 'features/retail/RetailPosScreen.tsx',
@@ -79,24 +87,18 @@ const EXPECTED_KEYS: Record<string, string> = {
   // Restaurant receipt print-preview preferences. The screen reads the same
   // seven through get_setting as a fallback, but the localStorage copy is what
   // makes a preview toggle survive a reload before the setting round-trips.
-  'resto_rcpt_font_size': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_code': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_dt': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_staff': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_footer': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_tax_rate': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_logo': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // The 2-column receipt header's three editable lines (f2c3339c3).
-  'resto_rcpt_header_title': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_header_line1': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_header_line2': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // Where the logo sits in the 2-column header (left / right).
-  'resto_rcpt_logo_pos': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // Whether per-item order notes print on the receipt (c761e0fc0).
-  'resto_rcpt_show_item_notes': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  // Receipt amount formatting toggles (2cab71f40): thousands separator and decimals.
-  'resto_rcpt_thousands_sep': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
-  'resto_rcpt_show_decimals': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  //
+  // ⚠️ NONE OF THE FOURTEEN `resto_rcpt_*` KEYS IS LISTED BELOW, and that is deliberate.
+  // Round 169 store-scoped them through `utils/scopedStorage.ts`, so every one is now
+  // read and written as `<base>:<storeId>` — the same treatment `pos-locked-cart` received in
+  // round 104 (see the note above it). This scanner reads quoted LITERALS, and a key built by
+  // `scopedKey(base, storeId)` has no literal to match, so these entries would fail the
+  // registry's own "renamed or deleted without updating" check the moment they were scoped.
+  //
+  // Coverage moved rather than disappearing: the OLD flat spelling is still honoured by
+  // `readScoped` as a legacy fallback, and `scopedStorage.test.ts` pins the isolation, the
+  // sentinel and that adoption. `RestaurantReceiptsScreen.test.tsx:772-776` asserts the remote
+  // preference lands at the SCOPED address — the same claim these entries used to cover.
 
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
@@ -142,7 +144,12 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:held-carts': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:kds': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:login-attempts': 'dev-mock/core/mockDatabase.ts',
+  // The local-payment rail slice (round 156). The rails used to live in a bare
+  // `new Map()` in module memory, so a save in the browser preview was lost on reload
+  // even though the real backend persists them in `local_payment_methods`.
+  'oz-dev-mock:local-payment-methods': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:sales': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:settings': 'dev-mock/handlers/settings.ts',
   'oz-dev-mock:shift-history': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:topology': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:topology-revisions': 'dev-mock/core/mockDatabase.ts',
@@ -241,7 +248,6 @@ describe('localStorage key registry', () => {
       .sort();
     expect(shared).toEqual([
       'current-username -> contexts/AuthContext.tsx, features/auth/SessionLockScreen.tsx',
-      'pos-cart-width -> features/sales/hooks/useCartResize.ts, features/sales/posScreenHooks.ts',
     ]);
   });
 });

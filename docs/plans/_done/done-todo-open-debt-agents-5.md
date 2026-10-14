@@ -1,5 +1,5 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-**Siblings:** `done-todo-open-debt-agents-1.md`, `todo-open-debt-agents-2.md` .. `todo-open-debt-agents-4.md`.
+**Siblings:** `done-todo-open-debt-agents-1.md`, `done-todo-open-debt-agents-2.md` .. `done-todo-open-debt-agents-4.md`. **Sibling names re-derived 11-10-26: all five phase files now carry the `done-` prefix, so the pre-rename spellings above are corrected here rather than rewritten in place — the earlier forms were right when each list was written (this phase earned `done-` on its own acceptance date, and the lists were not refreshed afterwards).**
 
 **Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
 - `python scripts/verify-pg-tests-ran.py --self-test` → **PASS** (36 green, 0 red).

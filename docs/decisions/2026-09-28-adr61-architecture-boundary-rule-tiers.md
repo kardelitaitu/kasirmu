@@ -5,7 +5,14 @@ title: ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-o
 status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied (0 tracked findings); the deadline that made the seven shims is sequenced, not done
 ---
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 155 lines, with no prior stamp, footer and no marker — for the decision that closed a dependency-debt campaign. Its status line makes the strongest set of claims this campaign has audited in `docs/decisions/`: ALL EIGHT boundary edges closed, the transitional baseline EMPTY, and a governed expiry date with nothing left to expire. Those are three falsifiable claims about the same thing, and all three were checked. · THE BASELINE IS EMPTY, exactly as claimed. The boundary checker's transitional-debt file — the artefact that makes a boundary gate a ratchet rather than a moving target — carries an empty entry list. This campaign verified that same file's existence two rounds ago as the substrate that lets a gate be adopted against a codebase mid-restructure rather than immediately disabled. An empty list is the endpoint that design was for, and it is the difference between a gate that holds and a gate that has merely been switched on. · AND THE HARDEST CLAIM ALSO HOLDS, which is the one worth a reader's attention. The decision records that the final edge was closed by DELETING a four-constant subset rather than copying it, on the grounds that two spellings of one identifier set is how they drift apart. That is a checkable prediction — a copy would have left two definitions — and the tree has exactly ONE: the module is defined in the platform core role module and nowhere else. Every other occurrence in the codebase is a reference to that single definition, not a second copy. A decision that reasoned about failure modes rather than only about the happy path, wrote the reasoning down, and was then right about its own prediction is the best kind of document in this repository, and this campaign has now seen several of them. · THE REASONING IS ALSO SPECIFIC ABOUT WHY THE OBVIOUS ROUTE WAS WRONG, and that is the part a future maintainer needs. The types moved UP into the platform core rather than down into the foundation layer, because the foundation route would have produced a dependency cycle — a constraint that is invisible until someone tries the convenient answer and the compiler objects. Naming that before it was tried is the value of writing the decision down. · The Context section states the problem this solves in one line: every rule was derived from the Cargo graph alone, so all eight upward edges were reported identically regardless of what the source actually did with the module. A checker that cannot distinguish two different debts cannot prioritise them, which is the same insight as the debt-classification decision this campaign audited earlier — and the same reason the re-export-only edge deserved a named rule rather than a blanket allow. · NOT re-measured: whether the boundary checker currently passes, and whether the expiry mechanism still has code paths that are now unreachable. A dead code path in a gate is a maintenance cost but not a correctness one, and removing it is the owner's call. What is established is that the debt it was written to govern is gone. · No stamp existed; this is the first. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 major, 1 minor) · Re-audit of the decision that closed the dependency-debt campaign. Its three falsifiable claims still hold, re-derived at HEAD rather than inherited: the transitional baseline `scripts/architecture-boundaries-baseline.json` holds ZERO entries, and `python3 scripts/verify-architecture-boundaries.py` exits 0 reporting 0 tracked / 0 blocking / 0 stale (population: 40 crates, 586 dependency edges). D1's rule is live at `scripts/verify-architecture-boundaries.py:97` (`core-type-shim`, P2), D2's classifier at `:424` (`core_edge_kinds`), D3's quarter at `:941` (`MAX_TERM_MONTHS = 3`) with `add_months` at `:950`. THE HARDEST CLAIM ALSO HOLDS: the four-constant `builtin_roles` subset was DELETED, not copied, and the id set has exactly ONE definition tree-wide — `platform/core/src/rbac.rs:306` — which is the prediction the decision made and this re-audit re-tested. ·
+  MAJOR 1 — THE SPLICED PROSE IS REPAIRED. The 'Measured 2026-09-28: the schema already stamps' passage (added by ec2aacfa8) had been inserted BETWEEN the two halves of the D7 sentence: `...platform-core`, which` ended L114 and `would be the natural home for clock-reading types.` sat at L127, so the clause dangled and the inserted text was a run of escaped quoted strings (`\"...\"`) rather than page text. Rejoined the sentence and rendered the measurement as a blockquote. This is the trap-5 signature: a continuation line whose sentence does not close. ·
+  MAJOR 2 — CONTEXT §4 DESCRIBED THE SHIMS AS LIVE WHEN THEY ARE RETIRED. It read 'the fifteen deprecated `Store` shims in `crates/kasirmu-core/src/db/settings.rs` are deliberately retained', citing `src/db/settings_tests.rs:1` and `tests/settings_integration.rs:9` as carrying `#![allow(deprecated)]`. All three citations no longer resolve: the shims are DELETED (the file now carries its own 'RETIRED 2026-09-28 (ADR-61 / C26)' note), `src/db/settings_tests.rs` has no `allow(deprecated)` at all, and `tests/settings_integration.rs` does not exist because the top-level test files were consolidated into `tests/integration/` — the live file is `tests/integration/settings.rs`, whose `:14-15` note says the tests 'now call the repository directly (ADR-61 / C26)'. Corrected, with the retirement named. ·
+  MINOR — the D6/Context error cite had aged with its own success: it read `impl From<modules_currency::CurrencyError>` at `error.rs:188-196`; at HEAD that impl is `impl From<platform_core::CurrencyError>` at `:194-196`, because the move D6 decided was carried out. Repointed. ·
+  VERIFIED AND LEFT ALONE: `foundation/Cargo.toml` depends on exactly `tracing` and `chrono` (no rusqlite, no tokio) as D7 records; `modules-currency` is present in `crates/kasirmu-core/Cargo.toml` ONLY under `[dev-dependencies]`, which is precisely what D6 predicted and what the checker ignores by design; the schema's `strftime('%Y-%m-%dT%H:%M:%fZ','now')` default is the format the D7 measurement quotes. The status line's 'nothing left to expire' is true. ·
+  NOT re-measured: whether the seven closed edges would reopen under a future edit — the checker reports today's state, not tomorrow's. ·
+  PRIOR STAMP, kept verbatim as text with delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 155 lines, with no prior stamp, footer and no marker — for the decision that closed a dependency-debt campaign. Its status line makes the strongest set of claims this campaign has audited in `docs/decisions/`: ALL EIGHT boundary edges closed, the transitional baseline EMPTY, and a governed expiry date with nothing left to expire. Those are three falsifiable claims about the same thing, and all three were checked. · THE BASELINE IS EMPTY, exactly as claimed. The boundary checker's transitional-debt file — the artefact that makes a boundary gate a ratchet rather than a moving target — carries an empty entry list. This campaign verified that same file's existence two rounds ago as the substrate that lets a gate be adopted against a codebase mid-restructure rather than immediately disabled. An empty list is the endpoint that design was for, and it is the difference between a gate that holds and a gate that has merely been switched on. · AND THE HARDEST CLAIM ALSO HOLDS, which is the one worth a reader's attention. The decision records that the final edge was closed by DELETING a four-constant subset rather than copying it, on the grounds that two spellings of one identifier set is how they drift apart. That is a checkable prediction — a copy would have left two definitions — and the tree has exactly ONE: the module is defined in the platform core role module and nowhere else. Every other occurrence in the codebase is a reference to that single definition, not a second copy. A decision that reasoned about failure modes rather than only about the happy path, wrote the reasoning down, and was then right about its own prediction is the best kind of document in this repository, and this campaign has now seen several of them. · THE REASONING IS ALSO SPECIFIC ABOUT WHY THE OBVIOUS ROUTE WAS WRONG, and that is the part a future maintainer needs. The types moved UP into the platform core rather than down into the foundation layer, because the foundation route would have produced a dependency cycle — a constraint that is invisible until someone tries the convenient answer and the compiler objects. Naming that before it was tried is the value of writing the decision down. · The Context section states the problem this solves in one line: every rule was derived from the Cargo graph alone, so all eight upward edges were reported identically regardless of what the source actually did with the module. A checker that cannot distinguish two different debts cannot prioritise them, which is the same insight as the debt-classification decision this campaign audited earlier — and the same reason the re-export-only edge deserved a named rule rather than a blanket allow. · NOT re-measured: whether the boundary checker currently passes, and whether the expiry mechanism still has code paths that are now unreachable. A dead code path in a gate is a maintenance cost but not a correctness one, and removing it is the owner's call. What is established is that the debt it was written to govern is gone. · No stamp existed; this is the first.
+-->
 # ADR-61: Architecture Boundary Rule Tiers
 
 **Status:** Implemented (2026-09-28); the currency edge is CLOSED. The named rule, the classification, the governed expiry
@@ -45,12 +52,16 @@ The one comment that looks like a seventh use (`migrations_tests.rs` naming
 every push. Worse, extending one was indistinguishable from editing a date: no input this
 checker receives can tell that a bump happened.
 
-**4. The real edge cannot be closed by deletion.** `crates/kasirmu-core/src/error.rs:188-196` is
-`impl From<modules_currency::CurrencyError> for CoreError`, so core's public error type names a
-module type and cannot stop depending on the module. The fifteen deprecated `Store` shims in
-`crates/kasirmu-core/src/db/settings.rs` are deliberately retained: `src/db/settings_tests.rs:1`
-and `tests/settings_integration.rs:9` carry `#![allow(deprecated)]` with the reason written beside
-it — "Deprecated currency methods tested here for DB back-compat verification".
+**4. The real edge cannot be closed by deletion.** `crates/kasirmu-core/src/error.rs:194-196` is
+`impl From<platform_core::CurrencyError> for CoreError` (at decision time this read
+`modules_currency::CurrencyError` at `:188-196`; D6 below moved the type, and the cite is re-derived at
+HEAD). The fifteen deprecated `Store` shims in
+`crates/kasirmu-core/src/db/settings.rs` were **deliberately retained at decision time, and are now
+RETIRED** — the shims are deleted and `kasirmu-core` keeps `modules-currency` as a dev-dependency only
+(D6, as implemented below). `crates/kasirmu-core/src/db/settings.rs` carries the retirement note; the
+tests that exercised them now call `CurrencyRepository` directly (`tests/integration/settings.rs:14-15`,
+which is where the former `tests/settings_integration.rs` moved — the top-level test files were
+consolidated into `tests/integration/`).
 
 ## Decision
 
@@ -111,20 +122,20 @@ it touches ten production insert paths across five crates (`modules/sales/src/re
 `crates/kasirmu-cli/src/seed_demo.rs:467` and `:670`), and its failure mode is a silently EMPTY
 `created_at` in financial rows rather than a compile error. A compile-checked variant exists (make each
 constructor take the timestamp, ~15 call sites, a seven-argument `Refund::new`) and is the better
-shape if this is ever revisited — as is a domain crate between `foundation` and `platform-core`, which
+shape if this is ever revisited — as is a domain crate between `foundation` and `platform-core`, which would be the natural home for clock-reading types.
 
-"**Measured 2026-09-28, after the decision above: the schema already stamps, and in this exact format.**"
-"Every `created_at` in `crates/kasirmu-core/migrations/20260813_init.sql` is"
-"`TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` — byte-identical to what"
-"`chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)` produces: same `%Y-%m-%dT%H:%M:%fZ` shape,"
-"same trailing `Z`, and the PG mirror carries the same non-null default. The Rust clock is"
-"reached at all only because each insert passes the column EXPLICITLY (`sale.created_at` at"
-"`modules/sales/src/repository.rs:161`, plus the nine paths listed above), which suppresses the default."
-"So the recipe is an omission, not a re-stamping: drop the column from each insert list and the stored bytes"
-"are unchanged. That is a real reduction in risk and NO reduction in the work — a path that still passes"
-"`''` stores an empty string, because `NOT NULL` does not forbid one — which is why this stays"
-"recorded rather than done, and why the format proof is what makes it safe when someone does it."
-would be the natural home for clock-reading types.
+> **Measured 2026-09-28, after the decision above: the schema already stamps, and in this exact format.**
+> Every `created_at` in `crates/kasirmu-core/migrations/20260813_init.sql` is
+> `TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` — byte-identical to what
+> `chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)` produces: same `%Y-%m-%dT%H:%M:%fZ` shape,
+> same trailing `Z`, and the PG mirror carries the same non-null default. The Rust clock is
+> reached at all only because each insert passes the column EXPLICITLY (`sale.created_at` at
+> `modules/sales/src/repository.rs:161`, plus the nine paths listed above), which suppresses the default.
+> So the recipe is an omission, not a re-stamping: drop the column from each insert list and the stored bytes
+> are unchanged. That is a real reduction in risk and NO reduction in the work — a path that still passes
+> `''` stores an empty string, because `NOT NULL` does not forbid one — which is why this stays
+> recorded rather than done, and why the format proof is what makes it safe when someone does it.
+
 
 ## Consequences
 
@@ -155,4 +166,4 @@ would be the natural home for clock-reading types.
 - `scripts/__tests__/verify-architecture-boundaries.test.mjs`
 - `manager-codebase-review-checklist.md` — item C26 and the D3 correction
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

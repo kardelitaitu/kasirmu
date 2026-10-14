@@ -138,7 +138,7 @@ export function invoke<T>(
     }
   });
 }
-export { listen } from '@tauri-apps/api/event';
+export { listen, emit } from '@tauri-apps/api/event';
 export { getVersion } from '@tauri-apps/api/app';
 export { getCurrentWindow } from '@tauri-apps/api/window';
 

@@ -327,13 +327,20 @@ const login = getRelativeLocaleUrl(locale, 'login');
       }
       <ThemeToggle locale={locale} />
       <LocaleSwitcher locale={locale} alternatePaths={alternatePaths} />
+      {/* min-w + text-center reserve one box for BOTH labels. The swap rewrites
+          this link's text from the login label to the account label, and the two
+          are not the same width (measured on the live site 2026-10-11, Inter
+          14px: "Masuk" 77px / "Akun" 67px, "Sign in" 78px / "Account" 89px).
+          Without the reservation the pill shrinks mid-navigation and drags the
+          whole right-hand cluster — theme toggle and locale switcher — 10px to
+          the left and back. 6rem covers the widest of the four. */}
       <a
         href={login}
         data-auth-nav
         data-locale={locale}
         data-login-text={t(locale, 'nav.login')}
         data-account-text={t(locale, 'nav.account')}
-        class="hidden rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition hover:bg-primary-hover sm:inline-block"
+        class="hidden min-w-[6rem] rounded-md bg-primary px-4 py-2 text-center text-sm font-semibold text-on-primary transition hover:bg-primary-hover sm:inline-block"
       >
         {t(locale, 'nav.login')}
       </a>
@@ -459,6 +466,33 @@ const login = getRelativeLocaleUrl(locale, 'login');
     </div>
   </div>
 </header>
+
+<!--
+  Pre-paint auth label. Mirrors applyAuthNav() in src/lib/header-nav.ts, which
+  cannot do this job: it is a bundled module script (deferred) and it awaits
+  /__oz/session, so the browser paints before either can run — the ~150-200ms
+  of "Masuk" measured on the first view of a session.
+
+  This is `is:inline` and sits directly after the header on purpose: it runs
+  the moment the parser has the header in the DOM, which is before the first
+  paint. It can only read the JS-readable hint cookie the Worker sets
+  (worker.ts, SIGNED_IN_COOKIE) — the session cookie is httpOnly by design.
+
+  It is a paint hint, not an authority: header-nav.ts revalidates on load and
+  on every swap and wins whenever the two disagree. The duplication is the
+  price of running before the bundle; worker.test.ts pins the cookie name on
+  both sides so they cannot drift.
+-->
+<script is:inline>
+  (() => {
+    if (!/(?:^|;\s*)oz_signed_in=1(?:\s*;|$)/.test(document.cookie || '')) return;
+    document.querySelectorAll('[data-auth-nav]').forEach(function (link) {
+      var loc = link.getAttribute('data-locale') || 'en';
+      link.setAttribute('href', '/' + loc + '/account');
+      link.textContent = link.getAttribute('data-account-text') || 'Account';
+    });
+  })();
+</script>
 
 <!--
   The auth-nav logic lives in src/lib/header-nav.ts and resolves session state

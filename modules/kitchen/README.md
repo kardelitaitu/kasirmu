@@ -1,5 +1,9 @@
 # Kitchen Module
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Re-audit of the kitchen stub page; the 2026-08-31 stamp is merged at the bottom as plain text (delimiters stripped so it cannot nest). · NOTHING NEEDED REPAIR, and the reason is worth recording because it is the opposite of what most module READMEs in this campaign needed: this page's load-bearing claim — that the `kitchen-display` disable guard reaches into the KDS tables directly and should one day ask this module instead — is still exactly right. `KdsFeatureGuard` really lives in `crates/kasirmu-core/src/features.rs` (the FeatureGuard trait at :578, KdsFeatureGuard alongside it) and its `can_disable` COUNTs `kds_orders`, proven by the test that RENAMES the table to make the read fail and asserts the veto fails CLOSED (features_tests.rs:1133-1146) — a guard whose state read errors must not read as "no tickets". The page's description of a direct table read is therefore both true and the real motivation for the promotion item. · VERIFIED: manifest.json declares kitchen:view/bump/route/manage with dependencies ["sales","terminal"], matching the table and `dependencies()`; KitchenModule's three hooks log stub messages, with on_start naming the SLA timer that does not exist yet — accurate; Feature::KitchenDisplay and Feature::TableManagement both declare `&[Self::Restaurant]` as their dependency (features.rs:147-148) and map to "kitchen-display"/"table-management" (:497-498); the KDS is still frontend-only as claimed (ui/src/features/kds/KdsScreen.tsx present, no Rust module owning ticket state); platform/sync exists. · NOT re-measured: the KDS runtime behaviour and the disable-guard verdict against a live database with open tickets. · Superseded 2026-08-31 body follows as plain text:
+
+Superseded audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: KitchenModule is a documented lifecycle-only stub; manifest.json declares kitchen:view/bump/route/manage; Feature::KitchenDisplay and Feature::TableManagement both depend on Restaurant; the kitchen-display disable-guard coupling is accurately described. -->
+
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: KitchenModule is a documented lifecycle-only stub (registers, declares sales+terminal deps); manifest.json declares kitchen:view/bump/route/manage; Feature::KitchenDisplay and Feature::TableManagement both depend on Restaurant (features.rs:147-148); the kitchen-display disable-guard coupling is accurately described -->
 
 **Status:** Stub (lifecycle only — no domain logic yet)
@@ -47,4 +51,4 @@ is promoted, that guard should ask this module instead.
 
 See `modules/README.md` for the full promotion path.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

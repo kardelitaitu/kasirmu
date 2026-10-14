@@ -247,9 +247,17 @@ export function useTopologyEditorApplyPanel(deps: TopologyApplyPanelDeps) {
     } catch (err) {
       if (isTopologyRevisionConflict(err)) {
         addToast({ message: l10n.getString('topology-toast-revision-conflict'), type: 'error' });
-        skipNextLoadRef.current = false;
+        // ORDER IS LOAD-BEARING. The save-lifecycle reducer deliberately keeps an
+        // `applying` phase across a reload (nodeTopologyEditorSaveState.ts: a post-save
+        // reload must not interrupt the Apply), so the ONLY way out of `applying` is
+        // `apply-failure`. Dispatching the reload first lets its load-success land in
+        // the same flush -- and on a no-network dev-mock it does -- which is how CI saw
+        // this button still aria-disabled at assertion time. The failure is written
+        // FIRST and the reload is deferred to the next tick, so the phase has left
+        // `applying` before any load can race it.
         failApply();
-        setReloadKey((k) => k + 1);
+        skipNextLoadRef.current = false;
+        setTimeout(() => setReloadKey((k) => k + 1), 0);
         return true;
       }
       if (!(err instanceof TopologyApplyValidationError)) {

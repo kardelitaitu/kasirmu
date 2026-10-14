@@ -185,6 +185,18 @@ pub struct SaleDetail {
     /// Statutory document number (e.g. formal Tax Invoice or Receipt sequence number).
     #[serde(default)]
     pub statutory_number: Option<String>,
+    /// Discount percentage applied (0-100). 0 means no discount.
+    #[serde(default)]
+    pub discount_percent: i64,
+    /// Human-readable discount label (e.g. "Senior 10%").
+    #[serde(default)]
+    pub discount_label: Option<String>,
+    /// Tip amount in minor units collected at checkout (default 0).
+    #[serde(default)]
+    pub tip_minor: i64,
+    /// Service-charge amount in minor units collected at checkout (default 0).
+    #[serde(default)]
+    pub service_charge_minor: i64,
 }
 
 /// Fetch a single sale by ID from the store resolved from a session token.
@@ -264,6 +276,10 @@ fn map_sale_to_detail(
         display_code,
         faktur_pajak,
         statutory_number,
+        discount_percent: s.discount_percent,
+        discount_label: s.discount_label,
+        tip_minor: s.tip_minor,
+        service_charge_minor: s.service_charge_minor,
     }
 }
 

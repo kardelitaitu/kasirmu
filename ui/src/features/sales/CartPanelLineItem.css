@@ -351,33 +351,6 @@
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-/* ── Price override button (inside cart line) ───────────────── */
-
-.pos-cart-line-override {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  padding: var(--space-0_5) var(--space-2);
-  margin-top: 0.25rem;
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-accent);
-  background: var(--color-accent-subtle);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--duration-100) var(--ease-out), color var(--duration-100) var(--ease-out);
-}
-
-.pos-cart-line-override:hover {
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-}
-
-.pos-cart-line-override:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
 
 /* ── Course chip + dropdown (restaurant coursing) ─────────────
  * This file's header claimed ownership of `.pos-cart-line-course`
@@ -418,6 +391,38 @@
   border-color: var(--color-accent);
   background: var(--color-accent-subtle);
   color: var(--color-accent-fg);
+}
+
+/* Fired course: visual indicator that line was dispatched to kitchen */
+.pos-cart-course-chip--fired {
+  border-style: solid;
+  border-color: var(--color-success-dim);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+/* Held course: line is waiting for server to fire */
+.pos-cart-course-chip--hold {
+  border-style: dashed;
+  border-color: var(--color-warning-dim);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.pos-cart-course-status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
+  margin-left: var(--space-0_5);
+}
+
+.pos-cart-course-status-badge--fired {
+  color: var(--color-success);
+}
+
+.pos-cart-course-status-badge--hold {
+  color: var(--color-warning);
 }
 
 .pos-cart-course-chip:focus-visible {
@@ -496,7 +501,8 @@
 
 /* ── Kitchen notes / Special instructions ───────────────── */
 
-.pos-cart-line-note-btn {
+.pos-cart-line-note-btn,
+.pos-cart-line-modifier-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -512,12 +518,21 @@
   transition: all var(--duration-100) var(--ease-out);
 }
 
-.pos-cart-line-note-btn:hover {
+.pos-cart-line-note-btn:hover,
+.pos-cart-line-modifier-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-accent-subtle);
 }
 
+/* Only the NOTE variant has an active state: it lights up when the line already
+   carries a note (CartLineItem.tsx applies the modifier when `line.note` is set).
+   The former `.pos-cart-line-modifier-btn--active` half of this rule was applied
+   by NO element in the tree — the sliders button and the "$" price-override icon
+   that reuse the base class are both stateless — so it was dead CSS, and
+   screenExtraction's dead-class gate read it as such. Deleting the selector is the
+   fix rather than inventing a state: CartLine carries no "price was overridden"
+   field, so an active override chip could not be computed even if wanted. */
 .pos-cart-line-note-btn--active {
   border-style: solid;
   border-color: var(--color-accent);
@@ -525,7 +540,8 @@
   color: var(--color-accent);
 }
 
-.pos-cart-line-note-btn:focus-visible {
+.pos-cart-line-note-btn:focus-visible,
+.pos-cart-line-modifier-btn:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 1px;
 }
@@ -630,8 +646,8 @@
    the cart. `:active` is the only feedback a finger can produce; these had
    transitions but no press state. */
 .pos-cart-qty-btn:not(:disabled):active,
-.pos-cart-line-override:not(:disabled):active,
-.pos-cart-line-note-btn:not(:disabled):active {
+.pos-cart-line-note-btn:not(:disabled):active,
+.pos-cart-line-modifier-btn:not(:disabled):active {
   transform: scale(0.94);
 }
 
@@ -647,19 +663,16 @@
   .pos-cart-line-remove,
   .pos-cart-course-chip,
   .pos-cart-course-option,
-  .pos-cart-line-note-btn {
+  .pos-cart-line-note-btn,
+  .pos-cart-line-modifier-btn {
     min-height: var(--touch-target-min);
-  }
-
-  .pos-cart-line-override {
-    min-height: 1.75rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pos-cart-qty-btn:not(:disabled):active,
-  .pos-cart-line-override:not(:disabled):active,
-  .pos-cart-line-note-btn:not(:disabled):active {
+  .pos-cart-line-note-btn:not(:disabled):active,
+  .pos-cart-line-modifier-btn:not(:disabled):active {
     transform: none;
     opacity: 0.75;
   }
@@ -682,4 +695,31 @@
   color: var(--color-primary);
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* ── Kitchen Dispatch Status Badges ──────────────────────── */
+.pos-cart-line-dispatched-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-2xs, 0.6875rem);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  margin-left: var(--space-1);
+  line-height: var(--leading-condensed);
+}
+
+.pos-cart-line-draft-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-2xs, 0.6875rem);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  margin-left: var(--space-1);
+  line-height: var(--leading-condensed);
 }

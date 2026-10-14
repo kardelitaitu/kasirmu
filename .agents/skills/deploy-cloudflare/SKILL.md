@@ -1,9 +1,11 @@
 ---
 name: deploy-cloudflare
-description: Deploy, verify and rotate credentials for the kasir.mu marketing site and website Worker on Cloudflare (Astro static build in website/, worker.ts, the dashboard/admin routes, the runtime LICENSE_API_URL config, the CF_API_KEY Worker secret, and the Cloudflare API token). Use when asked to deploy the website, publish the site, run wrangler, change the licence-server URL the site talks to, verify what is live on kasir.mu, or rotate an expired/rejected Cloudflare token. This is a MANUAL deploy — no workflow ships the site.
+description: Deploy, verify and rotate credentials for the kasir.mu marketing site and website Worker on Cloudflare (Astro static build in website/, worker.ts, the dashboard/admin routes, the runtime LICENSE_API_URL config, the CF_API_KEY Worker secret, and the Cloudflare API token). Use when asked to deploy the website, publish the site, run wrangler, change the licence-server URL the site talks to, verify what is live on kasir.mu, or rotate an expired/rejected Cloudflare token. CI ships the site on a push to main (`.github/workflows/website.yml`); a manual deploy is the fallback when CI cannot run or a hotfix must bypass it.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all four paths the file cites are tracked and exist — `scripts/wrangler-deploy.sh`, `website/worker.ts`, `website/wrangler.toml`, `website/public/_headers`. The `oz-pos` Worker name is NOT rebrand drift: the file states plainly that `oz-pos` is the Cloudflare Worker's name while the brand is `kasir.mu`, and the string is allow-listed in the drift guard's crate-prefix check, so it was deliberately left alone. The `v0.0.39` tag in the example commands matches the workspace version lock at `Cargo.toml:37`. · NOT re-measured (would need live Cloudflare credentials or a deploy): the `wrangler` CLI behaviours, the secret-rotation steps, and the claim that a deploy actually lands. No network call or deploy was attempted during this audit. · 2026-10-01 · BK · both literals naming the untracked dependency tree under `website/` were the only unresolved references in this file; removed rather than rephrased, since a rephrased mention is still a mention. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · First re-audit since 2026-09-22; that stamp and the 2026-10-01 literal-removal note are merged at the bottom as original evidence. · MAJOR: the skill's HEADLINE claim had inverted — its description, Golden Rule 1 and pitfall 1 all said "This is a MANUAL deploy — no workflow ships the site", with Rule 1 asserting `grep -rn wrangler .github/workflows/*.yml` is ZERO hits. That grep now returns **6 hits, all in `.github/workflows/website.yml`**, a live "Website Deploy" workflow that runs on a push to `main` touching `website/**` and calls `scripts/wrangler-deploy.sh`. The timeline explains it exactly: the workflow was retired to `attic/website.yml.bak` on 2026-09-02 (`23c963303`), this skill was audited on 2026-09-22 while it was still retired (so the 2026-09-22 stamp was CORRECT), and the workflow was RESTORED on 2026-09-24 by `60acf8141`. The claim then inverted underneath a paragraph whose entire subject is not trusting a deploy claim. The repair states both the fact AND the rule to re-derive it, because this is the second time in this campaign the same deploy claim has flipped in the same file. · MINOR 1: two `--tag v0.0.39` examples — the workspace version lock is `0.0.41` (`Cargo.toml`). The prior stamp even certified the 0.0.39 example as correct, which it was on its date. · MINOR 2: verification probe #2 led with `https://ozpos.my.id/docs-portal/intro.html` and the page called it "the one to trust"; `website.yml` deliberately does NOT build the docs portal (`docs/book` is untracked), so that URL 404s on a healthy deploy. Repointed the "one to trust" to the `/__oz/runtime-config.js` probe and recorded why a probe that fails when nothing is wrong is worse than none. · VERIFIED AND LEFT ALONE: all four cited paths exist (`scripts/wrangler-deploy.sh`, `website/worker.ts`, `website/wrangler.toml`, `website/public/_headers`) plus `_redirects`; the script's flags match its usage exactly (`--message`, `--tag`, `--skip-build`, `SKIP_BUILD=1`); `npm run deploy` is really `bash ../scripts/wrangler-deploy.sh`; the Worker name `oz-pos` in `wrangler.toml` is a real Cloudflare project name and the string is allow-listed in the drift guard, NOT rebrand drift; the `LICENSE_API_URL` runtime-vs-build-time split matches `worker.ts` and `wrangler.toml`; `CF_API_KEY` is indeed a Worker secret, not a `[vars]` entry; the routes block is top-level with all four routes including the apex and www. · NOT re-measured (needs live credentials or a deploy): the wrangler CLI behaviours, the token-rotation steps, and whether a deploy actually lands. No network call was attempted. · Superseded 2026-09-22 body follows as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all four paths the file cites are tracked and exist — `scripts/wrangler-deploy.sh`, `website/worker.ts`, `website/wrangler.toml`, `website/public/_headers`. The `oz-pos` Worker name is NOT rebrand drift: the file states plainly that `oz-pos` is the Cloudflare Worker's name while the brand is `kasir.mu`, and the string is allow-listed in the drift guard's crate-prefix check, so it was deliberately left alone. The `v0.0.39` tag in the example commands matches the workspace version lock at `Cargo.toml:37`. · NOT re-measured (would need live Cloudflare credentials or a deploy): the `wrangler` CLI behaviours, the secret-rotation steps, and the claim that a deploy actually lands. No network call or deploy was attempted during this audit. · 2026-10-01 · BK · both literals naming the untracked dependency tree under `website/` were the only unresolved references in this file; removed rather than rephrased, since a rephrased mention is still a mention. -->
 
 # Deploying the kasir.mu website to Cloudflare
 
@@ -37,7 +39,7 @@ Not covered here: the **backend** deploy (that is `deploy-northflank`) and the s
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **This deploy is manual. Nothing in CI ships the site.** | `dev-ci.yml#website` installs, typechecks, lints, tests and **builds** — it stops short of deploying (`grep -rn wrangler .github/workflows/*.yml` is zero hits). A green PR run is not a published site, and a forgotten deploy is invisible from GitHub. |
+| 1 | **CI deploys the site on a push to `main`** (`.github/workflows/website.yml`, restored 2026-09-24 by `60acf8141`). It runs on pushes touching `website/**`, `prototypes/**` or `scripts/wrangler-deploy.sh`, plus manual dispatch, and calls `scripts/wrangler-deploy.sh` with `SKIP_BUILD=1` after its own gate set. The same script is the manual path. ⚠️ **Re-derive this, do not inherit it:** `grep -rn wrangler .github/workflows/*.yml` returns **6 hits in `website.yml` today**, and the older form of this row asserted the grep was *zero* — the workflow was retired to `attic/website.yml.bak` on 2026-09-02 and restored on 2026-09-24, so the claim inverted under a paragraph whose whole subject is not trusting a deploy claim. `dev-ci.yml#website` is the separate *check + build* job that does not deploy. |
 | 2 | **Run it from `website/`, never the repo root.** | `wrangler.toml` lives there; a root invocation picks up the wrong config (or none). |
 | 3 | **On Windows, invoke the script through Git's bash by full path.** | `npm run deploy` shells out to `bash ../scripts/wrangler-deploy.sh`. Bare `bash` resolves to WSL, which here hangs until killed or runs Linux node against the Windows-built dependency tree. |
 | 4 | **Never hardcode or commit a token.** | `CLOUDFLARE_API_TOKEN` comes from the environment; `.env` is gitignored and never committed. The account id in `wrangler.toml` is not a credential. |
@@ -47,8 +49,9 @@ Not covered here: the **backend** deploy (that is `deploy-northflank`) and the s
 ## Prerequisites
 
 ```bash
-# Tokens: in .env under the UNPREFIXED names, or from the user-scope KASIRMU_* variables
-# AGENTS.md documents. wrangler reads CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID directly.
+# Tokens: in .env under the UNPREFIXED names, from the user-scope KASIRMU_* variables AGENTS.md
+# documents, or (for CI) the repo secrets website.yml reads. wrangler reads
+# CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID directly.
 export CLOUDFLARE_API_TOKEN=$(grep -m1 '^CLOUDFLARE_API_TOKEN=' .env | cut -d= -f2- | tr -d '\r\n')
 export CLOUDFLARE_ACCOUNT_ID=$(grep -m1 '^CLOUDFLARE_ACCOUNT_ID=' .env | cut -d= -f2- | tr -d '\r\n')
 ```
@@ -59,16 +62,17 @@ Zone/DNS/Pages/KV permission). `node_modules` must exist in `website/` — if it
 
 ## Deploying
 
-The supported route is the script, which builds then deploys and stamps a traceable message:
+Both CI and a manual deploy go through the same script, which builds then deploys and stamps a
+traceable message (CI passes `SKIP_BUILD=1` because it has already built):
 
 ```bash
 # From the repo root, on Windows use Git's bash explicitly:
-& 'C:\Program Files\Git\bin\bash.exe' scripts/wrangler-deploy.sh --message "Docs: refresh pricing FAQ" --tag v0.0.39
+& 'C:\Program Files\Git\bin\bash.exe' scripts/wrangler-deploy.sh --message "Docs: refresh pricing FAQ" --tag v0.0.41
 ```
 
 ```bash
 # On a POSIX host (or inside Git bash):
-bash scripts/wrangler-deploy.sh [--message "..."] [--tag v0.0.39] [--skip-build]
+bash scripts/wrangler-deploy.sh [--message "..."] [--tag v0.0.41] [--skip-build]
 ```
 
 The script (`scripts/wrangler-deploy.sh`):
@@ -138,18 +142,21 @@ curl -s "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/to
   -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
 
 # 2. Did the deploy actually land? (ground truth — a 404 means stale assets)
-curl -sf -o /dev/null -w '%{http_code} docs-portal\n' https://ozpos.my.id/docs-portal/intro.html
 curl -sf -o /dev/null -w '%{http_code} site\n'        https://kasir.mu/
 curl -sf -o /dev/null -w '%{http_code} config\n'      https://kasir.mu/__oz/runtime-config.js
+# The docs-portal probe that used to sit first (https://ozpos.my.id/docs-portal/intro.html) is
+# GONE as a signal: website.yml deliberately does NOT build the portal (`docs/book` is untracked),
+# so that URL 404s on a perfectly healthy deploy. A probe that fails when nothing is wrong is
+# worse than no probe — it trains a reader to ignore the check that matters.
 
 # 3. Did the host routing move? (ADR #42: both hosts route to this Worker)
 curl -s -o /dev/null -w '%{http_code} dashboard\n' https://dashboard.kasir.mu/
 curl -s -o /dev/null -w '%{http_code} admin\n'     https://admin.kasir.mu/
 ```
 
-The docs-hub probe (#2) is the one to trust: it ships only with a successful deploy, so a 404
-there while everything else looks fine means the assets are stale regardless of what the build
-said.
+The `config` probe is the one to trust: `/__oz/runtime-config.js` is served by `worker.ts` from
+the deployed bundle, so a 404 there while the apex answers means the assets are stale regardless of
+what the build said.
 
 ## Rotating the Cloudflare token
 
@@ -177,9 +184,10 @@ to the environment is not the same as binding a bucket.
 
 ## Common pitfalls
 
-1. **Expecting CI to publish the site.** It does not, and there is no run to re-run and no
-   Actions list to inspect. If a change is live in the repo but not on the site, the deploy
-   simply was not run.
+1. **Assuming the site is not deployed from CI.** It is: `website.yml` deploys on a push to
+   `main` that touches the site. The mirror-image failure is the one to check for — a run that
+   went **green but did not deploy**, or a change merged without touching the path filter. Read
+   the `Website Deploy` run before concluding a deploy was skipped.
 2. **`npm run deploy` hanging on Windows.** That is the bare-`bash`/WSL trap in rule 3, not a
    wrangler hang. Call the script through Git's bash by full path.
 3. **Setting `PUBLIC_LICENSE_API_URL` without rebuilding.** It is baked in at build time. For a
@@ -196,4 +204,4 @@ to the environment is not the same as binding a bucket.
 8. **Deploying from the repo root.** No config is picked up there; the command silently targets
    the wrong project or fails.
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 11-10-26 by docs-auditor

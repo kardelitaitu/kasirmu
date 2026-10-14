@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's entire import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 // ── The resto-pos review's CLOSED claims must stay closed (F30) ───────
 //
 // `.agents/reviews/resto-pos-ui-review.md` is a code review with a dated status block
@@ -100,11 +111,23 @@ describe('the resto-pos review status block matches the tree (F30)', () => {
     // string-vs-structure flaw the round-71 kill-test caught one case over.
     expect(menu, 'the re-poll helper lost its declaration — F5 has regressed')
       .toMatch(/const refetchUnavailable = useCallback\(\(\) => \{/);
+    // Structural, not whitespace-exact. The previous assertion was
+    // /visibilityState === 'visible'\\)\\s*refetchUnavailable\\(\\)/ — written against
+    // the ONE-LINE form this handler had when it landed (a1c67b4b0). Commit
+    // c323bfd31 wrapped the body in braces to add the catalog reload(), and
+    // from then on the regex could never match: the guard was red on a correct
+    // tree, and its protection was gone. Read the branch, not its formatting —
+    // and assert BOTH calls, since the refocus reload is now part of the contract.
+    const visibleBranch = menu.match(/visibilityState === 'visible'\)[\s\S]{0,200}?\n\s*\}/);
     expect(
-      menu,
+      visibleBranch,
       'the visibility listener that makes this CROSS-TERMINAL is gone — the backend\n' +
         'read alone only syncs on mount, which is what F5 reported as the gap',
-    ).toMatch(/visibilityState === 'visible'\)\s*refetchUnavailable\(\)/);
+    ).not.toBeNull();
+    expect(
+      visibleBranch?.[0],
+      'the visible branch no longer re-polls the 86 list (F5) or reloads the catalog',
+    ).toMatch(/refetchUnavailable\(\)[\s\S]*reload\(\)/);
   });
 
   it('F2 claims CLOSED and the SHARED cart panel carries both props', () => {

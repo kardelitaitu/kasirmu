@@ -275,7 +275,10 @@ kds-cols-increase-aria = Lebih banyak kolom
 kds-cols-reset-title = Setel ulang ke otomatis
 kds-cols-reset-aria = Setel ulang kolom ke otomatis
 kds-cols-auto = Otomatis
+kds-density-decrease-aria = Kurangi kolom
+kds-density-increase-aria = Tambah kolom
 kds-color-picker-aria = Pemilih warna { $name }
+kds-color-hex-aria = Nilai heksa warna { $name }
 
 # ── Kiosk (remaining) ──
 

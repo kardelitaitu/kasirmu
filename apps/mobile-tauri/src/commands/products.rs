@@ -28,8 +28,9 @@ use crate::state::AppState;
 // sites below now populate them. Command bodies stay tablet-native.
 pub use kasirmu_bridge::products::{
     AdjustStockArgs, CreateProductArgs, CreateProductResult, CreateProductScopedArgs,
-    DeleteProductArgs, MoneyDto, ProductDto, SerialTrackRow, UpdateProductArgs,
-    UpdateProductResult, UpdateProductScopedArgs,
+    DeleteProductArgs, MoneyDto, ProductDto, RecipeIngredientInputDto, RecipeItemDto,
+    SerialTrackRow, SetRecipeScopedArgs, UpdateProductArgs, UpdateProductResult,
+    UpdateProductScopedArgs,
 };
 
 /// Project the store's image assignments into the wire DTO shape (spec 0046b).
@@ -156,6 +157,7 @@ fn map_products_to_dtos(
             let cur_str = std::str::from_utf8(&pwd.product.price.currency.0)
                 .unwrap_or("USD")
                 .to_owned();
+            let in_stock = pwd.is_in_stock();
             ProductDto {
                 id: pwd.product.id.clone(),
                 sku: pwd.product.sku.to_string(),
@@ -166,7 +168,7 @@ fn map_products_to_dtos(
                     currency: cur_str,
                 },
                 barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-                in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
+                in_stock,
                 stock_qty: pwd.stock_qty,
                 created_at: pwd.product.created_at,
                 price_updated_at: pwd.product.price_updated_at,
@@ -228,6 +230,7 @@ fn map_pwd_to_dto(
         let cur_str = std::str::from_utf8(&pwd.product.price.currency.0)
             .unwrap_or("USD")
             .to_owned();
+        let in_stock = pwd.is_in_stock();
         ProductDto {
             id: pwd.product.id.clone(),
             sku: pwd.product.sku.to_string(),
@@ -238,7 +241,7 @@ fn map_pwd_to_dto(
                 currency: cur_str,
             },
             barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-            in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
+            in_stock,
             stock_qty: pwd.stock_qty,
             tax_rate_ids,
             product_type: pwd.product.product_type.as_str().to_owned(),
@@ -715,6 +718,108 @@ pub async fn delete_product_scoped(
     let store = Store::new(&db);
     store.delete_product(&args.sku)?;
     Ok(())
+}
+
+// ── Recipe / BOM commands ───────────────────────────────────────────
+
+/// Look up recipe ingredients for a composite product, store-scoped.
+#[allow(clippy::needless_borrow, dropping_references)]
+#[command]
+pub async fn get_recipe_scoped(
+    session_token: String,
+    parent_product_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RecipeItemDto>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let details = store.get_recipe_details(&parent_product_id)?;
+    drop(db_guard);
+
+    Ok(details
+        .into_iter()
+        .map(|d| RecipeItemDto {
+            id: d.id,
+            parent_product_id: d.parent_product_id,
+            ingredient_product_id: d.ingredient_product_id,
+            ingredient_sku: d.ingredient_sku,
+            ingredient_name: d.ingredient_name,
+            quantity_required: d.quantity_required,
+            unit: d.unit,
+            cost_minor: d.cost_minor,
+        })
+        .collect())
+}
+
+/// Set or update the recipe for a composite product, store-scoped.
+#[allow(clippy::needless_borrow, dropping_references)]
+#[command]
+pub async fn set_recipe_scoped(
+    session_token: String,
+    args: SetRecipeScopedArgs,
+    state: State<'_, AppState>,
+) -> Result<Vec<RecipeItemDto>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+
+    let inputs: Vec<kasirmu_core::recipe::RecipeIngredientInput> = args
+        .ingredients
+        .iter()
+        .map(|i| kasirmu_core::recipe::RecipeIngredientInput {
+            ingredient_product_id: i.ingredient_product_id.clone(),
+            quantity_required: i.quantity_required,
+            unit: i.unit.clone(),
+        })
+        .collect();
+
+    let details = store.set_recipe(&args.parent_product_id, &inputs)?;
+    drop(db_guard);
+
+    Ok(details
+        .into_iter()
+        .map(|d| RecipeItemDto {
+            id: d.id,
+            parent_product_id: d.parent_product_id,
+            ingredient_product_id: d.ingredient_product_id,
+            ingredient_sku: d.ingredient_sku,
+            ingredient_name: d.ingredient_name,
+            quantity_required: d.quantity_required,
+            unit: d.unit,
+            cost_minor: d.cost_minor,
+        })
+        .collect())
+}
+
+/// Delete the recipe for a composite product, store-scoped.
+#[allow(clippy::needless_borrow, dropping_references)]
+#[command]
+pub async fn delete_recipe_scoped(
+    session_token: String,
+    parent_product_id: String,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let count = store.delete_recipe(&parent_product_id)?;
+    drop(db_guard);
+    Ok(count)
 }
 
 #[cfg(test)]

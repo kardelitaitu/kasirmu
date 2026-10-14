@@ -25,6 +25,7 @@ import {
   listCurrenciesScoped,
   type CurrencyDto,
 } from '@/api/currency';
+import { setThousandsSep, thousandsSepFor } from '@/utils/storage';
 import { getBrandSettingsScoped } from '@/api/branding';
 import { getVersionScoped, getDeviceId, onAppReconnect, type VersionInfo } from '@/api/system';
 import { listTerminalsScoped } from '@/api/terminals';
@@ -376,6 +377,19 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       }
       if (sR.status === 'fulfilled' && sR.value) {
         setSettings((prev) => ({ ...prev, store: sR.value }));
+        // Write-through for the thousands separator.
+        //
+        // The store setting `currency.thousands_separator` is honoured by the PRINTER
+        // through `ReceiptConfig.grouping` (receipt.rs:193) and, since e84ccdc62, arrives
+        // on this DTO. `formatMoney` is synchronous and is called from 149 non-test
+        // sites, so it cannot await this load -- it reads localStorage instead, exactly
+        // as `getDecimalSep` does for the decimal separator. Without this write the
+        // preview keeps grouping by locale and disagrees with the paper.
+        //
+        // Total by construction: `thousandsSepFor` maps a fresh store's seeded
+        // 'comma' and an absent/older value to the same 'none' default, so this
+        // cannot restyle a store that never set a separator.
+        setThousandsSep(thousandsSepFor(sR.value.thousandsSeparator));
       } else if (sR.status === 'rejected') {
         // fulfilled with null/undefined = the row is ABSENT on this store;
         // the defaults already in state stand. Not a failure.
@@ -488,6 +502,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           if (stale()) return;
           if (!v) return;
           setSettings((prev) => ({ ...prev, store: v }));
+          // Same write-through as the unscoped load above. This is the path the
+          // desktop and mobile shells take, so omitting it here meant the
+          // localStorage bridge `formatMoney` reads was seeded only in the web
+          // shell — the two would then group differently on the same store.
+          setThousandsSep(thousandsSepFor(v.thousandsSeparator));
+          // Same write-through as the unscoped load above. This is the path the
+          // desktop and mobile shells take, so omitting it here meant the
+          // localStorage bridge `formatMoney` reads was seeded only in the web
+          // shell — the two would then group differently on the same store.
         }),
       );
     }

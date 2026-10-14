@@ -4,9 +4,15 @@ area: architecture
 title: ADR #7: Data Scope Guard & Query Enforcement
 status: Implemented (2026-07-10)
 ---
-<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · resolve_scope() verified at apps/desktop-client/src/state.rs:310; scripts/verify-no-raw-params.sh exists; ui/src/contexts/WorkspaceContext.tsx exists; adjust_stock_scoped present with #[deprecated] old variant (commands/products.rs:92) — the _scoped migration pattern matches; the 84-command migration count is internally consistent with the repo's _scoped variants and the grep-based guard returns 0 violations · Status "Implemented (2026-07-10)" consistent · Custom Clippy lint left as future enhancement (doc says so) -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Full audit on branch 0.0.41. **Repaired:** one correction note recording that the ADR's announced backward-compatibility deprecation period has ENDED — the unscoped command twins were REMOVED, not preserved. \`list_products\`/\`adjust_stock\`/\`list_sales\`/\`void_sale\`/\`complete_sale\` are absent from \`apps/desktop-tauri/src/lib.rs\` generate_handler! and from the sources; **0** \`#[deprecated]\` markers exist under apps/desktop-tauri/src/; the registry carries **394** \`_scoped\` entries. The guard still passes (\`bash scripts/verify-no-raw-params.sh\` → exit 0, wired into scripts/check.sh:122) but now reports **15** \"deprecated command(s)\" — an artifact of its own heuristic counting a _scoped function's domain params, not 47 real twins. **Verified and left alone:** \`resolve_scope\` live at apps/desktop-tauri/src/state.rs:712 AND duplicated in the bridge at crates/kasirmu-bridge/src/ctx.rs:366 (the 2026-09-29 stamp already flagged the duplication); \`ui/src/contexts/WorkspaceContext.tsx\`; \`list_products_scoped\` at commands/products.rs:69; \`listProductsScoped\` at ui/src/api/products.ts:59; the guard script itself. **NOT re-measured:** the historical 84-command migration table (a dated record). · Prior stamps merged below. -->
 
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the one ADR in this batch whose central mechanism is still exactly where the record says it is. `resolve_scope` is live at `apps/desktop-tauri/src/state.rs:649` with a dedicated regression test beside it (`state_tests.rs:77`, `resolve_scope_isolates_store_databases`), and the same function now also exists in the bridge layer at `crates/kasirmu-bridge/src/ctx.rs:366` — a second implementation that did not exist when this ADR was written, following the command-body move under ADR #49. That duplication deserves a reader's attention: the store-scoping resolution this ADR defines now exists in two places and the ADR says nothing about it. Not a finding against this document — it is the expected consequence of a later architectural decision — but it belongs somewhere, and this is the document that states what the guard IS. · The guard script the stamp verified, `scripts/verify-no-raw-params.sh`, still exists, and the `_scoped` migration pattern it protects is now load-bearing well beyond this ADR: the conditional-scoping record audited in this campaign inventories 19 ternary fallback sites and six ungated calls of exactly this class, which is this ADR's subject matter one layer up. The two documents should be read together. · `WorkspaceContext` exists at its current path, and the deprecated unscoped variants the stamp confirmed are still deprecated rather than removed. · Body left as written with its `apps/desktop-client` and `crates/oz-core` references intact, for the same reason as its siblings: this is the record of a decision, not a map of the tree. The prior stamp is retained and the stacked footer collapsed. -->
+[[ STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim as original evidence.
+     Rendered as blockquote text (not nested HTML comments) so the outer comment cannot be closed by their delimiters. ]]
+
+>
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the one ADR in this batch whose central mechanism is still exactly where the record says it is. `resolve_scope` is live at `apps/desktop-tauri/src/state.rs:649` with a dedicated regression test beside it (`state_tests.rs:77`, `resolve_scope_isolates_store_databases`), and the same function now also exists in the bridge layer at `crates/kasirmu-bridge/src/ctx.rs:366` — a second implementation that did not exist when this ADR was written, following the command-body move under ADR #49. That duplication deserves a reader's attention: the store-scoping resolution this ADR defines now exists in two places and the ADR says nothing about it. Not a finding against this document — it is the expected consequence of a later architectural decision — but it belongs somewhere, and this is the document that states what the guard IS. · The guard script the stamp verified, `scripts/verify-no-raw-params.sh`, still exists, and the `_scoped` migration pattern it protects is now load-bearing well beyond this ADR: the conditional-scoping record audited in this campaign inventories 19 ternary fallback sites and six ungated calls of exactly this class, which is this ADR's subject matter one layer up. The two documents should be read together. · `WorkspaceContext` exists at its current path, and the deprecated unscoped variants the stamp confirmed are still deprecated rather than removed. · Body left as written with its `apps/desktop-client` and `crates/oz-core` references intact, for the same reason as its siblings: this is the record of a decision, not a map of the tree. The prior stamp is retained and the stacked footer collapsed.
+
+
 # ADR #7: Data Scope Guard & Query Enforcement
 
 **Status:** Implemented (2026-07-10)
@@ -179,6 +185,20 @@ This lint runs in CI but is **not** enforced locally during development (to avoi
 - [x] Phase 4 verification script — `scripts/verify-no-raw-params.sh` updated with portable ERE grep, `_scoped$` self-skip, and deprecated-variant matching. Reports 0 violations.
 - [x] **ALL 84 DESKTOP COMMANDS MIGRATED. 47 deprecated commands coexist with _scoped variants. Migration complete.**
 
+  > **Correction note (2026-10-11, docs-auditor).** The backward-compatibility half of this
+  > line no longer describes the tree, and the deprecation period it announces has ENDED.
+  > The unscoped twins were **removed**, not preserved: `list_products`, `adjust_stock`,
+  > `list_sales`, `void_sale` and `complete_sale` are absent from
+  > `apps/desktop-tauri/src/lib.rs` `generate_handler!` and from the command sources, there
+  > are **0** `#[deprecated]` markers anywhere under `apps/desktop-tauri/src/`, and the
+  > registry carries **394** `_scoped` entries. The guard script still passes
+  > (`bash scripts/verify-no-raw-params.sh` → exit 0) but it now reports **15** "deprecated
+  > command(s) with _scoped variant", and those are an artifact of its own heuristic — it
+  > counts a `_scoped` function's own `store_id: String`/… domain parameters as if they were
+  > twins, not 47 real leftovers. The claim was accurate when written (the 2026-07-22 stamp
+  > measured it) and became false when the deprecated layer was deleted; recorded here rather
+  > than rewritten because the checklist is a dated record of the migration.
+
 ### Phase 4: Enforcement ✅
 - [x] `scripts/verify-no-raw-params.sh` — portable ERE grep-based guard that scans desktop command files for `store_id: String` / `user_id: String` function parameters without a corresponding `_scoped` variant. Excludes struct fields, comments, and tablet-client (not yet migrated). **0 violations.**
 - [x] Integrated into `scripts/check.sh` CI pipeline (runs after clippy, before tests).
@@ -210,4 +230,4 @@ This lint runs in CI but is **not** enforced locally during development (to avoi
 - `ui/src/api/products.ts` — Frontend API wrapper (`listProductsScoped`)
 - `ui/src/contexts/WorkspaceContext.tsx` — Session token lifecycle
 
-> last audited 29-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

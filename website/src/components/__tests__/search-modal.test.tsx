@@ -149,9 +149,30 @@ describe('SearchModal — keyboard navigation', () => {
         <SearchModal isOpen onClose={vi.fn()} locale={locale} labels={labelMap(locale, SEARCH_LABELS)} docs={DOCS} />,
       );
     });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
-    });
+    // WAIT FOR THE FIELD TO OWN FOCUS rather than for a fixed number of
+    // milliseconds. The component defers its autofocus by 50ms (SearchModal.tsx);
+    // the 10ms this used to wait left that timer pending, so whether the field
+    // already held focus at assertion time depended on host load rather than on
+    // the component's behaviour. Waiting for the settled state makes the focus
+    // tests deterministic and is not a widened timeout.
+    //
+    // Honest scope: this does not claim to repair an intermittent pre-push failure
+    // in this file — the reported Shift+Tab failure could not be reproduced in 70+
+    // local runs, including at the 24 threads this config sets. It replaces a
+    // load-dependent wait with a state-dependent one, which is correct regardless.
+    const input = document.body.querySelector('input[type="search"]') as HTMLInputElement | null;
+    if (input) {
+      await act(async () => {
+        for (let i = 0; i < 50 && document.activeElement !== input; i += 1) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+      });
+    } else {
+      // No field (a closed dialog): keep a short settle for the portal mount.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
     const options = () => Array.from(document.body.querySelectorAll('a[role="option"]')) as HTMLElement[];
     const selected = () => options().findIndex((o) => o.getAttribute('aria-selected') === 'true');
     return {

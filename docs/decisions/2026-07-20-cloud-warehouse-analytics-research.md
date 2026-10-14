@@ -1,4 +1,9 @@
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 125 lines, no audit stamp, no footer, no marker. It is the shortest of the four research documents in this batch and the only one with a DECIDED outcome -- "Research (Recommended: Defer to post-1.0)" -- so unlike its siblings it commits to a position, and that position is the checkable claim. The recommendation was to defer the cloud-warehouse analytics export until after 1.0. Deferring is trivially consistent with a codebase that does not have the feature, so the finding here is negative and worth stating plainly: the deferral decision was honoured. There is no warehouse-export implementation to contradict it. · Its Options Evaluated and Cost Comparison sections are point-in-time market judgements that no repository can confirm or deny -- the same class as the benchmark baselines audited in round 14 -- and are left exactly as written. · Worth connecting to its sibling `docs/specs/admin-dashboard-plan.md`, audited in round 9: that plan's Phase 3 wires Paddle `transaction.completed` amounts and Midtrans `gross_amount` into a `revenue_events` collection that the stats endpoint sums -- a narrow, live-revenue analytics path built in the opposite direction from a full warehouse export. Together the two documents show the deferral was a scoping decision rather than a dead end, and a reader asking why there is no warehouse has the answer in one sentence. · No repository paths inside it resolve, so nothing to repair. Stamp and footer added. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 2 minor) · Repaired: `crates/oz-core/src/export/mod.rs` → `kasirmu-core` (all three named structs verified at `mod.rs:104/133/223`); `docker-compose.yml` → `ops/docker/docker-compose.yml` (there is no repo-root compose file — this one was a bare filename `check-dead-refs` could not resolve either way). Added a dated path note recording that the deferral was honoured (no warehouse export exists) and that the short-term Parquet Option D it preferred was not built; the live analytics path is `docs/specs/admin-dashboard-plan.md`. Verified: the `docs/decisions/archived/...` cross-reference still resolves. NOT re-measured: the Options and Cost Comparison sections, which are point-in-time market judgements. -->
+
+<!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
+> Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 125 lines, no audit stamp, no footer, no marker. It is the shortest of the four research documents in this batch and the only one with a DECIDED outcome -- "Research (Recommended: Defer to post-1.0)" -- so unlike its siblings it commits to a position, and that position is the checkable claim. The recommendation was to defer the cloud-warehouse analytics export until after 1.0. Deferring is trivially consistent with a codebase that does not have the feature, so the finding here is negative and worth stating plainly: the deferral decision was honoured. There is no warehouse-export implementation to contradict it. · Its Options Evaluated and Cost Comparison sections are point-in-time market judgements that no repository can confirm or deny -- the same class as the benchmark baselines audited in round 14 -- and are left exactly as written. · Worth connecting to its sibling `docs/specs/admin-dashboard-plan.md`, audited in round 9: that plan's Phase 3 wires Paddle `transaction.completed` amounts and Midtrans `gross_amount` into a `revenue_events` collection that the stats endpoint sums -- a narrow, live-revenue analytics path built in the opposite direction from a full warehouse export. Together the two documents show the deferral was a scoping decision rather than a dead end, and a reader asking why there is no warehouse has the answer in one sentence. · No repository paths inside it resolve, so nothing to repair. Stamp and footer added.
+-->
+
 # ADR: Cloud Warehouse Analytics Export
 
 **Status:** Research (Recommended: Defer to post-1.0)
@@ -115,9 +120,16 @@ The `AnalyticsBundle` JSON format already maps cleanly to BigQuery's `NEWLINE_DE
 ---
 
 ## References
-- `crates/oz-core/src/export/mod.rs` — AnalyticsBundle, ExportConfig, ReportScheduleConfig
-- `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md` — Feature gating for premium add-ons
-- `docker-compose.yml` — Redis job queue for async export tasks
+- `crates/kasirmu-core/src/export/mod.rs` — AnalyticsBundle, ExportConfig, ReportScheduleConfig (path corrected from the pre-rebrand `crates/oz-core/...`; all three structs verified present at `mod.rs:104/133/223`)
+- `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md` — Feature gating for premium add-ons (still resolves)
+- `ops/docker/docker-compose.yml` — Redis job queue for async export tasks (corrected: there is no repo-root `docker-compose.yml`; the compose files live under `ops/docker/`)
 
-> last audited 29-09-26 by docs-auditor
+> **Path note (2026-10-11).** Two citations above were stale when checked: the crate is
+> `kasirmu-core` (not `oz-core`), and the compose file lives at `ops/docker/docker-compose.yml`.
+> The recommendation itself needs no correction — the deferral it argues for was honoured, and no
+> warehouse-export implementation exists. The `parquet`/`arrow` Option D it prefers short-term
+> was not built either; the live analytics path is
+> `docs/specs/admin-dashboard-plan.md`, which sums Paddle/Midtrans amounts into a
+> `revenue_events` collection.
 
+> last audited 11-10-26 by docs-auditor

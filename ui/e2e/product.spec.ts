@@ -24,6 +24,23 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  */
 
 test.describe('Product Management', () => {
+  // ⚠️ EVERY test below is `test.fixme`, and as of round 146 none of them can be enabled.
+  //
+  // They drive `ProductManagementScreen`, which is ARCHIVED: `features/products/register.tsx:18-22`
+  // says *"ARCHIVED: 'inventory' route ... no longer registered as a navigable route"*, and the
+  // ONLY import of that component anywhere in `ui/src` is its own unit test. The selectors below
+  // (`.product-mgmt`, `.product-mgmt-table`, `.product-mgmt-cell-sku`) survive in
+  // `VariantManagementScreen.tsx:170/207/261` — a CHILD of the archived page — so they resolve in
+  // the source and not in a running app.
+  //
+  // `selectWorkspace(page, WORKSPACES.INVENTORY)` lands on the warehouse workspace, which now
+  // mounts `WarehouseScreen`. So `page.waitForSelector('.product-mgmt')` would time out rather
+  // than assert anything.
+  //
+  // Re-pointing these at the live screen, or deleting them, is a decision for whoever owns the
+  // products surface — see `docs/records/audits/archived-product-screen-still-graded.md`, which
+  // records the three questions to answer first. Left in place so the intent is not lost.
+
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'admin', '9999');
     await selectWorkspace(page, WORKSPACES.INVENTORY);

@@ -3,7 +3,9 @@ name: deploy-northflank
 description: Ship or re-ship the kasir.mu backend (the unified auth + sync container) to Northflank, and prove the deploy actually landed. Use when asked to deploy/redeploy the backend, when a merge to main should have deployed but the live service looks stale, when triggering or polling a Northflank build, when verifying a deploy with scripts/verify-deployment.py, or when changing the service's environment or Dockerfile. For a FAILED build — retrieving its log, pkg-config or shared-library failures, Dockerfile divergence — read `northflank-deploy-diagnosis` instead; this skill assumes the build succeeds.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all three paths the file cites exist — `ops/docker/Dockerfile.unified`, `scripts/verify-deployment.py`, `apps/license-server/DEPLOY.md`. The `oz-pos` project id is NOT rebrand drift: the file says explicitly that `oz-pos` is the Northflank project id rather than the brand, that renaming it turns working URLs into 404s, and that it is allow-listed in the drift guard's crate-prefix check. Left alone deliberately. Cross-reference integrity checked: the sibling skill `northflank-deploy-diagnosis` that this file's failure path points at does exist. · NOT re-measured (would need live Northflank credentials or a deploy): the build/poll API behaviours, the environment-change steps, and the deploy-verification claims. No network call or deploy was attempted during this audit. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · First re-audit since 2026-09-22; that stamp is merged at the bottom as original evidence. · MINOR: the file said the `northflank-deploy` job "needs seven jobs"; it needs **THIRTEEN** — `changes, website, rust-fmt, cargo-check, cargo-clippy, fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity`. The 2026-09-24 CI split moved three CI checks out of the `cargo-check`/`static-gates` jobs into jobs of their own, and the workflow's own comment records the stakes: leaving any out of `needs` would SILENTLY widen the deploy gate, since the steps would still run and still block a merge but would no longer block a production deploy. The count is now stated with a re-derive command, because this is a list that grows by decision and nothing re-counts it. · VERIFIED AND LEFT ALONE: all four cited paths exist (`ops/docker/Dockerfile.unified`, `scripts/verify-deployment.py`, `apps/license-server/DEPLOY.md`, `docs/operations/go-live-checklist.md`); `scripts/verify-deployment.py` really takes repeatable `--base`, has `--self-test`, defaults to `https://license.kasir.mu`, and returns the documented 0/1/2 with the exact verdict strings `deployment COMPLETE` / `INCOMPLETE` / `BROKEN`; the CI poll loop really is `seq 1 60` x `sleep 10` with the `Timed out waiting for Northflank build` message; the boot gates are real (`PADDLE_WEBHOOK_SECRET`/`PADDLE_PRICE_TIERS` provision, `verifySMTPConfig()` at `main.go:103-107`); `Dockerfile.unified` really is caddy fronting PocketBase :8080 and `kasirmu-cloud` :3099 under supervisord; the `oz-pos` project id is NOT rebrand drift (there is no rename to make — every endpoint takes it as a path segment) and it is allow-listed in the drift guard; the combined-service update route and the `405 → wrong path` reading are as written; the two supported rollback moves match the container's one-unit design. · NOT re-measured (needs live Northflank credentials or a deploy): the build/poll API behaviours, the env-change steps, and whether a deploy actually lands. No network call was attempted. · Superseded 2026-09-22 body follows as plain quoted text (delimiters stripped so it cannot nest):
+
+Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all three paths the file cites exist — `ops/docker/Dockerfile.unified`, `scripts/verify-deployment.py`, `apps/license-server/DEPLOY.md`. The `oz-pos` project id is NOT rebrand drift: the file says explicitly that `oz-pos` is the Northflank project id rather than the brand, that renaming it turns working URLs into 404s, and that it is allow-listed in the drift guard's crate-prefix check. Left alone deliberately. Cross-reference integrity checked: the sibling skill `northflank-deploy-diagnosis` that this file's failure path points at does exist. · NOT re-measured (would need live Northflank credentials or a deploy): the build/poll API behaviours, the environment-change steps, and the deploy-verification claims. No network call or deploy was attempted during this audit. -->
 
 # Deploying the kasir.mu backend to Northflank
 
@@ -57,7 +59,13 @@ Do **not** use this skill to debug a build that failed — that is `northflank-d
 - Push entry: `on.push.branches: [main]`. A merge to `main` runs the workflow and deploys.
 - Dispatch entry: dispatch it **from `main`**. A dispatch off a `0.0.*` branch is refused on
   purpose — a release branch must never ship this container.
-- The job `needs` seven jobs and is skipped loudly without `NORTHFLANK_API_TOKEN`.
+- The job `needs` **thirteen** jobs — `changes, website, rust-fmt, cargo-check, cargo-clippy,
+  fuzz-typecheck, coverage-floors, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity`
+  — and is skipped loudly without `NORTHFLANK_API_TOKEN`. ⚠️ This said "seven" until 2026-10-11;
+  the 2026-09-24 CI split moved three CI checks out of the `cargo-check`/`static-gates` jobs into jobs of their
+  own, and the workflow's own comment records that leaving them out of `needs` would have
+  *silently widened the deploy gate*. Re-derive with
+  `sed -n '/^  northflank-deploy:/,/^    if:/p' .github/workflows/dev-ci.yml | grep -A1 'needs:'`.
 
 So the deploy path is: land the commit on `main` (with the user's explicit push order), then
 watch `dev-ci.yml#northflank-deploy` to conclusion. Nothing else reaches production by itself.
@@ -141,7 +149,8 @@ Dockerfile path changes go through the same route as
 
 **Before a build that adds a boot-gated variable, the env must already be set.** The licence
 server fails fast at startup on missing Paddle config (`PADDLE_WEBHOOK_SECRET`,
-`PADDLE_PRICE_TIERS`) and, once `OZ_SMTP_HOST` is set, on an unverified `OZ_SMTP_FROM`.
+`PADDLE_PRICE_TIERS`) and, once `OZ_SMTP_HOST` is set, on an unverified `OZ_SMTP_FROM`
+(`main.go:103-107` calls `verifySMTPConfig()` before serving).
 Set the env before or with the deploy that ships the image, or the rollout fails by design.
 The paste-ready block is `docs/operations/go-live-checklist.md` §2; the full variable
 reference is `apps/license-server/DEPLOY.md` §7.
@@ -220,4 +229,4 @@ Either way, record which image is live afterwards — the next deploy will silen
 9. **Changing `OZ_ADMIN_EMAIL` after first boot.** It is write-once: admin sessions resolve
    through it, and a change orphans every existing admin session.
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 11-10-26 by docs-auditor

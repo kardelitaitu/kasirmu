@@ -279,7 +279,10 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
         setHistoryOpen(false);
         addToast({ message: l10n.getString('topology-rev-browser-restore-notice'), type: 'info' });
       } catch (err) {
-        addToast({ message: plainErrorMessage(err), type: 'error' });
+        // The cause is logged, not shown: the toast carries the instruction, and the
+        // diagnostic belongs where support can read it.
+        console.error('restore revision failed', err);
+        addToast({ message: l10n.getString('topology-toast-restore-error'), type: 'error' });
       } finally {
         setRestoringRevision(null);
       }
@@ -739,9 +742,15 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       changeNote?: string,
     ): Promise<TopologyApplyResult & { idMap?: Record<string, string> }> => {
       if (!sessionToken) {
-        const error = new Error(l10n.getString('topology-toast-no-session'));
-        addToast({ message: plainErrorMessage(error), type: 'error' });
-        throw error;
+        // Read the localized copy ONCE and use it for both the toast and the thrown
+        // error. The earlier version did `new Error(l10n.getString(...))` then toasted
+        // `error.message` — which is correct at runtime but indistinguishable, to a
+        // reader and to errorPolicyCompliance.test.ts, from leaking a backend
+        // `err.message`. That guard cannot know the Error was constructed here, and
+        // it is right not to guess: the invariant is worth more than the saving.
+        const noSession = l10n.getString('topology-toast-no-session');
+        addToast({ message: noSession, type: 'error' });
+        throw new Error(noSession);
       }
 
       const result = await applyTopologyWithDiagram(

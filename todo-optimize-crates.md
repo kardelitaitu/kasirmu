@@ -761,6 +761,7 @@ The result is then stamped `Currency(*b"USD")` unconditionally — an IDR store'
 labelled dollars. *Fix:* sargable half-open range (`created_at >= ?1 AND created_at < ?2`), group
 by currency, and resolve the store's currency instead of hard-coding.
 
+**Re-measured 11-10-26:** `modules/reporting/src/repository.rs` NO LONGER EXISTS — the module's `src/` is now `{handlers,lib,lib_tests}.rs`, and `handlers.rs` is 31 lines carrying no `strftime`/`DATE(` call, no `SUM(total_minor)` and no currency aggregation, so this finding's three named defects are not present at HEAD in any file. Read it as a dated reading of a module that has since been reimplemented; do not treat it as a live defect. 
 ```rust
 33               FROM sales WHERE strftime('%Y-%m-%d', created_at) = ?1 AND status = 'completed'",
 ...
@@ -866,6 +867,7 @@ was retired under checklist C29, which took `query_daily_summary`, `query_sales_
 the remaining non-sargable surface is `query_menu_engineering` (`menu_engineering.rs:88-108`) plus
 `margin.rs:76-88`. Scope the fix to those two.
 
+**Re-measured 11-10-26:** `crates/kasirmu-reporting/src/daily_summary.rs` NO LONGER EXISTS (the crate's `src/` is now `{error,lib,margin,menu_engineering}.rs`). The non-sargable-predicate substance DOES still hold, in the surviving files: `menu_engineering.rs` (261 lines) and `margin.rs` (126 lines) both still carry a `DATE(s.created_at)`-style predicate and neither carries a `LIMIT`. Repoint the two query names to those modules when acting on this item; the `daily_summary`/`query_daily_summary` spellings are the retired ones. 
 ```sql
 130           AND DATE(s.created_at) BETWEEN ?1 AND ?2
 ```
@@ -886,6 +888,7 @@ full-frame passes** — `crates/kasirmu-media/src/crop.rs:169-211` ◦ (3C-06). 
 one blocking `libc::syslog()` per record on the emitting thread. *Fix:* `non_blocking`, `write!`
 into a reused buffer.
 
+**Re-measured 11-10-26:** `crates/kasirmu-logging/src/syslog.rs` and `eventlog.rs` NO LONGER EXIST — the crate's own README (audited 2026-10-11) records that the syslog/eventlog FFI modules were REMOVED, leaving `{error,lib,visitor}.rs`. The finding is retired with the code it described. (It also makes the ledger's O-M57-era claim that a syslog layer installs on deployments a dated reading — see the same-named item in `.agents/reviews/crate-review-ledger-24-09-26.md`.) 
 **O-M58 · kasirmu-logging — eventlog layer allocates a `Vec<u16>` and blocks per record** —
 `crates/kasirmu-logging/src/eventlog.rs:108-115` ◦ (3C-08). *Fix:* thread-local scratch buffer,
 worker thread.
@@ -1334,6 +1337,77 @@ Three of seven rows are now earned, two partially. **Compile time remains the la
 claim in this journal** — it is also the premise of axis A, which §5 offered as one of only two
 axes with order-of-magnitude potential. That guess is still a guess.
 
+### 10F. The FIRST build, run 2026-10-14 — and it REFUTES F2's premise (axis A)
+
+`cargo build --timings` has never been run in this todo's whole life; §10D recorded that as a
+decision and prescribed the escape hatch. **Run below, on the prescribed route.** The shared
+`target/` lock was avoided with a scratch target dir, so no concurrent session was stalled and
+no cache was touched:
+
+```bash
+CARGO_TARGET_DIR=/c/tmp-kasirmu-check cargo check --workspace --all-targets --timings
+# Finished dev profile in 3m 40s (221s), exit 0
+```
+
+Two deliberate choices: **`check`, not `build`** — axis A's question is incremental front-end
+latency, and codegen adds a fixed cost that tells you nothing about which crate to split; and
+**`--all-targets`** — a plain `cargo build --workspace` compiles *no test code at all*, which
+would have made the instrument blind to the very mass F2 is about. The temp-dir path is the
+git-bash spelling; the Windows path is `C:/tmp-kasirmu-check`.
+
+**The headline: F2's 52.8% is a LINE SHARE, and it does not carry into compile time.**
+
+| | compile seconds | share |
+|---|---|---|
+| lib/bin `check` units | **1,509 s** | **81.8 %** |
+| **test** `check` units | **337 s** | **18.2 %** |
+| total unit-seconds | 1,846 s | wall clock 221 s (8.4x parallel) |
+
+So tests are 52.8% of the lines and **18.2% of the front-end cost** — the split (or
+feature-gating) axis A was written to perform would retire at most 18% of the work, and
+F2's *"the largest test modules are also the slowest to compile and link"* does not hold:
+`sales_tests.rs` is 4,933 lines and its crate's whole test unit is **25.8 s**, while the
+**two Tauri shell crates alone are 189 s** — 56% of all test compile time.
+
+**The 10 most expensive units in the workspace, which is the real axis-A target list:**
+
+| # | seconds | unit |
+|---|---|---|
+| 1 | **135.9** | `kasirmu-mobile` (check-**test**) |
+| 2 | **51.1** | `kasirmu-app` (check-**test**) |
+| 3 | 38.5 | `windows` (dependency) |
+| 4 | 31.9 | `kasirmu-mobile` (check) |
+| 5 | 29.3 | `kasirmu-app` (check) |
+| 6 | 25.8 | `kasirmu-core` (check-test) |
+| 7 | 24.1 | `kasirmu-bridge` (check-test) |
+| 8 | 15.0 | `kasirmu-bridge` (check) |
+| 9 | 12.6 | `kasirmu-core` (check) |
+| 10 | 11.3 | `tauri-utils` (dependency) |
+
+**What this changes about axis A, stated rather than glossed:**
+1. **The insight is a ratio, not a total.** If tests are only 18% of front-end time, then
+   149 test-file *call sites* of `formatMoney` are irrelevant to compile cost — the number
+   that made the earlier receipt-grouping fix look like "a 149-site design decision" was a
+   count of *source lines that do not dominate the cost*. The same is true of every
+   line-count-driven reluctance in this todo.
+2. **Axis A's best target is NOT a test module.** It is the two shell crates, and the
+   cheapest intervention is the one §5 already named in passing: **feature-gating**.
+   `apps/mobile-tauri` and `apps/desktop-tauri` each compile the whole world because the
+   Tauri app is one crate; a `cfg` split on the surface (the same one that would help
+   axis E) attacks the top two rows directly.
+3. **The dependency tail is 3 of the top 10** (`windows`, `windows-sys`, `tauri-utils`),
+   and no axis covers dependencies at all — §0 puts them explicitly out of scope, so they
+   are recorded here as a sixth candidate rather than folded into A.
+4. **The 8.4x parallelism is worth guarding.** Cold, unthrottled, the workspace's front end
+   saturates ~8 cores. Anything that reduces unit count without reducing total work can
+   *lengthen* wall clock, so axis-A acceptance must be a wall-clock number, not a
+   unit-seconds sum.
+
+**What this does NOT do:** it is one cold run on one host. Per §10D's own caution the numbers
+are host-dependent, and per this file's law a quoted figure needs its mechanism named — the
+mechanism is `cargo check --workspace --all-targets --timings`, cold, with a scratch
+`CARGO_TARGET_DIR`. **Re-run it the same way before acting on any row.**
+
 ### 10D. Why no build was run — a decision, not an omission
 
 `cargo build --timings` and `cargo bloat` are the two remaining instruments, and neither was run.
@@ -1350,6 +1424,45 @@ cargo build --timings --workspace            # per-crate wall clock → axis A
 cargo nextest run --workspace --report-time  # per-test wall clock  → axis B
 cargo bloat --release -p kasirmu-app         # binary size          → axis E
 ```
+
+### 10G. Axis B, resumed — `pg_daemon_tests` polled, 810ms of floor gone (2026-10-14)
+
+§10E said axis B had *"a measured target instead of a suspicion"* and that O-T05 addressed
+its largest single block. **O-T05 converted `daemon_tests.rs` only; its sibling
+`pg_daemon_tests.rs` was still on the old fixed start/stop pattern, and that is what this
+round did.**
+
+The two files are the same class — a `PgSyncDaemon`/`SyncDaemon` with `status()` and
+`start`/`stop` — so the fix is the same fix: a `wait_for_pg_daemon` poller at 10ms with a
+1s ceiling, named in the panic. Nine call sites converted:
+
+| site | before | after |
+|---|---|---|
+| start, wait for the first tick | fixed 80ms | poll `last_sync_at.is_some()` |
+| stop, wait for the run loop to exit | fixed 100ms | poll `!running` |
+| (9 conversions across 8 tests) | 1,870 ms stated | **1,060 ms stated** |
+
+**Measured, per this file's own law (the figure is a property of the mechanism at the tip
+it was read at):** the stated sleep floor of
+`platform/sync/src/pg_daemon_tests.rs` went from **1,870 ms to 1,060 ms** — **810 ms removed,
+43% of the file**. Against §10B's workspace floor the file's contribution drops
+proportionally; the workspace number is not re-quoted here because it must be re-run at the
+tip a reader opens.
+
+**One fixed sleep was DELIBERATELY LEFT, and why.** `pg_daemon_tests.rs:812` still sleeps
+100ms. It is not a start/stop wait — it yields so a spawned blocker task can take the DB
+lock first, and then asserts that `stop()` waits for it. A condition poll cannot express
+that, because the property under test is *the race the sleep creates*. Its 300ms sibling is
+the blocker itself and stays for the same reason. Recorded so a future sweep does not
+"fix" the two sleeps that are load-bearing.
+
+**Verification, and the limit of what this host can prove:** `cargo clippy -p platform-sync
+--all-targets` clean and `cargo fmt --check` clean. **The tests could NOT be run here** —
+this host cannot link a Rust test binary (`rust-lld: error: could not open 'kernel32.lib'`,
+no Windows SDK libs on the linker path), and it fails identically on `kasirmu-crypto`,
+a crate this change does not touch, so the failure is pre-existing and environmental.
+**The 9 conversions are unverified at runtime on this host** — CI runs them. That is stated
+rather than buried because a timing change that only compiles is a change that might race.
 
 ### 10E. What the instruments changed
 
@@ -1576,7 +1689,7 @@ and only one third is a one-line fix:
 |---|---|---|---|
 | **A** | **12** | `Connection::open_in_memory()` then `run` | **Yes — `fresh_db()` is a drop-in.** All 12 converted in §11H. *(This read "11 remain" when written; the 12 above was already counted **after** O-T01 landed, so 12 remained, not 11. Corrected by §11H.)* |
 | **C** | **9** | `run` on a connection the test does not own (`state.db.lock().await`) | **No.** `fresh_db()` *returns* a new connection; these tests need the one `AppState` already holds. |
-| **D** | **16** | `Connection::open(&path)` — on-disk databases | **No, and correctly so.** `crates/kasirmu-core/tests/backup_restore_integration.rs:45` already says why: *"`fresh_db()` creates an in-memory DB… For file-based DBs, we run migrations manually."* Includes both `recovery_tests.rs` files and `migrate_sqlite_to_pg_tests.rs`, which exist to exercise on-disk and WAL behaviour. |
+| **D** | **16** | `Connection::open(&path)` — on-disk databases | **No, and correctly so.** the backup/restore test — now `crates/kasirmu-core/tests/integration/backup_restore.rs:45` after the consolidation that moved every top-level test into `tests/integration/` — already says why: *"`fresh_db()` creates an in-memory DB… For file-based DBs, we run migrations manually."* Includes both `recovery_tests.rs` files and `migrate_sqlite_to_pg_tests.rs`, which exist to exercise on-disk and WAL behaviour. |
 
 Remaining class A, all with the same one-line fix:
 `crates/kasirmu-core/src/db/inventory_tests.rs:12`, `settings_tests.rs:7`,

@@ -28,7 +28,7 @@ export interface Toast {
   timestamp?: number;
 }
 
-interface ToastContextValue {
+export interface ToastContextValue {
   addToast: (toast: Omit<Toast, 'id'> & { id?: string }) => string;
   removeToast: (id: string) => void;
   /**
@@ -53,6 +53,11 @@ export function useToast(): ToastContextValue {
     throw new Error('useToast must be used within a ToastProvider');
   }
   return ctx;
+}
+
+/** Access the optional toast context, returning null when rendered outside `<ToastProvider>`. */
+export function useOptionalToast(): ToastContextValue | null {
+  return useContext(ToastContext);
 }
 
 // ── ID generator ────────────────────────────────────────────────────

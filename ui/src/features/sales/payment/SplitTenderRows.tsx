@@ -81,6 +81,8 @@ export interface SplitTenderRowsProps {
   onUpdateSplit: (id: number, patch: SplitTenderPatch) => void;
   /** The shell's autoSplitEvenly — the minor-units split of the payable. */
   onAutoSplitEvenly: () => void;
+  /** Quick party split callback — splits payable evenly across N ways (2, 3, 4, 5). */
+  onSplitWays?: (ways: number) => void;
   /**
    * Which half of the component to render.
    *
@@ -109,6 +111,7 @@ export default function SplitTenderRows({
   onRemoveSplit,
   onUpdateSplit,
   onAutoSplitEvenly,
+  onSplitWays,
   part = 'both',
 }: SplitTenderRowsProps) {
   const { l10n } = useLocalization();
@@ -124,6 +127,27 @@ export default function SplitTenderRows({
                     <span className="payment-section-title">Split Payments</span>
                   </Localized>
                   <div className="payment-split-actions">
+                    {onSplitWays && (
+                      <div className="payment-split-ways-group" role="group" aria-label={l10n.getString('payment-split-ways-label') || 'Split Ways'}>
+                        <span className="payment-split-ways-label">
+                          <Localized id="payment-split-ways-label">
+                            <span>Split:</span>
+                          </Localized>
+                        </span>
+                        {[2, 3, 4, 5].map((count) => (
+                          <button
+                            key={count}
+                            type="button"
+                            className={`payment-split-way-btn ${splits.length === count ? 'payment-split-way-btn--active' : ''}`}
+                            aria-label={l10n.getString('payment-split-ways-aria', { count }) || `Split evenly ${count} ways`}
+                            data-testid={`payment-split-ways-${count}`}
+                            onClick={() => onSplitWays(count)}
+                          >
+                            {count}x
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <button
                       type="button"
                       className="payment-split-btn"
@@ -164,13 +188,21 @@ export default function SplitTenderRows({
                           </label>
                         ))}
                         <div className="payment-split-radio-label">
-                          <input
-                            type="radio"
-                            name={`split-method-${s.id}`}
-                            value="other"
-                            checked={s.method === 'other'}
-                            onChange={() => onUpdateSplit(s.id, { method: 'other' })}
-                          />
+                          {/* The radio needs its OWN accessible name: it is not
+                              wrapped in a <label> like the cash/card pair above
+                              (the sibling text input is), so without this it
+                              announced as a bare "radio button" and a screen
+                              reader could not tell it from the other two. The
+                              key already carries the wording. */}
+                          <Localized id="payment-split-other-placeholder" attrs={{ 'aria-label': true }}>
+                            <input
+                              type="radio"
+                              name={`split-method-${s.id}`}
+                              value="other"
+                              checked={s.method === 'other'}
+                              onChange={() => onUpdateSplit(s.id, { method: 'other' })}
+                            />
+                          </Localized>
                             <Localized id="payment-split-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
                             <input
                               type="text"

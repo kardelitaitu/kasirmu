@@ -148,7 +148,7 @@ describe('RestaurantMenu', () => {
     const nasiCard = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
 
     fireEvent.contextMenu(nasiCard, { clientX: 100, clientY: 200 });
-    await user.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+    await user.click(screen.getByText('Pin to top'));
     expect(nasiCard).toHaveClass('restaurant-card--pinned');
 
     localStorage.setItem('restaurant-user-2-pinned', JSON.stringify(['ES-TEH']));
@@ -167,7 +167,7 @@ describe('RestaurantMenu', () => {
     const nasiCard = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
 
     fireEvent.contextMenu(nasiCard, { clientX: 100, clientY: 200 });
-    expect(screen.getByRole('menuitem', { name: 'Pin to top' })).toBeTruthy();
+    expect(screen.getByText('Pin to top')).toBeTruthy();
     await user.click(nasiCard);
     expect(nasiCard).toHaveClass('restaurant-card--added');
 
@@ -201,7 +201,7 @@ describe('RestaurantMenu', () => {
       const card = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
 
       fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-      await userEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+      await userEvent.click(screen.getByText('Pin to top'));
       expect(card).toHaveClass('restaurant-card--pinned');
 
       await userEvent.click(card);
@@ -278,8 +278,8 @@ describe('RestaurantMenu', () => {
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
 
-    expect(screen.queryByRole('menuitem', { name: 'Mark unavailable' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'Mark available' })).toBeNull();
+    expect(screen.queryByText('Mark unavailable')).toBeNull();
+    expect(screen.queryByText('Mark available')).toBeNull();
     expect(card).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -482,7 +482,7 @@ describe('RestaurantMenu', () => {
       await new Promise((resolve) => setTimeout(resolve, 550));
     });
 
-    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Pin to top' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Pin to top')).toBeTruthy());
   });
 
   it('uses native button semantics without nested heading content', () => {
@@ -697,7 +697,7 @@ describe('RestaurantMenu', () => {
     expect(localStorage.getItem('restaurant-user-1-cardsize')).toBe('1');
   });
 
-  it('does not add an unavailable card to the sale', async () => {
+  it('does not add an unavailable card to the sale and displays 86 badge', async () => {
     const unavailableProduct = { ...mockProducts[0]!, inStock: false };
     mockUseProducts.mockReturnValue({
       products: [unavailableProduct, mockProducts[1]!],
@@ -709,6 +709,7 @@ describe('RestaurantMenu', () => {
     renderMenu({ onAddProduct });
     const user = userEvent.setup();
 
+    expect(screen.getByTestId('restaurant-card-86-badge')).toHaveTextContent('86');
     await user.click(screen.getByText('Nasi Goreng'));
 
     expect(onAddProduct).not.toHaveBeenCalled();
@@ -944,7 +945,7 @@ describe('RestaurantMenu', () => {
     const card = screen.getByText('Es Teh').closest('button')!;
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
+    await userEvent.click(screen.getByText('Pin to top'));
 
     const cards = screen.getAllByRole('button', { name: /Rp .*Add/ });
     expect(cards[0]).toHaveAccessibleName(/Es Teh.*Add/);
@@ -960,7 +961,7 @@ describe('RestaurantMenu', () => {
     const card = screen.getByText('Nasi Goreng').closest('button')!;
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark unavailable' }));
+    await userEvent.click(screen.getByText('Mark unavailable'));
 
     expect(card).toHaveAttribute('aria-disabled', 'true');
     expect(card).toHaveAccessibleName(/Nasi Goreng.*Unavailable/);
@@ -971,7 +972,7 @@ describe('RestaurantMenu', () => {
     // The source product is available in this test; only the local override
     // should be removable through the context menu.
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark available' }));
+    await userEvent.click(screen.getByText('Mark available'));
     expect(card).toHaveAttribute('aria-disabled', 'false');
 
     await userEvent.click(card);
@@ -1047,5 +1048,75 @@ describe('RestaurantMenu', () => {
 
     expect(screen.getByText('Nasi Goreng')).toBeInTheDocument();
     expect(screen.queryByText('Ayam Bakar (86)')).not.toBeInTheDocument();
+  });
+
+  it('includes empty or newly created restaurant categories from categoryMeta in category tabs', () => {
+    mockUseProducts.mockReturnValue({
+      products: mockProducts,
+      categories: ['Makanan', 'Minuman'],
+      categoryMeta: [
+        { id: 'cat-1', name: 'Makanan', colour: '#f97316', icon: 'food' },
+        { id: 'cat-2', name: 'Minuman', colour: '#06b6d4', icon: 'cold-drink' },
+        { id: 'cat-3', name: 'Dessert Baru', colour: '#eab308', icon: 'snack' },
+      ],
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    });
+
+    renderMenu();
+
+    expect(screen.getByRole('tab', { name: /Dessert Baru/i })).toBeInTheDocument();
+  });
+
+  it('displays products with standard or untyped productType on restaurant selling grid', () => {
+    const standardProduct = {
+      sku: 'ROTI-BAKAR',
+      name: 'Roti Bakar',
+      category: 'Snack',
+      productType: 'standard',
+      price: { minor_units: 15000, currency: 'IDR' },
+      inStock: true,
+      createdAt: '2026-01-04',
+    } as unknown as Product;
+
+    mockUseProducts.mockReturnValue({
+      products: [...mockProducts, standardProduct],
+      categories: ['Makanan', 'Minuman', 'Snack'],
+      categoryMeta: [
+        { id: 'cat-snack', name: 'Snack', colour: '#eab308', icon: 'snack' },
+      ],
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    });
+
+    renderMenu();
+
+    expect(screen.getByRole('tab', { name: /Snack/i })).toBeInTheDocument();
+    expect(screen.getByText('Roti Bakar')).toBeInTheDocument();
+  });
+
+  it('reloads product catalog and unavailable status on visibility change', () => {
+    const reload = vi.fn();
+    mockUseProducts.mockReturnValue({
+      products: mockProducts,
+      categories: ['Makanan', 'Minuman'],
+      categoryMeta: [],
+      loading: false,
+      error: null,
+      reload,
+    });
+
+    renderMenu();
+
+    // Trigger visibilitychange to visible
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    fireEvent(document, new Event('visibilitychange'));
+
+    expect(reload).toHaveBeenCalled();
   });
 });

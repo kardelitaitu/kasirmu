@@ -27,7 +27,7 @@ import {
 //
 // Also measured: this component has NO modifier or discount props, and
 // modifiers still have no data path anywhere in the app (see F1 in
-// .agents/resto-pos-ui-review.md). COURSING IS now a prop surface —
+// .agents/reviews/resto-pos-ui-review.md). COURSING IS now a prop surface —
 // onAssignCourse / courseMenuLine / onCourseMenuLineChange — added so a line
 // can be given a courseId; until then the restaurant firing bar had nothing
 // to fire. The remaining optional render slots are onOverride, line.category
@@ -249,7 +249,7 @@ describe('CartLineItem', () => {
     // the two optional nodes are simply absent.
     expect(container.querySelector('.pos-cart-line-name')?.textContent).toBe('SKU-1');
     expect(container.querySelector('.pos-cart-line-ribbon')).toBeNull();
-    expect(container.querySelector('.pos-cart-line-override')).toBeNull();
+    expect(screen.queryByTestId('cart-line-override-btn')).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(3);
     noExtras.unmount();
 
@@ -265,10 +265,12 @@ describe('CartLineItem', () => {
     expect(c2.querySelector('.pos-cart-line-thumb')?.getAttribute('style')).toContain(
       '--thumb-hue',
     );
-    // The override button is the fourth accessible control, named per line.
+    // The override control is the fourth accessible control, named per line.
+    // It renders as a "$" ICON (not the word "Override") so it sits inline
+    // with the modifier chips instead of costing a text row per cart line.
     expect(screen.getAllByRole('button')).toHaveLength(4);
     const override = screen.getByRole('button', { name: 'Override price for Espresso' });
-    expect(override.textContent).toBe('Override');
+    expect(override.textContent).toBe('$');
     fireEvent.click(override);
     expect(onOverride).toHaveBeenCalledTimes(1);
     expect(onOverride).toHaveBeenCalledWith(full.line);
@@ -362,6 +364,24 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     expect(chip.textContent).toContain('Main Course');
   });
 
+  it('renders coursingStatus badges for hold and fired lines', () => {
+    const holdLine = { ...makeLine(), courseId: 'main' as CourseId, coursingStatus: 'hold' as const };
+    const { unmount } = renderItem({ line: holdLine, onAssignCourse: vi.fn() });
+
+    const holdChip = screen.getByTestId('cart-line-course-chip');
+    expect(holdChip.className).toContain('pos-cart-course-chip--hold');
+    expect(screen.getByTestId('cart-line-course-status-hold').textContent).toBe('⏸');
+
+    unmount();
+
+    const firedLine = { ...makeLine(), courseId: 'main' as CourseId, coursingStatus: 'fired' as const };
+    renderItem({ line: firedLine, onAssignCourse: vi.fn() });
+
+    const firedChip = screen.getByTestId('cart-line-course-chip');
+    expect(firedChip.className).toContain('pos-cart-course-chip--fired');
+    expect(screen.getByTestId('cart-line-course-status-fired').textContent).toBe('✓');
+  });
+
   it('renders modifier tags with prices when modifiers are attached to the line', () => {
     const line: CartLine = {
       ...makeLine({ name: 'Iced Coffee' }),
@@ -387,6 +407,49 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     expect(tagsContainer).toBeDefined();
     expect(tagsContainer.textContent).toContain('Less Sugar');
     expect(tagsContainer.textContent).toContain('Boba');
+  });
+
+  it('places the override "$" icon AFTER the modifier chips', () => {
+    // The placement is the request: the icon must follow the modifiers it
+    // adjusts. It is the LAST child of the row, after every tag and the Edit
+    // link, so a reordering that put it first would fail here.
+    // It reuses `.pos-cart-line-modifier-btn`, the same inline icon button as
+    // the note and sliders controls, so it reads as one family.
+    const line: CartLine = {
+      ...makeLine({ name: 'Iced Coffee' }),
+      modifiers: [
+        {
+          groupId: 'grp-sugar',
+          groupName: 'Sugar',
+          modifierId: 'mod-less',
+          modifierName: 'Less Sugar',
+          priceMinor: 0,
+        },
+      ],
+    };
+    const onOverride = vi.fn();
+    renderItem({ line, onOverride });
+
+    const row = screen.getByTestId('cart-line-modifiers');
+    const override = screen.getByTestId('cart-line-override-btn');
+    expect(row.contains(override)).toBe(true);
+    expect(row.lastElementChild).toBe(override);
+    // Reuses the shared inline icon-button class, so it matches the note and
+    // sliders controls instead of carrying a bespoke chip style.
+    expect(override.className).toBe('pos-cart-line-modifier-btn');
+    fireEvent.click(override);
+    expect(onOverride).toHaveBeenCalledTimes(1);
+  });
+
+  it('still offers the override when the line has NO modifiers', () => {
+    // Guarding the widened row condition: gating the row on modifiers alone
+    // would silently remove the override from every plain item.
+    const onOverride = vi.fn();
+    renderItem({ line: makeLine({ name: 'Plain Tea' }), onOverride });
+
+    const override = screen.getByTestId('cart-line-override-btn');
+    expect(override).toBeInTheDocument();
+    expect(screen.getByTestId('cart-line-modifiers').contains(override)).toBe(true);
   });
 });
 

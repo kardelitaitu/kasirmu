@@ -6,6 +6,8 @@ order: 4
 updated: "2026-10-01"
 ---
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · First audit stamp on this page. Every truth anchor re-verified against the code: the license-key placeholder shape `OZ-PRO-XXXX-XXXX-XXXX` matches the app's own `auth-license-placeholder` string (shared-ui/locales/shared.ftl:517); the six-digit recovery code and its inbox-proof flow are real (apps/license-server/main.go:332, license_recover_test.go:121 asserts "expected a 6-digit recovery code"); the rotation throttle is real and its window is exactly what the page says — `window: 24 * time.Hour` at apps/license-server/activate.go:73, with the per-tenant limiter documented at :66-78 as "at most one rotation per 24h", and phase A's recovery-code gate at :315-316; the Settings → License & Subscription destination and the website login/account page match the in-app nav (SettingsNavTree.tsx) and the site's own login route. · VERIFIED AND LEFT ALONE: the offline-grace wording ("keeps working offline through the expiry date plus a grace period, then degrades to the free tier") matches the shipped lifecycle — `SubscriptionLifecycleState::Grace => "grace_period"` and the active/grace fail-closed rule at crates/kasirmu-core/src/availability.rs:209. · NOT re-measured: the end-to-end activation handshake against a live license server, and the Paddle checkout itself. · Convention note: this page is a USER-FACING Astro page; the footer below is an internal marker stripped from the built site by `website/src/plugins/rehype-strip-audit-footer.mjs`, so it does not render to a reader. -->
+
 ## Get a license key
 
 Paid plans are bought on the website: open the
@@ -75,3 +77,5 @@ expiry date plus a grace period, then degrades to the free tier. See
 ---
 
 Keep reading · **Previous:** [Setup Wizard](../setup-wizard/) · **Next:** [Your First Sale](../first-sale/)
+
+> last audited 11-10-26 by docs-auditor

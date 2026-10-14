@@ -81,6 +81,12 @@ fn make_detail(note: Option<String>) -> SaleDetail {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        // See sale_detail_debug: the four checkout-polish fields, at their
+        // #[serde(default)] zero values.
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     }
 }
 
@@ -144,6 +150,13 @@ fn sale_detail_debug() {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        // Added with the checkout-polish fields (a4a2f343c). All four are
+        // #[serde(default)], so these are the zero values a sale without a
+        // discount, tip or service charge actually carries.
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -168,6 +181,12 @@ fn sale_detail_serialize() {
         display_code: None,
         faktur_pajak: None,
         statutory_number: None,
+        // See sale_detail_debug: the four checkout-polish fields, at their
+        // #[serde(default)] zero values.
+        discount_percent: 0,
+        discount_label: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");

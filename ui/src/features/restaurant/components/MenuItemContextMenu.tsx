@@ -58,22 +58,26 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
   const { l10n } = useLocalization();
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // A11Y-06: keyboard-opened menus move focus to the first menuitem so the
-  // menu is immediately operable without an extra Tab.
+  // A11Y-06: keyboard-opened popups move focus to the first action so the
+  // popup is immediately operable without an extra Tab.
+  //
+  // NOTE (2026-10-12): these queries used `button[role="menuitem"]`. The
+  // menuitem role is gone — the container is role="dialog", because a menu may
+  // only hold menuitem-family children and this popup also holds the colour
+  // strip (axe aria-required-children). The ACTION CLASS is the stable target;
+  // it is the same element either way.
   useEffect(() => {
     if (!menu.fromKeyboard) return;
-    menuRef.current?.querySelector<HTMLElement>('button[role="menuitem"]')?.focus();
+    menuRef.current?.querySelector<HTMLElement>('.restaurant-context-item')?.focus();
   }, [menu]);
 
-  // A11Y-06: ArrowUp / ArrowDown roving focus across every control in the
-  // menu — menuitems AND swatches. The swatches are plain buttons in a group
-  // (not menuitems), so the old `button[role="menuitem"]` query stranded
-  // arrow users above the palette; Tab still reaches everything.
+  // ArrowUp / ArrowDown roving focus across every control in the popup —
+  // actions AND swatches, which is why the query spans both selectors.
   const handleContextMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     const items = Array.from(
       e.currentTarget.querySelectorAll<HTMLElement>(
-        'button[role="menuitem"], .restaurant-context-colors button',
+        '.restaurant-context-item, .restaurant-context-colors button',
       ),
     );
     if (items.length === 0) return;
@@ -153,6 +157,7 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
   const viewportHeight = typeof window !== 'undefined' && Number.isFinite(window.innerHeight) ? window.innerHeight : 768;
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- role="dialog" is the honest semantic for this popup; the keydown handler implements the roving focus the dialog owns (same pattern as KdsEnrollmentModal).
     <div
       ref={menuRef}
       className="restaurant-context-menu"
@@ -165,7 +170,15 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
         left: Math.max(4, Math.min(menu.x, viewportWidth - (menuRef.current?.offsetWidth ?? 180) - 4)),
         top: Math.max(4, Math.min(menu.y, viewportHeight - (menuRef.current?.offsetHeight ?? 280) - 4)),
       }}
-      role="menu"
+      // role="dialog", NOT role="menu". A menu may only contain menuitem-family
+      // children; this popup also renders a colour strip whose swatch buttons
+      // are not menu items, and axe rejected them as illegal menu children
+      // (aria-required-children) — twice, including after a role="presentation"
+      // wrapper, because presentation does not remove the descendants from the
+      // menu's child list. This popup is not a menu, so it does not claim to
+      // be one; its actions are ordinary buttons in a labelled popup, which is
+      // exactly how they behave.
+      role="dialog"
       aria-label={l10n.getString('restaurant-context-menu-aria', undefined, 'Menu item actions')}
       tabIndex={-1}
       onKeyDown={handleContextMenuKeyDown}
@@ -175,7 +188,6 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
         className="restaurant-context-item"
         aria-label={l10n.getString(menu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin')}
         onClick={togglePin}
-        role="menuitem"
       >
         <Localized id={menu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin'}>
         <span>{menu.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
@@ -187,7 +199,6 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
           className="restaurant-context-item"
           aria-label={l10n.getString(menu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable')}
           onClick={toggleUnavailable}
-          role="menuitem"
         >
           <Localized id={menu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable'}>
           <span>{menu.isUnavailable ? 'Mark available' : 'Mark unavailable'}</span>

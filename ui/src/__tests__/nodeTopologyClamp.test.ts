@@ -1,4 +1,15 @@
 /**
+ * @vitest-environment node
+ *
+ * This file's entire import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
+/**
  * Unit tests for `nodeTopologyClamp.ts` — viewport clamping, edge auto-pan,
  * free-spawn-spot spiral scan, and overlap resolution for the topology editor.
  *

@@ -508,11 +508,11 @@ impl TableCols {
                 sep: " ",
             },
             _ => Self {
-                name: 26,
-                qty: 4,
-                price: 6,
-                total: 6,
-                sep: "  ",
+                name: 21,
+                qty: 3,
+                price: 10,
+                total: 11,
+                sep: " ",
             },
         }
     }
@@ -573,7 +573,10 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
 
     // ── Column headers ────────────────────────────────
     let cols = TableCols::for_width(w);
-    {
+    if w <= 32 {
+        let header = right_line("Item", "Total", w);
+        b.bold(&header);
+    } else {
         let name_w = cols.name.saturating_sub(4);
         let qty_h = right_pad("Qty", cols.qty);
         let price_h = right_pad("Price", cols.price);
@@ -588,28 +591,42 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
 
     // ── Line items ────────────────────────────────────
     for item in &r.items {
-        let name = truncate(&item.name, cols.name);
         let qty_s = format!("{}", item.quantity);
         let price_s = format_money(&item.unit_price, config);
         let total_s = format_money(&item.total_price, config);
 
-        let qty_pad = cols.qty.saturating_sub(cell_width(&qty_s));
-        let price_pad = cols.price.saturating_sub(cell_width(&price_s));
-        let total_pad = cols.total.saturating_sub(cell_width(&total_s));
+        if w <= 32 {
+            // Narrow 58mm layout (32 cols): 2-line format prevents overflow
+            // Line 1: Item name (full width up to 32 chars)
+            let name = truncate(&item.name, w);
+            b.text(&name);
+            // Line 2: Qty @ Unit Price left, Line Total right-aligned to margin
+            let qty_detail = format!("  {qty_s}x @ {price_s}");
+            b.text(&right_line(&qty_detail, &total_s, w));
+        } else {
+            let total_extra = cell_width(&total_s).saturating_sub(cols.total);
+            let price_extra = cell_width(&price_s).saturating_sub(cols.price);
+            let effective_name_w = cols.name.saturating_sub(total_extra + price_extra);
+            let name = truncate(&item.name, effective_name_w);
+            let qty_pad = cols.qty.saturating_sub(cell_width(&qty_s));
+            let price_pad = cols.price.saturating_sub(cell_width(&price_s));
+            let total_pad = cols.total.saturating_sub(cell_width(&total_s));
 
-        let line = format!(
-            "{:<name$}{sep}{:>qty_pad$}{qty_s}{sep}{:>price_pad$}{price_s}{sep}{:>total_pad$}{total_s}",
-            name,
-            "",
-            "",
-            "",
-            name = cols.name,
-            sep = cols.sep,
-            qty_pad = qty_pad,
-            price_pad = price_pad,
-            total_pad = total_pad,
-        );
-        b.text(&line);
+            let line = format!(
+                "{:<name_w$}{sep}{:>qty_pad$}{qty_s}{sep}{:>price_pad$}{price_s}{sep}{:>total_pad$}{total_s}",
+                name,
+                "",
+                "",
+                "",
+                name_w = effective_name_w,
+                sep = cols.sep,
+                qty_pad = qty_pad,
+                price_pad = price_pad,
+                total_pad = total_pad,
+            );
+            b.text(&line);
+        }
+
         if let Some(ref note) = item.note {
             let trimmed = note.trim();
             if !trimmed.is_empty() {
@@ -619,21 +636,25 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
         if config.show_tax
             && let Some(ref tax) = item.tax_amount
         {
-            let indent = cols.name
-                + cell_width(cols.sep)
-                + cols.qty
-                + cell_width(cols.sep)
-                + cols.price
-                + cell_width(cols.sep);
             let tax_str = format_money(tax, config);
-            let tax_line = format!(
-                "{:indent$}Tax: {:>tax_pad$}{tax_str}",
-                "",
-                "",
-                indent = indent,
-                tax_pad = cols.total.saturating_sub(cell_width(&tax_str) + 5)
-            );
-            b.text(&tax_line);
+            if w <= 32 {
+                b.text(&right_line("    Tax:", &tax_str, w));
+            } else {
+                let indent = cols.name
+                    + cell_width(cols.sep)
+                    + cols.qty
+                    + cell_width(cols.sep)
+                    + cols.price
+                    + cell_width(cols.sep);
+                let tax_line = format!(
+                    "{:indent$}Tax: {:>tax_pad$}{tax_str}",
+                    "",
+                    "",
+                    indent = indent,
+                    tax_pad = cols.total.saturating_sub(cell_width(&tax_str) + 5)
+                );
+                b.text(&tax_line);
+            }
         }
     }
     b.separator();

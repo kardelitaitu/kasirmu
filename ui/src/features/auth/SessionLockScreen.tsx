@@ -321,6 +321,10 @@ export default function SessionLockScreen({
                   type="button"
                   className="session-lock-pad-key session-lock-pad-key--action"
                   onClick={handleBackspace}
+                  // Icon-only: without this the button announces as a bare
+                  // "button". StaffLoginScreen's identical backspace key already
+                  // carries it (StaffLoginScreen.tsx:563); this pad was missed.
+                  aria-label={l10n.getString('backspace-aria')}
                   disabled={pin.length === 0 || isLocked}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">

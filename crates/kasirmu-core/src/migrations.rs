@@ -466,6 +466,12 @@ pub const ALL: &[Migration] = &[
         id: "20261019_audit_chain_hash.sql",
         sql: include_str!("../migrations/20261019_audit_chain_hash.sql"),
     },
+    // Constrain products.product_type to ('retail', 'restaurant', 'service').
+    // Rebuilds products table with CHECK constraint.
+    Migration {
+        id: "20261020_product_type_check.sql",
+        sql: include_str!("../migrations/20261020_product_type_check.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

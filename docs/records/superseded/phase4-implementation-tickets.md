@@ -1,8 +1,19 @@
+<!-- Re-verified 11-10-26 · docs-auditor · Cross-link repair, dated records, no content rewritten.
+     The 2026-10-02 records restructure moved NINE of the documents these six records cite from
+     `docs/architecture/` into `docs/records/superseded/` (45e1cd520 and its companions), so every
+     `docs/architecture/<moved>.md` citation in the Predecessors/Successor blocks named a path that no
+     longer resolves — 42 across the six files. Repointed to the live home. The three cited documents
+     that are STILL in `docs/architecture/` (module-namespace-governance.md, module-namespace-firewall.md,
+     module-boot-sequence.md) were deliberately left alone, as were the relative markdown links, which
+     already resolved because the files moved together. No claim, count or ticket status was altered. Separately, this file's one citation of a top-level core test was repointed to `tests/integration/manifest_schema.rs`, where the 2026-09 consolidation moved it.
+     Verified after the edit: 0 residual stale citations, 42 repointed, 32 correct citations preserved,
+     0 dead relative links, and every cited ticket/decision path still resolving. NOT re-measured: the
+     phases' own per-ticket acceptance runs and the runtime behaviour of the seams they describe. -->
 # Phase 4 Implementation Tickets — Strict Namespace Firewall
 
 > **Successor:** the one structural item this phase left open — routing the cross-vertical
 > sale settlement in `crates/kasirmu-core/src/db/sales_lifecycle.rs` behind the module seams — is
-> scoped in `docs/architecture/phase5-implementation-tickets.md` (Phase 5).
+> scoped in `docs/records/superseded/phase5-implementation-tickets.md` (Phase 5).
 
 **Status:** Draft for execution (2026-10-03) — tickets only, no code changed by this document
 **Scope:** Plan §10 "Phase 4 — Strict Namespace Firewall" (`todo-modular-scaffolding.md:800-824`) and the
@@ -10,12 +21,12 @@ governance gates it leaves open (§11.2), which ask that the module boundaries s
 and start being mechanically enforced.
 
 **Predecessors:**
-- `docs/architecture/phase3-implementation-tickets.md` — Phase 3 is closed (P3.1–P3.5); the modules are
+- `docs/records/superseded/phase3-implementation-tickets.md` — Phase 3 is closed (P3.1–P3.5); the modules are
   wrapped on `NamespacedStore`, the core size ratchet is live at 36590, and the frozen cross-vertical
   edge is a single declared grant.
-- `docs/architecture/namespaced-store-api-draft.md` §10 — "What would make this enforceable (Phase 4)",
+- `docs/records/superseded/namespaced-store-api-draft.md` §10 — "What would make this enforceable (Phase 4)",
   the four-item list this phase executes.
-- `docs/architecture/reporting-facade-inventory.md` §5 (the narrow trait shape) and §7 (the bypass set,
+- `docs/records/superseded/reporting-facade-inventory.md` §5 (the narrow trait shape) and §7 (the bypass set,
   now empty).
 - `docs/architecture/module-boot-sequence.md` §6 — the two hatches Phase 4 closes (`raw()` and undeclared
   capabilities).
@@ -61,7 +72,7 @@ Every `modules/*/manifest.json` now declares its `capabilities` set, derived mec
 tables, plus `read:<dep>` per dependency — 36 capabilities across 14 manifests), and a new required gate
 `capability-parity` (`scripts/gates.json`; step "capability parity" in `scripts/check.sh`) fails when a
 manifest drifts. `scripts/verify-namespace-governance.py` gained `--check-capabilities` / `--emit-capabilities`
-with the derivation in `derive_capabilities()`; `crates/kasirmu-core/tests/manifest_schema_test.rs`
+with the derivation in `derive_capabilities()`; `crates/kasirmu-core/tests/integration/manifest_schema.rs`
 `ALLOWED_FIELDS` now lists `capabilities` (the list had not been updated when the Phase 2 schema added the
 property, so the test failed on the newly-populated manifests — fixed in the same commit). Item 2 has progressed: `Grants::from_capabilities(module, capabilities)`
 (`crates/kasirmu-core/src/db/namespaced.rs`) now derives a read-grant set from a manifest capability list
@@ -133,7 +144,7 @@ build/tooling, not convention alone."
 `Store<'_>` by delegating to the inherent methods. The four families are `daily_revenue`, `hourly_heatmap`
 (operational summary), `top_products` (product rollups), and `low_stock_alerts_at_location` (stock
 alerts) — the plan's `low_stock_alerts` is `#[deprecated]`, so the trait takes its successor rather than
-freezing the deprecation (recorded in `docs/architecture/reporting-facade-inventory.md` §5). The one
+freezing the deprecation (recorded in `docs/records/superseded/reporting-facade-inventory.md` §5). The one
 sanctioned write (`acknowledge_stock_alert`) is deliberately NOT on the trait: it is a READ contract.
 `facade_tests.rs` binds all four through the trait and pins the count at four. The live bridge consumer
 surface routes its four family call sites through `ReportingFacade::` explicitly
@@ -152,8 +163,8 @@ methods on `Store` in `crates/kasirmu-core/src/db/reports/` (submodules `datetim
   `:355` `acknowledge_stock_alert` (the one sanctioned write on `stock_alert_events`).
 - `crates/kasirmu-core/src/db/reports/sales_summary.rs:171` `hourly_heatmap`, `:394` `discounts_summary`,
   and the other operational rollups — 24 inherent methods in total
-  (`docs/architecture/reporting-facade-inventory.md` §5).
-- `docs/architecture/reporting-facade-inventory.md` §5 fixes the trait at the plan's **four** methods:
+  (`docs/records/superseded/reporting-facade-inventory.md` §5).
+- `docs/records/superseded/reporting-facade-inventory.md` §5 fixes the trait at the plan's **four** methods:
   `daily_revenue`, `sales_summary`, `product_sales`, `low_stock_alerts` — narrow by decision.
 
 **Ticket P4.2 — a trait of four methods, implemented by `Store`, with callers routed through it.**
@@ -349,8 +360,8 @@ rest build on them.
 ## References
 
 - `todo-modular-scaffolding.md` §10 (Phase 4), §11.2 (namespace violation gate), §13 (acceptance criteria)
-- `docs/architecture/phase3-implementation-tickets.md` (the closed predecessor phase)
-- `docs/architecture/namespaced-store-api-draft.md` §8, §10 (what makes it enforceable)
-- `docs/architecture/reporting-facade-inventory.md` §5 (trait shape), §6 (bypass set, now empty)
+- `docs/records/superseded/phase3-implementation-tickets.md` (the closed predecessor phase)
+- `docs/records/superseded/namespaced-store-api-draft.md` §8, §10 (what makes it enforceable)
+- `docs/records/superseded/reporting-facade-inventory.md` §5 (trait shape), §6 (bypass set, now empty)
 - `docs/architecture/module-boot-sequence.md` §6 (the two hatches Phase 4 closes)
 - `crates/kasirmu-core/src/db/namespaced.rs` (the store this phase makes strict)

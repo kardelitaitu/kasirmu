@@ -1,3 +1,14 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   clamp,
@@ -149,54 +160,78 @@ describe('fontSizeClass', () => {
 });
 
 describe('computeReceiptPreview', () => {
-  it('computes gross prices when tax is hidden (subtotal 93000, no tax)', () => {
+  // The sample's unit prices are 35.000 / 16.000 / 42.000 and its QUANTITIES are 1 / 2 / 1,
+  // so each rendered row carries a LINE TOTAL. That is the convention the real receipt
+  // uses: `completedSale.ts:132` and `:221` both compute
+  // `unit_price.minor_units * qty`. The gross line sum is 109.000.
+  const GROSS = 109000;
+
+  it('computes gross LINE TOTALS when tax is hidden', () => {
     const r = computeReceiptPreview({ taxRatePercent: 10, showTax: false, taxRoundingMode: 'half_up' });
-    expect(r.itemPrices).toEqual([35000, 16000, 42000]);
-    expect(r.subtotal).toBe(93000);
+    expect(r.itemPrices).toEqual([35000, 32000, 42000]);
+    expect(r.subtotal).toBe(GROSS);
     expect(r.tax).toBe(0);
-    expect(r.total).toBe(93000);
-    expect(r.change).toBe(7000);
+    expect(r.total).toBe(GROSS);
+    expect(r.change).toBe(0); // 100.000 - 109.000 floors at zero
   });
 
   it('applies half-up rounding on tax with a 10% rate', () => {
     // multiplier = 100/110
-    // item1Exact = 35000 * 100/110 = 31818.18..., item1 = 31818
-    // item2Exact = 16000 * 100/110 = 14545.45..., item2 = 14545
-    // item3Exact = 42000 * 100/110 = 38181.81..., item3 = 38182
-    // exactSubtotal = 84545.45..., subtotal = round = 84545
-    // rawTax = 84545.45... * 0.10 = 8454.54..., half-up = 8455
+    // item1Exact = 35000 * 100/110 * 1 = 31818.18..., item1 = 31818
+    // item2Exact = 16000 * 100/110 * 2 = 29090.90..., item2 = 29091
+    // item3Exact = 42000 * 100/110 * 1 = 38181.81..., item3 = 38182
+    // exactSubtotal = 99090.90..., subtotal = round = 99091
+    // rawTax = 99090.90... * 0.10 = 9909.09..., half-up = 9909
     const r = computeReceiptPreview({ taxRatePercent: 10, showTax: true, taxRoundingMode: 'half_up' });
-    expect(r.itemPrices).toEqual([31818, 14545, 38182]);
-    expect(r.subtotal).toBe(84545);
-    expect(r.tax).toBe(8455);
-    expect(r.total).toBe(93000);
+    expect(r.itemPrices).toEqual([31818, 29091, 38182]);
+    expect(r.subtotal).toBe(99091);
+    expect(r.tax).toBe(9909);
+    expect(r.total).toBe(109000);
   });
 
   it('applies truncate rounding on the same tax figure', () => {
     const r = computeReceiptPreview({ taxRatePercent: 10, showTax: true, taxRoundingMode: 'truncate' });
-    // rawTax = 8454.54... -> truncated 8454
-    expect(r.tax).toBe(8454);
-    expect(r.total).toBe(84545 + 8454);
+    // rawTax = 9909.09... -> truncated 9909
+    expect(r.tax).toBe(9909);
+    expect(r.total).toBe(99091 + 9909);
   });
 
   it('handles a 0% tax rate (net = gross)', () => {
     const r = computeReceiptPreview({ taxRatePercent: 0, showTax: true, taxRoundingMode: 'half_up' });
-    expect(r.itemPrices).toEqual([35000, 16000, 42000]);
-    expect(r.subtotal).toBe(93000);
+    expect(r.itemPrices).toEqual([35000, 32000, 42000]);
+    expect(r.subtotal).toBe(GROSS);
     expect(r.tax).toBe(0);
-    expect(r.total).toBe(93000);
-    expect(r.change).toBe(7000);
+    expect(r.total).toBe(GROSS);
+    expect(r.change).toBe(0);
   });
 
-  it('preserves gross 93000 at any rate (net-of-tax math), so change is always 7000', () => {
-    // Net-of-tax pricing keeps the gross total at 93.000 whatever the rate, so
-    // the Rp 100.000 cash note always yields exactly Rp 7.000 change — the
-    // Math.max(0, ...) floor in computeReceiptPreview is thus never exercised
-    // for the sample item set (it is defensive for future price changes).
+  it('preserves the gross line sum at any rate (net-of-tax math)', () => {
+    // At 100% tax the net is exactly half the gross line sum, so tax equals the
+    // subtotal and the grand total returns to the gross 109.000.
     const r = computeReceiptPreview({ taxRatePercent: 100, showTax: true, taxRoundingMode: 'half_up' });
-    expect(r.subtotal).toBe(46500);
-    expect(r.tax).toBe(46500);
-    expect(r.total).toBe(93000);
-    expect(r.change).toBe(7000);
+    expect(r.subtotal).toBe(54500);
+    expect(r.tax).toBe(54500);
+    expect(r.total).toBe(GROSS);
+    expect(r.change).toBe(0);
+  });
+
+  it('prices each row as a LINE TOTAL, because the real receipt multiplies qty', () => {
+    // The regression this guards: the preview labels its middle row `2x Es Teh` and used
+    // to show the net of ONE unit beside it — a figure no real receipt ever prints.
+    const r = computeReceiptPreview({
+      taxRatePercent: 10,
+      showTax: true,
+      taxRoundingMode: 'half_up',
+    });
+    expect(r.itemPrices[0]).toBe(31818);   // 1x
+    expect(
+      r.itemPrices[1],
+      'the row labelled 2x must carry twice the unit figure, not the unit figure',
+    ).toBe(29091);
+    expect(r.itemPrices[2]).toBe(38182);   // 1x
+    expect(r.subtotal).toBe(99091);
+    expect(r.tax).toBe(9909);
+    expect(r.total).toBe(109000);
+    expect(r.change).toBe(0);
   });
 });

@@ -194,3 +194,7 @@ dashboard-export-col-date = Date
 dashboard-export-col-revenue = Revenue
 dashboard-export-col-profit = Gross Profit
 dashboard-export-col-orders = Orders
+
+# Menu Engineering
+menu-eng-food-cost-header = Food Cost %
+menu-eng-tooltip-food-cost = Food Cost %

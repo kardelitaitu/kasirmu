@@ -149,7 +149,7 @@ export function OpenBillsPanel({
                       {ob.label || ob.customer_name}
                     </span>
                     <span className="pos-held-item-meta">
-                      {ob.item_count} item{ob.item_count !== 1 ? 's' : ''} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
+                      {l10n.getString('retail-cart-items', { count: ob.item_count }, `${ob.item_count} items`)} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
                     </span>
                   </div>
                   <button

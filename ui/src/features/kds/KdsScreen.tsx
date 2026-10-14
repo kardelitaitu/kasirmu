@@ -19,6 +19,12 @@ import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
 import { minutesToSlaThresholds, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized } from '@/components';
+// Scoped crash isolation. The KDS had NONE: every fault under it reached
+// AppProviders' app-level boundary, whose recovery is a FULL RELOAD — the wrong
+// trade for a wall-mounted kitchen display, where a reload blanks the board and
+// every cook loses the queue at once. Same reasoning as the restaurant POS, whose
+// comment puts it as "a scoped failure never reloads the whole POS".
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
@@ -156,8 +162,9 @@ export default function KdsScreen() {
     const filtered = filterKdsOrdersByScope(fetchedOrders, activeStoreId);
 
     // Track new ticket IDs for arrival animation. The diff is named in
-    // kdsOrdersDiff so it can be tested; it had none before (the two suites that
-    // mention newOrderIds pass an empty Set as a prop and never exercise it).
+    // kdsOrdersDiff so it can be tested, and it is: kdsArrivalDiff.test.ts (11 cases).
+    // Before the extraction the loop lived inline here and NOTHING exercised it --
+    // the two suites that mention newOrderIds pass an empty Set as a prop.
     const currentIds = orderIdSet(filtered);
     const arrivedIds = arrivedOrderIds(prevOrderIdsRef.current, filtered);
     prevOrderIdsRef.current = currentIds;
@@ -305,6 +312,19 @@ export default function KdsScreen() {
     [orders, filterMode, filterCats],
   );
 
+  // Signature of the queue's IDENTITY, not just its size.
+  //
+  // The board's ErrorBoundary uses this as a resetKey, and a malformed payload is the
+  // failure it exists for: one ticket throws, the board falls back, and the backend
+  // re-sends that ticket corrected. Keying on the COUNT alone meant that correction
+  // left the fallback in place — same number of tickets, so the key never moved — and
+  // the cook saw a broken board until they navigated out and back, mid-service. The
+  // ids change on any membership change, so the correction now clears it.
+  const queueSignature = useMemo(
+    () => filteredOrders.map((o) => o.id).join(','),
+    [filteredOrders],
+  );
+
   // H3: the settings sliders are now wired — thresholds flow into every
   // card's useTicketSla. Memoized so KdsTicketCard's memo still holds when
   // unrelated state re-renders the screen.
@@ -446,6 +466,7 @@ export default function KdsScreen() {
       </div>
 
       {/* ── Zone chips — secondary filter row below the header ────── */}
+      <LocalizedErrorBoundary resetKeys={[zones.join(','), prefs.kdsZone]}>
       <KdsZoneChips
         zones={zones}
         activeZone={prefs.kdsZone}
@@ -453,7 +474,9 @@ export default function KdsScreen() {
         onKeyDown={handleZoneTablistKeyDown}
         zoneTabRefs={zoneTabRefs}
       />
+      </LocalizedErrorBoundary>
 
+      <LocalizedErrorBoundary resetKeys={[String(error ?? ''), String(deadLetterLength)]}>
       <KdsNoticeBanners
         error={error}
         onRetryError={() => {
@@ -495,6 +518,7 @@ export default function KdsScreen() {
         }}
         onDismissOffline={() => setOfflineDismissed(true)}
       />
+      </LocalizedErrorBoundary>
 
       {/* P7-3: Pull-to-refresh indicator */}
       {pullState !== 'idle' && (
@@ -512,6 +536,14 @@ export default function KdsScreen() {
       )}
 
       {/* ── Main content: loading skeleton, history panel, or layout ── */}
+      {/* Crash isolation: the board is driven entirely by LIVE server data
+          (filteredOrders, slaThresholds, per-order line items), which is where a
+          malformed payload throws. Wrapped so that fault costs the board, not the
+          whole screen and not the shift. resetKeys on the tab and the queue
+          SIGNATURE — identity, not just count — so a corrected payload for the
+          same ticket clears a caught error instead of leaving the fallback up
+          until the operator navigates away and back. See queueSignature above. */}
+      <LocalizedErrorBoundary resetKeys={[activeTab, queueSignature]}>
       <KdsMainContent
         initialLoading={initialLoading}
         activeTab={activeTab}
@@ -532,6 +564,7 @@ export default function KdsScreen() {
         slaThresholds={slaThresholds}
         completedFilter={completedFilter}
       />
+      </LocalizedErrorBoundary>
 
       {/* 3f: Product picker modal for adding items mid-preparation */}
       <KdsProductPickerModal

@@ -1,5 +1,7 @@
 # Promotions Module
 
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · First audit stamp this page has carried. · MINOR: one sentence conflated two files. It said "the engine in `crates/kasirmu-core/src/promotion_engine.rs` computes Fixed / buy-X-get-Y discounts, and `compute_checkout_promotions` applies them at checkout" — but `compute_checkout_promotions` lives in `crates/kasirmu-core/src/db/promotions.rs:403`, not in `promotion_engine.rs`. Both halves are individually true and the distinction is the useful one: `promotion_engine.rs` is the PURE maths (compute_discount / compute_discount_unscoped, checked_* arithmetic, discount clamped to 0..=total), while `db/promotions.rs` is the store-backed CRUD plus the checkout application that reads rules and records applications. Naming both, and saying which is pure, is what makes the page's own "rule evaluation should be pure" design note actionable. · VERIFIED AND LEFT ALONE: the engine is genuinely live (PROMO-3) and is called from both IPC shells through the bridge — crates/kasirmu-bridge/src/pos/checkout.rs calls compute_checkout_promotions, so the page's "the working logic lives in kasirmu-core, not here" framing is correct; manifest.json declares promotions:view/apply/manage with dependencies ["sales"]; dependencies() returns &["sales"]; PromotionsModule is lifecycle-only (on_load logs "stub — no handlers registered yet"); Feature::Promotions maps to "promotions-engine"; the crates/kasirmu-core/README.md `promotion_engine` row the page points at exists and describes compute_discount. · NOT re-measured: the "total never negative" and stacking-order properties the checklist asks a promoter to test — those are test-run questions, and the checklist correctly frames them as work to do. · No prior stamp existed; this is the first. -->
+
 **Status:** Module crate is a lifecycle stub — the promotion engine itself shipped in `crates/kasirmu-core` (PROMO-3)
 
 ## Overview
@@ -54,4 +56,4 @@ plus `db/promotions.rs` and the checkout application in `db/sales_checkout.rs`.
 
 See `modules/README.md` for the full promotion path.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

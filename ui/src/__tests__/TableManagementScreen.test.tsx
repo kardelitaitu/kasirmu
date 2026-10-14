@@ -8,13 +8,34 @@ import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import type { Table } from '@/api/tables';
 import type * as SalesApi from '@/api/sales';
+import { resetMemoryLeasesForTest } from '@/features/sales/hooks/useTabLeases';
 
-const { mockListTables, mockListSections, mockUpdateTableStatus, mockReleaseTable, mockListOpenBills } = vi.hoisted(() => ({
+const {
+  mockListTables,
+  mockListSections,
+  mockUpdateTableStatus,
+  mockReleaseTable,
+  mockListOpenBills,
+  mockCreateTable,
+  mockUpdateTable,
+  mockDeleteTable,
+  mockGetHeldCart,
+  mockHoldCart,
+  mockDeleteHeldCart,
+  mockPrintSalesReceipt,
+} = vi.hoisted(() => ({
   mockListTables: vi.fn(),
   mockListSections: vi.fn(),
   mockUpdateTableStatus: vi.fn(),
   mockReleaseTable: vi.fn(),
   mockListOpenBills: vi.fn(),
+  mockCreateTable: vi.fn(),
+  mockUpdateTable: vi.fn(),
+  mockDeleteTable: vi.fn(),
+  mockGetHeldCart: vi.fn(),
+  mockHoldCart: vi.fn(),
+  mockDeleteHeldCart: vi.fn(),
+  mockPrintSalesReceipt: vi.fn(),
 }));
 
 vi.mock('@/api/sales', async (importOriginal) => {
@@ -22,6 +43,10 @@ vi.mock('@/api/sales', async (importOriginal) => {
   return {
     ...actual,
     listOpenBillsScoped: (_token: string) => mockListOpenBills(),
+    getHeldCartScoped: (_token: string, id: string) => mockGetHeldCart(id),
+    holdCartScoped: (_token: string, args: unknown) => mockHoldCart(args),
+    deleteHeldCartScoped: (_token: string, id: string) => mockDeleteHeldCart(id),
+    printSalesReceipt: (_token: string, args: unknown) => mockPrintSalesReceipt(args),
   };
 });
 
@@ -36,6 +61,12 @@ vi.mock('@/api/tables', () => ({
     mockUpdateTableStatus(_token, id, status),
   releaseTable: (userId: string, id: string) => mockReleaseTable(userId, id),
   releaseTableScoped: (_token: string, id: string) => mockReleaseTable(_token, id),
+  createTable: (_token: string, table: Table) => mockCreateTable(table),
+  createTableScoped: (_token: string, table: Table) => mockCreateTable(table),
+  updateTable: (_token: string, table: Table) => mockUpdateTable(table),
+  updateTableScoped: (_token: string, table: Table) => mockUpdateTable(table),
+  deleteTable: (_token: string, id: string) => mockDeleteTable(id),
+  deleteTableScoped: (_token: string, id: string) => mockDeleteTable(id),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -83,20 +114,38 @@ async function openTableDetail(table: Table) {
 
 describe('TableManagementScreen', () => {
   beforeEach(() => {
+    resetMemoryLeasesForTest();
     mockListTables.mockReset();
     mockListSections.mockReset();
     mockUpdateTableStatus.mockReset();
     mockReleaseTable.mockReset();
     mockListOpenBills.mockReset();
+    mockCreateTable.mockReset();
+    mockUpdateTable.mockReset();
+    mockDeleteTable.mockReset();
+    mockGetHeldCart.mockReset();
+    mockHoldCart.mockReset();
+    mockDeleteHeldCart.mockReset();
+    mockPrintSalesReceipt.mockReset();
     mockListTables.mockResolvedValue([]);
     mockListSections.mockResolvedValue([]);
     mockListOpenBills.mockResolvedValue([]);
+    mockHoldCart.mockResolvedValue({ id: 'new-held-id' });
+    mockDeleteHeldCart.mockResolvedValue(undefined);
+    mockPrintSalesReceipt.mockResolvedValue({ printed: true });
     mockUpdateTableStatus.mockImplementation((_token: string, id: string, status: string) =>
       Promise.resolve(makeTable({ id, status })),
     );
     mockReleaseTable.mockImplementation((_token: string, id: string) =>
       Promise.resolve(makeTable({ id, status: 'cleaning' })),
     );
+    mockCreateTable.mockImplementation((table: Table) =>
+      Promise.resolve(makeTable({ ...table, id: 't-new' })),
+    );
+    mockUpdateTable.mockImplementation((table: Table) =>
+      Promise.resolve(table),
+    );
+    mockDeleteTable.mockResolvedValue(undefined);
   });
 
   it('renders the title', async () => {
@@ -510,7 +559,7 @@ describe('TableManagementScreen', () => {
 
     // Click to open detail dialog
     await userEvent.click(screen.getByText('Table 2').closest('button')!);
-    await waitFor(() => expect(screen.getByText(/Active Tab: Table 2 \(Bapak Budi\)/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/Active Tab:.*Table 2 \(Bapak Budi\)/)).toBeDefined());
     expect(screen.getByText(/2 items ·/)).toBeDefined();
     const resumeBtn = screen.getByRole('button', { name: 'Resume Tab / Order' });
     expect(resumeBtn).toBeDefined();
@@ -518,4 +567,535 @@ describe('TableManagementScreen', () => {
     await userEvent.click(resumeBtn);
     expect(onSelectTable).toHaveBeenCalledWith('Table 2');
   });
+
+  it('opens Add Table modal when + Add Table button is clicked and creates table', async () => {
+    mockListTables.mockResolvedValue([]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-add-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-add-table-btn'));
+    await waitFor(() => expect(screen.getByLabelText('Table Name')).toBeDefined());
+
+    await userEvent.type(screen.getByLabelText('Table Name'), 'Table 99');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Table' }));
+
+    await waitFor(() => expect(mockCreateTable).toHaveBeenCalled());
+    expect(mockCreateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Table 99',
+        capacity: 4,
+        shape: 'circle',
+      }),
+    );
+  });
+
+  it('opens Edit Table modal from detail panel and updates table', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1' })]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-edit-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-edit-table-btn'));
+    await waitFor(() => expect(screen.getByLabelText('Table Name')).toBeDefined());
+
+    const nameInput = screen.getByLabelText('Table Name');
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'Table 1 Edited');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Table' }));
+
+    await waitFor(() => expect(mockUpdateTable).toHaveBeenCalled());
+    expect(mockUpdateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't-1',
+        name: 'Table 1 Edited',
+      }),
+    );
+  });
+
+  it('deletes table after confirmation in detail panel', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'available' })]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-delete-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-delete-table-btn'));
+    await waitFor(() => expect(screen.getByText(/Are you sure you want to delete table/)).toBeDefined());
+
+    const deleteBtn = screen.getByRole('button', { name: 'Delete' });
+    await userEvent.click(deleteBtn);
+
+    await waitFor(() => expect(mockDeleteTable).toHaveBeenCalledWith('t-1'));
+  });
+
+  it('invokes onBack when back button is clicked', async () => {
+    const handleBack = vi.fn();
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onBack={handleBack} />
+      </LocalizationProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('tables-back-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-back-btn'));
+    expect(handleBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders active bill indicators and tag for occupied table with open tab', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1 - Order #101',
+        table_name: 'Table 1',
+        item_count: 3,
+        total_minor: 125000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    expect(tableBtn).toHaveClass('tables-table--has-bill');
+
+    // Open detail
+    await userEvent.click(tableBtn!);
+    await waitFor(() => expect(screen.getByText(/Active Tab:.*Table 1 - Order #101/)).toBeDefined());
+    expect(screen.getAllByText(/3 items/)).toHaveLength(2);
+  });
+
+  it('prompts release confirmation when releasing occupied table with active tab', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1 - Order #101',
+        table_name: 'Table 1',
+        item_count: 2,
+        total_minor: 85000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    await userEvent.click(tableBtn!);
+
+    await waitFor(() => expect(screen.getByText('Release')).toBeDefined());
+    await userEvent.click(screen.getByText('Release').closest('button')!);
+
+    // Warning banner is displayed
+    await waitFor(() =>
+      expect(screen.getByText(/Table has an active tab/)).toBeDefined(),
+    );
+    expect(screen.getByText('Confirm Release')).toBeDefined();
+
+    // Cancel dismisses banner without calling mockReleaseTable
+    await userEvent.click(screen.getByText('Cancel').closest('button')!);
+    await waitFor(() =>
+      expect(screen.queryByText(/Table has an active tab/)).toBeNull(),
+    );
+    expect(mockReleaseTable).not.toHaveBeenCalled();
+
+    // Click Release again and confirm
+    await userEvent.click(screen.getByText('Release').closest('button')!);
+    await waitFor(() => expect(screen.getByText('Confirm Release')).toBeDefined());
+    await userEvent.click(screen.getByText('Confirm Release').closest('button')!);
+
+    await waitFor(() =>
+      expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1'),
+    );
+  });
+
+  it('calls onSelectTable when Resume Tab / Order is clicked for active bill table', async () => {
+    const handleSelectTable = vi.fn();
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1 - Order #101',
+        table_name: 'Table 1',
+        item_count: 2,
+        total_minor: 85000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onSelectTable={handleSelectTable} />
+      </LocalizationProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    await userEvent.click(tableBtn!);
+
+    await waitFor(() => expect(screen.getByText('Resume Tab / Order')).toBeDefined());
+    await userEvent.click(screen.getByText('Resume Tab / Order').closest('button')!);
+
+    expect(handleSelectTable).toHaveBeenCalledWith('Table 1');
+  });
+
+  it('renders section badges with total and occupied counts', async () => {
+    mockListSections.mockResolvedValue(['Main', 'Outdoor']);
+    mockListTables.mockResolvedValue([
+      makeTable({ id: 't-1', name: 'Table 1', section: 'Main', status: 'occupied' }),
+      makeTable({ id: 't-2', name: 'Table 2', section: 'Main', status: 'available' }),
+      makeTable({ id: 't-3', name: 'Table 3', section: 'Outdoor', status: 'available' }),
+    ]);
+    renderScreen();
+
+    await waitFor(() => {
+      const allBadge = screen.getByTestId('tables-section-badge-all');
+      expect(allBadge.textContent).toBe('1/3');
+      expect(allBadge).toHaveClass('tables-section-badge--occupied');
+
+      const mainBadge = screen.getByTestId('tables-section-badge-Main');
+      expect(mainBadge.textContent).toBe('1/2');
+
+      const outdoorBadge = screen.getByTestId('tables-section-badge-Outdoor');
+      expect(outdoorBadge.textContent).toBe('1');
+    });
+  });
+
+  it('toggles the floorplan semantic status legend', async () => {
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-legend-toggle-btn')).toBeDefined());
+
+    expect(screen.queryByTestId('tables-legend-bar')).toBeNull();
+
+    await userEvent.click(screen.getByTestId('tables-legend-toggle-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-legend-bar')).toBeDefined());
+    expect(screen.getByText('Open Tab')).toBeDefined();
+
+    await userEvent.click(screen.getByTestId('tables-legend-toggle-btn'));
+    await waitFor(() => expect(screen.queryByTestId('tables-legend-bar')).toBeNull());
+  });
+
+  it('renders table capacity and active held bill amount on table card', async () => {
+    mockListTables.mockResolvedValue([
+      makeTable({ id: 't-1', name: 'Table 1', capacity: 6, status: 'occupied' }),
+    ]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        table_name: 'Table 1',
+        item_count: 4,
+        total_minor: 150000,
+        currency: 'IDR',
+        held_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    expect(screen.getByText('6p')).toBeDefined();
+    expect(screen.getByText(/150\.000/)).toBeDefined();
+  });
+
+  it('prints interim bill check when Print Bill is clicked in table detail', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Nasi Goreng', qty: 2, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 2,
+      total_minor: 50000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+
+    await openTableDetail(table);
+    await waitFor(() => expect(screen.getByTestId('tables-print-bill-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-print-bill-btn'));
+    await waitFor(() => {
+      expect(mockPrintSalesReceipt).toHaveBeenCalledTimes(1);
+    });
+    const receiptArg = mockPrintSalesReceipt.mock.calls[0]![0];
+    expect(receiptArg.tableNumber).toBe('Table 1');
+    expect(receiptArg.total.minorUnits).toBe(50000);
+    expect(receiptArg.items).toHaveLength(1);
+  });
+
+  it('moves active tab to another available table when Move Table is confirmed', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+    await waitFor(() => {
+      expect(mockDeleteHeldCart).toHaveBeenCalledWith('bill-1');
+      expect(mockHoldCart).toHaveBeenCalled();
+      expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
+      expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-2', 'occupied');
+    });
+  });
+
+  it('toggles arrange mode on and off', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1' });
+    mockListTables.mockResolvedValue([table]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    const arrangeBtn = screen.getByTestId('tables-arrange-mode-btn');
+    expect(arrangeBtn.textContent).toContain('Arrange Tables');
+
+    await userEvent.click(arrangeBtn);
+    expect(arrangeBtn.textContent).toContain('Done Arranging');
+    expect(document.querySelector('.tables-floorplan--arranging')).toBeDefined();
+    expect(document.querySelector('.tables-table--arranging')).toBeDefined();
+
+    await userEvent.click(arrangeBtn);
+    expect(arrangeBtn.textContent).toContain('Arrange Tables');
+    expect(document.querySelector('.tables-floorplan--arranging')).toBeNull();
+  });
+
+  it('creates a table with booth shape and appropriate dimensions', async () => {
+    mockListTables.mockResolvedValue([]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-add-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-add-table-btn'));
+    await waitFor(() => expect(screen.getByLabelText(/Table Name/i)).toBeDefined());
+
+    await userEvent.type(screen.getByLabelText(/Table Name/i), 'Booth A');
+    await userEvent.selectOptions(screen.getByLabelText(/Shape/i), 'booth');
+    await userEvent.click(screen.getByText('Save Table'));
+
+    await waitFor(() => {
+      expect(mockCreateTable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Booth A',
+          shape: 'booth',
+          width: 18,
+          height: 14,
+        }),
+      );
+    });
+  });
+
+  it('renders elapsed dining timer and applies SLA warning when over 60 minutes', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const eightyMinsAgo = new Date(Date.now() - 80 * 60 * 1000).toISOString();
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: eightyMinsAgo,
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    const timer = screen.getByText(/⏱️ 80m/);
+    expect(timer).toBeDefined();
+    expect(timer.className).toContain('tables-table-timer--warn');
+
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    expect(tableBtn?.className).toContain('tables-table--sla-warn');
+  });
+
+  it('merges active tabs from two tables when Merge Table is confirmed', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockImplementation((id: string) => {
+      if (id === 'bill-1') {
+        return Promise.resolve({
+          id: 'bill-1',
+          label: 'Table 1',
+          cart_data: JSON.stringify({
+            lines: [{ sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } }],
+          }),
+          item_count: 1,
+          total_minor: 25000,
+          currency: 'IDR',
+          created_at: '2026-10-12T00:00:00Z',
+          bill_type: 'open_bill',
+          customer_name: null,
+          deduction_location_id: null,
+        });
+      }
+      return Promise.resolve({
+        id: 'bill-2',
+        label: 'Table 2',
+        cart_data: JSON.stringify({
+          lines: [
+            { sku: 'SKU-2', name: 'Es Teh', qty: 2, unit_price: { minor_units: 10000, currency: 'IDR' } },
+            { sku: 'SKU-3', name: 'Nasi Goreng', qty: 1, unit_price: { minor_units: 30000, currency: 'IDR' } },
+          ],
+        }),
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+        deduction_location_id: null,
+      });
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-merge-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-merge-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-confirm-btn'));
+    await waitFor(() => {
+      expect(mockDeleteHeldCart).toHaveBeenCalledWith('bill-1');
+      expect(mockDeleteHeldCart).toHaveBeenCalledWith('bill-2');
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 2',
+          item_count: 3,
+          total_minor: 75000,
+        }),
+      );
+      expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
+    });
+  });
+
+  it('displays conflict banner and allows takeover when active tab has a foreign lease', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-conflict-1',
+        label: 'Table 1',
+        item_count: 2,
+        total_minor: 40000,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    // Dispatch foreign lease acquired after mount
+    window.dispatchEvent(
+      new CustomEvent('kasirmu:tabs:lease-acquired', {
+        detail: {
+          tabId: 'bill-conflict-1',
+          tableNumber: 'Table 1',
+          terminalId: 'foreign-terminal-waiter',
+          terminalName: 'Waiter iPad 2',
+          timestamp: Date.now(),
+          expiresAt: Date.now() + 60_000,
+        },
+      }),
+    );
+
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tables-tab-conflict-banner')).toBeDefined();
+    });
+    expect(screen.getByText(/Waiter iPad 2/)).toBeDefined();
+
+    // Click Take Over
+    const takeoverBtn = screen.getByTestId('tables-tab-takeover-btn');
+    await userEvent.click(takeoverBtn);
+
+    // Conflict banner should disappear as local terminal now owns the lease
+    await waitFor(() => {
+      expect(screen.queryByTestId('tables-tab-conflict-banner')).toBeNull();
+    });
+  });
 });
+

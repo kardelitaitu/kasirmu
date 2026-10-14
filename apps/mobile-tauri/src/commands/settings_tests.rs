@@ -84,6 +84,7 @@ fn set_store_settings_persists() {
         currency: "USD".into(),
         branch: "Downtown".into(),
         logo: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAA".into(),
+        thousands_separator: None,
     };
 
     run_set_store_settings(&conn, &dto).unwrap();
@@ -167,6 +168,7 @@ fn set_store_settings_overwrites_previous() {
             currency: "USD".into(),
             branch: "".into(),
             logo: "".into(),
+            thousands_separator: None,
         },
     )
     .unwrap();
@@ -180,6 +182,7 @@ fn set_store_settings_overwrites_previous() {
             currency: "IDR".into(),
             branch: "Mall".into(),
             logo: "logo_data".into(),
+            thousands_separator: None,
         },
     )
     .unwrap();
@@ -255,6 +258,7 @@ fn store_settings_dto_debug() {
         currency: "USD".into(),
         branch: "Main".into(),
         logo: "abc123".into(),
+        thousands_separator: None,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("My Store"));
@@ -270,6 +274,7 @@ fn store_settings_dto_serialize() {
         currency: "IDR".into(),
         branch: "Mall".into(),
         logo: "".into(),
+        thousands_separator: None,
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "Cafe");
@@ -373,6 +378,7 @@ fn store_settings_dto_serde_roundtrip() {
         currency: "EUR".into(),
         branch: "Main".into(),
         logo: "logo_data".into(),
+        thousands_separator: None,
     };
     let json = serde_json::to_value(&dto).unwrap();
     let back: StoreSettingsDto = serde_json::from_value(json).unwrap();
@@ -1660,19 +1666,29 @@ fn wire_pin_receipt_settings_carries_every_key_the_renderer_declares() {
 #[test]
 fn wire_pin_store_settings_carries_every_key_the_renderer_declares() {
     // ui/src/api/settings.ts:35 — StoreSettingsDto (logo optional on the TS side,
-    // required here, which is why the pin sends it).
+    // required here, which is why the pin sends it; thousandsSeparator added 2026-10-13).
     const PAYLOAD: &str = r#"{
         "name": "Kopi Kita", "address": "Jl. Melati 12", "taxId": "NP-0001",
-        "currency": "IDR", "branch": "Bandung", "logo": "abc123"
+        "currency": "IDR", "branch": "Bandung", "logo": "abc123",
+        "thousandsSeparator": "comma"
     }"#;
     assert_wire_matches::<StoreSettingsDto>(
         PAYLOAD,
-        &["name", "address", "taxId", "currency", "branch", "logo"],
+        &[
+            "name",
+            "address",
+            "taxId",
+            "currency",
+            "branch",
+            "logo",
+            "thousandsSeparator",
+        ],
         "StoreSettingsDto",
     );
     let parsed: StoreSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(parsed.tax_id, "NP-0001");
     assert_eq!(parsed.branch, "Bandung");
+    assert_eq!(parsed.thousands_separator.as_deref(), Some("comma"));
 }
 
 #[test]

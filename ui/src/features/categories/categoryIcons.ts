@@ -87,6 +87,18 @@ export function categoryIconLabelId(icon: string): string {
       return 'categories-icon-hot-drink';
     case 'cold-drink':
       return 'categories-icon-cold-drink';
+    // The three generic dots are DISTINCT options with distinct labels above
+    // ('Generic ·' / '··' / '···'), so they must not collapse to one name: three
+    // icon-only radios all announced as "Generic" are indistinguishable to a
+    // screen reader. This case was missing, so all three fell through to the
+    // same label — measured live in the running app, and the reason `opt.label`
+    // existed but was never read.
+    case 'dots-1':
+      return 'categories-icon-generic-1';
+    case 'dots-2':
+      return 'categories-icon-generic-2';
+    case 'dots-3':
+      return 'categories-icon-generic-3';
     default:
       return 'categories-icon-generic';
   }

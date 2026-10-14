@@ -1,5 +1,16 @@
+/**
+ * @vitest-environment node
+ *
+ * This file's import graph is free of browser globals (no render, no
+ * `document`/`window`/`localStorage`), so it does not need a jsdom window. Vitest
+ * spawns a fresh jsdom per test FILE, which measured ~0.4-0.9s each; under the node
+ * environment the same files report `environment: 0ms`.
+ *
+ * Do not copy this directive onto a file that renders or touches browser state —
+ * it will fail with "document is not defined" rather than silently degrade.
+ */
 import { describe, expect, it } from 'vitest';
-import { buildCompletedSaleReceipt } from '@/features/sales/payment/completedSale';
+import { buildCompletedSaleReceipt, buildKitchenChitReceipt, isBeverageItem } from '@/features/sales/payment/completedSale';
 import type { CartLine, Money } from '@/types/domain';
 import type { SaleDetail, PaymentDto } from '@/api/sales';
 import type { ActiveMarketProfile } from '@/api/regional';
@@ -23,6 +34,12 @@ const makeSaleDetail = (overrides: Partial<SaleDetail> = {}): SaleDetail => ({
   subtotal: makeMoney(9000),
   taxTotal: makeMoney(1000),
   lineCount: 1,
+  // The bridge sends these unconditionally (`#[serde(default)]` on a bare i64,
+  // history.rs:188-199), so a fixture omitting them is not a sale the wire can
+  // produce. Added when the TS type stopped claiming they were optional.
+  discountPercent: 0,
+  tipMinor: 0,
+  serviceChargeMinor: 0,
   status: 'completed',
   paymentMethod: 'cash',
   tenderedMinor: 10000,
@@ -220,3 +237,91 @@ describe('buildCompletedSaleReceipt', () => {
     expect(receipt.customerTaxId).toBe('01.234.567.8-901.000');
   });
 });
+
+describe('buildKitchenChitReceipt', () => {
+  it('formats kitchen order ticket with delta items, table number, modifiers, and notes', () => {
+    const lines: CartLine[] = [
+      {
+        ...makeCartLine('Nasi Goreng Spesial', 2, 35000),
+        courseId: 'main',
+        note: 'Pedas level 3, tanpa timun',
+        modifiers: [
+          { groupId: 'grp-1', groupName: 'Add-ons', modifierId: 'mod-1', modifierName: 'Extra Telur', priceMinor: 5000 },
+        ],
+      },
+      {
+        ...makeCartLine('Es Teh Manis', 1, 6000),
+        courseId: 'beverage',
+      },
+    ];
+
+    const chit = buildKitchenChitReceipt({
+      chitNumber: 'KOT-12-001',
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: '12',
+      customerName: 'Bpk. Ahmad',
+    });
+
+    expect(chit.receiptNumber).toBe('KOT-12-001');
+    expect(chit.tableNumber).toBe('12');
+    expect(chit.customerName).toBe('Bpk. Ahmad');
+    expect(chit.items).toHaveLength(2);
+
+    const [first, second] = chit.items ?? [];
+    expect(first?.name).toBe('[Main Course] Nasi Goreng Spesial');
+    expect(first?.quantity).toBe(2);
+    expect(first?.note).toBe('Extra Telur | Pedas level 3, tanpa timun');
+
+    expect(second?.name).toBe('[Beverage] Es Teh Manis');
+    expect(second?.quantity).toBe(1);
+    expect(second?.note).toBeUndefined();
+  });
+
+  it('generates a fallback receiptNumber when chitNumber is omitted', () => {
+    const lines: CartLine[] = [makeCartLine('Mie Goreng', 1, 25000)];
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: 'Table 5',
+    });
+
+    expect(chit.receiptNumber).toMatch(/^KOT-5-\d+$/);
+    expect(chit.items).toHaveLength(1);
+    expect(chit.items?.[0]?.quantity).toBe(1);
+  });
+
+  it('honours explicit printerTarget and documentKind for bar routing', () => {
+    const lines: CartLine[] = [makeCartLine('Es Kopi Susu', 2, 20000)];
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: '4',
+      printerTarget: 'bar',
+      documentKind: 'bar',
+    });
+
+    expect(chit.printerTarget).toBe('bar');
+    expect(chit.documentKind).toBe('bar');
+  });
+});
+
+describe('isBeverageItem', () => {
+  it('identifies items with beverage or legacy drinks courseId', () => {
+    expect(isBeverageItem({ ...makeCartLine('Item 1', 1, 10000), courseId: 'beverage' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 2', 1, 10000), courseId: 'drinks' as never })).toBe(true);
+  });
+
+  it('identifies items with beverage-related category names', () => {
+    expect(isBeverageItem({ ...makeCartLine('Item 3', 1, 10000), category: 'Hot Beverages' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 4', 1, 10000), category: 'Cold Drinks' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 5', 1, 10000), category: 'Aneka Minuman' })).toBe(true);
+    expect(isBeverageItem({ ...makeCartLine('Item 6', 1, 10000), category: 'Bar Station' })).toBe(true);
+  });
+
+  it('returns false for food items', () => {
+    expect(isBeverageItem({ ...makeCartLine('Item 7', 1, 10000), courseId: 'main', category: 'Main Course' })).toBe(false);
+    expect(isBeverageItem({ ...makeCartLine('Item 8', 1, 10000), courseId: 'appetizer', category: 'Starters' })).toBe(false);
+  });
+});
+

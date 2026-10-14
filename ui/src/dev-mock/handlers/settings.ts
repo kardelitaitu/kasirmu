@@ -77,6 +77,90 @@ export const licenseHandlers: Record<string, MockHandler> = {
 // SETTINGS — store / receipt / hardware / credit (was the SETTINGS banner)
 // ═══════════════════════════════════════════════════════════════
 
+// ── Key/value setting store ────────────────────────────────────────────
+//
+// ⚠️ CORRECTION (2026-10-12): get_setting / get_setting_scoped answered a hard
+// null and every set_setting* write was dropped, so no single-key setting could
+// survive — and the key/value store backs real restaurant behaviour:
+// 'restaurant.auto_print_kitchen' (PosScreen.tsx:918), 'restaurant.course_firing'
+// (:824), 'restaurant.order_type_prompt' (:884), the unavailable-items list
+// (RestaurantMenu.tsx:489) and RATE_SYNC_ENABLED_KEY (ExchangeRateScreen.tsx:210).
+// A switch the cashier flipped refused to stay flipped, and the menu's
+// unavailable state reset on every load. Pinned by
+// __tests__/dev-mock-setting-persistence.test.ts.
+//
+// Persisted through localStorage rather than a module-level Map: other mock
+// domains here already keep their state across a reload, and these settings are
+// exactly the kind a developer reloads to check. The mock is aliased in ONLY for
+// the dev server (hasTauriInternals() guards the real webview), so this never
+// stands in for a real store database.
+const MOCK_SETTINGS_KEY = 'oz-dev-mock:settings';
+
+function loadMockSettings(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(MOCK_SETTINGS_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    // A corrupted or foreign payload must not break every settings read.
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const mockSettings: Record<string, string> = loadMockSettings();
+
+function saveMockSettings(): void {
+  try {
+    localStorage.setItem(MOCK_SETTINGS_KEY, JSON.stringify(mockSettings));
+  } catch {
+    // Quota/private-mode failures must not break the caller's write path.
+  }
+}
+
+/** Unwrap the { args } envelope invoke() may or may not have already stripped. */
+function unwrapSettings(args: unknown): Record<string, unknown> {
+  return (((args as { args?: unknown })?.args ?? args) ?? {}) as Record<string, unknown>;
+}
+
+/** Null for a key that was never written — the api contract is string | null. */
+function readMockSetting(args: unknown): string | null {
+  const raw = unwrapSettings(args);
+  const key = String(raw['key'] ?? '');
+  if (!key) return null;
+  return Object.prototype.hasOwnProperty.call(mockSettings, key) ? mockSettings[key]! : null;
+}
+
+function writeMockSetting(args: unknown): boolean {
+  const raw = unwrapSettings(args);
+  const key = String(raw['key'] ?? '');
+  if (!key) return false;
+  // The command stores an empty string as a real value (api/settings.ts:321),
+  // so the value is coerced rather than dropped when falsy.
+  mockSettings[key] = String(raw['value'] ?? '');
+  saveMockSettings();
+  return true;
+}
+
+/**
+ * Batch write (set_settings / set_settings_scoped) — one persist, not N.
+ *
+ * Takes the ENTRIES MAP, already unwrapped by the caller. It must not unwrap
+ * again: the call sites pass `unwrapSettings(args)['entries']`, so re-wrapping
+ * would hand this an object whose only key is the literal string "entries" and
+ * silently store that instead of the caller's keys. (Measured: it returned true
+ * while writing one setting named "entries" = "[object Object]", so the batch
+ * command answered success and persisted nothing usable.)
+ */
+function writeMockSettings(entries: unknown): boolean {
+  if (!entries || typeof entries !== 'object') return false;
+  for (const [key, value] of Object.entries(entries as Record<string, unknown>)) {
+    mockSettings[key] = String(value ?? '');
+  }
+  saveMockSettings();
+  return true;
+}
+
 export const settingsHandlers: Record<string, MockHandler> = {
   'get_store_settings': () => ({
     name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
@@ -100,8 +184,8 @@ export const settingsHandlers: Record<string, MockHandler> = {
   'set_receipt_settings': () => null,
 
   'set_receipt_settings_scoped': () => null,
-  'get_setting': () => null,
-  'set_setting_scoped': () => null,
+  'get_setting': (args) => readMockSetting(args),
+  'set_setting_scoped': (args) => writeMockSetting(args),
 
   'get_hardware_settings': () => ({
     printerConnection: 'usb', printerDevicePath: '', printerPaperSize: '80mm',
@@ -119,9 +203,11 @@ export const settingsHandlers: Record<string, MockHandler> = {
 // ═══════════════════════════════════════════════════════════════
 
 export const settingsWriteHandlers: Record<string, MockHandler> = {
-  'set_setting': () => true,
-  'set_settings': () => true,
-  'set_settings_scoped': () => true,
+  // All three share the one store, so a value written through any spelling is
+  // read back by get_setting / get_setting_scoped.
+  'set_setting': (args) => writeMockSetting(args),
+  'set_settings': (args) => writeMockSettings((unwrapSettings(args))['entries']),
+  'set_settings_scoped': (args) => writeMockSettings((unwrapSettings(args))['entries']),
 
 // PG sync
   'get_sync_plan': () => ({ pushed: 0, pulled: 0, conflicts: 0 }),

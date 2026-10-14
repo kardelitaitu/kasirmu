@@ -243,6 +243,7 @@ topology-tier-capacity-notice = Angka kapasitas Gudang tersimpan tetapi tidak di
 topology-toast-wire-duplicate = Koneksi sudah ada di antara port ini.
 topology-toast-fallback-warehouse = Koneksi fallback multi-gudang untuk pengurangan stok memerlukan lisensi Pro Tier.
 topology-toast-load-error = Gagal memuat topologi
+topology-toast-restore-error = Gagal memulihkan revisi tersebut
 topology-wire-incompatible = Konektor ini tidak dapat dihubungkan.
 topology-relationship-picker-title = Pilih jenis koneksi
 topology-relationship-picker-cancel = Batal

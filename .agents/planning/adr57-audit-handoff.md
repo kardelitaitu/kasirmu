@@ -25,6 +25,7 @@
 
 **From:** DSH docs-auditor pass (separate session), 2026-09-22
 **For:** the session currently editing `docs/decisions/2026-10-04-adr57-client-tamper-resistance.md`
+*(path now `2026-09-21-adr57-client-tamper-resistance.md` — see the note at the foot of this file; the `2026-10-04-` name resolves to nothing.)*
 (§2.4, the new `quota_effect.go` POS-quota signal) — fold these into your pass; do not hand back.
 **Why this file instead of an edit:** that ADR is dirty with your uncommitted work, so a pathspec
 commit of it would file your in-flight §2.4 rewrite and its untracked feature doc under my message
@@ -179,3 +180,36 @@ guard's fail-open shape and its 6 tests, the daily scanner's three conditions an
 **Also confirmed for the ADR #58 pass:** that record cites ADR #57 §2.5's precedence table, and
 ADR #57 cites ADR #58 `:440-447` for §2.7's text — which actually lives at **ADR58:775**. Both
 records' cross-references need re-deriving, not just their internal ones.
+
+
+---
+
+## Audit verification — 2026-10-11 (docs-auditor)
+
+**Verdict: APPLIED, and the banner above is accurate. Read this file as evidence, not as work to pick up.** The handoff does what a handoff should: it states its premise, and it dates every reading so a later pass can tell "still true" from "was true then".
+
+**One broken pointer in the header, now annotated.** The "For:" line named
+`docs/decisions/2026-10-04-adr57-client-tamper-resistance.md`. That path resolves to **nothing** —
+the ADR was renamed to `docs/decisions/2026-09-21-adr57-client-tamper-resistance.md` (the
+`2026-09-21-` name is the one every other document in the tree cites). Annotated in place rather
+than repointed, because the dated header is the record of where the handoff was delivered.
+
+**Every checkable claim re-tested at HEAD and holding:**
+- §2-A1's finding was **taken**: the ADR now reads "**6** bridge call sites", with its own
+  `(corrected 2026-09-22 — this row said 7 while listing …)` parenthetical at
+  `docs/decisions/2026-09-21-adr57-client-tamper-resistance.md:161`, and §:278 agrees. So this
+  handoff's headline correction is in force, not pending.
+- The two cross-language parity tests exist at the exact lines this file cites and do what it says:
+  `escalation_rule_matches_the_go_scanner` at
+  `crates/kasirmu-core/src/build_fingerprint_tests.rs:253` and
+  `TestEscalationRuleMatchesTheRustSpecification` at
+  `apps/license-server/build_integrity_alerts_test.go:370` — the latter asserting `7` at `:372`
+  against a comment:371 naming `kasirmu_core::build_fingerprint::UNKNOWN_REPORTS_BEFORE_ESCALATION`.
+  The cross-language drift this file worried about is genuinely pinned in both directions.
+- The ADR's §Q4 is a DECIDED section and the state machine is at `:905` (this file's 2026-10-07
+  note cited `:903`; ordinary drift in a grown file, and the note's own instruction — re-locate by
+  anchor text — is what makes that harmless).
+
+**NOT re-verified:** §5's "verified true" list beyond the renewal refusal, and the ADR's own
+per-section measurements, which that document carries and audits itself. This note claims only
+that the handoff's own pointers resolve and that its stated outcome (APPLIED) is the current state.

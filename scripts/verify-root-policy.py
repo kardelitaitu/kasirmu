@@ -50,6 +50,12 @@ ROOT_FILE_ALLOWLIST = frozenset({
     ".gitignore", ".gitattributes", ".dockerignore", ".editorconfig",
     ".gitleaks.toml", ".trivyignore", ".cbmignore", ".mcp.json",
     ".tarpaulin.toml", ".env.example",
+    # .nvmrc is a tool contract in the strictest sense: `nvm use` looks for it BY
+    # NAME in the current directory and walks UP, so at the root it is what a
+    # contributor gets standing in the repo. Three sources cite it as "the root
+    # .nvmrc" (deploy-website.bat:17, scripts/wrangler-deploy.sh:88,
+    # website/scripts/prebuild.mjs:87), so moving it would invalidate them.
+    ".nvmrc",
     # Human entry points.
     # README-technical.md is the developer-facing technical README (repository
     # structure, technology stack, commands). It was README-3.md until
@@ -58,25 +64,53 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # tree, so it belongs with the entry points, not beside README.md.
     "README.md", "README-technical.md", "CHANGELOG.md", "CONTRIBUTING.md",
     "LICENSE", "AGENTS.md", "ARCHITECTURE.md", "DSH.md",
+    # deploy-website.bat is a human entry point: a Windows operator double-clicks it
+    # or runs it bare from the repo root. docs/operations/website-auth-nav-deploy.md:51
+    # documents it AS root-resident ("prefer `deploy-website.bat` (repo root)"), and
+    # sibling build scripts that are not entry points live with their apps
+    # (apps/mobile-tauri/build-android-frontend.bat). Moving it would invalidate that
+    # doc and the invocation it teaches.
+    "deploy-website.bat",
 
 
     "todo-open-debt-program.md", "todo-review-type.md",
 
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
-    "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
+    "done-todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
     # Added 2026-10-02. Both were committed to the repo without the list being
     # extended, which is the oversight the comment at the top of this file
     # describes: the rule is "extend the list in the same commit that adds the
     # file". The decision to have them at the root was made when each landed,
     # so adding them here enforces the stated invariant rather than making a
-    # new one. Both are tracked, clean, carry the `todo-` token AGENTS.md 7.4
+    # new one. Both are tracked and clean. One carries the `todo-` token AGENTS.md 7.4
+    # requires; the other was renamed to `done-todo-` on 2026-10-14 once its §29
+    # acceptance criteria were all evidenced and the three gates it names (android-soak.sh,
+    # bundle:check:mobile, clippy/test) were confirmed to exist. See its own §31.
+    # (original line: "both carry the `todo-` token AGENTS.md 7.4" -- true when written)
     # gives plan docs, and are plans in substance (20 and 36 open checkboxes).
-    "todo-android-updater.md", "todo-beta-testing-january-2027.md",
+    # `todo-android-updater.md` was here and is GONE: renamed to
+    # `done-todo-android-updater.md` when its acceptance was met, and listed in the
+    # 2026-10-12 group below. A stale name here is harmless to the gate (it is a
+    # set membership test) but it makes the list lie about what exists.
+    "todo-beta-testing-january-2027.md",
     # todo-docs-restructure.md — the docs/ restructure plan (A1-A5, B0-B4). Same
     # class: an owner plan doc at the root, added deliberately per AGENTS.md 7.4,
     # which puts plan files at the root and exempts `todo-` names in check-dead-refs.
     "todo-docs-restructure.md",
+    # todo-restaurant-pos-reliability.md — the restaurant-POS reliability plan.
+    # Same class again, and flagged by ANOTHER lane before this one: the
+    # docs-restructure plan's step-6 note identified it as tracked, clean,
+    # carrying the `todo-` token, and an owner plan doc (5,752 lines,
+    # 2026-10-09) — exactly the class ROOT_FILE_ALLOWLIST lists by name —
+    # and left it alone because that plan may not edit a script and the file
+    # was not its own. It landed 2026-10-12, after the last edit to this list,
+    # so it was simply never added.
+    #
+    # Adding it enforces the invariant stated at the top of this file
+    # ("extend the list in the same commit that adds the file") rather than
+    # making a new decision — the same reasoning as the 2026-10-02 group above.
+    "todo-restaurant-pos-reliability.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
@@ -89,6 +123,34 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # its own acceptance command ran and passed (3543 core tests, all governance
     # gates green), which is what §7.4 says earns the `done-` prefix.
     "plan-c1-install-key-s2b-s2c.md",
+    # The 2026-10-12 plan-doc sweep. Fourteen tracked plan documents at the root
+    # that were never added to this list, plus one STALE entry: `todo-android-
+    # updater.md` was renamed to `done-todo-android-updater.md` when its own
+    # acceptance was met (§7.4: the header says so verbatim), and the rename did
+    # not touch this list — so the gate named a file that no longer existed while
+    # the file that did exist went unlisted.
+    #
+    # Why these belong rather than being moved: AGENTS.md §7.4 puts plan files at
+    # the root and exempts `todo-`/`plan-`/`prd-` names from check-dead-refs, and
+    # the `done-` prefix is earned per §7.4, not a new location. Every one below is
+    # tracked, clean, and a plan in substance — the same class as the two groups
+    # above, added for the same stated reason: the decision to have them at the
+    # root was made when each landed, so listing them enforces the invariant at the
+    # top of this file rather than making a new one.
+    "done-plan-tablet-checkout-kds.md",
+    "done-plan-tablet-homescreen-settings.md",
+    "done-todo-android-device-identity.md",
+    "done-todo-android-hardware-thermal-printing.md",
+    "done-todo-android-updater.md",
+    "done-todo-audit-enhancement-plan.md",
+    "done-todo-audit-upgrade-plan.md",
+    "done-todo-consolidate-core-integration-tests.md",
+    "done-todo-demo-fixtures-sellable.md",
+    "done-todo-multi-terminal-sync-kds.md",
+    "done-todo-restaurant-recipe-authoring.md",
+    "done-todo-retail-vs-restaurant-product-model.md",
+    "done-todo-tablet-provisioned-workspaces-invisible-to-picker.md",
+    "plan-topology-web-authoring.md",
 
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.

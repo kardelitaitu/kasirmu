@@ -1743,4 +1743,25 @@ per-finding fix descriptions, affected files, and commit lists remain
 available via `git log` on the deleted path). Re-open a finding here, fix
 it, then flip its status in this file.
 
+> **Re-verified 2026-10-11 (docs-auditor).** Two claims in the I18N-05 entry above need a dated
+> qualification, and neither touches its substance — the two retired gates ARE restored
+> (`dev-ci.yml` carries both `static-gates` and `ci-docs-drift`; `scripts/gates.json` holds the
+> records; `verify-ci-docs-drift.py` exits 0 today).
+>
+> (1) **Three of the five restore SHAs in that parenthetical do not resolve.** `bf8f0da3` and
+> `f5d94a20` are real 2026-09-04 commits; `ecbcc635`, `af246396` and `6e270d70` match no object
+> anywhere in this repository — not a commit, tree or blob prefix. They are not 8-hex role ids (the
+> journal convention) and not checksums; they read as transposed prefixes from a branch state this
+> checkout no longer carries. The re-derive is `git cat-file -t <sha>`. Left as written because the
+> finding is closed and its evidence is the gate state, not the SHA list; recorded so a reader does
+> not treat the five as equally checkable.
+>
+> (2) **The gate census has moved on.** This entry says `scripts/gates.json` "now carries 69 gate
+> records (52 required + 1 advisory + 16 retired)"; at HEAD it carries **120** (101 required +
+> 4 advisory + 15 retired). The roster grew by other lanes' work, which is the expected direction.
+>
+> The `ded468676` correction at the head of the registration-gate section needed no work: that
+> entry already documents the invalid object itself and names the two forms that resolve
+> (`ded4686776`, `ded468677`) — both verified again here.
+
 > last audited 29-09-26 by docs-auditor

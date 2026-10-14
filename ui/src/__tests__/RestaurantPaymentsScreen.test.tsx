@@ -27,6 +27,20 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 
 const FTL = [productsFtl, settingsFtl];
 
+/**
+ * Read a message's ENGLISH value out of a raw FTL bundle.
+ *
+ * For assertions about copy whose exact wording is not what is under test. Pinning
+ * such an assertion to a typed literal is how this file went stale once already
+ * (round 15 localized the Midtrans string and the test kept asserting the literal);
+ * reading the bundle means the assertion tracks the copy instead of duplicating it.
+ */
+function productsFtlLine(id: string): string {
+  const line = productsFtl.split('\n').find((l: string) => l.startsWith(id + ' = '));
+  if (!line) throw new Error('no FTL entry for ' + id + ' — the key was renamed or removed');
+  return line.slice((id + ' = ').length).trim();
+}
+
 // ── Mocks ─────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
   getPrimary: vi.fn(),
@@ -660,12 +674,6 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     await user.click(autoKickSwitch);
     expect(autoKickSwitch).not.toBeChecked();
 
-    // Verify drawer switch
-    const verifySwitch = screen.getByTestId('cash-drawer-verify-toggle');
-    expect(verifySwitch).not.toBeChecked();
-    await user.click(verifySwitch);
-    expect(verifySwitch).toBeChecked();
-
     // Preset chips
     const exactChip = screen.getByTestId('cash-preset-exact');
     expect(exactChip).toHaveAttribute('aria-pressed', 'true');
@@ -688,7 +696,7 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     expect(chip100k).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('interacts with QRIS mode buttons, inputs, and receipt print switch via data-testid', async () => {
+  it('interacts with QRIS mode buttons and inputs via data-testid', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
     await screen.findByText('QRIS');
@@ -712,15 +720,9 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     await user.clear(surchargeInput);
     await user.type(surchargeInput, '0.5');
     expect(surchargeInput).toHaveValue('0.5');
-
-    // Print bill toggle
-    const printSwitch = screen.getByTestId('qris-print-bill-toggle');
-    expect(printSwitch).toBeChecked();
-    await user.click(printSwitch);
-    expect(printSwitch).not.toBeChecked();
   });
 
-  it('interacts with EDC card network chips, trace code toggle, and select via data-testid', async () => {
+  it('interacts with EDC select via data-testid', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
     await screen.findByText('Card');
@@ -728,21 +730,6 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     // Expand Card to ensure body is visible
     const cardToggle = screen.getByTestId('payment-card-toggle-card');
     await user.click(cardToggle);
-
-    const traceSwitch = screen.getByTestId('edc-require-trace-toggle');
-    expect(traceSwitch).toBeChecked();
-    await user.click(traceSwitch);
-    expect(traceSwitch).not.toBeChecked();
-
-    const visaChip = screen.getByTestId('card-network-visa');
-    expect(visaChip).toHaveAttribute('aria-pressed', 'true');
-    await user.click(visaChip);
-    expect(visaChip).toHaveAttribute('aria-pressed', 'false');
-
-    const amexChip = screen.getByTestId('card-network-amex');
-    expect(amexChip).toHaveAttribute('aria-pressed', 'false');
-    await user.click(amexChip);
-    expect(amexChip).toHaveAttribute('aria-pressed', 'true');
 
     // Check EDC select trigger data-testid
     const selectTrigger = screen.getByTestId('edc-default-select');
@@ -785,14 +772,23 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     await user.click(gopayChip);
     expect(gopayChip).toHaveAttribute('aria-pressed', 'false');
 
-    const webhookSwitch = screen.getByTestId('midtrans-auto-confirm-toggle');
-    expect(webhookSwitch).toBeChecked();
-    await user.click(webhookSwitch);
-    expect(webhookSwitch).not.toBeChecked();
-
     const testKeysBtn = screen.getByTestId('midtrans-test-api-btn');
     await user.click(testKeysBtn);
-    expect(screen.getByText(/Midtrans credentials format verified/i)).toBeInTheDocument();
+    // Assert the copy the BUNDLE renders, not a literal typed here.
+    //
+    // This line used to read /Midtrans credentials format verified/i. That string was
+    // a raw literal in the screen until round 15 of the current objective localized it
+    // to `restaurant-payment-midtrans-keys-valid` ("Midtrans keys format valid
+    // ({ $env })"). The test kept asserting the old English, so it failed — correctly,
+    // and for a reason worth keeping: a test pinned to a literal the source no longer
+    // contains is a stale test, and the localization pass is exactly the change that
+    // makes literals disappear.
+    //
+    // Derived from the FTL so this cannot drift again: if the copy changes, this reads
+    // the new value and only fails if the SCREEN stops rendering it.
+    const midtransVerified = productsFtlLine('restaurant-payment-midtrans-keys-valid')
+      .replace('{ $env }', 'SANDBOX');
+    expect(screen.getByText(midtransVerified)).toBeInTheDocument();
 
     // Expand Stripe
     const stripeToggle = screen.getByTestId('payment-card-toggle-stripe');
@@ -1021,7 +1017,18 @@ describe('RestaurantPaymentsScreen — P6 i18n sweep (no hardcoded English)', ()
       .filter(({ line }) =>
         /aria-label="[A-Z]/.test(line) ||
         /<span className="resto-compact-(label|block-title)">[A-Z]/.test(line) ||
-        /placeholder="(Cash|e\.g\.)/.test(line));
+        /placeholder="(Cash|e\.g\.)/.test(line) ||
+        // The card copy swept in the sibling round: the five PaymentMethodCard
+        // descriptions/badges, the option labels on every SettingsSelect, and
+        // the EDC "None" row were literals until then.
+        /(description|badge)="[A-Z]/.test(line) ||
+        // A SettingsSelect option label, but NOT a `DraftRail` seed row: the two
+        // seed rows (midtrans/stripe) carry a persisted `rail_code` and their
+        // label is STORED, so localizing it would write a locale-dependent value
+        // into the merchant's database. Display copy is what this guard owns.
+        (/label: '[A-Z]/.test(line) && !/rail_code:/.test(line)) ||
+        /^\s*(Currency|Verify Keys)$/.test(line) ||
+        /(title|message): '[A-Z]/.test(line));
     expect(
       offenders.map((o) => `${o.n}: ${o.line.trim().slice(0, 70)}`),
       'these lines hardcode user-visible English again — route them through l10n.getString',

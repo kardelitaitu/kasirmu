@@ -6,7 +6,7 @@ order: 8
 updated: "2026-09-30"
 ---
 
-<!-- Audit stamp 30-09-26: pointers verified against the UI — Open Shift dialog
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: PASS (0 findings) · Re-audit at HEAD; every pointer the 2026-09-30 stamp verified still resolves and still says what this page says. · VERIFIED AND LEFT ALONE: the ShiftManagementScreen Open-Shift opening-balance pointer; the RestaurantReceiptsScreen "Test print uses last saved settings" caveat (which the page states correctly, including the save-your-draft-first consequence); the Staff Management card's name/login/PIN/workspace fields; the disabled-workspace-card behaviour; the six relative links (../terminals/, ../payments/, ../shifts/, ../user-roles/, ../workspaces/, ../offline-mode/) all resolve to real content pages; front matter parity with id/first-day.md is exact (category/order/updated all agree). · The page's "Cards and e-wallets are still coming" line remains accurate — the local payment rails shipped are cash/card/qris, and no e-wallet tender exists. · NOT re-measured: the runtime behaviour of a test print, a shift opening, or an offline queue drain — those are hardware and session behaviours this audit cannot exercise. · Prior evidence retained verbatim below: pointers verified against the UI — Open Shift dialog
      (ShiftManagementScreen.tsx opening balance), test print
      (RestaurantReceiptsScreen.tsx "Test print uses last saved settings"),
      QRIS static/dynamic split (payments.md), staff PIN/assignment via the
@@ -73,4 +73,4 @@ queue shows.
 
 Keep reading · **Previous:** [Workspaces](../workspaces/)
 
-> last audited 30-09-26 by docs-auditor
+> last audited 11-10-26 by docs-auditor

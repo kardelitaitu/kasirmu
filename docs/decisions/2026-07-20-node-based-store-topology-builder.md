@@ -4,7 +4,7 @@ area: topology
 title: ADR #22: Visual Node-Based Store & Workspace Topology Builder
 status: Implemented (2026-07-22) — Amended (2026-07-23)
 ---
-<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 277 lines, no audit stamp, no footer, no marker. It carries the most detailed front matter of the four (`status: Implemented (2026-07-22) — Amended (2026-07-23)`, with an Amendment 1 section on atomic commit and type-change handling), and everything it built is still standing. · THE COMPONENT THIS ADR SPECIFIES STILL EXISTS AND HAS BEEN DECOMPOSED RATHER THAN REPLACED, which is the distinction worth drawing. `NodeTopologyEditor.tsx` and `TopologyScreen.tsx` are both live under `ui/src/features/locations/`, alongside roughly twenty extracted modules from the same area -- `nodeTopologyEditorApplyPanel`, `...Clipboard`, `...WireCommit`, `...Validation`, `...Pointer`, `...Keyboard`, `...Touch`, `...Viewport`, `...State`, `...SelectionState` and others. A reader looking for the editor this ADR describes will find it, and will also find that the single component it was written about has become a coordinator over focused modules. That is the same pattern the workspace-settings Phase 0a extraction produced in `SettingsPage.tsx`, and the same reorganisation that moved these files out of `ui/src/features/stores/` -- a path drift this campaign recorded against the topology phase specs. The body is left naming the components as it did; the current decomposition is recorded here. · The front-end contract it depends on is real: `topologyContract` is live and tested, and `registerPage` registration is the mechanism Phase 3 of the workspace-settings series relies on to mount screens. Its Amendment 1 on atomic commit and type-change handling is the kind of addition that usually gets lost in a document's history; it is still present and still labelled. · Status checker reports no drift for this row against the hand-maintained index -- the first file in this batch with front-matter status at all, and it is consistent. Stamp and footer added; the file had neither. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 minor) · Fresh full audit; the 2026-09-29 stamp (the file's first) is retained as original evidence inside its merged block below. · MINOR (a dead path inside the Amendment): §B cites `apps/desktop-client/src/commands/topology.rs`; that directory does not exist (the desktop app is `apps/desktop-tauri/`). Added a dated path-status note above the Amendment naming the current locations rather than editing the Amendment text. · VERIFIED AND LEFT ALONE, re-measured: the components this ADR specifies still exist at `ui/src/features/locations/` — `NodeTopologyEditor.tsx` and `TopologyScreen.tsx` are both present, now coordinating ~20 extracted `nodeTopologyEditor*.ts` modules; `ui/src/api/workspaces.ts` exists (the `UpdateInstanceFields` DTO the Amendment cites); `apply_topology_diff` is real and registered (`apps/desktop-tauri/src/lib.rs`, command in `commands/topology.rs` + `topology/commands.rs`); `applyTopologyDiff` is exercised by `ui/src/__tests__/api-ipc-contract.test.ts`. The Amendment's `type_key`-immutability constraint and its archive+recreate path are unchanged and not contradicted by the tree. · NOT re-measured: the ASCII architecture diagram, the interaction behaviour, the tier-entitlement table (whose tier-names the body already marks superseded), and the runtime SVG/animation behaviour — design intent and rendering, neither of which a doc audit can settle. · Prior stamp retained verbatim below. -->
 # ADR #22: Visual Node-Based Store & Workspace Topology Builder
 
 **Status:** Implemented (2026-07-22) — Amended (2026-07-23)  
@@ -159,6 +159,18 @@ The Node Topology Builder dynamically enforces license limits based on the activ
 
 ---
 
+> **Path-status note (2026-10-11).** This ADR and its Amendment were written against the
+> pre-restructure tree. The component and command it names are LIVE, at current paths:
+> `ui/src/features/locations/NodeTopologyEditor.tsx` and `TopologyScreen.tsx` both exist
+> (the editor has since been decomposed into ~20 focused `nodeTopologyEditor*.ts` modules
+> beside them), the `topologyContract` is live and tested, and `apply_topology_diff` is
+> registered at `apps/desktop-tauri/src/lib.rs` with its command body in
+> `apps/desktop-tauri/src/commands/topology.rs` + `topology/commands.rs`.
+> **One path in the Amendment below is dead:** §B cites
+> `apps/desktop-client/src/commands/topology.rs`. That directory no longer exists — the
+> desktop app is `apps/desktop-tauri/` — so read that citation as the current path above.
+> The body is left as written for the same reason as any decision record.
+
 ## Amendment 1 (2026-07-23) — Atomic Commit & Type-Change Handling
 
 This amendment documents two implementation decisions discovered during the
@@ -271,5 +283,4 @@ in-place type changes (without archive+recreate) would require:
 
 Until then, archive+recreate is the only supported path for type changes.
 
-> last audited 29-09-26 by docs-auditor
-
+> last audited 11-10-26 by docs-auditor

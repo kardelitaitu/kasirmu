@@ -333,9 +333,15 @@ export default function ItemModifierModal({
                           <button
                             key={modifier.id}
                             type="button"
-                            role="option"
+                            // NOT role="option": an option must live inside a
+                            // listbox, and this container is a fieldset/group.
+                            // The real widget is a radio when the group allows
+                            // exactly one choice and a checkbox otherwise —
+                            // matching what toggleModifier already does
+                            // (maxSelections === 1 replaces; else toggles).
+                            role={group.maxSelections === 1 ? 'radio' : 'checkbox'}
+                            aria-checked={isSelected}
                             data-testid={`modifier-${modifier.id}`}
-                            aria-selected={isSelected}
                             className={`modifier-option ${
                               isSelected ? 'modifier-option--selected' : ''
                             } ${!canSelect && !isSelected ? 'modifier-option--disabled' : ''}`}

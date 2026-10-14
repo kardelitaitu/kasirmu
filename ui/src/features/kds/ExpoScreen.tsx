@@ -52,6 +52,12 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSound } from '@/components/useSound';
 import { requiredLocalized, LoadingStatus } from '@/components';
+// Scoped crash isolation. This route had NONE: the shell wraps every fullscreen
+// page in <LazyBoundary>, which is a <Suspense> and NOT an error boundary
+// (components/LazyBoundary.tsx:20-33), so a throw here reached AppProviders'
+// app-level boundary and its full reload — blanking the expo pass mid-service.
+// Same fix as KdsScreen; this route was added after that pass looked.
+import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { l10nErrorMessage } from '@/utils/app-error';
 import {
   listKdsOrdersScoped,
@@ -265,6 +271,16 @@ export default function ExpoScreen() {
     [activeOrders, station],
   );
   const stations = useMemo(() => groupByStation(visibleOrders), [visibleOrders]);
+
+  // Signature of the board's IDENTITY, not just the station count. The boundary
+  // below keyed on `stations.length` alone, so a malformed payload that threw left
+  // the fallback up until the operator navigated away and back: the corrected
+  // payload arrives, the station count is unchanged, and the resetKey never moved.
+  // Same repair as KdsScreen's queueSignature; see the note there.
+  const boardSignature = useMemo(
+    () => visibleOrders.map((o) => o.id).join(','),
+    [visibleOrders],
+  );
 
   const changeStation = useCallback((zone: string) => {
     setStation(zone);
@@ -496,6 +512,10 @@ export default function ExpoScreen() {
         {renderContent()}
 
         {/* ── Station selector (dedicated station view entry point) ── */}
+        {/* Crash isolation — see the import note. resetKeys on the station filter
+            and the station list, so a caught error clears when its input changes
+            rather than leaving a dead dialog for the pass. */}
+        <LocalizedErrorBoundary resetKeys={[station, boardSignature]}>
         <StationSelectorModal
           isOpen={stationPickerOpen}
           options={stationOptions}
@@ -503,6 +523,7 @@ export default function ExpoScreen() {
           onSelect={changeStation}
           onClose={() => setStationPickerOpen(false)}
         />
+        </LocalizedErrorBoundary>
 
         {/* ── Recall dialog ─────────────────────────────────────────── */}
         {recallOpen && (

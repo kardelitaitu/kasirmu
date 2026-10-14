@@ -220,9 +220,9 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
     setError(null);
     listProductsScoped(sessionToken)
       .then((all) => {
-        // Only show restaurant/both type products.
+        // Only show restaurant type products.
         const restaurant = all.filter(
-          (p) => p.product_type === 'restaurant' || p.product_type === 'both',
+          (p) => p.product_type === 'restaurant',
         );
         setProducts(restaurant);
         setLoading(false);

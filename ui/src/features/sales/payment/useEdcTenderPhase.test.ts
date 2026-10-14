@@ -164,6 +164,43 @@ describe('useEdcTenderPhase', () => {
     expect(result.current.edc).toBeNull();
   });
 
+  it('ignores the click event React passes when the pay button is pressed directly', async () => {
+    // THE BUG THIS PINS (measured live, round 36): CardTenderPanel wires
+    // `onClick={onTerminalPay}` (CardTenderPanel.tsx:115), so React calls
+    // handleTerminalPay with a SyntheticBaseEvent as its first argument. That
+    // argument is `!== undefined`, so the old `targetTerminalId !== undefined`
+    // guard adopted the EVENT as the terminal id — the app logged
+    // `terminalId: SyntheticBaseEvent` and the lookup failed with
+    // "EDC card terminal '[object Object]' not found", so EVERY card payment
+    // failed at pre-flight.
+    //
+    // A call with no argument stays valid (that path resolves the selected
+    // terminal), so the guard must reject a non-string, not merely undefined.
+    const { result } = renderHook(() =>
+      useEdcTenderPhase({ ...defaultProps, defaultTerminalId: 'term-lane-1' }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedTerminalId).toBe('term-lane-1');
+    });
+
+    await act(async () => {
+      // Exactly what onClick passes.
+      await (result.current.handleTerminalPay as unknown as (e: unknown) => Promise<void>)({
+        type: 'click',
+        target: {},
+        nativeEvent: {},
+      });
+    });
+
+    expect(
+      edcApi.edcTerminalStatusScoped,
+      'the event must not be used as a terminal id — the selected terminal ' +
+        'must be resolved instead, or the pre-flight looks up "[object Object]"',
+    ).toHaveBeenCalledWith('test-session-token', 'term-lane-1');
+    expect(edcApi.edcSale).toHaveBeenCalledWith('test-session-token', 50000, 'IDR', 'term-lane-1');
+  });
+
   it('fails closed when terminal is offline and displays error toast without fallback', async () => {
     vi.mocked(edcApi.edcTerminalStatusScoped).mockResolvedValue({ status: 'offline' });
 
