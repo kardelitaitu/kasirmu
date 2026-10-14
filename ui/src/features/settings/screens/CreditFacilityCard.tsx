@@ -74,8 +74,6 @@ export function CreditFacilityCard() {
   const [limitInput, setLimitInput] = useState('0');
   const [currency, setCurrency] = useState('IDR');
 
-  const exp = minorUnitExponent(currency);
-
   // The exponent depends on the store currency, so it is read rather than
   // assumed. A wrong exponent scales every ceiling by 10^n, and the failure
   // looks like "the limit I typed is not the limit stored".
@@ -151,7 +149,7 @@ export function CreditFacilityCard() {
     } finally {
       setSaving(false);
     }
-  }, [sessionToken, enabled, reminderHours, limitInput, exp, l10n]);
+  }, [sessionToken, enabled, reminderHours, limitInput, currency, l10n]);
 
   if (loading) {
     return (
