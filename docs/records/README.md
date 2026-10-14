@@ -236,6 +236,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
+| general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
 | general | [Staleness-guard census, restaurant POS (round 85, 2026-10-13)](audits/staleness-guard-census-restaurant-pos.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
 | tax | [The two sample receipts are two tax MODES, not an inconsistency (round 134)](audits/two-samples-two-tax-modes.md) | — |
