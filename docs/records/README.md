@@ -175,6 +175,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
 | products | [The category builder and its duplicate-name rule (round 185)](audits/menu-editor-category-rule.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
+| general | [The menu editor's filters, search and form fields (round 187)](audits/menu-editor-filters-covered.md) | — |
 | general | [The menu editor's Save did nothing on a blank name, and never said so (round 163)](audits/menu-editor-save-gate.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
 | general | [The one invariant MenuSearchBar claimed but nobody pinned (round 173)](audits/menu-search-native-setter-pinned.md) | — |
