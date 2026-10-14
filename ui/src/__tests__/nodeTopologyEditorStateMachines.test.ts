@@ -247,6 +247,29 @@ describe('topologySaveReducer', () => {
     const next = topologySaveReducer(applying, { type: 'load-failure' });
     expect(next.phase).toBe('applying');
   });
+  // -- `applying` has exactly TWO exits, and a caller can outrun one (2026-10-14) --
+  //
+  // CI failed NodeTopologyEditorDevMock with the Apply button still aria-disabled at
+  // assertion time. The reducer is NOT at fault: the case above shows a reload landing
+  // during `applying` is preserved BY DESIGN, which is right for the post-save reload.
+  // What these two cases pin is the consequence that design implies -- `applying` leaves
+  // only via apply-success or apply-failure, so a caller that dispatches a reload before
+  // the failure commits can leave the phase stuck. The conflict path did exactly that:
+  // failApply() and setReloadKey() in one tick, against a dev-mock whose load promise
+  // settles with no network at all.
+  it('a reload arriving BEFORE the failure keeps the phase applying, so the failure must still be delivered', () => {
+    const applying: TopologySaveState = { phase: 'applying', revision: 1 };
+    const afterReload = topologySaveReducer(applying, { type: 'load-success', revision: 2 });
+    expect(afterReload.phase).toBe('applying');
+    // The failure is the exit and it does recover the phase -- which is what makes the
+    // defect a RACE rather than a deadlock: it is terminal only if that dispatch is lost.
+    expect(topologySaveReducer(afterReload, { type: 'apply-failure' }).phase).toBe('ready');
+  });
+
+  it('apply-failure on a non-applying phase is a no-op -- the other half of the trap', () => {
+    const ready: TopologySaveState = { phase: 'ready', revision: 3 };
+    expect(topologySaveReducer(ready, { type: 'apply-failure' })).toBe(ready);
+  });
 });
 
 describe('useTopologyEditorSaveLifecycle', () => {

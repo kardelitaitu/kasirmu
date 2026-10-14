@@ -249,6 +249,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
 | general | [Staleness-guard census, restaurant POS (round 85, 2026-10-13)](audits/staleness-guard-census-restaurant-pos.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
+| sync | [The Apply button could be stranded disabled after a revision conflict (2026-10-14)](audits/topology-conflict-apply-stranded.md) | — |
 | tax | [The two sample receipts are two tax MODES, not an inconsistency (round 134)](audits/two-samples-two-tax-modes.md) | — |
 | general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
