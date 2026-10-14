@@ -199,6 +199,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Restaurant POS — rendered-behaviour verification in a real browser (2026-10-12)](audits/restaurant-pos-rendered-behaviour-playwright.md) | — |
 | general | [Split tender — driven end to end in the browser (2026-10-12)](audits/restaurant-pos-split-tender-live.md) | — |
 | general | [A takeaway order could claim a table (2026-10-12)](audits/restaurant-pos-takeaway-table-claim.md) | — |
+| general | [The restaurant settings screen, driven live: all thirteen toggles work (round 136)](audits/restaurant-settings-live.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
