@@ -279,6 +279,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The shared switch component, and why adoption is left to each owner (round 181)](audits/switch-toggle-component.md) | — |
 | general | [The table floor plan, driven live — and a probe that read it too early (round 177)](audits/table-floor-plan-live.md) | — |
 | general | [The same silent-save defect, a third time, on the table form (round 165)](audits/table-form-save-gate.md) | — |
+| release | [The table release confirmation is unreachable in the current fixture (round 192)](audits/table-release-unreachable.md) | — |
 | sync | [The Apply button could be stranded disabled after a revision conflict (2026-10-14)](audits/topology-conflict-apply-stranded.md) | — |
 | tax | [The two sample receipts are two tax MODES, not an inconsistency (round 134)](audits/two-samples-two-tax-modes.md) | — |
 | general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
