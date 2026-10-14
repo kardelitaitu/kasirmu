@@ -103,7 +103,7 @@ export default function PaymentModal({
   // useCallback dependency arrays, which is what kept it "used" and hid the fact. The backend
   // resolves the cashier from `sessionToken`, so the value is redundant on every ADR #7 path. The
   // prop is left on the interface rather than removed because 62 test call sites pass it; dropping
-  // it is a real cleanup but a separate, wider change. Recorded in docs/plans/0.0.36-backlog.md.
+  // it is a real cleanup but a separate, wider change. Recorded in docs/plans/_backlog/0.0.36-backlog.md.
   sessionToken,
   tableNumber,
   orderType = 'dine_in',

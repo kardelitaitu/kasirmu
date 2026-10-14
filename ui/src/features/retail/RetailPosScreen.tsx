@@ -244,7 +244,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     setQuickReturnSale(null);
   }, []);
 
-  // P0-1 (audit docs/2026-07-28-retail-pos-theming-audit.md): replace the
+  // P0-1 (retail theming audit, archived by d0fe74814 — the doc is gone): replace the
   // shadow useState that read a per-component localStorage key and matched
   // the OS dark-mode preference on mount but never updated afterwards.
   // useOptionalTheme()?.theme returns Theme | undefined — Theme when
