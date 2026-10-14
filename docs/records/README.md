@@ -319,6 +319,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Move Table, driven for the first time (round 195)](audits/table-move-driven.md) | — |
 | release | [Unblocking round 192's unreachable guard — and backing the wrong fix out (round 193)](audits/table-release-spec-seeded.md) | — |
 | release | [The table release confirmation is unreachable in the current fixture (round 192)](audits/table-release-unreachable.md) | — |
+| general | [Covering the reservation workflow, and the ids I guessed wrong (round 240)](audits/table-reserve-covered.md) | — |
 | general | [Auditing my own assertions for round 196's flaw, and where it did not apply (round 197)](audits/table-spec-assertion-audit.md) | — |
 | general | [Print Bill, and the failure arm the injection seam made testable (round 221)](audits/tables-print-bill.md) | — |
 | general | [The tables toolbar and the verb its state decides (round 219)](audits/tables-toolbar.md) | — |
