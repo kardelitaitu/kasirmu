@@ -114,6 +114,22 @@ test('moving the tab frees the source table', async ({ page }) => {
       .innerText()
   ).trim();
 
+  // ⚠️ THE SOURCE TILE IS ADDRESSED BY INDEX. Two text-based versions of this
+  // assertion SURVIVED removing the move's `releaseTableScoped` (round 197):
+  //
+  //   * `--available` filtered by name — the seeded plan already carries FOUR
+  //     available tiles, so the assertion could be satisfied by one of them;
+  //   * and `Table 1` is a substring of `Table 12` (round 195's collision class).
+  //
+  // The tile's POSITION cannot be satisfied by a different table.
+  const sourceIndex = await page
+    .locator('.tables-table')
+    .evaluateAll((els) =>
+      els.findIndex((e) => e.className.includes('tables-table--occupied')
+        && e.className.includes('tables-table--has-bill')),
+    );
+  expect(sourceIndex, 'the source tile must be locatable').toBeGreaterThanOrEqual(0);
+
   await page.locator('[data-testid="tables-move-table-btn"]').click();
   const select = page.locator('#tables-move-dest-select');
   if ((await select.count()) === 0) {
@@ -125,9 +141,20 @@ test('moving the tab frees the source table', async ({ page }) => {
   await expect(confirm).toBeEnabled({ timeout: 5_000 });
   await confirm.click();
 
-  // The move patches the plan in place, so the source tile follows immediately.
-  await expect(
-    page.locator('.tables-table--available').filter({ hasText: sourceName }).first(),
-    `moving the tab should free ${sourceName}`,
-  ).toBeVisible({ timeout: TIMEOUT });
+  // The move patches the plan in place, so the source tile follows immediately — and
+  // it is the SOURCE INDEX that must change, not any available tile on the plan.
+  await expect
+    .poll(
+      async () =>
+        (await page.locator('.tables-table').nth(sourceIndex).getAttribute('class')) ?? '',
+      {
+        timeout: TIMEOUT,
+        message: `moving the tab must free ${sourceName} (tile ${sourceIndex})`,
+      },
+    )
+    // CLEANING, not available. A release sets the table to `cleaning` —
+    // `floorplan.ts:152-154` documents it as the post-release state a busser turns
+    // over. Round 196's merge spec made the same wrong assumption; this is the second
+    // instance, and the end state is now named in both.
+    .toContain('tables-table--cleaning');
 });
