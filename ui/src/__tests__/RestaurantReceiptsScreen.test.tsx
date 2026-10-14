@@ -212,11 +212,11 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     // Default showCurrency false -> bare number in the totals. The preview
     // mirrors the printed receipt, which renders the major part verbatim
     // (no thousands grouping) — see formatPrice in receiptLogic.
-    const total = screen.getByText('93000');
+    const total = screen.getByText('109000');
     expect(total).toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/Show Currency/i));
-    expect(screen.getByText('Rp 93000')).toBeInTheDocument();
+    expect(screen.getByText('Rp 109000')).toBeInTheDocument();
   });
 
   it('PINNED DIVERGENCE: the grouping toggle makes the preview differ from the paper', async () => {
@@ -240,11 +240,11 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     const user = userEvent.setup();
     await renderScreen();
 
-    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
-    expect(screen.getByText('93.000')).toBeInTheDocument();
+    expect(screen.getByText('109.000')).toBeInTheDocument();
     // The paper would print this, whatever the toggle says:
-    expect(screen.queryByText('93000')).toBeNull();
+    expect(screen.queryByText('109000')).toBeNull();
   });
 
   it('does NOT append fractional units for IDR, whatever Show Decimals says', async () => {
@@ -254,19 +254,19 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     // here, claiming a precision the printer cannot produce — and `ReceiptConfig`
     // (:98-117) has no `showDecimals` field, so the toggle could not reach it either way.
     //
-    // This case previously asserted `93000,00`. It now asserts the printer-agreeing
+    // This case previously asserted `109000,00`. It now asserts the printer-agreeing
     // truth: for IDR the decimals toggle is inert, and only grouping changes.
     const user = userEvent.setup();
     await renderScreen();
 
-    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('109000')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Show Decimals/i));
-    expect(screen.getByText('93000')).toBeInTheDocument();
-    expect(screen.queryByText('93000,00')).toBeNull();
+    expect(screen.getByText('109000')).toBeInTheDocument();
+    expect(screen.queryByText('109000,00')).toBeNull();
 
     // Grouping still applies (a separate, recorded preview/print divergence).
     await user.click(screen.getByLabelText(/Show Thousands Separator/i));
-    expect(screen.getByText('93.000')).toBeInTheDocument();
+    expect(screen.getByText('109.000')).toBeInTheDocument();
   });
 
   it('adjusts the tax rate input (clamped) and reflects it in the preview', async () => {
