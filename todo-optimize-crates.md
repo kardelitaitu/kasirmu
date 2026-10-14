@@ -1425,6 +1425,45 @@ cargo nextest run --workspace --report-time  # per-test wall clock  → axis B
 cargo bloat --release -p kasirmu-app         # binary size          → axis E
 ```
 
+### 10G. Axis B, resumed — `pg_daemon_tests` polled, 810ms of floor gone (2026-10-14)
+
+§10E said axis B had *"a measured target instead of a suspicion"* and that O-T05 addressed
+its largest single block. **O-T05 converted `daemon_tests.rs` only; its sibling
+`pg_daemon_tests.rs` was still on the old fixed start/stop pattern, and that is what this
+round did.**
+
+The two files are the same class — a `PgSyncDaemon`/`SyncDaemon` with `status()` and
+`start`/`stop` — so the fix is the same fix: a `wait_for_pg_daemon` poller at 10ms with a
+1s ceiling, named in the panic. Nine call sites converted:
+
+| site | before | after |
+|---|---|---|
+| start, wait for the first tick | fixed 80ms | poll `last_sync_at.is_some()` |
+| stop, wait for the run loop to exit | fixed 100ms | poll `!running` |
+| (9 conversions across 8 tests) | 1,870 ms stated | **1,060 ms stated** |
+
+**Measured, per this file's own law (the figure is a property of the mechanism at the tip
+it was read at):** the stated sleep floor of
+`platform/sync/src/pg_daemon_tests.rs` went from **1,870 ms to 1,060 ms** — **810 ms removed,
+43% of the file**. Against §10B's workspace floor the file's contribution drops
+proportionally; the workspace number is not re-quoted here because it must be re-run at the
+tip a reader opens.
+
+**One fixed sleep was DELIBERATELY LEFT, and why.** `pg_daemon_tests.rs:812` still sleeps
+100ms. It is not a start/stop wait — it yields so a spawned blocker task can take the DB
+lock first, and then asserts that `stop()` waits for it. A condition poll cannot express
+that, because the property under test is *the race the sleep creates*. Its 300ms sibling is
+the blocker itself and stays for the same reason. Recorded so a future sweep does not
+"fix" the two sleeps that are load-bearing.
+
+**Verification, and the limit of what this host can prove:** `cargo clippy -p platform-sync
+--all-targets` clean and `cargo fmt --check` clean. **The tests could NOT be run here** —
+this host cannot link a Rust test binary (`rust-lld: error: could not open 'kernel32.lib'`,
+no Windows SDK libs on the linker path), and it fails identically on `kasirmu-crypto`,
+a crate this change does not touch, so the failure is pre-existing and environmental.
+**The 9 conversions are unverified at runtime on this host** — CI runs them. That is stated
+rather than buried because a timing change that only compiles is a change that might race.
+
 ### 10E. What the instruments changed
 
 - **Axis D is retargeted or dropped.** No cycles exist; the hub is `foundation` (27 dependents,
