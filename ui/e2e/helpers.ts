@@ -242,3 +242,39 @@ export async function openRestaurantPosWithItem(
     timeout: 5_000,
   });
 }
+/**
+ * Open the restaurant POS and click ONE row in its sidebar popover.
+ *
+ * WHY THIS IS SHARED. Four specs walk the same route — login, select the workspace, wait for
+ * the menu grid, open `.restaurant-sidebar-btn`, then click a row — and each carried its own
+ * copy: `restaurant-settings-toggles` and `restaurant-cart-capabilities` (settings),
+ * `restaurant-payment-rails-persist` and `mock-payment-rails-persist` (payments). The route is
+ * stable, and the failure it produces when it drifts (a row that never fires) is the one
+ * `restaurant-sidebar-entries.spec.ts` grades — so a single definition keeps a drift in one
+ * place rather than four.
+ *
+ * `row` is the testid suffix: `openRestaurantSidebarRow(page, 'payments')` clicks
+ * `[data-testid="restaurant-sidebar-payments"]`.
+ *
+ * The role is parameterised for the same reason `openRestaurantPosWithItem`'s is: these rows
+ * gate on `settings:edit` (`RestaurantSidebar.tsx`, round 128), so a spec that needs one must
+ * log in as a role that holds it — but a spec exercising a permission-free row should NOT be
+ * silently promoted by a helper's default.
+ */
+export async function openRestaurantSidebarRow(
+  page: Page,
+  row: string,
+  role: 'owner' | 'staff' = 'owner',
+): Promise<void> {
+  await loginAs(page, role, '1234');
+  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
+  await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: 15_000 });
+
+  const sidebarBtn = page.locator('.restaurant-sidebar-btn');
+  await expect(sidebarBtn).toBeVisible({ timeout: 15_000 });
+  await sidebarBtn.click();
+
+  const target = page.locator(`[data-testid="restaurant-sidebar-${row}"]`);
+  await expect(target).toBeVisible({ timeout: 5_000 });
+  await target.click();
+}

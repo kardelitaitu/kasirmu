@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { openRestaurantSidebarRow } from './helpers';
 
 /**
  * E2E: the dev mock's payment rails survive a reload (round 156).
@@ -28,16 +28,11 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 20_000;
 
+// The login → workspace → sidebar → row route is shared — `openRestaurantSidebarRow` in
+// `helpers.ts`. What stays here is this spec's own arrival assertion: the route is shared,
+// the thing being waited FOR is not.
 async function openPayments(page: Page): Promise<void> {
-  await loginAs(page, 'owner', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-  await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: TIMEOUT });
-
-  const sidebarBtn = page.locator('.restaurant-sidebar-btn');
-  await expect(sidebarBtn).toBeVisible({ timeout: TIMEOUT });
-  await sidebarBtn.click();
-  await page.locator('[data-testid="restaurant-sidebar-payments"]').click();
-
+  await openRestaurantSidebarRow(page, 'payments');
   await expect(page.locator('[data-testid="restaurant-payments-save-btn"]')).toBeVisible({
     timeout: TIMEOUT,
   });
@@ -91,10 +86,7 @@ test('a rail toggle survives a reload through the mock slice', async ({ page }) 
     .toContain(railId);
 
   await page.reload();
-  await loginAs(page, 'owner', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-  await page.locator('.restaurant-sidebar-btn').click();
-  await page.locator('[data-testid="restaurant-sidebar-payments"]').click();
+  await openRestaurantSidebarRow(page, 'payments');
 
   const same = page.locator(`[data-testid="payment-card-toggle-${railId}"]`);
   await expect(same).toBeAttached({ timeout: TIMEOUT });

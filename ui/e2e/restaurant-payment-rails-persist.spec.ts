@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { openRestaurantSidebarRow } from './helpers';
 
 /**
  * E2E: Restaurant POS — the Payments rail toggles actually write (F40).
@@ -34,16 +34,11 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 20_000;
 
+// The login → workspace → sidebar → row route is shared — `openRestaurantSidebarRow` in
+// `helpers.ts`. What stays here is this spec's own arrival assertion: the route is shared,
+// the thing being waited FOR is not.
 async function openPayments(page: Page): Promise<void> {
-  await loginAs(page, 'owner', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-  await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: TIMEOUT });
-
-  const sidebarBtn = page.locator('.restaurant-sidebar-btn');
-  await expect(sidebarBtn).toBeVisible({ timeout: TIMEOUT });
-  await sidebarBtn.click();
-  await page.locator('[data-testid="restaurant-sidebar-payments"]').click();
-
+  await openRestaurantSidebarRow(page, 'payments');
   await expect(page.locator('[data-testid="restaurant-payments-save-btn"]')).toBeVisible({
     timeout: TIMEOUT,
   });

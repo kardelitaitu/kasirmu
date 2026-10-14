@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { openRestaurantSidebarRow } from './helpers';
 
 /**
  * E2E: Restaurant POS — the Settings screen reached from the POS sidebar.
@@ -58,23 +58,14 @@ const TOGGLES = [
 
 
 /** Log in, open the restaurant POS, and enter Settings from its sidebar. */
+//
+// The route is shared — `openRestaurantSidebarRow` in `helpers.ts`. The reason this spec
+// needs OWNER is now recorded there, next to the helper that enforces it, rather than here:
+// `staff` holds only `sales:process, sales:void, reports:view` and the Settings row gates on
+// `settings:edit` (`RestaurantSidebar.tsx`, round 128), so for that role the row renders
+// disabled and this navigation could never complete.
 async function openRestaurantSettings(page: Page) {
-  // OWNER, not staff. Round 148: `staff` holds only
-  // `sales:process, sales:void, reports:view`, and the Settings row gates on
-  // `settings:edit` — so for that role the row renders DISABLED and this
-  // navigation could never complete. `loginAs` leaves the browser on the workspace
-  // picker, so ONE selectWorkspace is all that is needed; a second call after the
-  // POS is open tries to leave and come back.
-  await loginAs(page, 'owner', '1234');
-  await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
-
-  const sidebarBtn = page.locator('.restaurant-sidebar-btn');
-  await expect(sidebarBtn).toBeVisible({ timeout: TIMEOUT });
-  await sidebarBtn.click();
-
-  const settingsRow = page.locator('[data-testid="restaurant-sidebar-settings"]');
-  await expect(settingsRow).toBeVisible({ timeout: 5_000 });
-  await settingsRow.click();
+  await openRestaurantSidebarRow(page, 'settings');
 }
 
 test.describe('Restaurant POS — settings toggles', () => {
