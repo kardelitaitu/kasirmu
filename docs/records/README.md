@@ -198,6 +198,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | general | [The dev mock's rail store lost every save — and the justification for that was stale (round 156)](audits/mock-rails-session-local.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
+| general | [The end-to-end proof round 210 handed off (round 211)](audits/modifier-groups-persist-e2e.md) | — |
 | general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
