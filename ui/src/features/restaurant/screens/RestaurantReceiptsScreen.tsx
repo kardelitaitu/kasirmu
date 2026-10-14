@@ -1091,6 +1091,17 @@ export default function RestaurantReceiptsScreen({
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
+    // Same guard as the five other token-dependent callbacks in this file (`:533`, `:806`,
+    // `:972`, `:1012`). This one pushed its FIRST task with `sessionToken ?? ''` and only
+    // guarded the later ones with `if (sessionToken && …)` (`:1121`, `:1143`), so an empty
+    // token fired a bogus `set_receipt_settings_scoped('')` before the guarded tasks skipped.
+    //
+    // Not reachable through the UI today — the mock always supplies a token, and the Save
+    // button is disabled until an edit makes the screen dirty — so this is a consistency fix
+    // rather than a defect repair. Against the real backend an empty token is rejected, and a
+    // rejected task inside the `Promise.all` would surface as a failed save for a form the
+    // operator never got to submit. The Save button also gains the token in its gate below.
+    if (!sessionToken) return;
     setSaving(true);
     const start = Date.now();
     try {
@@ -1098,7 +1109,7 @@ export default function RestaurantReceiptsScreen({
 
       // 1. Save workspace receipt format settings
       tasks.push(
-        setReceiptSettingsScoped(sessionToken ?? '', {
+        setReceiptSettingsScoped(sessionToken, {
           showCurrency,
           decimalSeparator: settings.receipt.decimalSeparator,
           showTax,
@@ -1461,7 +1472,7 @@ export default function RestaurantReceiptsScreen({
           <button
             type="button"
             className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
-            disabled={!dirty || saving || loadFailed || hw.loadFailed}
+            disabled={!dirty || saving || loadFailed || hw.loadFailed || !sessionToken}
             aria-busy={saving || undefined}
             onClick={handleSave}
             data-testid="restaurant-receipts-save-btn"
