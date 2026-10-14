@@ -139,6 +139,34 @@ function StaffLoginLogo({ small = false }: StaffLoginLogoProps) {
   );
 }
 
+interface RecentCashier {
+  username: string;
+  displayName: string;
+}
+
+function normalizeCashier(item: unknown): RecentCashier | null {
+  if (typeof item === 'string' && item.trim()) {
+    return { username: item.trim(), displayName: item.trim() };
+  }
+  if (
+    item &&
+    typeof item === 'object' &&
+    'username' in item &&
+    typeof (item as { username: unknown }).username === 'string' &&
+    (item as { username: string }).username.trim()
+  ) {
+    const u = (item as { username: string }).username.trim();
+    const d =
+      'displayName' in item &&
+      typeof (item as { displayName: unknown }).displayName === 'string' &&
+      (item as { displayName: string }).displayName.trim()
+        ? (item as { displayName: string }).displayName.trim()
+        : u;
+    return { username: u, displayName: d };
+  }
+  return null;
+}
+
 // ── Component ───────────────────────────────────────────────────────
 
 type Step = 'username' | 'pin';
@@ -174,33 +202,6 @@ export default function StaffLoginScreen() {
       }
     } catch { /* ignore */ }
   }, []);
-interface RecentCashier {
-  username: string;
-  displayName: string;
-}
-
-function normalizeCashier(item: unknown): RecentCashier | null {
-  if (typeof item === 'string' && item.trim()) {
-    return { username: item.trim(), displayName: item.trim() };
-  }
-  if (
-    item &&
-    typeof item === 'object' &&
-    'username' in item &&
-    typeof (item as { username: unknown }).username === 'string' &&
-    (item as { username: string }).username.trim()
-  ) {
-    const u = (item as { username: string }).username.trim();
-    const d =
-      'displayName' in item &&
-      typeof (item as { displayName: unknown }).displayName === 'string' &&
-      (item as { displayName: string }).displayName.trim()
-        ? (item as { displayName: string }).displayName.trim()
-        : u;
-    return { username: u, displayName: d };
-  }
-  return null;
-}
 
   const [recentCashiers, setRecentCashiers] = useState<RecentCashier[]>([]);
   useEffect(() => {

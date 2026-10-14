@@ -185,8 +185,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // reject a foreign draft before parsing it; a field would still have to be validated, and
   // a key cannot be forgotten. `resolvedStoreId` is '' before the store resolves, which
   // yields a distinct key rather than a collision with a real store.
-  const LOCKED_CART_KEY = `pos-locked-cart:${resolvedStoreId || 'unresolved'}`;
-  const ACTIVE_DRAFT_KEY = `pos-active-draft:${resolvedStoreId || 'unresolved'}`;
+  const LOCKED_CART_KEY = useMemo(
+    () => `pos-locked-cart:${resolvedStoreId || 'unresolved'}`,
+    [resolvedStoreId],
+  );
+  const ACTIVE_DRAFT_KEY = useMemo(
+    () => `pos-active-draft:${resolvedStoreId || 'unresolved'}`,
+    [resolvedStoreId],
+  );
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend
@@ -257,7 +263,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
-  }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge]);
+  }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge, LOCKED_CART_KEY, ACTIVE_DRAFT_KEY]);
 
   const [showOptions, setShowOptions] = useState(false);
   const [showTables, setShowTables] = useState(false);
@@ -317,7 +323,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     } else {
       localStorage.removeItem(ACTIVE_DRAFT_KEY);
     }
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, ACTIVE_DRAFT_KEY]);
 
   // ── Listen for Android OS memory trim callbacks (Phase 2 audit) ─
   useEffect(() => {
@@ -361,7 +367,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       window.removeEventListener('kasirmu:trimMemory', handleMemoryTrim);
       window.removeEventListener('kasirmu:lowMemory', handleMemoryTrim);
     };
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, ACTIVE_DRAFT_KEY]);
   // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
@@ -834,7 +840,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // l10n is read above by the table-release warning toast, so it must be listed:
     // the closure would otherwise keep the mount-time localizer and the toast would
     // render in the language the cashier was NOT using after a locale switch.
-  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, l10n, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess, releaseLease]);
+  }, [resetCart, tableNumber, orderType, setTableNumber, setCustomerName, setGuestCount, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, l10n, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden, soundChime, playSuccess, releaseLease, ACTIVE_DRAFT_KEY]);
 
   const handlePrintBill = useCallback(async () => {
     if (lines.length === 0 || !total) return;
@@ -1163,7 +1169,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
-  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, logout]);
+  }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, tableNumber, customerName, guestCount, orderType, logout, LOCKED_CART_KEY]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
   // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
