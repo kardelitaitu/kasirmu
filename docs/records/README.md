@@ -300,6 +300,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
 | general | [Staleness-guard census, restaurant POS (round 85, 2026-10-13)](audits/staleness-guard-census-restaurant-pos.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
+| payments | [The Stripe card finished, and a check that had to be given both arms (round 229)](audits/stripe-card-and-verify-keys.md) | — |
 | general | [Round 181's component adopted at the site that motivated it (round 182)](audits/switch-toggle-adopted.md) | — |
 | general | [The shared switch component, and why adoption is left to each owner (round 181)](audits/switch-toggle-component.md) | — |
 | general | [The tab park cycle, and the defect two rounds misread (round 215)](audits/tab-park-cycle.md) | — |
