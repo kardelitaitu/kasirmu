@@ -206,6 +206,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [The QRIS mode setting and the two buttons beside it (round 124)](audits/qris-mode-and-two-buttons.md) | — |
 | money | [A USD store was offered a $10,000 quick-tender shortcut on a $7 sale (round 106)](audits/quick-tender-ladder-currency.md) | — |
 | general | [The credential contradiction does not exist: the save path sanitizes (round 125)](audits/rail-credential-sanitizer.md) | — |
+| general | [The rail credential allow-list, extracted from a component body and pinned (round 183)](audits/rail-param-allowlist-pinned.md) | — |
 | general | [14 of 15 rail parameters the operator can edit have no reader (round 121)](audits/rail-parameters-unread.md) | — |
 | general | [Correcting round 121: the parameters ARE read back — but nothing acts on them (round 123)](audits/rail-params-roundtrip-not-consumed.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
