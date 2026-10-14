@@ -222,6 +222,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant settings screen, driven live: all thirteen toggles work (round 136)](audits/restaurant-settings-live.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
 | general | [The restaurant POS gains a keyboard shortcut manifest, and the tree stops it twice (round 158)](audits/restaurant-shortcut-manifest.md) | — |
+| general | [The shortcut manifest is bound to the till, restaurant-only (round 159)](audits/restaurant-shortcuts-bound.md) | — |
 | general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
