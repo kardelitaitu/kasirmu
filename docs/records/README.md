@@ -181,6 +181,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | general | [The once-queue survives clearAllMocks() (round 99)](audits/once-queue-survives-clear.md) | — |
+| release | [One stale test citation in the whole tree, and the nineteen that are deliberate (round 176)](audits/one-stale-citation-in-489.md) | — |
 | payments | [Round 156's third finding was a false alarm, and it is now pinned (round 157)](audits/payments-save-location-race-pinned.md) | — |
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | general | [The plan's last claim verified at HEAD, and its one open item (round 113)](audits/plan-claims-and-f40-blocker.md) | — |
@@ -236,6 +237,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The shortcuts are proven in a browser, and the guard is one of the three cases (round 160)](audits/restaurant-shortcuts-e2e.md) | — |
 | general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
+| kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
 | general | [The missing scoped-storage helper, built and pinned (round 168)](audits/scoped-storage-helper.md) | — |
 | general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
