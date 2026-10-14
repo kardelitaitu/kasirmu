@@ -27,7 +27,7 @@ import {
 //
 // Also measured: this component has NO modifier or discount props, and
 // modifiers still have no data path anywhere in the app (see F1 in
-// .agents/resto-pos-ui-review.md). COURSING IS now a prop surface —
+// .agents/reviews/resto-pos-ui-review.md). COURSING IS now a prop surface —
 // onAssignCourse / courseMenuLine / onCourseMenuLineChange — added so a line
 // can be given a courseId; until then the restaurant firing bar had nothing
 // to fire. The remaining optional render slots are onOverride, line.category
