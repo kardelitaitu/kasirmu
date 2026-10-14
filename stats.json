@@ -1,63 +1,63 @@
 {
   "schemaVersion": 1,
   "label": "code size",
-  "message": "1,250.5k lines",
+  "message": "1,491.0k lines",
   "color": "blue",
   "stats": {
-    "totalLines": 1250487,
-    "totalFiles": 5730,
+    "totalLines": 1491020,
+    "totalFiles": 6625,
     "languages": {
       "astro": {
         "files": 51,
-        "lines": 2828
+        "lines": 3030
       },
       "css": {
-        "files": 148,
-        "lines": 60215
+        "files": 167,
+        "lines": 71320
       },
       "fluent": {
         "files": 54,
-        "lines": 12167
+        "lines": 13709
       },
       "go": {
         "files": 106,
-        "lines": 44831
+        "lines": 44950
       },
       "html": {
-        "files": 1207,
-        "lines": 102183
+        "files": 1210,
+        "lines": 102619
       },
       "javascript": {
-        "files": 831,
-        "lines": 15732
+        "files": 896,
+        "lines": 21403
       },
       "markdown": {
-        "files": 384,
-        "lines": 115016
+        "files": 577,
+        "lines": 165845
       },
       "powershell": {
-        "files": 25,
-        "lines": 4743
+        "files": 27,
+        "lines": 4927
       },
       "python": {
-        "files": 56,
-        "lines": 30519
+        "files": 254,
+        "lines": 43624
       },
       "rust": {
-        "files": 1260,
-        "lines": 478816
+        "files": 1435,
+        "lines": 561186
       },
       "shell": {
-        "files": 49,
-        "lines": 7049
+        "files": 57,
+        "lines": 8557
       },
       "sql": {
-        "files": 70,
-        "lines": 8564
+        "files": 77,
+        "lines": 9072
       },
       "typescript": {
-        "files": 1489,
-        "lines": 367824
+        "files": 1714,
+        "lines": 440778
       }
     }
   }

@@ -4,7 +4,7 @@
 
 <!-- Superseded audit stamp (2026-10-08, body kept verbatim). Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (4 findings) · First audit stamp this page has carried. Repaired against `stats.json` (the page's OWN cited source, which it contradicted): code size 1,334,821 lines / 5,954 files -> **1,250,487 / 5,730** (badge, §Engineering overview, §4 intro, §4 table and ASCII art), and the whole §4 per-language table regenerated so its rows sum EXACTLY to the stats totals (verified: 5,730 files / 1,250,487 lines). Test counts 9,026 / 623 -> **9,378 `#[test]`** (11,078 with `#[tokio::test]`) / **654** front-end test files, re-measured with `grep`. The "all 6 roadmap phases delivered" claim -> "phases 1–7 of the 20-phase roadmap delivered", matching `docs/guides/product/ROADMAP.md`. The ">508,000 lines of test code" figure is NOT re-derived here: no script computes it and `stats.json` carries no test-only breakdown, so it is left as written and flagged rather than replaced with a guess. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 
-[![Code Size](https://img.shields.io/badge/code%20size-1%2C250.5k%20lines-blue?style=flat-square)](./stats.json)
+[![Code Size](https://img.shields.io/badge/code%20size-1%2C491.0k%20lines-blue?style=flat-square)](./stats.json)
 [![Server Cost](https://img.shields.io/badge/server%20cost-%3C1%25%20of%20revenue-success?style=flat-square)](#side-a-slashing-server-costs-to-under-1-of-gross-revenue-for-the-business)
 [![Rust Coverage](https://img.shields.io/badge/rust%20coverage-73.9%25-brightgreen?style=flat-square)](./scripts/coverage-floors.json)
 [![Tests](https://img.shields.io/badge/tests-11%2C200%2B%20rust%20%7C%20740%2B%20ui-orange?style=flat-square)](./README-technical.md)
@@ -47,13 +47,13 @@
 
 | Dimension | Specification | Reference |
 |---|---|---|
-| **Codebase size** | **1,250,487 lines of code** across **5,730 files** (measured 2026-10-02 in [`stats.json`](./stats.json); the tree has grown since — `git ls-files | wc -l` → 4,845 tracked files, 1,341,980 lines, and `stats.json` is not auto-regenerated) | [`stats.json`](./stats.json) |
+| **Codebase size** | **1,491,020 lines of code** across **6,625 files** (regenerated 2026-10-14 with [`scripts/stats.ps1`](./scripts/stats.ps1); re-run it whenever the figure matters — `git ls-files | wc -l` → 4,977 tracked files, 1,501,852 lines including `.md`/lockfiles the generator excludes) | [`stats.json`](./stats.json) |
 | **Core technology stack** | Native Rust backend + Tauri v2 native shell + React 18 / TypeScript frontend | [`README-technical.md`](./README-technical.md) |
 | **Local database** | SQLite (rusqlite WAL mode) on each terminal; zero server round-trips during checkout | [`docs/architecture/`](./docs/architecture/) |
 | **Cloud database** | PostgreSQL sync receiver with asynchronous outbox delta replication | [`crates/kasirmu-core/`](./crates/kasirmu-core/) |
 | **Test coverage** | **73.9% measured Rust workspace line coverage** (99.4% in `foundation`, 83.8% in `kasirmu-core`) | [`scripts/coverage-floors.json`](./scripts/coverage-floors.json) |
-| **Automated test suite** | **11,248 Rust `#[test]`/`#[tokio::test]` attributes** and **749 frontend test files** | [`README-technical.md`](./README-technical.md) |
-| **Test code volume** | **>508,000 lines of test code** (>50% of the entire codebase is automated verification) | [`stats.json`](./stats.json) |
+| **Automated test suite** | **11,410 Rust `#[test]`/`#[tokio::test]` attributes** and **787 frontend test files** | [`README-technical.md`](./README-technical.md) |
+| **Test code volume** | **539,611 lines of test code** across Rust `*_tests.rs` / `tests/`, `ui/src/**/*.test.ts(x)`, `ui/e2e/` specs and `website/src/**/*.test.ts(x)` — **36.2%** of the codebase (re-derived 2026-10-14; the command is in §4) | [`README-technical.md`](./README-technical.md) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
 | **Current release** | **v0.0.41** (phases 1–7 of the 20-phase roadmap delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
 
@@ -164,9 +164,9 @@ A point-of-sale system sits directly between a merchant and their revenue. It ca
 3. **Transactional ACID guarantees:** Every inventory movement, refund, and shift closure executes within an explicit `rusqlite` database transaction. Write-ahead logging (WAL) prevents corruption even if power is cut mid-transaction.
 4. **Tested like mission-critical software:**
    - **73.9% measured Rust workspace line coverage** (reaching **99.4%** in `foundation` and **83.8%** in `kasirmu-core`).
-   - **11,248 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the workspace.
-   - **749 frontend test files** in Vitest (`.test.*` under `ui/src`, of which 0 are `.spec.*`; re-derive with `ls ui/src/**/*.test.* | wc -l`).
-   - **>508,000 lines of test code** (>50% of the entire codebase is automated test suites, mocks, and property checks). *(Dated estimate — no script computes it; `stats.json` carries no test-only breakdown.)*
+   - **11,410 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the workspace — 9,684 `#[test]` alone (2026-10-14).
+   - **787 frontend test files** in Vitest (`.test.*` under `ui/src`, of which 0 are `.spec.*`; re-derive with `ls ui/src/**/*.test.* | wc -l`).
+   - **539,611 lines of test code — 36.2%** of the codebase is automated suites, mocks and property checks. Re-derived 2026-10-14 (four commands, summed): `git ls-files '*.rs' | grep -E '(_tests\.rs$|/tests/)' | xargs cat | wc -l` → 284,686 · `git ls-files | grep -E '^ui/src/.*\.test\.(ts|tsx)
 5. **Universal Hardware Abstraction Layer (HAL):** Vendor-independent driver traits for printers, scanners, cash drawers, scales, customer displays, and payment terminals—backed by mock implementations that allow 100% CI testing without physical hardware.
 6. **Deterministic offline conflict resolution:**
    - **Append-only financial ledgers:** Sales, refunds, and shifts are immutable transactional events minted with client-side UUID idempotency keys. They never overwrite or collide with other terminals.
@@ -211,8 +211,8 @@ The entire platform was architected, engineered, and maintained by a **solo deve
                                ▼
    ┌────────────────────────────────────────────────────────┐
    │         Autonomous AI Engineering Agents               │
-   │  • 1.34M+ lines of verified code                       │
-   │  • 11,000+ automated Rust tests                        │
+   │  • 1.49M+ lines of verified code                       │
+   │  • 11,400+ automated Rust tests                        │
    │  • Cross-platform desktop (Windows/Linux) & tablet     │
    │  • 14 modular business domains & HAL hardware drivers  │
    └────────────────────────────────────────────────────────┘
@@ -221,7 +221,7 @@ The entire platform was architected, engineered, and maintained by a **solo deve
 ### Solving the AI code quality challenge
 
 The primary failure mode of AI-generated code is accumulating untested technical debt. kasir.mu solved this by using AI primarily for **exhaustive verification and rigorous test generation**:
-- Over **508,000 lines of code** in the repository consist of test suites, mock drivers, and verification suites (>50% of the entire codebase). *(This figure is not re-derived by any script in the tree — treat it as a dated estimate, unlike the test-attribute count below.)*
+- Over **539,000 lines of code** in the repository consist of test suites, mock drivers, and verification suites (36% of the entire codebase). *(This figure is not re-derived by any script in the tree — treat it as a dated estimate, unlike the test-attribute count below.)*
 - **Invariants enforced at the type system and database layer:**
   - `Money` is strictly modeled as an `i64` minor unit integer (zero floating-point currency representation).
   - All database writes are wrapped in explicit `rusqlite` transactions.
@@ -229,23 +229,24 @@ The primary failure mode of AI-generated code is accumulating untested technical
 
 ### Codebase metrics breakdown ([`stats.json`](./stats.json))
 
-The repository encompasses **1,250,487 lines of code** across **5,730 source files** (the `stats.json` reading of 2026-10-02; the live tree is larger — see the note above the table):
+The repository encompasses **1,491,020 lines of code** across **6,625 source files** (regenerated 2026-10-14 with `scripts/stats.ps1`; the previous is larger — see the note above the table):
 
 | Language / Domain | Files | Lines | Primary Scope |
 |---|---:|---:|---|
-| **Rust** | 1,260 | 478,816 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
-| **TypeScript / TSX** | 1,489 | 367,824 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
-| **Markdown** | 384 | 115,016 | Comprehensive system architecture, ADRs, test strategies, user guides |
-| **HTML** | 1,207 | 102,183 | Prototypes, KDS layouts, web views, documentation templates |
-| **CSS** | 148 | 60,215 | Design system, tokenized responsive styling, print receipt layouts |
-| **Go** | 106 | 44,831 | Standalone licensing server (`apps/license-server`) |
-| **Python** | 56 | 30,519 | Verification gates, migration generators, drift checkers, E2E orchestration |
-| **JavaScript / MJS** | 831 | 15,732 | Tooling scripts, build pipelines, prototype engines |
-| **Fluent (`.ftl`)** | 54 | 12,167 | Bilingual localization bundles (English and Bahasa Indonesia) |
-| **SQL** | 70 | 8,564 | Migration schemas (SQLite primary + generated PostgreSQL replica) |
-| **Shell & PowerShell** | 74 | 11,792 | CI/CD automation, build scripts, Windows setup tooling |
-| **Astro** | 51 | 2,828 | Marketing website & documentation portal |
-| **Total** | **5,730** | **1,250,487** | Complete repository footprint |
+| **Rust** | 1,435 | 561,186 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
+| **TypeScript / TSX** | 1,714 | 440,778 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
+| **Markdown** | 577 | 165,845 | Comprehensive system architecture, ADRs, test strategies, user guides |
+| **HTML** | 1,210 | 102,619 | Prototypes, KDS layouts, web views, documentation templates |
+| **CSS** | 167 | 71,320 | Design system, tokenized responsive styling, print receipt layouts |
+| **Go** | 106 | 44,950 | Standalone licensing server (`apps/license-server`) |
+| **Python** | 254 | 43,624 | Verification gates, migration generators, drift checkers, E2E orchestration |
+| **JavaScript / MJS** | 896 | 21,403 | Tooling scripts, build pipelines, prototype engines |
+| **Fluent (`.ftl`)** | 54 | 13,709 | Bilingual localization bundles (English and Bahasa Indonesia) |
+| **SQL** | 77 | 9,072 | Migration schemas (SQLite primary + generated PostgreSQL replica) |
+| **Shell** | 57 | 8,557 | CI/CD automation, build scripts, release tooling |
+| **PowerShell** | 27 | 4,927 | Windows setup, gate runners, packaging checks |
+| **Astro** | 51 | 3,030 | Marketing website & documentation portal |
+| **Total** | **6,625** | **1,491,020** | Complete repository footprint |
 
 ---
 
@@ -382,7 +383,247 @@ For comprehensive technical, financial, and market documentation, see:
 ### For developers & contributors
 - **Explore verified architecture:** Inspect the engineering specification in [`README-technical.md`](./README-technical.md).
 - **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
-- **Inspect automated tests:** Run `cargo test --workspace` (11,248 test functions) or Vitest (749 frontend test files).
+- **Inspect automated tests:** Run `cargo test --workspace` (11,410 test functions) or Vitest (787 frontend test files).
+
+### For investors & commercial partners
+- **Schedule a Demonstration:** Contact **support@kasir.mu** to review live benchmarks, edge synchronization, and the visual node topology canvas.
+- **Commercial Licensing & Whitelabel:** Enterprise multi-tenant deployments, bespoke HAL hardware drivers, and dedicated SLA partnerships available under commercial agreement.
+
+---
+
+## 10. License & contact
+
+**Proprietary and Confidential — Copyright (c) 2024–2026 kasir.mu Contributors / All Rights Reserved.**
+
+This software is **proprietary commercial software**. No part of this codebase, associated binaries, or documentation may be copied, modified, distributed, sublicensed, hosted, or deployed in commercial production settings without an executed Commercial License Agreement.
+
+- **Website:** [https://kasir.mu](https://kasir.mu)
+- **General & Support:** support@kasir.mu
+- **Commercial Licensing & Partnerships:** **support@kasir.mu**
+
+See [LICENSE](./LICENSE) for formal terms and conditions.
+
+---
+
+> last audited 11-10-26 by docs-auditor
+ | xargs cat | wc -l` → 226,374 · the same for `website/src` → 19,216 · `ui/e2e` → 9,335.
+5. **Universal Hardware Abstraction Layer (HAL):** Vendor-independent driver traits for printers, scanners, cash drawers, scales, customer displays, and payment terminals—backed by mock implementations that allow 100% CI testing without physical hardware.
+6. **Deterministic offline conflict resolution:**
+   - **Append-only financial ledgers:** Sales, refunds, and shifts are immutable transactional events minted with client-side UUID idempotency keys. They never overwrite or collide with other terminals.
+   - **Relative delta stock adjustments:** Offline inventory decrements record signed delta operations (`delta: -1`) rather than absolute state (`set stock = 5`). When multiple offline terminals sell the same SKU, their deltas sum with mathematical determinism upon reconnection.
+   - **Non-blocking checkout:** In the rare case of stock overselling across isolated offline registers, the customer transaction is completed immediately at the counter, emitting an asynchronous reconciliation event for managers rather than blocking sales.
+7. **Enterprise security & offline data protection:**
+   - **Encrypted backup snapshots:** Backup packages (`.kasirpkg`) are protected with `Argon2id` key derivation, `AES-256-GCM` authenticated encryption, and `zstd` compression.
+   - **PAN masking & zero plaintext cards:** Strict PCI-DSS alignment ensures customer payment card numbers are masked at the edge and never stored plaintext on terminal disks.
+   - **Platform keychains:** API tokens and cryptographic keys are anchored directly into OS secure enclaves (Windows Credential Manager / Android KeyStore).
+8. **Embedded Lua rule engine (`mlua`):**
+   - Sandboxed dynamic pricing, happy hours, tiered volume discounts, and local tax rules are hot-reloaded at runtime, eliminating the traditional 3–6 month wait for vendor app-store binary updates.
+
+---
+
+## 3. The macro market opportunity
+
+### The emerging market reality: 64 million underserved merchants
+
+In Indonesia alone:
+- **More than 64 million MSMEs** contribute **over 61% of national GDP** and employ 97% of the domestic workforce.
+- The vast majority operate on tight margins that cannot absorb per-transaction SaaS commissions.
+- They run on commodity, budget hardware (existing Windows counter laptops, budget Android tablets) and experience daily connection dips.
+- The entire Southeast Asian region (over 70 million MSMEs) faces the same structural reality.
+
+kasir.mu addresses this structural gap by inverting the typical SaaS architecture: **the terminal is the system**. The cloud is an optional convenience layered on top, never an active gatekeeper in the path of a sale.
+
+---
+
+## 4. Engineering scale & the AI-native development model
+
+kasir.mu represents an industry benchmark in **agentic software engineering and capital efficiency**:
+The entire platform was architected, engineered, and maintained by a **solo developer, with 95% of code authored and verified by AI**.
+
+```
+   ┌────────────────────────────────────────────────────────┐
+   │             Human Systems Architect                    │
+   │  • Architecture design & module boundaries             │
+   │  • Financial & transactional correctness invariants    │
+   │  • Rigorous CI gates & test coverage floors            │
+   └───────────────────────────┬────────────────────────────┘
+                               │ Orchestrates & verifies
+                               ▼
+   ┌────────────────────────────────────────────────────────┐
+   │         Autonomous AI Engineering Agents               │
+   │  • 1.49M+ lines of verified code                       │
+   │  • 11,400+ automated Rust tests                        │
+   │  • Cross-platform desktop (Windows/Linux) & tablet     │
+   │  • 14 modular business domains & HAL hardware drivers  │
+   └────────────────────────────────────────────────────────┘
+```
+
+### Solving the AI code quality challenge
+
+The primary failure mode of AI-generated code is accumulating untested technical debt. kasir.mu solved this by using AI primarily for **exhaustive verification and rigorous test generation**:
+- Over **539,000 lines of code** in the repository consist of test suites, mock drivers, and verification suites (36% of the entire codebase). *(This figure is not re-derived by any script in the tree — treat it as a dated estimate, unlike the test-attribute count below.)*
+- **Invariants enforced at the type system and database layer:**
+  - `Money` is strictly modeled as an `i64` minor unit integer (zero floating-point currency representation).
+  - All database writes are wrapped in explicit `rusqlite` transactions.
+  - Seven automated pre-commit gates enforce line endings, schema drift guards, migration typing, and translation parity.
+
+### Codebase metrics breakdown ([`stats.json`](./stats.json))
+
+The repository encompasses **1,491,020 lines of code** across **6,625 source files** (regenerated 2026-10-14 with `scripts/stats.ps1`; the previous is larger — see the note above the table):
+
+| Language / Domain | Files | Lines | Primary Scope |
+|---|---:|---:|---|
+| **Rust** | 1,435 | 561,186 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
+| **TypeScript / TSX** | 1,714 | 440,778 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
+| **Markdown** | 577 | 165,845 | Comprehensive system architecture, ADRs, test strategies, user guides |
+| **HTML** | 1,210 | 102,619 | Prototypes, KDS layouts, web views, documentation templates |
+| **CSS** | 167 | 71,320 | Design system, tokenized responsive styling, print receipt layouts |
+| **Go** | 106 | 44,950 | Standalone licensing server (`apps/license-server`) |
+| **Python** | 254 | 43,624 | Verification gates, migration generators, drift checkers, E2E orchestration |
+| **JavaScript / MJS** | 896 | 21,403 | Tooling scripts, build pipelines, prototype engines |
+| **Fluent (`.ftl`)** | 54 | 13,709 | Bilingual localization bundles (English and Bahasa Indonesia) |
+| **SQL** | 77 | 9,072 | Migration schemas (SQLite primary + generated PostgreSQL replica) |
+| **Shell** | 57 | 8,557 | CI/CD automation, build scripts, release tooling |
+| **PowerShell** | 27 | 4,927 | Windows setup, gate runners, packaging checks |
+| **Astro** | 51 | 3,030 | Marketing website & documentation portal |
+| **Total** | **6,625** | **1,491,020** | Complete repository footprint |
+
+---
+
+## 5. Business model & unit economics
+
+### The edge-compute cost advantage
+
+By keeping server costs **under 1% of gross revenue** (compared to 10%–30% in legacy POS architectures), kasir.mu achieves structural unit economics that competitors cannot replicate without completely rewriting their core stack:
+- **Zero server costs for checkout:** The merchant's device performs 100% of compute, caching, indexing, and storage.
+- **Cloud bills only for delta sync:** The cloud server only processes compressed background sync packets when transactions are uploaded.
+- **Sustainable low-tier pricing:** This allows kasir.mu to offer a **perpetual Free plan** and a **$4.99/month entry plan** that are immediately profitable.
+
+### Transparent subscription tiers
+
+Going up a plan buys **capacity**, never basic operational survival. We never hold core business features hostage.
+
+| Plan | IDR / Month | USD / Month | Yearly (2 mo free) USD / IDR | What it includes |
+|---|---:|---:|---:|---|
+| **Free** | Rp 0 | $0 | — | 1 store, 1 register, 3 months history (up to 200 products, 1 staff). Static QRIS. Full offline. Forever. |
+| **Plus** | Rp 49.000 | $4.99 | $49.99 / Rp 500.000 | 1 store, 2 registers, 1 year history, cloud sync, daily sales dashboard, dynamic QRIS. |
+| **Pro** ⭐ | Rp 99.000 | $9.99 | $99.99 / Rp 1.000.000 | 2 stores, 5 registers/store, 2 KDS screens, 5 years history, analytics, Stripe card payments. |
+| **Premium** | Rp 399.000 | $39.99 | $399.99 / Rp 3.999.000 | 5 stores, unlimited registers, **warehouses unlock here**, unlimited history, customer loyalty, custom Lua scripting. |
+| **Enterprise** | Bespoke | Bespoke | Custom | Unlimited scale, **white-label branding**, custom hardware drivers, dedicated SLA, on-premise cloud deployments. |
+
+```mermaid
+flowchart TD
+    F["<b>1. FREE FOREVER — $0 / mo (Rp 0)</b><br/>• 1 Store · 1 Register · 3 Months History · Up to 200 Products<br/>• 100% Full Offline Operation · Static QRIS · 0% Commission"]
+    
+    PL["<b>2. PLUS — $4.99 / mo (Rp 49.000)</b><br/>• 1 Store · 2 Registers · 1 Year History · Up to 500 Products<br/>• Automated Cloud Outbox Sync · Dynamic QRIS · Daily Sales Dashboard"]
+    
+    PR["<b>3. PRO (Most Popular) — $9.99 / mo (Rp 99.000)</b><br/>• 2 Stores · 5 Registers / Store · 2 KDS Screens · 5 Years History<br/>• Kitchen Display System (KDS) · Stripe Card Processing · Sales Analytics"]
+    
+    PM["<b>4. PREMIUM — $39.99 / mo (Rp 399.000)</b><br/>• 5 Stores · Unlimited Registers · Warehouses Unlock Here<br/>• Unlimited History · Customer Loyalty Points · Lua Promotion Rules"]
+    
+    ET["<b>5. ENTERPRISE — Bespoke Contract</b><br/>• Unlimited Stores, Terminals and Regional Warehouses<br/>• White-label Branding · Custom HAL Hardware Drivers<br/>• Dedicated SLA · Private Cloud Deployments"]
+
+    F -->|Store needs cloud sync and 2nd register| PL
+    PL -->|Store needs multi-terminal and KDS| PR
+    PR -->|Chain expands to multi-location and loyalty| PM
+    PM -->|Franchise demands white-label, custom drivers and SLA| ET
+
+    style F fill:#f6f8fa,stroke:#94a3b8,color:#1f2328
+    style PL fill:#eff6ff,stroke:#93c5fd,color:#1f2328
+    style PR fill:#dbeafe,stroke:#147EFB,stroke-width:2px,color:#1f2328
+    style PM fill:#f5f3ff,stroke:#a78bfa,color:#1f2328
+    style ET fill:#fff7ed,stroke:#fb923c,color:#1f2328
+```
+
+---
+
+## 6. 20-Phase strategic platform roadmap
+
+The kasir.mu platform is architected around a structured 20-phase master roadmap, bridging delivered milestones with long-term technological and market expansion:
+
+| Phase | Milestone | Strategic Deliverables | Status |
+|:---:|---|---|:---:|
+| **1** | **Foundation & MVP Core** | Core barcode scan $\to$ cart $\to$ pay $\to$ receipt pipeline, Money struct, SQLite schema, setup wizard, HAL drivers | **Completed on 15-05-2025** |
+| **2** | **Security & Platform Hardening** | `Argon2id` + `AES-256-GCM` `.kasirpkg` snapshots, PCI-DSS PAN masking, platform keychains, NSIS/APK packages | **Completed on 12-08-2025** |
+| **3** | **Transaction Lifecycle & Staff** | Split tenders, refunds, holds, PIN auth, RBAC, shift management & EOD cash reconciliation, tax engine | **Completed on 15-11-2025** |
+| **4** | **Multi-Store Scaling & Cloud Sync** | Asynchronous outbox delta replication (SQLite $\to$ PG), visual topology canvas, Stripe & QRIS payments | **Completed on 10-02-2026** |
+| **5** | **Business Intelligence & i18n** | Daily/weekly/monthly EOD sales analytics, COGS & gross profit, PDF email reports, bilingual en/id localization | **Completed on 15-05-2026** |
+| **6** | **Restaurant Ecosystem & Theming** | Loyalty tiers, buy-X-get-Y promotions, Kitchen Display System (KDS), table floor plan, kiosk, whitelabel styling | **Completed on 20-08-2026** |
+| **7** | **Zero-Compute Cloud & Logging** | Hourly rolling file logs (30d retention), optimized Axum sync engine, 1-core <1% server benchmark ratification | **Completed on 29-09-2026** |
+| **8** | **Financial ERP & General Ledger** | Double-entry bookkeeping engine, automated journal entries, chart of accounts, expense & vendor payables tracking | **Expected Q4 2026** |
+| **9** | **Indonesian Tax & e-Faktur Engine** | PB1 restaurant tax automated reports, PPN 11%/12% compliance, DJP Online e-Faktur CSV export | **Expected Q1 2027** |
+| **10** | **Omnichannel Marketplace Sync** | Real-time bi-directional inventory reservation bridging counter POS with Tokopedia, Shopee, and TikTok Shop | **Expected Q1 2027** |
+| **11** | **Contactless QR Table Ordering** | Diners scan table QR $\to$ PWA digital menu $\to$ auto-routes tickets to KDS with dynamic QRIS payments | **Expected Q2 2027** |
+| **12** | **Predictive Retail AI & Auto-Supply** | On-device SLM demand forecasting, dynamic reorder points ($ROP$), automated draft purchase orders to suppliers | **Expected Q2 2027** |
+| **13** | **WhatsApp Business Commerce Gateway** | Automated digital e-receipts, loyalty points balance, and order updates via official WhatsApp Cloud API | **Expected Q3 2027** |
+| **14** | **Staff Commission & Biometrics** | Dynamic sales tier commissions, facial/fingerprint biometric shift clock-in, automated payroll CSV export | **Expected Q3 2027** |
+| **15** | **Enterprise Data Warehouse Streaming** | Streaming CDC connectors to BigQuery, Snowflake, and ClickHouse for multi-chain analytics | **Expected Q4 2027** |
+| **16** | **Specialized Vertical Plugin SDK** | Plugin marketplace for specialized retail (Pharmacy BPOM batch tracking, Salon booking, Auto repair) | **Expected Q4 2027** |
+| **17** | **Offline P2P Mesh Synchronization** | Router-free Wi-Fi Direct & Bluetooth mesh sync between registers during internet & infrastructure blackouts | **Expected Q1 2028** |
+| **18** | **Franchise Fleet Orchestrator** | Centralized 10,000-store multi-tenant fleet manager, instant global menu/price rollouts, policy pushes | **Expected Q2 2028** |
+| **19** | **Embedded Merchant Micro-Financing** | Cash-flow underwriting scoring, revenue-based working capital financing integration for MSMEs | **Expected Q3 2028** |
+| **20** | **Global Emerging Markets Mesh** | Regional Southeast Asia expansion (Philippines, Vietnam, Thailand), multi-currency mesh, local tax engines | **Expected Q4 2028** |
+
+### Transparent gap disclosure (v0.0.41 current state)
+
+We believe in radical transparency:
+- **Platform readiness (Windows-only production today):** As of today, the **Windows 10/11 desktop application is the only working production-ready build**. The Android tablet APK (`apps/mobile-tauri`) and Linux builds are in active development (application shell and UI are scaffolded, with physical device testing and hardware binding currently in progress).
+- **No full accounting ledger yet (Phase 8):** The system provides revenue, COGS, gross-profit, shift cash tracking, and purchase order history. A full general ledger (chart of accounts, journal entries) is currently scheduled for Phase 8.
+- **Scaffolded vertical stubs:** Purchasing history is live, but four domain modules (`purchasing`, `promotions`, `giftcards`, `kitchen`) are currently structured as frontend or core-delegated modules rather than standalone domain services (the KDS screen in `ui/src/features/kds/` is frontend-only today).
+- **Deferred features:** Custom cloud report builder and voice checkout remain intentionally deferred.
+
+---
+
+## 7. Quick start for developers
+
+### Prerequisites
+- [Rust](https://rustup.rs/) (1.80+ recommended)
+- [Node.js](https://nodejs.org/) (20+ LTS)
+- OS: **Windows 10/11 (Primary production platform)**; macOS or Linux for development
+
+### 4-step setup
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/kardelitaitu/kasirmu.git
+cd kasirmu
+
+# 2. Build the workspace crates
+cargo build --workspace
+
+# 3. Install frontend dependencies
+cd ui && npm ci --no-audit --no-fund && cd ..
+
+# 4. Launch the desktop application in development mode
+cd apps/desktop-tauri && cargo tauri dev
+```
+
+For full architecture deep-dives, verified commands, and CI gate reproduction, see [`README-technical.md`](./README-technical.md) and [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
+
+---
+
+## 8. For investors & commercial partners
+
+- **Structural Margin Advantage:** Other POS/inventory SaaS spend 10%–30% of gross revenue (and 25%–40% of tech COGS) on cloud infrastructure; kasir.mu's codebase runs with **server costs under 1% of gross revenue** (~0.26% simulated at scale).
+- **Linear Scale from 10k to 1M Outlets:** Edge computing offloads checkout computation to local devices; 10k stores run on a single $26/mo VPS, scaling linearly to 100k+ and 1M stores via tenant-partitioned database sharding without architectural rewrites.
+- **The Distribution Flywheel:** Emerging market merchants don't resist digitization; they resist overhead. By running on existing hardware with zero platform GMV take-rate and an unexpiring Free tier, kasir.mu drives viral bottom-up merchant acquisition.
+- **The Defensibility Moat:** A native Rust engine, unified hardware abstraction layer, offline-first data synchronization, and enterprise-grade test verification cannot be replicated by wrapper apps or quick cloud clones.
+- **Unprecedented Capital Efficiency:** Built by a solo developer leveraging 95% AI execution, delivering a 1.34M+ LOC enterprise product at a tiny fraction of typical venture capital burn.
+
+For comprehensive technical, financial, and market documentation, see:
+- Market Research: [`docs/guides/product/INDONESIA_POS_ECOSYSTEM_RESEARCH.md`](./docs/guides/product/INDONESIA_POS_ECOSYSTEM_RESEARCH.md)
+- Commercial Strategy: [`docs/guides/product/BUSINESS_PLAN.md`](./docs/guides/product/BUSINESS_PLAN.md)
+- Technical Architecture: [`docs/guides/product/WHITEPAPER.md`](./docs/guides/product/WHITEPAPER.md)
+- Systems Design & Incumbent Analysis: [`docs/guides/product/SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS.md`](./docs/guides/product/SYSTEM_DESIGN_AND_INCUMBENT_ANALYSIS.md)
+
+---
+
+## 9. Next steps & engagement
+
+### For developers & contributors
+- **Explore verified architecture:** Inspect the engineering specification in [`README-technical.md`](./README-technical.md).
+- **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
+- **Inspect automated tests:** Run `cargo test --workspace` (11,410 test functions) or Vitest (787 frontend test files).
 
 ### For investors & commercial partners
 - **Schedule a Demonstration:** Contact **support@kasir.mu** to review live benchmarks, edge synchronization, and the visual node topology canvas.
