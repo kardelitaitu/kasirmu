@@ -170,6 +170,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The Kitchen Display row never hid: a predicate that cannot read the gate (round 128)](audits/kds-row-inert-predicate.md) | — |
 | kds | [What makes the POS-to-KDS ticket deterministic, and why the spec is fixme (round 142)](audits/kds-spec-determinism.md) | — |
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
+| general | [The bulk 86 controls, and two sweeps that found no third instance of round 183's pattern (round 184)](audits/menu-editor-bulk-controls.md) | — |
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
 | general | [The menu editor's Save did nothing on a blank name, and never said so (round 163)](audits/menu-editor-save-gate.md) | — |
