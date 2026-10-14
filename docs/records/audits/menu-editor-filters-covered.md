@@ -46,3 +46,5 @@ fixtures breaks the day they change, and this screen's set already changed once 
 
 Form + Save gate, bulk 86, category builder, filter tabs, search, form fields — the editor is
 covered across every operator surface except the icon and colour pickers, which are cosmetic.
+
+> last audited 14-10-26 by docs-auditor

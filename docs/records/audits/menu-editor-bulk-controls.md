@@ -56,3 +56,5 @@ spec asserting zero would pass on a screen that LOST an earlier 86.
 | `eslint` | 0 |
 | Full UI suite | 12,703 passed |
 | Source | unchanged — `RestaurantMenuEditorScreen.tsx` verified identical to HEAD |
+
+> last audited 14-10-26 by docs-auditor

@@ -54,3 +54,5 @@ It did not make the old version flaky on demand — the load usually resolves be
 assertion, which is why this survived since round 149. The evidence is the ORDER OF RENDERING
 (`bulk=0` at header-visible), not an observed failure. That is a weaker claim than a reproduced
 flake and is recorded as one.
+
+> last audited 14-10-26 by docs-auditor

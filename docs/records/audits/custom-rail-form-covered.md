@@ -51,3 +51,5 @@ Recorded rather than glossed: those are a deliberate deferral, not a gap this ro
 | Payments screen source | unchanged, byte-identical to HEAD |
 | eslint | 0 |
 | Full UI suite | 12,703 passed |
+
+> last audited 14-10-26 by docs-auditor
