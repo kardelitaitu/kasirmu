@@ -34,24 +34,20 @@ async function openRow(page: Page, row: string, anchor: string): Promise<void> {
   });
 }
 
-/** Press a back control and prove it left the screen it was on. */
-async function assertBackLeaves(page: Page, backId: string, anchorId: string): Promise<void> {
-  const back = page.locator('[data-testid="' + backId + '"]');
-  await expect(back, backId + ' must be reachable').toBeVisible({ timeout: TIMEOUT });
-  await back.click();
-
-  // THE SCREEN IT WAS ON IS GONE. Asserting the destination would need a selector for the till,
-  // which the product cards already provide — but the load-bearing claim is that the back control
-  // CHANGES the screen, so the screen it left is what must stop rendering.
-  await expect(
-    page.locator('[data-testid="' + anchorId + '"]'),
-    backId + ' must leave the screen it was on',
-  ).toHaveCount(0, { timeout: TIMEOUT });
-}
-
+// ⚠️ The testid is named LITERALLY in each case, not threaded through a variable. The coverage
+// scan counts an id only when it appears inside a selector, and a variable reference is invisible
+// to it — round 270 built that rule, and these three ids were uncovered until they were spelled out.
 test('the receipts back control leaves the receipts screen', async ({ page }) => {
   await openRow(page, 'receipts', 'restaurant-receipts-preview-test-chit-btn');
-  await assertBackLeaves(page, 'restaurant-receipts-back-btn', 'restaurant-receipts-header');
+  const receiptsBack = page.locator('[data-testid="restaurant-receipts-back-btn"]');
+  await expect(receiptsBack, 'the receipts screen offers a back control').toBeVisible({
+    timeout: TIMEOUT,
+  });
+  await receiptsBack.click();
+  await expect(
+    page.locator('[data-testid="restaurant-receipts-header"]'),
+    'the receipts back control leaves the receipts screen',
+  ).toHaveCount(0, { timeout: TIMEOUT });
 });
 
 test('the payments back control leaves the payments screen', async ({ page }) => {
@@ -59,10 +55,26 @@ test('the payments back control leaves the payments screen', async ({ page }) =>
   // the layout, so it resolves but is HIDDEN — round 263 recorded the same for the EDC card. The
   // payments header is the visible anchor this screen actually paints.
   await openRow(page, 'payments', 'restaurant-payments-header');
-  await assertBackLeaves(page, 'restaurant-payments-back-btn', 'restaurant-payments-header');
+  const paymentsBack = page.locator('[data-testid="restaurant-payments-back-btn"]');
+  await expect(paymentsBack, 'the payments screen offers a back control').toBeVisible({
+    timeout: TIMEOUT,
+  });
+  await paymentsBack.click();
+  await expect(
+    page.locator('[data-testid="restaurant-payments-header"]'),
+    'the payments back control leaves the payments screen',
+  ).toHaveCount(0, { timeout: TIMEOUT });
 });
 
 test('the settings back control leaves the settings screen', async ({ page }) => {
   await openRow(page, 'settings', 'restaurant-settings-header');
-  await assertBackLeaves(page, 'restaurant-settings-back-btn', 'restaurant-settings-header');
+  const settingsBack = page.locator('[data-testid="restaurant-settings-back-btn"]');
+  await expect(settingsBack, 'the settings screen offers a back control').toBeVisible({
+    timeout: TIMEOUT,
+  });
+  await settingsBack.click();
+  await expect(
+    page.locator('[data-testid="restaurant-settings-header"]'),
+    'the settings back control leaves the settings screen',
+  ).toHaveCount(0, { timeout: TIMEOUT });
 });
