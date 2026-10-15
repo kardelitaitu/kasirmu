@@ -749,8 +749,9 @@ export function CartPanel({
                     order type (CartPanel.tsx:735-743), so switching Dine-In ->
                     Takeaway left "Table 12" reading as this order's table. A
                     takeaway has no table to name. */}
-                {showTableForOrder ? `Table ${bareTableNumber(tableNumber!)}` : ''}
-                {(showTableForOrder && customerName) ? ` (${customerName})` : customerName || 'Active Tab'}
+                {showTableForOrder
+                  ? `Table ${bareTableNumber(tableNumber!)}${customerName ? ` (${customerName})` : ''}`
+                  : (customerName || 'Active Tab')}
               </span>
             </span>
             <button
