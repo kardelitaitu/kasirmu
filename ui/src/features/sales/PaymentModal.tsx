@@ -982,7 +982,15 @@ retryCurrencyLoad,
               await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
             }
           } catch (tableErr) {
+            // Non-fatal, but NOT silent. The sale is already complete, so this must not
+            // throw — but the table was never claimed, and nothing re-reads it: the floor
+            // plan keeps showing the table AVAILABLE while a party is sitting at it, so
+            // the next waiter can seat someone there. Only the cashier can fix that.
+            // Measured: with the console.warn only, a rejected assign_table_order_scoped
+            // left the operator with an empty toast area. Same rule the sibling chit
+            // catches follow (round 36).
             console.warn('assignTableOrderScoped failed', tableErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-table-assign-failed'), type: 'warning' });
           }
         }
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
@@ -1547,7 +1555,15 @@ retryCurrencyLoad,
               await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
             }
           } catch (tableErr) {
+            // Non-fatal, but NOT silent. The sale is already complete, so this must not
+            // throw — but the table was never claimed, and nothing re-reads it: the floor
+            // plan keeps showing the table AVAILABLE while a party is sitting at it, so
+            // the next waiter can seat someone there. Only the cashier can fix that.
+            // Measured: with the console.warn only, a rejected assign_table_order_scoped
+            // left the operator with an empty toast area. Same rule the sibling chit
+            // catches follow (round 36).
             console.warn('assignTableOrderScoped failed', tableErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-table-assign-failed'), type: 'warning' });
           }
         }
         const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);

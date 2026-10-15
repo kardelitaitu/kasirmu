@@ -592,6 +592,106 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('TELLS THE CASHIER when the table could not be assigned to the sale', async () => {
+    // The sale completes, then the table claim fails. Nothing re-reads it, so the
+    // floor plan keeps showing the table as AVAILABLE while a party is sitting at it
+    // — the next waiter can seat someone there, and the cashier has no idea. The
+    // catch warned to the console only.
+    //
+    // `payment-toast-table-assign-failed` is new; the wording names the action
+    // (re-assign the table) rather than the mechanism.
+    kdsOrderImpl();
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tables_scoped') {
+        return Promise.resolve([{ id: 'tbl-12', name: 'Table 12', status: 'available' }]);
+      }
+      if (cmd === 'assign_table_order_scoped') {
+        return Promise.reject(new Error('table already occupied'));
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        tableNumber="12"
+        orderType="dine_in"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'assign_table_order_scoped'),
+        'the assignment must actually have been attempted',
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      const shown = screen.queryAllByRole('alert').map((a) => a.textContent ?? '').join(' | ');
+      expect(
+        shown,
+        'a failed table assignment left the floor plan wrong with nothing shown',
+      ).toMatch(/table/i);
+    });
+  });
+
+  it('reports a failed table assignment on the GATEWAY settle path too', async () => {
+    // `settleGatewaySale` carries its OWN copy of the table-assignment block
+    // (PaymentModal.tsx, the QRIS/EDC settlement), separate from `complete`'s. The
+    // cash-path case above does not reach it, so both copies need their own proof.
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tables_scoped') {
+        return Promise.resolve([{ id: 'tbl-12', name: 'Table 12', status: 'available' }]);
+      }
+      if (cmd === 'assign_table_order_scoped') {
+        return Promise.reject(new Error('table already occupied'));
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        tableNumber="12"
+        orderType="dine_in"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Drive the QRIS tender, which settles through settleGatewaySale.
+    await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /pay with qr|payment-qris-pay/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /qris-poll-double-confirm/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'assign_table_order_scoped'),
+        'settleGatewaySale must have attempted the assignment',
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      const shown = screen.queryAllByRole('alert').map((a) => a.textContent ?? '').join(' | ');
+      expect(shown, 'the gateway path reported nothing').toMatch(/table/i);
+    });
+  });
+
   it('does NOT assign a table when the order is takeaway or delivery', async () => {
     // ⚠️ THE DEFECT THIS PINS (measured live, round 40). The assignment guard
     // was `if (sessionToken && tableNumber)` — tableNumber truthy ALONE. The

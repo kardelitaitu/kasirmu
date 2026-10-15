@@ -1148,6 +1148,7 @@ pos-toast-kitchen-dispatched = Pesanan dikirim ke dapur untuk { $table }
 pos-toast-kitchen-dispatch-failed = Gagal mengirim pesanan ke dapur
 pos-toast-kitchen-print-failed = Pesanan terkirim, tetapi tiket dapur tidak tercetak — periksa printer
 pos-toast-bar-print-failed = Pesanan terkirim, tetapi tiket bar tidak tercetak — periksa printer
+payment-toast-table-assign-failed = Transaksi berhasil, tetapi meja tidak ditandai terisi — tugaskan ulang di denah meja
 pos-toast-held-cart-delete-failed = Gagal menghapus keranjang yang ditahan
 pos-toast-auth-required = Silakan masuk kembali untuk melanjutkan
 pos-toast-tab-balance-failed = Gagal memperbarui sisa saldo tagihan
