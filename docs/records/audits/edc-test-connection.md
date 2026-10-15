@@ -87,3 +87,5 @@ What remains on that screen is the Midtrans / Stripe **credential fields** — t
 session repeatedly deferred, and for a stated reason: they are secret-key inputs whose *values*
 carry little information, while the *boundary* they must not cross is what actually matters and is
 already covered (228, 229). The rest of the screen's behavioural surface is now covered.
+
+> last audited 15-10-26 by docs-auditor

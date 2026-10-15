@@ -72,3 +72,5 @@ three of four F4 guards, and the file says so rather than implying otherwise.**
 Round 231's decision not to fix was the right one to make on the evidence it had — the fix moves a
 provider and 33 references are in play. Establishing the defect was the part that had to be
 certain first, and this round could then make the change in one commit with a kill-test.
+
+> last audited 15-10-26 by docs-auditor

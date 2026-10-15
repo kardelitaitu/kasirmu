@@ -77,3 +77,5 @@ meet?"* — not an average, and not a bounding rule that happens to make both tr
 | ~~menu editor rail~~ | **not a defect — the measurement was of an unsettled state** |
 
 Three screens, not four.
+
+> last audited 15-10-26 by docs-auditor

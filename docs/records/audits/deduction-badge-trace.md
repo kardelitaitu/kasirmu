@@ -76,3 +76,5 @@ the probe, so the gate is passed and only the sequencing remains.
 | **deduction badge + override** | **location and trigger now known; not yet driven** |
 | `pos-cart-kds-btn` | **moved to the sidebar** — absent here by design (round 216, re-confirmed) |
 | `pos-cart-conflict-alert` + takeover | needs a second terminal (round 216) |
+
+> last audited 15-10-26 by docs-auditor

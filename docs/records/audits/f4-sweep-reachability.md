@@ -89,3 +89,5 @@ Two fixes and three tests, but the durable part is the third case. Rounds 234-23
 instances of one class by hand, one instrumented run at a time. **The guard that should have caught
 all five was already in the tree, checking the wrong property.** Extending it is what makes the
 sixth instance cost a failing test instead of five rounds.
+
+> last audited 15-10-26 by docs-auditor

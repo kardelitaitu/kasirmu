@@ -66,3 +66,5 @@ property being tested.
 
 What remains on that screen is a title, an icon and a sort select - static chrome, which is the
 point at which a screen is worth calling behaviourally closed.
+
+> last audited 15-10-26 by docs-auditor

@@ -80,3 +80,5 @@ and 255 each paid for this. The repair is one line — delete the now-duplicated
 **The order matters.** Rounds 249-253 wrote five CSS variants against measurements that disagreed;
 round 254 wrote the specification; round 255 satisfied it in two lines. The specification is what
 made the arithmetic legible — and the arithmetic was never the hard part.
+
+> last audited 15-10-26 by docs-auditor

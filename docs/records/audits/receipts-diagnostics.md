@@ -62,3 +62,5 @@ Still uncovered there: the header/back/icon set and `restaurant-receipts-load-er
 retry. The load-error path is the reachable one — the retry button only renders inside it, and
 the seam round 221 used (`window.__MOCK_FAIL`) can force the read to reject. That is the next
 coherent step on this screen.
+
+> last audited 15-10-26 by docs-auditor

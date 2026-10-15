@@ -68,3 +68,5 @@ from a browser. Its docblock predicted exactly this use — *"some states the UI
 cannot be reached through the mock's DATA"* — and the two rounds since have each been a case of
 it. Worth reaching for before concluding a path is unreachable; rounds 213 and 216 were both
 records of paths that looked unreachable and were not.
+
+> last audited 15-10-26 by docs-auditor

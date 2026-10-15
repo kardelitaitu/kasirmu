@@ -70,3 +70,5 @@ this round because the file was finally in the lint scope for a change — and i
 
 Left there: `tables-print-bill-btn`, the section badges and the tab-conflict banner. The last
 needs a second terminal — the constraint round 216 recorded for its cart-side twin.
+
+> last audited 15-10-26 by docs-auditor

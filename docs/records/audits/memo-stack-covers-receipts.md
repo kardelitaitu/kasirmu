@@ -65,3 +65,5 @@ Find the nested scroller between `restaurant-settings-main` and the drawer butto
 ancestors and log every element whose `scrollHeight` exceeds its `clientHeight`, not just the first
 one whose `overflow-y` is auto. Then either scroll THAT one clear, or file the collision as a defect
 with the geometry above.
+
+> last audited 15-10-26 by docs-auditor

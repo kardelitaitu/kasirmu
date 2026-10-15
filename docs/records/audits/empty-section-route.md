@@ -57,3 +57,5 @@ Empty **Patio**, the one section that can be. And close the detail panel after e
 re-scanning: `.tables-detail` -> its Close button (`:1431`), then wait for the panel to be gone.
 The deletable count is already known (6), so the loop can be bounded by measurement rather than a
 guess.
+
+> last audited 15-10-26 by docs-auditor

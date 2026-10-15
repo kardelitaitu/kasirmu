@@ -66,3 +66,5 @@ the production parser, including `matchesTableBill`'s `\btable\s+10\b` word-boun
 Reserve → card → seat is now covered at both ends. What remains on that screen is the section
 badges and the tab-conflict banner (which needs a second terminal — the round-216 constraint,
 unchanged for six rounds).
+
+> last audited 15-10-26 by docs-auditor

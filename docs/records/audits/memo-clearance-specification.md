@@ -86,3 +86,5 @@ instead of the sticky child. Then the same for the receipts preview column, whos
 sticky pin `top: 0` and is therefore already known.
 
 **The specification is the acceptance test. It should keep failing until the CSS answers it.**
+
+> last audited 15-10-26 by docs-auditor

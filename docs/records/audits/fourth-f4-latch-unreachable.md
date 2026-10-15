@@ -90,3 +90,5 @@ Four screens, one pattern, and ONE implementation where the pattern does not wor
 distinction took four rounds to establish, and it is the kind that a coverage table would have
 hidden: the card has an `loadFailed` state, a banner, a retry and a disabled-Save rule, and none
 of them can ever run.
+
+> last audited 15-10-26 by docs-auditor

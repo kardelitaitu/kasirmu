@@ -81,3 +81,5 @@ round.
 | Classes | 3, each with 3-4 instances |
 | Source changed | none |
 | New tests | zero |
+
+> last audited 15-10-26 by docs-auditor

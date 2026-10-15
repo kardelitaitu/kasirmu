@@ -83,3 +83,5 @@ be certain before anyone moves a provider.
 
 **Three of four are tested; the fourth cannot be until the modal renders.** Recording that
 distinction is the point: a coverage table saying "4 covered" would be false.
+
+> last audited 15-10-26 by docs-auditor

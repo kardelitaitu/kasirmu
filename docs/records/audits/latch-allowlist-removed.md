@@ -92,3 +92,5 @@ canary is cheap and it settled it.
 Seven candidate sites across six rounds. Four were real, one was examined and cleared, and the
 sweep that should have caught all of them now checks the property that was missing:
 **reachability, not presence.**
+
+> last audited 15-10-26 by docs-auditor

@@ -73,3 +73,5 @@ that reads an absence and a record written the same day.**
 The habit that would have caught it in round 259 is one line: **when a control cannot be found,
 ask what ELSE is not on screen.** Here the answer was the entire cart, and its own floating bar was
 reporting the correct total the whole time.
+
+> last audited 15-10-26 by docs-auditor

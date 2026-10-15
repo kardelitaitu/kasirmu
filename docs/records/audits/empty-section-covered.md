@@ -64,3 +64,5 @@ It is the one screen in the flow where the operator has **no data to act on and 
 the absence means.** "No tables in this section" plus a way back says *your filter is narrow*; a
 blank grid says nothing and invites a support call. The branch existed and rendered correctly all
 along — it simply could not be reached, which is why no test had ever seen it.
+
+> last audited 15-10-26 by docs-auditor

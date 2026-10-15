@@ -89,3 +89,5 @@ move if the filter actually filtered.
 
 The only control left is the tab-conflict banner, which needs a second terminal — the round-216
 constraint, unchanged across twenty-eight rounds.
+
+> last audited 15-10-26 by docs-auditor

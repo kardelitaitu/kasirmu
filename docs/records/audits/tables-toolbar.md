@@ -56,3 +56,5 @@ the billed-table half of the label pair is reachable. `Table 1` is the seeded la
 Still uncovered there: `tables-print-bill-btn`, `tables-edit-table-btn`, the section badges and
 the tab-conflict banner — the last of which needs a second terminal, the constraint round 216
 recorded for its cart-side twin.
+
+> last audited 15-10-26 by docs-auditor

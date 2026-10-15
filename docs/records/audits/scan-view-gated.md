@@ -80,3 +80,5 @@ examinations. `pos-cart-kds-btn` is absent by design in the restaurant tier, the
 
 **CartPanel has no remaining unreachable-but-behavioural work.** What is left there is blocked by
 architecture, not by tests, and the scan now says so instead of implying otherwise.
+
+> last audited 15-10-26 by docs-auditor

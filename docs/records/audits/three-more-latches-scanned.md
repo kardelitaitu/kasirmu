@@ -84,3 +84,5 @@ list of places to look, not a list of defects.**
 One instrumented run per card, the same shape round 234 used: name the calls, count the failures,
 and observe the banner. For KDS that answers fired-and-discarded vs never-fired, and for Inventory
 it answers everything.
+
+> last audited 15-10-26 by docs-auditor

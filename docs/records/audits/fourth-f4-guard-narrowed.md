@@ -87,3 +87,5 @@ left. The file's comment carries it, so the next round starts from here.
 | payments | 227 | yes |
 | settings | 230 | yes |
 | workspace card | 231-233 | **still no — now for a named reason** |
+
+> last audited 15-10-26 by docs-auditor

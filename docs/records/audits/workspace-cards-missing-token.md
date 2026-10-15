@@ -82,3 +82,5 @@ probed this round:
 `WorkspaceInventorySettings` was in the unprobed set last round and is now covered by the same
 spec — passing, so its read fires with the token forwarded. Whether it needed the token or merely
 benefited from it is not distinguished here, and the spec pins the behaviour either way.
+
+> last audited 15-10-26 by docs-auditor

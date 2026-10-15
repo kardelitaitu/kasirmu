@@ -72,3 +72,5 @@ is valid, so that wait is itself the check that a choice was made.
 The cart line now has every control covered. The next round's first step is the tablet divergence:
 why attaching a chosen modifier works on desktop and not on tablet, given the customizer opens on
 both.
+
+> last audited 15-10-26 by docs-auditor

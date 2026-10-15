@@ -68,3 +68,5 @@ Left on that screen, named for next: `tables-seat-guests-btn` and `tables-reserv
 **seating** transition, which is the other half of the workflow and the one an operator performs
 when the party actually walks in. Also still uncovered: the section badges and the tab-conflict
 banner (which needs a second terminal, the round-216 constraint).
+
+> last audited 15-10-26 by docs-auditor

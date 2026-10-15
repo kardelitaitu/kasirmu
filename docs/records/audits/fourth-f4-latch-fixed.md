@@ -70,3 +70,5 @@ what made the inversion provably about the guard rather than about the instrumen
 The card's failure mode was the quiet one: a `loadFailed` state, a banner, a retry and a
 disabled-Save rule that all existed, compiled, and could never run. Nothing failed; the operator
 was simply shown a default they could not distinguish from a real value, with Save armed over it.
+
+> last audited 15-10-26 by docs-auditor

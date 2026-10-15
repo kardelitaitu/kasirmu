@@ -113,3 +113,5 @@ finally learned to build instruments that prove themselves first.
 The objective is open-ended and the goal is left **active** at its round limit rather than marked
 complete: the restaurant surface still has uncovered behavioural controls (the conflict alert,
 the gateway credential fields), and "continue the development" does not terminate.
+
+> last audited 15-10-26 by docs-auditor

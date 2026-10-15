@@ -79,3 +79,5 @@ inline; this round's second card made it a function.
 
 What remains on that screen is the header chrome and the cash custom-label field. The credential
 surface — the part where a mistake is a data-security incident — is now covered on both gateways.
+
+> last audited 15-10-26 by docs-auditor

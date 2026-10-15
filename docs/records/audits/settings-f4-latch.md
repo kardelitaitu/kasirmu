@@ -74,3 +74,5 @@ the design rather than a defect: the visible control is an `aria-hidden` sibling
 
 Three screens, one pattern, three independent implementations — and now three specs. Whatever the
 next restaurant screen is, its F4 guard should be the first thing to look for.
+
+> last audited 15-10-26 by docs-auditor

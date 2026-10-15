@@ -78,3 +78,5 @@ The fix is real and partial; the record overclaimed, and this one corrects it.
 The Menu Editor's five occluded controls, found by this round's sweep. And for receipts, the honest
 remaining question: whether a sticky column can be bounded at all, or whether the 215px reserve
 belongs on `.restaurant-settings-layout` so the column's **sibling** carries it.
+
+> last audited 15-10-26 by docs-auditor

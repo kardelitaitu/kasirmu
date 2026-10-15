@@ -79,3 +79,5 @@ This is the third time this session a scan produced a finding that was not there
 regex splitting `.tsx` into `.ts`, 218's transform-minus mistaken for a reach-out, and now a
 template literal read as an absence. The tell is the same each time: **a number that contradicts
 what a sibling round already recorded.**
+
+> last audited 15-10-26 by docs-auditor

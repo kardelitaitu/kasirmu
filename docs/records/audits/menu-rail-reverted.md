@@ -90,3 +90,5 @@ and holds however the seed falls.
 Four screens, three shipped rules, and one where the evidence did not support a change. That last
 is the one worth recording: a defect that is real in one measurement and benign in another, with no
 demonstration of which one the operator meets, is not yet a fix.
+
+> last audited 15-10-26 by docs-auditor

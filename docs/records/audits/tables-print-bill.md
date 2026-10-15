@@ -67,3 +67,5 @@ that does not work.**
 What is left there is the section badges and the tab-conflict banner, and the banner needs a
 second terminal — the constraint round 216 recorded for its cart-side twin and round 218 did not
 dislodge. The screen is otherwise closed.
+
+> last audited 15-10-26 by docs-auditor

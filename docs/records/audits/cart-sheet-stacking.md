@@ -83,3 +83,5 @@ below the thing it dims**, and that is now true here.
 | **deduction badge + override path** | **covered (243)** |
 | `pos-cart-kds-btn` | absent by design — moved to the sidebar (216, re-confirmed) |
 | conflict alert + takeover | needs a second terminal (216, unchanged) |
+
+> last audited 15-10-26 by docs-auditor

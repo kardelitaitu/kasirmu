@@ -68,3 +68,5 @@ reason other than the one it names survives exactly the mutation it was written 
 Still there: the Midtrans and Stripe credential forms. Those are credential fields, they write
 through `setPaymentGatewayConfigScoped` (encrypted, per round 183's boundary), and they are the
 one group on this screen where a test's value is lower than the care it would need to write.
+
+> last audited 15-10-26 by docs-auditor

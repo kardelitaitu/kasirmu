@@ -88,3 +88,5 @@ list, and the receipts preview column — and each was found differently. **The 
 overlay in a shell that does not reserve room for it**, so every screen with content at the bottom
 of its scroll region is a candidate. The rule is now: if a control's centre hit-tests to
 `memo-banner-title`, the screen owes a clearance rule.
+
+> last audited 15-10-26 by docs-auditor

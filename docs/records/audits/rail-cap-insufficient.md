@@ -83,3 +83,5 @@ Write that specification as the acceptance test for receipt and menu-editor occl
 profiles, with content-aware waits. It fails today on both screens. **Then** the per-profile
 constant has something to satisfy, and the 6px is a number to close rather than a guess to
 iterate.
+
+> last audited 15-10-26 by docs-auditor
