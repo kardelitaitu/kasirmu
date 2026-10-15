@@ -344,6 +344,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant suite is stable, and the one-sided assertion hunt found nothing (round 287)](audits/restaurant-suite-stable.md) | — |
 | general | [Resume stole the lease before the warning could be shown (round 298)](audits/resume-stole-the-lease.md) | — |
 | general | [A retail terminal could read and delete a restaurant's open bill by id (round 303)](audits/retail-could-delete-a-restaurant-open-bill.md) | — |
+| general | [Retail: an optimistic add that was never rolled back, and a category that was never saved](audits/retail-optimistic-writes-not-rolled-back.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | general | [Round 18's in-flight Rust run: slow, and the first explanation was wrong (round 306)](audits/rust-suite-slow-by-design.md) | — |
 | general | [A failed sale-detail open was a dead tap — the one read settleRead never covered](audits/sale-detail-open-failure-was-silent.md) | — |
