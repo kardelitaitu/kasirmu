@@ -267,6 +267,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The printed receipt sample is pinned, and its tax mode documented (round 135)](audits/printed-sample-pinned.md) | — |
 | payments | [The QRIS mode setting and the two buttons beside it (round 124)](audits/qris-mode-and-two-buttons.md) | — |
 | payments | [The QRIS mode control, and the round-183 hazard it now pins (round 191)](audits/qris-mode-persistence.md) | — |
+| payments | [The QRIS field mounts late, and the bisect is solid while the spec still fails (round 285)](audits/qris-mounts-late.md) | — |
 | payments | [The QRIS static payload is unit-covered, and its e2e card is already open (round 284)](audits/qris-static-payload-verified.md) | — |
 | money | [A USD store was offered a $10,000 quick-tender shortcut on a $7 sale (round 106)](audits/quick-tender-ladder-currency.md) | — |
 | release | [The rail cap is real but insufficient: 6px of arithmetic I could not close (round 253)](audits/rail-cap-insufficient.md) | — |
