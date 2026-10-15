@@ -684,6 +684,140 @@ describe('RetailPosScreen — interactions', () => {
     vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
   });
 
+  // ── Held-cart resume: a failed delete must not report a successful resume ──
+
+  it('does NOT claim a held cart was resumed when deleting it fails', async () => {
+    // handleResumeCart validates every field it reads out of the untrusted
+    // cart_data, then ends with an UNGUARDED
+    //     await deleteHeldCartScoped(sessionToken, cartId);
+    // This flow has no create step to fall back on: the delete IS the commit.
+    // When it rejected, the catch toasted "failed to resume" while the cart
+    // stayed on the shelf — so the lines were loaded into the till AND the hold
+    // survived, which is how one delivery gets sold twice.
+    const salesApi = await import('@/api/sales');
+
+    // The default factory returns an EMPTY cart, and `handleHold` opens with
+    // `if (lines.length === 0) return;` — so on the shared default F4 is a
+    // silent no-op and the held-carts modal can never open. Seed one line.
+    const posState = await import('@/features/sales/usePosState');
+    vi.mocked(posState.usePosState).mockReturnValue(
+      createUsePosStateMock({
+        lines: [
+          {
+            // SKU-001 is the real fixture product (mocks/retailPos.tsx:34), so the
+            // cart line and the grid row agree and the modal can open.
+            id: 'line-1' as LineId,
+            sku: 'SKU-001' as Sku,
+            name: 'Indomie Goreng',
+            category: 'cat-food',
+            qty: 1,
+            unit_price: { minor_units: 3500, currency: 'IDR' },
+          } as never,
+        ],
+        subtotal: { minor_units: 3500, currency: 'IDR' },
+        total: { minor_units: 3500, currency: 'IDR' },
+      }),
+    );
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    // getAllBy: with a cart line seeded, 'Indomie Goreng' now appears in both the
+    // product grid and the cart panel.
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThanOrEqual(1));
+
+    // TWO holds, not one: handleResume auto-resumes a lone hold without ever
+    // showing the list (RetailPosScreen.tsx:1343), so a one-row seed never
+    // renders the row button the click below needs.
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
+      {
+        id: 'held-resume',
+        label: 'Hold #300',
+        item_count: 1,
+        total_minor: 5000,
+        currency: 'IDR',
+        created_at: '2026-01-01T00:00:00Z',
+        bill_type: 'hold',
+        customer_name: null,
+      },
+      {
+        id: 'held-other',
+        label: 'Hold #400',
+        item_count: 1,
+        total_minor: 7000,
+        currency: 'IDR',
+        created_at: '2026-01-01T00:00:00Z',
+        bill_type: 'hold',
+        customer_name: null,
+      },
+    ]);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
+      id: 'held-resume',
+      label: 'Hold #300',
+      item_count: 1,
+      total_minor: 3500,
+      currency: 'IDR',
+      created_at: '2026-01-01T00:00:00Z',
+      bill_type: 'hold',
+      customer_name: null,
+      deduction_location_id: null,
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'SKU-001', name: 'Indomie Goreng', category: 'cat-food', qty: 1, unit_price: { minor_units: 3500, currency: 'IDR' } }],
+      }),
+    });
+
+    // Step 1 — hold the seeded cart. This is what sets `heldCartId`, and F4's
+    // binding is `if (heldCartId) handleResume(); else handleHold();`
+    // (RetailPosScreen.tsx:1513). It also succeeds here, unlike the resume below.
+    vi.mocked(salesApi.holdCartScoped).mockResolvedValue({
+      id: 'held-resume',
+      label: 'Hold #300',
+      item_count: 1,
+      total_minor: 3500,
+      currency: 'IDR',
+      created_at: '2026-01-01T00:00:00Z',
+      bill_type: 'hold',
+      customer_name: null,
+    } as never);
+
+    // F4 must be pressed with the SKU input NOT focused: the hotkey handler does
+    // `const typing = isEditableTarget(e.target)` and F4 is one of the keys it
+    // suppresses while editing, so a focused input swallows the press silently.
+    // (F5 cannot help — it FOCUSES the SKU input.)
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await userEvent.keyboard('{F4}');
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/held/i));
+
+    // Step 2 — F4 again, now resuming. TWO holds make handleResume render the list
+    // instead of auto-resuming a lone hold (RetailPosScreen.tsx:1343).
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await userEvent.keyboard('{F4}');
+    await waitFor(() => expect(screen.getByRole('heading', { name: /held carts/i })).toBeInTheDocument());
+
+    vi.mocked(salesApi.deleteHeldCartScoped).mockRejectedValueOnce(new Error('database is locked'));
+
+    // The resume control is the row body (RetailModals.tsx:690), addressed by
+    // its aria-label ('Resume cart') rather than a data-testid — only the
+    // delete button has one.
+    const resumeBtns = screen.getAllByLabelText('Resume cart');
+    expect(resumeBtns.length).toBeGreaterThanOrEqual(1);
+    await userEvent.click(resumeBtns[0]!);
+
+    // The failure has to be reported. Assert over ALL alerts: the "Order held"
+    // toast from step 1 is still in the stack, so getByRole('alert') would read
+    // the stale one and pass the instant a toast exists for any reason.
+    await waitFor(() => {
+      expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' | ')).toMatch(/resume/i);
+    });
+    // Exactly one delete attempt, and NO success toast. A "resumed" success
+    // message here would be the bug: the delete is the commit, so a rejected
+    // delete with a success toast means the cashier rings up goods that are
+    // still on hold — one delivery sold twice.
+    expect(salesApi.deleteHeldCartScoped).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' | ')).not.toMatch(/resumed/i);
+
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue(null);
+  });
+
   // ── P1-4: scroll position preservation ───────────────────────
 
   it('restores product grid scroll position after returning from a sub-view', async () => {
