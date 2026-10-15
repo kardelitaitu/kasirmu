@@ -45,6 +45,37 @@
   padding: var(--space-4);
   position: sticky;
   top: var(--space-4);
+  /*
+   * THE RAIL MUST NOT REACH THE MEMO STACK'S BAND.
+   *
+   * MEASURED 2026-10-15 (rounds 249-252), stable across 8 samples over 5.6 seconds at the desktop
+   * 1366x768 profile with two memos pending, AFTER the categories had rendered:
+   *
+   *   rail    y 105..803   h 698   scrollHeight 696   13 categories, 12 edit buttons
+   *   stack   y 610..747
+   *   viewport 768
+   *
+   * so 193px of the rail sits inside the stack's band. Hit-testing found three controls there:
+   *
+   *   restaurant-menu-editor-cat-edit-cat-snack        y 601
+   *   restaurant-menu-editor-cat-edit-cat-cold-drink   y 696
+   *   restaurant-menu-editor-cat-del-cat-cold-drink    y 696   <- a DELETE
+   *
+   * A category could not be edited or deleted while a memo was pending.
+   *
+   * ⚠️ TWO MEASUREMENT TRAPS, both hit while proving this. Round 251 read `h 128` and withdrew the
+   * defect -- that reading was taken BEFORE the categories rendered, so it measured the rail's
+   * skeleton. The rule must be validated with the category count visible (13 `li`, 12 edit
+   * buttons), never on a bare `toBeVisible`.
+   *
+   * --memo-bottom-inset is the contract's value (tokens.css:361-389): the strip the stack sits
+   * above. Gated on the stack's presence so a session with no memos keeps the full height. */
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+}
+
+body:has(.memo-stack) .restaurant-menu-editor-rail {
+  max-height: calc(100dvh - var(--memo-bottom-inset, var(--space-6)) - 215px - var(--space-4));
 }
 
 .restaurant-menu-editor-rail-head {
