@@ -109,6 +109,27 @@ describe('sourceAudit.stripCommentsAndStrings', () => {
     const { stripped } = stripCommentsAndStrings(src);
     expect(stripped).toContain('AFTER');
   });
+
+  // ── A JSX closing tag is not a regex literal ───────────────────────
+  //
+  // `</div>` puts a slash after `<`, which the expression-expected arm read as the
+  // start of a regex literal. The scanner then swallowed every character up to the
+  // next unescaped slash — in JSX, the NEXT CLOSING TAG. Measurement: the single line
+  // `x = 1; </div> {flag} </p> tail` stripped to `x = 1; <> tail`, losing `{flag}`.
+  // Real instance: features/sales/SalesHistoryScreen.tsx:1646 reads `detailLoading`
+  // on a line that follows `</div>`, and the unread-state guard reported the flag
+  // SET-BUT-NEVER-READ because of it. Introduced with the regex arm (round 26).
+
+  it('keeps code between two JSX closing tags on one line', () => {
+    const { stripped } = stripCommentsAndStrings('x = 1; </div> {flag} </p> tail');
+    expect(stripped).toContain('flag');
+    expect(stripped).toContain('tail');
+  });
+
+  it('keeps a read that follows a closing tag inside real JSX', () => {
+    const src = ['<div>', '  </span>            {loading ? (', '    <p>x</p>', '  ) : null}', '</div>'].join('\\n');
+    expect(stripCommentsAndStrings(src).stripped).toContain('loading');
+  });
 });
 
 describe('sourceAudit.extractUpdaterBodies', () => {

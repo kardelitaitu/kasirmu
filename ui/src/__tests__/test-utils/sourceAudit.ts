@@ -47,6 +47,14 @@ function slashStartsRegex(src: string, i: number): boolean {
   while (j >= 0 && /\s/.test(src[j]!)) j -= 1;
   if (j < 0) return true; // start of file — an expression is expected
   const prev = src[j]!;
+  // `</div>`, `</p>`, `</>` — a JSX/markup closing tag, never a regex. Without this
+  // arm, `<` fell through to the "expression expected" default and the scanner treated
+  // `</div>` as a regex literal, swallowing every character up to the next unescaped
+  // `/` — which in JSX is the next closing tag. Measurement: the single line
+  // `x = 1; </div> {flag} </p> tail` stripped to `x = 1; <> tail`, losing `{flag}`.
+  // That is a REGRESSION introduced with the regex arm itself (round 26); every audit
+  // over JSX was silently dropping code between closing tags.
+  if (prev === '<') return false;
   // After a value-ending token, `/` is division.
   if (/[A-Za-z0-9_$)\]'"`]/.test(prev)) {
     // …unless that word is a keyword after which an expression begins.
@@ -113,11 +121,29 @@ export function stripCommentsAndStrings(src: string): { stripped: string; origIn
           i += 1;
           break;
         } else if (src[i] === '$' && src[i + 1] === '{') {
-          let d = 1;
+          // An interpolation is CODE, not string content, so emit it rather than
+          // skipping it. The previous version advanced past the whole `${...}`
+          // without emitting anything, so a reference that lives only inside one
+          // vanished from the stripped output — measurement: Button.tsx reads
+          // `spinnerExiting` at :135 inside a template interpolation, and the
+          // unread-state guard reported the flag as SET-BUT-NEVER-READ purely
+          // because of this. Anything scanning for an identifier, a class name or a
+          // call site was blind to interpolated code.
+          //
+          // Emitted verbatim, braces included, so bracket-balancing over the result
+          // still sees a matched pair. Nested template literals inside the
+          // interpolation are handled by this same loop's recursion via the outer
+          // while, because each emitted char is appended in order.
+          out += '${';
+          origIndexAt.push(i, i + 1);
           i += 2;
+          let d = 1;
           while (i < src.length && d > 0) {
-            if (src[i] === '{') d += 1;
-            else if (src[i] === '}') d -= 1;
+            const ic = src[i]!;
+            if (ic === '{') d += 1;
+            else if (ic === '}') d -= 1;
+            out += ic;
+            origIndexAt.push(i);
             i += 1;
           }
         } else i += 1;
