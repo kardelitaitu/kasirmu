@@ -931,13 +931,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             ...(orderType ? { orderType } : {}),
           });
           const label = heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
-          if (activeOpenBillId) {
-            await deleteHeldCartScoped(sessionToken, activeOpenBillId);
-          }
           const remSubtotalMinor = remainingLines.reduce(
             (sum, l) => sum + l.unit_price.minor_units * l.qty,
             0,
           );
+          // CREATE FIRST, DELETE SECOND. This ran the DELETE first, and the delete is
+          // what loses the tab: a rejected hold (locked DB, dropped IPC, lapsed session)
+          // left the table with no open bill at all while the catch below toasted
+          // "failed to update tab" — and execution then CONTINUES to
+          // `setShowPayment(true)`, so the sale goes to payment with the remaining
+          // lines destroyed. Same ordering fix as TableManagementScreen.handleMoveTable;
+          // the duplicate-row cost of the safe order is recoverable, a lost tab is not.
           await holdCartScoped(sessionToken, {
             label,
             cart_data: cartData,
@@ -947,6 +951,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             bill_type: 'open_bill',
             customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
           });
+          // The remaining tab exists under this id now, so removing the previous
+          // record cannot lose data — a failure here leaves two tabs, not none.
+          if (activeOpenBillId) {
+            await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+          }
           setActiveOpenBillId(null);
           loadOpenBills();
         } catch {
@@ -1144,10 +1153,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
         const label = heldCartLabel(trimmedTable, trimmedName) ?? (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
 
-        if (activeOpenBillId) {
-          await deleteHeldCartScoped(sessionToken, activeOpenBillId);
-        }
-
+        // CREATE FIRST, DELETE SECOND — same fix as the split-bill path above, and it
+        // matters more here: this branch runs AFTER the kitchen has been told to cook,
+        // so a failed hold that had already deleted the tab would leave food being
+        // prepared for a table whose order record no longer exists.
         const held = await holdCartScoped(sessionToken, {
           label,
           cart_data: cartData,
@@ -1158,6 +1167,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
         });
         setActiveOpenBillId(held.id);
+
+        // Safe to drop the previous record now: the tab exists under the new id.
+        if (activeOpenBillId) {
+          await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+        }
         loadOpenBills();
       }
 
