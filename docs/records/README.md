@@ -321,6 +321,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
 | general | [The restaurant suite is stable, and the one-sided assertion hunt found nothing (round 287)](audits/restaurant-suite-stable.md) | — |
 | general | [Resume stole the lease before the warning could be shown (round 298)](audits/resume-stole-the-lease.md) | — |
+| general | [A retail terminal could read and delete a restaurant's open bill by id (round 303)](audits/retail-could-delete-a-restaurant-open-bill.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [The scan counted mentions as uses, and round 269 was the proof (round 270)](audits/scan-mentions-vs-uses.md) | — |
