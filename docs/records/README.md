@@ -201,6 +201,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [A line added during the kitchen send was silently dropped (round 201)](audits/kitchen-send-dropped-line.md) | — |
 | general | [The last latch entry was a false positive, and the allow-list is gone (round 239)](audits/latch-allowlist-removed.md) | — |
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
+| general | [The memo stack covered the drawer diagnostic, and the cause was position: sticky (round 248)](audits/memo-clearance-receipts.md) | — |
 | general | [The memo stack covers the bottom of the receipts settings screen (round 247)](audits/memo-stack-covers-receipts.md) | — |
 | general | [The bulk 86 controls, and two sweeps that found no third instance of round 183's pattern (round 184)](audits/menu-editor-bulk-controls.md) | — |
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
