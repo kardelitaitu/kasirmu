@@ -1489,6 +1489,45 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     );
   });
 
+  // The PAIRING twin of the test below. Provisioning had this guard; the pairing
+  // branch did not, and that asymmetry is what shipped the 2026-10-15 defect: a
+  // paired device set `linkedAccount` and toasted success while its capability
+  // state stayed at whatever it was before the link -- the fail-closed
+  // `unavailable` default, because pairing writes no `tenant_subscription` row.
+  // The operator then saw 'This terminal has no active licence' on home, a raw
+  // `invalid subscription signature` on restaurant-pos, and 'Could not start the
+  // session for this workspace' when the blocked login left the picker ticket
+  // unusable -- three symptoms, one cause. Pinned here so the pairing branch
+  // cannot silently lose the refresh again.
+  it('refreshes subscription capabilities when a device pairing is claimed', async () => {
+    vi.useFakeTimers();
+    mockRefreshSubscription.mockClear();
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValueOnce({
+      code: 'WXYZ9876',
+      poll_token: 'poll-token-refresh',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=WXYZ9876',
+    });
+    vi.mocked(pollDevicePairing)
+      .mockResolvedValueOnce({ status: 'pending' })
+      .mockResolvedValueOnce({
+        status: 'claimed',
+        tenant_id: 'tenant-refresh-1',
+        email: 'paired@example.com',
+        terminal: { terminalId: 'term-refresh-1', issued: true },
+      });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+    await vi.runOnlyPendingTimersAsync();
+    // The claim arrives on the second 3s poll.
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(mockRefreshSubscription).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('refreshes subscription capabilities when provisioning finishes successfully', async () => {
     mockRefreshSubscription.mockClear();
     mockOnProvisioned.mockClear();

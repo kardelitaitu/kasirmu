@@ -336,6 +336,22 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             ...(terminalDto ? { terminal: terminalDto } : {}),
           };
           setLinkedAccount(linked);
+          // Re-read entitlements the moment the link claims. Until 2026-10-15 this
+          // branch set `linkedAccount` and toasted success WITHOUT refreshing the
+          // subscription, so a paired device kept whatever capability state it had
+          // before pairing -- and because pairing writes no `tenant_subscription`
+          // row of its own, that state was the fail-closed `unavailable` default.
+          // The operator saw three symptoms from one cause: 'This terminal has no
+          // active licence' on home, the raw `invalid subscription signature` on
+          // restaurant-pos, and 'Could not start the session for this workspace'
+          // when the blocked login left the picker ticket unusable.
+          //
+          // A fresh read is the honest fix: ask the backend what this device is
+          // entitled to NOW rather than trusting a value cached before the link
+          // existed. `refresh()` is idempotent and fail-closed, so a read that
+          // still finds no row leaves the operator in the same honest locked
+          // state instead of appearing activated.
+          refreshSubscription();
           addToast({ type: 'success', message: l10n.getString('auth-pair-success') });
         }
       } catch (err: unknown) {
@@ -344,7 +360,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [provisionMode, tabletTab, pairingSession, pairingExpired, linkedAccount, addToast, l10n, loadPairingSession]);
+  }, [provisionMode, tabletTab, pairingSession, pairingExpired, linkedAccount, addToast, l10n, loadPairingSession, refreshSubscription]);
 
   const linkingBusy =
     link.kind === 'linking' || emailState === 'sending' || emailState === 'verifying';
