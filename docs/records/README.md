@@ -370,6 +370,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Session close: rounds 221-256 on restaurant POS (round 256)](audits/session-close-221-256.md) | — |
 | general | [The third F4 latch, and the strongest of the three (round 230)](audits/settings-f4-latch.md) | — |
 | general | [createSettingsApiMock was missing setSettingScoped (round 94)](audits/settings-mock-missing-setter.md) | — |
+| general | [settleRead had two consumers with a PRIMARY read left bare](audits/settle-read-primary-read-left-bare.md) | — |
 | general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
 | general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
 | general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
