@@ -891,6 +891,73 @@ describe('TableManagementScreen', () => {
       expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-2', 'occupied');
     });
   });
+  // ── The move must not delete the bill before the new one exists ─────────────
+  //
+  // WHY: `handleMoveTable` ran DELETE -> HOLD. If the hold then failed there was
+  // nothing left to recover: the open bill was gone, and the toast said only "move
+  // failed", so the operator had no way to know the tab had been destroyed rather
+  // than merely not moved.
+  //
+  // `usePosHeldCarts` already settled the direction for this same data — read its
+  // "does NOT report a tab as updated when deleting the previous record FAILS"
+  // case — so this screen was the outlier, not the convention.
+  //
+  // The assertion that matters is the NEGATIVE one. `mockDeleteHeldCart` must NOT
+  // have been called at all: that is what makes a failed hold survivable. Asserting
+  // only the error toast would pass against the old order, because the old order
+  // toasts the same thing — after it has already done the damage.
+  it('KEEPS the original bill when the hold for the new table fails', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+    // The move cannot place the bill on the new table.
+    mockHoldCart.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+
+    // The bill is untouched — this is the assertion the fix exists for.
+    expect(mockDeleteHeldCart).not.toHaveBeenCalled();
+    // Nor were the tables touched, so the floor plan still describes reality.
+    expect(mockReleaseTable).not.toHaveBeenCalled();
+    expect(mockUpdateTableStatus).not.toHaveBeenCalled();
+  });
 
   it('toggles arrange mode on and off', async () => {
     const table = makeTable({ id: 't-1', name: 'Table 1' });
@@ -1074,6 +1141,66 @@ describe('TableManagementScreen', () => {
       );
       expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
     });
+  });
+  // The merge deleted BOTH bills before creating the combined one, so a failed hold
+  // lost two tables' open bills at once. Same fix and same assertion shape as the move
+  // case above: the negative check on the deletes is what proves the fix.
+  it('KEEPS BOTH bills when the combined hold fails', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        label: `Table ${id.slice(-1)}`,
+        cart_data: JSON.stringify({ lines: [] }),
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+        deduction_location_id: null,
+      }),
+    );
+    mockHoldCart.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-merge-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-merge-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-confirm-btn'));
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+
+    // Neither bill may be removed — the combined cart does not exist yet.
+    expect(mockDeleteHeldCart).not.toHaveBeenCalled();
+    expect(mockReleaseTable).not.toHaveBeenCalled();
   });
 
   it('displays conflict banner and allows takeover when active tab has a foreign lease', async () => {
