@@ -27,6 +27,13 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 
 const FTL = [productsFtl, settingsFtl];
 
+// jsdom implements no layout, so `scrollIntoView` does not exist on an element.
+// `SettingsSelect` calls it to keep the active option in view when its list opens
+// (SettingsSelect.tsx:232), which is reached the moment this suite drives one of the
+// Stripe selects. Stubbed per-file, matching SettingsSelect.test.tsx:13 and
+// SegmentedTabs.test.tsx:21 — the repo's convention for this browser API.
+Element.prototype.scrollIntoView = vi.fn();
+
 /**
  * Read a message's ENGLISH value out of a raw FTL bundle.
  *
@@ -813,6 +820,103 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     const verifyKeysBtn = screen.getByTestId('stripe-verify-keys-btn');
     await user.click(verifyKeysBtn);
     expect(screen.getByText(/Stripe keys format valid/i)).toBeInTheDocument();
+  });
+
+  // ── The Stripe Card Reader and Currency selects ────────────────────────
+  //
+  // WHY THIS CASE EXISTS, and why it is not the same thing as the two suites that
+  // already surround it.
+  //
+  // These two controls were the LAST unasserted interactive ids on this screen, and
+  // they are the only pair the repo-wide scan reports as referenced by NOTHING — not
+  // by an e2e spec, not by a unit case. Every sibling control in the same card IS
+  // asserted somewhere (the mode segmented buttons, the two key inputs, the verify
+  // button, all five above), so the pair stood out rather than blending in.
+  //
+  // The surrounding coverage does NOT close them, and each existing suite stops one
+  // hop short of the wiring this case drives:
+  //
+  //   `paymentRailsParams.test.ts` proves the PURE sanitizer keeps `reader`/`currency`
+  //     and strips the credentials. It calls the function directly; it cannot see
+  //     whether any control is attached to it.
+  //   the save-payload cases prove `setLocalPaymentMethodsScoped` receives the drafts.
+  //     They toggle a rail and assert `rail_code`/`is_enabled`; none reads `parameters`.
+  //
+  // So a regression that disconnected either select's `onChange` from
+  // `updateRailParams` — the exact wiring these two lines exist to provide — would
+  // keep BOTH suites green while the operator's choice silently stopped persisting.
+  // This case asserts the whole chain instead: select -> rail params -> save payload,
+  // which is the only place the three hops are visible together.
+  //
+  // The destination is deliberate and is the thing worth pinning: reader and currency
+  // belong to the MARKET surface (`local_payment_methods.parameters`, allow-listed in
+  // paymentRailsLogic.ts), NOT to the encrypted gateway config. `handleSave`'s Stripe
+  // `configJson` carries only publishableKey/secretKey/mode. Asserting the rail
+  // parameters therefore also pins that split — if someone "fixes" this by moving the
+  // reader into the gateway config, the value disappears from the payload and this
+  // fails.
+  it('persists the Stripe Card Reader and Currency choices into the rail parameters', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    // Stripe's card is collapsed by default; expand it to reach its controls.
+    await user.click(screen.getByTestId('payment-card-toggle-stripe'));
+
+    const readerSelect = screen.getByTestId('stripe-reader-select');
+    const currencySelect = screen.getByTestId('stripe-currency-select');
+
+    // Option LABELS come from the English bundle, not from literals typed here — the
+    // rule this file's header and `productsFtlLine()` already record (round 15: a
+    // typed literal survived a localization pass and made a green feature look broken).
+    const WISEPOS = productsFtlLine('restaurant-payment-reader-wisepos');
+    const S700 = productsFtlLine('restaurant-payment-reader-s700');
+    const IDR = productsFtlLine('restaurant-payment-currency-idr');
+    const USD = productsFtlLine('restaurant-payment-currency-usd');
+
+    // Defaults, read from the source's own useState seeds — asserted so a change to
+    // either default is a deliberate edit rather than a silent drift.
+    expect(readerSelect).toHaveTextContent(WISEPOS);
+    expect(currencySelect).toHaveTextContent(IDR);
+
+    // Drive the custom dropdown: click the trigger, then the option in the portal.
+    // `SettingsSelect` renders its list into document.body, not inside the container,
+    // so the option is found via the portal class the component owns.
+    async function choose(trigger: HTMLElement, label: string) {
+      await user.click(trigger);
+      const dropdown = document.querySelector('.ssel-dropdown')!;
+      const option = Array.from(dropdown.querySelectorAll('.ssel-option')).find(
+        (el) => el.textContent === label,
+      )!;
+      await user.click(option);
+    }
+
+    await choose(readerSelect, S700);
+    await choose(currencySelect, USD);
+
+    // The trigger reflects the choice...
+    expect(screen.getByTestId('stripe-reader-select')).toHaveTextContent(S700);
+    expect(screen.getByTestId('stripe-currency-select')).toHaveTextContent(USD);
+
+    // ...and choosing is an EDIT, so Save becomes reachable.
+    const saveBtn = screen.getByRole('button', { name: 'Save' });
+    expect(saveBtn).toBeEnabled();
+    await user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mocks.setMethods).toHaveBeenCalledTimes(1);
+    });
+
+    // The durable write carries both choices in the stripe rail's parameters bag.
+    const payload = mocks.setMethods.mock.calls[0][2] as Array<{ rail_code: string; parameters: string }>;
+    const stripeRail = payload.find((r) => r.rail_code === 'stripe');
+    expect(stripeRail, 'no stripe rail in the save payload — the selects wrote nowhere').toBeTruthy();
+    expect(JSON.parse(stripeRail!.parameters)).toMatchObject({ reader: 'reader_s700', currency: 'USD' });
+
+    // And the credential split still holds: no provider secret rode along into the
+    // market surface. This is the property `sanitizeRailParams` exists to guarantee,
+    // asserted here at the call site rather than only on the pure function.
+    expect(stripeRail!.parameters).not.toContain('sk_');
   });
 
   it('adds and removes a custom payment rail via the add custom rail card', async () => {
