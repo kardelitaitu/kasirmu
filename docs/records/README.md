@@ -310,6 +310,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The shortcut manifest is bound to the till, restaurant-only (round 159)](audits/restaurant-shortcuts-bound.md) | — |
 | general | [The shortcuts are proven in a browser, and the guard is one of the three cases (round 160)](audits/restaurant-shortcuts-e2e.md) | — |
 | general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
+| general | [The restaurant suite is stable, and the one-sided assertion hunt found nothing (round 287)](audits/restaurant-suite-stable.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [The scan counted mentions as uses, and round 269 was the proof (round 270)](audits/scan-mentions-vs-uses.md) | — |
