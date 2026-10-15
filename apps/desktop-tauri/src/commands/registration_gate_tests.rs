@@ -550,42 +550,45 @@ fn gated_bridge_stems() -> BTreeSet<String> {
     stems
 }
 
-fn run_sweep() -> Sweep {
-    let pairs = registered_names(LIB_RS);
-    let want: BTreeSet<String> = pairs.iter().map(|(_, f)| f.clone()).collect();
-    let sources = fn_sources(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands"),
-        &want,
-    );
-    let stems = gated_bridge_stems();
-    let mut states = Vec::with_capacity(pairs.len());
-    let mut ungated = Vec::new();
-    for (module, function) in pairs {
-        let hits = sources.get(&function).cloned().unwrap_or_default();
-        assert!(
-            !hits.is_empty(),
-            "registered command {module}::{function} has no fn {function} anywhere under \
-             src/commands: the sweep lost its own source, which is the failure mode the \
-             floor assertion exists to catch"
+fn run_sweep() -> &'static Sweep {
+    static SWEEP: std::sync::OnceLock<Sweep> = std::sync::OnceLock::new();
+    SWEEP.get_or_init(|| {
+        let pairs = registered_names(LIB_RS);
+        let want: BTreeSet<String> = pairs.iter().map(|(_, f)| f.clone()).collect();
+        let sources = fn_sources(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands"),
+            &want,
         );
-        let gated = hits.iter().any(|text| {
-            resolves_session(text)
-                && (names_permission(text)
-                    || (text.contains("kasirmu_bridge::") && stems.contains(&module)))
-        });
-        let state = if gated {
-            State::Gated
-        } else if !hits.iter().any(|text| resolves_session(text)) {
-            State::NoSessionResolution
-        } else {
-            State::ResolvesSessionNamesNoPermission
-        };
-        if state != State::Gated {
-            ungated.push((format!("{module}::{function}"), state));
+        let stems = gated_bridge_stems();
+        let mut states = Vec::with_capacity(pairs.len());
+        let mut ungated = Vec::new();
+        for (module, function) in pairs {
+            let hits = sources.get(&function).cloned().unwrap_or_default();
+            assert!(
+                !hits.is_empty(),
+                "registered command {module}::{function} has no fn {function} anywhere under \
+                 src/commands: the sweep lost its own source, which is the failure mode the \
+                 floor assertion exists to catch"
+            );
+            let gated = hits.iter().any(|text| {
+                resolves_session(text)
+                    && (names_permission(text)
+                        || (text.contains("kasirmu_bridge::") && stems.contains(&module)))
+            });
+            let state = if gated {
+                State::Gated
+            } else if !hits.iter().any(|text| resolves_session(text)) {
+                State::NoSessionResolution
+            } else {
+                State::ResolvesSessionNamesNoPermission
+            };
+            if state != State::Gated {
+                ungated.push((format!("{module}::{function}"), state));
+            }
+            states.push(((module, function), state));
         }
-        states.push(((module, function), state));
-    }
-    Sweep { states, ungated }
+        Sweep { states, ungated }
+    })
 }
 
 // ── The ledger's generator, and the check that replaces hand-editing ──

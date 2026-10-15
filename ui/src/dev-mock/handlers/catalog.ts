@@ -188,6 +188,10 @@ interface MockProductArgs extends Record<string, unknown> {
   productType?: string;
   isActive?: boolean;
   costMinor?: number;
+  // `null` clears, a string sets, ABSENT keeps — matching `UpdateProductScopedArgs.notes`
+  // (`kasirmu-bridge/src/products.rs:695`). Optional rather than `string | null` because
+  // the absent case is a distinct PATCH meaning, not a third value.
+  notes?: string | null;
 }
 
 /**
@@ -252,6 +256,19 @@ function updateMockProduct(unwrapArgs: UnwrapArgs, args: unknown): { sku: string
   // value, so only assign when the caller actually sent one.
   if (a.categoryId !== undefined) target.category = mockCategoryNameFor(a.categoryId);
   if (a.isActive !== undefined) target.is_active = a.isActive;
+  // ⚠️ `notes` is the ONE field a restaurant operator cannot work without, and it was
+  // missing here. Modifier GROUPS live in it as JSON — `serializeDraftModifierGroups`
+  // (menuEditorLogic.ts:257) writes them there and `getProductModifierGroups`
+  // (types/domain.ts:224) reads them back — so a mock that dropped `notes` made the
+  // editor's whole Modifier Groups builder a NO-OP: Save reported success, and reopening
+  // the item showed an empty form. Measured 2026-10-14 (round 210):
+  // `SAVE_DISABLED_AFTER=true`, `GROUP_BACK=0`, `NOTES=`.
+  //
+  // The core has always accepted it — `UpdateProductScopedArgs.notes` is
+  // `Option<Option<String>>` (kasirmu-bridge/src/products.rs:695) with the documented
+  // PATCH semantics: `null` clears, a string sets, ABSENT keeps. So the real till saves
+  // what this mock discarded, which is the worst kind of divergence.
+  if (a.notes !== undefined) target.notes = a.notes;
   return { sku: String(target.sku) };
 }
 

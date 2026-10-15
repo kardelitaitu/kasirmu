@@ -520,7 +520,7 @@ export default function RestaurantReceiptsScreen({
     }
     // `reloadNonce` is the Retry control's re-run trigger. The init guard above
     // is a ref, so Retry must clear it too (see the handler).
-  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading, reloadNonce]);
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading, reloadNonce, resolvedStoreId]);
 
   // Overlay the SCOPED receipt format (the same layer the Settings → Business
   // Defaults card owns) on top of the legacy base above, and remember the
@@ -1275,6 +1275,7 @@ export default function RestaurantReceiptsScreen({
     }
   }, [
     sessionToken,
+    resolvedStoreId,
     effectiveTerminalId,
     receiptWorkspaceId,
     hw,

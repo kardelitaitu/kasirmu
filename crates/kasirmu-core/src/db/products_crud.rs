@@ -809,6 +809,53 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// Look up the `track_serial` flag for a single SKU directly without wide joins.
+    pub fn get_product_track_serial(&self, sku: &str) -> Result<Option<bool>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT track_serial FROM products WHERE sku = ?1")?;
+        let mut rows = stmt.query(params![sku])?;
+        if let Some(row) = rows.next()? {
+            let track: i64 = row.get(0)?;
+            Ok(Some(track != 0))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Look up the `track_serial` flags for a batch of SKUs in batched queries.
+    ///
+    /// Avoids executing full multi-table joins per SKU. Batches queries in chunks of 200
+    /// to stay comfortably below SQLite parameter limits (O-H08 / O-M29).
+    pub fn get_products_track_serial_batch(
+        &self,
+        skus: &[String],
+    ) -> Result<std::collections::HashMap<String, bool>, CoreError> {
+        if skus.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let mut result = std::collections::HashMap::with_capacity(skus.len());
+        for chunk in skus.chunks(200) {
+            let placeholders = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql =
+                format!("SELECT sku, track_serial FROM products WHERE sku IN ({placeholders})");
+            let mut stmt = self.conn.prepare(&sql)?;
+            let params = rusqlite::params_from_iter(chunk.iter().map(String::as_str));
+            let mut rows = stmt.query(params)?;
+            while let Some(row) = rows.next()? {
+                let sku: String = row.get(0)?;
+                let track: i64 = row.get(1)?;
+                result.insert(sku, track != 0);
+            }
+        }
+        Ok(result)
+    }
+
     /// Delete a product by SKU.
     pub fn delete_product(&self, sku: &str) -> Result<(), CoreError> {
         let tx = self.conn.unchecked_transaction()?;

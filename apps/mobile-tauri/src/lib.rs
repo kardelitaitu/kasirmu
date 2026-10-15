@@ -100,6 +100,12 @@ pub fn send_lan_uplink(msg: String) {
 // line — the `target_os = "android"` cfg above excludes it — which is why
 // `cargo check -p kasirmu-mobile` stays green while the Android cross-build
 // fails on it. Both JNI entry points below need the same form.
+// SAFETY: the two `*mut c_void` JNI parameters are never dereferenced — the body only
+// reads a `tokio::sync::Notify` out of the static hook — so the pointers' provenance is
+// irrelevant to soundness. `#[unsafe(no_mangle)]` itself is required, not optional:
+// edition 2024 makes `unsafe_attr_outside_unsafe` a hard error, so the attribute must be
+// wrapped (see the comment above). The symbol name is the JNI convention the Android
+// `SyncWorker` class looks up, and changing it would fail that lookup at runtime.
 #[cfg(all(not(test), target_os = "android"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_00024Companion_nativeNudgeSync(
@@ -112,6 +118,10 @@ pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_00024Companion_nat
 }
 
 /// Fallback JNI symbol for direct static invocation.
+// SAFETY: same shape as the companion entry point above — no pointer is dereferenced,
+// the body only notifies the static wake-up hook. Kept as a second exported symbol
+// because the Android side may invoke either the Companion or the static form; both are
+// `no_mangle` and both are cfg-gated to Android.
 #[cfg(all(not(test), target_os = "android"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_mu_kasir_mobile_SyncWorker_nativeNudgeSync(

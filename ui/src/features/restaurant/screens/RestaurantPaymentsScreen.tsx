@@ -29,6 +29,7 @@ import {
   mergeCoreRails,
   computeRailsDirty,
   sanitizeRailCode,
+  sanitizeRailParams,
   type DraftRail,
 } from './paymentRailsLogic';
 import './RestaurantSettingsScreens.css';
@@ -745,45 +746,17 @@ export function RestaurantPaymentsScreen({
 
       // 1. Save workspace / location payment rails
       // Sanitize parameters so credentials are never stored in market rails
-      const payload: LocalPaymentRailArgs[] = drafts.map((d) => {
-        const lower = d.rail_code.toLowerCase();
-        let paramsObj: Record<string, unknown> = {};
-        try {
-          paramsObj = JSON.parse(d.parameters);
-        } catch {
-          paramsObj = {};
-        }
-
-        if (lower === 'midtrans') {
-          const clean: Record<string, unknown> = {};
-          if (paramsObj['channels']) clean['channels'] = paramsObj['channels'];
-          return {
-            rail_code: d.rail_code,
-            label: d.label,
-            is_enabled: d.is_enabled,
-            parameters: JSON.stringify(clean),
-          };
-        }
-
-        if (lower === 'stripe') {
-          const clean: Record<string, unknown> = {};
-          if (paramsObj['reader']) clean['reader'] = paramsObj['reader'];
-          if (paramsObj['currency']) clean['currency'] = paramsObj['currency'];
-          return {
-            rail_code: d.rail_code,
-            label: d.label,
-            is_enabled: d.is_enabled,
-            parameters: JSON.stringify(clean),
-          };
-        }
-
-        return {
-          rail_code: d.rail_code,
-          label: d.label,
-          is_enabled: d.is_enabled,
-          parameters: d.parameters,
-        };
-      });
+      // Sanitisation moved into `paymentRailsLogic.sanitizeRailParams` (round 183) so the rule that
+      // keeps provider credentials OUT of `local_payment_methods` is tested. The split it defends:
+      // this call writes the MARKET surface; `setPaymentGatewayConfigScoped` below writes the
+      // credentials, encrypted at rest. An extracted function no component reaches is dead code,
+      // so the call site had to change with it.
+      const payload: LocalPaymentRailArgs[] = drafts.map((d) => ({
+        rail_code: d.rail_code,
+        label: d.label,
+        is_enabled: d.is_enabled,
+        parameters: sanitizeRailParams(d.rail_code, d.parameters),
+      }));
       tasks.push(setLocalPaymentMethodsScoped(sessionToken, locationId, payload));
 
       // 2. Save payment gateway credentials (encrypted at rest in payment_gateways)

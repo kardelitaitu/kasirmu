@@ -163,9 +163,15 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     // a table it does not own, and wrote the kitchen dispatch into it. The
     // order-type field itself rode along, which is what makes the payload
     // contradict itself rather than merely being wrong.
+    // ⚠️ The window is 6000, not 3000. It was 3000 and the rule sat at ~2700 —
+    // close enough that round 201's fix (a comment on the dispatch record, which
+    // sits BETWEEN the handler's head and `trimmedTable`) pushed it to 3956 and
+    // this guard failed RED on a change that did not touch the dine-in rule at
+    // all. A character-count window is a fragile way to scope a region; the size
+    // is chosen to leave the rule well inside it rather than near the edge.
     const kitchen = POS_SCREEN.slice(
       POS_SCREEN.indexOf('const handleSendToKitchen'),
-      POS_SCREEN.indexOf('const handleSendToKitchen') + 3000,
+      POS_SCREEN.indexOf('const handleSendToKitchen') + 6000,
     );
     expect(kitchen.length, 'handleSendToKitchen moved — re-point this guard').toBeGreaterThan(0);
     expect(

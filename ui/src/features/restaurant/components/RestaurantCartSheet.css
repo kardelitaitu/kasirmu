@@ -7,7 +7,9 @@
   position: fixed;
   inset: 0;
   background: var(--color-bg-overlay);
-  z-index: var(--z-modal, 100);
+  /* Part of the same overlay layer as the panel above — see the note there for why this must
+     stay BELOW `--z-modal`: at that layer the backdrop covered every modal's own controls. */
+  z-index: var(--z-overlay, 300);
   border: none;
   padding: 0;
   margin: 0;
@@ -26,7 +28,24 @@
   max-height: 85dvh;
   height: 85dvh;
   margin-inline: auto;
-  z-index: calc(var(--z-modal, 100) + 1);
+  /*
+   * Below `--z-modal`, not above it.
+   *
+   * This was `calc(var(--z-modal, 100) + 1)` — 401 against the modal layer's 400 — which put the
+   * cart sheet ABOVE every modal in the app. Measured 2026-10-15 (round 243) on the tablet
+   * project with the price-override dialog open:
+   *
+   *   .restaurant-cart-sheet-panel  z-index 401
+   *   .price-override-overlay       z-index 400
+   *   document.elementFromPoint(centre of .price-override-next-btn) -> a node inside the sheet
+   *
+   * so the override's own Next button was unreachable and the whole dialog was unusable on
+   * tablet — the form factor this sheet exists for.
+   *
+   * A sheet is an OVERLAY, and the token scale already has one at 300. Sitting below modals is
+   * what that layer means; the `+ 1` treated it as a rival of the modal layer instead.
+   */
+  z-index: var(--z-overlay, 300);
   background: var(--color-bg);
   border-top-left-radius: var(--radius-2xl);
   border-top-right-radius: var(--radius-2xl);

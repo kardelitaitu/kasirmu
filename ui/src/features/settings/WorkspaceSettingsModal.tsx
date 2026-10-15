@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { requiredLocalized } from '@/components';
 import { createPortal } from 'react-dom';
+import { SettingsProvider } from '@/contexts/SettingsContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -49,8 +50,30 @@ export interface WorkspaceSettingsModalProps {
 function renderWorkspaceCard(
   workspaceType: WorkspaceType,
   terminalId: string | undefined,
+  sessionToken: string | undefined,
 ): ReactNode {
-  const cardProps = { variant: 'modal' as const, terminalId: terminalId ?? '' };
+  // ⚠️ `sessionToken` MUST be forwarded. It was omitted here, so every card's workspace effect
+  // received `undefined` and its once-per-session guard — which compares a ref initialised to
+  // `undefined` against the token — was TRUE on the very first run:
+  //
+  //   WorkspaceKdsSettings.tsx:93   if (reloadNonce === 0 && ref.current === sessionToken) return;
+  //   WorkspaceInventorySettings.tsx:71   …same shape…
+  //
+  // The effect therefore returned before reading, so those cards NEVER loaded their settings and
+  // their F4 guards could not fire. Measured 2026-10-14 (round 237): `SETTING_CALLS = 0` for the
+  // KDS card both before and after the modal opened.
+  //
+  // `WorkspaceRestaurantPosSettings` escaped the never-firing half only because its deps include
+  // `settings.receipt`, which changes as the modal mounts and made later runs fall through — and
+  // that is exactly the run whose result the StrictMode cleanup then discarded (fixed round 235).
+  // `exactOptionalPropertyTypes` (tsconfig) means an optional prop cannot be ASSIGNED
+  // `undefined` — it must be omitted. Spread it conditionally, the same shape
+  // `api/tauri.ts:114-117` uses to forward an optional through a wrapper.
+  const cardProps = {
+    variant: 'modal' as const,
+    terminalId: terminalId ?? '',
+    ...(sessionToken === undefined ? {} : { sessionToken }),
+  };
 
   switch (workspaceType) {
     case 'restaurant-pos':
@@ -153,89 +176,103 @@ export default function WorkspaceSettingsModal({
       : 'Staff';
 
   return createPortal(
-    <div
-      className={`${styles['backdrop']} ${exit.exiting ? styles['backdrop--exiting'] : ''}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && nestedDepth === 0) {
-          exit.requestClose();
-        }
-      }}
-      role="presentation"
-      aria-hidden={!open}
-    >
+    // ⚠️ THE PROVIDER GOES HERE. A fix, not a preference.
+    //
+    // `AppShell.tsx:435-459` renders this modal for F10 as a SIBLING of the workspace screens,
+    // but `SettingsProvider` is rendered only inside `SettingsPage.tsx:108`. The workspace cards
+    // this modal mounts call `useSettings()` (`WorkspaceRestaurantPosSettings.tsx:34` and its two
+    // siblings), so opening it from any workspace threw `useSettings must be used within a
+    // <SettingsProvider>` and the shell's error boundary replaced the panel with `Something went
+    // wrong`. Measured before the fix (round 231) with no injection of any kind.
+    //
+    // `createPortal` puts the tree on `document.body`, OUTSIDE the caller's React tree, so a
+    // provider on the caller would not reach it either. This is the one place that covers every
+    // caller, which is why the fix sits here rather than in AppShell.
+    <SettingsProvider>
       <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="workspace-settings-title"
-        className={`${styles['panel']} ${styles[`panel--${presentation}`]} ${exit.exiting ? styles['panel--exiting'] : ''}`}
+        className={`${styles['backdrop']} ${exit.exiting ? styles['backdrop--exiting'] : ''}`}
+        onClick={(e) => {
+          if (e.target === e.currentTarget && nestedDepth === 0) {
+            exit.requestClose();
+          }
+        }}
+        role="presentation"
+        aria-hidden={!open}
       >
-        {/* ── Header ─────────────────────────────────── */}
-        <div className={styles['header']}>
-          <h2 id="workspace-settings-title" className={styles['title']}>
-            <Localized id="workspace-modal-title">Workspace Settings</Localized>
-          </h2>
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="workspace-settings-title"
+          className={`${styles['panel']} ${styles[`panel--${presentation}`]} ${exit.exiting ? styles['panel--exiting'] : ''}`}
+        >
+          {/* ── Header ─────────────────────────────────── */}
+          <div className={styles['header']}>
+            <h2 id="workspace-settings-title" className={styles['title']}>
+              <Localized id="workspace-modal-title">Workspace Settings</Localized>
+            </h2>
 
-          <div className={styles['header-actions']}>
-            {showFullCard && (
-              <Button
-                variant="secondary"
-                onClick={handleAdminSettings}
-              >
-                <Localized id="workspace-modal-admin-settings">
-                  Admin Settings ↗
-                </Localized>
-              </Button>
-            )}
+            <div className={styles['header-actions']}>
+              {showFullCard && (
+                <Button
+                  variant="secondary"
+                  onClick={handleAdminSettings}
+                >
+                  <Localized id="workspace-modal-admin-settings">
+                    Admin Settings ↗
+                  </Localized>
+                </Button>
+              )}
 
-            <button
-              type="button"
-              className={styles['close-btn']}
-              onClick={() => exit.requestClose()}
-              aria-label={requiredLocalized(l10n, 'workspace-modal-close-aria')}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                width="20"
-                height="20"
+              <button
+                type="button"
+                className={styles['close-btn']}
+                onClick={() => exit.requestClose()}
+                aria-label={requiredLocalized(l10n, 'workspace-modal-close-aria')}
               >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  width="20"
+                  height="20"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* ── Body ──────────────────────────────────── */}
+          <div className={styles['body']}>
+            <ErrorBoundary>
+              {showFullCard ? (
+                renderWorkspaceCard(workspaceType, terminalId, workspaceCtx?.sessionToken ?? undefined)
+              ) : (
+                <TerminalPreferencesCard
+                  variant="modal"
+                  terminalId={terminalId ?? ''}
+                />
+              )}
+            </ErrorBoundary>
+          </div>
+
+          {/* ── Footer role indicator ─────────────────── */}
+          <div className={styles['footer']}>
+            <span className={styles['role-badge']}>
+              <Localized id={roleBadgeId}>
+                {roleBadgeFallback}
+              </Localized>
+            </span>
           </div>
         </div>
-
-        {/* ── Body ──────────────────────────────────── */}
-        <div className={styles['body']}>
-          <ErrorBoundary>
-            {showFullCard ? (
-              renderWorkspaceCard(workspaceType, terminalId)
-            ) : (
-              <TerminalPreferencesCard
-                variant="modal"
-                terminalId={terminalId ?? ''}
-              />
-            )}
-          </ErrorBoundary>
-        </div>
-
-        {/* ── Footer role indicator ─────────────────── */}
-        <div className={styles['footer']}>
-          <span className={styles['role-badge']}>
-            <Localized id={roleBadgeId}>
-              {roleBadgeFallback}
-            </Localized>
-          </span>
-        </div>
-      </div>
-    </div>,
+      </div>,
+    </SettingsProvider>,
     document.body,
   );
 }

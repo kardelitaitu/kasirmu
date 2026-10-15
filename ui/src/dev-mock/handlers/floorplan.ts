@@ -60,7 +60,33 @@ function tablesSnapshot(): Array<{
 // Mutable, seeded from the snapshot below. In-memory on purpose: this module
 // has no writeSlice/readSlice seam, and a reload resetting the floor plan to
 // its seed is what a fresh mock session should look like.
-const mockTables: MockTable[] = tablesSnapshot();
+
+/**
+ * True when the page was opened with `?plan=empty`.
+ *
+ * `TableManagementScreen` has TWO empty states on two branches (`:1026`, `:1045`). The filtered one
+ * is reachable by emptying a section, which round 246's spec does. The PLAN-empty one needs every
+ * table gone — and the seeded plan holds 13 tables of which 6 are occupied, so reaching it through
+ * the UI costs ~13 lifecycle operations (release, close panel, delete) and timed out at the twelfth
+ * (round 267).
+ *
+ * That is a seed problem, not a test problem, and this is the seam the dev-mock already uses for
+ * exactly that shape — see `system.ts:29-56` for the convention: an explicit per-navigation opt-in,
+ * read at CALL time, changing no default, guarded because these handlers also run under jsdom where
+ * `window.location.search` is empty.
+ *
+ * Named `plan=empty` rather than `tables=0` so it reads as a description of the state an operator is
+ * in, not as a count a caller has to construct.
+ */
+function emptyPlanRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('plan') === 'empty';
+  } catch {
+    return false;
+  }
+}
+
+const mockTables: MockTable[] = emptyPlanRequested() ? [] : tablesSnapshot();
 
 /** Sections present in the seed, plus any a created table introduces. */
 const mockSections: string[] = Array.from(new Set(mockTables.map((t) => t.section)));

@@ -304,34 +304,16 @@ linearly with the catalog until `SQLITE_MAX_VARIABLE_NUMBER` turns a normal page
 hard error. *Fix:* paginate the list APIs and chunk the image lookup into fixed-size batches.
 
 **O-H03 · kasirmu-core — offline-queue drain pays one fsync per item** —
-`crates/kasirmu-core/src/sync_client.rs:314-318` ✔
-The outcome loop calls `store.mark_offline_synced(&item.id)` per accepted item, and that writer
-opens and commits its own transaction per call (`db/offline.rs:627-636`). Draining a backlog
-after an outage costs N BEGIN/UPDATE/COMMIT syncs — a 10k queue is 10k disk syncs on the till.
-*Fix:* group outcomes by kind and apply them in one transaction / batched
-`UPDATE … WHERE id IN (…)`.
+`crates/kasirmu-core/src/sync_client.rs:86-105` ✔. Fixed: `apply_sync_outcomes` wraps all outcome transitions into a single transaction in autocommit mode, reducing N disk fsyncs during queue drain to 1. Added `Store::mark_offline_synced_batch`. Verified with unit tests in `offline_tests.rs` and `sync_client_tests.rs`.
 
 **O-H04 · kasirmu-core — a fresh `reqwest::Client` per sync HTTP call** —
-`crates/kasirmu-core/src/sync_client.rs:519-522` ✔ (repeat sites ◦)
-Every call builds a new client — no connection-pool reuse, a fresh TCP+TLS handshake per
-request. The same pattern recurs at `:683`, `:739`, `:839`, `:944`, `:1008` per the pass, so
-the QRIS settlement poll and the memo poll pay handshake cost on every tick, on every terminal.
-*Fix:* hold one client in process state (`OnceLock`/`LazyLock` or a `SyncConfig` field).
+`crates/kasirmu-core/src/sync_client.rs:400-420` ✔. Fixed: introduced static pooled `shared_sync_http_client()` via `OnceLock<reqwest::Client>` across `send_items_to_server`, `ack_memo_on_server`, `push_memos_to_server`, `fetch_active_memos_from_server`, `qris_charge_on_server`, and `qris_status_from_server`, retaining keep-alive and connection pool reuse across sync cycles and polls.
 
 **O-H05 · kasirmu-bridge — staff screen costs 2N+2 queries and the whole roster** —
-`crates/kasirmu-bridge/src/staff.rs:857-866` ✔
-`list_staff_scoped` loads all users, then per user issues `get_user_profile` and
-`assignment_for_user`, with no limit/offset anywhere on the path. Latency and memory grow
-linearly with headcount on every staff-screen load. *Fix:* one batched core accessor (three
-`IN`-clause queries) plus pagination on the command.
+`crates/kasirmu-bridge/src/staff.rs:342-369` ✔. Fixed: added batched accessors `Store::list_user_profiles_map`, `Store::list_assignments_map`, and `Store::list_staff_codes_map`, replacing 3N queries across users with 3 single indexed queries and constant-time in-memory map joins. Verified with `staff_tests.rs` (132/132 passed).
 
 **O-H06 · kasirmu-bridge — catalog import probes existence per row inside one long
-transaction** — `crates/kasirmu-bridge/src/data.rs:736-744` ✔
-Per product: a full `serde_json::Value` clone, a `SELECT 1 FROM products WHERE sku = ?1`
-existence probe, and a fresh RFC-3339 timestamp allocation — all inside one transaction that
-holds the global write lock for the whole import. A 50k-SKU package is 50k probes plus one
-lock held for minutes. *Fix:* `HashSet` of existing SKUs in one query, hoist `now`, reuse a
-prepared statement.
+transaction** — `crates/kasirmu-bridge/src/data.rs:505-666` ✔. Fixed: pre-fetched `HashSet` of existing SKUs/categories/sales/customers/users via single index queries, hoisted RFC-3339 timestamp `now`, and eliminated `val.clone()` via owned payload iteration in both `gate_import_product_batch`/`gate_import_user_batch` and `import_data`. Verified with `data_tests.rs` (79/79 passed).
 
 **O-H07 · kasirmu-bridge — the whole offline queue goes up in one HTTP call** —
 `crates/kasirmu-bridge/src/sync.rs:580` ✔
@@ -341,10 +323,7 @@ transport ceiling. *Fix:* push in fixed-size batches (e.g. 500) with a cursor, l
 the queue drains.
 
 **O-H08 · kasirmu-bridge — the "batch" track-serial lookup runs a full join per SKU** —
-`crates/kasirmu-bridge/src/products.rs:283-299` ✔
-`run_get_product_track_serial_batch` maps over SKUs calling `get_product` — the full
-`ProductWithDetails` join — per SKU, to read one boolean. A 40-line cart costs 40 wide queries
-on the checkout path. *Fix:* one `SELECT sku, track_serial FROM products WHERE sku IN (…)`.
+`crates/kasirmu-bridge/src/products.rs:201-222` ✔. Fixed: added `Store::get_product_track_serial` and `Store::get_products_track_serial_batch` in `products_crud.rs` executing direct `SELECT sku, track_serial FROM products WHERE sku IN (...)` without wide 8-table joins, and updated `run_get_product_track_serial_batch` and `get_product_track_serial` in `kasirmu-bridge`. Verified in `products_tests.rs`.
 
 **O-H09 · cloud-server — plan middleware queries the DB on every sync request** —
 `apps/cloud-server/src/sync_api.rs:236-242` ◦
@@ -478,8 +457,7 @@ DB-backed at the call site and the Buy-X-Get-Y branch walks the lines again. *Fi
 SKU→category once into a map.
 
 **O-M09 · kasirmu-core — the embedded RSA public key is re-parsed per verification** —
-`crates/kasirmu-core/src/license_verification.rs:517-521` (also `:543`) ◦. Every subscription
-gate and CRL check redoes constant PEM parsing. *Fix:* `OnceLock<RsaPublicKey>`.
+`crates/kasirmu-core/src/license_verification/crl.rs:86-180` ✔. Fixed: cached parsed RSA public key and `VerifyingKey` with `OnceLock<Result<VerifyingKey<Sha256>, String>>`, eliminating constant PEM re-parsing on every subscription check and CRL verification. Verified with unit tests in `license_verification_tests.rs`.
 
 **O-M10 · kasirmu-core — rate-limiter attempt map grows without bound** —
 `crates/kasirmu-core/src/rate_limiter.rs:26`, `:54-61` ◦. Only per-key pruning on access; login
@@ -566,13 +544,10 @@ transaction** — `crates/kasirmu-api/src/routes/settings.rs:555-561`, `:498-509
 insert; borrowed keys.
 
 **O-M29 · mobile — the "batch" track-serial twin of O-H08** —
-`apps/mobile-tauri/src/commands/products.rs:258-276` ◦. One full `get_product` per SKU. *Fix:*
-`IN`-clause store method.
+`apps/mobile-tauri/src/commands/products.rs:288-306` ✔. Fixed: `run_get_product_track_serial_batch` and `get_product_track_serial_scoped` now use `Store::get_products_track_serial_batch` and `Store::get_product_track_serial`, executing batched `WHERE sku IN (...)` directly against the products table. Verified with `mobile-tauri` tests.
 
 **O-M30 · mobile — `discount_percent as u8` truncates above 255** —
-`apps/mobile-tauri/src/commands/pos.rs:1154-1158` ◦ (bridge clamp at
-`crates/kasirmu-bridge/src/pos.rs:1647`). Correctness rather than scale, but 300 becomes a 44%
-discount and the two checkout doors disagree. *Fix:* route through the bridge clamp.
+`crates/kasirmu-bridge/src/pos/preview.rs:176` and `crates/kasirmu-bridge/src/pos/checkout.rs` ✔. Fixed: discount percent clamped with `checkout_discount_percent` across both preview and shortfall checkout doors; verified with `preview_and_shortfall_doors_treat_a_high_discount_percent_identically`.
 
 **O-M31 · mobile — org switch / session creation take the global DB mutex 5 and 3 times** —
 `apps/mobile-tauri/src/commands/auth.rs:634-752`, `:413`, `:438`, `:467` ◦. Each acquisition
@@ -1165,9 +1140,7 @@ assert a count. *Fix:* a few hundred rows, or one set-based insert.
 and two assertions per iteration to prove a ring. *Fix:* cut to ~500 and assert with `windows(2)`.
 
 **O-T10 · `run_sweep()` reads ~224 source files, six times per run** —
-`apps/desktop-tauri/src/commands/registration_gate_tests.rs:466-481` ✔ (4A-10). Each sweep walks
-82 `.rs` files under `src/commands` plus 142 under `crates/kasirmu-bridge/src` and char-scans every
-function body, recomputing an identical result. *Fix:* memoise in a `LazyLock<Sweep>`.
+`apps/desktop-tauri/src/commands/registration_gate_tests.rs:466-481` ✔ (4A-10). Fixed: memoised via `std::sync::OnceLock<Sweep>`, eliminating 5 redundant 224-file source walks across test assertions.
 
 **Low**
 
@@ -2063,5 +2036,38 @@ Two low-severity performance findings resolved:
    - `crates/kasirmu-plugin/src/manager.rs`: Added `plugin_index: HashMap<String, usize>` built at load time to enable O(1) index lookup into `self.plugins`.
    - Replaced `.cloned()` on `hook_names` with borrowed slice iteration, eliminating heap allocation on every hook dispatch.
    - Verified across all 224 tests in `kasirmu-plugin`.
+
+---
+
+## §11O — O-T10 resolved: memoize `run_sweep()` in desktop registration gate tests (2026-10-15)
+
+One test performance finding resolved in desktop shell:
+
+1. **O-T10 · `kasirmu-app` memoize `run_sweep()` (`registration_gate_tests.rs`)**:
+   - `apps/desktop-tauri/src/commands/registration_gate_tests.rs`: Memoized `run_sweep()` using `static SWEEP: std::sync::OnceLock<Sweep> = std::sync::OnceLock::new()`.
+   - Replaced repeating the disk walk and char-scan of ~224 source files (82 in `src/commands` + 142 in `kasirmu-bridge`) across test assertions with a single cached evaluation.
+   - Verified across all 14 tests in `registration_gate_tests.rs`, finishing in 0.50s.
+
+---
+
+## §11P — O-H06 resolved: batched pre-fetch and zero-clone catalog import (2026-10-15)
+
+One High performance finding resolved in bridge data commands:
+
+1. **O-H06 · `kasirmu-bridge` catalog import existence checks & timestamp hoisting (`data.rs`, `helpers.rs`)**:
+   - `crates/kasirmu-bridge/src/data/helpers.rs`: Replaced row-by-row `SELECT 1 FROM ... WHERE ... = ?1` in `gate_import_product_batch` and `gate_import_user_batch` with single pre-fetched `HashSet` indexed queries.
+   - `crates/kasirmu-bridge/src/data.rs`: Pre-fetched existing SKUs, categories, sales, customers, and users into `HashSet`s before the loops, eliminating N round-trips under the exclusive write lock; hoisted RFC-3339 timestamp `now` once; eliminated redundant `val.clone()` allocations by consuming owned `payload` vectors.
+   - Verified across all 79 tests in `kasirmu-bridge` data module (`data_tests.rs`).
+
+---
+
+## §11Q — O-H05 resolved: batched staff roster accessors (2026-10-15)
+
+One High performance finding resolved in staff roster queries:
+
+1. **O-H05 · `kasirmu-bridge` staff roster N+1 queries eliminated (`staff.rs`, `db/staff.rs`, `db/assignments.rs`, `db/profile/user.rs`)**:
+   - Added batched core accessors `Store::list_user_profiles_map`, `Store::list_assignments_map`, and `Store::list_staff_codes_map`.
+   - Replaced $3N$ sequential database queries inside `list_staff_scoped` with 3 indexed set queries, assembling complete `StaffMemberDto` records in-memory via $O(1)$ hash map lookups while preserving fail-closed error propagation.
+   - Verified across all 132 tests in `kasirmu-bridge` staff module and 123 tests in `kasirmu-core`.
 
 

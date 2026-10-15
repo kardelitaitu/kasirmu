@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "label": "code size",
-  "message": "1,491.0k lines",
+  "message": "1,505.9k lines",
   "color": "blue",
   "stats": {
-    "totalLines": 1491020,
-    "totalFiles": 6625,
+    "totalLines": 1505939,
+    "totalFiles": 6781,
     "languages": {
       "astro": {
         "files": 51,
@@ -13,11 +13,11 @@
       },
       "css": {
         "files": 167,
-        "lines": 71320
+        "lines": 71529
       },
       "fluent": {
         "files": 54,
-        "lines": 13709
+        "lines": 13739
       },
       "go": {
         "files": 106,
@@ -32,32 +32,32 @@
         "lines": 21403
       },
       "markdown": {
-        "files": 577,
-        "lines": 165845
+        "files": 675,
+        "lines": 173302
       },
       "powershell": {
         "files": 27,
         "lines": 4927
       },
       "python": {
-        "files": 254,
-        "lines": 43624
+        "files": 257,
+        "lines": 44108
       },
       "rust": {
         "files": 1435,
-        "lines": 561186
+        "lines": 561575
       },
       "shell": {
         "files": 57,
-        "lines": 8557
+        "lines": 8571
       },
       "sql": {
         "files": 77,
         "lines": 9072
       },
       "typescript": {
-        "files": 1714,
-        "lines": 440778
+        "files": 1769,
+        "lines": 447114
       }
     }
   }

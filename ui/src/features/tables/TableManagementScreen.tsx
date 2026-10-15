@@ -41,6 +41,23 @@ export interface TableModalState {
   shape: string;
 }
 
+export interface TableReservationModalState {
+  table: Table;
+  guestName: string;
+  phone: string;
+  partySize: number;
+  time: string;
+  notes: string;
+}
+
+export interface ReservationDetails {
+  guestName: string;
+  phone?: string | undefined;
+  partySize?: number | undefined;
+  time?: string | undefined;
+  notes?: string | undefined;
+}
+
 /** Vector Grid icon for empty floor plan state */
 function GridIcon() {
   return (
@@ -95,6 +112,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [mergeTableModal, setMergeTableModal] = useState<Table | null>(null);
   const [selectedMergeDestTableId, setSelectedMergeDestTableId] = useState<string>('');
   const [mergingTable, setMergingTable] = useState(false);
+  const [reserveModal, setReserveModal] = useState<TableReservationModalState | null>(null);
+  const [reservingTable, setReservingTable] = useState(false);
   const [arrangeMode, setArrangeMode] = useState(false);
   const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
   const floorplanRef = useRef<HTMLDivElement | null>(null);
@@ -135,6 +154,28 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       return openBills.find((b) => matchesTableBill(b, tableName));
     },
     [openBills],
+  );
+
+  // Match table with active reservation details
+  const getTableReservation = useCallback(
+    (tableName: string): ReservationDetails | null => {
+      const bill = getTableBill(tableName);
+      if (!bill) return null;
+      if (bill.label.includes('Res:') || bill.label.toLowerCase().includes('reservation')) {
+        const guest = bill.customer_name || bill.label.split('Res:')[1]?.trim() || 'Guest';
+        const timeMatch = bill.label.match(/\((\d{1,2}:\d{2})\)/);
+        const partyMatch = bill.label.match(/\[(\d+)p\]/);
+        return {
+          guestName: guest.split('(')[0]?.split('[')[0]?.trim() || guest,
+          phone: undefined,
+          partySize: partyMatch ? parseInt(partyMatch[1]!, 10) : undefined,
+          time: timeMatch ? timeMatch[1] : undefined,
+          notes: undefined,
+        };
+      }
+      return null;
+    },
+    [getTableBill],
   );
 
   // TBL-07: localized label for a raw status value, with unknown fallback.
@@ -448,8 +489,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     [sessionToken, l10n],
   );
 
-  const showEmpty = !loading && !error && tables.length === 0;
-
+  // ⚠️ THE FLOOR PLAN HONOURS THE SECTION FILTER HERE, and until round 244 it did not.
+  //
+  // The chips computed their counts from `activeTableList` (`:500`, `:506`) while the grid
+  // rendered the UNFILTERED `tables` (`:1045` before this fix). Measured 2026-10-15: the seeded
+  // plan showed `Indoor 5/6` and the grid still drew all 12 tiles.
+  //
+  // Two further consequences the raw list hid: `showEmpty` keyed on `tables.length`, so the
+  // "no tables in this section" branch (`:1035`) was unreachable while any table existed, and a
+  // section whose every table was deleted would have shown the wrong empty message.
+  const visibleTables =
+    section === null ? tables : tables.filter((t) => (t.section || 'Main') === section);
+  const showEmpty = !loading && !error && visibleTables.length === 0;
   const activeTableList = tablePool.length > 0 ? tablePool : tables;
   const allTotal = activeTableList.length;
   const allOccupied = activeTableList.filter((t) => t.status === 'occupied').length;
@@ -647,6 +698,115 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       setMergingTable(false);
     }
   }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
+
+  const handleConfirmReservation = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!sessionToken) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      if (!reserveModal || !reserveModal.guestName.trim()) return;
+      setReservingTable(true);
+      try {
+        const table = reserveModal.table;
+        const guestName = reserveModal.guestName.trim();
+        const phone = reserveModal.phone.trim();
+        const partySize = reserveModal.partySize || table.capacity;
+        const time = reserveModal.time.trim();
+        const notes = reserveModal.notes.trim();
+
+        const reservationPayload = {
+          lines: [],
+          customerName: guestName,
+          phone,
+          partySize,
+          reservationTime: time,
+          notes,
+          isReservation: true,
+          tableNumber: table.name,
+        };
+
+        const label = `${table.name} · Res: ${guestName}${time ? ` (${time})` : ''}${partySize ? ` [${partySize}p]` : ''}`;
+
+        await holdCartScoped(sessionToken, {
+          label,
+          cart_data: JSON.stringify(reservationPayload),
+          item_count: 0,
+          total_minor: 0,
+          currency: 'IDR',
+          bill_type: 'open_bill',
+          customer_name: guestName,
+        });
+
+        const updated = await updateTableStatusScoped(sessionToken, table.id, 'reserved');
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected((curr) => (curr && curr.id === updated.id ? updated : curr));
+
+        addToast({
+          message: l10n.getString('tables-toast-reserved', { table: table.name, guest: guestName }),
+          type: 'success',
+        });
+        setReserveModal(null);
+        await loadTables();
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      } finally {
+        setReservingTable(false);
+      }
+    },
+    [reserveModal, sessionToken, l10n, addToast, loadTables],
+  );
+
+  const handleSeatReservedGuests = useCallback(
+    async (table: Table) => {
+      if (!sessionToken) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      const reservationBill = openBills.find((b) => matchesTableBill(b, table.name));
+      try {
+        if (reservationBill) {
+          const customerName = reservationBill.customer_name || '';
+          await deleteHeldCartScoped(sessionToken, reservationBill.id);
+          await holdCartScoped(sessionToken, {
+            label: heldCartLabel(table.name, customerName) ?? `Table ${table.name}`,
+            cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name }),
+            item_count: 0,
+            total_minor: 0,
+            currency: 'IDR',
+            bill_type: 'open_bill',
+            customer_name: customerName,
+          });
+        }
+
+        const updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected(null);
+
+        addToast({
+          message: l10n.getString('tables-toast-guests-seated', { table: table.name }),
+          type: 'success',
+        });
+
+        if (onSelectTable) {
+          onSelectTable(table.name);
+        }
+        await loadTables();
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, openBills, onSelectTable, l10n, addToast, loadTables],
+  );
 
   const handlePointerDownTable = useCallback((e: React.PointerEvent<HTMLButtonElement>, t: Table) => {
     if (!arrangeMode) return;
@@ -892,7 +1052,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           </div>
         )}
 
-        {!showEmpty && tables.map((t) => {
+        {!showEmpty && visibleTables.map((t) => {
           const shape = t.shape || 'circle';
           // TBL-08 front-end clamp: old persisted geometry could predate the
           // backend bounds check, so never render a sub-2% interactive control.
@@ -903,6 +1063,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             ? Math.max(0, Math.floor((Date.now() - new Date(bill.created_at).getTime()) / 60000))
             : null;
           const isSlaWarn = elapsedMinutes !== null && elapsedMinutes >= 60;
+          const isSlaCritical = elapsedMinutes !== null && elapsedMinutes >= 90;
+          const reservation = t.status === 'reserved' ? getTableReservation(t.name) : null;
           return (
             // The floor plan is a role="list" (aria-label above), so each table
             // must be wrapped in a list item. It cannot be put ON the button:
@@ -914,7 +1076,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             <Button
               variant="ghost"
               size="sm"
-              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}`}
+              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaCritical ? ' tables-table--sla-critical' : isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}`}
               onClick={() => {
                 if (arrangeMode) return;
                 openDetail(t);
@@ -955,7 +1117,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               )}
               <span className="tables-table-name">{t.name}</span>
               <span className="tables-table-status">
-                {bill ? (
+                {reservation ? (
+                  <span className="tables-table-reservation-tag" data-testid={`tables-reservation-tag-${t.name}`}>
+                    📅 {reservation.guestName}{reservation.time ? ` · ${reservation.time}` : ''}
+                  </span>
+                ) : bill ? (
                   <span className="tables-table-bill-tag">
                     <span className="tables-table-bill-items">
                       {l10n.getString('retail-cart-items', { count: bill.item_count }, `${bill.item_count} items`)}
@@ -966,7 +1132,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       </span>
                     )}
                     {elapsedMinutes !== null && (
-                      <span className={`tables-table-timer${isSlaWarn ? ' tables-table-timer--warn' : ''}`}>
+                      <span className={`tables-table-timer${isSlaCritical ? ' tables-table-timer--critical' : isSlaWarn ? ' tables-table-timer--warn' : ''}`}>
                         ⏱️ {elapsedMinutes}m
                       </span>
                     )}
@@ -983,6 +1149,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
       {selected && (() => {
         const activeBill = getTableBill(selected.name);
+        const reservation = selected.status === 'reserved' ? getTableReservation(selected.name) : null;
         return (
           <div className="tables-detail" ref={detailRef} role="dialog" aria-modal="true" aria-label={l10n.getString('tables-detail-label')}>
             <h2>{selected.name}</h2>
@@ -990,7 +1157,35 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             <p><Localized id="tables-status-label" vars={{ status: statusLabel(selected.status) }}><span>Status: {statusLabel(selected.status)}</span></Localized></p>
             <p><Localized id="tables-section-label" vars={{ section: selected.section || '—' }}><span>Section: {selected.section || '—'}</span></Localized></p>
 
-            {activeBill && (
+            {reservation && (
+              <div className="tables-reservation-card" data-testid="tables-reservation-card">
+                <div className="tables-reservation-header">
+                  <span className="tables-reservation-icon" aria-hidden="true">📅</span>
+                  <div>
+                    <h3 className="tables-reservation-guest">{reservation.guestName}</h3>
+                    {reservation.time && (
+                      <span className="tables-reservation-time">
+                        {reservation.time} {reservation.partySize ? `(${reservation.partySize}p)` : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {reservation.phone && (
+                  <div className="tables-reservation-row">
+                    <span className="tables-reservation-label">{l10n.getString('tables-reserve-phone-label')}:</span>
+                    <span>{reservation.phone}</span>
+                  </div>
+                )}
+                {reservation.notes && (
+                  <div className="tables-reservation-row">
+                    <span className="tables-reservation-label">{l10n.getString('tables-reserve-notes-label')}:</span>
+                    <span>{reservation.notes}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeBill && !reservation && (
               <div className="tables-active-bill-info">
                 <div className="tables-active-bill-title">
                   <Localized id="tables-active-tab-label" vars={{ label: activeBill.label }}>
@@ -1121,8 +1316,20 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               )}
               {!showReleaseConfirm && !showDeleteConfirm && (
                 <>
+                  {selected.status === 'reserved' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      data-testid="tables-seat-guests-btn"
+                      onClick={() => void handleSeatReservedGuests(selected)}
+                    >
+                      <Localized id="tables-seat-guests">
+                        <span>Seat Guests</span>
+                      </Localized>
+                    </Button>
+                  )}
                   <Button
-                    variant={selected.status === 'occupied' ? 'danger' : 'primary'}
+                    variant={selected.status === 'occupied' ? 'danger' : selected.status === 'reserved' ? 'ghost' : 'primary'}
                     size="sm"
                     state={pendingId === selected.id ? 'processing' : 'ready'}
                     onClick={() => {
@@ -1137,6 +1344,27 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
                     </Localized>
                   </Button>
+                  {selected.status === 'available' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="tables-open-reserve-btn"
+                      onClick={() => {
+                        setReserveModal({
+                          table: selected,
+                          guestName: '',
+                          phone: '',
+                          partySize: selected.capacity || 4,
+                          time: '',
+                          notes: '',
+                        });
+                      }}
+                    >
+                      <Localized id="tables-reserve-table">
+                        <span>Reserve Table</span>
+                      </Localized>
+                    </Button>
+                  )}
                   {activeBill && printBillEnabled !== false && (
                     <Button
                       variant="ghost"
@@ -1552,6 +1780,124 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 );
               })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {reserveModal && (
+        <div
+          className="tables-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tables-reserve-modal-title"
+        >
+          <div className="tables-modal-dialog">
+            <div className="tables-modal-header">
+              <h2 id="tables-reserve-modal-title">
+                <Localized id="tables-reserve-table-title" vars={{ table: reserveModal.table.name }}>
+                  <span>Reserve Table {reserveModal.table.name}</span>
+                </Localized>
+              </h2>
+              <button
+                type="button"
+                className="tables-modal-close-btn"
+                onClick={() => setReserveModal(null)}
+                aria-label={l10n.getString('close') || 'Close'}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleConfirmReservation} className="tables-modal-form">
+              <div className="tables-modal-field">
+                <label htmlFor="reserve-modal-name">
+                  {l10n.getString('tables-reserve-name-label')}
+                  <input
+                    id="reserve-modal-name"
+                    type="text"
+                    required
+                    value={reserveModal.guestName}
+                    onChange={(e) => setReserveModal({ ...reserveModal, guestName: e.target.value })}
+                    placeholder={l10n.getString('tables-reserve-name-placeholder')}
+                  />
+                </label>
+              </div>
+
+              <div className="tables-modal-row">
+                <div className="tables-modal-field" style={{ flex: 1 }}>
+                  <label htmlFor="reserve-modal-phone">
+                    {l10n.getString('tables-reserve-phone-label')}
+                    <input
+                      id="reserve-modal-phone"
+                      type="text"
+                      value={reserveModal.phone}
+                      onChange={(e) => setReserveModal({ ...reserveModal, phone: e.target.value })}
+                      placeholder={l10n.getString('tables-reserve-phone-placeholder')}
+                    />
+                  </label>
+                </div>
+
+                <div className="tables-modal-field" style={{ flex: 1 }}>
+                  <label htmlFor="reserve-modal-party">
+                    {l10n.getString('tables-capacity-input-label')}
+                    <input
+                      id="reserve-modal-party"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={reserveModal.partySize}
+                      onChange={(e) => setReserveModal({ ...reserveModal, partySize: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="tables-modal-row">
+                <div className="tables-modal-field" style={{ flex: 1 }}>
+                  <label htmlFor="reserve-modal-time">
+                    {l10n.getString('tables-reserve-time-label')}
+                    <input
+                      id="reserve-modal-time"
+                      type="text"
+                      value={reserveModal.time}
+                      onChange={(e) => setReserveModal({ ...reserveModal, time: e.target.value })}
+                      placeholder={l10n.getString('tables-reserve-time-placeholder')}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="tables-modal-field">
+                <label htmlFor="reserve-modal-notes">
+                  {l10n.getString('tables-reserve-notes-label')}
+                  <input
+                    id="reserve-modal-notes"
+                    type="text"
+                    value={reserveModal.notes}
+                    onChange={(e) => setReserveModal({ ...reserveModal, notes: e.target.value })}
+                    placeholder={l10n.getString('tables-reserve-notes-placeholder')}
+                  />
+                </label>
+              </div>
+
+              <div className="tables-modal-footer">
+                <Button
+                  variant="primary"
+                  type="submit"
+                  state={reservingTable ? 'processing' : 'ready'}
+                  disabled={!reserveModal.guestName.trim() || reservingTable}
+                  data-testid="tables-reserve-confirm-btn"
+                >
+                  <Localized id="tables-reserve-confirm"><span>Confirm Reservation</span></Localized>
+                </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => setReserveModal(null)}
+                >
+                  <Localized id="cancel"><span>Cancel</span></Localized>
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -43,18 +43,33 @@
   touch-action: none;
 }
 
-/* Expand touch target hit area on mobile/tablet without expanding visual width */
-.pos-resize-handle::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  /* --space-4 is exactly this reach at the tablet's 14px root (1rem x 14px =
-     14px), so the touch target keeps its measured size while the value stops
-     being a literal the scale cannot see. */
-  left: calc(var(--space-4) * -1);
-  right: calc(var(--space-4) * -1);
-  z-index: var(--z-sticky, 20);
+/*
+ * Expand the touch target on a COARSE pointer only.
+ *
+ * ⚠️ This rule used to be unconditional while its comment said "on mobile/tablet".
+ * Measured 2026-10-14 (round 217): the handle is 4px wide at x=915, but `::before`
+ * reached 14px each way (x=901-933) and the Resume button in the Open Bills list spans
+ * x=871-940 — so the INVISIBLE hit area sat over 39px of a live control and swallowed
+ * its clicks. Playwright reported it exactly: "`<div class="pos-resize-handle">`
+ * intercepts pointer events" while trying to press Resume.
+ *
+ * A mouse does not need a 32px target for a 4px separator, and it is the desktop layout
+ * where the panel sits beside a list. Scoping to `pointer: coarse` keeps the tablet's
+ * measured 44px target (the file's own COMPLIANT note at :605) and stops the overlap.
+ */
+@media (pointer: coarse) {
+  .pos-resize-handle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    /* --space-4 is exactly this reach at the tablet's 14px root (1rem x 14px =
+       14px), so the touch target keeps its measured size while the value stops
+       being a literal the scale cannot see. */
+    left: calc(var(--space-4) * -1);
+    right: calc(var(--space-4) * -1);
+    z-index: var(--z-sticky, 20);
+  }
 }
 
 .pos-resize-handle:hover,

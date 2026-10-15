@@ -963,6 +963,34 @@ describe('TableManagementScreen', () => {
     expect(tableBtn?.className).toContain('tables-table--sla-warn');
   });
 
+  it('renders elapsed dining timer and applies critical SLA highlight when over 90 minutes', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const ninetyFiveMinsAgo = new Date(Date.now() - 95 * 60 * 1000).toISOString();
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 3,
+        total_minor: 75000,
+        currency: 'IDR',
+        created_at: ninetyFiveMinsAgo,
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    const timer = screen.getByText(/⏱️ 95m/);
+    expect(timer).toBeDefined();
+    expect(timer.className).toContain('tables-table-timer--critical');
+
+    const tableBtn = screen.getByText('Table 1').closest('button');
+    expect(tableBtn?.className).toContain('tables-table--sla-critical');
+  });
+
   it('merges active tabs from two tables when Merge Table is confirmed', async () => {
     const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
     const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
@@ -1097,5 +1125,112 @@ describe('TableManagementScreen', () => {
       expect(screen.queryByTestId('tables-tab-conflict-banner')).toBeNull();
     });
   });
+
+  it('opens Reserve Table dialog, creates reservation held cart and updates table status to reserved', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'available', capacity: 4 });
+    mockListTables.mockResolvedValue([table]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => expect(screen.getByTestId('tables-open-reserve-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-open-reserve-btn'));
+
+    await waitFor(() => expect(screen.getByLabelText(/Guest Name/i)).toBeDefined());
+    await userEvent.type(screen.getByLabelText(/Guest Name/i), 'Dr. Alice');
+    await userEvent.type(screen.getByLabelText(/Phone/i), '08123456789');
+    await userEvent.type(screen.getByLabelText(/Reservation Time/i), '19:30');
+    await userEvent.type(screen.getByLabelText(/Notes/i), 'Window seat preferred');
+
+    await userEvent.click(screen.getByTestId('tables-reserve-confirm-btn'));
+
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: expect.stringContaining('Dr. Alice'),
+          customer_name: 'Dr. Alice',
+          item_count: 0,
+          total_minor: 0,
+        }),
+      );
+      expect(mockUpdateTableStatus).toHaveBeenCalledWith(
+        MOCK_SESSION_TOKEN,
+        't-1',
+        'reserved',
+      );
+    });
+  });
+
+  it('renders reservation details in floorplan card and detail drawer for reserved table', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-res-1',
+        label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+        item_count: 0,
+        total_minor: 0,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: 'Sarah Connor',
+      },
+    ]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    // Reservation tag on table card
+    expect(screen.getByTestId('tables-reservation-tag-Table 1').textContent).toContain('Sarah Connor');
+    expect(screen.getByTestId('tables-reservation-tag-Table 1').textContent).toContain('20:00');
+
+    // Open detail panel
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-seat-guests-btn')).toBeDefined());
+
+    expect(screen.getByTestId('tables-reservation-card').textContent).toContain('Sarah Connor');
+    expect(screen.getByTestId('tables-reservation-card').textContent).toContain('20:00 (4p)');
+  });
+
+  it('seats reserved guests when Seat Guests is clicked, transitioning status to occupied and calling onSelectTable', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-res-1',
+        label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+        item_count: 0,
+        total_minor: 0,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: 'Sarah Connor',
+      },
+    ]);
+
+    const onSelectTable = vi.fn();
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onSelectTable={onSelectTable} />
+      </LocalizationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => expect(screen.getByTestId('tables-seat-guests-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-seat-guests-btn'));
+
+    await waitFor(() => {
+      expect(mockUpdateTableStatus).toHaveBeenCalledWith(
+        MOCK_SESSION_TOKEN,
+        't-1',
+        'occupied',
+      );
+      expect(onSelectTable).toHaveBeenCalledWith('Table 1');
+    });
+  });
 });
+
 

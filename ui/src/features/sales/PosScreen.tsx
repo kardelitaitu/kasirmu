@@ -1061,7 +1061,40 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setSendingToKitchen(true);
     try {
       await handleDispatchKitchenDelta(deltaLines);
-      const updatedLines = lines.map((l) => ({ ...l, dispatchedQty: l.qty }));
+      // ⚠️ THE DELTA, NOT THE CLOSURE. Functional form, and only the lines the delta
+      // actually carried are advanced.
+      //
+      // The previous body was `setLines(lines.map((l) => ({ ...l, dispatchedQty: l.qty })))`
+      // — `lines` is this render's closure, captured BEFORE the await. The cart stays
+      // editable while the send is in flight (`sendingToKitchen` drives only a button's
+      // processing state and is never read as a guard), so anything added during the
+      // await was absent from the replacement array and `setLines` DROPPED it. Measured
+      // live (round 201): two lines before Send, one more added during, and the cart
+      // came back with two — the operator's item silently gone, with no message.
+      //
+      // The other half is a raised quantity: marking the closure's `l.qty` when the
+      // operator has since increased it would show 'Sent' for portions the kitchen never
+      // received. Advancing by the sent amount keeps the badge honest in both cases.
+      // ⚠️ THE DELTA, NOT THE CLOSURE. Functional form, and only the lines the delta
+      // actually carried are advanced.
+      //
+      // The previous body was `setLines(lines.map((l) => ({ ...l, dispatchedQty: l.qty })))`
+      // — `lines` is this render's closure, captured BEFORE the await. The cart stays
+      // editable while the send is in flight (`sendingToKitchen` drives only a button's
+      // processing state and is never read as a guard), so anything added during the
+      // await was absent from the replacement array and `setLines` DROPPED it. Measured
+      // live (round 201): two lines before Send, one more added during, and the cart
+      // came back with two — the operator's item silently gone, with no message.
+      //
+      // The other half is a raised quantity: marking the closure's `l.qty` when the
+      // operator has since increased it would show 'Sent' for portions the kitchen never
+      // received. Advancing by the sent amount keeps the badge honest in both cases.
+      const sentBySku = new Map(deltaLines.map((d) => [d.sku, d.qty]));
+      const updatedLines = lines.map((l) => {
+        const sentQty = sentBySku.get(l.sku);
+        if (sentQty === undefined) return l;
+        return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
+      });
       setLines(updatedLines);
 
       // Persist to open bill if active or table assigned

@@ -64,6 +64,21 @@ tables-toast-bill-print-failed = Gagal mencetak bill
 tables-tab-conflict-warning = { $terminal } sedang mengedit tagihan ini
 tables-tab-takeover = Ambil Alih Tagihan
 tables-toast-takeover-success = Berhasil mengambil alih tagihan dari { $terminal }
+tables-reserve-table = Pesan Meja
+tables-reserve-table-title = Pesan Meja { $table }
+tables-reserve-name-label = Nama Tamu
+tables-reserve-name-placeholder = mis. Budi Santoso
+tables-reserve-phone-label = Kontak / No. Telepon
+tables-reserve-phone-placeholder = mis. 08123456789
+tables-reserve-time-label = Waktu Reservasi
+tables-reserve-time-placeholder = mis. 19:00
+tables-reserve-notes-label = Catatan / Permintaan Khusus
+tables-reserve-notes-placeholder = mis. Dekat jendela, Ulang tahun
+tables-reserve-confirm = Konfirmasi Reservasi
+tables-toast-reserved = Meja { $table } dipesan untuk { $guest }
+tables-seat-guests = Dudukkan Tamu
+tables-toast-guests-seated = Tamu didudukkan di Meja { $table }
+
 
 
 # ── Tax Configuration ──

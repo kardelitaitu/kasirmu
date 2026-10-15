@@ -298,6 +298,24 @@ fn mark_offline_synced_sets_timestamp() {
     assert!(item.synced_at.is_some(), "synced_at should be populated");
 }
 
+#[test]
+fn mark_offline_synced_batch_marks_all_pending_items() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+    let s = store(&conn);
+
+    let batch = vec!["oq-1".to_string(), "oq-2".to_string()];
+    s.mark_offline_synced_batch(&batch).unwrap();
+
+    let all = s.list_all_offline().unwrap();
+    let oq1 = all.iter().find(|i| i.id == "oq-1").unwrap();
+    let oq2 = all.iter().find(|i| i.id == "oq-2").unwrap();
+    assert_eq!(oq1.status, OfflineQueueStatus::Synced);
+    assert_eq!(oq2.status, OfflineQueueStatus::Synced);
+    assert!(oq1.synced_at.is_some());
+    assert!(oq2.synced_at.is_some());
+}
+
 // ── Guarded transition (compare-and-set) ────────────────────────
 
 /// The marking must JOIN a caller-owned transaction, never open its own.

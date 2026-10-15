@@ -66,4 +66,19 @@ tables-toast-bill-print-failed = Failed to print bill
 tables-tab-conflict-warning = { $terminal } is currently editing this tab
 tables-tab-takeover = Take Over Tab
 tables-toast-takeover-success = Took over tab from { $terminal }
+tables-reserve-table = Reserve Table
+tables-reserve-table-title = Reserve Table { $table }
+tables-reserve-name-label = Guest Name
+tables-reserve-name-placeholder = e.g. John Doe
+tables-reserve-phone-label = Contact / Phone
+tables-reserve-phone-placeholder = e.g. 08123456789
+tables-reserve-time-label = Reservation Time
+tables-reserve-time-placeholder = e.g. 19:00
+tables-reserve-notes-label = Notes / Special Requests
+tables-reserve-notes-placeholder = e.g. Window seat, Birthday
+tables-reserve-confirm = Confirm Reservation
+tables-toast-reserved = Table { $table } reserved for { $guest }
+tables-seat-guests = Seat Guests
+tables-toast-guests-seated = Guests seated at Table { $table }
+
 

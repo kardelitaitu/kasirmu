@@ -83,7 +83,26 @@ impl SyncConfig {
 /// synced or failed). This is the DB-only post-processing phase that
 /// runs after the async HTTP call completes, so no Store reference
 /// is held during the network round-trip.
+///
+/// Invariant (O-H03): Wraps all outcome transitions in a single transaction
+/// when in autocommit, reducing N disk fsyncs during queue drain to exactly 1.
 pub fn apply_sync_outcomes(
+    store: &Store,
+    pending: &[OfflineQueueItem],
+    outcomes: &[PushOutcome],
+) -> Result<SyncAttemptResult, CoreError> {
+    if store.conn().is_autocommit() {
+        let tx = store.conn().unchecked_transaction()?;
+        let store_tx = Store::new(&tx);
+        let res = apply_sync_outcomes_inner(&store_tx, pending, outcomes)?;
+        tx.commit()?;
+        Ok(res)
+    } else {
+        apply_sync_outcomes_inner(store, pending, outcomes)
+    }
+}
+
+fn apply_sync_outcomes_inner(
     store: &Store,
     pending: &[OfflineQueueItem],
     outcomes: &[PushOutcome],
@@ -379,6 +398,21 @@ fn send_items_to_server_blocking(
     push_outcomes_without_http()
 }
 
+/// Shared HTTP client for sync push, memos, and QRIS operations.
+///
+/// Invariant (O-H04): Retains a pooled reqwest::Client to reuse TCP+TLS connections
+/// and prevent handshake overhead on repeated sync and poll ticks.
+#[cfg(feature = "sync-http")]
+pub(crate) fn shared_sync_http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
 /// Send a batch of offline queue items to the remote server via
 /// `POST /api/sync/push` and return per-item outcomes (async).
 #[cfg(feature = "sync-http")]
@@ -388,10 +422,7 @@ pub async fn send_items_to_server(
 ) -> Result<Vec<PushOutcome>, SyncHttpError> {
     let url = format!("{}/api/sync/push", config.server_url.trim_end_matches('/'));
 
-    let mut request = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+    let mut request = shared_sync_http_client()
         .post(&url)
         .header("Content-Type", "application/json");
 
@@ -552,10 +583,7 @@ pub async fn ack_memo_on_server(
         memo_id
     );
 
-    let mut request = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+    let mut request = shared_sync_http_client()
         .post(&url)
         .header("Content-Type", "application/json");
 
@@ -606,10 +634,7 @@ pub async fn push_memos_to_server(
         config.server_url.trim_end_matches('/')
     );
 
-    let mut request = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+    let mut request = shared_sync_http_client()
         .post(&url)
         .header("Content-Type", "application/json");
 
@@ -706,10 +731,7 @@ pub async fn fetch_active_memos_from_server(
         config.server_url.trim_end_matches('/')
     );
 
-    let mut request = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+    let mut request = shared_sync_http_client()
         .get(&url)
         .query(&[("terminal_id", terminal_id)]);
 
@@ -809,19 +831,11 @@ pub async fn qris_charge_on_server(
         config.server_url.trim_end_matches('/')
     );
 
-    let mut request = reqwest::Client::builder()
-        // The cloud waits on Midtrans inside this request; the gateway's
-        // own budget is smaller than 30 s, so this ceiling only fires on
-        // genuinely stuck connections. Same client ceiling as the memo read.
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| SyncHttpError::Client(e.to_string()))?
-        .post(&url)
-        .json(&QrisChargeBody {
-            sale_id: sale_id.to_owned(),
-            amount_minor,
-            idempotency_key: idempotency_key.map(str::to_owned),
-        });
+    let mut request = shared_sync_http_client().post(&url).json(&QrisChargeBody {
+        sale_id: sale_id.to_owned(),
+        amount_minor,
+        idempotency_key: idempotency_key.map(str::to_owned),
+    });
 
     if let Some(ref key) = config.api_key {
         request = request.header("Authorization", &format!("Bearer {key}"));
@@ -871,11 +885,7 @@ pub async fn qris_status_from_server(
         order_id
     );
 
-    let mut request = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| SyncHttpError::Client(e.to_string()))?
-        .get(&url);
+    let mut request = shared_sync_http_client().get(&url);
 
     if let Some(ref key) = config.api_key {
         request = request.header("Authorization", &format!("Bearer {key}"));

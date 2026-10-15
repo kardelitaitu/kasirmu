@@ -308,6 +308,26 @@ impl Store<'_> {
         Ok(idx.map(format_base62_index))
     }
 
+    /// Read all staff codes indexed by user_id in a single query.
+    pub fn list_staff_codes_map(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, index_id FROM users WHERE deleted_at IS NULL AND index_id IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let index_id: i64 = row.get(1)?;
+            Ok((id, format_base62_index(index_id)))
+        })?;
+        let mut map = std::collections::HashMap::new();
+        for r in rows {
+            let (id, code) = r?;
+            map.insert(id, code);
+        }
+        Ok(map)
+    }
+
     /// The centralized fail-closed authorization gate (ADR #35 D3 / spec
     /// 0047): resolve `user_id` to their role and verify the role grants
     /// `required`.

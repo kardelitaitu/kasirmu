@@ -69,7 +69,7 @@ export function WorkspaceInventorySettings({
     // has touched (:61, :64), which is the signature of a function written to be re-entered.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
     if (reloadNonce === 0 && loadedForRef.current === sessionToken) return;
-    loadedForRef.current = sessionToken;
+    // (the latch used to be set HERE, before the read — see the .finally() below)
 
     Promise.all([
       getSettingScoped(sessionToken ?? null, 'inventory.low_stock_threshold'),
@@ -92,6 +92,14 @@ export function WorkspaceInventorySettings({
       // failure look saved; `loadFailed` disables Save instead.
       setLoadFailed(true);
     }).finally(() => {
+      // Set the once-per-session latch WHERE THE OUTCOME LANDS, not before the read.
+      //
+      // With the latch set first, StrictMode's run 1 started the read and run 2 returned at the
+      // guard, so the only read belonged to a run whose outcome is discarded — which makes
+      // `setLoadFailed(true)` above unreachable. Round 235 fixed this ordering in
+      // `WorkspaceRestaurantPosSettings`, round 238 in `WorkspaceKdsSettings`; this is the third
+      // and last of the family.
+      loadedForRef.current = sessionToken;
       setLoaded(true);
     });
     // sessionToken is a prop (:21) read at :57 and :58. Without it here, a card mounted before a

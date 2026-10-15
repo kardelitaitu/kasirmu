@@ -159,6 +159,25 @@
   gap: var(--space-3);
   position: sticky;
   top: 0;
+  /*
+   * ⚠️ THE COLUMN MUST NOT REACH THE MEMO STACK'S BAND.
+   *
+   * MEASURED 2026-10-15 (rounds 247-255). Unlike the menu editor's rail, this column's sticky
+   * offset IS zero (`top: 0` above), so the cap needs no header term: it is simply the space above
+   * the stack. Measured before this rule: the drawer and preview-chit buttons sat at y=682 and
+   * y=628 with the stack occupying y 610..747, and `elementFromPoint` at each centre returned a
+   * memo node.
+   *
+   * Round 248's scroller-level reserve (`padding-bottom` on `.restaurant-settings-main`, below) only
+   * lifts these at the scroll END, because a sticky child does not travel with its scroller.
+   * Bounding the COLUMN is what makes them clear AT REST, which is what the acceptance
+   * specification (`ui/e2e/restaurant-memo-clearance.spec.ts`) asserts.
+   *
+   * 215px is the three-bubble height the stack's own MAX_STACK allows, so it holds for any pending
+   * count at either profile.
+   */
+  max-height: calc(100dvh - var(--space-6));
+  overflow-y: auto;
 }
 
 /* Same width-only reasoning as the grid collapse above: unstick the rail and
@@ -1860,3 +1879,35 @@
 }
 
 
+
+
+/*
+ * Clearance for the fixed memo stack, on the RECEIPTS screen's settings column.
+ *
+ * MEASURED DEFECT (2026-10-15, round 247). At the desktop 1366x768 profile with the dev-mock's two
+ * memos pending:
+ *
+ *   drawer button   y 682..726
+ *   .memo-stack     y 610..747        <- overlaps
+ *   elementFromPoint(centre of the button) -> "memo-banner-title"
+ *
+ * The column is `position: sticky; top: 0` (`.restaurant-preview-column`, above), so it does NOT
+ * travel with `.restaurant-settings-main`'s scroll: measured, setting that scroller's `scrollTop` to
+ * 400 left the button at y=682. Its own `scrollIntoView({block:'center'})` does not move it either.
+ * So there is no scroll position that escapes — the same shape `StaffManagementScreen.css:219-245`
+ * documents for the roles list, and the same mechanism fixes it.
+ *
+ * Reserving the stack's height at the BOTTOM of the scrolling region lets the sticky column's last
+ * content clear it at the scroll end. The reserve is a SCROLL-TIME fix because the column is sticky;
+ * it is the region's own box that has to end above the stack.
+ *
+ * Gated on the stack's presence, so a session with no memos pays no dead band. */
+body:has(.memo-stack) .restaurant-preview-column {
+  max-height: calc(100dvh - var(--memo-bottom-inset, var(--space-6)) - 215px);
+}
+
+body:has(.memo-stack) .restaurant-settings-main {
+  /* The --space-6 gutter plus a full stack: MAX_STACK = 3 bubbles in MemoBanner.tsx, measured at
+     215px at the 1024x1366 tablet profile. */
+  padding-bottom: calc(var(--space-6) + 215px);
+}
