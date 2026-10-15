@@ -311,8 +311,14 @@ export default function ExpoScreen() {
       if (nextStatus === 'ready') {
         speak(`${requiredLocalized(l10n, 'kds-order-up-tts')} ${item.display_name} ${requiredLocalized(l10n, 'kds-ready-tts')}!`);
       }
-    } catch {
-      // Silent — the next poll refresh replaces the board anyway.
+    } catch (e) {
+      // The ticket-level tap directly above reports through `setActionError` (:302); this
+      // item-level path swallowed the failure with "the next poll refresh replaces the
+      // board anyway". A poll replaces the DISPLAY, not the WRITE — the cook tapped
+      // "this dish is done", the dot did not move, and nothing said why. Same defect and
+      // same fix as KdsScreen.advanceItemStatus.
+      console.error('ExpoScreen advance item failed', e);
+      setActionError(l10nErrorMessage(e, l10n, 'kds-error-update-failed'));
     }
   }, [sessionToken, speak, l10n]);
 

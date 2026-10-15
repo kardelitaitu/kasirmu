@@ -254,7 +254,18 @@ export default function KdsScreen() {
         speak(`${requiredLocalized(l10n, 'kds-order-up-tts')} ${item.display_name} ${requiredLocalized(l10n, 'kds-ready-tts')}!`);
       }
     } catch {
-      // Silent — the backend will emit kds:orders-changed on next poll.
+      // A FAILED item write used to be swallowed here with the note "the backend will
+      // emit kds:orders-changed on next poll". A poll repairs the DISPLAY, not the
+      // WRITE: the cook tapped "this dish is done", the status dot did not move, and
+      // nothing said why — so the honest response was to relaunch the app or tap
+      // harder. The ticket-level tap directly above (advanceStatus) has always
+      // reported through `wrapUpdate`; this path is the one that was silent.
+      //
+      // The offline queue is keyed on (orderId, targetStatus) and has no item-level
+      // action type, so it cannot be reused verbatim here. What the operator needs is
+      // the same SIGNAL, so reuse the same string the ticket path raises rather than
+      // inventing a second wording for the same situation.
+      setError(requiredLocalized(l10n, 'kds-offline-queued-update'));
     }
   }, [sessionToken, speak, l10n]);
 
