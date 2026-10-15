@@ -365,6 +365,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [UI test duration: the split, and the ceiling I got wrong (2026-10-12)](audits/ui-test-duration-split.md) | — |
 | general | [Test environment: 223 files moved off jsdom, and a CSS defect found (2026-10-12)](audits/ui-test-environment-node.md) | — |
 | general | [Worker cap, happy-dom and merging: three experiments, two refusals (2026-10-12)](audits/ui-test-levers-measured.md) | — |
+| general | [The view-gated split CAN hide a gap, and two guards for it do not bind (round 273)](audits/view-gated-split-can-hide.md) | — |
 | general | [Two cards never read their settings, and one missing prop explains it (round 237)](audits/workspace-cards-missing-token.md) | — |
 | ui | [F10's modal renders again, and one F4 guard stays out of reach (round 232)](audits/workspace-modal-provider-fix.md) | — |
 | ui | [F10 opens a modal that throws: the fourth F4 guard was unreachable, and why (round 231)](audits/workspace-settings-modal-crash.md) | — |
