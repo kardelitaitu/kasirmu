@@ -123,6 +123,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [docs/ Folder Audit — 2026-09-28](audits/2026-09-28-docs-audit.md) | — |
 | general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](audits/2026-09-29-desktop-launch-integrity-label.md) | — |
 | general | [Documentation-Code Audit — 2026-10-08](audits/2026-10-08-docs-audit.md) | — |
+| general | [49 of the 50 "modified" paths are phantoms, and one is real (round 289)](audits/49-of-50-modified-paths-are-phantoms.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
 | general | [The acceptance spec's clip rule, validated against a probe that lacked it (round 271)](audits/acceptance-clip-rule-validated.md) | — |
 | general | [Round 213's conclusion was wrong, and probing the popover is what showed it (round 214)](audits/active-tab-banner-correction.md) | — |
