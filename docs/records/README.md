@@ -158,6 +158,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The dead posScreenHooks module is removed (round 111)](audits/dead-hook-removal.md) | — |
 | general | [A dead hook's tests were covering the live hook's behaviour (round 107)](audits/dead-hook-tests-mask-live-gap.md) | — |
 | general | [The dead hook's LAST masked behaviour: corrupt-draft resilience (round 110)](audits/dead-hook-third-export.md) | — |
+| general | [The deduction badge: reachable, and why it costs a price override (round 242)](audits/deduction-badge-trace.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
 | ui | [The mock's feature answer: why it cannot be fixed by pointing at a preset (round 130)](audits/dev-mock-feature-answer-options.md) | — |
