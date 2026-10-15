@@ -267,6 +267,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | payments | [A real Card settlement driven to a receipt, live (round 118)](audits/pos-card-settlement-live.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
+| general | [Three POS dialogs declared aria-modal and trapped nothing](audits/pos-dialogs-without-focus-trap.md) | — |
 | general | [A POS cart could follow the operator to another store (round 104)](audits/pos-draft-store-scoping.md) | — |
 | general | [The POS family's remaining sequence guards are all pinned (round 117)](audits/pos-family-guards-pinned.md) | — |
 | general | [POS-family shuffle sweep, second pass (round 102)](audits/pos-family-shuffle-sweep-2.md) | — |
