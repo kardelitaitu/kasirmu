@@ -346,6 +346,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A retail terminal could read and delete a restaurant's open bill by id (round 303)](audits/retail-could-delete-a-restaurant-open-bill.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | general | [Round 18's in-flight Rust run: slow, and the first explanation was wrong (round 306)](audits/rust-suite-slow-by-design.md) | — |
+| general | [A failed sale-detail open was a dead tap — the one read settleRead never covered](audits/sale-detail-open-failure-was-silent.md) | — |
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [The scan counted mentions as uses, and round 269 was the proof (round 270)](audits/scan-mentions-vs-uses.md) | — |
 | general | [Half the "missing" ids are unit-asserted, and the scan only read e2e (round 275)](audits/scan-unit-layer.md) | — |
