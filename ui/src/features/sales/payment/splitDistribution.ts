@@ -39,6 +39,20 @@
  * is kept because a total of 0 rows is a question this function should answer
  * instead of dividing by zero and producing NaN strings.
  *
+ * ⚠️ THE DOMAIN IS NON-NEGATIVE, and the "exact by construction" law above holds
+ * only there. Measured (round 301, probe since deleted): `distributeEvenly(-1, 2, 0)`
+ * returns `['-1','-2']`, which sums to -3 rather than -1 — a shortfall of
+ * (count - 1) units, because `Math.floor` rounds negatives toward -infinity and `%`
+ * keeps the sign of the dividend, so the residual is subtracted from the last row
+ * instead of added to it.
+ *
+ * That is NOT a live defect, and saying why is the point of this note: neither
+ * caller can produce a negative total (`useTenderMath.ts:96` clamps at zero via
+ * `base - discount >= 0n ? ... : 0n`), and the cashier-typed split amounts are
+ * floored at zero too (`useTenderMath.ts:170`, `if (parsed < 0) return 0n`). It is
+ * pinned by a case in splitDistribution.test.ts so that a future caller which CAN
+ * go negative fails a test rather than silently over-splitting.
+ *
  * MONEY: integer minor units in, decimal literals out, no float anywhere on the
  * path. totalMinor is the integer the money hook already holds; the only two
  * operations on it are Math.floor and %, both exact on integers; the minor ->
