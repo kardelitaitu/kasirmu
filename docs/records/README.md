@@ -136,6 +136,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The course chip, behind a setting that is off by default (round 205)](audits/cart-line-course-chip.md) | — |
 | general | [The modifiers region and the override permission (round 209)](audits/cart-line-modifiers-region.md) | — |
 | general | [The cart panel's reachable controls, and two that are not (round 216)](audits/cart-panel-controls.md) | — |
+| general | [The tablet cart sheet sat above every modal (round 243)](audits/cart-sheet-stacking.md) | — |
 | payments | [A switch with no aria-checked, found by a probe that could not read it (round 179)](audits/cash-drawer-kick-aria.md) | — |
 | payments | [The cash-preset chips write to a rail parameter nothing reads (round 120)](audits/cash-preset-chips-unread.md) | — |
 | payments | [The cash presets are now read: rounds 120-121's inventory gets its first repair (round 122)](audits/cash-presets-wired.md) | — |
