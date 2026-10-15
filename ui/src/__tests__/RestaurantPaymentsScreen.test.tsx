@@ -48,6 +48,50 @@ function productsFtlLine(id: string): string {
   return line.slice((id + ' = ').length).trim();
 }
 
+// ── The Midtrans channel keys, read from the source rather than typed ────────
+//
+// The channel chips are generated from a six-entry array in the screen and addressed
+// by a TEMPLATE testid (`midtrans-channel-${ch.key}`), so their ids exist only at
+// runtime. A test that names them has to know the key strings — and a key string typed
+// into a test goes stale silently the day the source list changes.
+//
+// Parsing keeps the test honest in the direction that matters: adding a seventh channel
+// makes the parsed length rise, and the case that consumes this has an explicit length
+// assertion so it fails and asks to be re-read rather than silently widening.
+const PAYMENTS_SCREEN_PATH = path.resolve(
+  __dirname,
+  '../features/restaurant/screens/RestaurantPaymentsScreen.tsx',
+);
+
+function readChannelKeysFromSource(): string[] {
+  const src = fs.readFileSync(PAYMENTS_SCREEN_PATH, 'utf-8');
+  // Matches the array-literal shape the JSX uses: `{ key: 'gopay', label: l10n.getString(...)
+  const keys = [...src.matchAll(
+    /\{ key: '([a-z_0-9]+)', label: l10n\.getString\('restaurant-payment-midtrans-channel-/g,
+  )].flatMap((m) => m[1] ?? []);
+  return [...new Set(keys)];
+}
+
+/**
+ * Each channel's DEFAULT on-state, parsed from the same screen's `useState` seed.
+ *
+ * Needed because three channels start ON (gopay/shopeepay/bca_va) and three bank VAs
+ * start OFF. Asserting a chip's default without knowing which is which would pass
+ * against a default that had flipped — the guest_count class of bug this plan has
+ * recorded before, where a screen and its consumer disagreed about an unset value.
+ */
+const DEFAULT_CHANNELS: Record<string, boolean> = (() => {
+  const src = fs.readFileSync(PAYMENTS_SCREEN_PATH, 'utf-8');
+  const seed = src.match(/useState<Record<string, boolean>>\(\{([^}]*)\}\)/);
+  const body = seed?.[1] ?? '';
+  const out: Record<string, boolean> = {};
+  for (const m of body.matchAll(/([a-z_0-9]+):\s*(true|false)/g)) {
+    const key = m[1];
+    if (key !== undefined) out[key] = m[2] === 'true';
+  }
+  return out;
+})();
+
 // ── Mocks ─────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
   getPrimary: vi.fn(),
@@ -796,10 +840,95 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     const midtransVerified = productsFtlLine('restaurant-payment-midtrans-keys-valid')
       .replace('{ $env }', 'SANDBOX');
     expect(screen.getByText(midtransVerified)).toBeInTheDocument();
+  });
 
-    // Expand Stripe
-    const stripeToggle = screen.getByTestId('payment-card-toggle-stripe');
-    await user.click(stripeToggle);
+  // ── The Midtrans channel chips: all six, and the write that survives ─────────
+  //
+  // WHY: the case above asserts ONE channel's aria-pressed — the whole of the channel
+  // coverage. Six exist, and their testids are generated from a TEMPLATE
+  // (`midtrans-channel-${ch.key}`), so the only way to address five of them is to know
+  // the key strings — which nothing in the repo pins. Round 264 recorded the
+  // template-literal class as how the coverage scan once took a wrong reading on this
+  // very screen.
+  //
+  // And a chip that flips aria-pressed is not proof the operator's choice survives. The
+  // chips feed `updateRailParams('midtrans', { channels: next })`, and `handleSave`
+  // sanitises the result into the rail parameters via the `midtrans: ['channels']`
+  // allow-list. A toggle that stored the key wrongly — dropping it instead of writing
+  // `false` — would flip the button correctly and then have the load path re-seed the
+  // default `true`, silently restoring a channel the merchant turned off. Only the
+  // SAVED PAYLOAD shows which shape actually persists, which is what this reads.
+  //
+  // The key list is PARSED FROM THE SOURCE, not typed here: the ids are derived from
+  // data, so a seventh channel has to be asserted by a test that reads the array. The
+  // explicit length check is the signal to re-read rather than a silent widening.
+  it('derives all six channel chips from the source and persists every one of them', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+    await user.click(screen.getByTestId('payment-card-toggle-midtrans'));
+
+    const CHANNEL_KEYS = readChannelKeysFromSource();
+    expect(
+      CHANNEL_KEYS.length,
+      'no channels parsed from the source — the parser is broken, so the case below is vacuous',
+    ).toBe(6);
+
+    // Every derived chip exists and starts in its DEFAULT state, so a chip that
+    // stopped rendering — or whose testid stopped matching its key — cannot pass.
+    for (const key of CHANNEL_KEYS) {
+      const chip = screen.getByTestId(`midtrans-channel-${key}`);
+      expect(chip, `${key} chip missing`).toBeInTheDocument();
+      expect(chip).toHaveAttribute('aria-pressed', String(DEFAULT_CHANNELS[key] ?? false));
+    }
+
+    // Flip EVERY channel exactly once, from whatever its default is, and record the
+    // resulting state. Three channels default ON (gopay/shopeepay/bca_va) and three
+    // default OFF, so "flip all to false" would be wrong for half of them — a flip
+    // from OFF lands on ON. Deriving the expected value from the default rather than
+    // hardcoding it keeps this honest for any default set, which is the point: the
+    // merchant's choice is what persists, not a hardcoded list.
+    const expectedAfterFlip: Record<string, boolean> = {};
+    for (const key of CHANNEL_KEYS) {
+      await user.click(screen.getByTestId(`midtrans-channel-${key}`));
+      expectedAfterFlip[key] = !DEFAULT_CHANNELS[key];
+    }
+    for (const key of CHANNEL_KEYS) {
+      expect(
+        screen.getByTestId(`midtrans-channel-${key}`),
+        `${key} did not flip from its default ${String(DEFAULT_CHANNELS[key])}`,
+      ).toHaveAttribute('aria-pressed', String(expectedAfterFlip[key]));
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(mocks.setMethods).toHaveBeenCalledTimes(1);
+    });
+
+    // The durable write carries the FULL six-key map with the flipped values.
+    //
+    // `toEqual`, not `objectContaining`: a key DROPPED from the map is invisible to a
+    // partial matcher and is exactly the shape that would make a reload re-seed the
+    // default for that channel. This is the only assertion in the suite that sees it.
+    const payload = (mocks.setMethods.mock.calls[0]?.[2] ?? []) as Array<{
+      rail_code: string;
+      parameters: string;
+    }>;
+    const midtransRail = payload.find((r) => r.rail_code === 'midtrans');
+    expect(
+      midtransRail,
+      'no midtrans rail in the save payload — the chips wrote nowhere at all',
+    ).toBeDefined();
+    if (!midtransRail) return;
+    const savedParams = JSON.parse(midtransRail.parameters);
+    expect(savedParams.channels).toEqual(expectedAfterFlip);
+  });
+
+  it('interacts with Midtrans and Stripe configuration buttons via data-testid (continued)', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+    await user.click(screen.getByTestId('payment-card-toggle-stripe'));
 
     const liveBtn = screen.getByTestId('stripe-mode-live');
     await user.click(liveBtn);
