@@ -358,6 +358,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Auditing my own assertions for round 196's flaw, and where it did not apply (round 197)](audits/table-spec-assertion-audit.md) | — |
 | general | [Print Bill, and the failure arm the injection seam made testable (round 221)](audits/tables-print-bill.md) | — |
 | sync | [The tables tab-conflict pair: seam confirmed, route not finished (round 279)](audits/tables-tab-conflict-partial.md) | — |
+| sync | [The tables tab-conflict route: the regex was not the bug (round 280)](audits/tables-tab-conflict-route2.md) | — |
 | general | [The tables toolbar and the verb its state decides (round 219)](audits/tables-toolbar.md) | — |
 | general | [Three ways an instrument lied, and the tell for each (round 226)](audits/three-instrument-failures.md) | — |
 | general | [Three more latches set before their reads, and what is proven about them (round 236)](audits/three-more-latches-scanned.md) | — |
