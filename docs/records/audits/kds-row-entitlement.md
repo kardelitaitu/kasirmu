@@ -88,3 +88,5 @@ behaviour, and every one of them has a named cause.**
 Nothing on `CartPanel`. The remaining open surface by the same measure is the payments screen's
 Midtrans and Stripe credential fields - 17 ids, deliberately deferred twice, and the same question
 applies as applied here: are they gated by an entitlement rather than by a missing test?
+
+> last audited 15-10-26 by docs-auditor
