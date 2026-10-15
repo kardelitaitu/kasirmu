@@ -297,6 +297,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
+| general | [The scan reported a designed relocation as a coverage gap (round 261)](audits/scan-view-gated.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
 | general | [The missing scoped-storage helper, built and pinned (round 168)](audits/scoped-storage-helper.md) | — |
 | general | [The section filter narrowed the counts, not the floor plan (round 244)](audits/section-filter-broken.md) | — |
