@@ -890,7 +890,21 @@ describe('TableManagementScreen', () => {
       expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
       expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-2', 'occupied');
     });
+
+    // THE ORDER, asserted where the happy path already runs. A success-path case
+    // says nothing about ordering on its own: the failure case below is what proves
+    // the delete is survivable, and this line is what proves the fix is an ORDERING
+    // and not just "the delete still happens".
+    //
+    // `invocationCallOrder` is the repo's existing technique for this
+    // (useSound.test.tsx:259). It is asserted on the success path too because a
+    // future refactor could reintroduce the unsafe order without changing which
+    // calls happen — only when.
+    expect(mockHoldCart.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockDeleteHeldCart.mock.invocationCallOrder[0]!,
+    );
   });
+
   // ── The move must not delete the bill before the new one exists ─────────────
   //
   // WHY: `handleMoveTable` ran DELETE -> HOLD. If the hold then failed there was
@@ -1141,7 +1155,14 @@ describe('TableManagementScreen', () => {
       );
       expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
     });
+
+    // Same ordering invariant as the move case above, on the path where getting it
+    // wrong costs TWO tables' bills rather than one.
+    expect(mockHoldCart.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockDeleteHeldCart.mock.invocationCallOrder[0]!,
+    );
   });
+
   // The merge deleted BOTH bills before creating the combined one, so a failed hold
   // lost two tables' open bills at once. Same fix and same assertion shape as the move
   // case above: the negative check on the deletes is what proves the fix.
