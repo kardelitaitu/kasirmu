@@ -101,6 +101,16 @@ VIEW_GATED = {
     'deduction-location-badge',
     'deduction-override-indicator',
 }
+
+# The `used` measure needs its own floor, for the same reason `SELF_CHECK_ID` exists above.
+#
+# Kill-tested 2026-10-15 (round 272): replacing `SELECTOR_CALL` with a pattern that matches nothing
+# collapsed every `used` count to 0-2 and the script still exited 0. A broken measure that reports
+# silently is worse than no measure, because the number is read as a finding.
+#
+# The floor is a FLOOR, not a target: it only has to be high enough that a collapsed measure cannot
+# clear it. Measured at 200+ when healthy, so 50 is far below any real value and far above zero.
+USED_FLOOR = 50
 SELF_CHECK_ID = 'restaurant-menu-editor-bulk-avail'
 
 
@@ -158,6 +168,13 @@ def main():
                      'covered': len(hit), 'used': len(used_ids_here),
                      'missing': [i for i in ids if i not in hit and i not in VIEW_GATED],
                      'view_gated': [i for i in ids if i in VIEW_GATED]});
+
+    total_used = sum(r['used'] for r in rows)
+    if total_used < USED_FLOOR:
+        print('REFUSING TO REPORT: the used measure found only %d selector uses.' % total_used)
+        print('That is far below any healthy value, so the measure is broken and the column')
+        print('would be read as a finding. Check SELECTOR_CALL and the spec corpus.')
+        return 1
 
     if args.json:
         print(json.dumps(rows, indent=2))
