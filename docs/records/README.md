@@ -384,6 +384,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | sync | [The tab-conflict "needs a second terminal" blocker is soft, and half of it is proven (round 277)](audits/tab-conflict-seam-found.md) | — |
 | general | [The tab park cycle, and the defect two rounds misread (round 215)](audits/tab-park-cycle.md) | — |
 | general | [The last surviving table assertion, and the audit closing (round 198)](audits/table-assertion-audit-closed.md) | — |
+| general | [A completed sale that never claimed its table, reported to nobody](audits/table-assignment-failure-was-silent.md) | — |
 | general | [The delete guard that protects a table mid-service (round 194)](audits/table-delete-guard.md) | — |
 | general | [The table EDIT form, which must arrive prefilled (round 220)](audits/table-edit-form.md) | — |
 | general | [The table floor plan, driven live — and a probe that read it too early (round 177)](audits/table-floor-plan-live.md) | — |
