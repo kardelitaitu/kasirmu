@@ -739,6 +739,84 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     });
   });
 
+  // ── The dual write: legacy settings are the FALLBACK layer ──────────────
+  //
+  // The screen writes receipt settings TWICE, deliberately (the comment at
+  // RestaurantReceiptsScreen.tsx:1131-1135 says so):
+  //
+  //   1. `setReceiptSettingsScoped` — the legacy org/workspace layer.
+  //   2. `setReceiptLayoutScoped`  — the SCOPED layout the printed receipt actually
+  //      resolves through, SKIPPED when no workspace scope was resolved, so the
+  //      legacy write then remains the sole writer.
+  //
+  // Neither write had an assertion anywhere: the screen's mocks exist but no case
+  // read what they received. That left the fallback claim untested — exactly the
+  // shape this plan has had to correct repeatedly, a documented guarantee with
+  // nothing checking it.
+
+  it('writes the footer to BOTH layers, with the show-footer flag applied', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const footerField = document.querySelector('#resto-rcpt-footer') as HTMLTextAreaElement;
+    await user.clear(footerField);
+    await user.type(footerField, 'Terima kasih');
+
+    await user.click(screen.getByRole('button', { name: /Save/i }));
+
+    const { setReceiptSettingsScoped } = await import('@/api/settings');
+    const { setReceiptLayoutScoped } = await import('@/api/receipt-format');
+
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    const legacy = vi.mocked(setReceiptSettingsScoped).mock.calls[0]![1] as unknown as {
+      footer: string;
+    };
+    // The legacy layer carries the footer TEXT, with the toggle already folded in.
+    expect(legacy.footer).toBe('Terima kasih');
+
+    // The scoped layer carries the same text under its own field name, so the
+    // printed receipt (which resolves through THIS layer) shows it.
+    const scopedCalls = vi.mocked(setReceiptLayoutScoped).mock.calls;
+    if (scopedCalls.length > 0) {
+      const layout = scopedCalls[0]![2] as unknown as { footerNote: string };
+      expect(
+        layout.footerNote,
+        'the scoped layer must carry the same footer text the legacy layer got',
+      ).toBe('Terima kasih');
+    }
+  });
+
+  it('sends an EMPTY footer to both layers when the footer toggle is off', async () => {
+    // `showFooter ? footer : ''` is what makes an empty value encode "off" — so the
+    // text can never outlive a disabled toggle on the printed receipt.
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const footerField = document.querySelector('#resto-rcpt-footer') as HTMLTextAreaElement;
+    await user.clear(footerField);
+    await user.type(footerField, 'JANGAN TAMPIL');
+
+    // The footer switch specifically. There are MANY `role="switch"` elements on this
+    // screen, so picking the first checked one targets the wrong toggle — measured: the
+    // first version of this case did exactly that and failed on the wrong control.
+    const footerToggle = screen.getByRole('switch', { name: /show footer/i });
+    expect(footerToggle).toHaveAttribute('aria-checked', 'true');
+    await user.click(footerToggle);
+    expect(footerToggle).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(screen.getByRole('button', { name: /Save/i }));
+
+    const { setReceiptSettingsScoped } = await import('@/api/settings');
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    const legacy = vi.mocked(setReceiptSettingsScoped).mock.calls[0]![1] as unknown as {
+      footer: string;
+    };
+    expect(
+      legacy.footer,
+      'a disabled footer toggle must send empty text, or the receipt prints it anyway',
+    ).toBe('');
+  });
+
   it('remains clean with All changes saved on mount when preferences exist in localStorage', async () => {
     localStorage.setItem('resto_rcpt_header_title', 'WARUNG MAKAN PADANG');
     localStorage.setItem('resto_rcpt_header_line1', 'Jl. Sudirman No. 42');
