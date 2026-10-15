@@ -265,6 +265,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Round 294's guard, proven in a browser — and the two states it took to get there (round 296)](audits/open-tab-shift-close-proven-in-browser.md) | — |
 | payments | [The payments F4 latch, and a red suite that was not mine (round 227)](audits/payments-f4-latch.md) | — |
 | payments | [Round 156's third finding was a false alarm, and it is now pinned (round 157)](audits/payments-save-location-race-pinned.md) | — |
+| payments | [RestaurantPaymentsScreen save: partial-batch failure — audited, NO defect, now locked](audits/payments-save-partial-failure-locked.md) | — |
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | general | [The plan's last claim verified at HEAD, and its one open item (round 113)](audits/plan-claims-and-f40-blocker.md) | — |
 | general | [The plan-empty state, reached through a seam rather than thirteen lifecycle calls (round 268)](audits/plan-empty-covered.md) | — |
