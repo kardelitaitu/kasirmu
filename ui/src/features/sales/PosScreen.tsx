@@ -1461,13 +1461,37 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return defaultTenderPresets(activeCurrency);
   }, [activeCurrency, paymentRails]);
 
+  /**
+   * Exit Terminal — NAVIGATION, and it must always be reachable.
+   *
+   * This used to divert into `handleCloseShiftClick()` whenever a shift was open, on
+   * the reasoning that leaving with an open shift should reconcile the cash first. The
+   * intent is sound and the mechanism was not: close-shift REFUSES when the cart is not
+   * empty and (since round 294) when a tab is outstanding, so the diversion turned a
+   * navigation action into a dead end. Measured in a browser with an open tab:
+   *
+   * ```
+   * PROBE RESULT homescreen=false closeshift=false opentab=true
+   * ```
+   *
+   * The operator pressed "Exit Workspace", got an error about a tab, and stayed exactly
+   * where they were. `setShowExitConfirm` is only reached when `activeShift === null`, so
+   * there was no second route out — the till could not be left at all until the tab was
+   * dealt with, by someone who already had their hand on the exit control.
+   *
+   * The two actions are genuinely different and are now separate:
+   *   · Exit Workspace        — navigation, always available, its own copy confirms it
+   *                             ("Exit Workspace / exit to the homescreen?")
+   *   · Close Shift           — cash reconciliation, stays guarded, because THAT is the
+   *                             surface where an unreconciled tab or cart is a real loss
+   *
+   * The dialog carries the warning instead of the guard, so the operator is told what
+   * they are walking away from and then allowed to decide. Blocking someone from leaving
+   * a screen is not a cash control; it is a lock-out.
+   */
   const handleRequestExit = useCallback(() => {
-    if (activeShift !== null) {
-      handleCloseShiftClick();
-    } else {
-      setShowExitConfirm(true);
-    }
-  }, [activeShift, handleCloseShiftClick]);
+    setShowExitConfirm(true);
+  }, []);
 
   const handleOpenCashDrawer = useCallback(async () => {
     if (!sessionToken) {
@@ -2132,7 +2156,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           goToWorkspacePicker();
         }}
         title={l10n.getString('restaurant-exit-confirm-title')}
-        message={l10n.getString('restaurant-exit-confirm-desc')}
+        // The warning the old guard was trying to deliver, delivered as INFORMATION.
+        //
+        // A shift that is still open (or a tab still outstanding) is worth saying out
+        // loud before someone walks away from the till — that is the real safety
+        // property. Refusing to navigate is not: it produced a dead end, and the
+        // operator could not act on the refusal from the exit control they were using.
+        // So the message names what is being left behind and the operator decides.
+        message={
+          activeShift !== null
+            ? l10n.getString('restaurant-exit-confirm-open-shift-desc')
+            : l10n.getString('restaurant-exit-confirm-desc')
+        }
         variant="warning"
         confirmLabel={l10n.getString('restaurant-exit-confirm-btn')}
       />

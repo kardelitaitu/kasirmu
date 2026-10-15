@@ -316,6 +316,7 @@ restaurant-lock-terminal = Kunci Terminal
 restaurant-exit-terminal = Keluar Terminal
 restaurant-exit-confirm-title = Keluar Ruang Kerja
 restaurant-exit-confirm-desc = Apakah Anda yakin ingin keluar ke layar utama?
+restaurant-exit-confirm-open-shift-desc = Masih ada shift yang terbuka. Keluar akan meninggalkannya tanpa rekonsiliasi — tutup dulu shift-nya dari bilah samping jika Anda perlu menghitung uang di laci.
 restaurant-exit-confirm-btn = Keluar
 restaurant-toggle-fullscreen = Aktifkan/nonaktifkan layar penuh
 restaurant-clear-color-aria = Hapus warna

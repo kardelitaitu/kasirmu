@@ -319,6 +319,9 @@ restaurant-lock-terminal = Lock Terminal
 restaurant-exit-terminal = Exit Terminal
 restaurant-exit-confirm-title = Exit Workspace
 restaurant-exit-confirm-desc = Are you sure you want to exit to the homescreen?
+# Shown instead of the line above while a shift is still open. It says what is being left
+# behind rather than blocking the exit -- close the shift from the sidebar to reconcile it.
+restaurant-exit-confirm-open-shift-desc = A shift is still open. Exiting leaves it unreconciled — close it from the sidebar first if you need to count the drawer.
 restaurant-exit-confirm-btn = Exit
 restaurant-toggle-fullscreen = Toggle Fullscreen
 restaurant-clear-color-aria = Clear color
