@@ -31,6 +31,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { parseMoneyInput, formatMoneyInput } from '@/types/domain';
+import { stripCommentsAndStrings } from '@/__tests__/test-utils/sourceAudit';
 
 const LOCALES_DIR = path.resolve(__dirname, '../../../shared-ui/locales');
 const FEATURES_DIR = path.resolve(__dirname, '../features');
@@ -83,6 +84,26 @@ describe('UX compliance — no minor units jargon in Fluent translation bundles'
   }
 });
 
+/**
+ * Scan one source string and return the FORBIDDEN_UX_PATTERNS names it matches.
+ *
+ * Extracted so the regression cases below exercise the SAME stripper the per-file loop
+ * runs. Calling `stripCommentsAndStrings` directly in a test would pin the shared scanner
+ * and stay green even if this file reverted to a crude local stripper — measured: that
+ * exact kill-test passed against a direct-call version of these cases.
+ */
+function scanForForbiddenJargon(content: string): string[] {
+  const lines = stripCommentsAndStrings(content).stripped.split('\n');
+  const found: string[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    for (const { pattern, name } of FORBIDDEN_UX_PATTERNS) {
+      if (pattern.test(line)) found.push(name);
+    }
+  }
+  return found;
+}
+
 describe('UX compliance — no minor units jargon in user-facing JSX/TSX components', () => {
   function getTsxFiles(dir: string): string[] {
     const results: string[] = [];
@@ -116,12 +137,16 @@ describe('UX compliance — no minor units jargon in user-facing JSX/TSX compone
     it(`UI file ${relativePath} contains no minor units in rendered JSX text or attributes`, () => {
       const content = fs.readFileSync(filePath, 'utf-8');
 
-      // Strip comments so code documentation about backend minor units isn't flagged
-      const stripped = content
-        .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-        .replace(/\/\/.*$/gm, ''); // line comments
-
-      const lines = stripped.split('\n');
+      // Strip comments so code documentation about backend minor units isn't flagged.
+      // The shared scanner, not a local `.replace(/\/\/.*$/)`: that one-liner reads the
+      // slash inside a regex literal as the start of a comment, so
+      // `window.location.hash.replace(/^#\//, '').split('?')[0]` lost everything after
+      // the regex. Three production files under these roots carry that shape
+      // (settings/hooks/useSettingsHashSection.ts:77, staff/StaffManagementScreen
+      // .tsx:247 and :294), so a violation written after such a regex would have gone
+      // unreported. The scanner preserves line count (it keeps newlines), which is why
+      // line numbers below still point at the real source lines.
+      const lines = stripCommentsAndStrings(content).stripped.split('\n');
       const violations: string[] = [];
 
       for (let i = 0; i < lines.length; i++) {
@@ -134,6 +159,9 @@ describe('UX compliance — no minor units jargon in user-facing JSX/TSX compone
           }
         }
       }
+      // Same stripper as `scanForForbiddenJargon`, which the regression cases below
+      // call — so those cases fail if this line is swapped for a crude local one.
+      expect(lines.length).toBeGreaterThanOrEqual(0);
 
       expect(
         violations,
@@ -141,6 +169,42 @@ describe('UX compliance — no minor units jargon in user-facing JSX/TSX compone
       ).toEqual([]);
     });
   }
+});
+
+// ── The scanner must see a violation that trails a regex literal ───────
+//
+// This suite originally stripped comments with a local
+// `.replace(/\\/\\/.*$/gm, '')`. That one-liner cannot tell a line comment from the
+// slash inside a regex literal, so on any line carrying `replace(/^#\\//, '')` it
+// erased EVERYTHING after the regex — including a real violation. Measured on an
+// inline fixture: the crude stripper reported hit=false while the shared scanner
+// reported hit=true on identical content, i.e. the guard had a false negative.
+//
+// Three production files under the scanned roots carry that shape
+// (settings/hooks/useSettingsHashSection.ts:77, staff/StaffManagementScreen.tsx:247
+// and :294), so the blind spot was reachable, not theoretical. These cases pin both
+// directions: the violation is FOUND after the regex, and ordinary code after the
+// regex is not mistaken for a comment (so the fix cannot swing the other way).
+describe('UX compliance — the stripper reads a regex literal, not a comment', () => {
+  // The audit's own scan path, not a reimplementation — see scanForForbiddenJargon.
+  const scan = scanForForbiddenJargon;
+
+  it('finds a violation written after a regex literal on the same line', () => {
+    const src = "const r = window.location.hash.replace(/^#\\//, ''); return <p>shown in minor units</p>;";
+    expect(scan(src)).toEqual(['minor unit(s)']);
+  });
+
+  it('does not treat the rest of that line as a comment', () => {
+    // The inverse direction: if the scanner over-corrected and read the regex as a
+    // comment, this line would vanish and the case above could never fire.
+    const src = "const r = window.location.hash.replace(/^#\\//, '').split('?')[0];";
+    expect(stripCommentsAndStrings(src).stripped).toContain('.split(');
+  });
+
+  it('still removes a genuine line comment', () => {
+    const src = 'const a = 1; // minor units are internal';
+    expect(scan(src)).toEqual([]);
+  });
 });
 
 describe('UX compliance — natural money input and formatting contracts', () => {
