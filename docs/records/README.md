@@ -186,6 +186,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
 | general | [The empty-section state, and the exit it offers (round 246)](audits/empty-section-covered.md) | — |
 | general | [The empty-section branch: reachable, and the route is longer than it looked (round 245)](audits/empty-section-route.md) | — |
+| general | [Exit Terminal could not exit, and a round-294 test was asserting that as correct (round 297)](audits/exit-terminal-could-not-exit.md) | — |
 | general | [The F4 sweep now checks reachability, and two more cards were fixed (round 238)](audits/f4-sweep-reachability.md) | — |
 | general | [F40's device-blocked verification is half closeable in the browser (round 155)](audits/f40-browser-half.md) | — |
 | general | [Round 152's deleted guard comes back — the SCOPE was the error, not the idea (round 153)](audits/feature-comment-path-guard.md) | — |
