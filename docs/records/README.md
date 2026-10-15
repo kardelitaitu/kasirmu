@@ -193,6 +193,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
 | security | [Writing a guard that can actually fail (2026-10-12)](audits/guard-authoring-practice.md) | — |
 | general | [Sweeping for round 217's hit-area class, and finding none (round 218)](audits/hit-area-sweep-round217-class.md) | — |
+| general | [The acceptance instrument detects real occlusion, and the scan's second measure had no floor (round 272)](audits/instrument-guards.md) | — |
 | general | [The interval stop is now observable — by isolating the hook (round 109)](audits/interval-stop-observable.md) | — |
 | general | [A committed build break in kasirmu-bridge, and what it reveals (2026-10-12)](audits/kasirmu-bridge-build-break-and-mock-fidelity.md) | — |
 | general | [The kasirmu-bridge suite does not fail — it does not finish (2026-10-13)](audits/kasirmu-bridge-suite-runtime.md) | — |
