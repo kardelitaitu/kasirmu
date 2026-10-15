@@ -360,6 +360,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The silent-save defect class is closed across the tree (round 166)](audits/silent-save-class-closed.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
+| general | [The shared source scanner read a regex as a comment, and a dead class that was not dead](audits/source-scanner-regex-and-false-dead-class.md) | — |
 | general | [Twenty-eight source-text guards audited; one family was weak, one was exemplary (round 171)](audits/source-text-guard-audit.md) | — |
 | general | [The split arithmetic is exact for every total it can actually receive — and I measured](audits/split-arithmetic-negative-domain.md) | — |
 | general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
