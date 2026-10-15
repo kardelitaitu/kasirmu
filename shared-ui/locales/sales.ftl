@@ -27,6 +27,7 @@ pos-bundle-expanded =
     }
 pos-no-barcode-match = No product or bundle matches this barcode
 pos-close-shift-cart-error = Complete or clear the current sale before closing the shift.
+pos-close-shift-open-tab-error = A customer still has an open tab on this terminal. Complete or move it before closing the shift.
 pos-close-shift-failed = Failed to close shift
 
 # Scanner
