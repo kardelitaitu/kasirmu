@@ -1773,7 +1773,15 @@ const SCREENS: ScreenEntry[] = [
     // type: `resto-test-print-status--${testPrintResult.type}` (:1278), so the
     // static walk cannot see `--success` / `--error` and both rules would grade
     // dead. Same composed-at-runtime case as the paper widths above.
-    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--'],
+    // `memo-stack` is a CONDITION, not a class this screen renders. The sheet's clearance rule for
+    // the fixed memo stack is `body:has(.memo-stack) .restaurant-settings-main`, so the walk sees
+    // the name in a :has() argument with no markup behind it and reads the rule dead.
+    //
+    // dynamicClassPrefixes rather than externalClasses, for the reason the staff entry gives
+    // (`:335-341`): an externalClasses value must be defined OUTSIDE this entry's own css, and the
+    // rule that makes the name matter here IS this sheet's. StaffManagementScreen has carried the
+    // same allowance since its clearance rule landed.
+    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--', 'memo-stack'],
   },
   {
     // See the RestaurantReceiptsScreen note above for the shared-sheet ruling.
@@ -1806,7 +1814,15 @@ const SCREENS: ScreenEntry[] = [
     // Same runtime-composed paper widths as the Receipts entry above: this entry
     // now grades that sibling's markup, so it needs the same prefix door for the
     // `--58mm` / `--80mm` tails the static walk cannot see.
-    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--'],
+    // `memo-stack` is a CONDITION, not a class this screen renders. The sheet's clearance rule for
+    // the fixed memo stack is `body:has(.memo-stack) .restaurant-settings-main`, so the walk sees
+    // the name in a :has() argument with no markup behind it and reads the rule dead.
+    //
+    // dynamicClassPrefixes rather than externalClasses, for the reason the staff entry gives
+    // (`:335-341`): an externalClasses value must be defined OUTSIDE this entry's own css, and the
+    // rule that makes the name matter here IS this sheet's. StaffManagementScreen has carried the
+    // same allowance since its clearance rule landed.
+    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--', 'memo-stack'],
     // Same `noise-dither` cite as the Receipts entry: this entry grades that
     // sibling's markup through additionalTsx, and the preview card carries the
     // class, so the sheet that defines the utility must be named here too — the
