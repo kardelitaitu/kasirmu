@@ -336,6 +336,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Half the "missing" ids are unit-asserted, and the scan only read e2e (round 275)](audits/scan-unit-layer.md) | — |
 | general | [The scan reported a designed relocation as a coverage gap (round 261)](audits/scan-view-gated.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
+| general | [Two scanner regressions: the regex arm ate JSX, and interpolations were discarded](audits/scanner-over-removal-jsx-and-interpolations.md) | — |
 | general | [The missing scoped-storage helper, built and pinned (round 168)](audits/scoped-storage-helper.md) | — |
 | general | [The third handler in the same file had the same defect, and round 292 had left it](audits/seat-guests-deleted-the-reservation.md) | — |
 | general | [The section filter narrowed the counts, not the floor plan (round 244)](audits/section-filter-broken.md) | — |
