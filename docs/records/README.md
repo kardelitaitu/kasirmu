@@ -201,6 +201,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [A line added during the kitchen send was silently dropped (round 201)](audits/kitchen-send-dropped-line.md) | — |
 | general | [The last latch entry was a false positive, and the allow-list is gone (round 239)](audits/latch-allowlist-removed.md) | — |
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
+| general | [The memo clearance is closed: the rail and the preview column both bounded (round 255)](audits/memo-clearance-closed.md) | — |
 | general | [The round-248 clearance only works at the scroll end, and a sweep found the class (round 249)](audits/memo-clearance-partial.md) | — |
 | general | [The memo stack covered the drawer diagnostic, and the cause was position: sticky (round 248)](audits/memo-clearance-receipts.md) | — |
 | release | [The specification, and the clip rule that made it fair (round 254)](audits/memo-clearance-specification.md) | — |
