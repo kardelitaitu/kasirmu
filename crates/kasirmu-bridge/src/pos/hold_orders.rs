@@ -146,6 +146,30 @@ pub async fn hold_cart_scoped(
 /// List held carts for the store resolved from a session token. ADR #7.
 ///
 /// Requires `SALES_PROCESS` permission.
+///
+/// # Terminal identity
+///
+/// **Open bills are excluded for every workspace that is not Restaurant POS.** An open
+/// bill is that vertical's concept — the restaurant cart reads them as "Open Bills"
+/// while a retail cart reads this command as "Held Carts" — so a store-pos session
+/// asking for its held carts must not receive the restaurant's open tabs.
+///
+/// ⚠️ This was MEASURED against the unfiltered query before the fix:
+///
+/// ```text
+/// PROBE total=1 open_bills_visible=1 our_id_visible=true
+/// ```
+///
+/// The two commands that look like the boundary were both already gated —
+/// [`hold_cart_scoped`] refuses to create an open bill off a restaurant terminal, and
+/// [`list_open_bills_scoped`] refuses to list them. This one sat between them with
+/// neither, and the only thing hiding it was a front-end filter
+/// (`RetailPosScreen.tsx`: `carts.filter((c) => c.bill_type === 'hold')`) — a UI
+/// convenience, not an authorization boundary. Any other caller of this command
+/// inherited none of it.
+///
+/// Restaurant POS itself is unchanged: it receives every row, because the open bills
+/// are its own.
 pub async fn list_held_carts_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -162,7 +186,13 @@ pub async fn list_held_carts_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
-    let carts = store.list_held_carts()?;
+    // The exclusion is applied HERE, where the session's vertical is known, rather than
+    // by each caller — see the doc above for the measurement that made it necessary.
+    let carts = if is_restaurant_pos_workspace(&session) {
+        store.list_held_carts()?
+    } else {
+        store.list_held_carts_excluding_open_bills()?
+    };
     drop(db);
     Ok(carts)
 }

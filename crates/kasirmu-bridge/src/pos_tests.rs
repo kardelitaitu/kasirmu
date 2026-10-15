@@ -1042,6 +1042,109 @@ async fn store_pos_can_still_hold_a_plain_cart() {
         .expect("the enforcement must not remove the plain hold from any terminal");
 }
 
+// A store-pos session must NOT be handed another vertical's open bill by the general
+// held-cart list.
+//
+// ⚠️ MEASURED BEFORE THE FIX, and the measurement is why this case exists:
+//
+//     PROBE total=1 open_bills_visible=1 our_id_visible=true
+//
+// `list_held_carts_scoped` carried no workspace gate, and it returns
+// `Store::list_held_carts()` — an UNFILTERED query over every held cart, including
+// `open_bill` rows. So a store-pos session received the restaurant's open bill.
+//
+// The two commands that LOOK like the boundary were both gated: `hold_cart_scoped`
+// refuses to CREATE an open bill off a restaurant terminal, and `list_open_bills_scoped`
+// refuses to LIST them. The general list sits between them and had neither — the same
+// shape this session kept finding elsewhere: enforcement at two doors, absent at the third.
+//
+// WHAT MADE IT INVISIBLE: the retail screen filters the rows itself
+// (`RetailPosScreen.tsx:1341`, `carts.filter((c) => c.bill_type === 'hold')`). A front-end
+// filter is not an authorization boundary — it is a UI convenience that any other caller
+// of the same command (a new screen, a script, a future shell) inherits none of.
+#[tokio::test]
+async fn store_pos_does_not_see_open_bills_in_the_general_list() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+
+    // ONE bridge, TWO sessions differing only in type_key — the field the gate reads.
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok-r",
+        "user-owner",
+        "role-owner",
+        "s1",
+        "restaurant-pos",
+    );
+    bridge.sessions().write().unwrap().insert(
+        "tok-s".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "s1".into(),
+            "instance-1".into(),
+            "store-pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let id = hold_cart_scoped(
+        &bridge.ctx(),
+        "tok-r",
+        HoldCartArgs {
+            label: "Table 9".into(),
+            cart_data: "{}".into(),
+            item_count: 1,
+            total_minor: 500,
+            currency: "USD".into(),
+            bill_type: BILL_TYPE_OPEN_BILL.into(),
+            customer_name: None,
+            deduction_location_id: None,
+        },
+    )
+    .await
+    .expect("restaurant may create an open bill");
+
+    let carts = list_held_carts_scoped(&bridge.ctx(), "tok-s")
+        .await
+        .unwrap();
+    assert!(
+        !carts.iter().any(|c| c.bill_type == "open_bill"),
+        "a store-pos session received an open bill from the general held-cart list",
+    );
+
+    // AND THE OVER-CORRECTION: a plain hold must still reach it. A fix that hid every
+    // row would break retail's own held carts, which is the capability this gate is
+    // protecting rather than removing.
+    hold_cart_scoped(
+        &bridge.ctx(),
+        "tok-s",
+        HoldCartArgs {
+            label: "Counter hold".into(),
+            cart_data: "{}".into(),
+            item_count: 1,
+            total_minor: 250,
+            currency: "USD".into(),
+            bill_type: "hold".into(),
+            customer_name: None,
+            deduction_location_id: None,
+        },
+    )
+    .await
+    .expect("store-pos may hold a plain cart");
+
+    let after = list_held_carts_scoped(&bridge.ctx(), "tok-s")
+        .await
+        .unwrap();
+    assert!(
+        after.iter().any(|c| c.label == "Counter hold"),
+        "the general list must still serve a store-pos session its own holds",
+    );
+    let _ = id;
+}
+
 #[tokio::test]
 async fn store_pos_cannot_list_open_bills() {
     let conn = crate::testing::temp_conn();
