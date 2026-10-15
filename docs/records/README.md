@@ -307,6 +307,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | security | [kasir.mu Security Audit — Completion Summary](audits/security/security-audit-completion.md) | — |
 | general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](audits/seo/seo-audit-19-09-26.md) | — |
 | general | [SEO review — robots.txt and llms.txt (kasir.mu)](audits/seo/seo-robots-llms-review-19-09-26.md) | — |
+| general | [Session close: rounds 221-256 on restaurant POS (round 256)](audits/session-close-221-256.md) | — |
 | general | [The third F4 latch, and the strongest of the three (round 230)](audits/settings-f4-latch.md) | — |
 | general | [createSettingsApiMock was missing setSettingScoped (round 94)](audits/settings-mock-missing-setter.md) | — |
 | general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
