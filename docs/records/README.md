@@ -208,6 +208,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
 | security | [Writing a guard that can actually fail (2026-10-12)](audits/guard-authoring-practice.md) | — |
 | general | [Auditing the guards themselves: two callers cleared, and one that is safe by design (round 300)](audits/guards-audited-callers-cleared.md) | — |
+| general | [A transient hardware-load failure pinned Save shut for the whole session](audits/hardware-load-failure-pinned-save-shut.md) | — |
 | general | [Held-cart replacement: the whole class, not the sites I visited](audits/held-cart-replacement-whole-class.md) | — |
 | general | [Held carts were invisible after a reload, and F4 silently took one over](audits/held-carts-invisible-after-reload.md) | — |
 | general | [Sweeping for round 217's hit-area class, and finding none (round 218)](audits/hit-area-sweep-round217-class.md) | — |
