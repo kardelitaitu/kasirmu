@@ -135,6 +135,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Back controls are navigation, and a variable hides an id from the scan (round 282)](audits/back-controls-are-navigation.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
+| general | [The bridge suite gets 2.2x SLOWER in parallel, and the cause is a mutex round the](audits/bridge-suite-slows-under-parallelism.md) | — |
 | general | [Cart line badges and the special-request note, plus a validation of round 203's checker (round 204)](audits/cart-line-badges-note.md) | — |
 | general | [The course chip, behind a setting that is off by default (round 205)](audits/cart-line-course-chip.md) | — |
 | general | [The tablet divergence was my spec not opening the cart (round 260)](audits/cart-line-edit-modifiers-corrected.md) | — |
@@ -325,7 +326,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Resume stole the lease before the warning could be shown (round 298)](audits/resume-stole-the-lease.md) | — |
 | general | [A retail terminal could read and delete a restaurant's open bill by id (round 303)](audits/retail-could-delete-a-restaurant-open-bill.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
-| general | [Following up round 18's in-flight Rust run: it is slow, and the slowness is deliberate](audits/rust-suite-slow-by-design.md) | — |
+| general | [Round 18's in-flight Rust run: slow, and the first explanation was wrong (round 306)](audits/rust-suite-slow-by-design.md) | — |
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [The scan counted mentions as uses, and round 269 was the proof (round 270)](audits/scan-mentions-vs-uses.md) | — |
 | general | [Half the "missing" ids are unit-asserted, and the scan only read e2e (round 275)](audits/scan-unit-layer.md) | — |
