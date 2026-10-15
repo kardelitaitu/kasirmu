@@ -3209,3 +3209,33 @@ fn product_crud_writes_audit_log_entries() {
     assert_eq!(entries[0].target_type.as_deref(), Some("product"));
     assert_eq!(entries[0].target_id.as_deref(), Some("SKU-PROD-AUDIT"));
 }
+
+#[test]
+fn get_product_track_serial_and_batch_direct_lookups() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+
+    // Set track_serial on DRINK-001
+    s.set_product_track_serial("DRINK-001", true).unwrap();
+
+    // Test single lookup
+    assert_eq!(s.get_product_track_serial("DRINK-001").unwrap(), Some(true));
+    assert_eq!(s.get_product_track_serial("FOOD-001").unwrap(), Some(false));
+    assert_eq!(s.get_product_track_serial("NONEXISTENT").unwrap(), None);
+
+    // Test batch lookup
+    let skus = vec![
+        "DRINK-001".to_string(),
+        "FOOD-001".to_string(),
+        "NONEXISTENT".to_string(),
+    ];
+    let batch = s.get_products_track_serial_batch(&skus).unwrap();
+    assert_eq!(batch.get("DRINK-001"), Some(&true));
+    assert_eq!(batch.get("FOOD-001"), Some(&false));
+    assert!(!batch.contains_key("NONEXISTENT"));
+
+    // Empty batch test
+    let empty = s.get_products_track_serial_batch(&[]).unwrap();
+    assert!(empty.is_empty());
+}

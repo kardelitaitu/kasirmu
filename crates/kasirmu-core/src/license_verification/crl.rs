@@ -103,8 +103,6 @@ pub fn verify_license_signature(payload: &str, signature_base64: &str) -> Result
         return Ok(());
     }
 
-    let public_key = load_public_key()?;
-
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(signature_base64)
         .map_err(|e| {
@@ -117,8 +115,8 @@ pub fn verify_license_signature(payload: &str, signature_base64: &str) -> Result
         CoreError::InvalidSubscriptionSignature(format!("invalid RSA signature format: {e}"))
     })?;
 
-    // Use VerifyingKey which handles SHA-256 hashing internally (matching SigningKey).
-    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+    // Use cached VerifyingKey which handles SHA-256 hashing internally (matching SigningKey, O-M09).
+    let verifying_key = get_embedded_verifying_key()?;
     verifying_key
         .verify(payload.as_bytes(), &signature)
         .map_err(|e| {
@@ -130,13 +128,39 @@ pub fn verify_license_signature(payload: &str, signature_base64: &str) -> Result
     Ok(())
 }
 
-/// Load the RSA-2048 public key from the embedded PEM.
-fn load_public_key() -> Result<RsaPublicKey, CoreError> {
-    use rsa::pkcs8::DecodePublicKey;
+/// Return the cached RSA-2048 verifying key for the embedded public key PEM.
+///
+/// Parsing the PEM and constructing the VerifyingKey involves ASN.1 DER decoding
+/// and big-integer modulus/exponent parsing. Caching it in a `OnceLock` eliminates
+/// constant re-parsing on every subscription check and CRL validation (O-M09).
+fn get_embedded_verifying_key() -> Result<&'static VerifyingKey<Sha256>, CoreError> {
+    static KEY: std::sync::OnceLock<Result<VerifyingKey<Sha256>, String>> =
+        std::sync::OnceLock::new();
+    let res = KEY.get_or_init(|| {
+        use rsa::pkcs8::DecodePublicKey;
+        RsaPublicKey::from_public_key_pem(LICENSE_PUBLIC_KEY_PEM)
+            .map(VerifyingKey::<Sha256>::new)
+            .map_err(|e| format!("failed to load embedded public key: {e}"))
+    });
+    match res {
+        Ok(vk) => Ok(vk),
+        Err(e) => Err(CoreError::InvalidSubscriptionSignature(e.clone())),
+    }
+}
 
-    RsaPublicKey::from_public_key_pem(LICENSE_PUBLIC_KEY_PEM).map_err(|e| {
-        CoreError::InvalidSubscriptionSignature(format!("failed to load embedded public key: {e}"))
-    })
+/// Load the RSA-2048 public key from the embedded PEM, cached via OnceLock (O-M09).
+#[allow(dead_code)]
+pub fn load_public_key() -> Result<RsaPublicKey, CoreError> {
+    static KEY: std::sync::OnceLock<Result<RsaPublicKey, String>> = std::sync::OnceLock::new();
+    let res = KEY.get_or_init(|| {
+        use rsa::pkcs8::DecodePublicKey;
+        RsaPublicKey::from_public_key_pem(LICENSE_PUBLIC_KEY_PEM)
+            .map_err(|e| format!("failed to load embedded public key: {e}"))
+    });
+    match res {
+        Ok(pk) => Ok(pk.clone()),
+        Err(e) => Err(CoreError::InvalidSubscriptionSignature(e.clone())),
+    }
 }
 
 /// Verify an RSA-2048 PKCS1v15 SHA-256 signature over a CRL payload using the embedded public key.
@@ -155,12 +179,6 @@ pub fn verify_crl_signature_with_pem(
     signature_base64: &str,
     public_key_pem: &str,
 ) -> Result<CrlPayload, CoreError> {
-    use rsa::pkcs8::DecodePublicKey;
-
-    let public_key = RsaPublicKey::from_public_key_pem(public_key_pem).map_err(|e| {
-        CoreError::InvalidSubscriptionSignature(format!("failed to load public key: {e}"))
-    })?;
-
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(signature_base64)
         .map_err(|e| {
@@ -173,14 +191,30 @@ pub fn verify_crl_signature_with_pem(
         CoreError::InvalidSubscriptionSignature(format!("invalid CRL RSA signature format: {e}"))
     })?;
 
-    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-    verifying_key
-        .verify(payload_json.as_bytes(), &signature)
-        .map_err(|e| {
-            CoreError::InvalidSubscriptionSignature(format!(
-                "CRL RSA signature verification failed: {e}"
-            ))
+    if public_key_pem == LICENSE_PUBLIC_KEY_PEM {
+        let verifying_key = get_embedded_verifying_key()?;
+        verifying_key
+            .verify(payload_json.as_bytes(), &signature)
+            .map_err(|e| {
+                CoreError::InvalidSubscriptionSignature(format!(
+                    "CRL RSA signature verification failed: {e}"
+                ))
+            })?;
+    } else {
+        use rsa::pkcs8::DecodePublicKey;
+
+        let public_key = RsaPublicKey::from_public_key_pem(public_key_pem).map_err(|e| {
+            CoreError::InvalidSubscriptionSignature(format!("failed to load public key: {e}"))
         })?;
+        let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+        verifying_key
+            .verify(payload_json.as_bytes(), &signature)
+            .map_err(|e| {
+                CoreError::InvalidSubscriptionSignature(format!(
+                    "CRL RSA signature verification failed: {e}"
+                ))
+            })?;
+    }
 
     let payload: CrlPayload = serde_json::from_str(payload_json).map_err(|e| {
         CoreError::Internal(format!("failed to parse verified CRL payload JSON: {e}"))

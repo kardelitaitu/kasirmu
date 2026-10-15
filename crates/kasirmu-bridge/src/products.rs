@@ -202,17 +202,12 @@ pub fn run_get_product_track_serial_batch(
     store: &Store<'_>,
     skus: &[String],
 ) -> Vec<SerialTrackRow> {
+    let map = store
+        .get_products_track_serial_batch(skus)
+        .unwrap_or_default();
     skus.iter()
         .map(|sku| {
-            // get_product returns Result<Option<ProductWithDetails>> —
-            // collapse both error and missing-product into `false` so the
-            // batch never fails for unknown SKUs (matches single-SKU).
-            let track_serial = store
-                .get_product(sku)
-                .ok()
-                .flatten()
-                .map(|p| p.product.track_serial)
-                .unwrap_or(false);
+            let track_serial = map.get(sku).copied().unwrap_or(false);
             SerialTrackRow {
                 sku: sku.clone(),
                 track_serial,
@@ -340,8 +335,8 @@ pub async fn get_product_track_serial(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    let product = store.get_product(sku)?;
-    Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
+    let track_serial = store.get_product_track_serial(sku)?.unwrap_or(false);
+    Ok(track_serial)
 }
 
 /// Store-scoped batch variant of the serial-tracking lookup. ADR #7.

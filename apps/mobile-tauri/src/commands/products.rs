@@ -286,17 +286,12 @@ fn to_update_attributes(
 
 /// Business logic for the batch serial-tracking lookup (extracted for testing).
 fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec<SerialTrackRow> {
+    let map = store
+        .get_products_track_serial_batch(skus)
+        .unwrap_or_default();
     skus.iter()
         .map(|sku| {
-            // get_product returns Result<Option<ProductWithDetails>> —
-            // collapse both error and missing-product into `false` so the
-            // batch never fails for unknown SKUs (matches single-SKU).
-            let track_serial = store
-                .get_product(sku)
-                .ok()
-                .flatten()
-                .map(|p| p.product.track_serial)
-                .unwrap_or(false);
+            let track_serial = map.get(sku).copied().unwrap_or(false);
             SerialTrackRow {
                 sku: sku.clone(),
                 track_serial,
@@ -650,9 +645,9 @@ pub async fn get_product_track_serial_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    let product = store.get_product(&sku)?;
+    let track_serial = store.get_product_track_serial(&sku)?.unwrap_or(false);
     drop(db);
-    Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
+    Ok(track_serial)
 }
 
 /// Check serial-tracking flags for many SKUs in one round trip resolved from a session token. ADR #7.

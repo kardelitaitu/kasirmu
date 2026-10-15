@@ -249,6 +249,29 @@ impl Store<'_> {
         }
     }
 
+    /// Mark a batch of offline queue items as synced in a single transaction.
+    ///
+    /// Draining large offline backlogs via single-item transactions causes high disk fsync overhead.
+    /// This method applies all updates within a single transaction (O-H03).
+    pub fn mark_offline_synced_batch(&self, ids: &[String]) -> Result<(), CoreError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            for id in ids {
+                Self::mark_synced_on(&tx, id)?;
+            }
+            tx.commit()?;
+            Ok(())
+        } else {
+            for id in ids {
+                Self::mark_synced_on(self.conn, id)?;
+            }
+            Ok(())
+        }
+    }
+
     /// The guarded `pending -> synced` write, on a connection or on a
     /// caller-owned transaction (`Transaction` derefs to `Connection`).
     ///
