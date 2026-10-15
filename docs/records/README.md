@@ -230,6 +230,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The memo stack covers the bottom of the receipts settings screen (round 247)](audits/memo-stack-covers-receipts.md) | — |
 | general | [The bulk 86 controls, and two sweeps that found no third instance of round 183's pattern (round 184)](audits/menu-editor-bulk-controls.md) | — |
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
+| products | [The menu editor's category dialog let Tab out on the first press](audits/menu-editor-category-modal-focus.md) | — |
 | products | [The category builder and its duplicate-name rule (round 185)](audits/menu-editor-category-rule.md) | — |
 | quality | [Round 187's coverage claim was wrong, and finishing it found two real fields (round 188)](audits/menu-editor-coverage-claim-corrected.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
