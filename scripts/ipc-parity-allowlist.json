@@ -129,7 +129,7 @@
     },
     {
       "name": "delete_payment_gateway_scoped",
-      "reason": ""
+      "reason": "The dev-mock has no payment_gateways handler, so all four of these reject. That is SAFE rather than owed, and the caller is written for it: RestaurantPaymentsScreen.tsx:477-484 wraps each read in `.catch(() => { setLoadFailed(true); return null; })`, so the screen renders its load-failed state instead of empty fields -- which is the F4 repair recorded at :470-474 (the earlier independent `.catch(() => null)` left the screen looking CLEAN while showing blanks, and a save then wrote those blanks over the stored credentials). The E2E consequence: a gateway-CREDENTIAL flow cannot be exercised against the mock; the restaurant payment specs cover the rail surface, not credential entry. Reasoned 2026-10-16 after verify-ipc-parity reported these as the only 4 reasonless entries of 23."
     },
     {
       "name": "delete_topology_template",
@@ -141,11 +141,11 @@
     },
     {
       "name": "get_payment_gateway_config_scoped",
-      "reason": ""
+      "reason": "The dev-mock has no payment_gateways handler, so all four of these reject. That is SAFE rather than owed, and the caller is written for it: RestaurantPaymentsScreen.tsx:477-484 wraps each read in `.catch(() => { setLoadFailed(true); return null; })`, so the screen renders its load-failed state instead of empty fields -- which is the F4 repair recorded at :470-474 (the earlier independent `.catch(() => null)` left the screen looking CLEAN while showing blanks, and a save then wrote those blanks over the stored credentials). The E2E consequence: a gateway-CREDENTIAL flow cannot be exercised against the mock; the restaurant payment specs cover the rail surface, not credential entry. Reasoned 2026-10-16 after verify-ipc-parity reported these as the only 4 reasonless entries of 23."
     },
     {
       "name": "list_payment_gateways_scoped",
-      "reason": ""
+      "reason": "The dev-mock has no payment_gateways handler, so all four of these reject. That is SAFE rather than owed, and the caller is written for it: RestaurantPaymentsScreen.tsx:477-484 wraps each read in `.catch(() => { setLoadFailed(true); return null; })`, so the screen renders its load-failed state instead of empty fields -- which is the F4 repair recorded at :470-474 (the earlier independent `.catch(() => null)` left the screen looking CLEAN while showing blanks, and a save then wrote those blanks over the stored credentials). The E2E consequence: a gateway-CREDENTIAL flow cannot be exercised against the mock; the restaurant payment specs cover the rail surface, not credential entry. Reasoned 2026-10-16 after verify-ipc-parity reported these as the only 4 reasonless entries of 23."
     },
     {
       "name": "list_restore_candidates",
@@ -213,7 +213,7 @@
     },
     {
       "name": "set_payment_gateway_config_scoped",
-      "reason": ""
+      "reason": "The dev-mock has no payment_gateways handler, so all four of these reject. That is SAFE rather than owed, and the caller is written for it: RestaurantPaymentsScreen.tsx:477-484 wraps each read in `.catch(() => { setLoadFailed(true); return null; })`, so the screen renders its load-failed state instead of empty fields -- which is the F4 repair recorded at :470-474 (the earlier independent `.catch(() => null)` left the screen looking CLEAN while showing blanks, and a save then wrote those blanks over the stored credentials). The E2E consequence: a gateway-CREDENTIAL flow cannot be exercised against the mock; the restaurant payment specs cover the rail surface, not credential entry. Reasoned 2026-10-16 after verify-ipc-parity reported these as the only 4 reasonless entries of 23."
     }
   ],
   "shell_blind": [

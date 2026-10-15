@@ -5367,7 +5367,7 @@ startup with `Failed to load custom Reporter from basic`. Use the default report
 | F6 | `RestaurantSettingsScreen.tsx:216-223`, `:317-324`; `utils/interaction.ts:41-78` |
 | F7 | `RestaurantSidebar.tsx:452-463`, `:426-439`; `TabletAppShell.tsx:264-281` |
 | F8 | `RestaurantSidebar.tsx:464-561`; `crates/kasirmu-bridge/src/settings.rs:571` |
-| F9 | grep `ErrorBoundary` under `features/restaurant` returns nothing; contrast `WorkspaceRestaurantPosSettings.tsx:143` |
+| F9 | **STALE as written — corrected 2026-10-16.** The row claimed *"grep `ErrorBoundary` under `features/restaurant` returns nothing"*. That was true when written and is false now: the same day's P-rounds landed **two** wrappers in `RestaurantMenu.tsx` (`:676-689` around the modifier dialog, `:705-724` around the menu grid — `736e57262`, and the sidebar/settings isolation in `7403ab72a`), and `PosScreen.tsx` carries four more (`:1658`, `:1675`, `:1689`, …). So the restaurant POS is crash-isolated, not bare. The contrast this row drew — `WorkspaceRestaurantPosSettings.tsx:143` — is unchanged. Verified: `git grep -n ErrorBoundary -- ui/src/features/restaurant` → 5 hits in 1 file. |
 | F10 | `RestaurantSettingsScreen.tsx:44-90`, `:519-627`; `shared-ui/locales/products.ftl:84-99` |
 | F11 | `RestaurantReceiptsScreen.tsx:265-303`, `:383-430` |
 | F12 | `scripts/verify-ipc-parity.py` output; `scripts/ipc-parity-allowlist.json` tablet section |
