@@ -908,15 +908,24 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     });
 
     // The durable write carries both choices in the stripe rail's parameters bag.
-    const payload = mocks.setMethods.mock.calls[0][2] as Array<{ rail_code: string; parameters: string }>;
+    //
+    // Narrowed with an explicit guard rather than a `!`: `Array.find` returns
+    // `T | undefined` and `expect(...).toBeTruthy()` does not narrow the static type, so
+    // the two reads below tripped TS2532 on the clean tree. The guard is also the
+    // assertion — it fails with the same message and for the same reason.
+    const payload = (mocks.setMethods.mock.calls[0]?.[2] ?? []) as Array<{
+      rail_code: string;
+      parameters: string;
+    }>;
     const stripeRail = payload.find((r) => r.rail_code === 'stripe');
-    expect(stripeRail, 'no stripe rail in the save payload — the selects wrote nowhere').toBeTruthy();
-    expect(JSON.parse(stripeRail!.parameters)).toMatchObject({ reader: 'reader_s700', currency: 'USD' });
+    expect(stripeRail, 'no stripe rail in the save payload — the selects wrote nowhere').toBeDefined();
+    if (!stripeRail) return;
+    expect(JSON.parse(stripeRail.parameters)).toMatchObject({ reader: 'reader_s700', currency: 'USD' });
 
     // And the credential split still holds: no provider secret rode along into the
     // market surface. This is the property `sanitizeRailParams` exists to guarantee,
     // asserted here at the call site rather than only on the pure function.
-    expect(stripeRail!.parameters).not.toContain('sk_');
+    expect(stripeRail.parameters).not.toContain('sk_');
   });
 
   it('adds and removes a custom payment rail via the add custom rail card', async () => {
