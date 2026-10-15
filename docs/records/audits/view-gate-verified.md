@@ -70,3 +70,5 @@ explicit: **the scan counts, the spec certifies.**
 
 **All four instruments carry a guard**, which is where this line of work started in round 272 with
 three of four and an argument for the fourth. The argument was wrong and the guard is real.
+
+> last audited 15-10-26 by docs-auditor

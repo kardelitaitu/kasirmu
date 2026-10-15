@@ -91,3 +91,5 @@ dependency that justified the argument — that a relabelled id cannot hide a fi
 because round 243 drives the sidebar row. **That is a true, tested claim about the CONTROL.** What
 is unverified is the script's claim that these two ids *cannot render in the scanned workspace* —
 and if they could, the cart-panel rendering would be uncovered and the table says otherwise.
+
+> last audited 15-10-26 by docs-auditor

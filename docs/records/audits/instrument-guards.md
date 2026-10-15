@@ -75,3 +75,5 @@ on legitimate corpus shrinkage, which is the opposite of what a guard is for.
 view-gated split subtracts ids from `missing` and adds them to a separate list, so a mistake there
 moves a name between two printed columns rather than inflating a percentage. That is a weaker
 failure mode, and it is recorded as such rather than given a guard it does not need.
+
+> last audited 15-10-26 by docs-auditor
