@@ -845,7 +845,7 @@ impl Store<'_> {
             let sql =
                 format!("SELECT sku, track_serial FROM products WHERE sku IN ({placeholders})");
             let mut stmt = self.conn.prepare(&sql)?;
-            let params = rusqlite::params_from_iter(chunk.iter().map(|s| s.as_str()));
+            let params = rusqlite::params_from_iter(chunk.iter().map(String::as_str));
             let mut rows = stmt.query(params)?;
             while let Some(row) = rows.next()? {
                 let sku: String = row.get(0)?;
