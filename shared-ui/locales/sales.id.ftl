@@ -1165,6 +1165,7 @@ pos-toast-no-active-cart = Tidak ada penjualan aktif untuk diubah harganya
 pos-toast-open-bills-failed = Gagal memuat tagihan terbuka
 pos-toast-bill-save-failed = Gagal menyimpan tagihan
 pos-toast-bill-resume-failed = Gagal membuka kembali tagihan
+pos-toast-tab-held-by-other = { $terminal } sedang mengerjakan tagihan ini. Minta mereka menyelesaikannya, atau gunakan Take Over pada tagihan.
 pos-toast-bill-saved = Tagihan untuk { $label } disimpan
 pos-toast-bill-updated = Tagihan untuk { $label } diperbarui
 pos-toast-printer-unconfirmed = Printer tidak mengonfirmasi cetakan — periksa perangkatnya

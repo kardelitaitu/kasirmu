@@ -121,7 +121,7 @@ export function usePosHeldCarts({
   const workspaceScope = useWorkspaceScope();
   const isRestaurantPos = workspaceScope?.typeKey === 'restaurant-pos';
 
-  const { claimLease, releaseLease } = useTabLeases();
+  const { claimLease, releaseLease, getConflict } = useTabLeases();
 
   // ── Open Bill state ──────────────────────────────────────────────
   const [activeOpenBillId, setActiveOpenBillId] = useState<string | null>(null);
@@ -324,6 +324,45 @@ export function usePosHeldCarts({
   }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
+    // ── The lease check must come BEFORE the lease is taken ──────────────────
+    //
+    // `claimLease` used to run at the very end of this handler, AFTER the cart and
+    // the table had already been loaded and `setActiveOpenBillId` had already run.
+    // That is the whole defect: `claimLease` writes the lease with THIS terminal's
+    // id, and `getConflict` discards a lease whose terminal is the current one
+    // (`useTabLeases.ts:197`). So the claim silently erased the record of the other
+    // terminal, and by the time `CartPanel` evaluated
+    // `getConflict(activeOpenBillId)` there was no conflict left to report.
+    //
+    // The warning banner and its Take Over button (`CartPanel.tsx:776`,
+    // `pos-cart-conflict-alert`) could therefore NEVER appear on the one path where
+    // they matter — resuming a tab someone else is working on. Two waitstaff edited
+    // one table's order with nothing on screen to say so.
+    //
+    // Checking first is what makes the banner reachable: refusing to claim leaves
+    // the foreign lease intact. The refusal names the other terminal, because a
+    // waiter who cannot resume a tab needs to know WHO has it to go and ask them.
+    // The Take Over button stays for the case where the resume is already done and
+    // the flag was raised afterwards — same escape hatch, two entry points.
+    const conflict = getConflict(id);
+    if (conflict) {
+      // `terminalName` arrives over a broadcast whose shape is only asserted at
+      // runtime (`tabs:lease-acquired` is DOM + IPC), so the declared `string` is not
+      // guaranteed. Fluent's args are `Record<string, string | number>` and `undefined`
+      // is NOT allowed, so the fallback is a load-bearing part of the call rather than
+      // cosmetics — an unnamed terminal still gets a refusal it can act on.
+      const holder = conflict.terminalName ?? 'another terminal';
+      addToast({
+        message: requiredLocalized(
+          l10nRef.current,
+          'pos-toast-tab-held-by-other',
+          { terminal: holder },
+        ),
+        type: 'warning',
+      });
+      return;
+    }
+
     try {
       const full = await getHeldCartScoped(sessionToken, id);
       if (!full) return;
@@ -394,7 +433,10 @@ export function usePosHeldCarts({
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bill-resume-failed'), type: 'error' });
     }
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, l10nRef]);
+    // `getConflict` is a callback over lease state, so it changes whenever the
+    // registry does — which is the point: the guard must read the CURRENT conflict
+    // answer at resume time, not one captured when this callback was created.
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, getConflict, l10nRef]);
 
   return {
     activeOpenBillId,

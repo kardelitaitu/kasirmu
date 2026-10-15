@@ -1202,6 +1202,9 @@ pos-toast-no-active-cart = No active sale to price
 pos-toast-open-bills-failed = Failed to load open bills
 pos-toast-bill-save-failed = Failed to save the tab
 pos-toast-bill-resume-failed = Failed to reopen the tab
+# Resumed a tab another terminal currently holds. Names them, so the operator can ask.
+# Refusing is what leaves the lease intact — see usePosHeldCarts.handleResumeOpenBill.
+pos-toast-tab-held-by-other = { $terminal } is working on this tab. Ask them to finish, or use Take Over on the tab.
 pos-toast-bill-saved = Tab for { $label } saved
 pos-toast-bill-updated = Tab for { $label } updated
 # POS hardware checks on the store settings card.
