@@ -1440,8 +1440,18 @@ export default function RestaurantReceiptsScreen({
         </div>
 
         {/* Load failure (F4): shown instead of trusting the controls. Retry clears
-            the one-shot init guard so the effect re-runs. */}
-        {loadFailed && (
+            the one-shot init guards so the effects re-run.
+
+            BOTH guards are cleared, and BOTH failures are covered. The prefs failure
+            clears `receiptInitializedRef` and re-runs the prefs effect via
+            `reloadNonce`; the hardware failure needs `hwInitializedRef` cleared AND a
+            fresh `hw.reload()`, because `hw.loadFailed` is only ever cleared by a
+            successful load (hooks/useTerminalHardware.ts:258) and nothing else in this
+            screen re-ran one. Without the second clause a single transient IPC failure
+            disabled Save permanently (see :1503) with no way back — the same trap the
+            three sibling cards already avoid (TerminalPreferencesCard.tsx:290,
+            WorkspaceRestaurantPosSettings.tsx:440, WorkspaceStorePosSettings.tsx:487). */}
+        {(loadFailed || hw.loadFailed) && (
           <div className="settings-error-banner" role="alert" data-testid="restaurant-receipts-load-error">
             <span>
               <Localized id="restaurant-settings-error-load">
@@ -1454,6 +1464,11 @@ export default function RestaurantReceiptsScreen({
               data-testid="restaurant-receipts-retry-btn"
               onClick={() => {
                 receiptInitializedRef.current = false;
+                // The hardware profile seeds the printer fields through its OWN effect
+                // (:647), so its guard has to be cleared too or a successful re-read
+                // would leave those fields holding the failure-era defaults.
+                hwInitializedRef.current = false;
+                hw.reload();
                 setReloadNonce((n) => n + 1);
               }}
             >

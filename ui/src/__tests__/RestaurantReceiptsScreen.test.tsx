@@ -46,6 +46,9 @@ vi.mock('@/api/settings', async (importOriginal) => {
     setUserPreferencesScoped: vi.fn().mockResolvedValue(undefined),
     getReceiptSettingsScoped: vi.fn().mockResolvedValue({ showTableNumber: false }),
     setReceiptSettingsScoped: vi.fn().mockResolvedValue(undefined),
+    // Not previously a vi.fn(): the hardware read was never driven from this suite,
+    // which is exactly why the failed-hardware recovery gap went unnoticed.
+    getHardwareSettingsScoped: vi.fn(),
   };
 });
 
@@ -1073,6 +1076,70 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     vi.mocked(getUserPreferencesScoped).mockResolvedValue({});
     await userEvent.click(screen.getByTestId('restaurant-receipts-retry-btn'));
 
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-receipts-load-error')).toBeNull();
+    });
+  });
+
+  it('offers a way OUT of a failed HARDWARE load, and Retry clears the one-shot hw init guard', async () => {
+    // `useTerminalHardware` sets `loadFailed` when the IPC read throws, and installs
+    // DEFAULT settings in its place (hooks/useTerminalHardware.ts:260-268) so a blank card
+    // beats no card. This screen uses that flag to REFUSE a save (:1480:
+    // `disabled={... || hw.loadFailed || ...}`) — correct, since seeding from unconfirmed
+    // values would write defaults over the terminal's real config.
+    //
+    // What was missing is any way back. `hw.loadFailed` is only cleared by a successful
+    // load (useTerminalHardware.ts:258), and the only thing that re-runs a load is
+    // `hw.reload()` — which this screen never called, while three sibling cards do
+    // (TerminalPreferencesCard.tsx:290, WorkspaceRestaurantPosSettings.tsx:440,
+    // WorkspaceStorePosSettings.tsx:487). So one transient hardware failure pinned Save
+    // shut for the rest of the session with no message and no control.
+    //
+    // The screen's own Retry had a second gap: it clears `receiptInitializedRef` (:1456)
+    // but NOT `hwInitializedRef`, which guards the separate effect that copies the profile
+    // into the printer fields (:647). A retry that re-read the profile successfully would
+    // still not re-seed those fields.
+    const settingsApi = await import('@/api/settings');
+    const getHw = vi.mocked(settingsApi.getHardwareSettingsScoped);
+
+    getHw.mockRejectedValueOnce(new Error('ipc down'));
+    await renderScreen({ terminalId: 'term-1' });
+
+    // The failure is visible AND blocks saving, as designed.
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-receipts-save-btn')).toBeDisabled();
+    });
+
+    // ...and the operator needs a way back, because `hw.loadFailed` is cleared ONLY by a
+    // successful load (hooks/useTerminalHardware.ts:258) and the only re-load trigger is
+    // `hw.reload()`. Before the fix this screen never called it, so one transient IPC
+    // failure pinned Save shut for the session with nothing on screen to press.
+    getHw.mockResolvedValue({
+      printerConnection: 'auto',
+      printerDevicePath: '',
+      printerPaperSize: '80',
+      scannerDeviceId: '',
+      scannerInputMode: 'auto',
+      scaleConnection: 'none',
+      scaleDevicePath: '',
+      scaleBaudRate: 9600,
+      scaleZeroOnBoot: false,
+      kitchenPrinterConnection: 'auto',
+      kitchenPrinterDevicePath: '',
+      schemaVersion: 1,
+      soundVolume: 100,
+      darkMode: false,
+      scaleAutoZero: false,
+    });
+    await userEvent.click(screen.getByTestId('restaurant-receipts-retry-btn'));
+
+    await waitFor(() => {
+      expect(settingsApi.getHardwareSettingsScoped).toHaveBeenCalledTimes(2);
+    });
+
+    // The banner clears once the recovery read succeeds. (Asserting Save-enabled would be
+    // wrong: `dirty` is false until the operator edits something, so Save is legitimately
+    // disabled on a clean form regardless of the hardware state.)
     await waitFor(() => {
       expect(screen.queryByTestId('restaurant-receipts-load-error')).toBeNull();
     });
