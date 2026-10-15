@@ -295,6 +295,103 @@ impl Store<'_> {
         }))
     }
 
+    /// Load all assignments indexed by user_id in three queries (assignments, branches, workspaces).
+    pub fn list_assignments_map(
+        &self,
+    ) -> Result<std::collections::HashMap<String, Assignment>, CoreError> {
+        let mut branches_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT assignment_user_id, branch_id FROM assignment_branches ORDER BY branch_id",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for r in rows {
+                let (user_id, branch_id) = r?;
+                branches_map.entry(user_id).or_default().push(branch_id);
+            }
+        }
+
+        let mut workspaces_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT assignment_user_id, workspace_key FROM assignment_workspaces ORDER BY workspace_key",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for r in rows {
+                let (user_id, workspace_key) = r?;
+                workspaces_map
+                    .entry(user_id)
+                    .or_default()
+                    .push(workspace_key);
+            }
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT user_id, role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id
+             FROM assignments",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let user_id: String = row.get(0)?;
+            let role_id: String = row.get(1)?;
+            let scope_mode_str: String = row.get(2)?;
+            let branch_scope: String = row.get(3)?;
+            let workspace_scope: String = row.get(4)?;
+            let scope_type: Option<String> = row.get(5)?;
+            let scope_id: Option<String> = row.get(6)?;
+            Ok((
+                user_id,
+                role_id,
+                scope_mode_str,
+                branch_scope,
+                workspace_scope,
+                scope_type,
+                scope_id,
+            ))
+        })?;
+
+        let mut map = std::collections::HashMap::new();
+        for r in rows {
+            let (
+                user_id,
+                role_id,
+                scope_mode_str,
+                branch_scope,
+                workspace_scope,
+                scope_type,
+                scope_id,
+            ) = r?;
+            let Some(scope_mode) = ScopeMode::parse(&scope_mode_str) else {
+                continue;
+            };
+            let Some(scope_type) = scope_type.as_deref().and_then(ScopeType::parse) else {
+                continue;
+            };
+            let branches = branches_map.remove(&user_id).unwrap_or_default();
+            let workspaces = workspaces_map.remove(&user_id).unwrap_or_default();
+            map.insert(
+                user_id.clone(),
+                Assignment {
+                    user_id,
+                    role_id,
+                    scope_mode,
+                    branches_all: branch_scope != "list",
+                    branches,
+                    workspaces_all: workspace_scope != "list",
+                    workspaces,
+                    scope_type: Some(scope_type),
+                    scope_id,
+                },
+            );
+        }
+        Ok(map)
+    }
+
     /// The ADR #47 coverage decision for one already-loaded assignment,
     /// including the `legal_entity` → `location` downward walk that the
     /// model-layer [`Assignment::covers_resource`] cannot do alone.

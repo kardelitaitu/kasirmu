@@ -310,11 +310,7 @@ hard error. *Fix:* paginate the list APIs and chunk the image lookup into fixed-
 `crates/kasirmu-core/src/sync_client.rs:400-420` ✔. Fixed: introduced static pooled `shared_sync_http_client()` via `OnceLock<reqwest::Client>` across `send_items_to_server`, `ack_memo_on_server`, `push_memos_to_server`, `fetch_active_memos_from_server`, `qris_charge_on_server`, and `qris_status_from_server`, retaining keep-alive and connection pool reuse across sync cycles and polls.
 
 **O-H05 · kasirmu-bridge — staff screen costs 2N+2 queries and the whole roster** —
-`crates/kasirmu-bridge/src/staff.rs:857-866` ✔
-`list_staff_scoped` loads all users, then per user issues `get_user_profile` and
-`assignment_for_user`, with no limit/offset anywhere on the path. Latency and memory grow
-linearly with headcount on every staff-screen load. *Fix:* one batched core accessor (three
-`IN`-clause queries) plus pagination on the command.
+`crates/kasirmu-bridge/src/staff.rs:342-369` ✔. Fixed: added batched accessors `Store::list_user_profiles_map`, `Store::list_assignments_map`, and `Store::list_staff_codes_map`, replacing 3N queries across users with 3 single indexed queries and constant-time in-memory map joins. Verified with `staff_tests.rs` (132/132 passed).
 
 **O-H06 · kasirmu-bridge — catalog import probes existence per row inside one long
 transaction** — `crates/kasirmu-bridge/src/data.rs:505-666` ✔. Fixed: pre-fetched `HashSet` of existing SKUs/categories/sales/customers/users via single index queries, hoisted RFC-3339 timestamp `now`, and eliminated `val.clone()` via owned payload iteration in both `gate_import_product_batch`/`gate_import_user_batch` and `import_data`. Verified with `data_tests.rs` (79/79 passed).
@@ -2062,5 +2058,16 @@ One High performance finding resolved in bridge data commands:
    - `crates/kasirmu-bridge/src/data/helpers.rs`: Replaced row-by-row `SELECT 1 FROM ... WHERE ... = ?1` in `gate_import_product_batch` and `gate_import_user_batch` with single pre-fetched `HashSet` indexed queries.
    - `crates/kasirmu-bridge/src/data.rs`: Pre-fetched existing SKUs, categories, sales, customers, and users into `HashSet`s before the loops, eliminating N round-trips under the exclusive write lock; hoisted RFC-3339 timestamp `now` once; eliminated redundant `val.clone()` allocations by consuming owned `payload` vectors.
    - Verified across all 79 tests in `kasirmu-bridge` data module (`data_tests.rs`).
+
+---
+
+## §11Q — O-H05 resolved: batched staff roster accessors (2026-10-15)
+
+One High performance finding resolved in staff roster queries:
+
+1. **O-H05 · `kasirmu-bridge` staff roster N+1 queries eliminated (`staff.rs`, `db/staff.rs`, `db/assignments.rs`, `db/profile/user.rs`)**:
+   - Added batched core accessors `Store::list_user_profiles_map`, `Store::list_assignments_map`, and `Store::list_staff_codes_map`.
+   - Replaced $3N$ sequential database queries inside `list_staff_scoped` with 3 indexed set queries, assembling complete `StaffMemberDto` records in-memory via $O(1)$ hash map lookups while preserving fail-closed error propagation.
+   - Verified across all 132 tests in `kasirmu-bridge` staff module and 123 tests in `kasirmu-core`.
 
 

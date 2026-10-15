@@ -64,6 +64,48 @@ impl Store<'_> {
         Ok(profile)
     }
 
+    /// Load all user profiles indexed by user_id in a single query.
+    pub fn list_user_profiles_map(
+        &self,
+    ) -> Result<std::collections::HashMap<String, UserProfile>, CoreError> {
+        let sql = format!("SELECT id, {PROFILE_COLUMNS} FROM users WHERE deleted_at IS NULL");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            let user_id: String = row.get(0)?;
+            let pay_cipher: Option<String> = row.get(6)?;
+            let monthly_take_home_minor =
+                decrypt_sensitive(pay_cipher).and_then(|s| s.parse::<i64>().ok());
+            Ok((
+                user_id,
+                UserProfile {
+                    date_of_birth: row.get(1)?,
+                    phone: row.get(2)?,
+                    national_id_type: row.get(3)?,
+                    national_id: decrypt_sensitive(row.get(4)?),
+                    email: row.get(5)?,
+                    monthly_take_home_minor,
+                    emergency_contact_name: row.get(7)?,
+                    emergency_contact_phone: row.get(8)?,
+                    job_title: row.get(9)?,
+                    notes: row.get(10)?,
+                    address: row.get(11)?,
+                    language: row.get(12)?,
+                    avatar: row.get(13)?,
+                    tax_id: row.get(14)?,
+                    national_id_expires_at: row.get(15)?,
+                    emergency_contact_relationship: row.get(16)?,
+                    hire_date: row.get(17)?,
+                },
+            ))
+        })?;
+        let mut map = std::collections::HashMap::new();
+        for r in rows {
+            let (id, p) = r?;
+            map.insert(id, p);
+        }
+        Ok(map)
+    }
+
     /// Whether either sensitive seal (`national_id`, `monthly_take_home_minor`)
     /// is present but does NOT decrypt under the current key set.
     ///
