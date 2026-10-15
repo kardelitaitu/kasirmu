@@ -324,44 +324,32 @@ export function usePosHeldCarts({
   }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
-    // ── The lease check must come BEFORE the lease is taken ──────────────────
+    // ── The lease is checked HERE and claimed LATER, conditionally ───────────
     //
-    // `claimLease` used to run at the very end of this handler, AFTER the cart and
-    // the table had already been loaded and `setActiveOpenBillId` had already run.
-    // That is the whole defect: `claimLease` writes the lease with THIS terminal's
-    // id, and `getConflict` discards a lease whose terminal is the current one
-    // (`useTabLeases.ts:197`). So the claim silently erased the record of the other
-    // terminal, and by the time `CartPanel` evaluated
-    // `getConflict(activeOpenBillId)` there was no conflict left to report.
+    // Two defects have lived on this line, in opposite directions:
     //
-    // The warning banner and its Take Over button (`CartPanel.tsx:776`,
-    // `pos-cart-conflict-alert`) could therefore NEVER appear on the one path where
-    // they matter — resuming a tab someone else is working on. Two waitstaff edited
-    // one table's order with nothing on screen to say so.
+    // 1. `claimLease` ran unconditionally at the end of the handler. It writes the
+    //    lease with THIS terminal's id, and `getConflict` discards a lease whose
+    //    terminal is the current one (`useTabLeases.ts:197`) — so the claim erased
+    //    the other terminal's record before `CartPanel` could read it. The conflict
+    //    banner (`pos-cart-conflict-alert`) could never appear on the one path it
+    //    exists for. Two waitstaff edited one table's order silently.
     //
-    // Checking first is what makes the banner reachable: refusing to claim leaves
-    // the foreign lease intact. The refusal names the other terminal, because a
-    // waiter who cannot resume a tab needs to know WHO has it to go and ask them.
-    // The Take Over button stays for the case where the resume is already done and
-    // the flag was raised afterwards — same escape hatch, two entry points.
+    // 2. The first fix REFUSED the resume instead. Measured in a browser:
+    //      PROBE resumed=false cartBanner=false toast=true tablesRow=0
+    //    Resume blocked, banner still unreachable (it needs `activeOpenBillId` set),
+    //    and the Tables screen that holds the other Take Over is feature-gated off
+    //    for this profile. So the refusal pointed at a control nobody could reach —
+    //    a dead end, and the same class of defect as round 297's exit lock-out.
+    //
+    // The correct shape is neither: RESUME, but do not steal. Loading the tab sets
+    // `activeOpenBillId`, which is what makes the banner renderable, and leaving the
+    // foreign lease intact is what makes it true. The operator then sees who has the
+    // tab and chooses — which is exactly what `forceTakeover`'s button is for.
+    //
+    // Claiming is therefore conditional: only when nobody else holds it. A tab already
+    // held by this terminal still gets re-claimed (harmless, extends the window).
     const conflict = getConflict(id);
-    if (conflict) {
-      // `terminalName` arrives over a broadcast whose shape is only asserted at
-      // runtime (`tabs:lease-acquired` is DOM + IPC), so the declared `string` is not
-      // guaranteed. Fluent's args are `Record<string, string | number>` and `undefined`
-      // is NOT allowed, so the fallback is a load-bearing part of the call rather than
-      // cosmetics — an unnamed terminal still gets a refusal it can act on.
-      const holder = conflict.terminalName ?? 'another terminal';
-      addToast({
-        message: requiredLocalized(
-          l10nRef.current,
-          'pos-toast-tab-held-by-other',
-          { terminal: holder },
-        ),
-        type: 'warning',
-      });
-      return;
-    }
 
     try {
       const full = await getHeldCartScoped(sessionToken, id);
@@ -428,7 +416,33 @@ export function usePosHeldCarts({
         }
       }
       setActiveOpenBillId(id);
-      await claimLease(id, data.tableNumber);
+
+      // CLAIM ONLY WHEN NOBODY ELSE HOLDS IT — see the note at the top of this handler.
+      //
+      // Claiming over a foreign lease is what made the conflict banner unrenderable,
+      // because `getConflict` ignores a lease owned by the current terminal. Skipping
+      // the claim leaves the other terminal's record in place, so `CartPanel` sees it
+      // and shows the warning plus its Take Over button.
+      //
+      // The tab is still RESUMED either way: the operator can read and work with it,
+      // and is told — in the panel, not in a toast they may miss — that someone else
+      // is on it.
+      if (!conflict) {
+        await claimLease(id, data.tableNumber);
+      } else {
+        addToast({
+          message: requiredLocalized(
+            l10nRef.current,
+            'pos-toast-tab-held-by-other',
+            // `terminalName` arrives over a broadcast whose shape is only asserted at
+            // runtime, so the declared `string` is not guaranteed, and Fluent's args do
+            // not accept `undefined`.
+            { terminal: conflict.terminalName ?? 'another terminal' },
+          ),
+          type: 'warning',
+        });
+      }
+
       openBillsExit.requestClose();
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bill-resume-failed'), type: 'error' });
