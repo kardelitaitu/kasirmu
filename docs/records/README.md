@@ -320,6 +320,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant settings screen gets E2E coverage, and its toggle is styled-out (round 148)](audits/restaurant-settings-e2e.md) | — |
 | general | [The restaurant settings screen, driven live: all thirteen toggles work (round 136)](audits/restaurant-settings-live.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
+| general | [The restaurant shortcut manifest could lie in two ways it was never checked against](audits/restaurant-shortcut-manifest-two-unchecked-claims.md) | — |
 | general | [The restaurant POS gains a keyboard shortcut manifest, and the tree stops it twice (round 158)](audits/restaurant-shortcut-manifest.md) | — |
 | general | [The shortcut manifest is bound to the till, restaurant-only (round 159)](audits/restaurant-shortcuts-bound.md) | — |
 | general | [The shortcuts are proven in a browser, and the guard is one of the three cases (round 160)](audits/restaurant-shortcuts-e2e.md) | — |
