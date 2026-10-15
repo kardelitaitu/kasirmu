@@ -78,3 +78,5 @@ the intended element.
 
 **Neither turned out to need a second terminal**, which was the claim carried for four rounds. The
 remaining work is a route, not a wall — and the next round starts from `Table 6`.
+
+> last audited 15-10-26 by docs-auditor

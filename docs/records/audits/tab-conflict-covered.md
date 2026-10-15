@@ -77,3 +77,5 @@ was satisfied by construction, because a spec chooses the other terminal's id.
 had a standing rule against this shape — prove the guarded state is reachable before pinning a
 guard — and it had been applied to every control on this screen except the one the summary had
 already explained away.
+
+> last audited 15-10-26 by docs-auditor

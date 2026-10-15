@@ -82,3 +82,5 @@ that four rounds said needed a second terminal.
 
 **Not one of them was a missing test in the end.** Every one was a misread mechanism — a guard read
 as an impossibility, an entitlement read as a gap, or a matcher read as the screen.
+
+> last audited 15-10-26 by docs-auditor

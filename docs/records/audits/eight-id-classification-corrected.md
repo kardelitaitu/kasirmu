@@ -69,3 +69,5 @@ cart panel and cart line have `none 0`; and the three screens' remainders are ei
 The one open question is `writeStaticQrPayload`, and the next round should read it: if it
 validates or normalises the payload in a way a round-trip could lose, it wants a test; if it is
 a straight merge, it belongs with the field plumbing.
+
+> last audited 15-10-26 by docs-auditor

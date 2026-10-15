@@ -83,3 +83,5 @@ Stripe selects write through `updateRailParams`, whose allow-list round 183 pins
 
 **The payments screen has no uncovered behaviour.** Its four remaining ids are input plumbing whose
 write boundary is unit-tested, and one `aria-hidden` glyph.
+
+> last audited 15-10-26 by docs-auditor

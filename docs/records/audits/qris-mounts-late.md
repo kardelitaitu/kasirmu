@@ -67,3 +67,5 @@ Replace the locator waits in the spec with the probe's fixed delay and assert ON
 no intermediate assertions. If it passes, add the intermediate guards back one at a time and the
 failing one names itself. **Bisecting by removal is cheaper than bisecting by hypothesis**, which
 is the mistake this round made.
+
+> last audited 15-10-26 by docs-auditor

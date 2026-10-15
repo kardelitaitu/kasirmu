@@ -80,3 +80,5 @@ This is now the third time this session has found a seam behind a "needs another
 case is unreachable.** A guard expresses a precondition, not an impossibility — and this session's
 standing method, "prove the guarded state is reachable", had been applied to every other control on
 this screen except the one the summary called blocked.
+
+> last audited 15-10-26 by docs-auditor

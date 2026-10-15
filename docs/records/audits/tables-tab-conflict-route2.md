@@ -70,3 +70,5 @@ So the next step is to reload after the dispatch (`page.reload()`), which re-rea
 same way a fresh session would, and only then press `Shift+L`. If the tiles appear after a reload,
 the cause was a mid-flight read and the case is two waits away from passing; if they do not, the
 cause is in how the floor plan reads held carts, and THAT is a real finding about the screen.
+
+> last audited 15-10-26 by docs-auditor
