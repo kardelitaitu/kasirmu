@@ -68,3 +68,5 @@ That is closed as far as it can be in this workspace (rounds 261, 273, 274, 275)
 step is not another coverage round** — it is picking one of the two second-terminal items and
 checking whether a mock seam could make it reachable, the way round 268's `?plan=empty` seam did for
 the plan-empty state.
+
+> last audited 15-10-26 by docs-auditor
