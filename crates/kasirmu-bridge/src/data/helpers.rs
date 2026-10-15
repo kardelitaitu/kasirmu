@@ -97,19 +97,26 @@ pub fn gate_import_product_batch(
     products: &[serde_json::Value],
 ) -> Result<i64, BridgeError> {
     let tier = store.resolve_tier_fail_closed()?;
+    let mut existing_skus = std::collections::HashSet::new();
+    {
+        let mut stmt = store
+            .conn()
+            .prepare_cached("SELECT sku FROM products")
+            .map_err(|e| BridgeError::Internal(format!("loading existing skus: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| BridgeError::Internal(format!("querying existing skus: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| BridgeError::Internal(format!("reading existing sku: {e}")))?
+        {
+            existing_skus.insert(row.get::<_, String>(0)?);
+        }
+    }
     let new_products = products
         .iter()
         .filter_map(|val| serde_json::from_value::<kasirmu_core::Product>(val.clone()).ok())
-        .filter(|product| {
-            !store
-                .conn()
-                .query_row(
-                    "SELECT 1 FROM products WHERE sku = ?1",
-                    rusqlite::params![product.sku.to_string()],
-                    |_| Ok(()),
-                )
-                .is_ok()
-        })
+        .filter(|product| !existing_skus.contains(product.sku.as_str()))
         .count() as i64;
     store
         .ensure_quota_allows(
@@ -138,19 +145,26 @@ pub fn gate_import_user_batch(
     users: &[serde_json::Value],
 ) -> Result<i64, BridgeError> {
     let tier = store.resolve_tier_fail_closed()?;
+    let mut existing_users = std::collections::HashSet::new();
+    {
+        let mut stmt = store
+            .conn()
+            .prepare_cached("SELECT id FROM users")
+            .map_err(|e| BridgeError::Internal(format!("loading existing users: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| BridgeError::Internal(format!("querying existing users: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| BridgeError::Internal(format!("reading existing user id: {e}")))?
+        {
+            existing_users.insert(row.get::<_, String>(0)?);
+        }
+    }
     let new_users = users
         .iter()
         .filter_map(|val| serde_json::from_value::<kasirmu_core::User>(val.clone()).ok())
-        .filter(|user| {
-            !store
-                .conn()
-                .query_row(
-                    "SELECT 1 FROM users WHERE id = ?1",
-                    rusqlite::params![user.id],
-                    |_| Ok(()),
-                )
-                .is_ok()
-        })
+        .filter(|user| !existing_users.contains(&user.id))
         .count() as i64;
     store
         .ensure_quota_allows(

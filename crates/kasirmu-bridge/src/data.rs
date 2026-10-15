@@ -507,59 +507,79 @@ pub async fn import_data(
         .unchecked_transaction()
         .map_err(|e| BridgeError::Internal(format!("starting transaction: {e}")))?;
 
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let mut existing_skus = std::collections::HashSet::new();
+    {
+        let mut stmt = tx
+            .prepare_cached("SELECT sku FROM products")
+            .map_err(|e| BridgeError::Internal(format!("loading products: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| BridgeError::Internal(format!("querying products: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| BridgeError::Internal(format!("reading sku: {e}")))?
+        {
+            existing_skus.insert(row.get::<_, String>(0)?);
+        }
+    }
+
     let mut products_imported = 0;
-    for val in &payload.products {
-        if let Ok(product) = serde_json::from_value::<kasirmu_core::Product>(val.clone()) {
-            let exists = tx
-                .query_row(
-                    "SELECT 1 FROM products WHERE sku = ?1",
-                    rusqlite::params![product.sku.to_string()],
-                    |_| Ok(()),
-                )
-                .is_ok();
+    for val in payload.products {
+        if let Ok(product) = serde_json::from_value::<kasirmu_core::Product>(val) {
+            let sku_str = product.sku.to_string();
+            let exists = existing_skus.contains(&sku_str);
+            let cur_str = std::str::from_utf8(&product.price.currency.0)
+                .map_err(|e| BridgeError::Internal(format!("invalid currency: {e}")))?;
             if exists {
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                let cur_str = std::str::from_utf8(&product.price.currency.0)
-                    .map_err(|e| BridgeError::Internal(format!("invalid currency: {e}")))?;
                 tx.execute(
                     "UPDATE products SET name = ?1, price_minor = ?2, currency = ?3, category_id = ?4, barcode = ?5, updated_at = ?6 WHERE sku = ?7",
-                    rusqlite::params![product.name, product.price.minor_units, cur_str, product.category_id, product.barcode.as_ref().map(|b| b.as_str()), now, product.sku.to_string()],
+                    rusqlite::params![product.name, product.price.minor_units, cur_str, product.category_id, product.barcode.as_ref().map(|b| b.as_str()), &now, &sku_str],
                 )?;
             } else {
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                let cur_str = std::str::from_utf8(&product.price.currency.0)
-                    .map_err(|e| BridgeError::Internal(format!("invalid currency: {e}")))?;
                 tx.execute(
                     "INSERT INTO products (id, sku, name, price_minor, currency, category_id, barcode, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    rusqlite::params![product.id, product.sku.to_string(), product.name, product.price.minor_units, cur_str, product.category_id, product.barcode.as_ref().map(|b| b.as_str()), now, now],
+                    rusqlite::params![product.id, &sku_str, product.name, product.price.minor_units, cur_str, product.category_id, product.barcode.as_ref().map(|b| b.as_str()), &now, &now],
                 )?;
+                existing_skus.insert(sku_str);
             }
             products_imported += 1;
         }
     }
 
+    let mut existing_categories = std::collections::HashSet::new();
+    {
+        let mut stmt = tx
+            .prepare_cached("SELECT id FROM categories")
+            .map_err(|e| BridgeError::Internal(format!("loading categories: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| BridgeError::Internal(format!("querying categories: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| BridgeError::Internal(format!("reading category id: {e}")))?
+        {
+            existing_categories.insert(row.get::<_, String>(0)?);
+        }
+    }
+
     let mut categories_imported = 0;
-    for val in &payload.categories {
-        if let Ok(cat) = serde_json::from_value::<kasirmu_core::Category>(val.clone()) {
+    for val in payload.categories {
+        if let Ok(cat) = serde_json::from_value::<kasirmu_core::Category>(val) {
             let colour = if cat.colour.is_empty() {
                 "#6366f1"
             } else {
                 &cat.colour
             };
-            let exists = store
-                .conn()
-                .query_row(
-                    "SELECT 1 FROM categories WHERE id = ?1",
-                    rusqlite::params![cat.id],
-                    |_| Ok(()),
-                )
-                .is_ok();
+            let exists = existing_categories.contains(&cat.id);
             if !exists {
                 tx.execute(
                     "INSERT INTO categories (id, name, colour, icon) VALUES (?1, ?2, ?3, ?4)",
                     rusqlite::params![cat.id, cat.name, colour, ""],
                 )?;
+                existing_categories.insert(cat.id);
             } else {
                 tx.execute(
                     "UPDATE categories SET name = ?1, colour = ?2, icon = '' WHERE id = ?3",
@@ -571,23 +591,32 @@ pub async fn import_data(
     }
 
     let mut sales_imported = 0;
-    if let Some(ref sales) = payload.sales {
+    if let Some(sales) = payload.sales {
+        let mut existing_sales = std::collections::HashSet::new();
+        {
+            let mut stmt = tx
+                .prepare_cached("SELECT id FROM sales")
+                .map_err(|e| BridgeError::Internal(format!("loading sales: {e}")))?;
+            let mut rows = stmt
+                .query([])
+                .map_err(|e| BridgeError::Internal(format!("querying sales: {e}")))?;
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| BridgeError::Internal(format!("reading sale id: {e}")))?
+            {
+                existing_sales.insert(row.get::<_, String>(0)?);
+            }
+        }
         for val in sales {
-            if let Ok(sale) = serde_json::from_value::<kasirmu_core::Sale>(val.clone()) {
-                let exists = store
-                    .conn()
-                    .query_row(
-                        "SELECT 1 FROM sales WHERE id = ?1",
-                        rusqlite::params![sale.id],
-                        |_| Ok(()),
-                    )
-                    .is_ok();
+            if let Ok(sale) = serde_json::from_value::<kasirmu_core::Sale>(val) {
+                let exists = existing_sales.contains(&sale.id);
                 if !exists {
                     // RUST-08: use the tx-aware variant — `store.create_sale`
                     // would open a nested transaction on the same connection
                     // ("cannot start a transaction within a transaction") and
                     // roll the whole import back (same fix as CLI-1).
                     store.create_sale_in_tx(&tx, &sale)?;
+                    existing_sales.insert(sale.id);
                 }
                 sales_imported += 1;
             }
@@ -595,31 +624,39 @@ pub async fn import_data(
     }
 
     let mut customers_imported = 0;
-    if let Some(ref customers) = payload.customers {
+    if let Some(customers) = payload.customers {
+        let mut existing_customers = std::collections::HashSet::new();
+        {
+            let mut stmt = tx
+                .prepare_cached("SELECT id FROM customers")
+                .map_err(|e| BridgeError::Internal(format!("loading customers: {e}")))?;
+            let mut rows = stmt
+                .query([])
+                .map_err(|e| BridgeError::Internal(format!("querying customers: {e}")))?;
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| BridgeError::Internal(format!("reading customer id: {e}")))?
+            {
+                existing_customers.insert(row.get::<_, String>(0)?);
+            }
+        }
         for val in customers {
-            if let Ok(cust) = serde_json::from_value::<kasirmu_core::Customer>(val.clone()) {
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                let exists = store
-                    .conn()
-                    .query_row(
-                        "SELECT 1 FROM customers WHERE id = ?1",
-                        rusqlite::params![cust.id],
-                        |_| Ok(()),
-                    )
-                    .is_ok();
+            if let Ok(cust) = serde_json::from_value::<kasirmu_core::Customer>(val) {
+                let exists = existing_customers.contains(&cust.id);
                 let email_str = cust.email.map(|e| e.to_string());
                 let phone_str = cust.phone.map(|p| p.to_string());
                 if exists {
                     tx.execute(
                         "UPDATE customers SET name = ?1, email = ?2, phone = ?3, notes = ?4, updated_at = ?5 WHERE id = ?6",
-                        rusqlite::params![cust.name, email_str, phone_str, cust.notes, now, cust.id],
+                        rusqlite::params![cust.name, email_str, phone_str, cust.notes, &now, cust.id],
                     )?;
                 } else {
                     tx.execute(
                         "INSERT INTO customers (id, name, email, phone, notes, loyalty_points, total_spent_minor, currency, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                        rusqlite::params![cust.id, cust.name, email_str, phone_str, cust.notes, 0i64, 0i64, "USD", now, now],
+                        rusqlite::params![cust.id, cust.name, email_str, phone_str, cust.notes, 0i64, 0i64, "USD", &now, &now],
                     )?;
+                    existing_customers.insert(cust.id);
                 }
                 customers_imported += 1;
             }
@@ -627,21 +664,29 @@ pub async fn import_data(
     }
 
     let mut users_imported = 0;
-    if let Some(ref users) = payload.users {
+    if let Some(users) = payload.users {
+        let mut existing_users = std::collections::HashSet::new();
+        {
+            let mut stmt = tx
+                .prepare_cached("SELECT id FROM users")
+                .map_err(|e| BridgeError::Internal(format!("loading users: {e}")))?;
+            let mut rows = stmt
+                .query([])
+                .map_err(|e| BridgeError::Internal(format!("querying users: {e}")))?;
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| BridgeError::Internal(format!("reading user id: {e}")))?
+            {
+                existing_users.insert(row.get::<_, String>(0)?);
+            }
+        }
         for val in users {
-            if let Ok(user) = serde_json::from_value::<kasirmu_core::User>(val.clone()) {
-                let exists = store
-                    .conn()
-                    .query_row(
-                        "SELECT 1 FROM users WHERE id = ?1",
-                        rusqlite::params![user.id],
-                        |_| Ok(()),
-                    )
-                    .is_ok();
+            if let Ok(user) = serde_json::from_value::<kasirmu_core::User>(val) {
+                let exists = existing_users.contains(&user.id);
                 if exists {
                     tx.execute(
                         "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 WHERE id = ?6",
-                        rusqlite::params![user.username, user.display_name, user.role_id, user.is_active, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), user.id],
+                        rusqlite::params![user.username, user.display_name, user.role_id, user.is_active, &now, user.id],
                     )?;
                 } else {
                     // The package DOES carry `pin_hash` (the egress arm above
@@ -657,8 +702,9 @@ pub async fn import_data(
                     tx.execute(
                         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
-                        rusqlite::params![user.id, user.username, "", user.display_name, user.role_id, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)],
+                        rusqlite::params![user.id, user.username, "", user.display_name, user.role_id, &now, &now],
                     )?;
+                    existing_users.insert(user.id);
                 }
                 users_imported += 1;
             }

@@ -317,12 +317,7 @@ linearly with headcount on every staff-screen load. *Fix:* one batched core acce
 `IN`-clause queries) plus pagination on the command.
 
 **O-H06 · kasirmu-bridge — catalog import probes existence per row inside one long
-transaction** — `crates/kasirmu-bridge/src/data.rs:736-744` ✔
-Per product: a full `serde_json::Value` clone, a `SELECT 1 FROM products WHERE sku = ?1`
-existence probe, and a fresh RFC-3339 timestamp allocation — all inside one transaction that
-holds the global write lock for the whole import. A 50k-SKU package is 50k probes plus one
-lock held for minutes. *Fix:* `HashSet` of existing SKUs in one query, hoist `now`, reuse a
-prepared statement.
+transaction** — `crates/kasirmu-bridge/src/data.rs:505-666` ✔. Fixed: pre-fetched `HashSet` of existing SKUs/categories/sales/customers/users via single index queries, hoisted RFC-3339 timestamp `now`, and eliminated `val.clone()` via owned payload iteration in both `gate_import_product_batch`/`gate_import_user_batch` and `import_data`. Verified with `data_tests.rs` (79/79 passed).
 
 **O-H07 · kasirmu-bridge — the whole offline queue goes up in one HTTP call** —
 `crates/kasirmu-bridge/src/sync.rs:580` ✔
@@ -2056,5 +2051,16 @@ One test performance finding resolved in desktop shell:
    - `apps/desktop-tauri/src/commands/registration_gate_tests.rs`: Memoized `run_sweep()` using `static SWEEP: std::sync::OnceLock<Sweep> = std::sync::OnceLock::new()`.
    - Replaced repeating the disk walk and char-scan of ~224 source files (82 in `src/commands` + 142 in `kasirmu-bridge`) across test assertions with a single cached evaluation.
    - Verified across all 14 tests in `registration_gate_tests.rs`, finishing in 0.50s.
+
+---
+
+## §11P — O-H06 resolved: batched pre-fetch and zero-clone catalog import (2026-10-15)
+
+One High performance finding resolved in bridge data commands:
+
+1. **O-H06 · `kasirmu-bridge` catalog import existence checks & timestamp hoisting (`data.rs`, `helpers.rs`)**:
+   - `crates/kasirmu-bridge/src/data/helpers.rs`: Replaced row-by-row `SELECT 1 FROM ... WHERE ... = ?1` in `gate_import_product_batch` and `gate_import_user_batch` with single pre-fetched `HashSet` indexed queries.
+   - `crates/kasirmu-bridge/src/data.rs`: Pre-fetched existing SKUs, categories, sales, customers, and users into `HashSet`s before the loops, eliminating N round-trips under the exclusive write lock; hoisted RFC-3339 timestamp `now` once; eliminated redundant `val.clone()` allocations by consuming owned `payload` vectors.
+   - Verified across all 79 tests in `kasirmu-bridge` data module (`data_tests.rs`).
 
 
