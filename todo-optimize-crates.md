@@ -1149,9 +1149,7 @@ assert a count. *Fix:* a few hundred rows, or one set-based insert.
 and two assertions per iteration to prove a ring. *Fix:* cut to ~500 and assert with `windows(2)`.
 
 **O-T10 · `run_sweep()` reads ~224 source files, six times per run** —
-`apps/desktop-tauri/src/commands/registration_gate_tests.rs:466-481` ✔ (4A-10). Each sweep walks
-82 `.rs` files under `src/commands` plus 142 under `crates/kasirmu-bridge/src` and char-scans every
-function body, recomputing an identical result. *Fix:* memoise in a `LazyLock<Sweep>`.
+`apps/desktop-tauri/src/commands/registration_gate_tests.rs:466-481` ✔ (4A-10). Fixed: memoised via `std::sync::OnceLock<Sweep>`, eliminating 5 redundant 224-file source walks across test assertions.
 
 **Low**
 
@@ -2047,5 +2045,16 @@ Two low-severity performance findings resolved:
    - `crates/kasirmu-plugin/src/manager.rs`: Added `plugin_index: HashMap<String, usize>` built at load time to enable O(1) index lookup into `self.plugins`.
    - Replaced `.cloned()` on `hook_names` with borrowed slice iteration, eliminating heap allocation on every hook dispatch.
    - Verified across all 224 tests in `kasirmu-plugin`.
+
+---
+
+## §11O — O-T10 resolved: memoize `run_sweep()` in desktop registration gate tests (2026-10-15)
+
+One test performance finding resolved in desktop shell:
+
+1. **O-T10 · `kasirmu-app` memoize `run_sweep()` (`registration_gate_tests.rs`)**:
+   - `apps/desktop-tauri/src/commands/registration_gate_tests.rs`: Memoized `run_sweep()` using `static SWEEP: std::sync::OnceLock<Sweep> = std::sync::OnceLock::new()`.
+   - Replaced repeating the disk walk and char-scan of ~224 source files (82 in `src/commands` + 142 in `kasirmu-bridge`) across test assertions with a single cached evaluation.
+   - Verified across all 14 tests in `registration_gate_tests.rs`, finishing in 0.50s.
 
 
