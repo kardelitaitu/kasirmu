@@ -151,6 +151,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The checker round 202 said a grep could not be (round 203)](audits/closure-checker-built.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
 | general | [The completeness check that was itself incomplete, and the kill-test that caught it (round 304)](audits/completeness-check-was-incomplete.md) | — |
+| general | [A compliance guard with a false negative, found by asking who else re-implements the stripper](audits/compliance-guard-false-negative-crude-stripper.md) | — |
 | general | [Two gates that stop the course bar rendering under test (round 97)](audits/course-bar-render-gates.md) | — |
 | general | [courseFiringEnabled: checked, and NOT a defect (round 98)](audits/course-firing-default-verdict.md) | — |
 | general | [Course firing: the half round 205 left (round 206)](audits/course-firing.md) | — |
