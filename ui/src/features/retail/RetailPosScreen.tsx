@@ -1335,12 +1335,25 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
   }, [addProduct, setDiscount, addToast, l10n, sessionToken]);
 
+  /** Open the held-carts list without resuming anything. */
+  const showHeldCartList = useCallback(async () => {
+    try {
+      const carts = await listHeldCartsScoped(sessionToken);
+      const held = carts.filter((c) => c.bill_type === 'hold');
+      setHeldCartsList(held);
+      setShowHeldCartsList(true);
+    } catch {
+      addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-load-held'), type: 'error' });
+    }
+  }, [addToast, sessionToken]);
+
   const handleResume = useCallback(async () => {
     try {
       const carts = await listHeldCartsScoped(sessionToken);
       const held = carts.filter((c) => c.bill_type === 'hold');
       if (held.length === 0) return;
       if (held.length === 1) {
+        // Only auto-resume from a NON-empty browse intent — see the F4 binding.
         await handleResumeCart(held[0]!.id);
         return;
       }
@@ -1376,8 +1389,15 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     listHeldCartsScoped(sessionToken)
       .then((carts) => {
         if (!mounted) return;
-        const held = carts.find((c) => c.bill_type === 'hold');
-        if (held) setHeldCartId(held.id);
+        const held = carts.filter((c) => c.bill_type === 'hold');
+        const first = held[0];
+        if (first) setHeldCartId(first.id);
+        // Also seed the list, not just the id. `heldCartsList` drives the reminder
+        // popup's held-cart row (:1817) — the only affordance that tells a cashier
+        // "there are carts on hold". Setting `heldCartId` alone left the popup
+        // claiming there were none until a resume happened to fill the list, so a
+        // reloaded till hid the holds it had just fetched.
+        setHeldCartsList(held);
       })
       .catch(() => { if (mounted) addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-load-held'), type: 'error' }); });
     return () => { mounted = false; };
@@ -1510,7 +1530,14 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         case 'F1': if (typing) break; if (e.cancelable) e.preventDefault(); handlePay(); break;
         case 'F2': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length > 0) handleRequestClear(); break;
         case 'F3': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length > 0) setShowDiscount(true); break;
-        case 'F4': if (typing) break; if (e.cancelable) e.preventDefault(); if (heldCartId) handleResume(); else handleHold(); break;
+        // F4: with a cart in progress the intent is unambiguous — hold it, or
+        // update/clear the tab it was resumed from. With an EMPTY cart there is
+        // nothing to hold and nothing to update, so F4 can only mean "show me the
+        // held carts". Sending that to `handleResume` auto-resumed a lone hold
+        // (handleResume :1343-1345) with no modal, no confirmation and no toast —
+        // browsing silently became a committing action. `handleResume` is therefore
+        // gated on there being something to resume INTO.
+        case 'F4': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length === 0) showHeldCartList(); else if (heldCartId) handleResume(); else handleHold(); break;
         case 'F5': if (e.cancelable) e.preventDefault(); skuInputRef.current?.focus(); break;
         case 'F6': if (typing) break; if (e.cancelable) e.preventDefault(); goToSubView(setShowSalesHistory); break;
         case 'F7': if (typing) break; if (e.cancelable) e.preventDefault(); setShowCustomerSearch(true); break;
@@ -1531,7 +1558,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   // handleOpenSettings deliberately excluded — F10 removed (handled by AppShell).
-  }, [isAnyModalOpen, isAnyOverlayOpen, showPayment, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, heldCartId, activeShift, session, addToast, onNavigate, goToSubView]);
+  }, [isAnyModalOpen, isAnyOverlayOpen, showPayment, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, showHeldCartList, heldCartId, activeShift, session, addToast, onNavigate, goToSubView]);
 
   // ── Render ───────────────────────────────────────────────────
 

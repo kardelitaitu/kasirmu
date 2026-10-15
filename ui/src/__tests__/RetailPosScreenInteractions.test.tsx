@@ -814,8 +814,15 @@ describe('RetailPosScreen — interactions', () => {
     expect(salesApi.deleteHeldCartScoped).toHaveBeenCalledTimes(1);
     expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' | ')).not.toMatch(/resumed/i);
 
+    // Restore every mock this test overrode to its documented default
+    // (test-utils/mocks/api.ts:74-76). `vi.clearAllMocks()` in the global
+    // beforeEach clears CALL HISTORY but not a `mockResolvedValue` implementation,
+    // and the @/api/sales mock is module-level, so anything left here leaks into
+    // every later test in this file. `getHeldCartScoped` was the one this test
+    // added and the sibling delete-confirm test does not restore.
     vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
     vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue(null);
+    vi.mocked(salesApi.holdCartScoped).mockResolvedValue({ id: 'held-1' } as never);
   });
 
   // ── P1-4: scroll position preservation ───────────────────────
@@ -966,5 +973,67 @@ describe('RetailPosScreen — interactions', () => {
     // Dismiss = discard: nothing is re-added, and the bar fades away.
     expect(mockAddProduct).not.toHaveBeenCalled();
     await waitFor(() => expect(document.querySelector('.retail-undo-bar')).toBeNull());
+  });
+
+  // ── Held carts must be discoverable after a reload ───────────
+
+  it('surfaces held carts that already exist on the server', async () => {
+    // Measured before this test existed: after a reload with three held carts on
+    // the server, `listHeldCartsScoped` WAS called (mount effect,
+    // RetailPosScreen.tsx:1373) but `heldCartsList` stayed `[]` — that effect sets
+    // `heldCartId` only and never the list. The reminder popup renders its
+    // held-cart row off `heldCartsList.length` (:1817), so the ONE affordance that
+    // tells a cashier "there are carts on hold" could not appear at the start of a
+    // shift, which is exactly when it is needed. F4 did not fill the gap either:
+    // with a single hold it RESUMES silently instead of listing (see next test).
+    const salesApi = await import('@/api/sales');
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
+      { id: 'h1', label: 'Hold #1', item_count: 1, total_minor: 100, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null },
+      { id: 'h2', label: 'Hold #2', item_count: 1, total_minor: 200, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null },
+      { id: 'h3', label: 'Hold #3', item_count: 1, total_minor: 300, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null },
+    ]);
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    await waitFor(() => {
+      expect(document.querySelector('.retail-reminder-row--held-cart')).not.toBeNull();
+    });
+
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
+  });
+
+  it('does NOT silently take over a lone hold when the cashier presses F4 to browse', async () => {
+    // F4's binding is `if (heldCartId) handleResume(); else handleHold();`
+    // (:1513), and `handleResume` auto-resumes when exactly one hold exists
+    // (:1343-1345). Combined with the mount effect above — which sets heldCartId
+    // from the first hold on the server — pressing F4 to LOOK at held carts on a
+    // reloaded till silently loads that hold into the current sale. Measured:
+    // `getCalls=1, deleteCalls=0, listModalOpen=false, alerts=[]` — no modal, no
+    // confirmation, no toast. Browsing must not be a committing action.
+    const salesApi = await import('@/api/sales');
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
+      { id: 'only', label: 'Hold #only', item_count: 1, total_minor: 100, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null },
+    ]);
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // An EMPTY cart: F4 here is a browse gesture, not an "update my tab" gesture.
+    const posState = await import('@/features/sales/usePosState');
+    vi.mocked(posState.usePosState).mockReturnValue(createUsePosStateMock());
+
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await userEvent.keyboard('{F4}');
+    await new Promise((r) => setTimeout(r, 300));
+
+    // The list must be what opens, and the hold must still be on the server.
+    await waitFor(() => {
+      expect(document.querySelector('.retail-held-carts-modal')).not.toBeNull();
+    });
+    expect(salesApi.getHeldCartScoped).not.toHaveBeenCalled();
+    expect(salesApi.deleteHeldCartScoped).not.toHaveBeenCalled();
+
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
   });
 });
