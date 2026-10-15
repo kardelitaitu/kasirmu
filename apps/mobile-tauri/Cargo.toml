@@ -93,3 +93,4 @@ hex = { workspace = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+devtools = ["tauri/devtools"]
