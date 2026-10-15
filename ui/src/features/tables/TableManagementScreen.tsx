@@ -489,8 +489,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     [sessionToken, l10n],
   );
 
-  const showEmpty = !loading && !error && tables.length === 0;
-
+  // ⚠️ THE FLOOR PLAN HONOURS THE SECTION FILTER HERE, and until round 244 it did not.
+  //
+  // The chips computed their counts from `activeTableList` (`:500`, `:506`) while the grid
+  // rendered the UNFILTERED `tables` (`:1045` before this fix). Measured 2026-10-15: the seeded
+  // plan showed `Indoor 5/6` and the grid still drew all 12 tiles.
+  //
+  // Two further consequences the raw list hid: `showEmpty` keyed on `tables.length`, so the
+  // "no tables in this section" branch (`:1035`) was unreachable while any table existed, and a
+  // section whose every table was deleted would have shown the wrong empty message.
+  const visibleTables =
+    section === null ? tables : tables.filter((t) => (t.section || 'Main') === section);
+  const showEmpty = !loading && !error && visibleTables.length === 0;
   const activeTableList = tablePool.length > 0 ? tablePool : tables;
   const allTotal = activeTableList.length;
   const allOccupied = activeTableList.filter((t) => t.status === 'occupied').length;
@@ -1042,7 +1052,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           </div>
         )}
 
-        {!showEmpty && tables.map((t) => {
+        {!showEmpty && visibleTables.map((t) => {
           const shape = t.shape || 'circle';
           // TBL-08 front-end clamp: old persisted geometry could predate the
           // backend bounds check, so never render a sub-2% interactive control.
