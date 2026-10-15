@@ -161,6 +161,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The credential boundary, proven in the browser (round 228)](audits/credential-boundary-e2e.md) | — |
 | general | [Correcting round 114: the credit guard is UNREACHABLE, and the withdrawal was untested (round 115)](audits/credit-guard-unreachable.md) | — |
 | general | [The credit rail's canComplete guard is unpinned — and unreachable in the suite (round 114)](audits/credit-rail-guard-unpinned.md) | — |
+| general | [A hypothesis I had to downscale, and an assertion that was vacuous](audits/credit-settings-load-failure-and-a-vacuous-assertion.md) | — |
 | general | [The custom payment rail form, on the screen with the lowest coverage (round 190)](audits/custom-rail-form-covered.md) | — |
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
 | general | [Round 107's follow-up: one real gap, and two guards that were not guards (round 108)](audits/dead-hook-follow-up.md) | — |
