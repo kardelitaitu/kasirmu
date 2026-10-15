@@ -23,9 +23,39 @@ impl Store<'_> {
     /// must not silently point a product/category at one. Unknown ids are
     /// rejected with the same structured `NotFound` so a stale/malformed
     /// payload cannot wedge a junction row against a missing rate.
+    ///
+    /// Uses a single batched `IN (...)` validation query to eliminate sequential
+    /// per-id database round trips (O-M05).
     fn ensure_active_tax_rate_ids(&self, tax_rate_ids: &[String]) -> Result<(), CoreError> {
-        for id in tax_rate_ids {
+        if tax_rate_ids.is_empty() {
+            return Ok(());
+        }
+        if tax_rate_ids.len() == 1 {
+            let id = &tax_rate_ids[0];
             if self.get_tax_rate(id)?.is_none() {
+                return Err(CoreError::NotFound {
+                    entity: "tax_rate",
+                    id: id.clone(),
+                });
+            }
+            return Ok(());
+        }
+
+        use std::collections::HashSet;
+        let placeholders: Vec<String> = (1..=tax_rate_ids.len()).map(|i| format!("?{i}")).collect();
+        let sql = format!(
+            "SELECT id FROM tax_rates WHERE is_active = 1 AND id IN ({})",
+            placeholders.join(", ")
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let found: HashSet<String> = stmt
+            .query_map(rusqlite::params_from_iter(tax_rate_ids.iter()), |r| {
+                r.get::<_, String>(0)
+            })?
+            .collect::<Result<_, _>>()?;
+
+        for id in tax_rate_ids {
+            if !found.contains(id) {
                 return Err(CoreError::NotFound {
                     entity: "tax_rate",
                     id: id.clone(),
@@ -52,11 +82,13 @@ impl Store<'_> {
             "DELETE FROM product_taxes WHERE product_sku = ?1",
             params![sku],
         )?;
-        for id in tax_rate_ids {
-            tx.execute(
+        {
+            let mut stmt = tx.prepare_cached(
                 "INSERT OR IGNORE INTO product_taxes (product_sku, tax_rate_id) VALUES (?1, ?2)",
-                params![sku, id],
             )?;
+            for id in tax_rate_ids {
+                stmt.execute(params![sku, id])?;
+            }
         }
         tx.commit()?;
         Ok(())
@@ -127,11 +159,13 @@ impl Store<'_> {
             "DELETE FROM category_taxes WHERE category_id = ?1",
             params![category_id],
         )?;
-        for id in tax_rate_ids {
-            tx.execute(
+        {
+            let mut stmt = tx.prepare_cached(
                 "INSERT OR IGNORE INTO category_taxes (category_id, tax_rate_id) VALUES (?1, ?2)",
-                params![category_id, id],
             )?;
+            for id in tax_rate_ids {
+                stmt.execute(params![category_id, id])?;
+            }
         }
         tx.commit()?;
         Ok(())

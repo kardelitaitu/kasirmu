@@ -413,12 +413,15 @@ impl Store<'_> {
         }
 
         // Only the top categories' points survive (the charts stay small).
+        // Pre-parse the category means cache once before the points loop (O-M02).
+        let cached_means = self.all_category_means()?;
+        let global_mean = cached_means.get("").copied().unwrap_or((0.0, 0.0, 0.0));
         let mut points: Vec<CategoryTrendPoint> = Vec::new();
         for ((period_start, cat), (units, txns, searches, edits)) in agg {
             if !rank.contains_key(&cat) {
                 continue;
             }
-            let (ms, mq, me) = self.category_means(&cat)?.unwrap_or((0.0, 0.0, 0.0));
+            let (ms, mq, me) = cached_means.get(&cat).copied().unwrap_or(global_mean);
             let score = crate::popularity::score_from_raw(
                 units as f64,
                 units as f64,
@@ -512,52 +515,48 @@ impl Store<'_> {
         }
 
         // Ranked products per category (score desc, SKU tiebreak).
-        let mut per_cat: HashMap<String, Vec<(String, String, f64)>> = HashMap::new();
-        {
+        // Uses SQLite's window function to prune each category to top_per_category
+        // directly in SQL rather than materialising the entire catalog into memory (O-M06).
+        if top_per_category > 0 {
             let mut stmt = self.conn.prepare(
-                "SELECT p.category_id, p.sku, p.name, p.popularity_score
-                 FROM products p
-                 ORDER BY p.category_id, p.popularity_score DESC, p.sku ASC",
+                "SELECT category_id, sku, name, popularity_score, rn FROM (
+                     SELECT p.category_id, p.sku, p.name, p.popularity_score,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY p.category_id
+                                ORDER BY p.popularity_score DESC, p.sku ASC
+                            ) AS rn
+                     FROM products p
+                 ) WHERE rn <= ?1
+                 ORDER BY category_id, rn ASC",
             )?;
-            let rows = stmt.query_map([], |r| {
+            let rows = stmt.query_map(params![top_per_category], |r| {
                 Ok((
                     r.get::<_, Option<String>>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, f64>(3)?,
+                    r.get::<_, i64>(4)?,
                 ))
             })?;
             for row in rows {
-                let (category, sku, name, score) = row?;
-                per_cat
-                    .entry(category.unwrap_or_default())
-                    .or_default()
-                    .push((sku, name, score));
-            }
-        }
-
-        for (key, rows) in per_cat {
-            let count = rows.len() as f64;
-            let top: Vec<CategoryTopProduct> = rows
-                .into_iter()
-                .take(top_per_category.max(0) as usize)
-                .enumerate()
-                .map(|(i, (sku, name, score))| CategoryTopProduct {
-                    sku,
-                    name,
-                    popularity_score: score,
-                    rank: i as i64 + 1,
-                    // Linear spread: best = 1.0, worst = 0.0 (1.0 when the
-                    // category holds a single product).
-                    percentile: if count > 1.0 {
-                        (count - 1.0 - i as f64) / (count - 1.0)
+                let (category, sku, name, score, rn) = row?;
+                let key = category.unwrap_or_default();
+                if let Some(cat) = cats.get_mut(&key) {
+                    let count = cat.product_count as f64;
+                    let i = (rn - 1) as f64;
+                    let percentile = if count > 1.0 {
+                        (count - 1.0 - i) / (count - 1.0)
                     } else {
                         1.0
-                    },
-                })
-                .collect();
-            if let Some(cat) = cats.get_mut(&key) {
-                cat.top_products = top;
+                    };
+                    cat.top_products.push(CategoryTopProduct {
+                        sku,
+                        name,
+                        popularity_score: score,
+                        rank: rn,
+                        percentile,
+                    });
+                }
             }
         }
 
@@ -661,6 +660,39 @@ impl Store<'_> {
             .unwrap_or(0.0))
     }
 
+    /// All cached category smoothing means mapped by category ID (O-M02).
+    ///
+    /// Reads and parses the `CATEGORY_MEANS` JSON blob once, enabling O(1) in-memory
+    /// lookups across loops without repeated database queries and JSON parsing.
+    fn all_category_means(&self) -> Result<HashMap<String, (f64, f64, f64)>, CoreError> {
+        let Some(raw) = self.read_setting(CATEGORY_MEANS)? else {
+            return Ok(HashMap::new());
+        };
+        let Ok(map) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return Ok(HashMap::new());
+        };
+        let Some(obj) = map.as_object() else {
+            return Ok(HashMap::new());
+        };
+        let mut out = HashMap::with_capacity(obj.len());
+        for (cat, entry) in obj {
+            let ms = entry
+                .get("sales")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            let mq = entry
+                .get("search")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            let me = entry
+                .get("edits")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            out.insert(cat.clone(), (ms, mq, me));
+        }
+        Ok(out)
+    }
+
     /// Look up the cached smoothing means for a product's category.
     ///
     /// Returns the category's means when the per-category map (written by
@@ -670,29 +702,11 @@ impl Store<'_> {
     /// locally rebuilt cache, not a source of truth — but a database fault
     /// is an error, not a cache miss.
     fn category_means(&self, category: &str) -> Result<Option<(f64, f64, f64)>, CoreError> {
-        let Some(raw) = self.read_setting(CATEGORY_MEANS)? else {
+        let means = self.all_category_means()?;
+        if means.is_empty() {
             return Ok(None);
-        };
-        let Ok(map) = serde_json::from_str::<serde_json::Value>(&raw) else {
-            return Ok(None);
-        };
-        let Some(entry) = map.get(category).or_else(|| map.get("")) else {
-            return Ok(None);
-        };
-        Ok(Some((
-            entry
-                .get("sales")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0),
-            entry
-                .get("search")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0),
-            entry
-                .get("edits")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0),
-        )))
+        }
+        Ok(means.get(category).or_else(|| means.get("")).copied())
     }
 
     /// Smoothing means for a single SKU: its category's cached means, else
@@ -946,20 +960,21 @@ impl Store<'_> {
         write_setting_in_tx(&tx, MEAN_SALES, &mean_sales.to_string())?;
         write_setting_in_tx(&tx, MEAN_SEARCH, &mean_search.to_string())?;
         write_setting_in_tx(&tx, MEAN_EDITS, &mean_edits.to_string())?;
-        for (sku, category, sr, sv, qr, qv, er, ev) in products {
-            let key = category.unwrap_or_default();
-            let (ms, mq, me) =
-                cat_means
-                    .get(&key)
-                    .copied()
-                    .unwrap_or((mean_sales, mean_search, mean_edits));
-            let distinct = distinct.get(&sku).copied().unwrap_or(0) as f64;
-            let score =
-                crate::popularity::score_from_raw(sr, sv, distinct, qr, qv, er, ev, ms, mq, me);
-            tx.execute(
-                "UPDATE products SET popularity_score = ?1 WHERE sku = ?2",
-                params![score, sku],
-            )?;
+        {
+            let mut stmt =
+                tx.prepare_cached("UPDATE products SET popularity_score = ?1 WHERE sku = ?2")?;
+            for (sku, category, sr, sv, qr, qv, er, ev) in products {
+                let key = category.unwrap_or_default();
+                let (ms, mq, me) =
+                    cat_means
+                        .get(&key)
+                        .copied()
+                        .unwrap_or((mean_sales, mean_search, mean_edits));
+                let distinct = distinct.get(&sku).copied().unwrap_or(0) as f64;
+                let score =
+                    crate::popularity::score_from_raw(sr, sv, distinct, qr, qv, er, ev, ms, mq, me);
+                stmt.execute(params![score, sku])?;
+            }
         }
         tx.commit()?;
         Ok(())

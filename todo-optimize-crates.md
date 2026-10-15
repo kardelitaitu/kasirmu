@@ -421,13 +421,10 @@ first touch of one store serialises every other store's connection lookup behind
 ### Medium — likely to bite within years
 
 **O-M01 · kasirmu-core — `recompute_all_popularity` re-plans one UPDATE per SKU** —
-`crates/kasirmu-core/src/db/popularity.rs:855-869` ◦. Runs at every app start; hoist a
-prepared statement above the loop. *Fix:* `prepare` once, rebind per row.
+`crates/kasirmu-core/src/db/popularity.rs:963-978` ✔. Fixed: hoisted `tx.prepare_cached("UPDATE products SET popularity_score = ?1 WHERE sku = ?2")` above the SKU update loop, eliminating statement recompilation for each catalog item. Verified in `popularity_tests.rs`.
 
 **O-M02 · kasirmu-core — popularity scoring re-reads settings and re-parses JSON per
-point** — `crates/kasirmu-core/src/db/popularity.rs:354` (with `:593-595`) ◦. The
-per-(period, category) loop re-queries `settings` and re-parses the category-means JSON every
-point. *Fix:* parse once before the loop, pass `&HashMap`.
+point** — `crates/kasirmu-core/src/db/popularity.rs:415-434` ✔. Fixed: introduced `all_category_means` helper reading and parsing the `CATEGORY_MEANS` JSON blob once before the points loop into a `HashMap<String, (f64, f64, f64)>`, replacing sequential database reads and JSON parsing per point with constant-time in-memory lookups. Verified in `popularity_tests.rs`.
 
 **O-M03 · kasirmu-core — pending-queue listers are unbounded** —
 `crates/kasirmu-core/src/db/offline.rs:572-589` ◦. The store-side twin of O-H07/O-H21: the
@@ -439,12 +436,10 @@ limit/cursor paging in the drain loop.
 per sale, on the checkout path. *Fix:* indexed `sale_id` column and equality probe.
 
 **O-M05 · kasirmu-core — tax-rate validation is a per-id round trip** —
-`crates/kasirmu-core/src/db/tax/assignments.rs:26-34` ◦. Bulk reassignment of N ids costs N
-`get_tax_rate` calls before the write tx opens. *Fix:* one `IN`-clause validation.
+`crates/kasirmu-core/src/db/tax/assignments.rs:26-34` ✔. Fixed: replaced sequential per-id `get_tax_rate` queries with a single batched `IN (...)` validation query in `ensure_active_tax_rate_ids`, and hoisted `prepare_cached` for junction insert loops in `set_product_tax_rates` and `set_category_tax_rates`. Verified in `tax_tests.rs`.
 
 **O-M06 · kasirmu-core — `category_popularity` loads the whole catalog to keep top-N per
-category** — `crates/kasirmu-core/src/db/popularity.rs:448-470` ◦. *Fix:* rank in SQL with
-`ROW_NUMBER() OVER (PARTITION BY …)`.
+category** — `crates/kasirmu-core/src/db/popularity.rs:517-563` ✔. Fixed: replaced whole-catalog materialization with SQL `ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY popularity_score DESC, sku ASC)` filtered by `rn <= ?1`, using the already-computed `cat.product_count` for percentile calculations. Verified in `popularity_tests.rs`.
 
 **O-M07 · kasirmu-core — stock-movement archive commits a transaction per group** —
 `crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:93-94` ◦. Hundreds of
@@ -2069,5 +2064,26 @@ One High performance finding resolved in staff roster queries:
    - Added batched core accessors `Store::list_user_profiles_map`, `Store::list_assignments_map`, and `Store::list_staff_codes_map`.
    - Replaced $3N$ sequential database queries inside `list_staff_scoped` with 3 indexed set queries, assembling complete `StaffMemberDto` records in-memory via $O(1)$ hash map lookups while preserving fail-closed error propagation.
    - Verified across all 132 tests in `kasirmu-bridge` staff module and 123 tests in `kasirmu-core`.
+
+---
+
+## §11R — O-M01, O-M02, O-M05, and O-M06 resolved: popularity statement hoisting, means cache pre-parse, window ranking, and batched tax validation (2026-10-15)
+
+Four Medium performance findings resolved across core database modules:
+
+1. **O-M01 · `kasirmu-core` popularity UPDATE prepared statement hoisting (`db/popularity.rs`)**:
+   - Hoisted `tx.prepare_cached("UPDATE products SET popularity_score = ?1 WHERE sku = ?2")` above the SKU update loop, eliminating SQL string parsing and query compilation for each catalog product during full popularity recalculation passes.
+
+2. **O-M02 · `kasirmu-core` pre-parsed category means cache for trend calculation (`db/popularity.rs`)**:
+   - Introduced `all_category_means` helper reading and parsing the `CATEGORY_MEANS` JSON blob once before the trend points loop into a `HashMap<String, (f64, f64, f64)>`. Replaced repeated per-point database reads of `settings` and JSON string parsing with constant-time in-memory lookups.
+
+3. **O-M06 · `kasirmu-core` partitioned ranking via window function (`db/popularity.rs`)**:
+   - Replaced materializing the entire catalog into memory with SQL `ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY popularity_score DESC, sku ASC)` filtered by `rn <= ?1`. Leveraged the existing category product counts for exact percentile calculations without extra scans.
+
+4. **O-M05 · `kasirmu-core` batched active tax rate validation and cached inserts (`db/tax/assignments.rs`)**:
+   - Replaced sequential per-id `get_tax_rate` queries with a single batched `SELECT id FROM tax_rates WHERE is_active = 1 AND id IN (...)` validation in `ensure_active_tax_rate_ids`.
+   - Hoisted `prepare_cached` for junction insert loops in `set_product_tax_rates` and `set_category_tax_rates`.
+   - Verified across all 82 tax tests in `tax_tests.rs` and 20 popularity tests in `popularity_tests.rs`.
+
 
 

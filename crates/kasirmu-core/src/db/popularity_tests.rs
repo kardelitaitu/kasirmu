@@ -1048,3 +1048,71 @@ fn full_pass_ranks_backfilled_edit_events_by_recency() {
          (A={a}, C={c}, B={b})"
     );
 }
+
+#[test]
+fn all_category_means_and_window_ranked_products_parity() {
+    let conn = fresh();
+    seed_category(&conn, "cat-1", "Cat One");
+    seed_category(&conn, "cat-2", "Cat Two");
+
+    let store = Store::new(&conn);
+    // Fresh DB has no cached means
+    let empty_means = store.all_category_means().unwrap();
+    assert!(
+        empty_means.is_empty(),
+        "fresh store must have empty category means map"
+    );
+
+    // Seed products across cat-1, cat-2, and uncategorized
+    for (sku, cat, score) in [
+        ("C1-A", Some("cat-1"), 9.0),
+        ("C1-B", Some("cat-1"), 7.0),
+        ("C1-C", Some("cat-1"), 5.0),
+        ("C2-A", Some("cat-2"), 8.0),
+        ("UNC-A", None, 10.0),
+    ] {
+        let id = uuid::Uuid::now_v7().to_string();
+        conn.execute(
+            "INSERT INTO products (id, sku, name, category_id, popularity_score, price_minor, currency, created_at, updated_at) \
+             VALUES (?1, ?2, ?2, ?3, ?4, 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+            params![id, sku, cat, score],
+        )
+        .unwrap();
+    }
+
+    // Full pass populates means cache and updates scores via hoisted prepared statement
+    store.recompute_all_popularity().unwrap();
+    let means = store.all_category_means().unwrap();
+    assert!(means.contains_key("cat-1"));
+    assert!(means.contains_key("cat-2"));
+    assert!(
+        means.contains_key(""),
+        "uncategorized bucket must exist in means map"
+    );
+
+    // Test top_per_category = 0 returns categories with empty products
+    let zero_top = store.category_popularity(0).unwrap();
+    assert_eq!(zero_top.len(), 3);
+    for row in &zero_top {
+        assert!(
+            row.top_products.is_empty(),
+            "top_products must be empty when top_per_category is 0"
+        );
+    }
+
+    // Test top_per_category = 2 returns at most 2 per category
+    let top2 = store.category_popularity(2).unwrap();
+    let cat1 = top2.iter().find(|r| r.category_id == "cat-1").unwrap();
+    assert_eq!(cat1.product_count, 3);
+    assert_eq!(cat1.top_products.len(), 2);
+    assert_eq!(cat1.top_products[0].sku, "C1-A");
+    assert_eq!(cat1.top_products[0].rank, 1);
+    assert_eq!(cat1.top_products[1].sku, "C1-B");
+    assert_eq!(cat1.top_products[1].rank, 2);
+
+    let cat2 = top2.iter().find(|r| r.category_id == "cat-2").unwrap();
+    assert_eq!(cat2.product_count, 1);
+    assert_eq!(cat2.top_products.len(), 1);
+    assert_eq!(cat2.top_products[0].sku, "C2-A");
+    assert_eq!(cat2.top_products[0].percentile, 1.0);
+}
