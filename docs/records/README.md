@@ -242,6 +242,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [Round 156's third finding was a false alarm, and it is now pinned (round 157)](audits/payments-save-location-race-pinned.md) | — |
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | general | [The plan's last claim verified at HEAD, and its one open item (round 113)](audits/plan-claims-and-f40-blocker.md) | — |
+| general | [The plan-empty state needs a release chain the seed makes expensive (round 267)](audits/plan-empty-state-cost.md) | — |
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | payments | [A real Card settlement driven to a receipt, live (round 118)](audits/pos-card-settlement-live.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
