@@ -798,13 +798,24 @@ retryCurrencyLoad,
         try {
           await printKdsChitScoped(sessionToken, order.id);
         } catch (chitErr) {
-          // Loud but non-fatal: a printer that is offline should be visible in the
-          // console, not turn a completed sale into an error the cashier retries.
+          // Non-fatal, but NOT silent. The sale is already complete and must not be
+          // undone by a printer, which is why this does not throw — but a chit that
+          // never printed means the kitchen has no ticket, and only the cashier can
+          // fix that. The console alone was not enough: measured, a rejected
+          // printKdsChitScoped left the operator with an empty toast area and no way
+          // to know the kitchen was blind to the order. The sibling
+          // `publishCourseFired` catch 20 lines above toasts for exactly this reason,
+          // and `payment-toast-kds-failed` already exists in both bundles with the
+          // right words ('notify the kitchen manually').
           console.error('printKdsChitScoped failed', order.id, chitErr);
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'),
+            type: 'warning',
+          });
         }
       }
     },
-    [autoPrintKitchen, sessionToken],
+    [autoPrintKitchen, sessionToken, addToast, l10nRef],
   );
 
   const buildGatewaySale = useCallback(

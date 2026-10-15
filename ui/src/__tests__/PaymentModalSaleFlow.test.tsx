@@ -383,6 +383,55 @@ describe('PaymentModal — sale flow', () => {
     });
   };
 
+  it('TELLS THE CASHIER when a kitchen chit fails to print', async () => {
+    // The chit print runs AFTER the sale is complete and already succeeded, so a
+    // failure here must not undo it — but it also must not be silent. The sibling
+    // `publishCourseFired` catch 20 lines above (PaymentModal.tsx:778-781) logs AND
+    // toasts for exactly this reason; the chit catch only logged, so a printer that
+    // was offline or out of paper left the cashier believing the kitchen had the
+    // ticket. `payment-toast-kds-failed` already exists in both bundles and already
+    // says 'notify the kitchen manually', which is the action required.
+    // Chain onto the file's own mock, as kdsOrderImpl does: replacing it wholesale
+    // breaks every other IPC the modal needs.
+    kdsOrderImpl();
+    // The hoisted mock is typed `(cmd: string) => …`, so chain on that arity.
+    const previous = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'print_kds_chit_scoped') return Promise.reject(new Error('printer offline'));
+      return previous ? previous(cmd) : Promise.resolve(null);
+    });
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        autoPrintKitchen={true}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      expect(
+        calls.some((c) => c[0] === 'print_kds_chit_scoped'),
+        'the chit print must actually have been attempted',
+      ).toBe(true);
+    });
+    // The failure has to reach the operator, not only the console.
+    await waitFor(() => {
+      const toasts = screen.queryAllByRole('alert').map((a) => a.textContent ?? '');
+      const shown = toasts.join(' | ');
+      expect(
+        shown,
+        'a failed kitchen chit printed nothing the cashier can see',
+      ).toMatch(/kitchen/i);
+    });
+  });
+
   it('prints a kitchen chit per KDS order when auto_print_kitchen is on', async () => {
     kdsOrderImpl();
     await renderWithFluent(

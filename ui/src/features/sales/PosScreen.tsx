@@ -1058,7 +1058,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           try {
             await printSalesReceipt(sessionToken, foodChit);
           } catch (printErr) {
+            // Non-fatal, but NOT silent — and `addToast` was already in this callback's
+            // dep array (below), so the intent was there. A kitchen chit that never
+            // printed means the line reaches nobody: the cashier must hear about it,
+            // because only they can re-send or tell the kitchen. Round 36 fixed the same
+            // shape in PaymentModal's chit catch; this is the dispatch path, where the
+            // order is actually sent.
             console.warn('Kitchen chit printing failed/unavailable (non-fatal):', printErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-kitchen-print-failed'), type: 'warning' });
           }
         }
 
@@ -1074,7 +1081,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           try {
             await printSalesReceipt(sessionToken, barChit);
           } catch (printErr) {
+            // Same as the kitchen chit above, with the bar's own string so the operator
+            // knows WHICH station is missing its ticket.
             console.warn('Bar chit printing failed/unavailable (non-fatal):', printErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bar-print-failed'), type: 'warning' });
           }
         }
       }
