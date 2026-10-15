@@ -24,6 +24,7 @@
 //   immediately appear on the restaurant POS selling grid.
 
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
@@ -288,6 +289,15 @@ export default function RestaurantMenuEditorScreen({
 
   const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const formRef = useRef<HTMLFormElement>(null);
+  // Focus management for the category modal. It declared aria-modal="true" with no trap,
+  // so focus stayed on the page behind it and Tab left the dialog on the FIRST press —
+  // measured. Every sibling POS dialog uses this hook (ItemModifierModal:253,
+  // SplitBillModal:37, PromotionsModal:66, RefundModal:176, PriceOverrideModal:176,
+  // StockShortfallDialog:115, RestaurantCartSheet, OpenBillModals). Escape is NOT
+  // handled here: the screen's own document-level listener already closes the modal
+  // (and stops the back-navigation), so a second handler would double-fire.
+  const categoryModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(categoryModalRef, categoryModal !== null, () => setCategoryModal(null));
 
   const currencyCtx = useOptionalCurrency();
   const currency = currencyCtx?.currency || 'IDR';
@@ -1756,6 +1766,7 @@ export default function RestaurantMenuEditorScreen({
       {/* ── Category Modal (Create / Edit) ────────────────────── */}
       {categoryModal && (
         <div
+          ref={categoryModalRef}
           className="restaurant-menu-editor-modal-overlay"
           role="dialog"
           aria-modal="true"

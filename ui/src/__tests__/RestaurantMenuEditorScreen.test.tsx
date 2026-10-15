@@ -226,6 +226,50 @@ describe('RestaurantMenuEditorScreen', () => {
     expect(addItem).toHaveAccessibleName('Add item');
   });
 
+  // ── Category modal focus management ──────────────────────────────
+  //
+  // The modal declares aria-modal="true" but installed no trap: focus stayed on the
+  // page behind it and Tab walked into the menu grid the dialog is covering. Every
+  // sibling POS dialog uses useFocusTrap (ItemModifierModal:253, SplitBillModal:37,
+  // PromotionsModal:66, RefundModal:176, PriceOverrideModal:176, StockShortfallDialog
+  // :115, RestaurantCartSheet, OpenBillModals).
+
+  it('moves focus into the category modal when it opens', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    const dialog = screen.getByRole('dialog');
+    expect(
+      dialog.contains(document.activeElement),
+      'focus must land inside the dialog on open, not stay on the page behind it',
+    ).toBe(true);
+  });
+
+  it('keeps Tab inside the category modal', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    const dialog = screen.getByRole('dialog');
+
+    // Tab well past the number of controls inside the dialog: focus must cycle
+    // inside, never land on an element outside it.
+    for (let i = 0; i < 12; i += 1) {
+      await user.tab();
+      expect(
+        dialog.contains(document.activeElement),
+        `Tab left the dialog on press ${i + 1} and reached the page it covers`,
+      ).toBe(true);
+    }
+  });
+
   it('opens category modal to create a new category', async () => {
     const user = userEvent.setup();
     await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
