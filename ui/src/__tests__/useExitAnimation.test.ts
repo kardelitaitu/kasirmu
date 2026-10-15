@@ -38,6 +38,61 @@ describe('useExitAnimation', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // ── requestClose closes ONCE, however many times it is called ──────────
+  //
+  // Several POS surfaces genuinely call it twice per Escape press: `RetailModals`
+  // installs `useFocusTrap(..., () => x.exit.requestClose())` on 12 dialogs while each
+  // overlay ALSO has `onKeyDown={(e) => { if (e.key === 'Escape') x.exit.requestClose(); }}`
+  // (verified: all 12 branches call ONLY requestClose), and PaymentModal's customer
+  // search does the same. The trap listens on `document` and the overlay keydown bubbles
+  // to it, so both fire within one tick.
+  //
+  // ⚠️ These cases pin the BEHAVIOUR, not the `if (exiting) return` guard — measured:
+  // removing that guard leaves them GREEN, because a repeated `setExiting(true)` bails out
+  // of re-rendering and the exit effect still runs once. The guard is defensive; what
+  // matters to callers is that the observable contract holds, and nothing else asserted it.
+
+  it('a second requestClose while exiting neither re-fires onClose nor restarts the fade', () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useExitAnimation(true, onClose, 200));
+
+    act(() => {
+      result.current.requestClose();
+      // Both duplicates land before any timer runs, which is the real call shape: the
+      // trap listens on document and the overlay's keydown bubbles to it in the same tick.
+      result.current.requestClose();
+      result.current.requestClose();
+    });
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(
+      onClose,
+      'three requestClose calls must close the surface exactly once',
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it('a repeated requestClose does not extend the exit beyond one duration', () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useExitAnimation(true, onClose, 200));
+
+    act(() => {
+      result.current.requestClose();
+    });
+    // Half-way through the fade, a duplicate arrives.
+    act(() => {
+      vi.advanceTimersByTime(100);
+      result.current.requestClose();
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(onClose, 'the duplicate must not restart the 200ms timer').toHaveBeenCalledTimes(1);
+  });
+
   it('calls onClose after the exit animation duration', () => {
     const onClose = vi.fn();
     const { result } = renderHook(() => useExitAnimation(true, onClose, 200));
