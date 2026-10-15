@@ -142,10 +142,19 @@ describe('usePosHeldCarts — resuming a tab another terminal holds', () => {
       'resume stole the lease — the conflict banner can never appear',
     ).not.toBeNull();
 
-    // And the refusal is not silent. A waiter who cannot open a tab must be told
-    // WHY, and told WHO holds it — otherwise the failure is indistinguishable from
-    // a broken tablet. The echo-stub l10n makes the key observable, so this fails
-    // if the guard drops its message or reverts to a hardcoded literal.
+    // ⚠️ AND THE RESUME STILL HAPPENED. The first fix REFUSED it, which measured as a
+    // dead end in a browser (`resumed=false cartBanner=false toast=true tablesRow=0`):
+    // the banner needs `activeOpenBillId` set, and the Tables screen holding the other
+    // Take Over is feature-gated off for this profile. So refusing produced no route at
+    // all, and the message pointed at a control nobody could reach.
+    //
+    // Resuming while leaving the foreign lease intact is what makes the banner BOTH
+    // renderable and true. This assertion is what stops the refusal creeping back.
+    expect(vi.mocked(getHeldCartScoped)).toHaveBeenCalledWith('tok', 'bill-conflict');
+
+    // And the operator is told WHO holds it — the information they need to decide
+    // between asking them to finish and taking over. The echo-stub l10n makes the key
+    // observable, so this fails if the message is dropped or becomes a literal.
     expect(addToast).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining('«pos-toast-tab-held-by-other»'),
