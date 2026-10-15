@@ -47,6 +47,39 @@ SCREENS = [
 ]
 
 DECL = re.compile(r'data-testid="([a-zA-Z][a-zA-Z0-9-]+)"')
+
+# A spec USES an id when the string appears inside a selector, not merely anywhere in the file.
+#
+# Round 269 found the reason this matters: a spec named `restaurant-menu-editor-manage-recipe-btn`
+# three times in COMMENTS while driving a different route, so the old count called it covered and
+# the gap survived a round. A mention is not a use, and a coverage number that counts mentions is a
+# coverage number that cannot be trusted.
+#
+# Matched by the surrounding call, not by stripping comments: stripping them is a parser, and this
+# is a heuristic that errs toward calling something a use. The three shapes used across the specs
+# are `locator(...)`, `getByTestId(...)` and `querySelector(...)`.
+# NOTE ON THE TWO MEASURES. `covered` answers "is this id mentioned anywhere in a spec?" and
+# `used` answers "is it mentioned on a line that also makes a selector call?". Round 269 found why
+# both are needed: a spec named `restaurant-menu-editor-manage-recipe-btn` in THREE COMMENTS while
+# driving a different route, so `covered` called it done and the gap survived a round.
+#
+# The `used` measure is deliberately loose — it errs toward counting something as a use, because
+# the reverse error (calling a used id unused) would read as a gap where there is none. It is a
+# second reading, not a stricter gate, which is why the table prints both.
+SELECTOR_CALL = re.compile(r'\.locator\(|getByTestId\(|querySelector(?:All)?\(')
+
+
+def used_ids(corpus: str) -> set:
+    """Ids that appear on a line that also makes a selector call."""
+    out = set()
+    for line in corpus.split('\n'):
+        if not SELECTOR_CALL.search(line):
+            continue
+        for m in DECL.finditer(line):
+            out.add(m.group(1))
+    return out
+    """Ids the specs actually reference inside a selector."""
+    return set(USE.findall(corpus))
 # An id may be addressed through a template or a prefix selector rather than literally.
 TEMPLATE = re.compile(r'data-testid="([a-zA-Z][a-zA-Z0-9-]*)\$\{')
 PREFIX = re.compile(r'\[data-testid\^="([a-zA-Z][a-zA-Z0-9-]+)"')
@@ -100,6 +133,7 @@ def main():
 
     corpus = spec_corpus()
     literals, prefixes = instruments(corpus)
+    used = used_ids(corpus)
 
     if not seen(SELF_CHECK_ID, literals, prefixes):
         print('SELF-CHECK FAILED: cannot see %r, which specs DO reference.' % SELF_CHECK_ID)
@@ -115,8 +149,13 @@ def main():
         with open(os.path.join(ROOT, rel), encoding='utf-8', errors='replace') as fh:
             ids = sorted(set(DECL.findall(fh.read())))
         hit = [i for i in ids if seen(i, literals, prefixes)]
+        # A use, not a mention. Round 269's spec named an id in three COMMENTS while driving a
+        # different route, so the old rule counted it and the gap survived a round. Reported
+        # separately rather than replacing the loose count, which still carries the templated
+        # and prefix forms the regex cannot see.
+        used_ids_here = [i for i in hit if i in used or any(i.startswith(p) for p in prefixes)]
         rows.append({'screen': label, 'file': rel, 'total': len(ids),
-                     'covered': len(hit),
+                     'covered': len(hit), 'used': len(used_ids_here),
                      'missing': [i for i in ids if i not in hit and i not in VIEW_GATED],
                      'view_gated': [i for i in ids if i in VIEW_GATED]});
 
@@ -125,10 +164,11 @@ def main():
         return 0
 
     width = max(len(r['screen']) for r in rows)
-    print('screen'.ljust(width) + '  covered   pct')
+    print('screen'.ljust(width) + '  covered   used   pct')
     for r in rows:
         pct = round(100 * r['covered'] / r['total']) if r['total'] else 0
-        print(r['screen'].ljust(width) + '  %2d/%-3d  %4d%%' % (r['covered'], r['total'], pct))
+        pct = round(100 * r['used'] / r['total']) if r['total'] else 0
+        print(r['screen'].ljust(width) + '  %2d/%-3d %3d/%-3d %4d%%' % (r['covered'], r['total'], r['used'], r['total'], pct))
     return 0
 
 
