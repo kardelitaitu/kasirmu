@@ -76,6 +76,11 @@ import {
 } from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const mockListSales = listSales as ReturnType<typeof vi.fn>;
 const mockGetSale = getSale as ReturnType<typeof vi.fn>;
@@ -860,6 +865,68 @@ describe('SalesHistoryScreen', () => {
     expect(screen.queryByText('Margin %')).not.toBeInTheDocument();
     // And only the margin read was unanswered: the detail itself is intact.
     expect(screen.getByText('SKU-001')).toBeInTheDocument();
+  });
+
+  // ── The SALE read itself, which was the one read settleRead never covered ──
+  //
+  // `openDetail` (:532-580) wraps getSale + refunds + margins in ONE Promise.all and
+  // catches the lot with an empty body. The two SECONDARY reads are settled individually
+  // through settleRead, so a failure in either is named on screen. The PRIMARY read was
+  // not: when getSaleScoped rejects, the whole Promise.all rejects, the catch drops it,
+  // `detail` stays null, and the modal's render guard (`detailExit.shouldRender && detail`,
+  // :1626) draws nothing. The cashier taps a row and the drawer simply never opens -- no
+  // skeleton, no message, nothing. Their next move is to tap it again.
+  //
+  // settle-read.ts's own doc lists SalesHistoryScreen as a consumer "-- the refunds of the
+  // open sale ... then the sale's roster, then its per-line cost/margin report", and stops
+  // short of the sale. This is that last read.
+  it('opens the detail via settleRead so a FAILED sale read is not a dead tap', async () => {
+    const source = readFileSync(
+      resolve(__dirname, '../features/sales/SalesHistoryScreen.tsx'),
+      'utf8',
+    );
+    // The contract, asserted at source because the behaviour is an ABSENCE (no modal, no
+    // message) that a render assertion cannot distinguish from 'not opened yet'.
+    expect(
+      source,
+      'the primary sale read must go through settleRead like its two siblings',
+    ).toMatch(/settleRead\(\s*'sale'\s*,/);
+    // And the failure must produce a message, not a dropped drawer.
+    expect(source).toMatch(/sales-history-detail-load-failed/);
+  });
+
+  it('names the failure when the SALE read throws, and retries', async () => {
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    mockGetSaleScoped.mockRejectedValueOnce(new Error('invoke failed'));
+
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    // A failed open must SAY so, on a surface that OUTLIVES the toast: the toast is
+       // transient and the failure is not, so the persistent banner is the assertion that
+       // matters — polling for a toast alone would pass and then leave the operator with
+       // nothing.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('sales-history-detail-load-failed'),
+        'tapping a sale that failed to load said nothing',
+      ).toBeInTheDocument();
+    });
+
+    // And the retry works: the second attempt answers, so the detail opens.
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    const retry = screen.queryByRole('button', { name: /retry/i });
+    if (retry) await user.click(retry);
+    else await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /reprint/i })).toBeInTheDocument();
+    });
   });
 
   it('shows the margin columns again once a retry answers', async () => {

@@ -309,6 +309,10 @@ sales-history-refund-lines-aria =
     .aria-label = Refund line items
 sales-history-detail-title = Sale Detail
 sales-history-detail-close = Close
+# The open sale's PRIMARY read did not answer. The detail modal cannot render without a
+# sale, so this is the only surface that can report it — without it the cashier taps a
+# row and nothing happens at all.
+sales-history-detail-load-failed = Could not open this sale — tap it again to retry
 sales-history-detail-print = Reprint Receipt
 sales-history-detail-id = ID
 sales-history-detail-receipt = Receipt

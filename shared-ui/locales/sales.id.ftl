@@ -238,6 +238,9 @@ sales-history-view-aria = Lihat { $id }
 sales-history-void-aria = Batalkan pesanan { $id }
 sales-history-detail-title = Detail Penjualan
 sales-history-detail-close = Tutup
+# Lihat `sales-history-detail-load-failed` di sales.ftl: pembacaan penjualan GAGAL, jadi
+# detail tidak bisa dibuka. Tanpa ini kasir mengetuk baris dan tidak terjadi apa pun.
+sales-history-detail-load-failed = Tidak dapat membuka penjualan ini — ketuk lagi untuk mencoba
 sales-history-detail-print = Cetak Ulang Nota
 sales-history-detail-id = ID
 sales-history-detail-receipt = No. Struk

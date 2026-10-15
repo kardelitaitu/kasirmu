@@ -257,6 +257,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const [staffUnknown, setStaffUnknown] = useState(false);
   const [detail, setDetail] = useState<SaleDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  /**
+   * The open sale's PRIMARY read did not answer.
+   *
+   * The modal cannot render without a sale (`detailExit.shouldRender && detail`, :1626), so
+   * this flag is what keeps a failed open distinguishable from one that is still loading or
+   * that the cashier never triggered. Without it a rejected getSaleScoped was an empty catch
+   * and a tap that drew nothing at all.
+   */
+  const [detailLoadFailed, setDetailLoadFailed] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundDto[]>([]);
@@ -545,16 +554,27 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     }
 
     setDetailLoading(true);
+    setDetailLoadFailed(false);
     setRefunds([]);
     setRefundsUnknown(false);
     setLineMargins([]);
     setMarginsUnknown(false);
     try {
-      const [sale, refundData, marginData] = await Promise.all([
+      const [saleRead, refundData, marginData] = await Promise.all([
         // Three calls, three different scoping treatments in one expression: this one was
         // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
         // Now all three resolve from the session when one exists.
-        sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
+        //
+        // THE PRIMARY READ GOES THROUGH settleRead LIKE ITS TWO SIBLINGS. It used to be a
+        // bare await in a Promise.all whose catch was empty, so a rejected getSaleScoped
+        // took the whole trio down, `detail` stayed null, and the modal's guard at :1626
+        // rendered nothing at all: the cashier tapped a sale and the drawer never opened,
+        // with no message to tell a dead tap from a slow one. Refunds and margins already
+        // reported their own failures; the read that everything else depends on did not.
+        settleRead(
+          'sale',
+          sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
+        ),
         settleRead('refunds', listRefundsScoped(sessionToken!, id)),
         settleRead(
           'sale_line_margins',
@@ -563,6 +583,20 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
             : Promise.resolve([] as SaleLineMarginDto[]),
         ),
       ]);
+      if (!saleRead.ok) {
+        // An UNANSWERED sale read is not an empty one. Say so: the modal cannot open, so
+        // the toast is the only surface that can carry the news (detailLoadFailed below
+        // drives it), and the operator needs to know to try again rather than keep tapping.
+        setDetail(null);
+        setDetailLoadFailed(true);
+        addToast({
+          message: requiredLocalized(l10n, 'sales-history-detail-load-failed'),
+          type: 'error',
+        });
+        return;
+      }
+      const sale = saleRead.value;
+      setDetailLoadFailed(false);
       // Cache the result for future re-opens (null-safe: getSale can return null)
       if (sale) {
         detailCacheRef.current.set(id, sale);
@@ -572,12 +606,19 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       setRefunds(refundData.ok ? refundData.value : []);
       setMarginsUnknown(!marginData.ok);
       setLineMargins(marginData.ok ? marginData.value : []);
-    } catch {
-      // IPC unavailable.
+    } catch (err) {
+      // Nothing above can reject now (all three reads are settled), so this is an
+      // unexpected throw — report it rather than leaving the tap looking dead.
+      console.error('openDetail failed', err);
+      setDetailLoadFailed(true);
+      addToast({
+        message: requiredLocalized(l10n, 'sales-history-detail-load-failed'),
+        type: 'error',
+      });
     } finally {
       setDetailLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, addToast, l10n]);
 
   const closeDetail = useCallback(() => {
     setDetail(null);
@@ -1619,6 +1660,17 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Detail open failure ──────────────────────────────────── */}
+      {/* The primary sale read did not answer, so the detail modal below cannot open.
+          The toast is transient and the failure is not: without a banner the operator's
+          only cue is a tap that does nothing. This stays until the next open attempt
+          clears `detailLoadFailed`. */}
+      {detailLoadFailed && (
+        <div className="sales-history-void-error" role="alert" data-testid="sales-history-detail-load-failed">
+          {requiredLocalized(l10n, 'sales-history-detail-load-failed')}
         </div>
       )}
 
