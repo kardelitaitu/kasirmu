@@ -79,7 +79,7 @@ interface SettingSpec {
 /**
  * The DB-backed toggles — thirteen as of this edit, and the number is spelled out
  * because it was WRONG once: this comment read `ten` while the list below already
- * held thirteen. Round 291 of todo-restaurant-pos-reliability.md caught it while
+ * held thirteen. Round 290 of todo-restaurant-pos-reliability.md caught it while
  * closing the coverage gap on the four newest, which had been rendered and wired but
  * asserted nowhere. A count in prose is a reading that expires the moment the list
  * grows, so the source of truth for "how many" is `RESTAURANT_SETTING_SPECS` and this
