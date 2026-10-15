@@ -1774,8 +1774,8 @@ fn bootstrap_free_has_correct_defaults() {
     assert!(sub.expires_at.is_none());
     assert_eq!(sub.max_locations, 1);
     assert_eq!(sub.max_pos_instances, 1);
-    assert_eq!(sub.allowed_types_json, "[]");
-    assert!(sub.signature.is_empty());
+    assert_eq!(sub.signature, BOOTSTRAP_FREE_SIGNATURE);
+    assert!(sub.verify_signature().is_ok());
     assert!(sub.signed_payload.is_empty());
     assert!(sub.api_key.is_empty());
     assert!(sub.updated_at.is_empty());

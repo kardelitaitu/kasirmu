@@ -516,7 +516,7 @@ impl TenantSubscription {
             max_locations: 1,
             max_pos_instances: 1,
             allowed_types_json: "[]".into(),
-            signature: String::new(),
+            signature: BOOTSTRAP_FREE_SIGNATURE.into(),
             signed_payload: String::new(),
             api_key: String::new(),
             updated_at: String::new(),
