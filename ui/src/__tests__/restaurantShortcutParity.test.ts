@@ -15,6 +15,15 @@
 //      `PosScreen.tsx:91-95` records the tree paying for exactly that once.
 //   3. AN UNWIRED ACTION. Every advertised action must appear in the handler interface, so a
 //      key the help overlay lists cannot be one nobody implements.
+//   4. A DEAD FLAG. `editableGuard` must actually be read by the hook. It was not: the hook
+//      hardcoded a blanket editable check and only this file's header claimed otherwise, so
+//      every entry's flag was decorative. It agreed with the hardcoded behaviour only because
+//      all five entries happen to be `true` — the day someone adds `editableGuard: false`
+//      (a bare key meant to work while typing) it would have been silently suppressed.
+//   5. A MISSING HANDLER SITE. Claim 3 parses the HOOK's interface, which says what the hook
+//      CAN run — not what `PosScreen` actually PASSES it. Renaming a key in PosScreen's
+//      `useMemo` would leave claim 3 green and the key silently dead, because nothing else
+//      renders the restaurant shortcut path.
 
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -74,6 +83,38 @@ describe('the restaurant shortcut manifest', () => {
       unwired.sort(),
       'the manifest advertises an action the hook cannot run',
     ).toEqual([]);
+  });
+
+  it('reads editableGuard per entry rather than hardcoding the guard', () => {
+    const hook = fs.readFileSync(path.join(ROOT, HOOK), 'utf-8');
+    expect(
+      /shortcut\.editableGuard|s\.editableGuard|\.editableGuard\b/.test(hook),
+      'the hook must consult each entry\'s editableGuard; a blanket isEditableTarget() '
+      + 'return makes the manifest field decorative and its own header comment false',
+    ).toBe(true);
+  });
+
+  it('wires every advertised action in PosScreen\'s handler object', () => {
+    // The site the manifest cannot see. PosScreen builds the handler object; if a key
+    // here is missing or misspelled the shortcut is consumed as a no-op (the hook
+    // returns at the first match and calls nothing), with the help overlay still
+    // advertising it.
+    const posScreen = fs.readFileSync(
+      path.join(ROOT, 'ui/src/features/sales/PosScreen.tsx'),
+      'utf-8',
+    );
+    const memo = /useMemo<RestaurantShortcutHandlers>\(\(\) => \{([\s\S]*?)\n {2}\}, \[/.exec(posScreen);
+    expect(memo, 'could not read the PosScreen handler object — has it moved?').not.toBeNull();
+    const body = memo![1]!;
+    const wired = new Set([...body.matchAll(/'([\w-]+)':/g)].map((m) => m[1]!));
+
+    const missing = RESTAURANT_SHORTCUTS.map((s) => s.action).filter((a) => !wired.has(a));
+    expect(
+      missing.sort(),
+      'PosScreen does not supply a handler for these advertised actions, so the key '
+      + 'preventDefaults and then does nothing',
+    ).toEqual([]);
+    expect(wired.size, 'no handlers parsed — the handler object shape changed').toBeGreaterThan(2);
   });
 
   it('matches a Shift+ chord only with Shift held, and never with Ctrl/Meta/Alt', () => {
