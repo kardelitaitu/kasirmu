@@ -72,7 +72,10 @@ test('a category can be deleted with memos pending', async ({ page }) => {
   const del = page.locator('[data-testid="restaurant-menu-editor-cat-del-cat-cold-drink"]');
   await expect(del, 'the rail offers a delete per category').toBeAttached({ timeout: TIMEOUT });
 
-  await del.scrollIntoViewIfNeeded();
+  // ⚠️ NO SCROLL FIRST. Round 250's draft scrolled the rail, which is what moved it clear and hid
+  // whether the CSS bound does anything. Clicking at the resting position is what an operator does
+  // on arrival, and it is the position the cap exists to make safe. Playwright still auto-scrolls if
+  // it must — but then the click lands on the RESULT of that scroll, not on a pre-scrolled state.
   await expect(del).toBeVisible({ timeout: TIMEOUT });
 
   // The proof is the click LANDING, not the element existing: Playwright refuses an intercepted
