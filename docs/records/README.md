@@ -376,6 +376,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The shared source scanner read a regex as a comment, and a dead class that was not dead](audits/source-scanner-regex-and-false-dead-class.md) | — |
 | general | [Twenty-eight source-text guards audited; one family was weak, one was exemplary (round 171)](audits/source-text-guard-audit.md) | — |
 | general | [The split arithmetic is exact for every total it can actually receive — and I measured](audits/split-arithmetic-negative-domain.md) | — |
+| general | [Split tender: an unreadable row was read as zero — and the shortfall blamed the cashier](audits/split-tender-unreadable-row-read-as-zero.md) | — |
 | general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
 | general | [Staleness-guard census, restaurant POS (round 85, 2026-10-13)](audits/staleness-guard-census-restaurant-pos.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
