@@ -1042,6 +1042,103 @@ async fn store_pos_can_still_hold_a_plain_cart() {
         .expect("the enforcement must not remove the plain hold from any terminal");
 }
 
+// A store-pos session must not READ or DELETE a restaurant open bill by id.
+//
+// ⚠️ MEASURED BEFORE THE FIX (round 303), and the measurement is the reason:
+//
+//     PROBE get_ok=true leaked=Some("{\"secret\":true}") delete_ok=true restaurant_still_has_it=false
+//
+// `get_held_cart_scoped` and `delete_held_cart_scoped` both took an arbitrary id with
+// only a permission check and no workspace gate, so a retail session could fetch the
+// restaurant's open bill — cart_data and all — and then DELETE it. The last field is
+// the one that matters: the restaurant's tab was gone.
+//
+// This is round 302's finding completed. That round gated the LIST so a store-pos
+// session could no longer enumerate open bills; the BY-ID pair stayed open, and
+// enumerating was never the requirement to reach them.
+//
+// The rule the UI already applies everywhere (PaymentModal.tsx:368 refuses the
+// open_bill tender off a restaurant terminal, RetailPosScreen filters open bills out of
+// its held-cart list) was therefore enforced on ONE layer and in THREE of five commands.
+// These two are the remainder.
+#[tokio::test]
+async fn store_pos_cannot_read_or_delete_an_open_bill_by_id() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok-r",
+        "user-owner",
+        "role-owner",
+        "s1",
+        "restaurant-pos",
+    );
+    bridge.sessions().write().unwrap().insert(
+        "tok-s".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "s1".into(),
+            "instance-1".into(),
+            "store-pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let id = hold_cart_scoped(
+        &bridge.ctx(),
+        "tok-r",
+        HoldCartArgs {
+            label: "Table 9".into(),
+            cart_data: "{\"secret\":true}".into(),
+            item_count: 1,
+            total_minor: 500,
+            currency: "USD".into(),
+            bill_type: BILL_TYPE_OPEN_BILL.into(),
+            customer_name: None,
+            deduction_location_id: None,
+        },
+    )
+    .await
+    .expect("restaurant may create an open bill");
+
+    // GET: refused, not merely empty. An empty answer would read as "no such tab"
+    // instead of "not yours", which is the distinction list_open_bills_scoped's doc
+    // already makes for the list.
+    let got = get_held_cart_scoped(&bridge.ctx(), "tok-s", id.id.clone()).await;
+    assert!(
+        matches!(got, Err(BridgeError::PermissionDenied(_))),
+        "a store-pos session must not read a restaurant open bill by id; got {got:?}",
+    );
+
+    // DELETE: refused, and the tab SURVIVES. This is the half that destroys data.
+    let del = delete_held_cart_scoped(&bridge.ctx(), "tok-s", id.id.clone()).await;
+    assert!(
+        matches!(del, Err(BridgeError::PermissionDenied(_))),
+        "a store-pos session must not delete a restaurant open bill; got {del:?}",
+    );
+    let still = list_open_bills_scoped(&bridge.ctx(), "tok-r")
+        .await
+        .unwrap();
+    assert!(
+        still.iter().any(|c| c.id == id.id),
+        "the restaurant's open bill must survive a refused delete",
+    );
+
+    // AND THE OVER-CORRECTION: the restaurant may still read and delete its OWN bill.
+    // A gate that blocked everyone would break the feature it protects.
+    let own = get_held_cart_scoped(&bridge.ctx(), "tok-r", id.id.clone()).await;
+    assert!(
+        matches!(own, Ok(Some(_))),
+        "restaurant-pos must still read its own open bill",
+    );
+    delete_held_cart_scoped(&bridge.ctx(), "tok-r", id.id.clone())
+        .await
+        .expect("restaurant-pos must still delete its own open bill");
+}
 // A store-pos session must NOT be handed another vertical's open bill by the general
 // held-cart list.
 //
