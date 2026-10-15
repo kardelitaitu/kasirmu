@@ -320,6 +320,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A takeaway order could claim a table (2026-10-12)](audits/restaurant-pos-takeaway-table-claim.md) | — |
 | general | [A completed restaurant sale, driven live; the KDS half stays open (round 140)](audits/restaurant-sale-live.md) | — |
 | general | [The restaurant settings screen gets E2E coverage, and its toggle is styled-out (round 148)](audits/restaurant-settings-e2e.md) | — |
+| inventory | [The key-ownership inventory named a key nothing writes, and omitted four it does](audits/restaurant-settings-key-inventory-drift.md) | — |
 | general | [The restaurant settings screen, driven live: all thirteen toggles work (round 136)](audits/restaurant-settings-live.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
 | general | [The restaurant shortcut manifest could lie in two ways it was never checked against](audits/restaurant-shortcut-manifest-two-unchecked-claims.md) | — |
