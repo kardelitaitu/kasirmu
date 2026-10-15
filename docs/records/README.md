@@ -341,6 +341,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [The Stripe card finished, and a check that had to be given both arms (round 229)](audits/stripe-card-and-verify-keys.md) | — |
 | general | [Round 181's component adopted at the site that motivated it (round 182)](audits/switch-toggle-adopted.md) | — |
 | general | [The shared switch component, and why adoption is left to each owner (round 181)](audits/switch-toggle-component.md) | — |
+| sync | [The four-round "blocked" is now a passing test (round 278)](audits/tab-conflict-covered.md) | — |
 | sync | [The tab-conflict "needs a second terminal" blocker is soft, and half of it is proven (round 277)](audits/tab-conflict-seam-found.md) | — |
 | general | [The tab park cycle, and the defect two rounds misread (round 215)](audits/tab-park-cycle.md) | — |
 | general | [The last surviving table assertion, and the audit closing (round 198)](audits/table-assertion-audit-closed.md) | — |
