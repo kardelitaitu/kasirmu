@@ -27,6 +27,7 @@ import { Localized } from '@/components/Localized';
 import { formatMoney, minorUnitExponent, parseBalanceInput } from '@/types/domain';
 import type { ShiftDto } from '@/api/shifts';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
+import { isEditableTarget } from '@/utils/isEditableTarget';
 
 // -- Close Shift confirmation ------------------------------------------
 
@@ -84,7 +85,15 @@ export function CloseShiftConfirm({
                 closeShiftExit.requestClose();
                 setCloseShiftError(null);
               }
-              if (e.key === 'Enter') handleConfirmCloseShift();
+              // Enter confirms — but NOT from a text field. This handler sits on the
+              // overlay, so a keydown inside the notes <textarea> or the counted-cash
+              // <input> bubbles here: measured, pressing Enter to add a line to the
+              // shift note called handleConfirmCloseShift and closed the shift. A
+              // textarea is precisely where a multi-line note gets typed, and Shift is
+              // not required, so the keystroke that should insert a newline committed
+              // the action instead. Same guard the POS hotkey handler uses
+              // (PosScreen/RetailPosScreen via isEditableTarget).
+              if (e.key === 'Enter' && !isEditableTarget(e.target)) handleConfirmCloseShift();
             }}
           >
             <div className={`pos-close-shift-modal${closeShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
@@ -356,7 +365,10 @@ export function OpenShiftModal({
             aria-label={l10n.getString('pos-open-shift-overlay-aria')}
             onKeyDown={(e) => {
               if (e.key === 'Escape') openShiftExit.requestClose();
-              if (e.key === 'Enter') handleConfirmOpenShift();
+              // Same guard as the close-shift dialog above, and for the same measured
+              // reason: the opening-balance <input> is a text entry point, so Enter
+              // while typing there confirmed the open instead of committing the field.
+              if (e.key === 'Enter' && !isEditableTarget(e.target)) handleConfirmOpenShift();
             }}
           >
             <div className={`pos-close-shift-modal${openShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
