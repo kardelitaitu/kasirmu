@@ -60,6 +60,15 @@ export default function WarehouseConsole() {
   const session = useWarehouseSession();
   const { toggleFullscreen } = useFullscreen();
 
+  // Shared by the FnBar button and the keydown case, so Shift-less F5 / ? cannot
+  // diverge from the buttons that advertise them. Both were keyboard-dead no-ops.
+  const handlePrint = useCallback(() => {
+    addToast({ type: 'info', message: 'Print' });
+  }, [addToast]);
+  const handleShowHelp = useCallback(() => {
+    addToast({ type: 'info', message: '?' });
+  }, [addToast]);
+
   const [mode, setMode] = useState<WarehouseMode>('receive');
   const [locationId, setLocationId] = useState('');
   const [products, setProducts] = useState<ProductDto[]>([]);
@@ -267,11 +276,20 @@ export default function WarehouseConsole() {
           e.preventDefault();
           setMode('stock');
           break;
+        // ⚠️ These two used to `preventDefault()` and NOTHING ELSE, so F5 and ? were
+        // dead keys: advertised on their FnBar buttons (below, via `onPrint` /
+        // `onShowHelp`), listed in the help overlay, and silently swallowed. The
+        // parity test could not catch it because its "every active shortcut has a
+        // handler" claim compares `ACTIVE_SHORTCUT_ACTIONS` against the manifest that
+        // DERIVES that set — A ⊆ A. Both now call the same functions the buttons call,
+        // so the two paths cannot drift.
         case 'print':
           e.preventDefault();
+          handlePrint();
           break;
         case 'shortcut-list':
           e.preventDefault();
+          handleShowHelp();
           break;
         case 'close':
           e.preventDefault();
@@ -284,7 +302,11 @@ export default function WarehouseConsole() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+    // `handlePrint` / `handleShowHelp` are read by the F5 and ? cases above. Both are
+    // useCallback-stable (addToast is stable), so listing them cannot churn the
+    // listener — but omitting them froze the first render's closure, the stale-dep
+    // shape this file's other handlers already avoid.
+  }, [handlePrint, handleShowHelp]);
 
   // ── Pick transfer dialog handlers ──────────────────────────────────
   const openTransferList = useCallback(() => {
@@ -554,9 +576,9 @@ export default function WarehouseConsole() {
         onSend={() => { setMode('send'); setSendPopupOpen((v) => !v); }}
         onCount={() => setMode('count')}
         onStock={() => setMode('stock')}
-        onPrint={() => addToast({ type: 'info', message: 'Print' })}
+        onPrint={handlePrint}
         onToggleFullscreen={toggleFullscreen}
-        onShowHelp={() => addToast({ type: 'info', message: '?' })}
+        onShowHelp={handleShowHelp}
       />
 
       {/* ── Receive popup (F1) ── */}

@@ -109,6 +109,14 @@ describe('warehouse shortcut parity', () => {
     }
   });
 
+  // ⚠️ This test CANNOT FAIL, and that is worth stating rather than discovering.
+  // `ACTIVE_SHORTCUT_ACTIONS` is DERIVED from `WAREHOUSE_SHORTCUTS`
+  // (warehouseShortcuts.ts:61-63), so asserting the set matches the manifest asserts
+  // A ⊆ A. Measured: deleting the real `case 'print':` handler from
+  // WarehouseConsole.tsx — killing F5 outright — left all nine tests in this file
+  // GREEN. The behavioural check lives in warehouseShortcutWiring.test.tsx, which
+  // drives the keydown path and asserts an observable effect.
+
   // 4. F11 is shell-owned, not re-bound ─────────────────────────
 
   it('F11 fullscreen is listed in the manifest but is a placeholder (shell-owned, KEY-01)', () => {
