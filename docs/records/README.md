@@ -284,6 +284,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
 | general | [The missing scoped-storage helper, built and pinned (round 168)](audits/scoped-storage-helper.md) | — |
+| general | [The section filter narrowed the counts, not the floor plan (round 244)](audits/section-filter-broken.md) | — |
 | general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
 | general | [Security Audit: Admin Dashboard Login Flow](audits/security/audit-admin-login-flow.md) | — |
 | security | [Login Flow Audit — Admin + User Dashboard (Final Pass)](audits/security/audit-login-flow-final.md) | — |
