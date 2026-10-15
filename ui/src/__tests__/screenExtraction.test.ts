@@ -1883,6 +1883,15 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'restaurant/screens/RestaurantMenuEditorScreen.tsx',
     css: ['restaurant/screens/RestaurantMenuEditorScreen.css'],
     parentCss: ['restaurant/screens/RestaurantSettingsScreens.css', '../theme/components.css'],
+    // `memo-stack` is a CONDITION, not a class this screen renders. The sheet's clearance rule for
+    // the fixed memo stack is `body:has(.memo-stack) .restaurant-menu-editor-rail`, so the walk
+    // sees the name in a :has() argument with no markup behind it and reads the rule dead.
+    //
+    // dynamicClassPrefixes rather than externalClasses, for the reason the staff entry gives
+    // (`:335-341`): an externalClasses value must be defined OUTSIDE this entry's own css, and the
+    // rule that makes the name matter here IS this sheet's. Same allowance the receipts and
+    // payments entries carry since round 248.
+    dynamicClassPrefixes: ['memo-stack'],
   },
   {
     name: 'RestaurantMenu',
