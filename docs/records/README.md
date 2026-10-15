@@ -191,6 +191,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The EDC Test Connection, and a toggle that was not needed (round 257)](audits/edc-test-connection.md) | — |
 | general | [The 8 remaining ids, and why a tag is not a classification (round 283)](audits/eight-id-classification-corrected.md) | — |
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
+| general | [86 persistence silently disarmed for the life of the mount by one failed read](audits/eighty-six-persistence-disarmed-by-one-failed-read.md) | — |
 | general | [The empty-section state, and the exit it offers (round 246)](audits/empty-section-covered.md) | — |
 | general | [The empty-section branch: reachable, and the route is longer than it looked (round 245)](audits/empty-section-route.md) | — |
 | general | [Exit Terminal could not exit, and a round-294 test was asserting that as correct (round 297)](audits/exit-terminal-could-not-exit.md) | — |
