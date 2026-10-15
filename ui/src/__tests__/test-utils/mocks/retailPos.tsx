@@ -66,6 +66,10 @@ export function createRetailProductsApiMock() {
     updateProductVariant: vi.fn(),
     deleteProductVariant: vi.fn(),
     createCategory: vi.fn(),
+    // The SCOPED category write. Its absence from this factory is part of how the
+    // category-persistence defect below stayed invisible: nothing could call it, so
+    // nothing noticed it was never called.
+    createCategoryScoped: vi.fn(),
     updateCategory: vi.fn(),
     deleteCategory: vi.fn(),
     getProductTrackSerialScoped: vi.fn(() => Promise.resolve(false)),

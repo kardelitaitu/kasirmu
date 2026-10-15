@@ -20,7 +20,7 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useInvalidSession } from '@/hooks/useInvalidSession';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
+import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, createCategoryScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { hasGrantedPermission } from '@/registries/page-registry';
 import { openProductImagesScoped } from '@/api/browser';
 import { loadCatalog, invalidateCatalog } from '@/utils/catalog-cache';
@@ -592,12 +592,41 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
   }, [products, categories, addToast, sessionToken, canEditCost]);
 
-  const handleSaveNewCategory = useCallback((newCat: CategoryDto) => {
-    setCategories((prev) => [...prev, newCat]);
-    // PERF-08: catalog mutated — next load must refetch.
-    invalidateCatalog(sessionToken);
+  // ADR #36 for CATEGORIES. This handler used to append to React state and call
+  // `invalidateCatalog` without ever awaiting a write — `createCategoryScoped` exists
+  // (api/products.ts:285) and the whole retail feature called it ZERO times, so a category
+  // the operator added lived only in local state and vanished on the next reload. That is
+  // the same defect class the ADR #36 note below records for products, still open here.
+  const handleSaveNewCategory = useCallback(async (newCat: CategoryDto) => {
     setActiveCategory(newCat.id);
-  }, [setCategories, sessionToken]);
+    try {
+      const created = await createCategoryScoped(sessionToken, {
+        id: newCat.id,
+        name: newCat.name,
+        colour: newCat.colour ?? '',
+        icon: newCat.icon ?? '',
+      });
+      // Adopt the SERVER's id when it returns one: the modal mints a client-side
+      // `cat-<timestamp>` (AddCategoryModal.tsx:45), and the products that reference this
+      // category carry whatever id is in state, so keeping the local one when the server
+      // disagrees would file those products under a category that does not exist.
+      const persisted = created?.id && created.id !== newCat.id
+        ? { ...newCat, id: created.id }
+        : newCat;
+      setCategories((prev) => [...prev, persisted]);
+      // PERF-08: catalog mutated — next load must refetch.
+      invalidateCatalog(sessionToken);
+      setActiveCategory(persisted.id);
+    } catch (err) {
+      // Nothing was persisted, so nothing is added to the grid. The operator keeps the
+      // category list they had and is told why.
+      setActiveCategory(null);
+      addToast({
+        message: plainErrorMessage(err, requiredLocalized(l10nRef.current, 'retail-toast-save-product-failed')),
+        type: 'error',
+      });
+    }
+  }, [setCategories, sessionToken, addToast]);
 
   // ADR #36 D5: the retail add modal now persists through
   // `create_product_scoped` (previously the product only lived in local
@@ -629,6 +658,14 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         defaultSupplierId: newProd.default_supplier_id ?? null,
       });
     } catch (err) {
+      // ROLL THE OPTIMISTIC ROW BACK. The row was inserted at the top of this callback
+      // (:606) before the create was attempted, so a refusal would otherwise leave the
+      // operator looking at a product they believe is saved — and it vanishes on the next
+      // reload. That is the same class the ADR #36 comment above describes fixing
+      // ("previously the product only lived in local React state and vanished on reload"),
+      // reintroduced on the FAILURE path. The toast says what failed; this makes the grid
+      // agree with the server.
+      setProducts((prev) => prev.filter((p) => p.sku !== newProd.sku));
       addToast({ message: plainErrorMessage(err, requiredLocalized(l10nRef.current, 'retail-toast-save-product-failed')), type: 'error' });
     }
   }, [categories, addToast, sessionToken, canEditCost]);

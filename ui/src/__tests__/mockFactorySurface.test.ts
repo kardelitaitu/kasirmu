@@ -289,9 +289,11 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'printSalesReceiptScoped', 'readScaleWeight', 'readScaleWeightScoped',
     'startScannerScoped', 'stopScannerScoped',
   ],
-  // 8 names.
+  // 7 names. `createCategoryScoped` was on this list until the retail category-persistence
+  // fix (round 52) gave the factory a real mock for it: the gap and the defect were the
+  // same omission, which is why nothing ever noticed categories were never written.
   '@/api/products <- createRetailProductsApiMock': [
-    'createCategoryScoped', 'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'deleteCategoryScoped', 'deleteProductVariantScoped',
     'listWarehouseProductsAtLocation', 'productsClearImageScoped',
     'productsListImagesScoped', 'productsSetImageScoped', 'updateCategoryScoped',
   ],

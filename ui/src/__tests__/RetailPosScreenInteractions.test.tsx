@@ -33,6 +33,38 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
   return createBarcodeScannerModuleMock();
 });
 
+// AddProductModal is a real form; driving it here would drag in the whole retail
+// harness. A one-button stub that calls the screen's real `addProduct.onSave`
+// (RetailPosScreen.tsx:1960) keeps the wiring under test and the form out of it.
+vi.mock('@/features/retail/AddProductModal', () => ({
+  AddProductModal: (props: {
+    isOpen?: boolean;
+    onSave?: (p: unknown) => void;
+    categories?: readonly { name?: string }[];
+  }) =>
+    props.isOpen ? (
+      <button
+        type="button"
+        data-testid="stub-add-product-save"
+        onClick={() => {
+          props.onSave?.({
+            sku: 'SKU-NEW',
+            name: 'Brand New Product',
+            category: props.categories?.[0]?.name ?? 'Makanan',
+            price: { minor_units: 1000, currency: 'IDR' },
+            barcode: null,
+            in_stock: true,
+            stock_qty: 10,
+            tax_rate_ids: [],
+            product_type: 'retail',
+          });
+        }}
+      >
+        save new product
+      </button>
+    ) : null,
+}));
+
 vi.mock('@/api/products', async () => {
   const { createRetailProductsApiMock } =
     await import('@/__tests__/test-utils/mocks/retailPos');
@@ -1035,5 +1067,101 @@ describe('RetailPosScreen — interactions', () => {
     expect(salesApi.deleteHeldCartScoped).not.toHaveBeenCalled();
 
     vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
+  });
+
+  // ── An optimistic ADD must be rolled back when the create fails ──────
+  //
+  // `handleSaveNewProduct` (RetailPosScreen.tsx:605) inserts the new product into `products`
+  // BEFORE awaiting `createProductScoped` (:606). The catch at :631 toasts and nothing else —
+  // it never removes the row.
+  //
+  // So when the create is refused the operator sees the product in the grid and believes it
+  // is saved; it vanishes on the next reload. Same class as the ADR #36 comment at :602-604
+  // describes fixing ("previously the product only lived in local React state and vanished
+  // on reload"), reintroduced on the FAILURE path.
+  it('does not leave an unsaved product on screen when the add is refused', async () => {
+    // `@/api/products` is fully mocked, so the mock is reached through vi.mocked rather
+    // than a namespace import (which the module mock does not provide).
+    const productsMod = await import('@/api/products');
+    const createProduct = vi.mocked(productsMod.createProductScoped);
+    // The create is refused. Everything the screen does AFTER this point is the defect.
+    createProduct.mockRejectedValue(new Error('sku already exists'));
+
+    // Render with the same bundle set the other cases use: `catFtl` carries the category
+    // names the grid's action bar depends on, so without it the row never appears.
+    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // Open the add-product modal through the grid's own control.
+    // RetailProductGrid.tsx:590-599 — the label is `retail-add-product-btn-aria`,
+    // "Add new product", not the visible "+ Product" the <Localized> wraps.
+    const addBtn = await waitFor(() => {
+      const candidates = screen.queryAllByRole('button', { name: /add new product/i });
+      expect(candidates.length, 'the add-product control was not found').toBeGreaterThan(0);
+      return candidates[0]!;
+    });
+    fireEvent.click(addBtn);
+
+    // Save through the stubbed modal, which calls the screen's real `addProduct.onSave`.
+    const saveBtn = await waitFor(() => screen.getByTestId('stub-add-product-save'));
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(createProduct).toHaveBeenCalledTimes(1);
+    });
+
+    // THE ASSERTION: a product whose create was refused must not still be on screen.
+    await waitFor(() => {
+      expect(screen.queryByText('Brand New Product')).not.toBeInTheDocument();
+    });
+
+    createProduct.mockReset();
+  });
+
+  // ── A new CATEGORY must actually persist ─────────────────────────────
+  //
+  // `handleSaveNewCategory` (RetailPosScreen.tsx:595-600) appends the category to React
+  // state and calls `invalidateCatalog` — it never awaits a WRITE. `createCategoryScoped`
+  // (api/products.ts:285) exists and is exported, but a grep over the whole retail feature
+  // finds ZERO calls to it.
+  //
+  // So a category the operator adds is purely local and disappears on the next reload —
+  // the exact defect ADR #36 fixed for PRODUCTS ("previously the product only lived in
+  // local React state and vanished on reload") and which is still open for categories.
+  it('persists a new category instead of only adding it to local state', async () => {
+    const productsMod = await import('@/api/products');
+    const createCategory = vi.mocked(productsMod.createCategoryScoped);
+    createCategory.mockReset();
+    createCategory.mockResolvedValue({ id: 'cat-server-1' });
+
+    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // Open the add-category modal through the screen's own control.
+    const addCatBtn = await waitFor(() => {
+      const b = screen.queryAllByRole('button', { name: /add category|kategori baru|new category/i });
+      expect(b.length, 'the add-category control was not found').toBeGreaterThan(0);
+      return b[0]!;
+    });
+    fireEvent.click(addCatBtn);
+
+    // AddCategoryModal.tsx:86-93 — the field is `#add-category-name`. Byte-addressed rather
+    // than by role because the POS screen behind the modal also has textboxes.
+    const nameInput = await waitFor(() => {
+      const el = document.querySelector('#add-category-name');
+      expect(el, 'the add-category modal did not open').not.toBeNull();
+      return el as HTMLInputElement;
+    });
+    fireEvent.change(nameInput, { target: { value: 'Kategori Baru' } });
+    fireEvent.submit(nameInput.closest('form')!);
+
+    // THE ASSERTION: the category has to reach the server.
+    await waitFor(() => {
+      expect(createCategory, 'a new category was never sent to the server').toHaveBeenCalledTimes(1);
+    });
+    expect(createCategory).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ name: 'Kategori Baru' }),
+    );
   });
 });
