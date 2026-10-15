@@ -133,6 +133,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The surviving-assertion audit extended past the table screen — and came back clean (round 199)](audits/assertion-audit-beyond-tables.md) | — |
 | general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
 | general | [Back controls are navigation, and a variable hides an id from the scan (round 282)](audits/back-controls-are-navigation.md) | — |
+| general | [A failed barcode lookup was silently dropped at the till](audits/barcode-lookup-failure-was-silent.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
 | general | [The bridge suite gets 2.2x SLOWER in parallel, and the cause is a mutex round the](audits/bridge-suite-slows-under-parallelism.md) | — |
