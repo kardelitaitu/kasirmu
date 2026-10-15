@@ -375,6 +375,59 @@ describe('ShiftManagementScreen', () => {
     expect(screen.getByText('Shift History')).toBeInTheDocument();
   });
 
+  // ── The OTHER read in the same Promise.all ────────────────────────
+  //
+  // `load` (:92-115) wraps getActiveShiftScoped in settleRead and listShiftsScoped as a bare
+  // await, in ONE Promise.all. The test above deliberately resolves listShifts, so the
+  // active-shift failure is the only thing in play -- and the suite is green with the list
+  // read unprotected.
+  //
+  // When the LIST read rejects, the Promise.all rejects and the whole try block aborts
+  // BEFORE `active.ok` is evaluated. `activeShiftUnknown` is never set, so the screen falls
+  // through to the plain no-active banner at :485 -- the one whose only affordance is Open
+  // Shift. That is the exact wrong action this screen's own guard exists to prevent:
+  // opening a second shift against one the database still holds open.
+  it('does not offer Open Shift when the SHIFT LIST read failed', async () => {
+    // The active-shift read ANSWERS -- the LIST is the one that could not be asked.
+    // Resolving it is what isolates the defect: any other arrangement tests the existing
+    // guard rather than this one.
+    mockGetActiveShift.mockResolvedValue(activeShift);
+    mockListShifts.mockRejectedValue(new Error('invoke failed'));
+
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+
+    // The list read says nothing about the drawer, so the screen must not claim there is
+    // no active shift -- and must not offer the action that opens a second one.
+    expect(screen.queryByText('No active shift')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open Shift')).not.toBeInTheDocument();
+    // The only action offered re-asks the question.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('recovers the no-active banner once the list read is answered', async () => {
+    const user = userEvent.setup();
+    mockGetActiveShift.mockResolvedValue(null);
+    mockListShifts.mockRejectedValueOnce(new Error('invoke failed'));
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+
+    mockListShifts.mockResolvedValue(closedShifts);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No active shift')).toBeInTheDocument();
+      expect(screen.getByText('Open Shift')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('recovers the no-active banner once the retry answers', async () => {
     const user = userEvent.setup();
     mockListShifts.mockResolvedValue(closedShifts);

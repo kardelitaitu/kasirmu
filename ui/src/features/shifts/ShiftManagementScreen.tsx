@@ -57,6 +57,15 @@ export default function ShiftManagementScreen() {
   // partial unique index (migrations/20261011_open_shift_uniqueness.sql) would
   // refuse that write, but the operator would be told the wrong reason.
   const [activeShiftUnknown, setActiveShiftUnknown] = useState(false);
+/**
+ * The shift-LIST read did not answer.
+ *
+ * Same contract as `activeShiftUnknown`, one read over: `[]` answers both "no shifts have
+ * ever been opened" and "we could not ask", and only the flag keeps them apart. The list
+ * read is what feeds the history table, so without it an unanswered read would render an
+ * empty history -- a claim that the store has no history.
+ */
+const [shiftsUnknown, setShiftsUnknown] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // ── Modals ────────────────────────────────────────────────────────
@@ -91,12 +100,29 @@ export default function ShiftManagementScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setShiftsUnknown(false);
     try {
-      const [allShifts, active] = await Promise.all([
-        listShiftsScoped(sessionToken),
+      const [allShiftsRead, active] = await Promise.all([
+        // The LIST read goes through settleRead like its sibling below. As a bare await it
+        // could reject the whole Promise.all, which aborted this try block BEFORE
+        // `active.ok` was ever evaluated -- so `activeShiftUnknown` stayed false and the
+        // screen fell through to the no-active banner at :485, whose only affordance is
+        // Open Shift. That is the exact wrong action the guard above exists to prevent:
+        // opening a second shift against one the database still holds open. A failed list
+        // read says nothing about the drawer, so it must not be read as a claim about it.
+        settleRead('shifts', listShiftsScoped(sessionToken)),
         settleRead('active_shift', getActiveShiftScoped(sessionToken)),
       ]);
-      setShifts(allShifts);
+      if (!allShiftsRead.ok) {
+        // The list could not be asked. `shiftsUnknown` names that below; the
+        // active-shift read still answers on its own and is applied here so the
+        // drawer state the screen DOES know about is not thrown away with the list.
+        setShiftsUnknown(true);
+        setShifts([]);
+      } else {
+        setShiftsUnknown(false);
+        setShifts(allShiftsRead.value);
+      }
       if (active.ok) {
         setActiveShift(active.value);
         setActiveShiftUnknown(false);
@@ -515,7 +541,20 @@ export default function ShiftManagementScreen() {
               <h2 className="shift-mgmt-table-title">Shift History</h2>
             </Localized>
 
-            {shifts.length === 0 ? (
+            {/* An unanswered list read must not render the empty state: "no shifts"
+                is a claim about the store, and "we could not ask" is a different one. */}
+            {shiftsUnknown ? (
+              <div className="shift-mgmt-empty">
+                <div className="shift-mgmt-modal-error" role="alert">
+                  <Localized id="shift-load-error">
+                    <span>Failed to load shifts</span>
+                  </Localized>
+                </div>
+                <Button variant="secondary" onClick={load}>
+                  <Localized id="retry"><span>Retry</span></Localized>
+                </Button>
+              </div>
+            ) : shifts.length === 0 ? (
               <div className="shift-mgmt-empty">
                 <EmptyState
                   icon={<NoShiftsIcon />}

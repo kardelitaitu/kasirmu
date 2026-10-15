@@ -102,6 +102,33 @@ describe('StockTransfersScreen', () => {
   });
 
   // ── List rendering ───────────────────────────────────────────
+  it('does not discard the ANSWERED dropdown reads when the transfer list fails', async () => {
+    // `load` (:110-129) runs three reads in ONE Promise.all. The products and terminals
+    // reads were already settled, so a failure in either is recorded as `null` and the two
+    // `=== null` notices (:657, :710) say so. The PRIMARY read was a bare await, so its
+    // rejection took the whole Promise.all down -- discarding two answers that had already
+    // succeeded and reporting those dropdowns as unanswered when they had been answered.
+    mockListTransfers.mockRejectedValue(new Error('invoke failed'));
+    mockListProducts.mockResolvedValue([{ sku: 'SKU-1', name: 'Widget', unit: 'pcs' }]);
+    mockListTerminals.mockResolvedValue([{ id: 'term-9', name: 'Register 9' }]);
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+
+    // The failure is reported, not swallowed.
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load|could not load|error/i)).toBeInTheDocument();
+    });
+
+    // And the answers survive it: the terminal picker renders Register 9, which only
+    // happens if that read's answer reached state. It appears in BOTH the send and receive
+    // pickers, hence getAllByText rather than getByText.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /new transfer/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText('Register 9').length).toBeGreaterThan(0);
+    });
+  });
+
   it('renders title and New Transfer button', async () => {
     mockListTransfers.mockResolvedValue([]);
     renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);

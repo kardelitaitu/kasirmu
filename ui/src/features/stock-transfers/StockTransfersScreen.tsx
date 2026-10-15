@@ -111,16 +111,29 @@ export default function StockTransfersScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [data, prodRead, termRead] = await Promise.all([
-        listStockTransfers(sessionToken),
+      const [dataRead, prodRead, termRead] = await Promise.all([
+        // The PRIMARY read settles like its two siblings below. As a bare await its
+        // rejection discarded the other two ANSWERS: `Promise.all` rejects on the first
+        // failure, so a failed transfer list threw away a products read and a terminals
+        // read that had already succeeded, and the two `=== null` notices (:657, :710)
+        // then reported those dropdowns as unanswered when they had been answered. Same
+        // shape as ShiftManagementScreen's `load` and SalesHistoryScreen's `openDetail`.
+        settleRead('stock-transfers listStockTransfers', listStockTransfers(sessionToken)),
         settleRead('stock-transfers listProductsScoped', listProductsScoped(sessionToken)),
         settleRead('stock-transfers listTerminalsScoped', listTerminalsScoped(sessionToken)),
       ]);
-      setTransfers(asArray<typeof data[number]>(data));
       // Only an ANSWER is written. A throw writes nothing, so the dropdowns
       // stay UNKNOWN and the notices below can say so out loud.
       if (prodRead.ok) setProducts(prodRead.value);
       if (termRead.ok) setTerminals(termRead.value);
+      if (dataRead.ok) {
+        setTransfers(asArray<typeof dataRead.value[number]>(dataRead.value));
+      } else {
+        // The list could not be asked. Report it rather than leaving a stale or empty
+        // table under the banner the catch used to provide.
+        setTransfers([]);
+        setError(l10n.getString('stock-transfers-error-load'));
+      }
     } catch {
       setError(l10n.getString('stock-transfers-error-load'));
     } finally {
