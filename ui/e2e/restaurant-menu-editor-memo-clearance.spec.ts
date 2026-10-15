@@ -29,6 +29,14 @@ async function openMenuEditor(page: Page): Promise<void> {
   await page.locator('.restaurant-sidebar-btn').first().click();
   await page.locator('[data-testid="restaurant-sidebar-menu-editor"]').click();
   await expect(page.locator('.restaurant-menu-editor-rail')).toBeVisible({ timeout: TIMEOUT });
+
+  // ⚠️ WAIT FOR THE CONTENT, not just the rail's visibility. Measured 2026-10-15 (round 251): a
+  // bare `toBeVisible` let a probe read the rail at `h 128` BEFORE its categories rendered, which
+  // is the skeleton's height. That reading withdrew a real defect for a round. The category buttons
+  // are what make the rail tall, so they are what a bounded-rail assertion must see first.
+  await expect(
+    page.locator('[data-testid^="restaurant-menu-editor-cat-edit-"]').first(),
+  ).toBeVisible({ timeout: TIMEOUT });
 }
 
 test('the rail is bounded so its last category stays reachable', async ({ page }) => {
