@@ -131,6 +131,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | staff | [Thirteen switches, twenty-seven roles, zero missing attributes (round 180)](audits/aria-role-attribute-sweep.md) | — |
 | general | [The surviving-assertion audit extended past the table screen — and came back clean (round 199)](audits/assertion-audit-beyond-tables.md) | — |
 | general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
+| general | [Back controls are navigation, and a variable hides an id from the scan (round 282)](audits/back-controls-are-navigation.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
 | general | [Cart line badges and the special-request note, plus a validation of round 203's checker (round 204)](audits/cart-line-badges-note.md) | — |
