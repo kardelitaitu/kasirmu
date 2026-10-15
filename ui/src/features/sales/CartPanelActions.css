@@ -37,6 +37,33 @@
   min-width: 0;
 }
 
+/* ── Dining operations: 2x2 grid above Charge hero ─── */
+.pos-cart-actions-row--dining {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pos-cart-actions-row--dining .pos-cart-clear-btn {
+  order: 9;
+  flex: 0 0 auto;
+}
+
+.pos-cart-actions-row--dining .pos-cart-pay-btn {
+  order: 10;
+  flex: 1 1 200px;
+}
+
+.pos-cart-actions-row--dining .pos-cart-open-bill-btn,
+.pos-cart-actions-row--dining .pos-cart-print-bill-btn,
+.pos-cart-actions-row--dining .pos-cart-send-kitchen-btn,
+.pos-cart-actions-row--dining .pos-cart-split-bill-btn {
+  order: 1;
+  flex: 1 1 calc(50% - var(--space-2));
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-2_5);
+}
+
 /* ── Pay button (hero) ─────────────────────────────── */
 /* Elevated hero: 56 px tall, xl-size label, vertical accent
  * gradient, soft accent-tinted glow that strengthens on hover

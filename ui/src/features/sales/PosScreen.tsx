@@ -1055,7 +1055,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             printerTarget: 'kitchen',
             documentKind: 'kitchen',
           });
-          await printSalesReceipt(sessionToken, foodChit);
+          try {
+            await printSalesReceipt(sessionToken, foodChit);
+          } catch (printErr) {
+            console.warn('Kitchen chit printing failed/unavailable (non-fatal):', printErr);
+          }
         }
 
         if (drinkLines.length > 0) {
@@ -1067,7 +1071,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             printerTarget: 'bar',
             documentKind: 'bar',
           });
-          await printSalesReceipt(sessionToken, barChit);
+          try {
+            await printSalesReceipt(sessionToken, barChit);
+          } catch (printErr) {
+            console.warn('Bar chit printing failed/unavailable (non-fatal):', printErr);
+          }
         }
       }
     },

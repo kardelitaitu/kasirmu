@@ -125,8 +125,14 @@ export function CartActionBar({
     }
   }, [activeShift, addToast, l10n, tableNumber, customerName, activeOpenBillId, handleOpenBill, setShowOpenBillInput]);
 
+  const hasDiningActions = Boolean(
+    (printBillEnabled !== false && hasLines && ((orderType === 'dine_in' && Boolean(tableNumber?.trim())) || Boolean(activeOpenBillId)) && handlePrintBill) ||
+    (hasLines && (Boolean(tableNumber?.trim()) || Boolean(activeOpenBillId)) && hasUndispatchedItems && handleSendToKitchen) ||
+    (splitBillEnabled !== false && hasLines && handleOpenSplitBill)
+  );
+
   return (
-    <div className="pos-cart-actions-row">
+    <div className={`pos-cart-actions-row${hasDiningActions ? ' pos-cart-actions-row--dining' : ''}`}>
       {/* Clear cart button */}
       <Localized id="pos-cart-clear">
         <button

@@ -28,9 +28,9 @@ const SRC = readFileSync(resolve(__dirname, '../features/sales/PosScreen.tsx'), 
 /** The handleDispatchKitchenDelta body — the chit builder's only production caller. */
 function dispatchBody(): string {
   const at = SRC.indexOf('const handleDispatchKitchenDelta');
-  // 3000, not the 1400 this started at: the fix carries an explanatory comment, and
+  // 3500, not the 1400 this started at: the fix carries an explanatory comment, and
   // a window sized to the code alone truncates before the dependency array.
-  return at === -1 ? '' : SRC.slice(at, at + 3000);
+  return at === -1 ? '' : SRC.slice(at, at + 3500);
 }
 
 describe('PosScreen kitchen chit table scoping', () => {
