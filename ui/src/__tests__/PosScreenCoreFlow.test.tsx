@@ -520,6 +520,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.restoreAllMocks();
   });
 
+
   // A store switch must not let a SLOWER earlier read win.
   //
   // Guarded in PosScreen (760e0c8da). `showTableNumber` decides whether the table
@@ -2194,5 +2195,50 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     expect(parsed.lines.some((l: { sku: string }) => l.sku === 'ITEM-001')).toBe(true);
 
     localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+  });
+
+  // ── Barcode lookup FAILURE (last in the suite, on purpose) ───────────
+  //
+  // The scanner's onProductFound (PosScreen.tsx:~660) has three outcomes, and two of them
+  // report: a product hit adds to the cart, a clean miss toasts
+  // `pos-no-barcode-match`, and the scanner's own hardware error toasts `pos-scanner-error`.
+  //
+  // The third — the LOOKUP throwing — was a bare `catch { }` whose comment said 'Silently
+  // ignore — the scanner will beep, user retries'. That is true of a scanner mis-read and
+  // untrue of a failed IPC: every retry fails too, so the item never arrives and the
+  // cashier is given no reason. At a busy till that reads as a dead scanner, and the
+  // operator's next move is to key the item in by hand or re-scan the same code forever.
+  //
+  // PLACED LAST ON PURPOSE. This case installs a permanently-rejecting lookup mock, and the
+  // file's header (:491-503) records that a mockRejectedValue left behind answers every
+  // later case — measured here, not theorised: with this test at the head of the suite, the
+  // 30 cases after it failed on 'no product in the cart'. The restore at the end runs after
+  // the assertion, so a failure mid-test still holds a live rejection; at the end of the
+  // file there is nothing left to contaminate.
+  it('SAYS SOMETHING when the barcode lookup itself FAILS, instead of doing nothing at all', async () => {
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockRejectedValue(new Error('ipc down'));
+
+    // renderPosScreenWithShift, not a bare render: the scan handler returns early with
+    // // an open-shift toast when NO shift is open (PosScreen.tsx:614), so a bare render
+       // would assert against a different toast and pass or fail for the wrong reason.
+    await renderPosScreenWithShift();
+
+    await act(async () => {
+      mockedBarcode.triggerScan('BARCODE-001');
+    });
+
+    // A failed lookup must reach the operator, the way the two neighbouring outcomes do.
+    await waitFor(() => {
+      const toast = document.querySelector('.toast');
+      const text = toast?.textContent ?? '';
+      expect(toast, 'a failed barcode lookup produced no toast at all').not.toBeNull();
+      expect(text).toMatch(/could not check|no product|does not match|error|failed|unavailable/i);
+    });
+
+    // Restore the suite default for anything that runs after.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => mockLookupByBarcode(code)) as never);
   });
 });

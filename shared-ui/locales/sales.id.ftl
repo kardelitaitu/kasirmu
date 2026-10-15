@@ -578,6 +578,9 @@ pos-close-shift-cart-error = Selesaikan atau kosongkan penjualan saat ini sebelu
 pos-close-shift-open-tab-error = Masih ada tagihan terbuka pelanggan di terminal ini. Selesaikan atau pindahkan tagihan tersebut sebelum menutup shift.
 pos-close-shift-failed = Gagal menutup shift
 pos-scanner-error = Kesalahan pemindai: { $detail }
+# Lihat `pos-barcode-lookup-failed` di sales.ftl: pencarian barcode GAGAL (IPC/jaringan),
+# berbeda dari `pos-no-barcode-match` yang artinya kode tersebut memang tidak ada.
+pos-barcode-lookup-failed = Tidak dapat memeriksa barcode ini — silakan coba lagi
 pos-toast-receipt-settings-failed = Gagal memuat pengaturan nota
 
 # ── Payment (remaining) ──

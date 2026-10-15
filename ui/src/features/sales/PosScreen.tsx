@@ -656,8 +656,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         } else {
           addToast({ type: 'warning', message: l10nRef.current.getString('pos-no-barcode-match') });
         }
-      } catch {
-        // Silently ignore — the scanner will beep, user retries.
+      } catch (err) {
+        // A FAILED lookup is not a clean miss, and the two need different words: this
+        // handler already toasts `pos-no-barcode-match` for a legitimate "not our
+        // barcode", and onError below toasts `pos-scanner-error`. A throwing lookup
+        // used to be swallowed with "Silently ignore — the scanner will beep, user
+        // retries", which is true of a scanner mis-read and untrue of a failed IPC:
+        // every retry fails too, so the item never arrives and nothing says why. At a
+        // busy till that reads as a dead scanner.
+        console.error('barcode lookup failed', err);
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'pos-barcode-lookup-failed'),
+          type: 'warning',
+        });
       }
     }, [handleAddProduct, addToast, sessionToken, activeShiftRef, shiftUnavailableRef, l10nRef]), // l10n via ref
     onError: useCallback(

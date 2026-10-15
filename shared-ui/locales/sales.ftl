@@ -32,6 +32,10 @@ pos-close-shift-failed = Failed to close shift
 
 # Scanner
 pos-scanner-error = Scanner error: { $detail }
+# The barcode lookup itself failed (IPC/network), as opposed to `pos-no-barcode-match`,
+# which is a clean miss. The two need different wording: a miss means "this code is not
+# ours", a failed lookup means "we could not check" — and every retry fails too.
+pos-barcode-lookup-failed = Could not check this barcode — please try again
 pos-toast-receipt-settings-failed = Failed to load receipt settings
 
 # Payment Modal
