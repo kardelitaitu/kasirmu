@@ -1245,6 +1245,17 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'tables/TableManagementScreen.tsx',
     css: ['tables/TableManagementScreen.css'],
     dynamicClassPrefixes: [ 'tables-table--circle', 'tables-table--rectangle', 'tables-table--available', 'tables-table--occupied', 'tables-table--cleaning', 'tables-table--reserved'],
+    // `btn` (added 2026-10-16). tables/TableManagementScreen.css:746 carries
+    // `.tables-detail-actions .btn` -- a DESCENDANT rule whose subject is `btn`, a class
+    // this screen's own TSX never spells out. The children of
+    // `<div className="tables-detail-actions">` (TableManagementScreen.tsx:1335) are
+    // <Button> elements, and Button.tsx:112-121 prepends `btn` to every className it
+    // renders, so the rule matches live elements and is NOT dead. The base rule lives at
+    // theme/components.css:9, outside this entry's own sheet, which is what the field
+    // requires. The reachability walk reads this screen's TSX and cannot see a class
+    // contributed by an imported component -- the limitation the resolver states and
+    // tests at screenExtraction.utils.test.ts:515.
+    externalClasses: ['btn'],
   },
 
   // ── Tax ───────────────────────────────────────────────
