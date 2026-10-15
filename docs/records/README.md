@@ -220,6 +220,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The menu editor's filters, search and form fields (round 187)](audits/menu-editor-filters-covered.md) | — |
 | release | [The recipe (BOM) editor, and the shortest route into it (round 258)](audits/menu-editor-recipe.md) | — |
 | general | [The menu editor's Save did nothing on a blank name, and never said so (round 163)](audits/menu-editor-save-gate.md) | — |
+| general | [The sort control, and why the assertion is the ORDER (round 266)](audits/menu-editor-sort.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
 | general | [The menu rail occlusion is real after all, and round 251 measured the skeleton (round 252)](audits/menu-rail-is-real.md) | — |
 | general | [The menu-rail occlusion was never real: a second correction, and where the reading came from (251)](audits/menu-rail-not-a-defect.md) | — |
