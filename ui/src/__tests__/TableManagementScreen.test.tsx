@@ -1379,6 +1379,63 @@ describe('TableManagementScreen', () => {
       expect(onSelectTable).toHaveBeenCalledWith('Table 1');
     });
   });
+
+  // ── Seating must not destroy the reservation before its replacement exists ──
+  //
+  // THE SAME DEFECT ROUND 292 FIXED FOR MOVE AND MERGE, on the third handler in this
+  // file that replaces a held cart. `handleSeatReservedGuests` converts a reservation's
+  // bill into an open bill by deleting and re-creating it — and it ran DELETE first:
+  //
+  //     await deleteHeldCartScoped(sessionToken, reservationBill.id);   // reservation gone
+  //     await holdCartScoped(sessionToken, { ... });                    // replacement
+  //
+  // A rejected hold (locked DB, dropped IPC, lapsed session) therefore destroyed the
+  // reservation with nothing to recreate it, while the catch toasts only "seat failed".
+  // The operator sees a party who is no longer booked AND no longer seated.
+  //
+  // Round 292 fixed the move and merge handlers and recorded this one as unexamined —
+  // its own "next" section named `releaseTableScoped` instead. Found by reading the
+  // file's held-cart writes rather than trusting that list.
+  //
+  // The discriminating assertion is the NEGATIVE one: the delete must not have run at
+  // all. Asserting only the error toast would pass against the old order, which toasts
+  // the same message — after the damage.
+  it('KEEPS the reservation when the hold that seats the party fails', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-res-1',
+        label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+        item_count: 0,
+        total_minor: 0,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: 'Sarah Connor',
+      },
+    ]);
+    // Converting the reservation into an open bill cannot complete.
+    mockHoldCart.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen />
+      </LocalizationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-seat-guests-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-seat-guests-btn'));
+
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+
+    // The reservation survives — this is the assertion the ordering fix exists for.
+    expect(mockDeleteHeldCart).not.toHaveBeenCalled();
+    // And the table is not marked occupied, so the floor plan still describes reality.
+    expect(mockUpdateTableStatus).not.toHaveBeenCalled();
+  });
 });
 
 

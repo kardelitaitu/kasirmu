@@ -796,7 +796,15 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       try {
         if (reservationBill) {
           const customerName = reservationBill.customer_name || '';
-          await deleteHeldCartScoped(sessionToken, reservationBill.id);
+          // CREATE FIRST, DELETE SECOND — the same fix as handleConfirmMoveTable and
+          // handleConfirmMergeTable above, on the third handler in this file that
+          // replaces a held cart.
+          //
+          // This ran DELETE first, so a rejected hold destroyed the reservation with
+          // nothing to recreate it while the catch toasted only "seat failed" — the
+          // party ends up neither booked nor seated, and the operator has no signal.
+          // Round 292 fixed the other two handlers and left this one; it was found by
+          // reading every held-cart write in the file rather than trusting that list.
           await holdCartScoped(sessionToken, {
             label: heldCartLabel(table.name, customerName) ?? `Table ${table.name}`,
             cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name }),
@@ -806,6 +814,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             bill_type: 'open_bill',
             customer_name: customerName,
           });
+          // The seated bill exists now, so removing the reservation cannot lose data.
+          await deleteHeldCartScoped(sessionToken, reservationBill.id);
         }
 
         const updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
