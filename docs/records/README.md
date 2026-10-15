@@ -363,6 +363,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
 | general | [A shift closed with a customer's tab still open, and nothing on screen said so (round 294)](audits/shift-closed-with-open-tab.md) | — |
 | general | [Enter closed the shift: an overlay keydown handler with no target guard](audits/shift-dialog-enter-closed-the-shift.md) | — |
+| general | [The three shift dialogs: no trap, and Escape with two owners waiting to happen](audits/shift-dialogs-focus-and-escape-ownership.md) | — |
 | general | [The silent-save defect class is closed across the tree (round 166)](audits/silent-save-class-closed.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
