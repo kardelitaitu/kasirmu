@@ -111,7 +111,50 @@ VIEW_GATED = {
 # The floor is a FLOOR, not a target: it only has to be high enough that a collapsed measure cannot
 # clear it. Measured at 200+ when healthy, so 50 is far below any real value and far above zero.
 USED_FLOOR = 50
+
+# The unit measure needs the same floor treatment, for the same reason: kill-tested 2026-10-15 by
+# pointing UNIT_DIR at a path that does not exist, which moved 12 ids into `none` and still exited 0.
+# ⚠️ THE FLOOR MEASURES THE CORPUS, NOT THE INTERSECTION. The first version summed
+# `unit_asserted` across rows -- ids that are BOTH missing from e2e AND unit-asserted -- which is 12
+# on a healthy tree, and the floor fired immediately. A guard that fails on healthy input is worse
+# than none: it gets raised until it stops complaining. Measured: 533 distinct ids are asserted
+# across the unit suite, so the floor is 100 against a corpus count.
+
+# Measured healthy value is 500+ across the unit suite, so 50 is far below it and far above zero.
+UNIT_FLOOR = 100
 SELF_CHECK_ID = 'restaurant-menu-editor-bulk-avail'
+
+
+# ── The UNIT layer ──────────────────────────────────────────────────────────
+#
+# The scan's `covered`/`used` columns read ui/e2e ONLY, while the report is titled "restaurant
+# coverage" — so a screen reads as having gaps that a unit test already asserts.
+#
+# Measured 2026-10-15 (round 275): **12 of the 24 ids listed as missing are asserted by a unit
+# test**, including 7 of the payments screen's 12. That is not a small correction; it is half the
+# remaining number.
+#
+# Reported as a THIRD column rather than folded into `used`, because the two layers answer different
+# questions: E2E proves the control works in a browser with the real shell; a unit test proves the
+# control's logic with the shell mocked. **The first is what this scan is for, and the second is
+# what stops its number reading as total absence.**
+UNIT_DIR = os.path.join(ROOT, 'ui', 'src', '__tests__')
+UNIT_USE = re.compile(
+    r'''(?:getByTestId|queryByTestId|findByTestId|getAllByTestId)\(\s*['\"]([a-zA-Z][a-zA-Z0-9-]+)['\"]'''
+)
+
+
+def unit_asserted_ids() -> set:
+    """Ids a unit test asserts through a testid query."""
+    out = set()
+    if not os.path.isdir(UNIT_DIR):
+        return out
+    for name in sorted(os.listdir(UNIT_DIR)):
+        if not re.search(r'\.(test|spec)\.tsx?$', name):
+            continue
+        with open(os.path.join(UNIT_DIR, name), encoding='utf-8', errors='replace') as fh:
+            out.update(UNIT_USE.findall(fh.read()))
+    return out
 
 
 def spec_corpus():
@@ -144,6 +187,7 @@ def main():
     corpus = spec_corpus()
     literals, prefixes = instruments(corpus)
     used = used_ids(corpus)
+    unit_ids = unit_asserted_ids()
 
     if not seen(SELF_CHECK_ID, literals, prefixes):
         print('SELF-CHECK FAILED: cannot see %r, which specs DO reference.' % SELF_CHECK_ID)
@@ -166,8 +210,20 @@ def main():
         used_ids_here = [i for i in hit if i in used or any(i.startswith(p) for p in prefixes)]
         rows.append({'screen': label, 'file': rel, 'total': len(ids),
                      'covered': len(hit), 'used': len(used_ids_here),
+                     # `missing` keeps its meaning (no E2E reference) so the column stays
+                     # comparable across rounds. `missing_e2e` narrows it to ids NOTHING asserts,
+                     # which is the number a reader should act on.
                      'missing': [i for i in ids if i not in hit and i not in VIEW_GATED],
+                     'unit_asserted': [i for i in ids
+                                       if i in unit_ids and i not in hit and i not in VIEW_GATED],
                      'view_gated': [i for i in ids if i in VIEW_GATED]});
+
+    total_unit = len(unit_asserted_ids())
+    if total_unit < UNIT_FLOOR:
+        print('REFUSING TO REPORT: the unit measure found only %d asserted ids.' % total_unit)
+        print('That is far below any healthy value, so UNIT_DIR or UNIT_USE is broken and the')
+        print('`none` column would overstate what nothing asserts.')
+        return 1
 
     total_used = sum(r['used'] for r in rows)
     if total_used < USED_FLOOR:
@@ -181,11 +237,14 @@ def main():
         return 0
 
     width = max(len(r['screen']) for r in rows)
-    print('screen'.ljust(width) + '  covered   used   pct')
+    print('screen'.ljust(width) + '  covered   used   unit  none')
     for r in rows:
         pct = round(100 * r['covered'] / r['total']) if r['total'] else 0
         pct = round(100 * r['used'] / r['total']) if r['total'] else 0
-        print(r['screen'].ljust(width) + '  %2d/%-3d %3d/%-3d %4d%%' % (r['covered'], r['total'], r['used'], r['total'], pct))
+        none = len([i for i in r['missing'] if i not in r['unit_asserted']])
+        print(r['screen'].ljust(width) + '  %2d/%-3d %3d/%-3d %4d %4d'
+              % (r['covered'], r['total'], r['used'], r['total'],
+                 len(r['unit_asserted']), none))
     return 0
 
 
