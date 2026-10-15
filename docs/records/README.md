@@ -179,6 +179,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant sidebar route, shared instead of walked four times (round 162)](audits/e2e-sidebar-route-shared.md) | — |
 | general | [The EDC terminal picker, which round 224 called unreachable (round 225)](audits/edc-terminal-picker.md) | — |
 | general | [The EDC Test Connection, and a toggle that was not needed (round 257)](audits/edc-test-connection.md) | — |
+| general | [The 8 remaining ids, and why a tag is not a classification (round 283)](audits/eight-id-classification-corrected.md) | — |
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
 | general | [The empty-section state, and the exit it offers (round 246)](audits/empty-section-covered.md) | — |
 | general | [The empty-section branch: reachable, and the route is longer than it looked (round 245)](audits/empty-section-route.md) | — |
