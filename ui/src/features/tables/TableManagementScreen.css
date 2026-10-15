@@ -737,46 +737,23 @@
 }
 
 .tables-detail-actions {
-  display: flex;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
   margin-top: var(--space-5);
 }
 
-.tables-detail-actions button {
-  flex: 1;
-  padding: var(--space-3);
-  border: none;
-  border-radius: var(--radius-lg);
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 20%, transparent);
-  transition:
-    background-color var(--duration-150) var(--ease-out),
-    transform var(--duration-100) var(--ease-out),
-    opacity var(--duration-150) var(--ease-out);
+.tables-detail-actions .btn {
+  width: 100%;
+  justify-content: center;
 }
 
-.tables-detail-actions button:hover {
-  background-color: var(--color-accent-hover);
-  transform: translateY(-0.0625rem);
+.tables-detail-actions .tables-primary-action-btn {
+  grid-column: 1 / -1;
 }
 
-.tables-detail-actions button:active {
-  transform: translateY(0);
-}
-
-.tables-detail-actions button:last-child {
-  background: var(--color-bg-surface);
-  color: var(--color-fg);
-  border: 1px solid var(--color-border);
-  box-shadow: none;
-}
-
-.tables-detail-actions button:last-child:hover {
-  background: var(--color-bg-hover);
+.tables-detail-actions .tables-close-btn {
+  grid-column: 1 / -1;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -828,7 +805,7 @@
     bottom: auto;
     right: auto;
     transform: translate(-50%, -50%);
-    width: 25rem;
+    width: min(90vw, 26rem);
     border-radius: var(--radius-xl);
     border: 1px solid var(--color-border);
     box-shadow: var(--shadow-2xl);

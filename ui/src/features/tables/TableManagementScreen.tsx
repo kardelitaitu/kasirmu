@@ -1337,6 +1337,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 <Button
                   variant="primary"
                   size="sm"
+                  className="tables-primary-action-btn"
                   data-testid="tables-assign-to-order-btn"
                   onClick={() => {
                     onSelectTable(selected.name);
@@ -1354,6 +1355,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     <Button
                       variant="primary"
                       size="sm"
+                      className="tables-primary-action-btn"
                       data-testid="tables-seat-guests-btn"
                       onClick={() => void handleSeatReservedGuests(selected)}
                     >
@@ -1462,7 +1464,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   </Button>
                 </>
               )}
-              <Button variant="ghost" size="sm" onClick={closeDetail}>
+              <Button variant="ghost" size="sm" className="tables-close-btn" onClick={closeDetail}>
                 <Localized id="close">Close</Localized>
               </Button>
             </div>
