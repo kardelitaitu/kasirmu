@@ -71,6 +71,13 @@ export interface SplitTenderRowsProps {
   currency: string;
   /** splitTotals.remaining from useTenderMath, minor units, BigInt. */
   remainingMinor: bigint;
+  /**
+   * Per-row: the cashier typed an amount the parser REFUSED. Positional, matching
+   * `splits`. The sum treats a refused row as 0n, so without this the row is
+   * indistinguishable from a blank one and the Remaining line can read 0 while Complete
+   * stays disabled — with no explanation anywhere.
+   */
+  unreadableRows?: readonly boolean[];
   /** The shell's setSplitMode. */
   onSplitModeChange: (checked: boolean) => void;
   /** The shell's addSplit — allocates the id from the page's nextSplitId ref. */
@@ -106,6 +113,7 @@ export default function SplitTenderRows({
   splits,
   currency,
   remainingMinor,
+  unreadableRows = [],
   onSplitModeChange,
   onAddSplit,
   onRemoveSplit,
@@ -172,7 +180,7 @@ export default function SplitTenderRows({
                 </div>
 
                 <div className="payment-split-rows">
-                  {splits.map((s) => (
+                  {splits.map((s, rowIndex) => (
                     <div key={s.id} className="payment-split-row">
                       <div className="payment-split-method-group">
                         {(['cash', 'card'] as const).map((m) => (
@@ -226,6 +234,13 @@ export default function SplitTenderRows({
                             />
                           </Localized>
                       </div>
+                      {unreadableRows[rowIndex] === true && (
+                        <span className="payment-split-unreadable" role="alert">
+                          <Localized id="payment-tender-unreadable">
+                            <span>Check the amount — use the store&apos;s usual thousands and decimal separators</span>
+                          </Localized>
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="payment-split-remove"

@@ -814,6 +814,17 @@
   color: var(--color-danger);
 }
 
+/* A split row the money parser refused (e.g. "1,234" in USD, where the comma is
+   read as an ambiguous group separator and deliberately rejected). The sum treats
+   such a row as 0n, so the Remaining line below it can read 0 while Complete stays
+   disabled. This says why, on the row itself. */
+.payment-split-unreadable {
+  flex: 1 0 100%;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
 /* ── Currency Selector ──────────────────────────── */
 .payment-currency-selector {
   padding: var(--space-3) var(--space-5);

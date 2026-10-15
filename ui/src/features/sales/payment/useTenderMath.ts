@@ -192,8 +192,20 @@ export function useTenderMath({
     for (const s of splits) {
       splitSum += parseSplitMinor(s.amountMinor);
     }
-    return { splitSum, remaining: BigInt(effectiveTotalInCartCurrency) - splitSum };
-  }, [splits, parseSplitMinor, effectiveTotalInCartCurrency]);
+    // WHICH rows the parser refused. Coercing to 0n is right for the sum, but it makes an
+    // unreadable row indistinguishable from a blank or zero one: with a second row
+    // covering the whole total, `remaining` reads 0 while `splitComplete` still refuses
+    // (every row must be > 0n), so the cashier sees "Remaining $ 0,00" beside a dead
+    // Complete and no reason. Same defect round 41 fixed on the single-tender path.
+    const unreadableRows = splits.map(
+      (s) => s.amountMinor.trim() !== '' && parseMoneyInput(s.amountMinor, cartCurrency) === null,
+    );
+    return {
+      splitSum,
+      remaining: BigInt(effectiveTotalInCartCurrency) - splitSum,
+      unreadableRows,
+    };
+  }, [splits, parseSplitMinor, effectiveTotalInCartCurrency, cartCurrency]);
 
   const splitComplete = useMemo(() => {
     if (splitTotals.remaining !== 0n) return false;

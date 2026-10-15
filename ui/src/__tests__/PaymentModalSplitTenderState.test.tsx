@@ -171,6 +171,52 @@ describe('PaymentModal split-tender state transitions (characterization)', () =>
     expect(values()).toEqual(['40.00', '', '']);
     expect(Array.from(rows()[2]!.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter((r) => r.checked).map((r) => r.value)).toEqual(['cash']);
   });
+  it('T2b an UNREADABLE split amount is not silently read as zero', async () => {
+    // `parseSplitMinor` (useTenderMath.ts:183-188) coerces a refused parse to 0n, exactly
+    // as the single-tender path did before round 41. The arithmetic is safe —
+    // `splitComplete` requires `remaining === 0n` AND every row `> 0n` (:198-206), so an
+    // unreadable row cannot complete a sale. What was wrong is the FEEDBACK: the row reads
+    // as zero and the Remaining line simply reports the shortfall, so a cashier who typed
+    // an ambiguous `1,234` is told they are short rather than that the amount is unreadable
+    // — and retypes a bigger number into a field that will refuse it again.
+    await openModal(usd(10000));
+    await toggleOn();
+
+    // Row 1 gets an amount the parser refuses for a USD cart (single comma group is
+    // ambiguous between thousands and decimal — domain.ts:430).
+    setAmount(0, '1,234');
+    // Row 2 covers the whole $100, so the ONLY reason this cannot complete is row 1.
+    setAmount(1, '100.00');
+
+    await waitFor(() => {
+      const remaining = document.querySelector('.payment-split-remaining-amount');
+      expect(remaining).not.toBeNull();
+    });
+
+    // The row must say its amount could not be read, rather than looking like a zero.
+    expect(
+      section()!.textContent ?? '',
+      'an unreadable split amount was presented as an ordinary value',
+    ).toMatch(/check the amount|unreadable/i);
+  });
+
+  it('T2c a READABLE split amount that is merely too small is not called unreadable (control)', async () => {
+    // The kill-test for T2b: a warning that fires on any shortfall would pass T2b while
+    // blaming the cashier for arithmetic. '50.00' parses fine and simply does not cover a
+    // $100 sale, so the row must stay silent and the Remaining line carry the message.
+    await openModal(usd(10000));
+    await toggleOn();
+    setAmount(0, '50.00');
+    setAmount(1, '20.00');
+
+    await waitFor(() => {
+      expect(document.querySelector('.payment-split-remaining-amount')).not.toBeNull();
+    });
+
+    expect(section()!.textContent ?? '').not.toMatch(/check the amount|unreadable/i);
+    expect(document.querySelectorAll('.payment-split-unreadable').length).toBe(0);
+  });
+
   it('T3 three adds reach five rows, so the five-way even split below is driven by user events and not by a seeded fixture', async () => {
     await openModal(usd(10000));
     await toggleOn();

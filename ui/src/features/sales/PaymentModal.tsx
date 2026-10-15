@@ -2301,6 +2301,7 @@ retryCurrencyLoad,
                   splits={splits}
                   currency={total.currency}
                   remainingMinor={splitTotals.remaining}
+                  unreadableRows={splitTotals.unreadableRows}
                   onSplitModeChange={setSplitMode}
                   onAddSplit={addSplit}
                   onRemoveSplit={removeSplit}
@@ -2554,6 +2555,7 @@ retryCurrencyLoad,
               splits={splits}
               currency={total.currency}
               remainingMinor={splitTotals.remaining}
+              unreadableRows={splitTotals.unreadableRows}
               onSplitModeChange={setSplitMode}
               onAddSplit={addSplit}
               onRemoveSplit={removeSplit}
