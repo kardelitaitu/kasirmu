@@ -75,7 +75,7 @@
 }
 
 body:has(.memo-stack) .restaurant-menu-editor-rail {
-  max-height: calc(100dvh - var(--memo-bottom-inset, var(--space-6)) - 215px - var(--space-4));
+  max-height: calc(100dvh - var(--memo-bottom-inset, var(--space-6)) - 215px - var(--topbar-height) - 2 * var(--space-6));
 }
 
 .restaurant-menu-editor-rail-head {
