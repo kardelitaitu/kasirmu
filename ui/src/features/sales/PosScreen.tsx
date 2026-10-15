@@ -512,6 +512,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   const activeCurrency = currencyCtx?.currency ?? storeCurrency ?? subtotal?.currency ?? 'IDR';
 
+  /**
+   * Whether a customer has an open tab on this terminal, read by the shift-close
+   * guard. Declared HERE, before `usePosShifts`, and assigned once
+   * `usePosHeldCarts` has produced `activeOpenBillId` below — the held-cart hook is
+   * instantiated after this one, so a plain argument would be undefined at
+   * configuration time. A ref is also correct on its own terms: the guard must read
+   * the CURRENT tab state when Close is pressed.
+   */
+  const hasOpenTabRef = useRef(false);
+
   const {
     activeShift,
     activeShiftRef,
@@ -539,7 +549,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleConfirmCloseShift,
     handleOpenShiftClick,
     handleConfirmOpenShift,
-  } = usePosShifts({ sessionToken, userId, lines, l10nRef, currency: activeCurrency });
+  } = usePosShifts({
+    sessionToken,
+    userId,
+    lines,
+    l10nRef,
+    currency: activeCurrency,
+    // Bound after usePosHeldCarts below — see the param's doc for why a ref.
+    hasOpenTabRef: hasOpenTabRef,
+  });
   // ── Cart actions: cart handle, deduction binding, add/qty/override ──
   const {
     overrideTarget,
@@ -738,6 +756,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       [],
     ),
   });
+
+  // The shift-close guard reads this. Assigned during render rather than in an effect
+  // so it is already correct the first time Close is clicked — no one-close-behind
+  // window where a tab exists but the ref still says false.
+  hasOpenTabRef.current = Boolean(activeOpenBillId);
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
     sessionToken,

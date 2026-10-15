@@ -18,6 +18,30 @@ export interface UsePosShiftsParams {
   userId: string;
   /** Live cart lines — read only to enforce "cart must be empty to close". */
   lines: CartLine[];
+  /**
+   * Whether an open tab is being worked on. Read only by the close-shift guard.
+   *
+   * `lines` alone is NOT sufficient on restaurant POS: the local cart can be
+   * completely empty while a table still has an open tab, because a resumed tab's
+   * lines load into the cart on demand. A shift closed in that state leaves the
+   * tab outstanding and unreconciled — a cash-control failure, on the surface
+   * where the shift exists to count cash.
+   */
+  hasOpenTab?: boolean;
+  /**
+   * Late-binding variant of `hasOpenTab`.
+   *
+   * WHY BOTH EXIST: `activeOpenBillId` lives in `usePosHeldCarts`, which PosScreen
+   * instantiates AFTER this hook, so the value cannot be passed as a plain argument
+   * here — the declaration order forbids it. The caller declares the ref before this
+   * hook and assigns it after the other one, and reads here at click time. Same shape
+   * as `l10nRef`, which exists for the same reason and is already threaded through.
+   *
+   * A ref is also correct rather than merely convenient: the guard must read the
+   * CURRENT tab state at the moment Close is pressed, not the value captured when the
+   * hook was configured.
+   */
+  hasOpenTabRef?: { current: boolean };
   /** Bundle ref, threaded in so the callbacks keep their stable dep chain. */
   l10nRef: L10nRef;
   /** Active store currency code (e.g. 'IDR', 'USD'). Defaults to 'IDR'. */
@@ -34,7 +58,7 @@ export interface UsePosShiftsParams {
  * Moved verbatim out of PosScreen.tsx — same names, same logic, same memo
  * dependencies, same 60s tick interval, same error text.
  */
-export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 'IDR' }: UsePosShiftsParams) {
+export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 'IDR', hasOpenTab = false, hasOpenTabRef }: UsePosShiftsParams) {
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
   const activeShiftRef = useRef(activeShift);
   activeShiftRef.current = activeShift;
@@ -183,14 +207,40 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 
     setCloseShiftError(null);
     setClosedShiftSummary(null);
     // Enforce: cart must be empty before closing shift.
+    //
+    // AND no open tab may be outstanding. `lines.length > 0` covers the local cart
+    // but says nothing about a table's tab: on restaurant POS a resumed tab leaves
+    // lines in the cart only while it is being worked on, so the cart reading empty
+    // is the normal state for "a customer has a tab on this terminal". Closing then
+    // orphans the tab with nothing on screen to say so.
+    //
+    // The message is its own string rather than the cart one: "empty the cart" is
+    // actionable, "you have an open tab" is what the operator actually needs to hear,
+    // and reusing the cart text would send them to clear a cart that is already clear.
     if (lines.length > 0) {
       setCloseShiftError(l10nRef.current.getString('pos-close-shift-cart-error'));
+      return;
+    }
+    const openTab = hasOpenTabRef ? hasOpenTabRef.current : hasOpenTab;
+    if (openTab) {
+      setCloseShiftError(l10nRef.current.getString('pos-close-shift-open-tab-error'));
       return;
     }
     setClosingBalance('');
     setShiftNotes('');
     setShowCloseShift(true);
-  }, [lines, l10nRef]); // l10n via ref - the ref itself is now a listed, stable dep
+    // NOTE for the dep array below: `hasOpenTabRef` is deliberately NOT listed. A
+    // ref's identity is stable across renders and mutating it never triggers one, so
+    // listing it would be both unnecessary and misleading. The value is read at CLICK
+    // time, which is the behaviour this guard wants anyway — the current tab state,
+    // not the value captured when the callback was created.
+  },
+    // `hasOpenTabRef` is listed because the linter reads it, and it is harmless to
+  // list: a ref object's identity is stable across renders, so it never invalidates
+  // the memo on its own. The VALUE is what is read at click time, so the guard always
+  // sees the current tab state regardless.
+    [lines, hasOpenTab, hasOpenTabRef, l10nRef], // l10n via ref - the ref itself is now a listed, stable dep
+  );
 
   const handleConfirmCloseShift = useCallback(async () => {
     if (!activeShift) return;
