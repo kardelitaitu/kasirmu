@@ -161,6 +161,60 @@ describe('RestaurantMenu', () => {
     expect(localStorage.getItem('restaurant-user-2-pinned')).toBe(JSON.stringify(['ES-TEH']));
   });
 
+  it('keeps 86 persistence armed when the FIRST read failed but a later re-poll succeeded', async () => {
+    // The 86 list is cross-terminal: it lives in the server setting
+    // `restaurant.unavailable.<locationId>` and the write is gated on
+    // `unavailableLoadedRef` (RestaurantMenu.tsx:500) precisely so an empty local seed
+    // can never be pushed over a real list the terminal has not read yet (:294-298).
+    //
+    // The gate is set in exactly ONE place: the initial fetch's success branch (:306).
+    // When that first read REJECTS, the gate stays shut — correct, because nothing has
+    // been read. But `refetchUnavailable` (:333) is the recovery path, and it parses the
+    // payload into state (:342-349) WITHOUT re-opening the gate. So the terminal can
+    // display a list it successfully re-read while remaining permanently unable to
+    // persist any edit to it: the cashier 86's a dish, the tile greys out locally, and
+    // nothing ever reaches the server or the other terminals.
+    //
+    // That is the F5 cross-terminal feature silently dead after one transient read
+    // failure — the very failure the re-poll exists to recover from.
+    const settings = await import('@/api/settings');
+    const getSetting = vi.mocked(settings.getSettingScoped);
+    const setSetting = vi.mocked(settings.setSettingScoped);
+
+    mockSessionToken.current = 'tok-1';
+    getSetting.mockReset();
+    setSetting.mockReset().mockResolvedValue(undefined);
+    getSetting.mockRejectedValueOnce(new Error('transient read failure'));
+
+    renderMenu();
+
+    // The failed initial read must leave the gate shut (nothing read yet).
+    await waitFor(() => expect(getSetting).toHaveBeenCalledTimes(1));
+    expect(setSetting).not.toHaveBeenCalled();
+
+    // A later re-poll SUCCEEDS and returns a real list from another terminal.
+    getSetting.mockResolvedValue(JSON.stringify(['ES-TEH']));
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(getSetting.mock.calls.length).toBeGreaterThan(1));
+
+    // The item is now shown as unavailable, so the read plainly landed...
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Es Teh/i })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    // ...therefore the terminal HAS read the server list, and the write gate must be
+    // open again. 86'ing another dish must reach the server.
+    const nasiCard = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
+    fireEvent.contextMenu(nasiCard, { clientX: 100, clientY: 200 });
+    await userEvent.setup().click(await screen.findByText(/Mark as unavailable|86/i));
+
+    await waitFor(() => {
+      expect(setSetting).toHaveBeenCalled();
+    });
+  });
+
   it('closes a previous user context menu and clears transient card feedback on user change', async () => {
     const renderResult = renderMenu();
     const user = userEvent.setup();
