@@ -202,6 +202,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The KDS and Tables rows are feature-gated, and the preview does not enable them (round 262)](audits/kds-row-entitlement.md) | — |
 | kds | [The Kitchen Display row never hid: a predicate that cannot read the gate (round 128)](audits/kds-row-inert-predicate.md) | — |
 | kds | [What makes the POS-to-KDS ticket deterministic, and why the spec is fixme (round 142)](audits/kds-spec-determinism.md) | — |
+| kds | [The kitchen chit is blocked by a SETTING, not by an entitlement (round 264)](audits/kitchen-chit-setting-gate.md) | — |
 | kds | [A line added during the kitchen send was silently dropped (round 201)](audits/kitchen-send-dropped-line.md) | — |
 | general | [The last latch entry was a false positive, and the allow-list is gone (round 239)](audits/latch-allowlist-removed.md) | — |
 | general | [LocalApiSection is unreachable: a working feature with no UI path (round 112)](audits/local-api-section-unreachable.md) | — |
