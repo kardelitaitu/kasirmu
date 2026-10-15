@@ -405,6 +405,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | sync | [The tables tab-conflict pair: seam confirmed, route not finished (round 279)](audits/tables-tab-conflict-partial.md) | — |
 | sync | [The tables tab-conflict route: the regex was not the bug (round 280)](audits/tables-tab-conflict-route2.md) | — |
 | general | [The tables toolbar and the verb its state decides (round 219)](audits/tables-toolbar.md) | — |
+| general | [The parser refused 1,234 correctly — and told the cashier the wrong reason](audits/tender-parse-rejection-message.md) | — |
 | general | [Three ways an instrument lied, and the tell for each (round 226)](audits/three-instrument-failures.md) | — |
 | general | [Three more latches set before their reads, and what is proven about them (round 236)](audits/three-more-latches-scanned.md) | — |
 | sync | [The Apply button could be stranded disabled after a revision conflict (2026-10-14)](audits/topology-conflict-apply-stranded.md) | — |
