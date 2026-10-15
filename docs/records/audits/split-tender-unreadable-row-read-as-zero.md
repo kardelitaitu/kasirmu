@@ -83,10 +83,33 @@ The same Fluent key carries the message on both tender paths. No new string.
 - Full UI suite: **784 files, 12,435 passed**, 3 skipped, 3 todo.
 - `npm run typecheck` clean · `npm run lint` no new errors · `npm run lint:i18n` clean.
 
-## Note on the earlier fix
+## Follow-up, done in the next round: the predicate is now single-sourced
 
-Round 41's single-tender fix and this one now agree, but the duplication remains:
-"did the parser refuse this string?" is asked in three places (`tenderedMinor`,
-`tenderedMinorInCartCurrency`, `parseSplitMinor`) plus this fourth. A shared
-`parseOrNull` helper would collapse them; recorded, not done — it is a refactor across a
-money path and belongs in its own change with its own tests.
+The duplication this section originally flagged is closed. `useTenderMath.ts` now has one
+module-private predicate, and both feedback sites call it:
+
+```ts
+function isUnparseable(value: string, currency: string): boolean {
+  return value.trim() !== '' && parseMoneyInput(value, currency) === null;
+}
+```
+
+- `tenderedUnparseable` (the cash path) → `isUnparseable(tendered, total.currency)`
+- `splitTotals.unreadableRows` (the split path) → `splits.map((s) =>
+  isUnparseable(s.amountMinor, cartCurrency))`
+
+The `trim() !== ''` blank-row guard now lives in exactly one place.
+
+**What deliberately did NOT change:** the two *arithmetic* coercions
+(`tenderedMinorInCartCurrency`, `parseSplitMinor`) still return `0`/`0n` on a refusal.
+Those are a different question — "what value does a refused amount contribute to the sum?"
+— and `0n` is the right answer. Only the *reporting* predicate was unified.
+
+**Evidence:** `T2d` in `PaymentModalSplitTenderState.test.tsx` pins the equivalence
+behaviourally — the identical string `1,234` on a USD cart must be reported as unreadable in
+**both** the cash and split surfaces, with the **same wording** (same predicate, same Fluent
+key). Kill-tested by severing the cash path's delegation (`() => false && isUnparseable(...)`);
+it failed with `the cash path did not call a refused amount unreadable: expected
+'Insufficient amount' to match /check the amount|unreadable/i`.
+
+Split suite 23 passed (was 22) · `PaymentModalSaleFlow` 69 passed · typecheck clean.

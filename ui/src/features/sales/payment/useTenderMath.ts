@@ -42,6 +42,25 @@ import { useCallback, useMemo } from 'react';
 import { parseMoneyInput, type CartLine, type Money } from '@/types/domain';
 import type { PreviewPromotedTotalResult } from '@/api/sales';
 
+/**
+ * Did the money parser REFUSE this string — as opposed to reading it as zero?
+ *
+ * A blank field and an unreadable one both arrive here as '' vs '1,234', and every money
+ * derivation in this hook has to distinguish them: the arithmetic treats both as 0n, but
+ * only the second is a mistake the cashier must be told about. Four separate call sites
+ * used to re-derive this with their own `parsed === null` test, which is how the split
+ * path kept a misleading message for a full round after the single-tender path was fixed
+ * (docs/records/audits/split-tender-unreadable-row-read-as-zero.md). One predicate, one
+ * place to be right.
+ *
+ * The parser refuses deliberately: an amount like `1,234` is ambiguous between a
+ * thousands separator and a decimal point (types/domain.ts:430, `(exp === 0 ||
+ * multiCommaGroup)`), and guessing at money is worse than asking again.
+ */
+function isUnparseable(value: string, currency: string): boolean {
+  return value.trim() !== '' && parseMoneyInput(value, currency) === null;
+}
+
 /** Structural twin of useSplitTenderState's SplitRow (:63) - only the three fields the math reads. */
 interface SplitTenderRow {
   method: string;
@@ -113,14 +132,11 @@ export function useTenderMath({
    * True when the cashier typed something the parser REFUSED, as opposed to too little.
    *
    * Both collapse to the same 0n above, which is correct for the arithmetic, but the
-   * two are different problems and saying "Insufficient amount" for the first sends the
-   * cashier to retype a larger number into a field that will reject it again. The
-   * parser refuses deliberately: an amount like `1,234` is ambiguous between a thousands
-   * separator and a decimal point (`types/domain.ts:430`, `(exp === 0 || multiCommaGroup)`),
-   * and guessing at money is worse than asking again.
+   * two are different problems: saying "Insufficient amount" for the first sends the
+   * cashier to retype a larger number into a field that will reject it again.
    */
   const tenderedUnparseable = useMemo(
-    () => tendered.trim() !== '' && parseMoneyInput(tendered, total.currency) === null,
+    () => isUnparseable(tendered, total.currency),
     [tendered, total.currency],
   );
 
@@ -197,9 +213,7 @@ export function useTenderMath({
     // covering the whole total, `remaining` reads 0 while `splitComplete` still refuses
     // (every row must be > 0n), so the cashier sees "Remaining $ 0,00" beside a dead
     // Complete and no reason. Same defect round 41 fixed on the single-tender path.
-    const unreadableRows = splits.map(
-      (s) => s.amountMinor.trim() !== '' && parseMoneyInput(s.amountMinor, cartCurrency) === null,
-    );
+    const unreadableRows = splits.map((s) => isUnparseable(s.amountMinor, cartCurrency));
     return {
       splitSum,
       remaining: BigInt(effectiveTotalInCartCurrency) - splitSum,

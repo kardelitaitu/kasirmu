@@ -217,6 +217,38 @@ describe('PaymentModal split-tender state transitions (characterization)', () =>
     expect(document.querySelectorAll('.payment-split-unreadable').length).toBe(0);
   });
 
+  it('T2d the cash path and the split path agree on what "unreadable" means for the SAME string', async () => {
+    // Both paths used to derive "did the parser refuse this?" independently, which is how
+    // the split path kept a misleading message for a full round after the cash path was
+    // fixed. They now share one predicate (isUnparseable in useTenderMath). This pins that
+    // equivalence behaviourally: the identical refused string '1,234' on a USD cart must
+    // be reported as unreadable in BOTH places, and must not be reported at all when the
+    // field is merely blank or genuinely short.
+    //
+    // Cash path: the tender input, single-method.
+    await openModal(usd(10000));
+    const cashInput = document.querySelector<HTMLInputElement>('.payment-tender-input, input[inputmode="decimal"]');
+    expect(cashInput, 'the cash tender input was not found - selector drift, not a code defect').not.toBeNull();
+    fireEvent.change(cashInput!, { target: { value: '1,234' } });
+    await waitFor(() => {
+      expect(document.querySelector('.payment-change-insufficient')).not.toBeNull();
+    });
+    const cashMessage = document.querySelector('.payment-change-insufficient')!.textContent ?? '';
+    expect(cashMessage, 'the cash path did not call a refused amount unreadable').toMatch(/check the amount|unreadable/i);
+
+    // Split path: the identical string in the first split row.
+    await toggleOn();
+    setAmount(0, '1,234');
+    setAmount(1, '100.00');
+    await waitFor(() => {
+      expect(document.querySelector('.payment-split-unreadable')).not.toBeNull();
+    });
+    const splitMessage = document.querySelector('.payment-split-unreadable')!.textContent ?? '';
+
+    // Same predicate, same Fluent key, therefore the same words.
+    expect(splitMessage.trim(), 'the two paths worded the same refusal differently').toBe(cashMessage.trim());
+  });
+
   it('T3 three adds reach five rows, so the five-way even split below is driven by user events and not by a seeded fixture', async () => {
     await openModal(usd(10000));
     await toggleOn();
