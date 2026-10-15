@@ -561,6 +561,50 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(screen.getByText('Settings saved successfully')).toBeInTheDocument();
   });
 
+  it('does NOT clear the dirty flag or claim success when only a LATER write in the batch fails', async () => {
+    // `handleSave` fans four independent writes into one `Promise.all` (:794): the market
+    // rails, the Midtrans gateway, the Stripe gateway, and the hardware pref. A rejection
+    // in ANY of them lands in the same catch (:808) and shows the same error toast — which
+    // is correct. What was NOT correct is the success branch: it sits after `await`,
+    // so it runs only when every write resolved. The hazard is the ORDER of writes.
+    //
+    // The rails write is the one carrying the operator's actual toggle. When the FIRST
+    // write resolves and a LATER one rejects, the rails change HAS already landed
+    // server-side. The screen must therefore (a) not call onSaved, (b) not toast success,
+    // and (c) keep the form dirty so the operator can retry the part that did not land.
+    //
+    // This pins (a)-(c) against the one arrangement the existing suite does not cover:
+    // every current save test rejects the FIRST task (setMethods), so the batch never
+    // reaches a state where an earlier write succeeded and a later one failed.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onSaved = vi.fn();
+    await renderScreen({ onSaved });
+
+    await screen.findByText('GoPay');
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+
+    // The rails write SUCCEEDS; the Stripe gateway write (pushed after it) FAILS.
+    mocks.setMethods.mockResolvedValue([]);
+    mocks.setGateway.mockImplementation((_token: unknown, args: unknown) => {
+      const name = (args as { gatewayName?: string })?.gatewayName;
+      if (name === 'stripe') return Promise.reject(new Error('STRIPE_DOWN'));
+      return Promise.resolve({ id: 'gw-1' });
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to save settings. Please try again.')).toBeInTheDocument();
+    });
+
+    // (a) and (b): no false success.
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.queryByText('Settings saved successfully')).not.toBeInTheDocument();
+    // (c): the part that did not land is still retryable — Save must stay enabled.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
   it('saves gateway credentials to setPaymentGatewayConfigScoped separately from market rails', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
