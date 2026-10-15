@@ -48,6 +48,7 @@ impl TableStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Table {
     /// Unique identifier (UUID v7).
+    #[serde(default)]
     pub id: String,
     /// Human-readable name (e.g. "Table 1", "Patio A").
     pub name: String,
@@ -66,6 +67,7 @@ pub struct Table {
     /// Current status: 'available', 'occupied', 'reserved', 'cleaning'.
     pub status: String,
     /// Active sale ID when the table is occupied.
+    #[serde(default)]
     pub active_sale_id: Option<String>,
     /// Section/area (e.g. "Indoor", "Patio", "Bar").
     pub section: String,
@@ -74,8 +76,10 @@ pub struct Table {
     /// Ordinal position for sorted display.
     pub sort_order: i64,
     /// RFC-3339 creation timestamp.
+    #[serde(default)]
     pub created_at: String,
     /// RFC-3339 last-update timestamp.
+    #[serde(default)]
     pub updated_at: String,
 }
 

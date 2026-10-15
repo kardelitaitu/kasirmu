@@ -145,3 +145,27 @@ fn table_inactive_soft_delete() {
     assert!(!table.active);
     assert_eq!(table.status, "cleaning");
 }
+
+#[test]
+fn table_deserialization_defaults() {
+    let json = r#"{
+        "name": "Table 1",
+        "capacity": 4,
+        "pos_x": 25.0,
+        "pos_y": 50.0,
+        "shape": "circle",
+        "width": 10.0,
+        "height": 10.0,
+        "status": "available",
+        "section": "Main",
+        "active": true,
+        "sort_order": 0
+    }"#;
+    let table: Table =
+        serde_json::from_str(json).expect("table JSON without optional fields must deserialize");
+    assert_eq!(table.name, "Table 1");
+    assert_eq!(table.id, "");
+    assert_eq!(table.active_sale_id, None);
+    assert_eq!(table.created_at, "");
+    assert_eq!(table.updated_at, "");
+}

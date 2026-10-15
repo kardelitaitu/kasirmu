@@ -410,6 +410,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           section: trimmedSection,
           active: true,
           sort_order: count + 1,
+          created_at: '',
+          updated_at: '',
         });
         setTables((prev) => [...prev, created]);
         setTablePool((prev) => [...prev, created]);
@@ -587,7 +589,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       parsed.tableNumber = destTable.name;
       const newLabel = heldCartLabel(destTable.name, parsed.customerName) ?? `Table ${destTable.name}`;
 
-      await deleteHeldCartScoped(sessionToken, activeBill.id);
+      // CREATE FIRST, DELETE SECOND — the order is the whole fix.
+      //
+      // This read DELETE-then-HOLD, and the delete is what loses the bill: if the
+      // hold then rejected (locked DB, dropped connection, lapsed session), the catch
+      // below toasted "move failed" while the merchant's only copy of that open bill
+      // was already gone. There is no undo for a held cart, so this is unrecoverable.
+      //
+      // `usePosHeldCarts` already resolved the same two-write problem in the safe
+      // direction for the same data (see its "does NOT report a tab as updated when
+      // deleting the previous record FAILS" case), so this matches the established
+      // shape rather than inventing one. A duplicate open bill on a failed move is a
+      // recoverable mess the operator can resolve by hand; a deleted one is not.
       await holdCartScoped(sessionToken, {
         label: newLabel,
         cart_data: JSON.stringify(parsed),
@@ -597,6 +610,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         bill_type: 'open_bill',
         customer_name: parsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
       });
+
+      // Only now is it safe to remove the old record: the bill exists under the new
+      // table, so a failure here leaves two rows rather than none.
+      await deleteHeldCartScoped(sessionToken, activeBill.id);
 
       await releaseTableScoped(sessionToken, moveTableModal.id);
       await updateTableStatusScoped(sessionToken, destTable.id, 'occupied');
@@ -664,11 +681,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
       const newLabel = heldCartLabel(destTable.name, destParsed.customerName) ?? `Table ${destTable.name}`;
 
-      await Promise.all([
-        deleteHeldCartScoped(sessionToken, srcBill.id),
-        deleteHeldCartScoped(sessionToken, destBill.id),
-      ]);
-
+      // CREATE FIRST, DELETE SECOND — same fix as handleMoveTable above.
+      //
+      // Here it mattered MORE: the old order deleted BOTH bills before creating the
+      // combined one, so a rejected hold lost two tables' open bills at once instead of
+      // one. The combined cart has to exist before either source is removed.
       await holdCartScoped(sessionToken, {
         label: newLabel,
         cart_data: JSON.stringify(destParsed),
@@ -679,6 +696,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         customer_name: destParsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
         ...(destFull.deduction_location_id ? { deduction_location_id: destFull.deduction_location_id } : {}),
       });
+
+      // The combined bill now exists, so removing the two sources is safe: a failure
+      // here leaves duplicate rows an operator can resolve, not lost data.
+      await Promise.all([
+        deleteHeldCartScoped(sessionToken, srcBill.id),
+        deleteHeldCartScoped(sessionToken, destBill.id),
+      ]);
 
       await releaseTableScoped(sessionToken, mergeTableModal.id);
       await loadTables();
