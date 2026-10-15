@@ -53,6 +53,21 @@ PREFIX = re.compile(r'\[data-testid\^="([a-zA-Z][a-zA-Z0-9-]+)"')
 
 # An id the specs are KNOWN to address literally. If the scan cannot see this one it is
 # broken, and its numbers would be noise -- so they are withheld.
+
+# IDs that CANNOT render in the scanned workspace because a branch relocates them.
+#
+# Both of these are rendered by `CartPanel.tsx:573` under `!sidebarOwnsTerminalActions`, which is
+# FALSE on the restaurant till: the restaurant tier moves them into the sidebar popover
+# (`RestaurantSidebar.tsx:441-461`). Counting them as uncovered reports a DESIGNED absence as a gap,
+# which is the round-224 class of error one layer over.
+#
+# The relocated control IS covered behaviourally -- `ui/e2e/restaurant-cart-deduction-badge.spec.ts`
+# (round 243) drives the override that reveals it and asserts the `Deducting:` row on both profiles.
+# It does not spell the cart-panel testid, because that element never exists there.
+VIEW_GATED = {
+    'deduction-location-badge',
+    'deduction-override-indicator',
+}
 SELF_CHECK_ID = 'restaurant-menu-editor-bulk-avail'
 
 
@@ -101,7 +116,9 @@ def main():
             ids = sorted(set(DECL.findall(fh.read())))
         hit = [i for i in ids if seen(i, literals, prefixes)]
         rows.append({'screen': label, 'file': rel, 'total': len(ids),
-                     'covered': len(hit), 'missing': [i for i in ids if i not in hit]})
+                     'covered': len(hit),
+                     'missing': [i for i in ids if i not in hit and i not in VIEW_GATED],
+                     'view_gated': [i for i in ids if i in VIEW_GATED]});
 
     if args.json:
         print(json.dumps(rows, indent=2))
