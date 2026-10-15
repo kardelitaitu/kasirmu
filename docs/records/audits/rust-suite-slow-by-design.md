@@ -1,5 +1,4 @@
-# Following up round 18's in-flight Rust run: it is slow, and the slowness is deliberate
-# (round 306)
+# Round 18's in-flight Rust run: slow, and the first explanation was wrong (round 306)
 
 ## The unfinished business
 
@@ -21,13 +20,18 @@ So the bridge suite is not broken — it is dominated by one module, and the dis
 enough to be worth explaining rather than shrugging at: `topology` does **320 tests in 8.9s** while
 `auth` does **75 in 93s**.
 
-## The explanation, checked rather than guessed
+## The explanation, checked rather than guessed — AND CORRECTED ON THE SECOND PASS
 
-The auth tests are `staff_login_*` — they exercise a **real PIN verification**, and the project
-hashes PINs with **Argon2id** (`Cargo.toml:144`). Argon2 is memory-hard *by design*: its cost is the
-security property, not an accident.
+⚠️ **The first version of this record said Argon2 explained the whole cost. It explains `auth` and
+not the largest module.** The correction is below, because leaving the wrong cause standing would
+send the next reader to tune a security parameter that is not the bottleneck.
 
-And the repo has already tuned for it. `Cargo.toml` carries a dedicated block:
+### Part 1: `auth` — genuine Argon2, already tuned
+
+`auth`'s tests are `staff_login_*` — a **real PIN verification**, and PINs hash with **Argon2id**
+(`Cargo.toml:144`). Argon2 is memory-hard by design: the cost IS the security property.
+
+The repo has already tuned for it:
 
 ```toml
 # Cryptographic and compression crates optimized for speed in tests and dev mode
@@ -47,6 +51,51 @@ under the default multi-threaded runner. The parallelism makes it *slower*, whic
 memory-hard hash does when several instances contend for the same memory bandwidth. Not a defect —
 but it explains why `--test-threads=1` can be the faster way to run that module.
 
+### Part 2: `staff` — the real bottleneck, and it is NOT hashing
+
+Timing the modules individually put the largest cost somewhere the first pass had not looked:
+
+| Module | Tests | Elapsed |
+|---|---|---|
+| **`staff`** | **132** | **173s** (~1.3s/test) |
+| `auth` | 75 | 93s |
+| `settings` | 107 | 38s |
+| `topology` | 320 | 8.9s |
+| `sync` | 45 | 8.8s |
+| `license` | 25 | 4.4s |
+
+`staff` is the single most expensive module and **its tests do not hash anything** — they insert the
+literal string `'hash'` into `pin_hash`. Measuring two of its tests individually: a PIN-rotating test
+finishes in **0.93s** and a DTO-debug test in **0.00s**. So the 173s is not one slow test either.
+
+It is **per-test setup**. Every staff test opens with:
+
+```rust
+let conn = crate::testing::temp_conn();
+```
+
+which is:
+
+```rust
+pub fn temp_conn() -> Connection {
+    let conn = migrations::fresh_db();          // the whole migration chain
+    migrations::seed_provisioned_baseline(&conn); // provisioning seed
+    conn
+}
+```
+
+**132 tests × a full migration chain and provisioning seed each.** That is the cost, and it is the
+*correct* isolation — a test that shares a database with its neighbours can pass or fail on their
+ordering. The number is simply what real isolation of a 100+-migration schema costs at this count.
+
+### What this changes about the earlier conclusion
+
+The round-18 record's closing line — *"a ~10-minute Argon2-bound runtime"* — named the wrong cause.
+`auth` is Argon2-bound; the suite as a whole is **migration-bound**, and the two suggest different
+remedies. Chasing the hashing would have meant attacking the smaller half of the problem while
+risking a security property; the actual lever, if one is ever wanted, is sharing a migrated template
+database across tests or caching `fresh_db`'s output — both of which change isolation semantics and
+so are decisions for an owner, not an optimisation to slip in.
 ## What this round did NOT find
 
 No defect. The three hypotheses worth checking were each closed:
@@ -57,7 +106,8 @@ No defect. The three hypotheses worth checking were each closed:
 2. **A pathological stress test.** `topology_stress_tests` — the obvious suspect by name — runs
    inside the 8.9s `topology` figure.
 3. **Un-tuned crypto in the test profile.** It is tuned, at `opt-level = 3`, with a comment saying
-   exactly why.
+   exactly why — but this was the answer to the WRONG question, and the correction above shows it.
+   The untuned thing is the **per-test migration chain**, which no profile setting addresses.
 
 ## The honest state of the Rust verification
 
