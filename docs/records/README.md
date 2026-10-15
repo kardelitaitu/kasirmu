@@ -298,6 +298,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The rail credential allow-list, extracted from a component body and pinned (round 183)](audits/rail-param-allowlist-pinned.md) | — |
 | general | [14 of 15 rail parameters the operator can edit have no reader (round 121)](audits/rail-parameters-unread.md) | — |
 | general | [Correcting round 121: the parameters ARE read back — but nothing acts on them (round 123)](audits/rail-params-roundtrip-not-consumed.md) | — |
+| general | [Four hypotheses, four negatives — and one untested guarantee worth pinning](audits/receipt-dual-write-contract-pinned.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
 | general | [The receipts keys are store-scoped, with the migration pinned (round 169)](audits/receipt-keys-migrated.md) | — |
 | general | [The receipt preview now prices each row as a LINE TOTAL (round 133)](audits/receipt-preview-line-totals.md) | — |
