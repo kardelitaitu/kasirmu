@@ -258,6 +258,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | subscription | [The Midtrans fields were reachable all along, and the deferral's reason was wrong (round 263)](audits/midtrans-credentials.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | general | [The dev mock's rail store lost every save — and the justification for that was stale (round 156)](audits/mock-rails-session-local.md) | — |
+| quality | [KNOWN_GAPS is a coverage map: which of those names a production component actually calls](audits/mockfactory-gap-list-as-coverage-map.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | general | [Following an authored modifier group to the till that sells it (round 212)](audits/modifier-group-to-till.md) | — |
 | general | [The end-to-end proof round 210 handed off (round 211)](audits/modifier-groups-persist-e2e.md) | — |
