@@ -213,6 +213,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | quality | [Round 187's coverage claim was wrong, and finishing it found two real fields (round 188)](audits/menu-editor-coverage-claim-corrected.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
 | general | [The menu editor's filters, search and form fields (round 187)](audits/menu-editor-filters-covered.md) | — |
+| release | [The recipe (BOM) editor, and the shortest route into it (round 258)](audits/menu-editor-recipe.md) | — |
 | general | [The menu editor's Save did nothing on a blank name, and never said so (round 163)](audits/menu-editor-save-gate.md) | — |
 | general | [The menu editor's stale-reload guard is pinned, and reachable (round 116)](audits/menu-editor-stale-reload.md) | — |
 | general | [The menu rail occlusion is real after all, and round 251 measured the skeleton (round 252)](audits/menu-rail-is-real.md) | — |
