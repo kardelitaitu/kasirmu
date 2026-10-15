@@ -63,3 +63,5 @@ and reports its own pre-flight check. The select resolves but is not clickable a
 probe — so the first step is finding WHERE it is (the kitchen-printer card may be below the fold,
 or its own `SettingsSelect` trigger may need the scroll the receipts screen's sticky column
 demands). Round 248's `bringIntoReach` helper already solves that shape.
+
+> last audited 15-10-26 by docs-auditor

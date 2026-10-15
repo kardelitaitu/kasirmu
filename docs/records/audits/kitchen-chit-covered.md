@@ -73,3 +73,5 @@ no testid — a shape worth recording because it is the third way this session h
 What is left on that screen is `restaurant-receipts-back-btn`, `-header` and `-icon` — static
 chrome, which is where a screen is worth calling behaviourally closed. **The receipts screen is
 there.**
+
+> last audited 15-10-26 by docs-auditor

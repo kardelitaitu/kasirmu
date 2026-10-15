@@ -87,3 +87,5 @@ could all violate is covered; the individual keystrokes are not, and are not wor
 
 That is now a considered conclusion rather than a deferral: the coverage table's remaining 13
 payments ids are field plumbing whose invariant is already tested, plus chrome.
+
+> last audited 15-10-26 by docs-auditor

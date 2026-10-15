@@ -75,3 +75,5 @@ invariant covered for payments, and architecture for CartPanel. This is now a me
 checkable instrument behind it, which is the third such instrument this session has had to build or
 repair (the coverage scan's self-check in round 226, the view-gated split in round 261, and the
 mention/use split here).
+
+> last audited 15-10-26 by docs-auditor

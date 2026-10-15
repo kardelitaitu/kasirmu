@@ -81,3 +81,5 @@ five times now, most recently round 258, and blocked by architecture rather than
 Round 266 declared every surface behaviourally closed. Round 267 measured the claim and found one
 gap. Round 268 closed it. **The sequence is the method: a summary is a hypothesis, and the scan is
 what tests it.**
+
+> last audited 15-10-26 by docs-auditor

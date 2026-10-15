@@ -82,3 +82,5 @@ the same sense the receipts screen was closed in round 265.**
 **Every one of the seven surfaces is now closed for behaviour, with a named reason for each
 remainder.** That is the strongest state this goal's objective has reached, and it is worth
 recording as such rather than reporting the percentages alone.
+
+> last audited 15-10-26 by docs-auditor

@@ -89,3 +89,5 @@ should be proposed, not taken.
 
 **One behavioural gap more than round 266 reported**, found by re-running the scan against the
 summary rather than restating it.
+
+> last audited 15-10-26 by docs-auditor

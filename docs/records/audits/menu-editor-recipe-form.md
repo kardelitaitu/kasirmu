@@ -71,3 +71,5 @@ The round therefore has two lessons rather than one, and the second is cheaper t
 What remains on that screen is the title and icon — static chrome, unchanged from round 266's
 assessment. **The editor is closed, and the gap round 267 named was found by measuring the
 summary rather than restating it.**
+
+> last audited 15-10-26 by docs-auditor
