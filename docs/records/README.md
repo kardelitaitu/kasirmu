@@ -199,6 +199,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
 | kds | [The real backend creates the ticket; the mock only reports them (round 139)](audits/kds-from-sale-production-vs-mock.md) | — |
 | kds | [The KDS lifecycle test is reactivated, and the board is a masonry (round 145)](audits/kds-lifecycle-reactivated.md) | — |
+| kds | [The KDS and Tables rows are feature-gated, and the preview does not enable them (round 262)](audits/kds-row-entitlement.md) | — |
 | kds | [The Kitchen Display row never hid: a predicate that cannot read the gate (round 128)](audits/kds-row-inert-predicate.md) | — |
 | kds | [What makes the POS-to-KDS ticket deterministic, and why the spec is fixme (round 142)](audits/kds-spec-determinism.md) | — |
 | kds | [A line added during the kitchen send was silently dropped (round 201)](audits/kitchen-send-dropped-line.md) | — |
