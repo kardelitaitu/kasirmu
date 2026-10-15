@@ -171,6 +171,17 @@ export default function PaymentModal({
   const cashOffered = !coreRailWithheld(paymentRails, 'cash');
   const cardOffered = !coreRailWithheld(paymentRails, 'card');
   const [creditSettings, setCreditSettings] = useState<CreditSettingsDto | null>(null);
+  /**
+   * True when `getCreditSettingsScoped` REJECTED (as opposed to not having run yet).
+   *
+   * Every credit guard below is written `creditSettings?.enabled === false` or
+   * `creditSettings && …`, so a null value silently SKIPS them: the ceiling hint and the
+   * disabled notice both disappear and the cashier meets the refusal at settle instead.
+   * The ceiling itself is safe — `sales_checkout.rs` re-checks it and
+   * `credit_checkout_enforces_max_credit_limit_ceiling` passes — but the operator should
+   * not have to learn it from a rejected sale.
+   */
+  const [creditSettingsFailed, setCreditSettingsFailed] = useState(false);
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
   const manualQrString = staticQrisPayload(paymentRails);
@@ -376,7 +387,9 @@ export default function PaymentModal({
         if (!cancelled) setCreditSettings(settings);
       })
       .catch((err) => {
+        // Reported, not swallowed: see creditSettingsFailed.
         console.warn('Failed to load credit settings', err);
+        if (!cancelled) setCreditSettingsFailed(true);
       });
     return () => {
       cancelled = true;
@@ -2461,6 +2474,13 @@ retryCurrencyLoad,
                           </Localized>
                       </label>
                     </>
+                    {method === 'credit' && creditSettingsFailed && (
+                      <p className="payment-credit-warning">
+                        <Localized id="payment-credit-settings-unavailable">
+                          <span>Credit settings could not be loaded — the store&apos;s credit limit could not be checked.</span>
+                        </Localized>
+                      </p>
+                    )}
                     {method === 'credit' && creditSettings?.enabled === false && (
                       <p className="payment-credit-warning">
                         <Localized id="payment-credit-disabled">

@@ -692,6 +692,66 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('does not offer credit when the credit settings could not be loaded', async () => {
+    // ⚠️ SCOPE, measured rather than asserted: the CEILING ITSELF is safe.
+    // `crates/kasirmu-core/src/db/sales_checkout.rs` re-checks it and
+    // `credit_checkout_enforces_max_credit_limit_ceiling` passes (run this round), so
+    // no bad sale can be recorded. What fails open is the WARNING:
+    //
+    //   PaymentModal.tsx:1218  creditSettings?.enabled === false
+    //   PaymentModal.tsx:1219  creditSettings && creditSettings.maxLimitMinor > 0 && …
+    //   PaymentModal.tsx:2464  method === 'credit' && creditSettings?.enabled === false
+    //   PaymentModal.tsx:2471  method === 'credit' && creditSettings && …
+    //
+    // Every one of those guards is skipped when `creditSettings` is null, and a failed
+    // `getCreditSettingsScoped` leaves it null forever (:379 warns to the console and
+    // does nothing else). So the cashier can select credit, sees no ceiling hint, and
+    // only learns at settle when the backend refuses — which is the readable-error path
+    // the frontend warnings exist to pre-empt.
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_credit_settings_scoped') {
+        return Promise.reject(new Error('settings read failed'));
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // The settings read must actually have been attempted.
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'get_credit_settings_scoped'),
+        'the credit settings read must have been attempted',
+      ).toBe(true);
+    });
+    // And the operator must be warned when they SELECT credit. /credit/i over the whole
+    // body is vacuous — the tender radio is always labelled "Credit", so it passes with
+    // no warning at all (measured: the first version of this case was green on the bug).
+    // Assert on the warning element itself.
+    const creditRadio = await screen.findByRole('radio', { name: /credit/i });
+    await userEvent.click(creditRadio);
+    await waitFor(() => {
+      const warnings = Array.from(
+        document.querySelectorAll('.payment-credit-warning'),
+      ).map((n) => n.textContent ?? '');
+      expect(
+        warnings.join(' | '),
+        'a failed credit-settings read left the credit tender UNWARNED',
+      ).toMatch(/credit/i);
+    });
+  });
+
   it('does NOT assign a table when the order is takeaway or delivery', async () => {
     // ⚠️ THE DEFECT THIS PINS (measured live, round 40). The assignment guard
     // was `if (sessionToken && tableNumber)` — tableNumber truthy ALONE. The

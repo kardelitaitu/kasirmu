@@ -694,6 +694,7 @@ payment-open-bill = Tagihan Terbuka
 payment-credit-sale = Penjualan Kredit
 payment-credit-disabled = Fasilitas kredit toko saat ini dinonaktifkan di Pengaturan.
 payment-credit-limit-exceeded = Total penjualan melebihi batas kredit maksimal.
+payment-credit-settings-unavailable = Pengaturan kredit tidak dapat dimuat — batas kredit toko tidak dapat diperiksa.
 payment-customer-name = Nama Pelanggan
 payment-customer-change = Ganti
 payment-customer-select = Pilih Pelanggan

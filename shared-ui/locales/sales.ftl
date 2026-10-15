@@ -178,6 +178,7 @@ payment-open-bill = Open Bill
 payment-credit-sale = Credit Sale
 payment-credit-disabled = Store credit facility is currently disabled in Settings.
 payment-credit-limit-exceeded = Sale total exceeds maximum credit ceiling.
+payment-credit-settings-unavailable = Credit settings could not be loaded — the store's credit limit could not be checked.
 payment-customer-name = Customer Name
 payment-customer-change = Change
 payment-customer-select = Select Customer
