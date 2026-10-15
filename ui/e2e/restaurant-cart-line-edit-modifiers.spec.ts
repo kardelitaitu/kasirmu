@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAs, openRestaurantSidebarRow } from './helpers';
+import { loginAs, openRestaurantCart, openRestaurantSidebarRow } from './helpers';
 
 // WHY THIS FILE EXISTS
 //
@@ -46,15 +46,7 @@ async function authorModifierGroup(page: Page): Promise<void> {
 
 /** Add the first menu item to the cart, choosing a modifier in the customizer. */
 
-// ⚠️ DESKTOP-ONLY, and the reason is recorded rather than hidden in a skip. The tablet run reaches
-// the customizer (`.modifier-modal` count 1, probed) but the line then carries no modifiers, so the
-// Edit control never renders. Desktop passes deterministically.
-//
-// Gated on the PROJECT rather than skipped conditionally: a conditional `test.skip` inside the body
-// would report as passing on tablet, which is the failure mode round 251 recorded — a test that
-// cannot fail reads the same as one that passes.
-test('a line with modifiers can edit them', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'not yet proven on the tablet profile');
+test('a line with modifiers can edit them', async ({ page }) => {
   await authorModifierGroup(page);
 
   // Back to the till through the editor's OWN back control (`restaurant-menu-editor-back-btn`,
@@ -79,6 +71,16 @@ test('a line with modifiers can edit them', async ({ page }, testInfo) => {
   await expect(modal).toHaveCount(0, { timeout: TIMEOUT });
 
   // AND NOW THE CONTROL UNDER TEST. A line carrying modifiers offers Edit, not Add.
+  // ⚠️ OPEN THE CART FIRST. Probed on the tablet profile 2026-10-15: after confirming the
+  // customizer the cart is a FLOATING BAR (".restaurant-floating-cart-trigger", reading
+  // "1 item Rp 50.000 View Order") and NOT an open sheet — so `.pos-cart-line` is not in the DOM
+  // and the Edit control cannot be found. The item DID attach its modifier (Rp 50.000 includes the
+  // `+5.000`), which is what made this look like a divergence.
+  //
+  // The established helper handles both profiles: it opens the sheet only when the lines are not
+  // already on screen, which is why desktop kept passing unchanged.
+  await openRestaurantCart(page);
+
   const edit = page.locator('[data-testid="cart-line-edit-modifiers-btn"]');
   // ⚠️ PROFILE-SENSITIVE, and the failure is recorded rather than papered over: this passes on
   // desktop and fails on tablet, while the CUSTOMIZER opens on both (probed: `.modifier-modal`
