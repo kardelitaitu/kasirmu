@@ -559,6 +559,7 @@ retryCurrencyLoad,
     tenderedMinorInCartCurrency,
     sufficient,
     change,
+    tenderedUnparseable,
     splitTotals,
     splitComplete,
   } = useTenderMath({
@@ -2513,6 +2514,7 @@ retryCurrencyLoad,
                     tenderPresets={tenderPresets}
                     sufficient={sufficient}
                     change={change}
+                    tenderedUnparseable={tenderedUnparseable}
                     locale={locale}
                   />
                 )}

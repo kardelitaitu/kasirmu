@@ -91,6 +91,7 @@ payment-customer-name-aria =
     .aria-label = Customer name for open bill
 payment-change = Change
 payment-insufficient = Insufficient amount
+payment-tender-unreadable = Check the amount — use the store's usual thousands and decimal separators
 payment-qris-description = Generate a QRIS QR code for the customer to scan with their payment app.
 payment-qris-pay = Pay with QR
 payment-qris-dynamic-pay = Pay with dynamic QR

@@ -631,6 +631,7 @@ payment-tender-exact-aria =
 payment-tender-exact = Tepat
 payment-change = Kembalian
 payment-insufficient = Jumlah tidak mencukupi
+payment-tender-unreadable = Periksa jumlahnya — gunakan pemisah ribuan dan desimal yang biasa dipakai toko
 payment-qris-description = Hasilkan kode QR QRIS untuk dipindai pelanggan dengan aplikasi pembayaran mereka.
 payment-qris-pay = Bayar dengan QR
 payment-qris-dynamic-pay = Bayar dengan QR dinamis

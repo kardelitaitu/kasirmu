@@ -832,6 +832,65 @@ describe('PaymentModal — sale flow', () => {
     });
   });
 
+  it('does not blame the cashier for an unparseable tender amount', async () => {
+    // ⚠️ SCOPE: this is a MESSAGE defect, not a money defect. No wrong sale is possible
+    // — `useTenderMath.ts:108` coerces an unparseable tender to 0n, so `sufficient` is
+    // false and Complete stays disabled (:1247). The problem is what the cashier is
+    // TOLD. `CashTenderPanel.tsx:157` renders `payment-insufficient` = "Insufficient
+    // amount", which reads as "you typed too little". For `1,234` in USD the truth is
+    // that the amount is AMBIGUOUS — the parser refuses it deliberately (domain.ts:430,
+    // `(exp === 0 || multiCommaGroup)`, because one comma group could be a thousands
+    // separator or a decimal point) — and refusing is right. Saying the wrong reason is
+    // not: the cashier retypes more digits into a field that will reject them again.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = await screen.findByLabelText(/amount tendered/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, '1,234');
+
+    const shown = document.querySelector('.payment-change-insufficient')?.textContent ?? '';
+    expect(
+      shown,
+      'an ambiguous amount was reported as merely insufficient',
+    ).not.toMatch(/insufficient/i);
+  });
+
+  it('still says merely insufficient for a READABLE amount that is too small (control)', async () => {
+    // The fix must NARROW the message, not replace it: 5 dollars against a 7 dollar
+    // payable is a real insufficiency and has to keep saying so.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = await screen.findByLabelText(/amount tendered/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, '5');
+
+    const shown = document.querySelector('.payment-change-insufficient')?.textContent ?? '';
+    expect(
+      shown,
+      'a readable-but-short tender must keep the insufficient message',
+    ).toMatch(/insufficient/i);
+  });
+
   it('does NOT assign a table when the order is takeaway or delivery', async () => {
     // ⚠️ THE DEFECT THIS PINS (measured live, round 40). The assignment guard
     // was `if (sessionToken && tableNumber)` — tableNumber truthy ALONE. The

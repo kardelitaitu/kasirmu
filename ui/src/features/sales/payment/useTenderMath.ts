@@ -109,6 +109,21 @@ export function useTenderMath({
     return BigInt(parsed);
   }, [tendered, total.currency]);
 
+  /**
+   * True when the cashier typed something the parser REFUSED, as opposed to too little.
+   *
+   * Both collapse to the same 0n above, which is correct for the arithmetic, but the
+   * two are different problems and saying "Insufficient amount" for the first sends the
+   * cashier to retype a larger number into a field that will reject it again. The
+   * parser refuses deliberately: an amount like `1,234` is ambiguous between a thousands
+   * separator and a decimal point (`types/domain.ts:430`, `(exp === 0 || multiCommaGroup)`),
+   * and guessing at money is worse than asking again.
+   */
+  const tenderedUnparseable = useMemo(
+    () => tendered.trim() !== '' && parseMoneyInput(tendered, total.currency) === null,
+    [tendered, total.currency],
+  );
+
   // PROMO-3: the charge total when promotions are selected — the engine
   // preview result (already in cart currency) minus the loyalty discount
   // converted into cart currency. Null when no preview (no promotions).
@@ -199,6 +214,7 @@ export function useTenderMath({
     tenderedMinorInCartCurrency,
     sufficient,
     change,
+    tenderedUnparseable,
     splitTotals,
     splitComplete,
   };
