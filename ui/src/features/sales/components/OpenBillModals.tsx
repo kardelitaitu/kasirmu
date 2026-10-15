@@ -16,11 +16,12 @@
 // pos-held-item-* rules from PosScreen.css (700 lines), which stays imported
 // by PosScreen.tsx - their only caller. No CSS moved here.
 import { useLocalization } from '@fluent/react';
-import type { Dispatch, SetStateAction } from 'react';
+import { useRef, type Dispatch, type SetStateAction } from 'react';
 import { requiredLocalized } from '@/components';
 import { formatMoney } from '@/types/domain';
 import type { HeldCartRow } from '@/api/sales';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // -- Open Bill Input ------------------------------------------------------
 
@@ -49,6 +50,19 @@ export function OpenBillInput({
   handleOpenBill,
 }: OpenBillInputProps) {
   const { l10n } = useLocalization();
+  // Every sibling sales modal installs this (ItemModifierModal:253, SplitBillModal:37,
+  // PromotionsModal:66, RefundModal:176, PriceOverrideModal:176, StockShortfallDialog
+  // :115). These two were the only `aria-modal="true"` dialogs without it, so a
+  // keyboard operator got no autofocus into the dialog, Tab walked out into the page
+  // still rendered behind it, and Escape did nothing. Measured before the fix:
+  // activeElement was <body>, Tab reached an outside button, and Escape did not call
+  // requestClose.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    openBillInputExit.shouldRender && !openBillInputExit.exiting,
+    () => openBillInputExit.requestClose(),
+  );
   if (!openBillInputExit.shouldRender) return null;
   return (
           <div
@@ -57,7 +71,7 @@ export function OpenBillInput({
             aria-modal="true"
             aria-label={l10n.getString('pos-open-bill-overlay-aria')}
           >
-            <div className={`pos-hold-modal${openBillInputExit.exiting ? ' pos-hold-modal--exiting' : ''}`}>
+            <div ref={panelRef} className={`pos-hold-modal${openBillInputExit.exiting ? ' pos-hold-modal--exiting' : ''}`}>
             <h3 className="pos-hold-title">{l10n.getString('pos-open-bill-title')}</h3>
             <p className="pos-hold-desc">
               {l10n.getString('pos-open-bill-desc')}
@@ -118,10 +132,18 @@ export function OpenBillsPanel({
   handleResumeOpenBill,
 }: OpenBillsPanelProps) {
   const { l10n } = useLocalization();
+  // Same trap as the input dialog above; the close button is the first focusable
+  // element, so focus lands somewhere meaningful inside the list.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    openBillsExit.shouldRender && !openBillsExit.exiting,
+    () => openBillsExit.requestClose(),
+  );
   if (!openBillsExit.shouldRender) return null;
   return (
           <div className={`pos-hold-overlay${openBillsExit.exiting ? ' pos-hold-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('pos-open-bills-overlay-aria')}>
-          <div className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
+          <div ref={panelRef} className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
             <div className="pos-held-list-header">
               <h3>{l10n.getString('pos-open-bills-title')}</h3>
               <button
