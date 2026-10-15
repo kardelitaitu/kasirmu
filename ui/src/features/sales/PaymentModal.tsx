@@ -384,7 +384,14 @@ export default function PaymentModal({
     let cancelled = false;
     getCreditSettingsScoped(sessionToken)
       .then((settings) => {
-        if (!cancelled) setCreditSettings(settings);
+        if (cancelled) return;
+        setCreditSettings(settings);
+        // CLEAR the failure flag on success, or ONE transient rejection pins the warning
+        // for the component's lifetime: the effect re-runs on [sessionToken, open], so a
+        // later good read (a re-login, a reopened modal) would still tell the cashier the
+        // store's credit limit could not be checked. Measured: without this line the
+        // warning survived a successful reload.
+        setCreditSettingsFailed(false);
       })
       .catch((err) => {
         // Reported, not swallowed: see creditSettingsFailed.

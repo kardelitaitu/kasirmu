@@ -17,9 +17,16 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import type { Money, CartLine, Sku, LineId } from '@/types/domain';
 
+/**
+ * Render with Fluent + Toast providers.
+ *
+ * RETURNS the render result so a case can `rerender(...)`: the effect that loads credit
+ * settings depends on `[sessionToken, open]`, so proving a failure flag CLEARS needs a
+ * second render. It used to return nothing, which is why no case here could re-render.
+ */
 async function renderWithFluent(ui: React.ReactElement) {
   const wrapped = withFluent(<ToastProvider>{ui}</ToastProvider>, salesFtl);
-  await renderInAct(wrapped);
+  return renderInAct(wrapped);
 }
 
 const usd = (minor: number): Money => ({ minor_units: minor, currency: 'USD' });
@@ -749,6 +756,79 @@ describe('PaymentModal — sale flow', () => {
         warnings.join(' | '),
         'a failed credit-settings read left the credit tender UNWARNED',
       ).toMatch(/credit/i);
+    });
+  });
+
+  it('CLEARS the credit warning once the settings load successfully', async () => {
+    // ⚠️ Regression from the round-38 fix. `setCreditSettingsFailed(true)` had no
+    // matching reset: the effect re-runs on `[sessionToken, open]` and its success
+    // branch only called `setCreditSettings(settings)`. So ONE transient failure pinned
+    // the warning for the component's lifetime — reopening the modal, or a later
+    // successful read, still told the cashier the store's credit limit could not be
+    // checked. A warning that cannot clear is worse than the silence it replaced.
+    let shouldReject = true;
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_credit_settings_scoped') {
+        return shouldReject
+          ? Promise.reject(new Error('settings read failed'))
+          : Promise.resolve({ enabled: true, maxLimitMinor: 0, reminderIntervalDays: 0 });
+      }
+      return prev(cmd);
+    });
+
+    const rendered = await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // First read fails -> the warning appears when credit is selected.
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'get_credit_settings_scoped'),
+        'the first read must have been attempted',
+      ).toBe(true);
+    });
+    await userEvent.click(await screen.findByRole('radio', { name: /credit/i }));
+    await waitFor(() =>
+      expect(document.querySelector('.payment-credit-warning')).not.toBeNull(),
+    );
+
+    // Now let the read succeed and re-run the effect the way a re-login does: the
+    // effect depends on `[sessionToken, open]`, and a NEW token is what a fresh session
+    // hands the modal.
+    shouldReject = false;
+    // Re-wrap with the SAME providers the first render used (ToastProvider included):
+    // rerender replaces the element, and a bare element loses the toast context.
+    rendered.rerender(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            sessionToken="mock-token-2"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+    await waitFor(() => {
+      const warning = document.querySelector('.payment-credit-warning');
+      expect(
+        warning,
+        'the credit warning survived a successful reload — it never clears',
+      ).toBeNull();
     });
   });
 
