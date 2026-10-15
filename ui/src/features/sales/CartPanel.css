@@ -557,6 +557,31 @@
      token to preserve a 1px highlight. */
   box-shadow: var(--shadow-md);
   transform: translateX(calc(var(--order-type-index, 0) * 100%));
+  /* Promote to its own composited layer for the slide (2026-10-15).
+   *
+   * WHY. The radius above is `var(--radius-full)` = 9999px, and CSS CLAMPS a
+   * radius to half the SHORT side of the box -- so the shape is a pill only
+   * while `width >= height`. Measured on this control: a 124x44 indicator
+   * renders 22px corners (pill), but 37x44 renders 18px and 31x44 renders 15px,
+   * i.e. the corners shrink WITH the width and the pill squares off. Without a
+   * layer hint the browser re-rasterises the element on every frame of the
+   * slide, and on the Android tablet (Blink/WebView) that rasterisation can
+   * resolve the clamped radius against a mid-flight box -- which reads as the
+   * pill SNAPPING SQUARE and then rounding again. Desktop Chrome never shows it,
+   * which is why it survived review.
+   *
+   * `will-change: transform` is the standard remedy and the repo's own idiom:
+   * KdsScreen.css:332/:1771/:1793 use it for the same reason. The layer is
+   * rasterised once at its settled size and afterwards only TRANSLATED by the
+   * GPU, so the radius cannot be recomputed mid-slide. One composited layer for
+   * a 124x44 pill is a trivial cost, and `pointer-events: none` means it can
+   * never intercept a tap.
+   *
+   * NOTE this is a HINT, not a guarantee -- a device that ignores it still gets
+   * the correct (if briefly square) shape. If the square persists on the tablet
+   * the remaining fix is to stop the width from ever falling below the height,
+   * which is a layout change to the segments rather than a paint one. */
+  will-change: transform;
   transition: transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1);
   pointer-events: none;
   z-index: 1;
@@ -565,6 +590,10 @@
 @media (prefers-reduced-motion: reduce) {
   .pos-cart-order-type-indicator {
     transition: none;
+    /* No transition means no slide to smooth, so the promoted layer the rule
+       above asks for would be held for nothing -- and this preference is
+       chosen precisely by users on hardware that cannot afford one. */
+    will-change: auto;
   }
 }
 
