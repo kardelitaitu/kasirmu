@@ -11,8 +11,30 @@
 //! [`list_open_bills_scoped`], [`get_held_cart_scoped`], [`delete_held_cart_scoped`].
 //!
 //! Invariant: an open bill is a Restaurant POS concept, so
-//! [`is_restaurant_pos_workspace`] gates creation AND listing fail-closed
-//! against the session type_key, never the request bill_type.
+//! [`is_restaurant_pos_workspace`] gates **all five commands** fail-closed against the
+//! session type_key, never the request bill_type.
+//!
+//! ⚠️ THE LIST OF GATED COMMANDS IS THE POINT OF THIS PARAGRAPH, and it used to name
+//! only two of the five. When it said "gates creation AND listing" that was accurate and
+//! it made the other three look unremarkable — which is how `list_held_carts_scoped`
+//! came to serve a retail terminal the restaurant's open bills (round 302), and then how
+//! `get_held_cart_scoped` and `delete_held_cart_scoped` came to serve and *destroy* them
+//! by id (round 303). A doc that understates the enforcement is how the next command
+//! gets added without it.
+//!
+//! The five, and the shape of each gate:
+//!
+//! | Command | Gate |
+//! |---|---|
+//! | [`hold_cart_scoped`] | refuses an `open_bill` from a non-restaurant session |
+//! | [`list_held_carts_scoped`] | non-restaurant sessions get `open_bill` rows excluded |
+//! | [`list_open_bills_scoped`] | restaurant sessions only |
+//! | [`get_held_cart_scoped`] | [`refuse_cross_vertical_open_bill`] on the id |
+//! | [`delete_held_cart_scoped`] | the same, checked BEFORE the delete |
+//!
+//! **A SIXTH COMMAND MUST PICK ITS SHAPE FROM THIS TABLE.** Three of the five are only
+//! reachable through an id, so "it is not in the list" is not a defence — that was the
+//! exact reasoning that left two of them open.
 
 use serde::{Deserialize, Serialize};
 

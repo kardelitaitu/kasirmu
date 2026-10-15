@@ -1042,6 +1042,115 @@ async fn store_pos_can_still_hold_a_plain_cart() {
         .expect("the enforcement must not remove the plain hold from any terminal");
 }
 
+// ── The open-bill gate is on EVERY held-cart command, and this is the check ──
+//
+// Rounds 302 and 303 closed three gaps in a row, each one a command that shipped
+// without the workspace gate its siblings had. The module doc's own invariant listed only
+// the gated commands — "gates creation AND listing" — which is what made the ungated
+// ones look unremarkable. Prose drifted; it is now a table, and this pins the table.
+//
+// WHY A SOURCE SWEEP rather than more behavioural cases: the five commands each have
+// their own gate test already. What none of them can assert is that a SIXTH command
+// arriving tomorrow carries a gate at all — a behavioural test is written for commands
+// that exist. This one reads the module and fails when a command has no gate.
+//
+// A FLOOR, so the sweep cannot pass by finding nothing: the two rounds that closed these
+// gaps each ended with an ungated command present, and a scan whose subject vanished
+// reads exactly like a clean tree. Five is the number of commands today; if the count
+// drops the assertion below says so rather than quietly widening to zero.
+#[test]
+fn every_held_cart_command_carries_the_workspace_gate() {
+    let src = include_str!("pos/hold_orders.rs");
+    let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // The commands, paired with the gate each must spell. A command whose gate
+    // expression changes must be updated here — which is the point: the pairing is
+    // explicit and reviewable rather than implicit in prose.
+    // ⚠️ SCOPED PER FUNCTION, and the first version was not — which a kill-test caught.
+    //
+    // The initial sweep searched the WHOLE FILE for each gate string. Removing `get`'s
+    // gate therefore still passed, because `delete` spells the identical call and the
+    // file-wide search found it. Verified by deleting the gate and watching this stay
+    // green: a completeness check that cannot tell which function carries the gate is
+    // exactly the vacuous guard the chapter above warns about.
+    //
+    // Each command's body is therefore sliced out by name and searched alone.
+    let body_of = |name: &str| -> String {
+        let start = match src.find(&format!("pub async fn {name}")) {
+            Some(i) => i,
+            None => return String::new(),
+        };
+        // The next `pub async fn` (or the helper, or EOF) ends this one. Sliced on the
+        // declaration rather than on braces so a nested block cannot truncate it.
+        let rest = &src[start + 1..];
+        let end = rest
+            .find("\npub async fn ")
+            .or_else(|| rest.find("\nfn "))
+            .unwrap_or(rest.len());
+        rest[..end].split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+
+    let commands: [(&str, &str); 5] = [
+        (
+            "hold_cart_scoped",
+            "BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace",
+        ),
+        (
+            "list_held_carts_scoped",
+            "is_restaurant_pos_workspace(&session) {",
+        ),
+        (
+            "list_open_bills_scoped",
+            "!is_restaurant_pos_workspace(&session) {",
+        ),
+        (
+            "get_held_cart_scoped",
+            "refuse_cross_vertical_open_bill(&store, &session, &id)?",
+        ),
+        (
+            "delete_held_cart_scoped",
+            "refuse_cross_vertical_open_bill(&store, &session, &id)?",
+        ),
+    ];
+
+    for (cmd, gate) in commands {
+        let body = body_of(cmd);
+        assert!(
+            !body.is_empty(),
+            "{cmd} is no longer declared in the module — drop it from this list rather \
+             than leaving a floor that measures nothing"
+        );
+        assert!(
+            body.contains(gate),
+            "{cmd} no longer carries its workspace gate ({gate}) IN ITS OWN BODY. An \
+             open bill is a Restaurant POS concept: rounds 302 and 303 each found a \
+             command that lost this and served (or DESTROYED) a retail session's access."
+        );
+    }
+
+    // A FLOOR on the slice itself: five bodies must have been extracted, not one body
+    // five times. Without this a slicing bug that returned the last match for every
+    // name would pass everything above.
+    let bodies: Vec<String> = commands.iter().map(|(c, _)| body_of(c)).collect();
+    let distinct: std::collections::BTreeSet<&String> = bodies.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        commands.len(),
+        "the per-command slices are not distinct, so one body is standing in for \
+         several and the scoping above is not actually scoped"
+    );
+
+    // AND THE DENOMINATOR: count the scoped commands in the module and compare. A sixth
+    // command cannot arrive ungraded, because it would raise this count above the list.
+    let declared = flat.matches("pub async fn ").count()
+        + flat.matches("pub fn is_restaurant_pos_workspace").count();
+    assert!(
+        declared > commands.len(),
+        "the module declares {declared} public functions but this list grades {} command(s) \
+         plus the predicate. A new command needs its gate AND an entry above.",
+        commands.len()
+    );
+}
 // A store-pos session must not READ or DELETE a restaurant open bill by id.
 //
 // ⚠️ MEASURED BEFORE THE FIX (round 303), and the measurement is the reason:
