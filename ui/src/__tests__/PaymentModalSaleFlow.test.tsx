@@ -1211,6 +1211,95 @@ describe('PaymentModal — sale flow', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
   });
 
+  it('warns on the GATEWAY path too when a loyalty redemption fails (the second copy of the same catch)', async () => {
+    // `settleGatewaySale` (PaymentModal.tsx:940) is the SHARED QRIS tail — manual QRIS and
+    // Auto gateway settlement both run through it — and it carried its own copy of the
+    // loyalty-redemption try/catch at :1061-1076, with an EMPTY body (`// non-blocking`).
+    //
+    // The identical block on the direct-checkout path had already been fixed (:1621-1632)
+    // with a comment spelling out the stakes: the customer's total was reduced by
+    // `loyaltyDiscount`, so a failed redemption gives away the discount while the points
+    // stay in the account — a money leak the cashier has to settle by hand. The gateway
+    // copy was never updated, so a QRIS sale leaked exactly the same amount and said
+    // nothing.
+    //
+    // This is the SAME defect on the SAME screen, found by reading the two catches side by
+    // side rather than by a behaviour report: the direct path's own test above would pass
+    // while the QRIS path leaked.
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'get_enabled_features') {
+        return Promise.resolve({ features: ['loyalty-program'] });
+      }
+      if (cmd === 'get_loyalty_account_scoped') {
+        return Promise.resolve({
+          account: {
+            id: 'la-1', customer_id: 'cust-1', points: 500, lifetime_points: 500,
+            tier_id: null, updated_at: '', created_at: '',
+          },
+          tier: null, recent_transactions: [], next_tier: null, points_to_next_tier: 0,
+        });
+      }
+      if (cmd === 'get_points_value' || cmd === 'get_points_value_scoped') {
+        return Promise.resolve(50);
+      }
+      // The gateway settlement itself succeeds; only the points write fails.
+      if (cmd === 'redeem_loyalty_points_scoped') {
+        return Promise.reject(new Error('loyalty service unavailable'));
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="mock-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        selectedCustomer={{ id: 'cust-1', name: 'Ada', phone: null, email: null, notes: '', created_at: '', updated_at: '' }}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const redeemBtn = await screen.findByRole('button', { name: /Use Points/i });
+    await userEvent.click(redeemBtn);
+    const pointsInput = document.querySelector('.payment-loyalty-input') as HTMLInputElement;
+    await userEvent.type(pointsInput, '100');
+
+    // Drive the manual-QRIS tender exactly as the gateway-path tests at :681-688 do: the
+    // method radio, then the QRIS pay button (which opens the dialog), then the dialog's
+    // confirm. `settleGatewaySale` runs from `handleQrConfirmed` (payment/useGatewayQr.ts:104),
+    // so skipping the confirm leaves the tail — and this defect — entirely unexercised.
+    await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /pay with qr|payment-qris-pay/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /qris-poll-double-confirm/i }),
+    );
+
+    // Proof the redemption was actually ATTEMPTED: without this the test could pass or
+       // fail on a redemption that never ran (e.g. loyaltyDiscount still 0n), which is the
+       // failure mode the neighbouring test's own comment warns about at :1168-1171.
+    const redeemAttempted = invokeMock.mock.calls.some(
+      (c) => c[0] === 'redeem_loyalty_points_scoped',
+    );
+    expect(redeemAttempted, 'the gateway tail never attempted the redemption').toBe(true);
+
+    // The toast, not the modal: `settleGatewaySale` sets `done` right after, so the
+       // modal swaps to the done state and unmounts its own body. Searching the whole
+       // document rather than a modal-scoped container is what makes this assertion
+       // survive that transition.
+    await waitFor(() => {
+      const shown = Array.from(document.querySelectorAll('.toast, [role="alert"]'))
+        .map((n) => n.textContent ?? '')
+        .join(' | ');
+      expect(shown, 'the gateway tail reported nothing about the failed redemption')
+        .toMatch(/loyalty points were NOT deducted/i);
+    }, { timeout: 6000 });
+  });
+
   it('shows change due in done state for cash', async () => {
     await renderWithFluent(
       <PaymentModal

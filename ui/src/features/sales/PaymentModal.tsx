@@ -1070,8 +1070,18 @@ retryCurrencyLoad,
               );
             }
           }
-        } catch {
-          // non-blocking
+        } catch (redeemErr) {
+          // Non-blocking for the SALE — the payment already succeeded and rolling it back
+          // is worse — but it must not be silent. See the direct-checkout path's copy of
+          // this block below for the stakes: the customer's total was reduced by
+          // `loyaltyDiscount`, so a failed redemption gives away that discount while
+          // the points stay in the account, a money leak the cashier has to settle by
+          // hand. Identical code, identical consequence — same fix.
+          console.error('redeemLoyaltyPoints failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-loyalty-redeem-failed'),
+            type: 'warning',
+          });
         }
       }
 
