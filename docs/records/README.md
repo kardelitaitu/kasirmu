@@ -179,6 +179,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The dine-in rule is complete, the tables screen correctly exempt, and a full-surface](audits/dine-in-rule-complete-and-full-measurement.md) | — |
 | general | [The context menu's Escape guard, unpinned like round 173's (round 174)](audits/docblock-invariant-claims-swept.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
+| general | [Twelve dialogs close twice per Escape — and it does not matter](audits/duplicate-escape-owners-are-harmless.md) | — |
 | general | [The restaurant cart setup, shared instead of copied four times (round 161)](audits/e2e-cart-setup-shared.md) | — |
 | general | [Round 185's wait rule applied fleet-wide, and proven against a half-loaded screen (round 186)](audits/e2e-data-shaped-waits.md) | — |
 | general | [The two helpers five specs were carrying, consolidated (round 207)](audits/e2e-helper-consolidation-cart-sheet.md) | — |
