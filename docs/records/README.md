@@ -357,6 +357,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Seating the party, and where the reservation card actually comes from (round 241)](audits/table-seating-covered.md) | — |
 | general | [Auditing my own assertions for round 196's flaw, and where it did not apply (round 197)](audits/table-spec-assertion-audit.md) | — |
 | general | [Print Bill, and the failure arm the injection seam made testable (round 221)](audits/tables-print-bill.md) | — |
+| sync | [The tables conflict pair, and two rounds lost to a matcher (round 281)](audits/tables-tab-conflict-covered.md) | — |
 | sync | [The tables tab-conflict pair: seam confirmed, route not finished (round 279)](audits/tables-tab-conflict-partial.md) | — |
 | sync | [The tables tab-conflict route: the regex was not the bug (round 280)](audits/tables-tab-conflict-route2.md) | — |
 | general | [The tables toolbar and the verb its state decides (round 219)](audits/tables-toolbar.md) | — |
