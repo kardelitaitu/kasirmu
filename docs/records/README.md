@@ -174,6 +174,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [The mock's feature vocabulary is wrong, and the cost is now measured (round 131)](audits/dev-mock-feature-vocabulary.md) | — |
 | products | [The mock dropped the field modifier groups live in (round 210)](audits/dev-mock-product-notes.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
+| general | [The dine-in rule is complete, the tables screen correctly exempt, and a full-surface](audits/dine-in-rule-complete-and-full-measurement.md) | — |
 | general | [The context menu's Escape guard, unpinned like round 173's (round 174)](audits/docblock-invariant-claims-swept.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
 | general | [The restaurant cart setup, shared instead of copied four times (round 161)](audits/e2e-cart-setup-shared.md) | — |
