@@ -341,6 +341,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
 | general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
 | general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
+| general | [A shift closed with a customer's tab still open, and nothing on screen said so (round 294)](audits/shift-closed-with-open-tab.md) | — |
 | general | [The silent-save defect class is closed across the tree (round 166)](audits/silent-save-class-closed.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
