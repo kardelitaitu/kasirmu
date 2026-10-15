@@ -134,6 +134,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
 | general | [Cart line badges and the special-request note, plus a validation of round 203's checker (round 204)](audits/cart-line-badges-note.md) | — |
 | general | [The course chip, behind a setting that is off by default (round 205)](audits/cart-line-course-chip.md) | — |
+| general | [The tablet divergence was my spec not opening the cart (round 260)](audits/cart-line-edit-modifiers-corrected.md) | — |
 | general | [The edit-modifiers control, and why the spec is desktop-only (round 259)](audits/cart-line-edit-modifiers.md) | — |
 | general | [The modifiers region and the override permission (round 209)](audits/cart-line-modifiers-region.md) | — |
 | general | [The cart panel's reachable controls, and two that are not (round 216)](audits/cart-panel-controls.md) | — |
