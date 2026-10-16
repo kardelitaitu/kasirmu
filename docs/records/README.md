@@ -134,6 +134,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A guard I mis-scoped, and the orphan it could not see — 2026-10-18](audits/2026-10-18-a-guard-i-mis-scoped-and-the-orphan.md) | — |
 | general | [A component header that contradicted its own body — 2026-10-18](audits/2026-10-18-a-header-that-contradicted-its-body.md) | — |
 | general | [A red order-type checker I had written off as noise — 2026-10-18](audits/2026-10-18-a-red-checker-i-called-noise.md) | — |
+| general | [A spec assumed the till stays up after a sale — 2026-10-18](audits/2026-10-18-a-spec-assumed-the-till-stays-up.md) | — |
 | general | [A suspected data-loss defect, refuted — 2026-10-18](audits/2026-10-18-a-suspected-draft-loss-defect-refuted.md) | — |
 | general | [Admin tool routes drop back to the workspace picker — 2026-10-18](audits/2026-10-18-admin-tool-routes-drop-to-the-picker.md) | — |
 | general | [An attestation, and a false alarm almost reported as a defect — 2026-10-18](audits/2026-10-18-an-attestation.md) | — |
