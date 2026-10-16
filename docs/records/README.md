@@ -173,6 +173,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The same lie on the other button, and two guards that fail differently — 2026-10-18](audits/2026-10-18-start-shift-same-lie.md) | — |
 | inventory | [The money arm was a dead end; the stock arm was not - 2026-10-18](audits/2026-10-18-stock-adjust-double-and-checker-self-test.md) | — |
 | release | [The comment guarding a credentials overwrite cited the wrong line, twice](audits/2026-10-18-the-credential-comment-cited-a-lie.md) | — |
+| general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
 | reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
