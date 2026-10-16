@@ -479,7 +479,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     // RE-ENTRY GUARD. The Save button is disabled while saving (`state='processing'`),
-    // but this handler is also the form's `onSubmit` (:2187) — so pressing Enter in the
+    // but this handler is also the form's `onSubmit` (:2453) — so pressing Enter in the
     // name field submits it directly and never consults the button. Without this, a
     // double submit created TWO tables with the same name: `create_table`
     // (kasirmu-core/src/db/tables.rs:130) is a plain INSERT minting a fresh UUID, with no
@@ -908,10 +908,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const handleConfirmReservation = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      // RE-ENTRY GUARD. The Reserving button is disabled while saving (:1957), but this
-      // handler is also the form's `onSubmit` (:1880) — pressing Enter in the guest-name
+      // RE-ENTRY GUARD. The Reserving button is disabled while saving (:2878), but this
+      // handler is also the form's `onSubmit` (:2801) — pressing Enter in the guest-name
       // field submits it directly and never consults the button. Without this, a double
-      // submit ran `holdCartScoped` (:773) TWICE, leaving two open bills against one table.
+      // submit ran `holdCartScoped` (:861) TWICE, leaving two open bills against one table.
       // Same shape and same reason as `handleSaveTableModal` above.
       if (reservingTable) return;
       if (!sessionToken) {
