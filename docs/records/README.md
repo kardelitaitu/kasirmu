@@ -210,6 +210,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
 | general | [The sweep that worked: writes no test ever names - 2026-10-18](audits/2026-10-18-the-sweep-that-worked.md) | — |
 | subscription | [The sales-history tier case was asserting two removed designs — 2026-10-18](audits/2026-10-18-the-tier-case-asserted-two-removed-designs.md) | — |
+| general | [The Void overlay is behind a swipe, which is why the probe missed it — 2026-10-18](audits/2026-10-18-the-void-overlay-is-behind-a-swipe.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
 | general | [Three POS hypotheses, all refuted — 2026-10-18](audits/2026-10-18-three-pos-hypotheses-all-refuted.md) | — |
