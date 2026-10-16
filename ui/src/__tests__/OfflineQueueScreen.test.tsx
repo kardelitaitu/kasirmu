@@ -320,6 +320,41 @@ describe('OfflineQueueScreen', () => {
     });
   });
 
+  // ── A hostile pending count must not split the badge and the button ──────
+  //
+  // `pending_offline_count_scoped` declares a number and nothing enforces it at the
+  // IPC boundary. The count reached `setPendingCount` raw, and its two readers then
+  // disagreed about the same value:
+  //
+  //   badge    `pendingCount > 0`    -> hidden for 'three' and for -5
+  //   button   `pendingCount === 0`  -> ENABLED for both, since neither equals 0
+  //
+  // MEASURED: with an item on screen and the count answering 'three', the row
+  // rendered, no pending badge appeared, and Sync All stayed clickable — the one
+  // affordance saying 'work is queued' gone, while the action that clears it stayed
+  // armed. The fix floors the count at 0 (`asCount`), so both readers agree.
+  it.each([
+    ['a non-numeric count', 'three'],
+    ['a negative count', -5],
+    ['NaN', Number.NaN],
+  ])('keeps the badge and the Sync All button agreeing on %s', async (_label, value) => {
+    mockListAllOffline.mockResolvedValue([makeQueueItem()]);
+    mockPendingOfflineCount.mockResolvedValue(value as never);
+    renderScreen();
+
+    // The row is the precondition: without it this case could pass on an empty queue.
+    await waitFor(() => expect(screen.getByText('Delete')).toBeTruthy());
+
+    expect(
+      document.querySelector('.offline-queue-badge'),
+      'a bad count must not render a pending badge',
+    ).toBeNull();
+    expect(
+      (screen.getByText('Sync All').closest('button') as HTMLButtonElement).disabled,
+      'the badge says nothing while Sync All stays armed — the two readers of one ' +
+        'untrusted value disagree',
+    ).toBe(true);
+  });
   it('shows pending count badge', async () => {
     mockListAllOffline.mockResolvedValue([makeQueueItem()]);
     mockPendingOfflineCount.mockResolvedValue(3);

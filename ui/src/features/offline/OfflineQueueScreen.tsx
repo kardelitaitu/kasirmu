@@ -93,6 +93,30 @@ function formatRelativeTime(iso: string | null): { fluentKey: string; fluentArgs
 // ui/src/utils/settle-read.ts. It used to be copied here from app/AppShell.tsx,
 // and four more screens grew their own copy before it moved.
 
+/**
+ * Coerce the pending count read from the wire into a usable number.
+ *
+ * `pending_offline_count_scoped` DECLARES a number and nothing enforces it at the IPC
+ * boundary — the same gap `asArray` covers for the list beside it. A non-number, a
+ * negative, or a NaN reached `setPendingCount` raw, and the two render sites then
+ * DISAGREED about the same value:
+ *
+ *   badge    `pendingCount > 0`      -> hidden for 'three' and for -5
+ *   button   `pendingCount === 0`    -> ENABLED for both, since neither equals 0
+ *
+ * MEASURED (round 134): with a queue item on screen and the count answering 'three',
+ * the row rendered, no pending badge appeared, and Sync All stayed clickable. So the
+ * one affordance telling an operator that work is queued vanished while the action
+ * that would clear it stayed armed. Flooring at 0 keeps both readers on the same
+ * footing: a bad value reads as 'nothing counted', which disables the button and hides
+ * the badge TOGETHER.
+ */
+function asCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
 /** Props for {@link OfflineQueueScreen}. */
 export interface OfflineQueueScreenProps {
   /**
@@ -169,7 +193,7 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
       // ExchangeRateScreen / TaxConfigurationScreen / useBackupStatus and swept
       // across four more call sites. See utils/ipc-payload.
       setItems(asArray<OfflineQueueItemDto>(data));
-      setPendingCount(count);
+      setPendingCount(asCount(count));
       if (summary) {
         setConflictCount(summary.conflictCount);
         setQueueSummary(summary);
@@ -224,7 +248,7 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
           getOfflineQueueStatusSummaryScoped(sessionToken).catch(() => null),
         ]);
         if (gen !== pollGenRef.current) return; // superseded or unmounted
-        setPendingCount(count);
+        setPendingCount(asCount(count));
         if (summary) {
           setConflictCount(summary.conflictCount);
           setQueueSummary(summary);
