@@ -76,11 +76,33 @@ export function SplitBillModal({
     });
   }, []);
 
+  /**
+   * Tap a line to take it all, tap it again to drop it back to nothing.
+   *
+   * ⚠️ THE PARTIAL CASE USED TO FALL THROUGH TO "NONE". The rule was
+   * `current === 0 ? maxQty : 0`, so a line with ANY units chosen went to zero on
+   * the next tap. That combined badly with the auto-selection above: the modal
+   * opens with the first line set to 1, so the FIRST tap on it — the one a waiter
+   * makes to take the whole item — emptied it. Measured: [1, 3] -> tap -> [0, 3].
+   *
+   * The rule that matches the gesture is a two-state toggle between the CEILING and
+   * zero, so a partially-chosen line goes to full rather than to none:
+   *
+   *   current === 0  -> maxQty   (nothing chosen: take it all)
+   *   0 < current < maxQty -> maxQty   (PARTIAL: take it to the ceiling — this is
+   *     the case the old rule got wrong, because a partially-chosen line fell
+   *     through to "take it back" and emptied it)
+   *   current >= maxQty -> 0        (already full: take it back)
+   *
+   * The auto-selection stays — it is what shows the operator how the dialog works,
+   * :62-63 — and this change is what makes it harmless.
+   */
   const toggleLineFull = useCallback((lineId: LineId, maxQty: number) => {
     setSelectedQtys((prev) => {
       const current = prev[lineId] ?? 0;
-      const next = current === 0 ? maxQty : 0;
-      return { ...prev, [lineId]: next };
+      const resolved =
+        current === 0 || current < maxQty ? maxQty : 0;
+      return { ...prev, [lineId]: resolved };
     });
   }, []);
 
