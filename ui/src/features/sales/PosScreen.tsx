@@ -1659,8 +1659,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // the shortcut CLAIMS the button through its testid and clicks it. That runs the same
   // code the button runs — including the guard that stops a tab being saved with no
   // table — rather than a copy that would drift from it.
+  // A sub-screen REPLACES the sale view (`showTables`/`showSalesHistory`/
+  // `showStockInquiry` each early-return below), but this hook registers a
+  // DOCUMENT-level keydown listener and was still live behind them — so on the
+  // Table Management screen `Shift+B` opened the split-bill modal OVER the
+  // table list, acting on a cart the cashier could not see, and `Shift+T`
+  // reached into the DOM for a save-tab button that is not even mounted there.
+  // The keys belong to the sale view, so they are unbound while it is absent.
+  const saleViewVisible = !showTables && !showSalesHistory && !showStockInquiry;
   const restaurantShortcutHandlers = useMemo<RestaurantShortcutHandlers>(() => {
-    if (activeWorkspace !== 'restaurant-pos') return {};
+    if (activeWorkspace !== 'restaurant-pos' || !saleViewVisible) return {};
     return {
       'send-kitchen': () => { void handleSendToKitchen(); },
       'print-bill': () => { void handlePrintBill(); },
@@ -1673,7 +1681,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       },
       'open-tables': () => { setShowTables(true); },
     };
-  }, [activeWorkspace, handleSendToKitchen, handlePrintBill]);
+  }, [activeWorkspace, saleViewVisible, handleSendToKitchen, handlePrintBill]);
 
   useRestaurantShortcuts(restaurantShortcutHandlers);
 

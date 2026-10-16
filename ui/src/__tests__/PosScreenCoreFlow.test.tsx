@@ -2317,6 +2317,106 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
   });
 
+  // ── Restaurant shortcuts must not fire behind a sub-screen ──────────
+  //
+  // \`useRestaurantShortcuts\` registers a DOCUMENT-level keydown listener, and
+  // PosScreen calls it at :1678 — BEFORE the three sub-screen early returns
+  // (:1681/:1701/:1715). So while Table Management or Sales History REPLACED the
+  // sale view, the restaurant keys were still bound: \`Shift+B\` opened the
+  // split-bill modal over the table list (acting on a cart the cashier could not
+  // see), and \`Shift+T\` reached into the DOM for a save-tab button that is not
+  // mounted in a sub-screen at all. The keys belong to the sale view.
+
+  it('does not print an interim bill from a shortcut while a sub-screen is showing', async () => {
+    // restaurant-pos, because that is the workspace whose keys these are — the
+    // handler map early-returns `{}` for every other one, so testing in
+    // store-pos would pass without exercising the defect at all.
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // The cart line is SEEDED, not scanned. The barcode scanner is disabled on
+    // this workspace (`enabled: activeWorkspace !== 'restaurant-pos'`), so a
+    // triggerScan here is silently dropped — measured at :717 and again while
+    // writing this test. The mount-time restore key is the supported path, which
+    // is also why it must be set BEFORE the render.
+    localStorage.setItem(
+      `pos-active-draft:${STORE_ID}`,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'ITEM-BILL',
+            name: 'Bill Item',
+            category: 'Main',
+            qty: 1,
+            unit_price: { minor_units: 15000, currency: 'USD' },
+          },
+        ],
+        orderType: 'dine_in',
+      }),
+    );
+    await renderPosScreenWithShift();
+    // Reachability of the PRECONDITION: without a line, `handlePrintBill` returns
+    // at its own `lines.length === 0` guard, so this would measure that guard
+    // rather than the one under audit.
+    await waitFor(() =>
+      expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument(),
+    );
+
+    // REACHABILITY. Shift+P on the sale view must reach the printer, or the
+    // assertion after the sub-screen opens proves nothing.
+    //
+    // Measured, not assumed: the split-bill chord was tried FIRST and rejected as
+    // the observable here. `SplitBillModal` is not rendered by PosScreen at all
+    // (it is passed down at :1896), so it only mounts on the MAIN branch — the
+    // modal is absent on a sub-screen whether or not the handler ran, and both
+    // the positive and the negative passed against a deliberately unguarded
+    // build. A print call has no such blind spot.
+    vi.mocked(salesApi.printSalesReceipt).mockClear();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'P', shiftKey: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        vi.mocked(salesApi.printSalesReceipt).mock.calls.length,
+        'Shift+P did not reach the printer on the sale view — this test would then measure nothing',
+      ).toBeGreaterThan(0);
+    });
+
+    // Now hand the view to a sub-screen. Sales History, not Tables: the Tables
+    // row is feature-gated (`isEnabled(FEATURES.TABLE_MANAGEMENT)`) and the
+    // history row is not, so this reaches the same early-return without a second
+    // gate deciding whether the test runs.
+    // The history row lives INSIDE the restaurant sidebar popover, so open the
+    // sidebar first, then claim the row by testid — its accessible name comes
+    // from the FTL bundle and a copy edit would move it.
+    await userEvent.click(document.querySelector('.restaurant-sidebar-btn') as HTMLElement);
+    const historyRow = await waitFor(() => {
+      const el = document.querySelector('[data-testid="restaurant-sidebar-history"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    await userEvent.click(historyRow);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument(),
+    );
+    // The sale view really is gone: its cart panel is unmounted.
+    expect(document.querySelector('.pos-cart-panel')).toBeNull();
+
+    // …and the SAME chord must now be inert. The keys belong to the sale view;
+    // behind a sub-screen they acted on a cart the cashier cannot see.
+    vi.mocked(salesApi.printSalesReceipt).mockClear();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'P', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(
+      vi.mocked(salesApi.printSalesReceipt).mock.calls.length,
+      'Shift+P printed an interim bill while a sub-screen owned the view',
+    ).toBe(0);
+  });
+
   // ── Barcode lookup FAILURE (last in the suite, on purpose) ───────────
   //
   // The scanner's onProductFound (PosScreen.tsx:~660) has three outcomes, and two of them
