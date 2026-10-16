@@ -777,6 +777,67 @@ fn void_sale_completed_cannot_be_voided() {
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "status"));
 }
 
+/// A second void on an already-voided sale must be REFUSED, not re-applied.
+///
+/// The guard is in `void_sale` (sales_lifecycle.rs:884-892 pre-check plus the
+/// `WHERE id = ?2 AND status = 'active'` compare-and-set at :903-914). The two
+/// neighbouring cases pin only that a PENDING and a COMPLETED sale are refused; nothing
+/// pinned the re-void, which is the shape a double-clicked Void button produces.
+///
+/// It matters because the void path WRITES: an audit entry (:916-922) and a void outbox
+/// row (`void_sale_writes_one_void_outbox_row`, sales_lifecycle_tests.rs:234). A second
+/// pass that slipped through the status guard would append a duplicate audit trail — the
+/// record a dispute is settled from — even though the money effect is nil.
+#[test]
+fn void_sale_refuses_a_second_void_and_writes_no_extra_audit_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    let cart = make_cart();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+    s.update_sale_status(&sale.id, SaleStatus::Active).unwrap();
+
+    // The first void is legitimate.
+    s.void_sale(&sale.id, "user-1", "first").unwrap();
+    let audit_after_first = count_void_audit_rows(&s, &sale.id);
+    // Liveness: if the counter reads zero, the equality below is vacuous — it would pass
+    // whether or not a second entry were appended.
+    assert!(
+        audit_after_first > 0,
+        "the audit counter saw no void entry at all, so the duplicate check is vacuous",
+    );
+
+    // The second must be refused on status, not silently re-applied.
+    let err = s.void_sale(&sale.id, "user-1", "second").unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "status"),
+        "a re-void must be refused by the status guard, got: {err:?}",
+    );
+
+    assert_eq!(
+        count_void_audit_rows(&s, &sale.id),
+        audit_after_first,
+        "a refused re-void must not append a second audit entry",
+    );
+}
+
+/// How many audit rows record a void of `sale_id`.
+///
+/// Counted rather than fetched so the assertion is about the DUPLICATE, which is the
+/// thing a double-fire would add.
+fn count_void_audit_rows(s: &Store, sale_id: &str) -> i64 {
+    s.conn
+        .query_row(
+            // The action string is `sale.void` (sales_lifecycle.rs:924), not `void`: a
+            // first draft used the latter and read 0, which the liveness assertion below
+            // is what caught.
+            "SELECT COUNT(*) FROM audit_log WHERE target_id = ?1 AND action = 'sale.void'",
+            rusqlite::params![sale_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+}
+
 // ── Export with data ─────────────────────────────────────────
 
 #[test]
