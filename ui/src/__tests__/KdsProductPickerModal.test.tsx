@@ -7,7 +7,7 @@
 // fetch renders the localized error with a working Retry.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -156,6 +156,42 @@ describe('KdsProductPickerModal', () => {
     expect(onConfirm).toHaveBeenCalledWith({
       orderId: 'kds-order-1',
       items: [{ sku: 'ESPR', display_name: 'Espresso Shot', qty: 2, course: 'side', modifiers: [] }],
+    });
+  });
+
+  // ── Two taps on + must land as TWO units ────────────────────────────
+  //
+  // The stepper used to compute `entry.qty + 1` from the row as it last rendered, and
+  // `updateQtyEntry` OVERWRITES rather than accumulates. Two clicks inside one React
+  // batch both closed over that snapshot, so both wrote the same value — the cook
+  // pressed `+` twice on a touch panel and the quantity went up once. A double-tap on
+  // a kitchen touchscreen is one gesture, so this is the normal case, not an edge.
+  //
+  // Same shape as the POS cart fixes (rounds 89/90): the delta now composes inside the
+  // `setPicked` updater against the committed state. MEASURED before the change: this
+  // assertion failed with `qty: 2` where it needed `qty: 3`.
+  it('lands two units when + is pressed twice in one batch', async () => {
+    mockListProductsScoped.mockResolvedValue([ESPRESSO]);
+    const { onConfirm } = renderModal();
+    await waitFor(() => expect(screen.getByText('Espresso Shot')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /^espresso shot( \(added\))?$/i }));
+
+    const increase = screen.getByRole('button', { name: /increase quantity/i });
+    // Both clicks in ONE act(), so React batches them and the second handler sees the
+    // qty from BEFORE the first — exactly what a fast double-tap produces on a panel.
+    await act(async () => {
+      increase.click();
+      increase.click();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /add .* item/i }));
+    // 1 (the initial pick) + 2 (two presses) = 3. A 2 here means the second tap was lost.
+    // `course` is the picker's own category-derived default for a beverage SKU, unrelated
+    // to this case — pinned so the assertion stays exact.
+    expect(onConfirm).toHaveBeenCalledWith({
+      orderId: 'kds-order-1',
+      items: [{ sku: 'ESPR', display_name: 'Espresso Shot', qty: 3, course: 'beverage', modifiers: [] }],
     });
   });
 
