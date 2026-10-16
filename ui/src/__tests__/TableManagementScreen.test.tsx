@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithWorkspace, MOCK_SESSION_TOKEN } from '@/test-utils';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
@@ -1435,6 +1435,64 @@ describe('TableManagementScreen', () => {
     expect(mockDeleteHeldCart).not.toHaveBeenCalled();
     // And the table is not marked occupied, so the floor plan still describes reality.
     expect(mockUpdateTableStatus).not.toHaveBeenCalled();
+  });
+
+  // ── A refused floor-plan move must not leave the table where it was dropped ──
+  //
+  // The drag split is across TWO handlers: `handlePointerMoveTable` (:863-887) writes the
+  // snapped position into `tables`/`tablePool` on every move, and `handlePointerUpTable`
+  // (:889-910) is what persists it. `tablesRef.current = tables` (:127) always mirrors that
+  // OPTIMISTIC state, and :899 reads the position to save FROM the ref.
+  //
+  // So when `updateTableScoped` is refused:
+  //   * the toast fires (:904) and the operator is told, but
+  //   * the table stays VISUALLY at the dropped position (:1132-1133 renders
+  //     `left: t.pos_x%; top: t.pos_y%` straight from state), and
+  //   * `tablesRef` still holds the refused coordinates, so a retry re-sends the payload
+  //     that was just rejected.
+  //
+  // The floor plan then disagrees with the server — and for table management that means the
+  // server can believe a table is somewhere the plan does not show it.
+  it('returns the table to its saved position when the move write is refused', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'T1', pos_x: 10, pos_y: 10 })]);
+    mockUpdateTable.mockRejectedValue(new Error('locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByText('T1').length).toBeGreaterThan(0));
+
+    // Enter arrange mode.
+    await userEvent.click(screen.getByText('Arrange Tables'));
+
+    const table = document.querySelector('.tables-table') as HTMLElement;
+    expect(table, 'the floor plan did not render a table').not.toBeNull();
+    const before = table!.style.left;
+    expect(before, 'fixture did not render the seeded left offset').toBe('10%');
+
+    // jsdom reports a zero-size bounding rect, and `handlePointerMoveTable` bails on
+    // `rect.width <= 0` (:867) before it writes anything. Give the floorplan a real
+    // box so the drag actually moves, which is the precondition this test needs.
+    const floorplan = document.querySelector('.tables-floorplan') as HTMLElement;
+    expect(floorplan, 'the floor plan container was not found').not.toBeNull();
+    floorplan!.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, bottom: 600, right: 800, width: 800, height: 600 }) as DOMRect;
+
+    // Drag: pointerDown → pointerMove → pointerUp.
+    fireEvent.pointerDown(table!, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(table!, { clientX: 400, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(table!, { clientX: 400, clientY: 300, pointerId: 1 });
+
+    // Preconditions: the drag must have MOVED it and the write must have been attempted.
+    expect(mockUpdateTable, 'the drag never issued a move write').toHaveBeenCalled();
+    const moved = document.querySelector('.tables-table') as HTMLElement;
+    expect(moved.style.left, 'the drag did not move the table on screen').not.toBe(before);
+
+
+    // THE ASSERTION: the table must not stay where it was dropped. Its rendered
+    // position comes straight from state, so this is the observable contract.
+    await waitFor(() => {
+      const now = (document.querySelector('.tables-table') as HTMLElement).style.left;
+      expect(now, 'the floor plan kept a position the server refused').toBe(before);
+    });
   });
 });
 

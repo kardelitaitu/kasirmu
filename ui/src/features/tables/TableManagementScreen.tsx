@@ -123,6 +123,16 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     tableX: number;
     tableY: number;
   } | null>(null);
+  /**
+   * The dragged table's position BEFORE the drag began.
+   *
+   * The drag writes optimistically (handlePointerMoveTable :881-886) and persists only at
+   * pointer-up. If that write is refused the toast fires (:904) but the table stayed
+   * VISUALLY at the dropped position, because nothing put it back — and `tablesRef`
+   * (:127, read at :899) still holds the refused coordinates, so a retry re-sent the
+   * payload that was just rejected. The floor plan then disagrees with the server.
+   */
+  const dragOriginPos = useRef<{ pos_x: number; pos_y: number } | null>(null);
   const tablesRef = useRef<Table[]>([]);
   tablesRef.current = tables;
   const [printingBill, setPrintingBill] = useState(false);
@@ -852,6 +862,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       // ignore
     }
     setDraggingTableId(t.id);
+    dragOriginPos.current = { pos_x: t.pos_x, pos_y: t.pos_y };
     dragStartPos.current = {
       pointerX: e.clientX,
       pointerY: e.clientY,
@@ -901,12 +912,28 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       try {
         await updateTableScoped(sessionToken, currentTable);
       } catch (err) {
+        // PUT THE TABLE BACK. The move was written optimistically on every pointermove
+        // (:881-886) and only persisted here, so a refused write left the table VISUALLY at
+        // the dropped position with the server holding the old one — and `tablesRef`
+        // (:127) still carrying the refused coordinates, so a retry re-sent the payload
+        // that was just rejected. Restoring both lists and the ref makes the floor plan
+        // describe reality again and makes a retry send the ORIGINAL position.
+        const origin = dragOriginPos.current;
+        if (origin) {
+          const restored: Table = { ...currentTable, pos_x: origin.pos_x, pos_y: origin.pos_y };
+          setTables((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+          setTablePool((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+          tablesRef.current = tablesRef.current.map((item) =>
+            item.id === restored.id ? restored : item,
+          );
+        }
         addToast({
           message: l10nErrorMessage(err, l10n, 'tables-action-error'),
           type: 'error',
         });
       }
     }
+    dragOriginPos.current = null;
   }, [arrangeMode, draggingTableId, sessionToken, addToast, l10n]);
 
   const [showLegend, setShowLegend] = useState(false);
