@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, navigateTo, openToolCard, WORKSPACES } from './helpers';
+import { loginAs, selectWorkspace, openToolCard, WORKSPACES } from './helpers';
 
 /**
  * E2E Critical Path #2: Shift Open/Close → Reconciliation

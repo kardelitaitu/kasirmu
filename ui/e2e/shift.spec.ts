@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, openToolCard, WORKSPACES } from './helpers';
+import { loginAs, openToolCard } from './helpers';
 
 /**
  * E2E: Open/Close Shift — Hard Assertions (E2E-23 through E2E-25)
