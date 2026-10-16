@@ -76,7 +76,19 @@ test('Print Bill offers itself only for a table with a bill', async ({ page }) =
   ).toHaveCount(0);
 
   // And a BILLED one does — the pair is what pins the gate rather than the button.
-  await page.keyboard.press('Escape');
+  //
+  // CLOSE THE PANEL WITH ITS OWN CONTROL, NOT Escape. Measured 2026-10-18: Escape on this
+  // screen is owned by the SHELL, not by the detail panel. `useWorkspaceNavShortcuts` returns
+  // to the workspace picker on Escape, and its guard deliberately exempts only
+  // `restaurant-pos` (`AppShell.tsx:79`) -- so on this screen Escape closes the TABLE VIEW and
+  // returns to the POS grid, taking every tile with it (measured: `.tables-table` 12 -> 0),
+  // while `.tables-detail-actions` also goes to 0. The old sequence then looked for a billed
+  // tile on a screen that no longer existed.
+  //
+  // The panel is NOT an ARIA modal (`isAnyAriaModalOpen()` is false for it), so it could never
+  // claim Escape. It has its own Close button, which is what an operator presses -- and the
+  // plan stays clickable underneath, so the billed tile is reachable directly.
+  await page.getByRole('button', { name: 'Close' }).click();
   await openBilledTable(page);
   await expect(page.locator('[data-testid="tables-print-bill-btn"]')).toBeVisible({
     timeout: TIMEOUT,

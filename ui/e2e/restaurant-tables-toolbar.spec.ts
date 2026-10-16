@@ -81,7 +81,14 @@ test('arrange mode stops a tile opening its table', async ({ page }) => {
   ).toBeVisible({ timeout: TIMEOUT });
 
   // Leave the panel so the next tap is unambiguous, then enter arrange mode.
-  await page.keyboard.press('Escape');
+  //
+  // The panel's OWN Close button, not Escape: on this screen Escape belongs to the shell's
+  // workspace-navigation shortcut, which closes the whole TABLE VIEW back to the POS grid
+  // (AppShell.tsx:79 exempts only `restaurant-pos` from the picker return, so the tiles go
+  // with it). Measured 2026-10-18: `.tables-table` 12 -> 0 after Escape. The panel is not an
+  // ARIA modal and could never have owned the key.
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('.tables-detail-actions')).toHaveCount(0, { timeout: 5_000 });
   await arrange.click();
 
   // THE GUARD: in arrange mode the same tap must NOT open the table. Without it an
@@ -114,7 +121,8 @@ test('the assign button names the action its state implies', async ({ page }) =>
 
   // Close the panel, then open a FREE table. Its label is the other half of the pair —
   // the same control, and the state is what decides the verb.
-  await page.keyboard.press('Escape');
+  // Same reason as the case above: the Close BUTTON, because Escape is the shell's.
+  await page.getByRole('button', { name: 'Close' }).click();
   await expect(actions).toHaveCount(0, { timeout: 5_000 });
 
   const free = page.locator('.tables-table--available').first();
