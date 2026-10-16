@@ -127,6 +127,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
+| general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
 | general | [Stale absolute quantity writes — a tree-wide sweep, and one more money defect — 2026-10-18](audits/2026-10-18-stale-absolute-qty-sweep.md) | — |
 | general | [An unbounded quantity field, and an Escape that ate the sidebar — 2026-10-18](audits/2026-10-18-unbounded-qty-and-escape-layering.md) | — |
 | general | [Undo put the line back on top, and a wrong note of my own — 2026-10-18](audits/2026-10-18-undo-position-loss.md) | — |
