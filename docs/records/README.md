@@ -126,6 +126,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [E2E admin navigation: the sidebar is the in-workspace path, and the feature gate is a second gate](audits/2026-10-16-admin-navigation-sidebar-vs-feature-gate.md) | — |
 | general | [The course chip spec was asserting a state the till never produces](audits/2026-10-16-course-chip-spec-stale-premise.md) | — |
 | money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
+| general | [Reachability, not position: a measurement error in my own layout probes](audits/2026-10-16-reachability-vs-position-probe-correction.md) | — |
 | general | [Restaurant POS reliability: the cart-add invariant holds under rapid input](audits/2026-10-16-restaurant-cart-add-invariant.md) | — |
 | general | [Restaurant POS: all 64 E2E specs exercised in one session](audits/2026-10-16-restaurant-e2e-suite-full-pass.md) | — |
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
