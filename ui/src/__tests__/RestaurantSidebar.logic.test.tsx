@@ -552,6 +552,34 @@ describe('RestaurantSidebar — keyboard-shortcut help', () => {
     }
   });
 
+  // ── Escape must unwind the INNERMOST layer first ─────────────────────
+  //
+  // The sidebar's Escape handler is registered on `document` (:384-395) and
+  // closes the PANEL outright. That is right for the panel and wrong once the
+  // shortcut help is open inside it: Escape is the key a user presses to
+  // dismiss the thing they just opened, so pressing it on the help list threw
+  // away the whole sidebar — and with it the cashier's place in the POS.
+  //
+  // This is the general layered-dismissal rule, and the commerce side of this
+  // tree already obeys it (Esc closes the split-bill dialog and leaves the sale
+  // view up). The assertion is on the OUTER state, because that is what the bug
+  // actually destroyed.
+  it('Escape closes the help panel and leaves the sidebar open', () => {
+    const onOpenChange = vi.fn();
+    renderSidebar({ cartActions: makeActions(), onOpenChange });
+
+    fireEvent.click(screen.getByTestId('restaurant-sidebar-shortcuts'));
+    expect(screen.getByTestId('restaurant-shortcuts-help')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    // The inner layer went away...
+    expect(screen.queryByTestId('restaurant-shortcuts-help')).toBeNull();
+    // ...and the outer one did NOT. A regression to the document handler
+    // closing the sidebar fails here.
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
   it('shows the translated label, not the raw action id', () => {
     renderSidebar({ cartActions: makeActions() });
     fireEvent.click(screen.getByTestId('restaurant-sidebar-shortcuts'));

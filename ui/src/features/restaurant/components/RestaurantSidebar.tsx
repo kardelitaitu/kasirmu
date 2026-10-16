@@ -380,19 +380,35 @@ export function RestaurantSidebar({
     sidebarWasOpenRef.current = open;
   }, [open, sidebarRef, triggerRef]);
 
-  // Close sidebar on Escape before global shortcuts can handle it
+  // Close sidebar on Escape before global shortcuts can handle it.
+  //
+  // UNWIND THE INNERMOST LAYER FIRST. This listener is on `document`, so it
+  // fires wherever focus sits inside the panel — including on the shortcut-help
+  // list, which is opened FROM the sidebar. Escape is the key a user presses to
+  // dismiss the thing they just opened, so handling it as "close the sidebar"
+  // threw away the whole panel (and the cashier's place in the POS) instead of
+  // the sub-panel. Measured: with the help open, Escape left it mounted AND
+  // called `onOpenChange(false)`.
+  //
+  // Same rule the commerce surfaces already follow — `PosScreen`'s Escape closes
+  // the split-bill dialog and leaves the sale view up.
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
+      if (showShortcuts) {
+        // The inner layer consumes this press; the sidebar stays open.
+        setShowShortcuts(false);
+        return;
+      }
       sidebarOpenedWithKeyboardRef.current = true;
       onOpenChange(false);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, showShortcuts]);
 
   // Close sidebar on click outside, EXCEPT on trigger or inside the sidebar
   useEffect(() => {
