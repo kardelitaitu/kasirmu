@@ -274,8 +274,27 @@ export default function StockTransfersScreen() {
     setCreateError(null);
   }, []);
 
+  // Re-entry guard for the create. The handler awaits an IPC round trip and its only
+  // guard is `createSaving` state, which React commits on its NEXT render -- after the second
+  // dispatch of a real double tap. MEASURED: two clicks in one act() batch both reach this
+  // handler (StockTransfersScreen.test.tsx 'creates a stock transfer once for a double
+  // tap'), and both are SENT.
+  //
+  // The server does NOT refuse the replay, and this is the worst instance of the class.
+  // core `create_transfer` mints a fresh UUID and a DISTINCT `transfer_number` =
+  // `TRF-{ts}-{random tail}` (crates/kasirmu-core/src/db/stock_transfers.rs:37-45). The random
+  // tail is deliberate: it exists so two transfers created in the same millisecond do NOT
+  // collide on the UNIQUE transfer_number. So two calls cannot be collapsed -- they create
+  // two independent transfers carrying the same goods, and sending one moves physical
+  // stock, so the double tap moves twice what the operator entered. Unlike suppliers and
+  // purchase orders (unique index refuses the replay) and unlike customers or cash payouts
+  // (which store a duplicate but are not a stock movement), this duplicates a row that
+  // moves inventory.
+  const createPendingRef = useRef(false);
   const handleCreate = useCallback(async () => {
     if (!sessionToken) return;
+    if (createPendingRef.current) return;
+    createPendingRef.current = true;
     setCreateSaving(true);
     setCreateError(null);
     try {
@@ -289,6 +308,7 @@ export default function StockTransfersScreen() {
       if (invalidQty) {
         setCreateError(l10n.getString('stock-transfers-error-qty-integer'));
         setCreateSaving(false);
+        createPendingRef.current = false;
         return;
       }
       const lines = validLines.map((l) => ({
@@ -302,6 +322,7 @@ export default function StockTransfersScreen() {
       if (lines.length === 0) {
         setCreateError(l10n.getString('stock-transfers-error-no-lines'));
         setCreateSaving(false);
+        createPendingRef.current = false;
         return;
       }
       await createStockTransfer(
@@ -319,6 +340,7 @@ export default function StockTransfersScreen() {
     } catch (err) {
       setCreateError(l10nErrorMessage(err, l10n, 'stock-transfers-error-create'));
     } finally {
+      createPendingRef.current = false;
       setCreateSaving(false);
     }
   }, [sessionToken, createLines, createSourceLoc, createDestLoc, createSourceTerminalId, createDestTerminalId, createNotes, l10n, load, resetCreateForm]);

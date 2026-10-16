@@ -174,6 +174,17 @@ function MemosScreenContent() {
     };
   }, [sessionToken]);
 
+  // Re-entry guard for the create/revise write. `canSubmit` includes `!creating`, but
+  // `creating` is STATE -- React commits it on its next render, after the second submit of
+  // a real double tap -- so the guard it provides is the same too-late one as the
+  // `saving`-only screens. A ref is authoritative immediately.
+  //
+  // core does not refuse the replay: `create_memo_draft` mints a fresh
+  // `uuid::Uuid::now_v7()` and INSERTs unconditionally (crates/kasirmu-core/src/db/memos.rs:83),
+  // with no dedupe, so a double submit stores TWO identical drafts. Lower stakes than the
+  // stock transfer (a draft still has to be published), but it is the same defect and the
+  // fix is the same one line.
+  const submitPendingRef = useRef(false);
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !creating;
 
   const toggleLocation = (id: string) => {
@@ -191,6 +202,8 @@ function MemosScreenContent() {
   const handleCreate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit || !sessionToken) return;
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
     setCreating(true);
     setActionError(null);
     try {
@@ -206,6 +219,7 @@ function MemosScreenContent() {
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
+      submitPendingRef.current = false;
       setCreating(false);
     }
   };
@@ -262,6 +276,8 @@ function MemosScreenContent() {
   const handleRevise = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!revising || !canSubmit || !sessionToken) return;
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
     setCreating(true);
     setActionError(null);
     try {
@@ -274,6 +290,7 @@ function MemosScreenContent() {
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
+      submitPendingRef.current = false;
       setCreating(false);
     }
   };
