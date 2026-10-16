@@ -182,6 +182,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The same lie on the other button, and two guards that fail differently — 2026-10-18](audits/2026-10-18-start-shift-same-lie.md) | — |
 | inventory | [The money arm was a dead end; the stock arm was not - 2026-10-18](audits/2026-10-18-stock-adjust-double-and-checker-self-test.md) | — |
 | general | [A switch onto an occupied store deleted the cart on screen — 2026-10-18](audits/2026-10-18-switch-onto-occupied-store-deleted-the-cart.md) | — |
+| general | [The :303 assertion chases a class that no longer exists — 2026-10-18](audits/2026-10-18-the-303-assertion-chases-a-removed-class.md) | — |
 | release | [The comment guarding a credentials overwrite cited the wrong line, twice](audits/2026-10-18-the-credential-comment-cited-a-lie.md) | — |
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
 | general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
