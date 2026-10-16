@@ -142,6 +142,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [Four refutations, one real defect, and a regression my own test caught — 2026-10-18](audits/2026-10-18-four-refutations-and-a-missing-import.md) | — |
 | general | [A generic truth is worse than a specific one — 2026-10-18](audits/2026-10-18-generic-truth-is-worse.md) | — |
+| general | [The fuzzier class: guards whose fall-through loses data — 2026-10-18](audits/2026-10-18-guards-whose-fall-through-loses-data.md) | — |
 | general | [A recalled held tab validates its qty and unit_price](audits/2026-10-18-held-tab-recall-validates-qty-and-price.md) | — |
 | general | [A hook registered after eight early returns, and a count its two readers disagreed about](audits/2026-10-18-hook-after-early-return-and-count-disagreement.md) | — |
 | general | [I was wrong about categories, and right about stock counts — 2026-10-18](audits/2026-10-18-i-was-wrong-about-categories.md) | — |
