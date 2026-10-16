@@ -20,7 +20,19 @@ export interface SplitBillModalProps {
    * unchanged.
    */
   orderType?: 'dine_in' | 'takeaway' | 'delivery' | undefined;
-  onConfirmSplit: (selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void;
+  /**
+   * Commit the split. Resolve with `false` to say the split did NOT commit —
+   * the parent has already reported why — and the modal will stay OPEN with
+   * the selection intact so the cashier can retry or cancel.
+   *
+   * This exists because resolving with nothing was ambiguous: the parent's
+   * balance-the-remaining-tab failure path `return`s (PosScreen.tsx:1006, the
+   * round-65 fix that stopped a double charge), and a plain `return` resolves
+   * the promise. The modal's `finally` then closed it, so the recovery the
+   * parent promised — "keeps the cart intact and the split modal open" —
+   * never happened. The toast flashed and the dialog vanished.
+   */
+  onConfirmSplit: (selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<boolean | void> | boolean | void;
 }
 
 export function SplitBillModal({
@@ -112,7 +124,12 @@ export function SplitBillModal({
     if (selectedLines.length === 0 || submitting) return;
     setSubmitting(true);
     try {
-      await onConfirmSplit(selectedLines, remainingLines);
+      // Only an EXPLICIT `false` keeps the modal open. Every other resolution —
+      // including `undefined`, which is what a parent that merely has no return
+      // value produces — closes it, so this stays backward-compatible with the
+      // success paths and with callers that never opted in.
+      const committed = await onConfirmSplit(selectedLines, remainingLines);
+      if (committed === false) return;
       onClose();
     } finally {
       setSubmitting(false);

@@ -320,7 +320,10 @@ export interface CartPanelProps {
   splitBillEnabled?: boolean | undefined;
   showSplitBillModal?: boolean | undefined;
   setShowSplitBillModal?: Dispatch<SetStateAction<boolean>> | undefined;
-  handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void) | undefined;
+  // `Promise<boolean | void>` rather than `Promise<void>`: `false` is how the
+  // screen tells SplitBillModal that the split did NOT commit and the dialog
+  // must stay open for a retry (see `onConfirmSplit` in SplitBillModal.tsx).
+  handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<boolean | void> | boolean | void) | undefined;
   hasUndispatchedItems?: boolean | undefined;
   sendingToKitchen?: boolean | undefined;
   handleSendToKitchen?: (() => Promise<void> | void) | undefined;

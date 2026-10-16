@@ -633,13 +633,28 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(document.body.textContent ?? '').toMatch(/failed to update the remaining tab/i);
     });
 
-    // The modal closes (the SplitBillModal's own finally), and payment must NOT open.
-    // If it does, the cashier rings the split portion while the original tab still holds
-    // every line.
+    // The modal must STAY OPEN, and payment must NOT open.
+    //
+    // Payment opening is the double charge: the cashier rings the split portion while
+    // the original tab still holds every line. That is what round 65 stopped.
+    //
+    // The modal used to close here — this assertion read "the modal closes (the
+    // SplitBillModal's own finally)" and treated it as correct. It was not: the parent
+    // returns on this path to keep the split retryable, and a bare `return` resolves the
+    // promise, so the modal's `finally` closed it anyway. The two halves of the flow
+    // documented opposite contracts and this test pinned the wrong one. The balance
+    // failed, the toast flashed, and the cashier was left with a half-applied split and
+    // no way to retry. Now asserted on the element, not on the resolver's prose.
     expect(
       document.querySelector('.payment-overlay, .payment-modal, [data-testid="payment-modal"]'),
       'payment opened even though balancing the remaining tab failed',
     ).toBeNull();
+
+    // …and the split modal is still there for the retry the parent promised.
+    expect(
+      document.querySelector('[data-testid="pos-split-bill-modal"]'),
+      'the split modal closed on a failed balance, stranding a half-applied split',
+    ).not.toBeNull();
 
     // Restore BOTH mocks. The file's own header (:491-503) records that a leftover
     // mockRejectedValue answers every later case: the next test's save-tab hold then

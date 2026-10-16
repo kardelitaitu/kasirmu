@@ -1003,7 +1003,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // Returning keeps the cart intact and the split modal open, so the cashier can
           // retry the balance or cancel; a lost tab is recoverable, a double charge is not.
           addToast({ message: requiredLocalized(l10n, 'pos-toast-tab-balance-failed'), type: 'error' });
-          return;
+          // `false`, not a bare `return`: the modal closes on ANY resolution that
+          // is not an explicit false, so returning nothing closed it and stranded
+          // the cashier with a half-applied split and no way to retry the balance.
+          return false;
         }
       }
       setLines(selectedLines);
