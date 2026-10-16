@@ -133,6 +133,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
 | general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
 | general | [The restaurant shortcuts had never been executed — 2026-10-18](audits/2026-10-18-shortcuts-never-executed.md) | — |
+| general | [The split's select-all tap cleared the line — 2026-10-18](audits/2026-10-18-split-tap-cleared-the-line.md) | — |
 | general | [Stale absolute quantity writes — a tree-wide sweep, and one more money defect — 2026-10-18](audits/2026-10-18-stale-absolute-qty-sweep.md) | — |
 | general | [Two table-numbering defects, one of them mine — 2026-10-18](audits/2026-10-18-two-table-numbering-defects.md) | — |
 | general | [An unbounded quantity field, and an Escape that ate the sidebar — 2026-10-18](audits/2026-10-18-unbounded-qty-and-escape-layering.md) | — |
