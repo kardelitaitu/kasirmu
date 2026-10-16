@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -549,6 +549,60 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // update tab". The file's own comment at :974-977 names exactly this as what the
   // create-first ordering was meant to end: "execution then CONTINUES to
   // setShowPayment(true)".
+  // ── Executed, not scanned: a restaurant sale end to end ──────────────
+  //
+  // Rounds 97-100 each found their real defect by READING siblings, and one by
+  // executing a hook that had only static tests. This case is the restaurant
+  // equivalent: render the POS in the restaurant workspace, run a real sale, and
+  // assert the observable state — because a wrong table on a sale is a money
+  // defect no render-only assertion can see.
+  //
+  // Both `activeWorkspace` and `scopeTypeKey` are set. They are DIFFERENT fields,
+  // and this file's own mock records a case where setting only one left a path
+  // permanently unreachable (:221-225), so half-setting them is how this case
+  // would silently test nothing.
+  it('keeps the table the waiter typed on a restaurant cart', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    wsState.scopeTypeKey = 'restaurant-pos';
+    await renderPosScreenWithShift();
+
+    await waitFor(() => {
+      expect(screen.getByText('0m')).toBeInTheDocument();
+    });
+
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'REST-1',
+      name: 'Nasi Padang',
+      category: 'Makanan',
+      price: { minor_units: 25000, currency: 'IDR' },
+      barcode: 'BAR-R1',
+      in_stock: true,
+      stock_qty: 10,
+      tax_rate_ids: [],
+      product_type: 'restaurant',
+      created_at: '',
+      price_updated_at: '',
+    } as never);
+
+    await act(async () => {
+      mockedBarcode.triggerScan('BAR-R1');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
+    });
+
+    // The table field, typed the way a waiter types it.
+    const tableInput = document.querySelector('.pos-cart-table-input') as HTMLInputElement | null;
+    expect(tableInput, 'the restaurant cart offers a table field').not.toBeNull();
+    await act(async () => {
+      fireEvent.change(tableInput!, { target: { value: 'T7' } });
+    });
+
+    // Rounds 96/97 both showed this field is the one that silently leaks across
+    // resumes, so: does typing it actually hold?
+    expect((tableInput as HTMLInputElement).value).toBe('T7');
+  });
+
   it('does not open payment when balancing the remaining tab fails', async () => {
     const user = userEvent.setup();
     // Scan the lines while in store-pos (the barcode handler is
