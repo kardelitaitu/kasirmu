@@ -89,6 +89,17 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   const endShiftPendingRef = useRef(false);
   const [endShiftPending, setEndShiftPending] = useState(false);
 
+  // The same guard for the OPEN path, and for the same reason: `handleStartShift`
+  // awaits the create, and core's `start_inventory_shift` refuses a duplicate (it
+  // counts this user's active shifts at the location and returns Validation,
+  // crates/kasirmu-core/src/db/inventory.rs:396-408, backed by the partial unique
+  // index idx_inv_shifts_active_per_user_location). So a double submit does not open
+  // two shifts -- the replay is rejected, and that rejection is reported as "Failed to
+  // start shift" for a shift that DID open, leaving the operator on the start form
+  // for a shift that is running.
+  const startShiftPendingRef = useRef(false);
+  const [startShiftPending, setStartShiftPending] = useState(false);
+
   // Exit-animation-pattern: hold the modal in the DOM through a mirrored
   // fade-out before unmounting (exit-animation-pattern skill; timing
   // matches the 200ms entry animation of .shift-summary-overlay).
@@ -164,6 +175,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   const handleStartShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionToken || !session?.user_id || !selectedLocationId) return;
+    if (startShiftPendingRef.current) return;
+    startShiftPendingRef.current = true;
+    setStartShiftPending(true);
 
     try {
       const shift = await startInventoryShift(sessionToken, selectedLocationId, notes);
@@ -172,6 +186,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
       if (onShiftChange) onShiftChange(shift);
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10nRef.current, 'inv-shift-error-start'), type: 'error' });
+    } finally {
+      startShiftPendingRef.current = false;
+      setStartShiftPending(false);
     }
   };
 
@@ -265,7 +282,13 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
               />
             </Localized>
 
-            <Button type="submit" variant="primary" size="sm" className="shift-btn shift-btn-primary">
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              className="shift-btn shift-btn-primary"
+              disabled={startShiftPending}
+            >
               <Localized id="inv-shift-start-btn">
                 <span>Start Shift</span>
               </Localized>

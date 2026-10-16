@@ -180,6 +180,78 @@ it('shows start form when no active shift exists', async () => {
     });
   });
 
+  // A second Start Shift submit while the first is in flight must not re-send.
+  //
+  // core `start_inventory_shift` refuses a duplicate: it counts the user's active
+  // shifts at that location and returns Validation when one exists
+  // (crates/kasirmu-core/src/db/inventory.rs:396-408), backed by the partial unique
+  // index `idx_inv_shifts_active_per_user_location` on
+  // `(user_id, location_id) WHERE status = 'active'` (20260813_init.sql:1134). So the
+  // shift is NOT opened twice -- but the second call's rejection lands in
+  // handleStartShift's catch and raises 'Failed to start shift' on a shift that DID
+  // open, leaving the operator on the start form for a shift that is running. The
+  // mirror of the End Shift double tap (round 136) in the same component.
+  it('sends one start-shift call for a double submit while the first is in flight', async () => {
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockStartShift.mockImplementationOnce(() => heldFirst as never);
+    // The backend's real answer to a second start: the user already has one open.
+    mockStartShift.mockRejectedValueOnce(new Error('user already has an active inventory shift'));
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Start Shift')).toBeInTheDocument();
+    });
+
+    const form = screen.getByText('Start Shift').closest('form')!;
+    // fireEvent, NOT user.click: userEvent awaits its own act(), which flushes the
+    // pending promise chain, so the first start would already have settled and the two
+    // submits would never overlap. Measured in round 136 on the End button.
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    expect(
+      mockStartShift.mock.calls.length,
+      'a second submit re-sent the start while the first was still in flight; the ' +
+        'backend rejects the duplicate and handleStartShift reports a failed shift open',
+    ).toBe(1);
+
+    releaseFirst?.(activeShift);
+    await act(async () => { await heldFirst; });
+
+    // The shift that DID open is shown as running.
+    await waitFor(() => {
+      expect(screen.getByText('End Shift')).toBeInTheDocument();
+    });
+  });
+
+  // As with the End button, the guard's own case cannot see the ATTRIBUTE: a
+  // fireEvent submit bypasses a disabled submit button, so removing `disabled`
+  // leaves the double-submit case green (measured -- ref-only red, disabled-only
+  // green, so the ref is what the call-count assertion actually tests). The
+  // attribute is what the operator sees, so it is asserted separately.
+  it('disables the Start Shift button while the open is in flight', async () => {
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockStartShift.mockImplementationOnce(() => heldFirst as never);
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Start Shift')).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByText('Start Shift').closest('button')!;
+    expect(startBtn).not.toBeDisabled();
+
+    fireEvent.submit(screen.getByText('Start Shift').closest('form')!);
+    await waitFor(() => {
+      expect(startBtn).toBeDisabled();
+    });
+
+    releaseFirst?.(activeShift);
+    await act(async () => { await heldFirst; });
+  });
+
   // ── Active Shift State ────────────────────────────────────────
 
   it('shows active shift info with timer and end button', async () => {
