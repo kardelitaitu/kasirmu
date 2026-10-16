@@ -93,6 +93,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [tables, setTables] = useState<Table[]>([]);
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
+  // Carries the array a `setSections` updater produced out to the awaited
+  // `setSettingScoped` write. See `handleRenameSection` (:1318) for why a local
+  // `let` cannot do this.
+  const sectionsResultRef = useRef<string[] | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
   /** The open-bill/tab read failed, so `openBills` is NOT authoritative.
    *
@@ -429,7 +433,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     // RE-ENTRY GUARD. The Save button is disabled while saving (`state='processing'`),
-    // but this handler is also the form's `onSubmit` (:1525) — so pressing Enter in the
+    // but this handler is also the form's `onSubmit` (:2187) — so pressing Enter in the
     // name field submits it directly and never consults the button. Without this, a
     // double submit created TWO tables with the same name: `create_table`
     // (kasirmu-core/src/db/tables.rs:130) is a plain INSERT minting a fresh UUID, with no
@@ -1315,8 +1319,42 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             ),
           );
         }
-        const updated = sections.map((s) => (s === oldName ? trimmed : s));
-        setSections(updated);
+        // ⚠️ RESOLVED INSIDE THE UPDATER, not from the render closure. The awaits
+        // above (`updateTableScoped` per table, :1312-1316) keep the screen live, and
+        // `handleAddSection` (:1276) can run inside that window — a separate control on
+        // the same modal that nothing disables while a rename is in flight. `sections`
+        // is the closure captured BEFORE those awaits, and `setSections(updated)`
+        // REPLACES the array, so a section added during the rename was absent from it
+        // and was DROPPED with no message. MEASURED: add 'Teras' mid-rename, release,
+        // and 'Teras' is gone.
+        //
+        // Same shape as the round-201 `handleSendToKitchen` defect that
+        // scripts/check-state-closure-after-await.py exists to flag, and this line is
+        // one of the two it reports.
+        //
+        // The setting write still needs the resulting array, so it is carried out
+        // through `sectionsResultRef`, which the updater fills on the same pass. The
+        // updater stays PURE; the ref only moves the value out for the awaited write.
+        //
+        // A local `let updated` is NOT safe here even though it reads as if it were:
+        // `setSections` runs the updater eagerly ONLY when the fiber has no pending
+        // lanes, and `JSON.stringify(updated)` on the next line is evaluated
+        // regardless. If React defers the updater to the render phase, the local is
+        // still `[]` and the write persists an EMPTY ARRAY, wiping every section --
+        // strictly worse than the defect above. A ref is assigned only by the updater
+        // that actually ran, so the payload is the array that was stored.
+        //
+        // MEASURED: jsdom under `act()` flushes eagerly, so BOTH forms persist the same value
+        // there -- the kill-test that kept only the functional updater and restored the
+        // local `let` still passed. The ref is therefore a defence against the deferred
+        // case that the test suite cannot reproduce, not a behaviour it proves; say so
+        // rather than implying the test covers it.
+        setSections((prev) => {
+          const next = prev.map((s) => (s === oldName ? trimmed : s));
+          sectionsResultRef.current = next;
+          return next;
+        });
+        const updated = sectionsResultRef.current ?? [];
         await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
         if (section === oldName) setSection(trimmed);
         setEditingSectionName(null);
@@ -1332,7 +1370,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         });
       }
     },
-    [sessionToken, tables, sections, section, loadTables, addToast, l10n],
+    // `sections` is deliberately ABSENT: both handlers now read the live array
+    // through the updater, never the render closure, so depending on it would only
+    // re-create the callbacks (and re-arm the very staleness this guards against).
+    [sessionToken, tables, section, loadTables, addToast, l10n],
   );
 
   const handleDeleteSection = useCallback(
@@ -1356,8 +1397,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           return;
         }
       }
-      const updated = sections.filter((s) => s !== secName);
-      setSections(updated);
+      // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
+      // `handleRenameSection` above (:1318). The `updateTableScoped` awaits at
+      // :1361-1376 leave the screen interactive, so a section added during them was
+      // dropped by this replacement. `check-state-closure-after-await.py` reports this
+      // line as its second candidate. Carried out through the same ref for the same
+      // reason: see the local-`let` hazard noted at :1318.
+      setSections((prev) => {
+        const next = prev.filter((s) => s !== secName);
+        sectionsResultRef.current = next;
+        return next;
+      });
+      const updated = sectionsResultRef.current ?? [];
       try {
         await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
         if (section === secName) setSection(null);
@@ -1373,7 +1424,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         });
       }
     },
-    [sessionToken, tables, sections, section, loadTables, addToast, l10n],
+    // `sections` is deliberately ABSENT: both handlers now read the live array
+    // through the updater, never the render closure, so depending on it would only
+    // re-create the callbacks (and re-arm the very staleness this guards against).
+    [sessionToken, tables, section, loadTables, addToast, l10n],
   );
 
   const [showLegend, setShowLegend] = useState(false);

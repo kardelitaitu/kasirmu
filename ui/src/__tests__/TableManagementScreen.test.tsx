@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { renderWithWorkspace, MOCK_SESSION_TOKEN } from '@/test-utils';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
@@ -23,6 +23,8 @@ const {
   mockHoldCart,
   mockDeleteHeldCart,
   mockPrintSalesReceipt,
+  mockGetSetting,
+  mockSetSetting,
 } = vi.hoisted(() => ({
   mockListTables: vi.fn(),
   mockListSections: vi.fn(),
@@ -36,6 +38,8 @@ const {
   mockHoldCart: vi.fn(),
   mockDeleteHeldCart: vi.fn(),
   mockPrintSalesReceipt: vi.fn(),
+  mockGetSetting: vi.fn(),
+  mockSetSetting: vi.fn(),
 }));
 
 vi.mock('@/api/sales', async (importOriginal) => {
@@ -67,6 +71,11 @@ vi.mock('@/api/tables', () => ({
   updateTableScoped: (_token: string, table: Table) => mockUpdateTable(table),
   deleteTable: (_token: string, id: string) => mockDeleteTable(id),
   deleteTableScoped: (_token: string, id: string) => mockDeleteTable(id),
+}));
+
+vi.mock('@/api/settings', () => ({
+  getSettingScoped: (...args: unknown[]) => mockGetSetting(...args),
+  setSettingScoped: (...args: unknown[]) => mockSetSetting(...args),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -127,12 +136,16 @@ describe('TableManagementScreen', () => {
     mockHoldCart.mockReset();
     mockDeleteHeldCart.mockReset();
     mockPrintSalesReceipt.mockReset();
+    mockGetSetting.mockReset();
+    mockSetSetting.mockReset();
     mockListTables.mockResolvedValue([]);
     mockListSections.mockResolvedValue([]);
     mockListOpenBills.mockResolvedValue([]);
     mockHoldCart.mockResolvedValue({ id: 'new-held-id' });
     mockDeleteHeldCart.mockResolvedValue(undefined);
     mockPrintSalesReceipt.mockResolvedValue({ printed: true });
+    mockGetSetting.mockResolvedValue(null);
+    mockSetSetting.mockResolvedValue(undefined);
     mockUpdateTableStatus.mockImplementation((_token: string, id: string, status: string) =>
       Promise.resolve(makeTable({ id, status })),
     );
@@ -1798,6 +1811,87 @@ describe('TableManagementScreen', () => {
     await waitFor(() => expect(screen.getAllByText('Patio').length).toBeGreaterThanOrEqual(1));
   });
 
+  // ── A rename in flight must not drop a section added during it ────────────
+  //
+  // `handleRenameSection` (TableManagementScreen.tsx:1306) awaits one
+  // `updateTableScoped` per table in the section (:1316-1320) and only THEN reads
+  // `sections` to build the replacement:
+  //
+  //   const updated = sections.map((s) => (s === oldName ? trimmed : s));  // :1322
+  //   setSections(updated);                                               // :1323
+  //
+  // `sections` is the RENDER closure, captured before those awaits, and `setSections`
+  // REPLACES the array rather than updating it. `handleAddSection` (:1276) can run in
+  // that window -- it is a separate control on the same modal and nothing disables it
+  // while a rename is in flight -- so a section added during the rename is absent from
+  // `updated` and is DROPPED with no message.
+  //
+  // This is the round-201 `handleSendToKitchen` shape, which is why
+  // scripts/check-state-closure-after-await.py exists and flags exactly this line.
+  // `handleDeleteSection` (:1376) has the same body shape.
+  it('keeps a section added while a rename is in flight', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListSections.mockResolvedValue(['Main', 'Patio']);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-manage-sections-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-manage-sections-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-new-section-input')).toBeDefined());
+
+    // Hold the rename's table write open, so the add below lands inside its await.
+    let releaseRename: ((v: unknown) => void) | undefined;
+    const heldRename = new Promise((resolve) => { releaseRename = resolve; });
+    mockUpdateTable.mockImplementationOnce(() => heldRename as never);
+
+    // Start the rename (Main -> Utama).
+    const renameBtn = screen.getByTestId('tables-rename-section-Main');
+    await userEvent.click(renameBtn);
+    // The rename input carries no testid; its row does. Scoped to the section item so
+    // it cannot match the add-section input below it.
+    const row = screen.getByTestId('tables-manage-section-Main');
+    const renameInput = row.querySelector('input') as HTMLInputElement;
+    await userEvent.clear(renameInput);
+    await userEvent.type(renameInput, 'Utama');
+    // Save is a button in the edit row, not an Enter key.
+    await userEvent.click(within(row).getByRole('button', { name: /^save$/i }));
+
+    // While that is in flight, add a third section.
+    await userEvent.type(screen.getByTestId('tables-new-section-input'), 'Teras');
+    await userEvent.click(screen.getByTestId('tables-add-section-btn'));
+    await waitFor(() => expect(screen.getAllByText('Teras').length).toBeGreaterThanOrEqual(1));
+
+    // Release the rename and let it settle.
+    releaseRename?.(makeTable());
+    await waitFor(() => expect(screen.getAllByText('Utama').length).toBeGreaterThanOrEqual(1));
+
+    // The section added mid-rename must survive the rename's replacement array.
+    expect(
+      screen.queryAllByText('Teras').length,
+      'the rename replaced `sections` from its pre-await closure, dropping the section ' +
+        'added while it was in flight',
+    ).toBeGreaterThanOrEqual(1);
+
+    // ...and the PERSISTED value must carry it too. The old body read `sections` from
+    // its pre-await closure, so the write stored the array WITHOUT 'Teras' -- the section
+    // vanished on the next reload even where the UI still showed it. Only the RENAME's
+    // write is checked: the add's own write also lands on this mock, and its payload is
+    // the add path's subject, not this case's.
+    await waitFor(() => expect(mockSetSetting).toHaveBeenCalled());
+    const renameWrite = mockSetSetting.mock.calls
+      .map((c) => c[2])
+      .filter((v) => typeof v === 'string' && v.includes('Utama'))
+      .pop();
+    expect(
+      renameWrite,
+      'the rename never persisted its section list, so the rename is lost on reload',
+    ).toBeDefined();
+    expect(
+      JSON.parse(renameWrite as string),
+      'the rename persisted its stale pre-await section list, dropping the section added ' +
+        'while it was in flight -- that section is lost on the next reload',
+      // 'Main' became 'Utama'; the point is that 'Teras' is present at all.
+    ).toEqual(['Utama', 'Patio', 'Teras']);
+  });
   it('allows selecting a table in arrange mode and adjusting shape and dimensions via inspector', async () => {
     mockListTables.mockResolvedValue([makeTable()]);
     renderScreen();
