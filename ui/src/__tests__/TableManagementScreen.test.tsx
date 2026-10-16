@@ -973,6 +973,79 @@ describe('TableManagementScreen', () => {
     expect(mockUpdateTableStatus).not.toHaveBeenCalled();
   });
 
+  // ── A PARTIAL failure must still refresh and close ──────────────────
+  //
+  // The case above is the clean one: the FIRST write fails, so nothing changed.
+  // This is the messy one the create-first ordering creates — the hold SUCCEEDS
+  // and only a later step fails, so the bill already exists at the destination
+  // when the toast says "move failed".
+  //
+  // `loadTables()` used to sit on the success path only, so the floor plan kept
+  // rendering the PRE-move state under a failure toast, with the dialog still
+  // open over it. The operator retries against a plan the backend has moved on
+  // from, which is what turns one duplicate bill into two.
+  it('refreshes the floor plan and closes the dialog when the move half-commits', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+    // The hold SUCCEEDS (the bill now exists at Table 2); the RELEASE is what
+    // fails, which is the half-committed state this case is about.
+    mockHoldCart.mockResolvedValue({ id: 'bill-2' });
+    mockDeleteHeldCart.mockResolvedValue(undefined);
+    mockReleaseTable.mockRejectedValueOnce(new Error('table is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+
+    // Reachability: the release really was attempted, or this measures nothing.
+    await waitFor(() => expect(mockReleaseTable).toHaveBeenCalled());
+
+    // The floor plan was re-read despite the failure, so it describes the data the
+    // backend now holds rather than the pre-move layout.
+    await waitFor(() =>
+      expect(mockListTables.mock.calls.length).toBeGreaterThan(1),
+    );
+
+    // And the dialog is gone, so a second attempt cannot be issued from a stale view.
+    await waitFor(() =>
+      expect(screen.queryByTestId('tables-move-confirm-btn')).toBeNull(),
+    );
+  });
+
   it('toggles arrange mode on and off', async () => {
     const table = makeTable({ id: 't-1', name: 'Table 1' });
     mockListTables.mockResolvedValue([table]);

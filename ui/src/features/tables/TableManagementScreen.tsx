@@ -663,6 +663,27 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       setMoveTableModal(null);
       closeDetail();
     } catch (err) {
+      // A partial failure is the WORST state to leave the dialog open in.
+      //
+      // The writes are sequential (hold → delete → release → status), so this catch
+      // can fire AFTER the destination bill already exists: the hold succeeded and
+      // only the delete/release/status step failed. `loadTables()` sat on the success
+      // path only (:657), so the floor plan kept rendering the PRE-move state — the
+      // operator was told "move failed" while looking at a plan that no longer
+      // described the data, with the dialog still open over it. Retrying against that
+      // stale plan is what turns one duplicate bill into two.
+      //
+      // Refreshing makes the plan tell the truth even here, and closing the dialog
+      // stops a second attempt being issued from a view the backend has moved on from.
+      // The duplicate itself is the documented, hand-resolvable trade of the
+      // create-first order — this is about not hiding it.
+      try {
+        await loadTables();
+      } catch {
+        // The refresh is best-effort; the toast below already reports the failure.
+      }
+      setMoveTableModal(null);
+      closeDetail();
       addToast({
         message: l10nErrorMessage(err, l10n, 'tables-toast-move-failed'),
         type: 'error',
@@ -751,6 +772,16 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       setMergeTableModal(null);
       closeDetail();
     } catch (err) {
+      // Same partial-failure reasoning as handleConfirmMoveTable above: the combined
+      // bill can already exist when this fires, so the plan must be re-read and the
+      // dialog closed rather than left showing the pre-merge floor over changed data.
+      try {
+        await loadTables();
+      } catch {
+        // Best-effort; the toast below already reports the failure.
+      }
+      setMergeTableModal(null);
+      closeDetail();
       addToast({
         message: l10nErrorMessage(err, l10n, 'tables-toast-merge-failed'),
         type: 'error',
