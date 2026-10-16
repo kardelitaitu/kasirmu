@@ -79,6 +79,26 @@ tables-reserve-confirm = Konfirmasi Reservasi
 tables-toast-reserved = Meja { $table } dipesan untuk { $guest }
 tables-seat-guests = Dudukkan Tamu
 tables-toast-guests-seated = Tamu didudukkan di Meja { $table }
+tables-manage-sections = Kelola Area
+tables-manage-sections-title = Kelola Area / Bagian
+tables-new-section-placeholder = mis. Teras, Rooftop, VIP
+tables-add-section-btn = Tambah Area
+tables-section-no-tables = 0 meja
+tables-section-table-count = { $count } meja
+tables-rename-section = Ubah Nama
+tables-delete-section = Hapus
+tables-delete-section-confirm = Hapus area "{ $section }"? Meja di area ini akan dipindahkan ke Utama.
+tables-toast-section-added = Area "{ $section }" ditambahkan
+tables-toast-section-renamed = Mengubah nama area menjadi "{ $section }"
+tables-toast-section-deleted = Menghapus area "{ $section }"
+tables-arrange-selected = Mengatur: Meja { $table }
+tables-arrange-shape = Bentuk
+tables-arrange-size = Ukuran
+tables-quick-seat-walkin = Dudukkan Cepat:
+tables-mark-cleaned-quick = Tandai Selesai Dibersihkan (Tersedia)
+tables-toast-cleaned = Meja { $table } sekarang bersih dan tersedia
+tables-table-joined-badge = 🔗 +M{ $joined }
+
 
 
 

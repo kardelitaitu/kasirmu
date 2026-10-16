@@ -1782,6 +1782,97 @@ describe('TableManagementScreen', () => {
       /open tab/i,
     );
   });
+
+  it('opens Manage Sections modal, adds a section, and displays it in section bar', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListSections.mockResolvedValue(['Main']);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-manage-sections-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-manage-sections-btn'));
+
+    await waitFor(() => expect(screen.getByTestId('tables-new-section-input')).toBeDefined());
+    await userEvent.type(screen.getByTestId('tables-new-section-input'), 'Patio');
+    await userEvent.click(screen.getByTestId('tables-add-section-btn'));
+
+    await waitFor(() => expect(screen.getAllByText('Patio').length).toBeGreaterThanOrEqual(1));
+  });
+
+  it('allows selecting a table in arrange mode and adjusting shape and dimensions via inspector', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-arrange-mode-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-arrange-mode-btn'));
+
+    // Click table to select in arrange mode
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => expect(screen.getByTestId('tables-arrange-inspector')).toBeDefined());
+    expect(screen.getByTestId('tables-resize-handle-Table 1')).toBeDefined();
+
+    // Adjust shape
+    await userEvent.click(screen.getByTestId('tables-arrange-shape-square'));
+    expect(mockUpdateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't-1',
+        shape: 'square',
+      }),
+    );
+
+    // Adjust size
+    await userEvent.click(screen.getByTestId('tables-arrange-width-inc'));
+    expect(mockUpdateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't-1',
+      }),
+    );
+  });
+
+  it('allows 1-tap quick cleaning of a table in cleaning state', async () => {
+    await openTableDetail(makeTable({ status: 'cleaning' }));
+
+    await waitFor(() => expect(screen.getByTestId('tables-mark-cleaned-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-mark-cleaned-btn'));
+
+    expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1', 'available');
+  });
+
+  it('allows quick seating a walk-in party of 4 directly from detail panel', async () => {
+    await openTableDetail(makeTable({ status: 'available' }));
+
+    await waitFor(() => expect(screen.getByTestId('tables-quick-seat-4')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-quick-seat-4'));
+
+    expect(mockHoldCart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bill_type: 'open_bill',
+        customer_name: 'Walk-in [4p]',
+      }),
+    );
+    expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1', 'occupied');
+  });
+
+  it('renders joined table badge on floor plan when table has joined tag in bill', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        customer_name: 'Table 2 [+T1]',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+      },
+    ]);
+
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-joined-tag-Table 2')).toBeDefined());
+    expect(screen.getByTestId('tables-joined-tag-Table 2').textContent).toMatch(/\+T.*1/);
+  });
 });
 
 

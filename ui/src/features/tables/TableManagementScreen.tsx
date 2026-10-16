@@ -16,7 +16,7 @@ import {
   printSalesReceipt,
   type HeldCartRow,
 } from '@/api/sales';
-import { getSettingScoped } from '@/api/settings';
+import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import {
   listTablesScoped,
   listSectionsScoped,
@@ -127,6 +127,19 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [reservingTable, setReservingTable] = useState(false);
   const [arrangeMode, setArrangeMode] = useState(false);
   const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const [showManageSections, setShowManageSections] = useState(false);
+  const [newSectionInput, setNewSectionInput] = useState('');
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
+  const [editSectionInput, setEditSectionInput] = useState('');
+  const [arrangeSelectedTableId, setArrangeSelectedTableId] = useState<string | null>(null);
+  const [resizingTableId, setResizingTableId] = useState<string | null>(null);
+  const resizeStartPos = useRef<{
+    pointerX: number;
+    pointerY: number;
+    startW: number;
+    startH: number;
+  } | null>(null);
+  const resizeOriginDim = useRef<{ width: number; height: number } | null>(null);
   const floorplanRef = useRef<HTMLDivElement | null>(null);
   const dragStartPos = useRef<{
     pointerX: number;
@@ -199,6 +212,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     [getTableBill],
   );
 
+  // Match table with active joined table(s) if merged
+  const getTableJoined = useCallback(
+    (tableName: string): string | null => {
+      const bill = getTableBill(tableName);
+      if (!bill) return null;
+      const str = (bill.customer_name || '') + ' ' + (bill.label || '');
+      const match = str.match(/\[\+T([^\]]+)\]/);
+      return match ? match[1] ?? null : null;
+    },
+    [getTableBill],
+  );
+
   // TBL-07: localized label for a raw status value, with unknown fallback.
   const statusLabel = useCallback(
     (status: string) => l10n.getString(STATUS_LABEL_IDS[status] ?? 'tables-status-unknown'),
@@ -209,20 +234,37 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   // page, so selecting a section never makes the other filters disappear and
   // empty sections stay representable. Non-fatal — the floor plan still works
   // if section loading fails.
-  useEffect(() => {
+  const loadSections = useCallback(async () => {
     if (!sessionToken) return;
-    let cancelled = false;
-    listSectionsScoped(sessionToken)
-      .then((data) => {
-        if (!cancelled) setSections(asArray<typeof data[number]>(data));
-      })
-      .catch(() => {
-        if (!cancelled) setSections([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const [data, customRaw] = await Promise.all([
+        listSectionsScoped(sessionToken).catch(() => []),
+        getSettingScoped(sessionToken, 'restaurant.table_sections').catch(() => null),
+      ]);
+      const dbSections = asArray<string>(data);
+      let customSections: string[] = [];
+      if (customRaw) {
+        try {
+          const parsed = JSON.parse(customRaw);
+          if (Array.isArray(parsed)) {
+            customSections = parsed.filter(
+              (s): s is string => typeof s === 'string' && s.trim().length > 0,
+            );
+          }
+        } catch {
+          // ignore invalid json in custom sections
+        }
+      }
+      const combined = Array.from(new Set(['Main', ...customSections, ...dbSections]));
+      setSections(combined);
+    } catch {
+      setSections(['Main']);
+    }
   }, [sessionToken]);
+
+  useEffect(() => {
+    void loadSections();
+  }, [loadSections]);
 
   useEffect(() => {
     if (!sessionToken) return;
@@ -737,7 +779,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       destParsed.tableNumber = destTable.name;
       destParsed.lines = combinedLines;
 
-      const newLabel = heldCartLabel(destTable.name, destParsed.customerName) ?? `Table ${destTable.name}`;
+      const originalCustomer = destParsed.customerName;
+      const joinedTag = `[+T${bareTableNumber(mergeTableModal.name)}]`;
+      const baseCustomer = originalCustomer || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : '');
+      const mergedCustomer = baseCustomer.includes(joinedTag) ? baseCustomer : `${baseCustomer} ${joinedTag}`.trim();
+      destParsed.customerName = mergedCustomer;
+
+      const newLabel = heldCartLabel(destTable.name, originalCustomer) ?? `Table ${destTable.name}`;
 
       // CREATE FIRST, DELETE SECOND — same fix as handleMoveTable above.
       //
@@ -751,7 +799,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         total_minor: combinedTotalMinor,
         currency: destFull.currency || 'IDR',
         bill_type: 'open_bill',
-        customer_name: destParsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
+        customer_name: mergedCustomer,
         ...(destFull.deduction_location_id ? { deduction_location_id: destFull.deduction_location_id } : {}),
       });
 
@@ -955,6 +1003,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } catch {
       // ignore
     }
+    setArrangeSelectedTableId(t.id);
     setDraggingTableId(t.id);
     dragOriginPos.current = { pos_x: t.pos_x, pos_y: t.pos_y };
     dragStartPos.current = {
@@ -1029,6 +1078,303 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     }
     dragOriginPos.current = null;
   }, [arrangeMode, draggingTableId, sessionToken, addToast, l10n]);
+
+  const handlePointerDownResize = useCallback((e: React.PointerEvent, t: Table) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setResizingTableId(t.id);
+    resizeOriginDim.current = { width: t.width, height: t.height };
+    resizeStartPos.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startW: t.width,
+      startH: t.height,
+    };
+  }, []);
+
+  const handlePointerMoveResize = useCallback((e: React.PointerEvent, t: Table) => {
+    if (resizingTableId !== t.id || !resizeStartPos.current || !floorplanRef.current) return;
+    e.preventDefault();
+    const rect = floorplanRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const deltaXPercent = ((e.clientX - resizeStartPos.current.pointerX) / rect.width) * 100;
+    const deltaYPercent = ((e.clientY - resizeStartPos.current.pointerY) / rect.height) * 100;
+
+    let newW = Math.max(6, Math.min(40, Math.round((resizeStartPos.current.startW + deltaXPercent) / 2) * 2));
+    let newH = Math.max(6, Math.min(40, Math.round((resizeStartPos.current.startH + deltaYPercent) / 2) * 2));
+
+    if (t.shape === 'circle' || t.shape === 'square') {
+      const maxDim = Math.max(newW, newH);
+      newW = maxDim;
+      newH = maxDim;
+    }
+
+    setTables((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, width: newW, height: newH } : item)),
+    );
+    setTablePool((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, width: newW, height: newH } : item)),
+    );
+  }, [resizingTableId]);
+
+  const handlePointerUpResize = useCallback(async (e: React.PointerEvent, t: Table) => {
+    if (resizingTableId !== t.id) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setResizingTableId(null);
+    resizeStartPos.current = null;
+
+    const currentTable = tablesRef.current.find((item) => item.id === t.id);
+    if (currentTable && sessionToken) {
+      try {
+        await updateTableScoped(sessionToken, currentTable);
+      } catch (err) {
+        const origin = resizeOriginDim.current;
+        if (origin) {
+          const restored = { ...currentTable, width: origin.width, height: origin.height };
+          setTables((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+          setTablePool((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+        }
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    }
+    resizeOriginDim.current = null;
+  }, [resizingTableId, sessionToken, addToast, l10n]);
+
+  const handleUpdateArrangeShape = useCallback(async (newShape: string) => {
+    if (!sessionToken || !arrangeSelectedTableId) return;
+    const currentTable = tablesRef.current.find((item) => item.id === arrangeSelectedTableId);
+    if (!currentTable) return;
+    let w = currentTable.width;
+    let h = currentTable.height;
+    if (newShape === 'rectangle') {
+      w = Math.max(16, w);
+      h = Math.min(12, h);
+    } else if (newShape === 'booth') {
+      w = Math.max(18, w);
+      h = Math.max(14, h);
+    } else if (newShape === 'circle' || newShape === 'square') {
+      const size = Math.max(10, Math.min(18, Math.round((w + h) / 2)));
+      w = size;
+      h = size;
+    }
+    const updated: Table = { ...currentTable, shape: newShape, width: w, height: h };
+    setTables((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setTablePool((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    try {
+      await updateTableScoped(sessionToken, updated);
+    } catch (err) {
+      addToast({ message: l10nErrorMessage(err, l10n, 'tables-action-error'), type: 'error' });
+    }
+  }, [sessionToken, arrangeSelectedTableId, addToast, l10n]);
+
+  const handleAdjustArrangeSize = useCallback(async (deltaW: number, deltaH: number) => {
+    if (!sessionToken || !arrangeSelectedTableId) return;
+    const currentTable = tablesRef.current.find((item) => item.id === arrangeSelectedTableId);
+    if (!currentTable) return;
+    let newW = Math.max(6, Math.min(40, currentTable.width + deltaW));
+    let newH = Math.max(6, Math.min(40, currentTable.height + deltaH));
+    if (currentTable.shape === 'circle' || currentTable.shape === 'square') {
+      const s = Math.max(6, Math.min(40, currentTable.width + (deltaW !== 0 ? deltaW : deltaH)));
+      newW = s;
+      newH = s;
+    }
+    const updated: Table = { ...currentTable, width: newW, height: newH };
+    setTables((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setTablePool((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    try {
+      await updateTableScoped(sessionToken, updated);
+    } catch (err) {
+      addToast({ message: l10nErrorMessage(err, l10n, 'tables-action-error'), type: 'error' });
+    }
+  }, [sessionToken, arrangeSelectedTableId, addToast, l10n]);
+
+  const handleQuickMarkCleaned = useCallback(
+    async (table: Table) => {
+      if (!sessionToken) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      try {
+        const updated = await updateTableStatusScoped(sessionToken, table.id, 'available');
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected(null);
+        addToast({
+          message: l10n.getString('tables-toast-cleaned', { table: table.name }),
+          type: 'success',
+        });
+        await loadTables();
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, addToast, l10n, loadTables],
+  );
+
+  const handleQuickSeatWalkin = useCallback(
+    async (table: Table, partySize: number) => {
+      if (!sessionToken) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      try {
+        const customerName = `Walk-in [${partySize}p]`;
+        await holdCartScoped(sessionToken, {
+          label: heldCartLabel(table.name, customerName) ?? `Table ${table.name}`,
+          cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name, partySize }),
+          item_count: 0,
+          total_minor: 0,
+          currency: 'IDR',
+          bill_type: 'open_bill',
+          customer_name: customerName,
+        });
+
+        const updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected(null);
+
+        addToast({
+          message: l10n.getString('tables-toast-guests-seated', { table: table.name }),
+          type: 'success',
+        });
+
+        if (onSelectTable) {
+          onSelectTable(table.name);
+        }
+        await loadTables();
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, addToast, l10n, onSelectTable, loadTables],
+  );
+
+  const handleAddSection = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      const trimmed = newSectionInput.trim();
+      if (!trimmed || !sessionToken) return;
+      if (sections.includes(trimmed)) {
+        setSection(trimmed);
+        setNewSectionInput('');
+        return;
+      }
+      const updated = Array.from(new Set([...sections, trimmed]));
+      setSections(updated);
+      try {
+        await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
+        addToast({
+          message: l10n.getString('tables-toast-section-added', { section: trimmed }),
+          type: 'success',
+        });
+        setSection(trimmed);
+        setNewSectionInput('');
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [newSectionInput, sessionToken, sections, addToast, l10n],
+  );
+
+  const handleRenameSection = useCallback(
+    async (oldName: string, newName: string) => {
+      const trimmed = newName.trim();
+      if (!trimmed || trimmed === oldName || !sessionToken) {
+        setEditingSectionName(null);
+        return;
+      }
+      try {
+        const tablesInSection = tables.filter((t) => (t.section || 'Main') === oldName);
+        if (tablesInSection.length > 0) {
+          await Promise.all(
+            tablesInSection.map((t) =>
+              updateTableScoped(sessionToken, { ...t, section: trimmed }),
+            ),
+          );
+        }
+        const updated = sections.map((s) => (s === oldName ? trimmed : s));
+        setSections(updated);
+        await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
+        if (section === oldName) setSection(trimmed);
+        setEditingSectionName(null);
+        await loadTables();
+        addToast({
+          message: l10n.getString('tables-toast-section-renamed', { section: trimmed }),
+          type: 'success',
+        });
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, tables, sections, section, loadTables, addToast, l10n],
+  );
+
+  const handleDeleteSection = useCallback(
+    async (secName: string) => {
+      if (!sessionToken || secName === 'Main') return;
+      const tablesInSection = tables.filter((t) => (t.section || 'Main') === secName);
+      if (tablesInSection.length > 0) {
+        const confirmMsg = l10n.getString('tables-delete-section-confirm', { section: secName });
+        if (!window.confirm(confirmMsg)) return;
+        try {
+          await Promise.all(
+            tablesInSection.map((t) =>
+              updateTableScoped(sessionToken, { ...t, section: 'Main' }),
+            ),
+          );
+        } catch (err) {
+          addToast({
+            message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+            type: 'error',
+          });
+          return;
+        }
+      }
+      const updated = sections.filter((s) => s !== secName);
+      setSections(updated);
+      try {
+        await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
+        if (section === secName) setSection(null);
+        await loadTables();
+        addToast({
+          message: l10n.getString('tables-toast-section-deleted', { section: secName }),
+          type: 'success',
+        });
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, tables, sections, section, loadTables, addToast, l10n],
+  );
 
   const [showLegend, setShowLegend] = useState(false);
 
@@ -1126,6 +1472,16 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             </Button>
           );
         })}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="tables-manage-sections-btn"
+          data-testid="tables-manage-sections-btn"
+          onClick={() => setShowManageSections(true)}
+          title={l10n.getString('tables-manage-sections')}
+        >
+          <span>⚙️ <Localized id="tables-manage-sections"><span>Manage Sections</span></Localized></span>
+        </Button>
       </div>
 
       {showLegend && (
@@ -1237,6 +1593,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           const isSlaWarn = elapsedMinutes !== null && elapsedMinutes >= 60;
           const isSlaCritical = elapsedMinutes !== null && elapsedMinutes >= 90;
           const reservation = t.status === 'reserved' ? getTableReservation(t.name) : null;
+          const joinedTable = getTableJoined(t.name);
+          const isArrangeSelected = arrangeMode && arrangeSelectedTableId === t.id;
           return (
             // The floor plan is a role="list" (aria-label above), so each table
             // must be wrapped in a list item. It cannot be put ON the button:
@@ -1248,9 +1606,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             <Button
               variant="ghost"
               size="sm"
-              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaCritical ? ' tables-table--sla-critical' : isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}`}
+              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaCritical ? ' tables-table--sla-critical' : isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}${isArrangeSelected ? ' tables-table--selected-arrange' : ''}`}
               onClick={() => {
-                if (arrangeMode) return;
+                if (arrangeMode) {
+                  setArrangeSelectedTableId(t.id);
+                  return;
+                }
                 openDetail(t);
               }}
               // TBL-05: the context-menu shortcut opens the accessible detail
@@ -1313,10 +1674,111 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   statusLabel(t.status)
                 )}
               </span>
+              {joinedTable && (
+                <span className="tables-table-joined-tag" data-testid={`tables-joined-tag-${t.name}`}>
+                  <Localized id="tables-table-joined-badge" vars={{ joined: joinedTable }}>
+                    <span>🔗 +T{joinedTable}</span>
+                  </Localized>
+                </span>
+              )}
+              {isArrangeSelected && (
+                <span
+                  className="tables-table-resize-handle"
+                  data-testid={`tables-resize-handle-${t.name}`}
+                  onPointerDown={(e) => handlePointerDownResize(e, t)}
+                  onPointerMove={(e) => handlePointerMoveResize(e, t)}
+                  onPointerUp={(e) => void handlePointerUpResize(e, t)}
+                  onPointerCancel={(e) => void handlePointerUpResize(e, t)}
+                  aria-hidden="true"
+                >
+                  ↘
+                </span>
+              )}
             </Button>
             </div>
           );
         })}
+
+        {arrangeMode && arrangeSelectedTableId && (() => {
+          const arrangeTable = tables.find((t) => t.id === arrangeSelectedTableId);
+          if (!arrangeTable) return null;
+          return (
+            <div className="tables-arrange-inspector" data-testid="tables-arrange-inspector">
+              <div className="tables-arrange-inspector-lead">
+                <span className="tables-arrange-inspector-title">
+                  <Localized id="tables-arrange-selected" vars={{ table: arrangeTable.name }}>
+                    <span>Editing: Table {arrangeTable.name}</span>
+                  </Localized>
+                </span>
+              </div>
+              <div className="tables-arrange-inspector-group">
+                <span className="tables-arrange-inspector-label">
+                  <Localized id="tables-arrange-shape"><span>Shape:</span></Localized>
+                </span>
+                {(['circle', 'square', 'rectangle', 'booth'] as const).map((s) => (
+                  <Button
+                    key={s}
+                    variant="ghost"
+                    size="sm"
+                    className={`tables-arrange-shape-btn ${arrangeTable.shape === s ? 'active' : ''}`}
+                    data-testid={`tables-arrange-shape-${s}`}
+                    onClick={() => void handleUpdateArrangeShape(s)}
+                  >
+                    {s === 'circle' ? '⚪' : s === 'square' ? '⬛' : s === 'rectangle' ? '▬' : '🛋️'}{' '}
+                    <Localized id={`tables-shape-${s}`}><span>{s}</span></Localized>
+                  </Button>
+                ))}
+              </div>
+              <div className="tables-arrange-inspector-group">
+                <span className="tables-arrange-inspector-label">
+                  <Localized id="tables-arrange-size"><span>Size:</span></Localized>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-width-dec"
+                  onClick={() => void handleAdjustArrangeSize(-2, 0)}
+                  title="Decrease Width"
+                >
+                  W -
+                </Button>
+                <span className="tables-arrange-dim">{arrangeTable.width}%</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-width-inc"
+                  onClick={() => void handleAdjustArrangeSize(2, 0)}
+                  title="Increase Width"
+                >
+                  W +
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-height-dec"
+                  onClick={() => void handleAdjustArrangeSize(0, -2)}
+                  title="Decrease Height"
+                >
+                  H -
+                </Button>
+                <span className="tables-arrange-dim">{arrangeTable.height}%</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-height-inc"
+                  onClick={() => void handleAdjustArrangeSize(0, 2)}
+                  title="Increase Height"
+                >
+                  H +
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {selected && (() => {
@@ -1518,6 +1980,40 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
                     </Localized>
                   </Button>
+                  {selected.status === 'cleaning' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="tables-mark-cleaned-btn"
+                      data-testid="tables-mark-cleaned-btn"
+                      onClick={() => void handleQuickMarkCleaned(selected)}
+                    >
+                      <Localized id="tables-mark-cleaned-quick">
+                        <span>Mark Cleaned (Available)</span>
+                      </Localized>
+                    </Button>
+                  )}
+                  {selected.status === 'available' && (
+                    <div className="tables-quick-seat-row" data-testid="tables-quick-seat-row">
+                      <span className="tables-quick-seat-label">
+                        <Localized id="tables-quick-seat-walkin"><span>Quick Seat:</span></Localized>
+                      </span>
+                      <div className="tables-quick-seat-chips">
+                        {[1, 2, 3, 4, 5, 6].map((size) => (
+                          <Button
+                            key={size}
+                            variant="ghost"
+                            size="sm"
+                            className="tables-quick-seat-chip"
+                            data-testid={`tables-quick-seat-${size}`}
+                            onClick={() => void handleQuickSeatWalkin(selected, size)}
+                          >
+                            {size}p
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {selected.status === 'available' && (
                     <Button
                       variant="ghost"
@@ -1609,6 +2105,146 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           </div>
         );
       })()}
+
+      {showManageSections && (
+        <div
+          className="tables-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tables-manage-sections-title"
+        >
+          <div className="tables-modal-dialog tables-manage-sections-dialog">
+            <div className="tables-modal-header">
+              <h2 id="tables-manage-sections-title">
+                <Localized id="tables-manage-sections-title">
+                  <span>Manage Sections</span>
+                </Localized>
+              </h2>
+              <button
+                type="button"
+                className="tables-modal-close-btn"
+                onClick={() => setShowManageSections(false)}
+                aria-label={l10n.getString('close') || 'Close'}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="tables-manage-sections-content">
+              <form onSubmit={handleAddSection} className="tables-add-section-form">
+                <input
+                  type="text"
+                  value={newSectionInput}
+                  onChange={(e) => setNewSectionInput(e.target.value)}
+                  placeholder={l10n.getString('tables-new-section-placeholder')}
+                  className="tables-section-input"
+                  data-testid="tables-new-section-input"
+                />
+                <Button
+                  variant="primary"
+                  type="submit"
+                  size="sm"
+                  disabled={!newSectionInput.trim()}
+                  data-testid="tables-add-section-btn"
+                >
+                  <Localized id="tables-add-section-btn">
+                    <span>Add Section</span>
+                  </Localized>
+                </Button>
+              </form>
+              <div className="tables-manage-sections-list">
+                {sections.map((s) => {
+                  const tableCount = tables.filter((t) => (t.section || 'Main') === s).length;
+                  const isEditing = editingSectionName === s;
+                  return (
+                    <div key={s} className="tables-manage-section-item" data-testid={`tables-manage-section-${s}`}>
+                      {isEditing ? (
+                        <div className="tables-manage-section-edit-row">
+                          <input
+                            type="text"
+                            value={editSectionInput}
+                            onChange={(e) => setEditSectionInput(e.target.value)}
+                            className="tables-section-input"
+                          />
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={!editSectionInput.trim() || editSectionInput.trim() === s}
+                            onClick={() => void handleRenameSection(s, editSectionInput)}
+                          >
+                            <Localized id="save">Save</Localized>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingSectionName(null)}
+                          >
+                            <Localized id="cancel">Cancel</Localized>
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="tables-manage-section-info">
+                            <span className="tables-manage-section-name">{s}</span>
+                            <span className="tables-manage-section-count">
+                              {tableCount > 0 ? (
+                                <Localized id="tables-section-table-count" vars={{ count: tableCount }}>
+                                  <span>{tableCount} tables</span>
+                                </Localized>
+                              ) : (
+                                <Localized id="tables-section-no-tables">
+                                  <span>0 tables</span>
+                                </Localized>
+                              )}
+                            </span>
+                          </div>
+                          <div className="tables-manage-section-actions">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingSectionName(s);
+                                setEditSectionInput(s);
+                              }}
+                              data-testid={`tables-rename-section-${s}`}
+                            >
+                              <Localized id="tables-rename-section">
+                                <span>Rename</span>
+                              </Localized>
+                            </Button>
+                            {s !== 'Main' && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => void handleDeleteSection(s)}
+                                data-testid={`tables-delete-section-${s}`}
+                              >
+                                <Localized id="tables-delete-section">
+                                  <span>Delete</span>
+                                </Localized>
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="tables-modal-footer">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setShowManageSections(false)}
+              >
+                <Localized id="close">
+                  <span>Close</span>
+                </Localized>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tableModal && (
         <div

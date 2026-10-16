@@ -81,5 +81,25 @@ tables-reserve-confirm = Confirm Reservation
 tables-toast-reserved = Table { $table } reserved for { $guest }
 tables-seat-guests = Seat Guests
 tables-toast-guests-seated = Guests seated at Table { $table }
+tables-manage-sections = Manage Sections
+tables-manage-sections-title = Manage Sections
+tables-new-section-placeholder = e.g. Patio, Rooftop, VIP
+tables-add-section-btn = Add Section
+tables-section-no-tables = 0 tables
+tables-section-table-count = { $count } tables
+tables-rename-section = Rename
+tables-delete-section = Delete
+tables-delete-section-confirm = Delete section "{ $section }"? Tables in this section will be moved to Main.
+tables-toast-section-added = Section "{ $section }" added
+tables-toast-section-renamed = Renamed section to "{ $section }"
+tables-toast-section-deleted = Deleted section "{ $section }"
+tables-arrange-selected = Editing: Table { $table }
+tables-arrange-shape = Shape
+tables-arrange-size = Size
+tables-quick-seat-walkin = Quick Seat:
+tables-mark-cleaned-quick = Mark Cleaned (Available)
+tables-toast-cleaned = Table { $table } is now clean and available
+tables-table-joined-badge = 🔗 +T{ $joined }
+
 
 
