@@ -909,7 +909,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
     // The DELTA form, so the increment resolves against whatever the cart holds when
     // React flushes it — not the `qty` this row rendered with. Reading `current.qty`
-    // (:858) fixes the stock GUARD; passing a delta fixes the WRITE, and only the write
+    // (:905) fixes the stock GUARD; passing a delta fixes the WRITE, and only the write
     // being a delta makes two batched taps accumulate to two increments.
     changeQty(line.id, 1);
   }, [products, changeQty, addToast, l10n]);

@@ -332,9 +332,13 @@ export function RestaurantPaymentsScreen({
 
   /**
    * F4: a gateway read failed, so the Midtrans/Stripe fields show EMPTY rather than
-   * the stored config. The drafts baseline is seeded before those reads
-   * (`:377`), so without this flag the screen looks clean and saving writes the
-   * blanks over real credentials.
+   * the stored config. The drafts baseline is seeded on the success path at `:408`
+   * and, for every other outcome, in the `finally` at `:543` — both BEFORE the
+   * gateway reads at `:476` can be reached. So without this flag the screen looks
+   * clean and saving writes the blanks over real credentials.
+   *
+   * ⚠️ The citation here used to read `:377`, which is `listEdcTerminalsScoped` — an
+   * unrelated call in the same `Promise.all`. `:377` never seeded anything.
    *
    * Gating Save on a flag is only safe with a way to CLEAR it — round 8 of the F4
    * campaign shipped four Save-gates and no recovery path, disabling Save for the
@@ -469,7 +473,8 @@ export function RestaurantPaymentsScreen({
           //
           // F4: these two used to `.catch(() => null)` INDEPENDENTLY, which swallowed a
           // failed read. Combined with the `if (midtransGw)` / `if (stripeGw)` guards
-          // and the baseline seeded at `:377` before this point, a failure left the
+          // and the baseline seeded at `:408` on the success path (or `:543` in the
+          // load effect's `finally`) before this point, a failure left the
           // screen looking CLEAN while showing empty fields — so saving wrote the
           // blanks over the stored credentials. The flag is what makes that visible.
           try {
@@ -520,11 +525,11 @@ export function RestaurantPaymentsScreen({
       } finally {
         // F40: the baseline MUST be seeded before `loading` clears.
         //
-        // `originalsRef` starts as `{ drafts: [] }` (:326) and was only filled
-        // inside `if (primary)` (:377). When `primary` is falsy — or the rail read
-        // throws before reaching :395 — the screen still RENDERS rails, because
-        // `drafts` comes from the useState initializer (:248), but the baseline
-        // stays empty. The `dirty` memo then returns false at :534 on
+        // `originalsRef` starts as `{ drafts: [] }` (:320) and was only filled
+        // inside `if (primary)` (:390) — actually at `:408`. When `primary` is falsy,
+        // or the rail read throws before reaching `:395` — the screen still RENDERS
+        // rails, because `drafts` comes from the useState initializer (:251), but the
+        // baseline stays empty. The `dirty` memo then returns false at `:560` on
         // `length === 0` FOR EVER, so Save is permanently disabled and an
         // operator's rail toggle cannot be persisted at all. That is the state the
         // tablet is in, with an empty `local_payment_methods` table.
