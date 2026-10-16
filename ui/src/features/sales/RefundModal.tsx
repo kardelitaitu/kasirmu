@@ -132,7 +132,26 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
 
   const hasSelection = Object.values(selectedLines).some((q) => q > 0);
 
+  // Re-entry guard for the refund write, and this one is the MONEY arm of the class.
+  // `processing` is STATE: React commits it on its next render, after the second click of a
+  // real double tap. MEASURED: two clicks in one act() batch both reach the handler
+  // (RefundModal.test.tsx 'sends one refund for a double click while the first is in
+  // flight'), and both are SENT.
+  //
+  // Unlike the refused-replay screens (suppliers, purchase orders, staff, shift
+  // open/close, stock-count complete), the backend does NOT refuse this. `process_refund`
+  // bounds a refund only by the CUMULATIVE refundable balance --
+  //   SELECT COALESCE(SUM(total_minor), 0) FROM refunds WHERE sale_id = ?1
+  //   if already_refunded + refund.total > sale_total { Err }
+  // (crates/kasirmu-core/src/db/refunds.rs:119-142) -- so refunding part of a sale accepts
+  // BOTH writes as long as the total stays under the sale total. Refund 7000 of a 35000
+  // sale twice and 14000 <= 35000 passes: the customer is refunded twice, and the modal
+  // closes on the FIRST success so the second is invisible. A ref, not the state, for the
+  // reason every sibling guard records.
+  const refundPendingRef = useRef(false);
   const handleRefund = useCallback(async () => {
+    if (refundPendingRef.current) return;
+    refundPendingRef.current = true;
     if (!session || !sessionToken || !hasSelection || !reason.trim()) return;
     setProcessing(true);
     setError(null);
@@ -167,6 +186,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'refund-error'));
     } finally {
+      refundPendingRef.current = false;
       setProcessing(false);
     }
   }, [session, sessionToken, hasSelection, reason, note, selectedLines, sale, l10n]);

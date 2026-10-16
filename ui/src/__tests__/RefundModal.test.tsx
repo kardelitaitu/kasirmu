@@ -109,6 +109,50 @@ function doRefund(reason: string) {
 }
 
 describe('RefundModal', () => {
+  // A double click on Process Refund must not refund TWICE.
+  //
+  // `handleRefund` sets `processing` and awaits; `processing` is STATE, so React commits
+  // it on its next render -- after the second dispatch of a real double tap -- and the
+  // button's own disabled state is not authoritative in the same task.
+  //
+  // The backend does NOT refuse this. `process_refund` bounds a refund only by the
+  // CUMULATIVE refundable balance:
+  //   SELECT COALESCE(SUM(total_minor), 0) FROM refunds WHERE sale_id = ?1 ...
+  //   if already_refunded + refund.total > sale_total { Err }   -- refunds.rs:119-142
+  // So refunding 7000 of a 35000 sale accepts BOTH writes: 14000 <= 35000. The customer
+  // is refunded twice and the modal closes on the FIRST success, so the second is
+  // invisible. This is the MONEY arm of the class -- unlike the refused-replay screens
+  // (rounds 136-144), nothing downstream refuses the second write.
+  //
+  // SHAPE 3 (round 139): both clicks inside ONE act() batch, before React can re-render.
+  it('sends one refund for a double click while the first is in flight', async () => {
+    let releaseRefund: (v: unknown) => void = () => {};
+    const held = new Promise((resolve) => { releaseRefund = resolve; });
+    mockProcessRefund.mockImplementation(() => held as never);
+    renderWithFluentSync(<RefundModal {...defaultProps} />, salesFtl, refundFtl);
+
+    clickCheckbox(0);
+    fillReason('Wrong item');
+
+    const submitBtns = screen.getAllByRole('button', { name: /process refund/i });
+    const submitBtn = submitBtns[submitBtns.length - 1]!;
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      // The disabled flag React set is not yet authoritative for a live double click;
+      // dropping it sends the second click to the handler the way a real one would.
+      submitBtn.removeAttribute('disabled');
+      fireEvent.click(submitBtn);
+    });
+
+    expect(
+      mockProcessRefund.mock.calls.length,
+      'a second click re-sent the refund while the first was in flight; the backend only ' +
+        'bounds the CUMULATIVE total, so this refunds the customer twice',
+    ).toBe(1);
+
+    releaseRefund({});
+    await act(async () => { await held; });
+  });
   it('renders null when not open', () => {
     const { container } = renderWithFluentSync(<RefundModal {...defaultProps} open={false} />, salesFtl, refundFtl);
     expect(container.innerHTML).toBe('');
