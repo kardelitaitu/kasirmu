@@ -197,6 +197,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
 | general | [A whole-tree sweep of the E2E selectors: one dead half, no breakage — 2026-10-18](audits/2026-10-18-the-e2e-selector-sweep-found-one-dead-half.md) | — |
 | general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
+| general | [The Escape class I chased does not exist — but its coverage did not either — 2026-10-18](audits/2026-10-18-the-escape-class-refuted.md) | — |
 | general | [The round-177 Escape defect is FIXED, and my first two diagnoses were wrong — 2026-10-18](audits/2026-10-18-the-escape-defect-is-fixed.md) | — |
 | release | [The 156 citations are right and the counter is wrong — 2026-10-18](audits/2026-10-18-the-flagged-citations-are-correct.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
