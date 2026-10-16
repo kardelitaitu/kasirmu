@@ -65,6 +65,24 @@ vi.mock('@/features/retail/AddProductModal', () => ({
     ) : null,
 }));
 
+// Same treatment for the EDIT modal: a one-button stub that calls the screen's real
+// `editProduct.onSave` (RetailPosScreen.tsx:1949), so the optimistic-update wiring is
+// under test and the form is not.
+vi.mock('@/features/retail/EditProductModal', () => ({
+  EditProductModal: (props: { isOpen?: boolean; product?: Record<string, unknown> | null; onSave?: (p: unknown) => void }) =>
+    props.isOpen && props.product ? (
+      <button
+        type="button"
+        data-testid="stub-edit-product-save"
+        onClick={() => {
+          props.onSave?.({ ...props.product, name: 'EDITED NAME', price: { minor_units: 999, currency: 'IDR' } });
+        }}
+      >
+        save edited product
+      </button>
+    ) : null,
+}));
+
 vi.mock('@/api/products', async () => {
   const { createRetailProductsApiMock } =
     await import('@/__tests__/test-utils/mocks/retailPos');
@@ -1163,5 +1181,47 @@ describe('RetailPosScreen — interactions', () => {
       expect.any(String),
       expect.objectContaining({ name: 'Kategori Baru' }),
     );
+  });
+
+  // ── An optimistic EDIT must be rolled back too ────────────────────────
+  //
+  // `handleSaveProductEdit` (RetailPosScreen.tsx:547) replaces the product in `products`
+  // at :549 and CLOSES the editor at :554, both BEFORE awaiting `updateProductScoped`
+  // (:560). The catch at :590 toasts and nothing else — it never restores the old values.
+  //
+  // So a refused edit leaves the grid showing the operator's new values while the server
+  // holds the old ones. The stale row survives until the next reload, and the toast is
+  // long gone by then. Same defect as the add path one function over, and `prev` is
+  // captured at :548 for exactly this rollback — it was simply never used.
+  it('restores the previous product values when the edit is refused', async () => {
+    const productsMod = await import('@/api/products');
+    const updateProduct = vi.mocked(productsMod.updateProductScoped);
+    updateProduct.mockReset();
+    updateProduct.mockRejectedValue(new Error('forbidden'));
+
+    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // Open the editor for the first product through its own card control.
+    const editBtn = await waitFor(() => {
+      const b = screen.queryAllByRole('button', { name: /edit indomie goreng/i });
+      expect(b.length, 'the edit-product control was not found').toBeGreaterThan(0);
+      return b[0]!;
+    });
+    fireEvent.click(editBtn);
+
+    const saveBtn = await waitFor(() => screen.getByTestId('stub-edit-product-save'));
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1));
+
+    // THE ASSERTION: the rejected values must not survive on screen.
+    await waitFor(() => {
+      expect(screen.queryByText('EDITED NAME')).not.toBeInTheDocument();
+    });
+    // And the ORIGINAL is back, not merely deleted.
+    expect(screen.getByText('Indomie Goreng')).toBeInTheDocument();
+
+    updateProduct.mockReset();
   });
 });

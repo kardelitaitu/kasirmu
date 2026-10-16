@@ -588,6 +588,16 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         });
       }
     } catch (err) {
+      // ROLL THE OPTIMISTIC EDIT BACK. The product was replaced at :549 and the editor
+      // closed at :554 before the write was attempted, so a refusal left the grid showing
+      // the operator's new values while the server kept the old ones — until the next
+      // reload, long after the toast had gone. `prev` is captured at :548 for exactly this
+      // and was never used; same defect as the add path one function down.
+      if (prev) {
+        setProducts((prevList) =>
+          prevList.map((p) => (p.sku === prev.sku ? prev : p)),
+        );
+      }
       addToast({ message: plainErrorMessage(err, requiredLocalized(l10nRef.current, 'retail-toast-save-product-failed')), type: 'error' });
     }
   }, [products, categories, addToast, sessionToken, canEditCost]);
