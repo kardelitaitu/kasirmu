@@ -132,6 +132,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A dead button nothing was rescuing — 2026-10-18](audits/2026-10-18-a-dead-button-nothing-rescued.md) | — |
 | general | [A dead-control sweep that had to be made honest first — 2026-10-18](audits/2026-10-18-a-dead-control-sweep-made-honest.md) | — |
 | general | [A guard I mis-scoped, and the orphan it could not see — 2026-10-18](audits/2026-10-18-a-guard-i-mis-scoped-and-the-orphan.md) | — |
+| general | [A component header that contradicted its own body — 2026-10-18](audits/2026-10-18-a-header-that-contradicted-its-body.md) | — |
 | general | [A red order-type checker I had written off as noise — 2026-10-18](audits/2026-10-18-a-red-checker-i-called-noise.md) | — |
 | general | [A suspected data-loss defect, refuted — 2026-10-18](audits/2026-10-18-a-suspected-draft-loss-defect-refuted.md) | — |
 | general | [An attestation, and a false alarm almost reported as a defect — 2026-10-18](audits/2026-10-18-an-attestation.md) | — |
