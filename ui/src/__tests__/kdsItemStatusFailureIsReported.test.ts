@@ -109,4 +109,40 @@ describe('KDS item-status write failures are reported', () => {
     expect(silent, 'a failed item-status write was swallowed:\n' + silent.join('\n'))
       .toEqual([]);
   });
+
+  // ── The report must also be TRUE: this path queues nothing ──────────────
+  //
+  // The case above pins that a failure is REPORTED. It says nothing about whether the
+  // report is accurate, and here it was not: the item catch raises
+  // `kds-offline-queued-update`, whose own string is
+  //
+  //     "Update queued — will sync when online"   (kds.ftl)
+  //
+  // — while the comment directly above that catch concedes the offline queue "is keyed
+  // on (orderId, targetStatus) and has no item-level action type, so it cannot be reused
+  // verbatim here". A cook reads "queued, will sync", stops worrying, and the dish is
+  // NEVER marked done: nothing was queued and nothing ever retries.
+  //
+  // A false reassurance is worse than silence, because silence at least prompts a retry.
+  // So the assertion is on the MESSAGE, keyed to the branch that cannot queue.
+  it('does not tell the cook an item update was queued when nothing was', () => {
+    const lying: string[] = [];
+    for (const rel of SCREENS) {
+      const source = readFileSync(resolve(REPO, rel), 'utf8');
+      for (const raw of itemStatusCatches(source)) {
+        const body = raw
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/\/\/[^\n]*/g, '');
+        // `kds-offline-queued-update` promises a retry that cannot happen for an item.
+        if (body.includes('kds-offline-queued-update')) {
+          lying.push(rel + ' :: ' + raw.replace(/\s+/g, ' ').slice(0, 120));
+        }
+      }
+    }
+    expect(
+      lying,
+      'an item-status failure promises "queued — will sync when online", but the offline '
+      + 'queue has no item-level action type and never retries it:\n' + lying.join('\n'),
+    ).toEqual([]);
+  });
 });

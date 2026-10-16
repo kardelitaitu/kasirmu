@@ -261,11 +261,21 @@ export default function KdsScreen() {
       // harder. The ticket-level tap directly above (advanceStatus) has always
       // reported through `wrapUpdate`; this path is the one that was silent.
       //
-      // The offline queue is keyed on (orderId, targetStatus) and has no item-level
-      // action type, so it cannot be reused verbatim here. What the operator needs is
-      // the same SIGNAL, so reuse the same string the ticket path raises rather than
-      // inventing a second wording for the same situation.
-      setError(requiredLocalized(l10n, 'kds-offline-queued-update'));
+      // ⚠️ THE MESSAGE MUST NOT PROMISE A QUEUE THAT DOES NOT EXIST.
+      //
+      // This branch used `kds-offline-queued-update` — "Update queued — will sync
+      // when online" (kds.ftl) — borrowed from the ticket path directly above for
+      // "the same SIGNAL". But the queue cannot carry this action at all: as this
+      // comment's own predecessor concedes, it is keyed on (orderId, targetStatus)
+      // and has no item-level action type. So the cook read "queued, will sync",
+      // stopped worrying, and the dish was NEVER marked done — nothing was queued
+      // and nothing retries.
+      //
+      // A false reassurance is worse than silence: silence at least prompts a retry.
+      // `ExpoScreen.advanceItemStatus` (:321) is the sibling that got this right and
+      // raised `kds-error-update-failed`; the same string fits the same situation
+      // here, so this does not introduce a second wording either.
+      setError(requiredLocalized(l10n, 'kds-error-update-failed'));
     }
   }, [sessionToken, speak, l10n]);
 
