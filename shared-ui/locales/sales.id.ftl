@@ -825,6 +825,7 @@ restaurant-shortcut-print-bill = Cetak bill
 restaurant-shortcut-split-bill = Pisah bill
 restaurant-shortcut-save-tab = Simpan tab
 restaurant-shortcut-open-tables = Buka daftar meja
+restaurant-shortcuts-help-title = Pintasan papan tipe
 retail-shortcut-list = Daftar pintasan
 retail-shortcut-close = Tutup modal / Opsi
 retail-shortcut-fullscreen = Aktifkan/nonaktifkan layar penuh

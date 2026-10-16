@@ -3234,6 +3234,14 @@ function lhWhere(key: string): string {
  * flex centring, and neither control is a flex row today. Counted rather than
  * expanded by a wildcard: the freeze is per (value @ sheet) pair, so a third site
  * here still fails.
+ *
+ * Restated 2026-10-18: `1 @ ui/src/features/restaurant/RestaurantMenu.css` 2 -> 3.
+ * The restaurant shortcut-help panel's close button (:645) carries `line-height: 1`
+ * for the same reason the 2026-09-29 note gives for the sibling two: it is the
+ * single-glyph `×` in a fixed-height box, and it has no flex row to centre with.
+ * This is the round that made the restaurant shortcut manifest reachable — the five
+ * `labelId`s existed in both locales and in no renderer, so the keys worked with no
+ * way to discover them — and the panel's close control is the one glyph it adds.
  */
 const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/components/QrisQrDisplay.css", 1],
@@ -3293,7 +3301,7 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
   ["1", "ui/src/features/reports/DashboardScreen.css", 1],
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
-  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 3],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   // 3 -> 2 on 2026-10-07, named step: .retail-product-name carried
   // `line-height: 1.2` and was struck with the rest of the orphaned retail block

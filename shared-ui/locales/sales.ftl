@@ -905,6 +905,7 @@ restaurant-shortcut-print-bill = Print bill
 restaurant-shortcut-split-bill = Split bill
 restaurant-shortcut-save-tab = Save tab
 restaurant-shortcut-open-tables = Open tables
+restaurant-shortcuts-help-title = Keyboard shortcuts
 retail-shortcut-list = This shortcut list
 retail-shortcut-close = Close modal / Options
 retail-shortcut-fullscreen = Toggle Fullscreen

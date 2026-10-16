@@ -345,6 +345,77 @@
   margin: var(--space-1_5) var(--space-1);
 }
 
+/* ── Sidebar: keyboard-shortcut help ─────────────── */
+/* An inline panel, not a dialog — it renders inside the sidebar's own scroll
+   column, so the focus trap and the Escape handling stay in one place. Tokens
+   only, and only tokens this sheet's siblings already define: an invented
+   custom-property name declares nothing and computes to nothing. */
+.restaurant-shortcuts-help {
+  margin: var(--space-1) var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.restaurant-shortcuts-help-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-1_5);
+}
+
+.restaurant-shortcuts-help-close {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-fg-tertiary);
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 var(--space-1);
+}
+
+.restaurant-shortcuts-help-close:hover {
+  color: var(--color-fg-primary);
+}
+
+.restaurant-shortcuts-help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.restaurant-shortcuts-help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.restaurant-shortcuts-help-key {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-primary);
+  white-space: nowrap;
+}
+
+.restaurant-shortcuts-help-label {
+  text-align: right;
+}
+
 /* ── Sidebar header: the signed-in cashier ───────── */
 /* The one element in this panel that is allowed to carry a face. The rows
    below it are deliberately colourless: none of them is ever "current". */

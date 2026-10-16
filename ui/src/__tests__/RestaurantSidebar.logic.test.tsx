@@ -19,6 +19,7 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import { RestaurantSidebar, type RestaurantSidebarActions } from '@/features/restaurant/components/RestaurantSidebar';
+import { RESTAURANT_SHORTCUTS } from '@/features/restaurant/restaurantShortcuts';
 
 const mockGoToWorkspacePicker = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/useWorkspaceNav', () => ({
@@ -492,3 +493,81 @@ describe('RestaurantSidebar — exit animation & focus lifecycle', () => {
     expect(actions.onOpenHistory).toBeDefined();
   });
 });
+// ── The shortcut manifest finally has a renderer ──────────────────────
+//
+// `restaurantShortcuts.ts` declares five bindings and BOTH locale bundles
+// carried a string for every `labelId` — and nothing rendered one. Grepping
+// `restaurant-shortcut-` across `ui/src` returned the manifest and the two
+// locale files and no renderer at all, so the keys worked while the only
+// description of them was unreachable. Retail never had the gap: it renders
+// `RETAIL_HELP_SHORTCUTS` through `RetailModals.tsx:731`, reached by `?`.
+//
+// These cases pin the two halves that can silently regress: the toggle opens
+// the panel, and the panel lists EVERY manifest entry read from the manifest
+// itself — so adding a sixth binding without a label fails here rather than
+// shipping a key nobody can find.
+describe('RestaurantSidebar — keyboard-shortcut help', () => {
+  beforeEach(() => {
+    mockGoToWorkspacePicker.mockClear();
+    mockAuth.session = undefined;
+    mockAuth.isManager = false;
+  });
+
+  it('renders no shortcut help until the row is used', () => {
+    renderSidebar({ cartActions: makeActions() });
+    expect(screen.queryByTestId('restaurant-shortcuts-help')).toBeNull();
+  });
+
+  it('opens and closes the help panel from its sidebar row', () => {
+    renderSidebar({ cartActions: makeActions() });
+
+    const toggle = screen.getByTestId('restaurant-sidebar-shortcuts');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('restaurant-shortcuts-help')).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(screen.getByTestId('restaurant-shortcuts-help-close'));
+    expect(screen.queryByTestId('restaurant-shortcuts-help')).toBeNull();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('lists every manifest entry, with its localized label resolved', () => {
+    renderSidebar({ cartActions: makeActions() });
+    fireEvent.click(screen.getByTestId('restaurant-sidebar-shortcuts'));
+
+    const panel = screen.getByTestId('restaurant-shortcuts-help');
+    // One row per binding, counted off the manifest itself: a sixth entry with
+    // no label would fail the label assertions below, not silently vanish.
+    const rowsInPanel = panel.querySelectorAll('.restaurant-shortcuts-help-row');
+    expect(rowsInPanel).toHaveLength(RESTAURANT_SHORTCUTS.length);
+
+    for (const s of RESTAURANT_SHORTCUTS) {
+      // The KEY comes from the manifest, so a rebound shortcut re-labels itself.
+      expect(
+        within(panel as HTMLElement).getByText(s.key),
+        `the help panel is missing the ${s.action} binding's key (${s.key})`,
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('shows the translated label, not the raw action id', () => {
+    renderSidebar({ cartActions: makeActions() });
+    fireEvent.click(screen.getByTestId('restaurant-sidebar-shortcuts'));
+
+    const panel = screen.getByTestId('restaurant-shortcuts-help');
+    // English bundle: the five labels are real words. If `labelId` were ever
+    // dropped in favour of `s.action`, the panel would read
+    // "send-kitchen" / "print-bill" and these would fail.
+    expect(within(panel as HTMLElement).getByText('Send to kitchen')).toBeInTheDocument();
+    expect(within(panel as HTMLElement).getByText('Open tables')).toBeInTheDocument();
+    for (const s of RESTAURANT_SHORTCUTS) {
+      expect(
+        within(panel as HTMLElement).queryByText(s.action),
+        `the panel renders the action id ${s.action} instead of its label`,
+      ).toBeNull();
+    }
+  });
+});
+
