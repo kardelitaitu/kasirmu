@@ -464,6 +464,52 @@ describe('AuditLogScreen', () => {
     );
   });
 
+  // A double tap on Mark Reviewed must not write TWO review checkpoints.
+  //
+  // This is the audit arm of the same class, and it is the one where the backend is the
+  // least able to help. `save_review_checkpoint` is a plain INSERT with no idempotency and
+  // no unique key (crates/kasirmu-core/src/db/audit.rs:909-944), and it also appends the
+  // `audit.review` event to the SAME append-only, hash-chained log it is attesting about.
+  //
+  // Two consequences a duplicate row does not capture. First, the checkpoint is an
+  // ATTESTATION: `reviewed_through_created_at` says every entry at or before that cursor has
+  // been seen by a human. Second, the payload is a client-derived HIGH-WATER MARK --
+  // page 1 is newest-first, so `entries[0]` is the globally newest row (AuditLogScreen.tsx
+  // :228-234) -- and after the first submit the handler refreshes the list, which puts the
+  // `audit.review` event itself at the head. So the second write asserts a reviewer looked at
+  // the record of them looking.
+  //
+  // A second `audit.review` row also means a later chain verification walks two review
+  // events for one review. Not a hash break, but the count of reviewed checkpoints no longer
+  // equals the number of times anyone reviewed anything.
+  it('writes one review checkpoint for a double tap while the first is in flight', async () => {
+    mockGetAuditReviewStatusScoped.mockResolvedValue({ checkpoint: null, unreviewed_count: 5 });
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry({ id: 'a-1', created_at: '2026-07-01T12:00:00Z' })]));
+    let releaseMark: ((v: unknown) => void) | undefined;
+    const held = new Promise((resolve) => { releaseMark = resolve; });
+    mockMarkAuditReviewedScoped.mockImplementation(() => held as never);
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Mark Reviewed')).toBeDefined());
+
+    const markBtn = screen.getByRole('button', { name: 'Mark Reviewed' });
+    // Both taps in ONE batch: a real double tap dispatches twice before React can commit
+    // `markingReviewed` and disable the button (round 148's shape).
+    await act(async () => {
+      fireEvent.click(markBtn);
+      markBtn.removeAttribute('disabled');
+      fireEvent.click(markBtn);
+    });
+
+    expect(
+      mockMarkAuditReviewedScoped.mock.calls.length,
+      'a second tap wrote another review checkpoint; the row is an attestation that a ' +
+        'human saw every entry at or before the cursor, and the payload is a ' +
+        'client-derived high-water mark',
+    ).toBe(1);
+
+    releaseMark?.({ reviewedAt: '2026-07-02T00:00:00Z', unreviewedCount: 0 });
+    await act(async () => { await held; });
+  });
   // ── Request-generation protection (AUD-05) ─────────────────────
 
   it('discards a stale slower load in favor of a newer one (AUD-05)', async () => {

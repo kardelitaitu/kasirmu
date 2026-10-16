@@ -221,8 +221,27 @@ function AuditLogScreenContent() {
     void loadReviewStatus();
   }, [loadReviewStatus]);
 
+  // Re-entry guard for the review checkpoint. `markingReviewed` is STATE -- React commits it
+  // on its next render, after the second tap of a real double tap. MEASURED: two taps in one
+  // act() batch both reach the handler (AuditLogScreen.test.tsx 'writes one review checkpoint
+  // for a double tap'), and both are SENT.
+  //
+  // The backend cannot refuse it. `save_review_checkpoint` is a plain INSERT with no
+  // idempotency and no unique key (crates/kasirmu-core/src/db/audit.rs:909-944), and it also
+  // appends the `audit.review` event to the SAME append-only, hash-chained log it is
+  // attesting about. So the guard has to live here.
+  //
+  // Why a second row is worse than a duplicate: the checkpoint is an ATTESTATION that a human
+  // saw every entry at or before `reviewed_through_created_at`, and the payload is a
+  // CLIENT-DERIVED HIGH-WATER MARK -- page 1 is newest-first, so `entries[0]` is the globally
+  // newest row (:228-234). After the first submit the handler reloads the list, which puts the
+  // `audit.review` event itself at the head, so the second write asserts the reviewer looked
+  // at the record of them looking.
+  const markPendingRef = useRef(false);
   const handleMarkReviewed = useCallback(async () => {
+    if (markPendingRef.current) return;
     if (!sessionToken) return;
+    markPendingRef.current = true;
     setMarkingReviewed(true);
     try {
       // High-water mark = the newest entry the reviewer has seen (page 1 is
@@ -238,6 +257,7 @@ function AuditLogScreenContent() {
     } catch {
       await loadReviewStatus();
     } finally {
+      markPendingRef.current = false;
       setMarkingReviewed(false);
     }
   }, [sessionToken, entries, load, loadReviewStatus]);
