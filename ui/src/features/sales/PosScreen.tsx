@@ -59,6 +59,7 @@ import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
 import { scopedKey } from '@/utils/scopedStorage';
+import { isEditableTarget } from '@/utils/isEditableTarget';
 import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
 import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
@@ -1687,6 +1688,47 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   }, [activeWorkspace, saleViewVisible, handleSendToKitchen, handlePrintBill]);
 
   useRestaurantShortcuts(restaurantShortcutHandlers);
+
+  // ── Escape: unwind this screen, never navigate away ──────────────────
+  //
+  // AppShell's workspace shortcuts RESERVE Escape in restaurant-pos: the
+  // `active !== 'restaurant-pos'` clause at AppShell.tsx:79 deliberately withholds
+  // the return-to-picker behaviour here, so an accidental keypress mid-service
+  // cannot throw away a sale in progress. The reservation exists for THIS
+  // workspace to claim the key — and until now nothing did, so Escape was simply
+  // dead in restaurant-pos: no way out of a sub-screen, and no dismissal of any
+  // overlay, without reaching for the mouse.
+  //
+  // Scope, outermost first: a sub-screen (each of the seven is an early return
+  // below), then the sidebar popover, then the dialogs. Nothing here navigates.
+  // `isAnyAriaModalOpen()` is NOT consulted — it is the guard the topmost modal
+  // uses to claim Escape for itself (useFocusTrap), and deferring to it is what
+  // keeps the payment dialog's own handling authoritative. That is why the
+  // sub-screen branch matters most: a sub-screen is not a modal, so nothing
+  // else owns Escape while it is open.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isEditableTarget(e.target)) return;
+      if (showTables) { setShowTables(false); return; }
+      if (showSalesHistory) { setShowSalesHistory(false); return; }
+      if (showStockInquiry) { setShowStockInquiry(false); return; }
+      if (showMenuEditor) { setShowMenuEditor(false); return; }
+      if (showReceiptsSettings) { setShowReceiptsSettings(false); return; }
+      if (showPaymentsSettings) { setShowPaymentsSettings(false); return; }
+      if (showRestaurantSettings) { setShowRestaurantSettings(false); return; }
+      if (restaurantSidebarOpen) { setRestaurantSidebarOpen(false); return; }
+      if (showSplitBillModal) { setShowSplitBillModal(false); return; }
+      if (showExitConfirm) { setShowExitConfirm(false); return; }
+      if (showTableNumberSetting) { setShowTableNumberSetting(false); return; }
+      if (showPromotions) { setShowPromotions(false); return; }
+      if (showDiscountInput) { setShowDiscountInput(false); return; }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showTables, showSalesHistory, showStockInquiry, showMenuEditor, showReceiptsSettings,
+      showPaymentsSettings, showRestaurantSettings, restaurantSidebarOpen, showSplitBillModal,
+      showExitConfirm, showTableNumberSetting, showPromotions, showDiscountInput]);
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {

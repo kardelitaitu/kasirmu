@@ -656,6 +656,23 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       'the split modal closed on a failed balance, stranding a half-applied split',
     ).not.toBeNull();
 
+    // "…so the cashier can retry" is only true if the SELECTION survived, and that is
+    // a separate claim from the dialog being present. The init effect re-seeds the
+    // selection whenever `[isOpen, lines]` changes; `lines` is passed straight through
+    // (CartPanel.tsx:1135) and the failed path leaves the cart untouched, so the
+    // identity is stable and the selection must be exactly what it was. Asserted
+    // rather than assumed — a modal that stayed open but reset to zero selected lines
+    // would invite a second, DIFFERENT split on the retry.
+    expect(
+      document.querySelectorAll('.pos-split-item-row--selected').length,
+      'the split selection was reset by the failed balance — the retry would not be the same split',
+    ).toBeGreaterThan(0);
+    const confirmBtn = screen.getByTestId('pos-split-modal-confirm-btn');
+    expect(
+      (confirmBtn as HTMLButtonElement).disabled,
+      'the confirm button is disabled after a failed balance, so there is no retry',
+    ).toBe(false);
+
     // Restore BOTH mocks. The file's own header (:491-503) records that a leftover
     // mockRejectedValue answers every later case: the next test's save-tab hold then
     // rejects too and its failure looks like a defect in the code under test.
@@ -2134,6 +2151,74 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
     });
+  });
+
+  // ── Escape: the key AppShell reserves for this workspace ─────────────
+  //
+  // AppShell.tsx:79 withholds the return-to-picker behaviour in restaurant-pos, so
+  // an accidental Escape mid-service cannot abandon a sale. That clause RESERVES the
+  // key for this workspace to define — and until this round nothing did, so Escape
+  // was dead here: no way out of a sub-screen, no overlay dismissal, no navigation.
+  //
+  // These cases pin the claim the reservation depends on: Escape unwinds THIS screen
+  // (sub-screen → sidebar → dialogs) and never navigates away from it.
+
+  it('Escape returns from the Sales History sub-screen to the sale view', async () => {
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+    await waitFor(() => expect(screen.getByText('0m')).toBeInTheDocument());
+
+    // Reachability: the sub-screen must be genuinely open, or the assertion below
+    // holds because Escape did nothing rather than because it unwound a sub-screen.
+    const historyBtn = screen.getByRole('button', { name: /history/i });
+    await userEvent.click(historyBtn);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument(),
+    );
+    // The sale view is back — the cart panel, not a blank screen.
+    await waitFor(() => expect(document.querySelector('.pos-cart-panel')).not.toBeNull());
+  });
+
+  it('Escape dismisses the split-bill dialog without leaving the sale view', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    await renderPosScreenWithShift();
+    await waitFor(() => expect(document.querySelector('.pos-screen')).not.toBeNull());
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'B', shiftKey: true, bubbles: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="pos-split-bill-modal"]')).not.toBeNull(),
+    );
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="pos-split-bill-modal"]')).toBeNull(),
+    );
+    // Still on the sale view: the cart survived, so nothing was abandoned.
+    expect(document.querySelector('.pos-cart-panel')).not.toBeNull();
   });
 
   // ── Stock Inquiry Tests ──────────────────────────────────────────────
