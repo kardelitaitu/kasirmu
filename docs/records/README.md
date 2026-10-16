@@ -185,6 +185,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The :303 assertion chases a class that no longer exists — 2026-10-18](audits/2026-10-18-the-303-assertion-chases-a-removed-class.md) | — |
 | release | [The comment guarding a credentials overwrite cited the wrong line, twice](audits/2026-10-18-the-credential-comment-cited-a-lie.md) | — |
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
+| general | [A whole-tree sweep of the E2E selectors: one dead half, no breakage — 2026-10-18](audits/2026-10-18-the-e2e-selector-sweep-found-one-dead-half.md) | — |
 | general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
 | general | [The navigation "defect" was my harness, and the rule is documented — 2026-10-18](audits/2026-10-18-the-navigation-defect-was-my-harness.md) | — |
