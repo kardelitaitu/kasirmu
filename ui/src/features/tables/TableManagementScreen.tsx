@@ -3,6 +3,7 @@ import { requiredLocalized } from '@/components';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useOptionalToast, type ToastContextValue } from '@/components/Toast';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
@@ -90,6 +91,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  const optionalSettings = useOptionalSettings();
+  const storeCurrency = optionalSettings?.settings?.store?.currency || 'IDR';
   const [tables, setTables] = useState<Table[]>([]);
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
@@ -618,9 +621,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const receipt = buildPreCheckoutBillReceipt({
         billNumber: `CHECK-${bareTableNumber(t.name) || t.name}-${Date.now().toString().slice(-4)}`,
         cartLines,
-        cartCurrency: full.currency || 'IDR',
-        subtotal: { minor_units: full.total_minor, currency: full.currency || 'IDR' },
-        total: { minor_units: full.total_minor, currency: full.currency || 'IDR' },
+        cartCurrency: full.currency || storeCurrency,
+        subtotal: { minor_units: full.total_minor, currency: full.currency || storeCurrency },
+        total: { minor_units: full.total_minor, currency: full.currency || storeCurrency },
         tableNumber: t.name,
         customerName: full.customer_name ?? undefined,
       });
@@ -637,7 +640,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } finally {
       setPrintingBill(false);
     }
-  }, [getTableBill, sessionToken, addToast, l10n]);
+  }, [getTableBill, sessionToken, addToast, l10n, storeCurrency]);
 
   const handleOpenMoveTable = useCallback((t: Table) => {
     const available = activeTableList.filter(
@@ -801,7 +804,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         cart_data: JSON.stringify(destParsed),
         item_count: combinedItemCount,
         total_minor: combinedTotalMinor,
-        currency: destFull.currency || 'IDR',
+        currency: destFull.currency || storeCurrency,
         bill_type: 'open_bill',
         customer_name: mergedCustomer,
         ...(destFull.deduction_location_id ? { deduction_location_id: destFull.deduction_location_id } : {}),
@@ -841,7 +844,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } finally {
       setMergingTable(false);
     }
-  }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
+  }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail, storeCurrency]);
 
   const handleConfirmReservation = useCallback(
     async (e: React.FormEvent) => {
@@ -884,7 +887,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           cart_data: JSON.stringify(reservationPayload),
           item_count: 0,
           total_minor: 0,
-          currency: 'IDR',
+          currency: storeCurrency,
           bill_type: 'open_bill',
           customer_name: guestName,
         });
@@ -928,7 +931,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         setReservingTable(false);
       }
     },
-    [reserveModal, reservingTable, sessionToken, l10n, addToast, loadTables],
+    [reserveModal, reservingTable, sessionToken, l10n, addToast, loadTables, storeCurrency],
   );
 
   const handleSeatReservedGuests = useCallback(
@@ -955,7 +958,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name }),
             item_count: 0,
             total_minor: 0,
-            currency: 'IDR',
+            currency: storeCurrency,
             bill_type: 'open_bill',
             customer_name: customerName,
           });
@@ -995,7 +998,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         });
       }
     },
-    [sessionToken, openBills, onSelectTable, l10n, addToast, loadTables],
+    [sessionToken, openBills, onSelectTable, l10n, addToast, loadTables, storeCurrency],
   );
 
   const handlePointerDownTable = useCallback((e: React.PointerEvent<HTMLButtonElement>, t: Table) => {
@@ -1244,7 +1247,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name, partySize }),
           item_count: 0,
           total_minor: 0,
-          currency: 'IDR',
+          currency: storeCurrency,
           bill_type: 'open_bill',
           customer_name: customerName,
         });
@@ -1270,7 +1273,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         });
       }
     },
-    [sessionToken, addToast, l10n, onSelectTable, loadTables],
+    [sessionToken, addToast, l10n, onSelectTable, loadTables, storeCurrency],
   );
 
   const handleAddSection = useCallback(
