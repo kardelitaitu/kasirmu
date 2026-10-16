@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import productsFtl from '@/locales/products.ftl?raw';
@@ -708,6 +708,44 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
   });
 
+  // ── The KEYBOARD path, which every test above missed ─────────────────
+  //
+  // Every unsaved-changes case in this file drives the BACK BUTTON. Escape is the
+  // path an operator actually uses at a till, and it is not the same code path: the
+  // button calls `handleRequestBack` directly, while Escape goes through a
+  // `document`-level listener that competes with `PosScreen`'s own Escape cascade
+  // (`PosScreen.tsx:2002`). Measured 2026-10-18: all three restaurant sub-screens had
+  // ZERO Escape coverage, so the only thing asserting the race was the manual run.
+  it('opens the unsaved-changes dialog on Escape, not just on the back button', async () => {
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    // Dispatch from an ELEMENT, not `document`: the handler calls `e.target.closest(...)`,
+    // and a document node has no `closest` — which threw a TypeError before this fix and
+    // made the first version of this test fail for a harness reason, not a product one.
+    fireEvent.keyDown(screen.getByTestId('restaurant-payments-back-btn'), { key: 'Escape' });
+
+    expect(
+      screen.getByTestId('unsaved-dialog-discard'),
+      'Escape must reach the screen own handler, not the parent cascade',
+    ).toBeInTheDocument();
+    expect(onBack, 'a dirty screen must not leave without asking').not.toHaveBeenCalled();
+  });
+
+  it('leaves immediately on Escape when there is nothing to lose', async () => {
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    fireEvent.keyDown(screen.getByTestId('restaurant-payments-back-btn'), { key: 'Escape' });
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
+  });
   it('does not render a back button when onBack is omitted', async () => {
     await renderScreen();
     await screen.findByText('GoPay');

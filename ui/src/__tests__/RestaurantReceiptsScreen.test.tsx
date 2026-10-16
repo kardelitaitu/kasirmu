@@ -690,6 +690,32 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
   });
 
+  // ── The KEYBOARD path, which every case above missed ─────────────────
+  //
+  // The cases above drive the BACK BUTTON. Escape is a DIFFERENT code path: the
+  // button calls `handleRequestBack` directly, while Escape goes through a
+  // `document`-level listener that competes with `PosScreen`'s own Escape cascade
+  // (`PosScreen.tsx:2001`). Measured 2026-10-18: this screen had ZERO Escape
+  // coverage, so only a manual run asserted the race.
+  it('opens the unsaved-changes dialog on Escape, not just on the back button', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    const title = screen.getByLabelText(/Receipt Title/i);
+    await user.clear(title);
+    await user.type(title, 'ESCAPE TEST');
+
+    // Dispatch from an ELEMENT, not `document`: the handler calls `e.target.closest(...)`,
+    // and a document node has no `closest`.
+    fireEvent.keyDown(screen.getByTestId('restaurant-receipts-back-btn'), { key: 'Escape' });
+
+    expect(
+      screen.getByTestId('unsaved-dialog-discard'),
+      'Escape must reach this screen own handler, not the parent cascade',
+    ).toBeInTheDocument();
+    expect(onBack, 'a dirty screen must not leave without asking').not.toHaveBeenCalled();
+  });
   it('renders redesigned unsaved dialog with 2-row text, outside close button, and no heading', async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();
