@@ -588,10 +588,10 @@ fn checkout_restaurant_product_with_recipe_shortfalls_on_ingredient() {
     .expect("set_recipe must succeed");
 
     let mut cart = Cart::new(usd());
-    cart.add_line(CartLine::new(Sku::new(dish_sku), 5, price(7500)))
+    cart.add_line(CartLine::new(Sku::new(dish_sku), 5, price(1500)))
         .unwrap();
     let sale = Sale::from_cart(&cart).unwrap();
-    let err = s
+    let result = s
         .complete_sale_deduction_with_locations_and_estimate(
             &sale,
             None,
@@ -602,22 +602,25 @@ fn checkout_restaurant_product_with_recipe_shortfalls_on_ingredient() {
             &[],
             false,
         )
-        .unwrap_err();
+        .expect("kitchen stock shortfall must not block menu item from being ordered");
 
-    match err {
-        CoreError::Validation { field, message } => {
-            assert_eq!(field, "stock");
-            assert!(
-                message.contains(ing_sku),
-                "shortfall message must contain ingredient SKU: {message}"
-            );
-            assert!(
-                message.contains("\"deficit\":3"),
-                "shortfall deficit must be 3: {message}"
-            );
-        }
-        other => panic!("expected stock Validation error, got {other:?}"),
-    }
+    assert_eq!(result.sale_id, sale.id);
+    assert_eq!(result.stock_warnings.len(), 1);
+    let warning = &result.stock_warnings[0];
+    assert_eq!(warning.sku, ing_sku);
+    assert_eq!(warning.requested_qty, 5);
+    assert_eq!(warning.qty_available, 2);
+    assert_eq!(warning.deficit, 3);
+
+    // Available ingredient stock (2) was deducted; remaining is 0.
+    let remaining_ing: i64 = conn
+        .query_row(
+            "SELECT COALESCE(qty, 0) FROM stock_summary WHERE item_id = ?1",
+            rusqlite::params![ing_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(remaining_ing, 0, "available ingredient stock deducted");
 }
 
 #[test]

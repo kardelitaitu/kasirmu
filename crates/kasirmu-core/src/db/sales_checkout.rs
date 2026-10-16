@@ -323,6 +323,7 @@ impl Store<'_> {
             HashMap::new();
         let mut line_tracks_inventory: HashMap<String, bool> = HashMap::new();
         let mut shortfalls: Vec<Shortfall> = Vec::new();
+        let mut stock_warnings: Vec<crate::sale_deduction::StockWarning> = Vec::new();
 
         // Batch-lookup all SKUs in a single query (avoids N+1 per-line SELECT).
         let skus: Vec<&str> = sale.lines.iter().map(|l| l.sku.as_str()).collect();
@@ -471,35 +472,44 @@ impl Store<'_> {
                                 let available = availability
                                     .first()
                                     .map_or(0, |location| location.qty_available);
-                                let alternatives = if stock_locations.len() > 1 {
-                                    availability
-                                        .into_iter()
-                                        .skip(1)
-                                        .filter(|a| a.qty_available > 0)
-                                        .collect()
-                                } else if let Some(ws_id) = workspace_instance_id {
-                                    crate::location_resolver::resolve_location_chain_for_sku(
-                                        &tx,
-                                        ws_id,
-                                        &ing_sku,
-                                        required_qty,
-                                    )?
-                                    .into_iter()
-                                    .filter(|a| a.location_id != primary_location)
-                                    .collect()
-                                } else {
-                                    vec![]
-                                };
 
-                                shortfalls.push(Shortfall {
-                                    sku: ing_sku,
+                                // Kitchen stock (recipe BOM ingredient) does not block ordering menu items.
+                                // It is only used as a warning/alarm. We deduct whatever is available.
+                                if available > 0 {
+                                    deductions.push(StockDeduction {
+                                        sku: ing_sku.clone(),
+                                        location_id: primary_location.clone(),
+                                        delta: -available,
+                                    });
+                                    recipe_line_deductions
+                                        .entry(line.id.clone())
+                                        .or_default()
+                                        .push(RecipeIngredientAllocation {
+                                            sku: ing_sku.clone(),
+                                            qty_per_unit: ingredient.quantity_required,
+                                            allocations: vec![
+                                                crate::sale_deduction::LocationAllocation {
+                                                    location_id: primary_location.clone(),
+                                                    qty: available,
+                                                },
+                                            ],
+                                        });
+                                }
+
+                                stock_warnings.push(crate::sale_deduction::StockWarning {
+                                    sku: ing_sku.clone(),
                                     product_name: ing_name,
                                     requested_qty: required_qty,
-                                    primary_qty_available: available,
+                                    qty_available: available,
                                     deficit: required_qty.saturating_sub(available),
-                                    primary_location_id: primary_location.clone(),
-                                    alternatives,
                                 });
+
+                                tracing::warn!(
+                                    sku = %ing_sku,
+                                    requested = required_qty,
+                                    available = available,
+                                    "kitchen stock shortfall for recipe ingredient — menu order proceeds with warning"
+                                );
                             }
                         }
                     }
@@ -507,12 +517,12 @@ impl Store<'_> {
             }
         }
 
-        // ── Shortfall path: rollback, return PartialStockResult ───
+        // ── Retail shortfall path: rollback, return PartialStockResult ───
+        // Only finished goods (retail products that track inventory directly)
+        // require cashier multi-location resolution. Kitchen stock shortfalls
+        // bypass this and proceed as warnings above.
         if !shortfalls.is_empty() {
             tx.rollback()?;
-            // Return as PartialStockResult via a dedicated error type is
-            // cleaner, but for now we use the standard result type pattern.
-            // The caller (Tauri command) matches on the return variant.
             return Err(CoreError::Validation {
                 field: "stock",
                 message: serde_json::to_string(&crate::sale_deduction::PartialStockResult {
@@ -795,6 +805,7 @@ impl Store<'_> {
             receipt_number: display_code.clone().unwrap_or_else(|| sale.id.clone()),
             deduct_tx_id,
             statutory_number,
+            stock_warnings,
         })
     }
 }

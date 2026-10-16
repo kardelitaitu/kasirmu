@@ -49,6 +49,7 @@ pub(super) fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
         line_count: sale.lines.len(),
         receipt_number: Some(sale.id.clone()),
         statutory_number: None,
+        stock_warnings: vec![], // replayed — original sale already completed
     }
 }
 

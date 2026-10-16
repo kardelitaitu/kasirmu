@@ -638,6 +638,7 @@ impl Store<'_> {
             receipt_number: display_code.clone().unwrap_or_else(|| sale.id.clone()),
             deduct_tx_id,
             statutory_number,
+            stock_warnings: vec![], // cashier explicitly resolved allocations — no warnings
         })
     }
 

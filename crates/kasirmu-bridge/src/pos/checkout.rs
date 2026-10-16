@@ -154,6 +154,11 @@ pub struct CompleteSaleResult {
     pub receipt_number: Option<String>,
     /// The statutory document number (e.g. invoice or receipt sequence).
     pub statutory_number: Option<String>,
+    /// Non-empty when one or more sale lines had insufficient stock at the
+    /// primary location. The sale still completes — this field is
+    /// informational only (shown as a warning toast in the cashier UI).
+    #[serde(default)]
+    pub stock_warnings: Vec<kasirmu_core::sale_deduction::StockWarning>,
 }
 
 /// Stamp one idempotency key per split from a checkout attempt id.
@@ -551,6 +556,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings: vec![], // cashier explicitly resolved allocations
     })
 }
 
@@ -776,7 +782,7 @@ pub async fn complete_sale_scoped(
     let sale_id = sale.id.clone();
 
     // ── Lock 2: Compute tax and create sale ───────────────────────
-    let (receipt_number, statutory_number) = {
+    let (receipt_number, statutory_number, stock_warnings) = {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -881,6 +887,7 @@ pub async fn complete_sale_scoped(
         };
         let mut statutory_number = deduct.statutory_number;
         let receipt_number = Some(deduct.receipt_number);
+        let stock_warnings = deduct.stock_warnings;
 
         if args.document_kind.as_deref() == Some("invoice") {
             let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -894,7 +901,7 @@ pub async fn complete_sale_scoped(
                 statutory_number = Some(inv_num);
             }
         }
-        (receipt_number, statutory_number)
+        (receipt_number, statutory_number, stock_warnings)
     };
 
     // Promotion-reduced payable (cart.total() would ignore promotions).
@@ -933,5 +940,6 @@ pub async fn complete_sale_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings,
     })
 }

@@ -112,6 +112,20 @@ export interface CompleteSaleArgs {
   promotionIds?: string[];
 }
 
+/** A stock warning for a sale line that had insufficient stock. The sale still completes. */
+export interface StockWarning {
+  /** Product SKU that had insufficient stock. */
+  sku: string;
+  /** Product display name. */
+  productName: string;
+  /** Quantity the customer ordered. */
+  requestedQty: number;
+  /** Quantity actually available at the primary location. */
+  qtyAvailable: number;
+  /** Shortfall = requestedQty − qtyAvailable. */
+  deficit: number;
+}
+
 /** Result of completing a sale. */
 export interface CompleteSaleResult {
   saleId: string;
@@ -119,6 +133,11 @@ export interface CompleteSaleResult {
   lineCount: number;
   receiptNumber?: string | null;
   statutoryNumber?: string | null;
+  /**
+   * Non-empty when one or more sale lines had insufficient stock.
+   * The sale still completes — this field is informational only.
+   */
+  stockWarnings?: StockWarning[];
 }
 
 /** Arguments for setting a discount on a cart. */

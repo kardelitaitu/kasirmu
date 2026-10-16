@@ -1085,6 +1085,20 @@ retryCurrencyLoad,
         }
       }
 
+      // ── Stock warning toasts (informational only, sale already complete) ──
+      if (saleResult.stockWarnings && saleResult.stockWarnings.length > 0) {
+        for (const w of saleResult.stockWarnings) {
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-stock-warning', {
+              product: w.productName,
+              requested: w.requestedQty,
+              available: w.qtyAvailable,
+            }),
+            type: 'warning',
+          });
+        }
+      }
+
       if (loyaltyAccount && redeemPoints && loyaltyDiscount > 0n) {
         try {
           if (selectedCustomer?.id) {
@@ -1504,6 +1518,23 @@ retryCurrencyLoad,
           }
           // Throw the original finalize error so the outer catch handles it
           throw finalizeErr;
+        }
+      }
+
+      // ── Stock warning toasts (informational only, sale already complete) ──
+      // Backend returns stockWarnings when one or more sale lines had
+      // insufficient stock at the primary location. The sale is committed
+      // regardless — we just alert the cashier so they can restock.
+      if (saleResult.stockWarnings && saleResult.stockWarnings.length > 0) {
+        for (const w of saleResult.stockWarnings) {
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-stock-warning', {
+              product: w.productName,
+              requested: w.requestedQty,
+              available: w.qtyAvailable,
+            }),
+            type: 'warning',
+          });
         }
       }
 

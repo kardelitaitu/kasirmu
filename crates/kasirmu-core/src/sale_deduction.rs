@@ -1,10 +1,15 @@
 //! Sale-deduction result types (ADR-19 §2).
 //!
 //! When [`Store::complete_sale`](crate::db::Store) runs with multi-location
-//! inventory, it returns either a [`CompleteSaleResult`] (all stock sufficed)
-//! or a [`PartialStockResult`] (one or more lines had insufficient stock at
-//! the resolved primary location). The cashier UI uses these discriminators
-//! to render either a success toast or the Stock Shortfall panel.
+//! inventory it ALWAYS returns [`CompleteSaleResult`] — the sale is never
+//! blocked by stock levels. When one or more lines had insufficient stock at
+//! the resolved primary location, the `stock_warnings` field is populated so
+//! the cashier UI can show a warning toast without preventing the transaction.
+//!
+//! [`PartialStockResult`] is kept for the retail split-fulfillment path
+//! (`complete_sale_with_resolved_shortfalls`) where the cashier explicitly
+//! chooses alternative locations. It is no longer returned by the primary
+//! checkout path.
 //!
 //! These types belong in `kasirmu-core` because both the desktop-client and
 //! mobile-tauri Tauri command layers deserialize and forward them to the
@@ -82,14 +87,37 @@ pub struct Shortfall {
     pub alternatives: Vec<LocationStock>,
 }
 
-/// Returned when every line item had sufficient stock at its resolved
-/// deduction location. The sale row is committed; the cart is cleared.
+/// A slim stock warning for a sale line that had insufficient stock at the
+/// primary location. The sale still proceeds — stock is deducted up to the
+/// available quantity and any deficit is noted here for the cashier UI.
+///
+/// Carried in [`CompleteSaleResult::stock_warnings`]. Never blocks a sale.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StockWarning {
+    /// Product SKU that had insufficient stock.
+    pub sku: String,
+    /// Product display name (denormalised from the cart line / BOM ingredient).
+    pub product_name: String,
+    /// Quantity the customer requested (or the full BOM requirement).
+    pub requested_qty: i64,
+    /// Quantity actually available at the primary location at checkout time.
+    pub qty_available: i64,
+    /// Shortfall = requested_qty − qty_available (≥ 1).
+    pub deficit: i64,
+}
+
+/// Returned when the sale is committed. The cart is cleared.
+///
+/// The sale always completes regardless of stock levels. When one or more
+/// lines had insufficient stock the `stock_warnings` field is non-empty and
+/// the cashier UI should show a warning toast listing the affected SKUs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteSaleResult {
     /// The newly-created sale's primary key.
     pub sale_id: String,
-    /// Always `completed` — stock was sufficient across all lines.
+    /// Always `completed`.
     pub status: SaleStatus,
     /// Human-readable receipt number for the cashier UI.
     pub receipt_number: String,
@@ -101,13 +129,20 @@ pub struct CompleteSaleResult {
     /// FK to `inventory_transactions.id` — the audit session that groups
     /// all `stock_movements` rows produced by this deduction.
     pub deduct_tx_id: InventoryTransactionId,
+    /// Non-empty when one or more sale lines (or BOM ingredients) had
+    /// insufficient stock at the primary location. The sale is committed
+    /// regardless — this field is informational only.
+    #[serde(default)]
+    pub stock_warnings: Vec<StockWarning>,
 }
 
-/// Returned when at least one line item exceeded available stock at the
-/// resolved primary location. The sale row is **rolled back** — no DB row
-/// exists for this attempt. The cashier must resolve each shortfall via
-/// the Stock Shortfall dialog and retry with
-/// `complete_sale_with_resolved_shortfalls`.
+/// Returned only by the retail split-fulfillment retry path
+/// (`complete_sale_with_resolved_shortfalls`). The primary checkout
+/// path no longer returns this — sales always proceed with stock
+/// warnings instead of blocking.
+///
+/// The cashier must resolve each shortfall via the Stock Shortfall dialog
+/// and retry with `complete_sale_with_resolved_shortfalls`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartialStockResult {

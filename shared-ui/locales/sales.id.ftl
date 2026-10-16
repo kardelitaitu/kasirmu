@@ -671,6 +671,7 @@ payment-toast-kds-failed = Pembayaran berhasil, tetapi tiket dapur gagal dibuat 
 payment-toast-loyalty-redeem-failed = Pembayaran berhasil, tetapi poin loyalitas TIDAK dipotong — perbaiki poin pelanggan secara manual
 payment-toast-print-failed = Tidak ada yang tercetak — periksa bahwa printer sudah diatur dan dapat dijangkau
 payment-toast-receipt-unavailable = Pembayaran berhasil, tetapi struk gagal disiapkan — penjualan tersimpan, periksa riwayat penjualan untuk mencetak ulang
+payment-toast-stock-warning = Peringatan stok: { $product } (dipesan { $requested }, tersedia { $available })
 payment-toast-invoice-issued = Faktur pajak berhasil diterbitkan
 payment-toast-invoice-failed = Gagal menerbitkan faktur pajak
 payment-toast-finalize-failed = Penjualan gagal diselesaikan — periksa riwayat penjualan dan selesaikan secara manual

@@ -213,6 +213,7 @@ payment-toast-kds-failed = Payment succeeded, but the kitchen ticket could not b
 payment-toast-loyalty-redeem-failed = Payment succeeded, but the loyalty points were NOT deducted — fix the customer's points manually
 payment-toast-print-failed = Nothing was printed — check that a printer is set up and reachable
 payment-toast-receipt-unavailable = Payment succeeded, but the receipt could not be prepared — the sale is saved, check the sale history to reprint
+payment-toast-stock-warning = Stock warning: { $product } (ordered { $requested }, available { $available })
 payment-toast-invoice-issued = Tax invoice issued successfully
 payment-toast-invoice-failed = Failed to issue tax invoice
 # Money-path failures. These two are written as INSTRUCTIONS rather than diagnoses:

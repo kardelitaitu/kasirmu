@@ -410,6 +410,7 @@ fn complete_sale_result_debug() {
         line_count: 2,
         receipt_number: None,
         statutory_number: None,
+        stock_warnings: vec![],
     };
     let debug = format!("{result:?}");
     assert!(debug.contains("sale-1"));
