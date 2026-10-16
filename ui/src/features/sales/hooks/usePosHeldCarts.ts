@@ -253,10 +253,10 @@ export function usePosHeldCarts({
           // Restaurant coursing: a held bill resumes through the checkout
           // push, so the assignment must survive the hold.
           ...(l.courseId ? { courseId: l.courseId } : {}),
-          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
-          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
-          ...(l.note ? { note: l.note } : {}),
-          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
+            ...(l.note ? { note: l.note } : {}),
+            ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
         })),
         discountPercent,
         discountLabel,
@@ -417,21 +417,45 @@ export function usePosHeldCarts({
           modifiers?: CartLine['modifiers'];
           note?: string;
           dispatchedQty?: number;
-        }) => ({
-          id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
-          sku: l.sku as Sku,
-          name: l.name,
-          category: l.category,
-          qty: l.qty,
-          unit_price: l.unit_price,
-          // Restaurant coursing: carried through the hold so a resumed bill
-          // keeps its assignments (validated by the CourseId type below).
-          ...(l.courseId ? { courseId: l.courseId } : {}),
+        }) => {
+          // VALIDATE, DO NOT CAST. The type annotations above describe the payload
+          // this loop trusts, but `cart_data` is untrusted JSON — written by
+          // holdCartScoped, round-tripped through SQLite, read back here — and a TS
+          // annotation is erased at runtime, so it checks nothing. Both fields feed
+          // money: `usePosState.subtotal` sums `unit_price.minor_units * qty` with no
+          // guard of its own, so a non-numeric value makes the whole cart NaN minor
+          // units and the pay screen reads NaN. The retail twin already does this
+          // (RetailPosScreen.handleResumeCart :1483-1487); this is the same rule on
+          // the path that runs on a busy floor.
+          const rawQty: unknown = l.qty;
+          const rawPrice: unknown = l.unit_price;
+          const price = rawPrice && typeof rawPrice === 'object'
+            ? (rawPrice as { minor_units?: unknown; currency?: unknown })
+            : null;
+          const minor = price && typeof price.minor_units === 'number' && Number.isFinite(price.minor_units)
+            ? price.minor_units
+            : 0;
+          const currency = price && typeof price.currency === 'string' && price.currency
+            ? price.currency
+            : (typeof l.unit_price?.currency === 'string' ? l.unit_price.currency : 'IDR');
+          const qty = typeof rawQty === 'number' && Number.isFinite(rawQty) && rawQty > 0
+            ? Math.round(rawQty)
+            : 1;
+          return {
+            id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
+            sku: l.sku as Sku,
+            name: l.name,
+            category: l.category,
+            qty,
+            unit_price: { minor_units: minor, currency },
+            // Restaurant coursing: carried through the hold so a resumed bill
+            // keeps its assignments (validated by the CourseId type below).
+            ...(l.courseId ? { courseId: l.courseId } : {}),
           ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
           ...(l.note ? { note: l.note } : {}),
           ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
-        })));
+        }}));
       }
       if (typeof data.discountPercent === 'number') {
         setDiscount(data.discountPercent, data.discountLabel || '');

@@ -843,4 +843,94 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       type: 'warning',
     });
   });
+
+  // ── A recalled tab must not restore qty/price straight from untrusted JSON ──
+  //
+  // handleResumeOpenBill builds every restored line with the raw payload values
+  // (usePosHeldCarts.ts:409-434):
+  //
+  //   qty: l.qty,
+  //   unit_price: l.unit_price,
+  //
+  // Both are CAST at the top of the loop (l.qty: number, l.unit_price:
+  // { minor_units: number; currency: string }). A cast is erased at runtime and
+  // checks nothing, and cart_data is exactly the untrusted boundary: JSON written
+  // by holdCartScoped, round-tripped through SQLite, read back here.
+  //
+  // The retail twin already guards this (RetailPosScreen.handleResumeCart,
+  // :1483-1487): it tests typeof l.unit_price.minor_units !== 'number' and
+  // Number.isFinite(l.qty) && l.qty > 0, defaulting a bad quantity to 1. The
+  // restaurant copy -- the one that runs on a busy floor -- does not, in a
+  // restore whose whole purpose is recovering a cart.
+  //
+  // THE CONSEQUENCE IS MONEY. usePosState.subtotal (:281) sums
+  // l.unit_price.minor_units * l.qty with no guard of its own, and every
+  // downstream memo (discounted, total, discountAmount) reads that sum. A
+  // non-numeric qty or price therefore makes the whole cart NaN minor units, and
+  // the total the waiter reads on the pay screen is NaN. That is the same defect
+  // class the retail discountPercent fix describes, reached through a field
+  // nobody was checking.
+  //
+  // The guard asserted here is a TYPE/FINITUDE check, not a blanket refusal: a
+  // well-formed qty and price must still restore, or the fix would be \"never
+  // resume a tab with items\".
+  it('validates qty and unit_price before restoring a recalled tab', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+
+    const setLines = vi.fn();
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'bad-tab',
+      label: 'Table 9',
+      item_count: 2,
+      total_minor: 0,
+      currency: 'IDR',
+      created_at: '2026-10-01T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+      // A non-numeric quantity and a price whose minor_units is a string. Both
+      // satisfy the type assertions the loop makes and both poison the memos.
+      cart_data: JSON.stringify({
+        lines: [
+          {
+            sku: 'BAD-QTY',
+            name: 'Bad Quantity',
+            qty: 'two',
+            unit_price: { minor_units: 5000, currency: 'IDR' },
+          },
+          {
+            sku: 'BAD-PRICE',
+            name: 'Bad Price',
+            qty: 1,
+            unit_price: { minor_units: 'lots', currency: 'IDR' },
+          },
+        ],
+      }),
+    } as never);
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(params({ setLines: setLines as never })),
+    );
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('bad-tab');
+    });
+
+    expect(setLines).toHaveBeenCalled();
+    const restored = setLines.mock.calls[0]![0] as { sku: string; qty: number; unit_price: { minor_units: number } }[];
+    const bySku = Object.fromEntries(restored.map((l) => [l.sku, l]));
+
+    // A non-numeric qty must become a finite positive integer, not 'two'.
+    // usePosState would otherwise carry it into minor_units * qty -> NaN.
+    expect(
+      Number.isInteger(bySku['BAD-QTY']!.qty) && bySku['BAD-QTY']!.qty > 0,
+      'a non-numeric qty was restored as-is; the subtotal becomes NaN minor units',
+    ).toBe(true);
+
+    // Same for the price: minor_units must be a finite number after the guard.
+    expect(
+      Number.isFinite(bySku['BAD-PRICE']!.unit_price.minor_units),
+      'a non-numeric unit_price.minor_units was restored as-is; the subtotal becomes NaN',
+    ).toBe(true);
+  });
 });
