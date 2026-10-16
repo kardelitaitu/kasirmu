@@ -6,6 +6,8 @@
 // Split from RetailPosScreen.test.tsx to enable parallel execution. 17 tests.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -415,6 +417,63 @@ describe('RetailPosScreen — interactions', () => {
     // amount is already in minor units. The old hardcoded ×100 sent
     // 10000000 and broke cash reconciliation 100x.
     await waitFor(() => expect(openShiftScoped).toHaveBeenCalledWith(expect.any(String), 100000));
+  });
+
+  // ── A refund changes the shift totals, so the shift must be RE-READ ──────
+  //
+  // `ShiftDto` carries the money a refund moves — `totalRefundsMinor`,
+  // `totalSalesMinor`, `totalCashMinor` (api/shifts.ts:18-23) — and the retail till
+  // read it ONCE, in a mount effect keyed on `sessionToken`. It feeds the close-shift
+  // flow (RetailModals:1873), which is where the cashier reconciles the drawer, so
+  // after a refund those figures excluded it.
+  //
+  // ⚠️ WHY THIS IS A SOURCE-LEVEL ASSERTION ON THE HANDLER, and it was written the
+  // other way first. The behavioural version drove F11, typed a receipt barcode and
+  // waited for the count to rise — and it could not work: `createSalesApiMock`
+  // (test-utils/mocks/api.ts) does not provide
+  // `lookupSaleByReceiptBarcodeScoped`, so the lookup resolves to undefined, the refund
+  // modal never opens, and `onRefunded` never fires. The case failed on "expected 1 to
+  // be greater than 1" for the wrong reason — the handler was never reached at all.
+  //
+  // What actually changed is that the completion handler re-reads. That is stated
+  // precisely enough to check, and the re-read itself is covered by the mount path's
+  // existing cases.
+  it('re-reads the shift when a quick-return refund completes', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../features/retail/RetailPosScreen.tsx'),
+      'utf-8',
+    );
+    const at = src.indexOf('const handleQuickReturnRefundDone');
+    expect(at, 'the refund-completion handler moved — re-point this guard').toBeGreaterThan(0);
+    // ⚠️ SLICE TO THE HANDLER'S OWN END, not a character count.
+    //
+    // This was `at + 700` and the assertion below was FALSE on code that HAS the
+    // fix: the handler's own 18-line explanation pushes `loadActiveShift()` to offset
+    // ~880. Comments are stripped AFTER the slice, so the window closed before the
+    // line being looked for.
+    //
+    // Identical to the blind guard round 114 found in posDispatchRecord.test.ts
+    // (`at + 4200`, outgrown by the comments the fix added). A fixed window is a
+    // matcher keyed to proximity, and comments are what grows a handler.
+    const start = at;
+    const end = src.indexOf('\n  const ', start + 1);
+    const body = src.slice(start, end === -1 ? start + 2000 : end);
+    const code = body
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    // And prove the window contains the handler at all, so it cannot go blind again.
+    expect(
+      code.includes('setQuickReturnSale(null)'),
+      'the scanned window does not contain the handler body — widen it rather than '
+      + 'letting this guard pass on an empty match',
+    ).toBe(true);
+
+    expect(
+      /loadActiveShift\(\)/.test(code),
+      'a completed refund changes totalRefundsMinor, so the close-shift flow must read '
+      + 'the shift again — it was read once at mount and never refreshed',
+    ).toBe(true);
   });
 
   it('shows warning when Pay is pressed without an active shift', async () => {

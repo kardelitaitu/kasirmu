@@ -239,10 +239,6 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
   }, [quickReturnBarcode, addToast, l10n, playError, sessionToken]);
 
-  const handleQuickReturnRefundDone = useCallback(() => {
-    setShowQuickReturnRefund(false);
-    setQuickReturnSale(null);
-  }, []);
 
   // P0-1 (retail theming audit, archived by d0fe74814 — the doc is gone): replace the
   // shadow useState that read a per-component localStorage key and matched
@@ -1080,7 +1076,22 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // re-rendering a stale element and the effect is irrelevant.
   const shiftSeq = useRef(0);
 
-  useEffect(() => {
+  /**
+   * Read the active shift, with the staleness guard this screen has always had.
+   *
+   * EXTRACTED FROM THE MOUNT EFFECT so a MUTATING path can refresh it. It was a
+   * single effect keyed on `sessionToken`, which is correct for the read at mount
+   * and wrong for every other read: nothing re-ran it afterwards, so anything that
+   * changed the shift's money left the till — and the close-shift flow it feeds —
+   * showing pre-mutation totals.
+   *
+   * The first defect this exposed (round 118): a QUICK-RETURN REFUND. `ShiftDto`
+   * carries `totalRefundsMinor`, `totalSalesMinor` and `totalCashMinor`
+   * (api/shifts.ts:18-23), and `handleQuickReturnRefundDone` cleared the modal
+   * without re-reading. The drawer was then reconciled against figures that
+   * excluded the refund the cashier had just processed.
+   */
+  const loadActiveShift = useCallback(() => {
     if (!sessionToken) return;
     const seq = ++shiftSeq.current;
     const stale = () => shiftSeq.current !== seq;
@@ -1102,6 +1113,25 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       shiftSeq.current += 1;
     };
   }, [sessionToken]);
+
+  useEffect(() => loadActiveShift(), [loadActiveShift]);
+
+  const handleQuickReturnRefundDone = useCallback(() => {
+    setShowQuickReturnRefund(false);
+    setQuickReturnSale(null);
+    // ⚠️ THE REFUND MOVED MONEY ON THE SHIFT, SO THE SHIFT IS RE-READ.
+    //
+    // This callback is wired to BOTH `onClose` and `onRefunded` (RetailModals.tsx:826-827)
+    // and used to only hide the modal. `ShiftDto` carries `totalRefundsMinor`,
+    // `totalSalesMinor` and `totalCashMinor` (api/shifts.ts:18-23), and this screen read
+    // the shift ONCE at mount — so the close-shift flow the till feeds showed totals that
+    // excluded the refund the cashier had just processed, and the drawer was reconciled
+    // against the wrong figure.
+    //
+    // Round 110's rule applies to which halves of the behaviour change: the DISPLAY half
+    // (what the cashier sees) needed the re-read; the modal state was already right.
+    loadActiveShift();
+  }, [loadActiveShift]);
 
   const handleOpenShift = useCallback(async () => {
     // MONEY-02: exact decimal parse; MONEY-05: scale by the STORE
