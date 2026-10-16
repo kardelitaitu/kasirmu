@@ -301,6 +301,21 @@ describe('RetailPosScreen — rendering', () => {
     expect(screen.getByText('Aqua 600ml')).toBeInTheDocument();
   });
 
+  // ── SERVICE items are sellable here, not just creatable ──────────────
+  //
+  // `'service'` is the third value of the closed `product_type` set
+  // (migration 20261020_product_type_check.sql:41) and is backend-supported:
+  // `products_stock_query.rs:403` reads `is_service` and SKIPS stock deduction. But
+  // this grid filtered on `'retail'` alone and the restaurant grid on `'restaurant'`
+  // alone, so a service item — an installation fee, an hourly rate — could be created
+  // from ProductManagementScreen and then never added to a sale in EITHER workspace.
+  // A type the UI can write but no grid can sell is the write-only shape.
+  it('shows a service item on the grid, not just in the catalog', async () => {
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await showAllProducts();
+    expect(screen.getByText('Installation Fee')).toBeInTheDocument();
+  });
+
   it('shows low-stock badge for products with stock_qty <= 5', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await showAllProducts();

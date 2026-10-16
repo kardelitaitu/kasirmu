@@ -1158,8 +1158,21 @@ describe('RestaurantMenu', () => {
       createdAt: '2026-01-04',
     } as unknown as Product;
 
+    // The THIRD type of the closed set. Backend-supported (products_stock_query.rs:403
+    // skips stock deduction for it) and creatable from ProductManagementScreen:684, but
+    // it belonged to no grid at all until this change, so it could never be sold.
+    const serviceItem = {
+      sku: 'CORKAGE-FEE',
+      name: 'Corkage Fee',
+      category: 'Snack',
+      productType: 'service',
+      price: { minor_units: 50000, currency: 'IDR' },
+      inStock: true,
+      createdAt: '2026-01-04',
+    } as unknown as Product;
+
     mockUseProducts.mockReturnValue({
-      products: [...mockProducts, retailProduct, snackItem],
+      products: [...mockProducts, retailProduct, snackItem, serviceItem],
       categories: ['Makanan', 'Minuman', 'Snack'],
       categoryMeta: [
         { id: 'cat-snack', name: 'Snack', colour: '#eab308', icon: 'snack' },
@@ -1176,6 +1189,9 @@ describe('RestaurantMenu', () => {
     expect(screen.getByText('Keripik Snack')).toBeInTheDocument();
     // The retail item is NOT — it belongs to the retail workspace's grid.
     expect(screen.queryByText('Roti Bakar')).toBeNull();
+    // The SERVICE item IS — sellable here, where the server already knows it carries
+    // no stock. Without this the type was write-only in both workspaces.
+    expect(screen.getByText('Corkage Fee')).toBeInTheDocument();
   });
 
   it('reloads product catalog and unavailable status on visibility change', () => {

@@ -681,7 +681,14 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   }, [categories, addToast, sessionToken, canEditCost]);
 
   const filteredProducts = useMemo(() => {
-    let list = products.filter((p) => p.product_type === 'retail');
+    // `'service'` items belong on this grid too. They are a real, backend-supported
+    // product type — `products_stock_query.rs:403` reads `is_service` and SKIPS stock
+    // deduction for them — and `ProductManagementScreen.tsx:684` lets a merchant create
+    // one. But nothing consumed them: this grid filtered on `'retail'` alone, the
+    // restaurant grid on `'restaurant'` alone, so a service item (an installation fee, an
+    // hourly rate) could be created and then never added to a sale in EITHER workspace.
+    // A type the UI can write but no screen can sell is the write-only shape.
+    let list = products.filter((p) => p.product_type === 'retail' || p.product_type === 'service');
     if (activeCategory) {
       const activeCatObj = categories.find((c) => c.id === activeCategory);
       list = list.filter(

@@ -572,8 +572,16 @@ export default function RestaurantMenu({
   // `!p.productType` went with them for the same reason: a persisted product can no
   // longer be null/absent, so that arm could only ever match an unpersisted object and
   // therefore decided nothing.
+  //
+  // `'service'` IS included here, deliberately. It is the third value of the closed set
+  // and it is backend-supported — `products_stock_query.rs:403` reads `is_service` and
+  // skips stock deduction — but it belonged to NO grid: this one took `'restaurant'`
+  // only and RetailPosScreen's took `'retail'` only, so a service item could be created
+  // from ProductManagementScreen and then never added to a sale in EITHER workspace.
+  // A corkage fee or a per-head charge is a restaurant line as much as a retail one,
+  // and the server already knows it has no stock to deduct.
   const isRestaurantProduct = useCallback(
-    (p: Product) => isRestaurantMenuItem(p),
+    (p: Product) => isRestaurantMenuItem(p) || p.productType === 'service',
     [],
   );
 

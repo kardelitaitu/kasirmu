@@ -39,6 +39,11 @@ export const retailProducts = [
     price_updated_at: '', product_type: 'retail' },
   { sku: 'SKU-004', name: 'Aqua 600ml', category: 'cat-drink', price: { minor_units: 3000, currency: 'IDR' }, barcode: '8991002100330', in_stock: true, stock_qty: 3, tax_rate_ids: [], created_at: '',
     price_updated_at: '', product_type: 'retail' },
+  // The third value of the closed product_type set. It carries no stock by definition
+  // (`products_stock_query.rs:403` skips deduction for `is_service`), which is exactly
+  // why `stock_qty: 0` here is CORRECT rather than a low-stock case.
+  { sku: 'SKU-SVC', name: 'Installation Fee', category: 'cat-food', price: { minor_units: 100000, currency: 'IDR' }, barcode: null, in_stock: true, stock_qty: 0, tax_rate_ids: [], created_at: '',
+    price_updated_at: '', product_type: 'service' },
 ];
 
 export const retailCategories = [
