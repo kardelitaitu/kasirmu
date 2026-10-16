@@ -313,14 +313,36 @@ describe('feature-source comments cite same-file lines that still hold', () => {
     //
     // The identifier heuristic above is a SIGNAL, not a test: it cannot distinguish
     // 'the citation drifted' from 'the comment paraphrases and names no identifier the
-    // line carries'. Measured at 2026-10-18 (round 131): 239 citations, 40 in range,
-    // 199 flagged. A sample of four flagged ones was checked by hand and ALL FOUR were
-    // genuinely drifted — `setActiveWorkspace(null)` cited at :363 landed on
-    // `tableNumber,`; `printed args` at :232 on `category: l.category,`;
-    // `setActiveOpenBillId(null)` at :993 on `});`; a restaurant gate at :395 on a
-    // `useState`. So the 199 is mostly real, which is exactly why it is NOT enforced:
-    // failing the suite on 199 pre-existing citations would make this guard noise, and
-    // the tree would learn to ignore it.
+    // line carries'.
+    //
+    // ⚠️ THE FLAGGED SET IS UNCLASSIFIED. DO NOT READ IT AS A DEFECT LIST, AND DO NOT
+    // TURN IT INTO A BURNDOWN TARGET.
+    //
+    // Two hand samples disagree, which is the whole finding:
+    //
+    //   * 2026-10-18 (round 131) checked four and all four were genuinely drifted —
+    //     `setActiveWorkspace(null)` cited at :363 on `tableNumber,`; `printed args` at
+    //     :232 on `category: l.category,`; `setActiveOpenBillId(null)` at :993 on `});`.
+    //   * 2026-10-18 (round 178) checked six more and all six were CORRECT. The cited
+    //     line was the opening line of the construct the comment names — PosScreen's
+    //     `handleAddProduct,` at :573, the first element of its destructuring, and
+    //     RetailPosScreen's `setProducts(` at :591 whose body is :592 — or one of the
+    //     sites the comment enumerates: RestaurantPaymentsScreen has exactly two
+    //     `originalsRef.current.drafts =` assignments, at :408 and :543, precisely the
+    //     'success path' and the 'finally' its comment claims.
+    //
+    // A sample of four does not set a rate, and neither does a sample of six. The class
+    // is real (round 131 proved it) and the signal is unreliable (round 178 proved it).
+    // Round 178 also measured HOW it misfires, which is the useful part: the heuristic
+    // reads a comment that DISCUSSES a foreign identifier as citing one. The printout
+    // itself carries the evidence — a citation is reported as reading
+    // `originalsRef.current.drafts = draftsRef.current.map(...)` and called unrelated
+    // in the same line of output. A line cannot be both the named construct and
+    // unrelated to it, and the checker cannot see that because it only asks whether the
+    // cited line mentions a token from the comment.
+    //
+    // So it is reported, never enforced. Failing the suite on ~150 pre-existing
+    // citations would make this guard noise and teach the tree to ignore it.
     //
     // ENFORCED is the subset that cannot be a paraphrase, because the cited line does
     // not exist as content at all: the range runs past EOF, or every line in it is
@@ -338,7 +360,6 @@ describe('feature-source comments cite same-file lines that still hold', () => {
         // b2247947e' — those were never meant to resolve here.
         const context = [lines[cite.at - 2] ?? '', lines[cite.at - 1] ?? ''].join(' ').toLowerCase();
         if (/\b(was|were|formerly|previously|used to|at tip)\b/.test(context)) continue;
-        const slice = lines.slice(cite.from - 1, cite.to);
         // PUNCTUATION-ONLY is the second no-false-positive class: no comment can be
         // citing a line whose whole content is `}` or `});`. Measured 2026-10-18
         // (round 132): 7 of the 154 heuristic candidates land on exactly that, and all
@@ -347,7 +368,11 @@ describe('feature-source comments cite same-file lines that still hold', () => {
           const s = lines.slice(from - 1, to);
           return s.length > 0 && s.every((l) => /^[\s)\]};,]*$/.test(l));
         };
-        if (cite.from > lines.length || slice.every((l) => l.trim() === '') || punctuationOnly(cite.from, cite.to)) {
+        // `slice.every(... === '')` used to sit here beside `punctuationOnly` and was
+        // fully subsumed by it: a blank line is whitespace, and `/^[\s)\];,]*$/` matches
+        // whitespace. Two spellings of one test, and the redundant one read as though it
+        // covered a class the other did not.
+        if (cite.from > lines.length || punctuationOnly(cite.from, cite.to)) {
           dangling.push(
             `${path.relative(ROOT, file).split(path.sep).join('/')}:${cite.at} cites :${cite.from}` +
               `${cite.to !== cite.from ? '-' + cite.to : ''} — ${cite.line}`,
