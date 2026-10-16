@@ -1588,12 +1588,36 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       // Guard: block all hotkeys while any aria-modal is open (e.g. WorkspaceSettingsModal)
       if (isAnyModalOpen()) return;
 
-      // Guard: block hotkeys while a sub-view has replaced the sale screen. See
-      // `saleViewVisible` above — this is the guard whose ABSENCE let F1 pay for an
-      // invisible cart.
-
-      // Escape: handled per-modal by useFocusTrap (Phase A gave all overlays
-      // aria-modal="true", so isAnyModalOpen() above already returned).
+      // ── Esc: the manifest's `close` action ──────────────────────────────
+      //
+      // `retailShortcuts.ts:54` declares `Esc → close` and the help overlay renders
+      // it with the label `retail-shortcut-close = Close modal / Options`, but
+      // NOTHING in this file consumed it — the only `case 'close':` in the tree is
+      // WarehouseConsole's. So the overlay advertised a key that did nothing. The
+      // parity suite could not see it: it asserts the overlay LISTS every manifest
+      // key and that the function bar derives the F-key labels, and its action list
+      // omits `close` — the label rendered, the behaviour was never exercised.
+      //
+      // Placed BEFORE both guards below, deliberately. The whole point of Esc is to
+      // get out: it must reach the sub-view exit (where `saleViewVisible` is false
+      // and every other key is inert) and it must not be swallowed by
+      // `isAnyOverlayOpen`, which is a guard named for the overlays Esc is meant to
+      // close. A modal that owns the keyboard keeps it — `isAnyModalOpen` above has
+      // already returned, and useFocusTrap handles the per-modal case.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // A sub-view is the outermost thing on screen, so it closes first.
+        if (showSalesHistory) { setShowSalesHistory(false); return; }
+        if (showTables) { setShowTables(false); return; }
+        if (showStockInquiry) { setShowStockInquiry(false); return; }
+        // Then the local overlays, in the order they stack.
+        if (showCreditList) { setShowCreditList(false); return; }
+        if (showQuickReturn) { setShowQuickReturn(false); return; }
+        if (showCustomerSearch) { setShowCustomerSearch(false); return; }
+        if (showHeldCartsList) { setShowHeldCartsList(false); return; }
+        if (showShortcuts) { setShowShortcuts(false); return; }
+        return;
+      }
 
       // Guard: block hotkeys while local overlays/dialogs are visible
       if (isAnyOverlayOpen()) return;
@@ -1642,7 +1666,13 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   // handleOpenSettings deliberately excluded — F10 removed (handled by AppShell).
-  }, [isAnyModalOpen, isAnyOverlayOpen, saleViewVisible, showPayment, total, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, showHeldCartList, heldCartId, activeShift, session, addToast, onNavigate, goToSubView]);
+  }, [isAnyModalOpen, isAnyOverlayOpen, saleViewVisible, showPayment, total, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, showHeldCartList, heldCartId, activeShift, session, addToast, onNavigate, goToSubView,
+    // Esc is the manifest's `close` action (see its block above). Each of these
+    // state SETTERS is read by that branch, so they belong here — the flags are
+    // already listed, and a setter omitted from a deps array is the stale-closure
+    // shape this file's other handlers already avoid.
+    setShowSalesHistory, setShowTables, setShowStockInquiry, setShowCreditList,
+    setShowQuickReturn, setShowCustomerSearch, setShowHeldCartsList, setShowShortcuts]);
 
   // ── Render ───────────────────────────────────────────────────
 

@@ -187,6 +187,50 @@ describe('rendered shortcut parity (KEY-09)', () => {
       expect(fnBar.textContent).toContain(entry!.key);
     }
   });
+
+  // ── `close` (Esc) — the advertised key that did nothing ─────────────
+  //
+  // The manifest declares `Esc → close` and the overlay renders it with the label
+  // "Close modal / Options", but nothing in RetailPosScreen consumed it: the only
+  // `case 'close':` in the tree is WarehouseConsole's. The suite above could not
+  // catch that because it checks the overlay LISTS every key and the function bar
+  // derives F-key labels — the label rendered, the behaviour was never exercised.
+  //
+  // These cases drive the key, which is what a cashier on a keyboard till does, and
+  // Esc is the only way out of a sub-view without the mouse.
+
+  it('Esc closes the sub-view it is pressed in (the advertised `close` action)', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // Reachability: F6 opens Sales History, and Esc must put the SALE view back.
+    await user.keyboard('{F6}');
+    await waitFor(() => expect(screen.getByTestId('sales-history-screen')).toBeInTheDocument());
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('sales-history-screen')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('Esc closes the shortcut overlay itself (the `Options` half of its label)', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // `?` opens the help overlay, and Esc must close it. Chosen over customer search
+    // because that modal is `aria-modal`, so `isAnyModalOpen()` already returned and
+    // useFocusTrap's own Escape handling owns it — asserting on it here would pin the
+    // trap, not this manifest entry.
+    await user.keyboard('?');
+    await waitFor(() => expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument());
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByText('Keyboard Shortcuts')).not.toBeInTheDocument(),
+    );
+  });
 });
 
 // ── Editable-target suppression (KEY-03) ───────────────────────────
