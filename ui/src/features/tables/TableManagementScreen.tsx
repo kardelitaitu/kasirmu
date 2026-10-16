@@ -1980,6 +1980,27 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                       {selected.status === 'occupied' ? 'Release' : selected.status === 'available' ? 'Mark Reserved' : 'Mark Available'}
                     </Localized>
                   </Button>
+                  {selected.status === 'available' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="tables-open-reserve-btn"
+                      onClick={() => {
+                        setReserveModal({
+                          table: selected,
+                          guestName: '',
+                          phone: '',
+                          partySize: selected.capacity || 4,
+                          time: '',
+                          notes: '',
+                        });
+                      }}
+                    >
+                      <Localized id="tables-reserve-table">
+                        <span>Reserve Table</span>
+                      </Localized>
+                    </Button>
+                  )}
                   {selected.status === 'cleaning' && (
                     <Button
                       variant="primary"
@@ -2013,27 +2034,6 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                         ))}
                       </div>
                     </div>
-                  )}
-                  {selected.status === 'available' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid="tables-open-reserve-btn"
-                      onClick={() => {
-                        setReserveModal({
-                          table: selected,
-                          guestName: '',
-                          phone: '',
-                          partySize: selected.capacity || 4,
-                          time: '',
-                          notes: '',
-                        });
-                      }}
-                    >
-                      <Localized id="tables-reserve-table">
-                        <span>Reserve Table</span>
-                      </Localized>
-                    </Button>
                   )}
                   {activeBill && printBillEnabled !== false && (
                     <Button
