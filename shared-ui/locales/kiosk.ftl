@@ -20,7 +20,7 @@ kiosk-load-error = Failed to load the menu
 kiosk-retry = Retry
 kiosk-price-volatility-title = Price changed recently
 kiosk-pay-success = Payment processed!
-# The kiosk does not take payment or record a sale — it collects the selection and
-# hands it to the counter. The old "Payment processed!" claim was not supported by any
-# sale write, so it is replaced rather than reworded.
-kiosk-order-submitted = Order sent to the counter — please pay there
+# This kiosk clears the selection and ends the session. It does NOT take payment, record a
+# sale, or notify anyone — so the copy must claim none of those. The first replacement,
+# "Order sent to the counter", overclaimed: nothing is sent anywhere.
+kiosk-order-cleared = Selection cleared — please order at the counter

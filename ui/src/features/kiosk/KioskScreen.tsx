@@ -176,15 +176,26 @@ export default function KioskScreen() {
             //
             // WIRING IT is a feature, not a fix — it needs a shift, a cart id, a tender
             // and the stock path — so it is deliberately NOT done here. What is done is
-            // the part that was actively harmful: the claim. The operator-facing copy
-            // now says the order was sent for payment at the counter, which is true of
-            // what this code actually does (it collects the selection and clears the
-            // cart), and leaves the collection step to staff.
+            // the part that was actively harmful: the claim.
+            //
+            // ⚠️ AND THE FIRST VERSION OF THIS FIX OVERCLAIMED TOO. It said "Order sent
+            // to the counter", which asserts the order REACHES the counter — but this
+            // handler sends nothing anywhere: no API call, no notification, no print. It
+            // clears local state. A customer would read "sent to the counter" and the
+            // staff would never have seen the order. The copy now states only what
+            // happens: the selection is cleared and the session ends.
+            //
+            // The backend's own description of this feature is "Locked-down full-screen
+            // self-service mode" (crates/kasirmu-core/src/features.rs:107) — a DISPLAY
+            // mode. It performs none of the seven operations a real sale path does
+            // (startSaleScoped, addLineScoped, completeSaleScoped, finalizeSale,
+            // printSalesReceipt, createKdsOrderFromSaleScoped, openCashDrawerScoped), so
+            // the honest copy is the one that claims none of them.
             //
             // The guard in KioskScreen.test.tsx fails if a success claim reappears
             // without a recording call, so the wiring cannot land half-done. */}
         <button type="button" className="kiosk-checkout-pay" onClick={() => {
-          addToast({ message: l10n.getString('kiosk-order-submitted'), type: 'info' });
+          addToast({ message: l10n.getString('kiosk-order-cleared'), type: 'info' });
           setCart([]);
           setCheckout(false);
         }} aria-label={l10n.getString('kiosk-pay')}>

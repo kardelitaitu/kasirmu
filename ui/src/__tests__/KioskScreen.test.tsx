@@ -199,15 +199,34 @@ describe('KioskScreen', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/[^\n]*/g, '');
 
-    const claimsSuccess = /kiosk-pay-success/.test(code);
-    const recordsSale =
-      /completeSaleScoped|startSaleScoped|finalizeSale|from '@\/api\/sales'/.test(code) ||
+    // ANY claim that the selection reached a system, not just the original one.
+    //
+    // The first version of this guard looked for `kiosk-pay-success` alone, so when
+    // the replacement copy said "Order sent to the counter" it stayed GREEN — while
+    // sending nothing anywhere. A guard keyed to one string cannot see the next
+    // wording. This one matches the CLAIM SHAPE (paid / processed / recorded / sent /
+    // submitted), so a third overclaim fails here too.
+    const CLAIM = new RegExp(
+      'kiosk-(pay-success|order-submitted|order-sent|payment-processed)|'
+      + "\\b(processed|paid|recorded|sent|submitted)\\b",
+      'i',
+    );
+    // The toast message keys this screen actually raises from the Pay handler.
+    const payAt = code.indexOf('kiosk-checkout-pay');
+    const handler = code.slice(payAt, payAt + 400);
+    const claimsSuccess = CLAIM.test(handler);
+    const performsAWrite =
+      /completeSaleScoped|startSaleScoped|finalizeSale|printSalesReceipt|createKdsOrderFromSaleScoped|openCashDrawerScoped/.test(
+        code,
+      ) ||
+      /from '@\/api\/sales'/.test(code) ||
       /import\(/.test(code);
 
     expect(
-      claimsSuccess && !recordsSale,
-      'the kiosk tells the customer "Payment processed!" while calling no sales API, '
-      + 'so no sale is recorded — either wire the sale or stop claiming it was paid',
+      claimsSuccess && !performsAWrite,
+      'the kiosk pay handler claims an outcome (paid/processed/recorded/sent/submitted) '
+      + 'while performing none of the seven operations a sale path does — either wire '
+      + 'one or state only what happens',
     ).toBe(false);
   });
 
