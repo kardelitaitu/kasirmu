@@ -1253,8 +1253,30 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         //
         // A resumed tab would therefore show 'Sent' for portions the kitchen never
         // received, and the kitchen ticket would disagree with the saved bill.
+        //
+        // ⚠️ THIRD DEFECT, FOUND BY VERIFYING THIS FIX IN SHIPPED FORM: the payload
+        // maps `lines` — the closure captured BEFORE the dispatch await at :1169 — so
+        // it carried the PRE-send `dispatchedQty`. Live state was corrected above and
+        // the saved record was not:
+        //
+        //   cart: A qty 2, dispatchedQty 0
+        //   Send  -> setLines advances A to 2   (live state correct)
+        //   Hold  -> cartData recorded A as 0
+        //   Resume-> A reads as NOT sent, though the kitchen has it
+        //
+        // The opposite error from the over-record above, same root cause.
+        //
+        // FIXED BY APPLYING THE SAME ADVANCE THE DISPATCH APPLIED, to the same array it
+        // applied it to. `sentById` is already in scope and the dispatch's own write
+        // resolved against committed state, so this reproduces it exactly without a
+        // second await — and stays a pure function of the values the send used.
+        const persistedLines = lines.map((l) => {
+          const sentQty = sentById.get(l.id);
+          if (sentQty === undefined) return l;
+          return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
+        });
         const cartData = JSON.stringify({
-          lines: lines.map((l) => ({
+          lines: persistedLines.map((l) => ({
             sku: l.sku,
             name: l.name,
             qty: l.qty,

@@ -210,7 +210,15 @@ describe('the dispatch write resolves against committed state', () => {
     const src = readFileSync(resolve(__dirname, '../features/sales/PosScreen.tsx'), 'utf-8');
     const at = src.indexOf('const handleSendToKitchen');
     expect(at, 'handleSendToKitchen moved — re-point this guard').toBeGreaterThan(0);
-    const body = src.slice(at, at + 4200);
+    // A CHARACTER WINDOW THAT HAD SILENTLY GONE BLIND.
+    //
+    // This was `at + 4200`, sized before the dispatch fixes added their own comments
+    // to the same function. The comments are STRIPPED below but the window is taken
+    // FIRST, so the slice stopped before `const cartData` — and the assertion further
+    // down, which reads that block, had nothing to match and passed vacuously.
+    // Widened to cover the whole callback, and the assertion below now FAILS if the
+    // block is not inside the window at all.
+    const body = src.slice(at, at + 9000);
 
     // Strip comments first: the code carries a long explanation of this exact fix,
     // so a naive text match would pass on the PROSE.
@@ -243,6 +251,38 @@ describe('the dispatch write resolves against committed state', () => {
     //
     // The source guard is the only thing that reads the COMPONENT, which is why this
     // belongs here and not in the cases above.
+    // ⚠️ AND THE PERSISTED PAYLOAD MUST NOT READ THE PRE-AWAIT CLOSURE.
+    //
+    // `handleSendToKitchen` awaits the dispatch (:1169) and then writes the hold's
+    // `cartData` (:1256-1277) by mapping `lines` — the render closure captured BEFORE
+    // that await. The `setLines` write was fixed to resolve against committed state,
+    // so LIVE state is right; the persisted record then saves the STALE
+    // `dispatchedQty`, which is the pre-send value.
+    //
+    //   cart: A qty 2, dispatchedQty 0
+    //   Send to kitchen -> setLines advances A to 2   (live state correct)
+    //   Save tab       -> cartData records A dispatchedQty 0
+    //   Resume tab     -> A shows as NOT sent, though the kitchen has it
+    //
+    // The opposite error from the over-record this file was written for, and the same
+    // root cause: reading a snapshot instead of the committed value.
+    //
+    // WHY THE SIBLING HOOK IS NOT THE SAME CASE: `usePosHeldCarts` recomputes
+    // `linesToSave` as `dispatchedQty: l.qty` after its own dispatch (:226-228), so
+    // its record INTENDS to mark what it just sent and is internally consistent.
+    // `PosScreen` copies `l.dispatchedQty` from the stale array and never reconciles.
+    // The window must actually cover the persist block, or the assertion below is
+    // vacuous — which is what the old 4200-char bound had become.
+    expect(
+      code.includes('const cartData'),
+      'the persist block is outside the scanned window — widen it rather than letting '
+      + 'this guard pass on an empty match',
+    ).toBe(true);
+    expect(
+      /cartData[\s\S]{0,400}?lines:\s*lines\.map/.test(code),
+      'the hold payload maps the pre-await closure, so a tab saved right after a '
+      + 'kitchen send records the PRE-send dispatchedQty',
+    ).toBe(false);
     expect(
       /sentBy(Id|LineId)/.test(code) && !/sentBySku/.test(code),
       'the dispatch record must key on the line id — a SKU-keyed map lets two lines '
