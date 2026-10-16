@@ -127,6 +127,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
 | release | [166 drifted citations: the population round 173 asked for — 2026-10-18](audits/2026-10-18-166-drifted-citations-measured.md) | — |
 | release | [A button that only worked by accident — 2026-10-18](audits/2026-10-18-a-button-that-worked-by-accident.md) | — |
+| quality | [134 lines of cart keyboard logic, and a comment claiming it was tested — 2026-10-18](audits/2026-10-18-a-comment-that-claimed-its-own-coverage.md) | — |
 | release | [A cross-file citation the line checker cannot see — 2026-10-18](audits/2026-10-18-a-cross-file-citation-with-no-checker.md) | — |
 | general | [A dead button nothing was rescuing — 2026-10-18](audits/2026-10-18-a-dead-button-nothing-rescued.md) | — |
 | general | [A dead-control sweep that had to be made honest first — 2026-10-18](audits/2026-10-18-a-dead-control-sweep-made-honest.md) | — |
