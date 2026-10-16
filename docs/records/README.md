@@ -273,6 +273,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | general | [The once-queue survives clearAllMocks() (round 99)](audits/once-queue-survives-clear.md) | — |
 | release | [One stale test citation in the whole tree, and the nineteen that are deliberate (round 176)](audits/one-stale-citation-in-489.md) | — |
+| general | [The <form onSubmit> re-entry guard: the class is closed](audits/onsubmit-reentry-guard-triage-closed.md) | — |
 | general | [Round 294's guard, proven in a browser — and the two states it took to get there (round 296)](audits/open-tab-shift-close-proven-in-browser.md) | — |
 | payments | [The payments F4 latch, and a red suite that was not mine (round 227)](audits/payments-f4-latch.md) | — |
 | payments | [Round 156's third finding was a false alarm, and it is now pinned (round 157)](audits/payments-save-location-race-pinned.md) | — |
