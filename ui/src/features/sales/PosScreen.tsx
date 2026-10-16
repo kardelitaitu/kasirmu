@@ -1195,10 +1195,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // copy could be correct while this write stayed wrong. Resolving inside the
       // updater against the COMMITTED state makes the component satisfy the same
       // contract the pure functions encode.
-      const sentBySku = new Map(deltaLines.map((d) => [d.sku, d.qty]));
+      // ⚠️ KEYED BY `id`, NOT `sku`.
+      //
+      // One SKU can occupy TWO lines: `addProduct` merges only lines agreeing on
+      // course, coursing status, note AND modifiers (usePosState.ts:94-102), so the
+      // same dish as a main and as a dessert is two lines sharing one SKU. A SKU-keyed
+      // map collapses them and applies one line's sent quantity to the OTHER —
+      // measured: A (qty 2, dispatched 0) in the delta, B (qty 1, dispatched 1) not,
+      // and B came out at dispatchedQty 3 of 1.
+      //
+      // A dispatchedQty ABOVE qty is the 'Sent' badge lying in its worst form, and the
+      // tab below persists the value, so the corruption outlives the session.
+      const sentById = new Map(deltaLines.map((d) => [d.id, d.qty]));
       setLines((prev) =>
         prev.map((l) => {
-          const sentQty = sentBySku.get(l.sku);
+          const sentQty = sentById.get(l.id);
           if (sentQty === undefined) return l;
           return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
         }),

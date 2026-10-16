@@ -32,6 +32,12 @@ import { resolve } from 'node:path';
  * derived from the lines that were ACTUALLY sent, not from every line present.
  */
 interface Line {
+  /**
+   * The LINE identity. `sku` cannot serve: `addProduct` merges only lines that
+   * agree on course, coursing status, note AND modifiers (usePosState.ts:94-102), so
+   * the same dish as a main and as a dessert is TWO lines sharing ONE sku.
+   */
+  id: string;
   sku: string;
   qty: number;
   dispatchedQty?: number;
@@ -50,9 +56,24 @@ function markAllSentCurrent(lines: Line[]): Line[] {
 
 /** What the fix must do: advance only the lines the delta carried. */
 function markSentByDelta(lines: Line[], delta: Line[]): Line[] {
-  const sent = new Map(delta.map((d) => [d.sku, d.qty]));
+  // ⚠️ KEYED BY `id`, NOT `sku`.
+  //
+  // The first version of this helper used the SKU, and so did the component it
+  // mirrors. That is wrong for a reachable cart: `addProduct` keeps two lines apart
+  // when they differ in course, coursing status, note or modifiers (usePosState.ts:94-102),
+  // so one dish ordered as a main AND as a dessert is two lines with one SKU. A
+  // SKU-keyed map collapses them, and `prev.map` then applies the sent quantity to
+  // EVERY matching line — including a sibling that was never sent:
+  //
+  //   A (main):    qty 2, dispatched 0  -> in the delta, qty 2
+  //   B (dessert): qty 1, dispatched 1  -> NOT in the delta
+  //   sentBySku = { SKU: 2 }  =>  B becomes dispatched 3 of 1
+  //
+  // A dispatchedQty ABOVE qty is the badge lying in its worst form, and the tab
+  // persists that value, so the corruption outlives the session.
+  const sent = new Map(delta.map((d) => [d.id, d.qty]));
   return lines.map((l) => {
-    const sentQty = sent.get(l.sku);
+    const sentQty = sent.get(l.id);
     if (sentQty === undefined) return l;
     return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
   });
@@ -61,25 +82,25 @@ function markSentByDelta(lines: Line[], delta: Line[]): Line[] {
 describe('send-to-kitchen dispatch record', () => {
   it('sends only the undispatched remainder', () => {
     const lines: Line[] = [
-      { sku: 'A', qty: 2, dispatchedQty: 1 },
-      { sku: 'B', qty: 1 },
-      { sku: 'C', qty: 3, dispatchedQty: 3 },
+      { id: 'A', sku: 'A', qty: 2, dispatchedQty: 1 },
+      { id: 'B', sku: 'B', qty: 1 },
+      { id: 'C', sku: 'C', qty: 3, dispatchedQty: 3 },
     ];
     expect(dispatchDelta(lines)).toEqual([
-      { sku: 'A', qty: 1, dispatchedQty: 1 },
-      { sku: 'B', qty: 1 },
+      { id: 'A', sku: 'A', qty: 1, dispatchedQty: 1 },
+      { id: 'B', sku: 'B', qty: 1 },
     ]);
   });
 
   it('a quantity raised DURING the send is not marked sent', () => {
     // The cart as the operator left it when Send was pressed.
-    const atPress: Line[] = [{ sku: 'A', qty: 2 }];
+    const atPress: Line[] = [{ id: 'A', sku: 'A', qty: 2 }];
     const delta = dispatchDelta(atPress);
-    expect(delta).toEqual([{ sku: 'A', qty: 2 }]);
+    expect(delta).toEqual([{ id: 'A', sku: 'A', qty: 2 }]);
 
     // While the send is in flight the operator adds one more. `atPress` is the
     // closure the handler still holds; `live` is what the cart now shows.
-    const live: Line[] = [{ sku: 'A', qty: 3 }];
+    const live: Line[] = [{ id: 'A', sku: 'A', qty: 3 }];
 
     // CURRENT: every line in the closure is marked sent — and the closure's qty is
     // 2, so the record claims 2 of 3 sent. Correct by luck here.
@@ -96,7 +117,7 @@ describe('send-to-kitchen dispatch record', () => {
   });
 
   it('a line ADDED during the send is dropped from the record entirely', () => {
-    const atPress: Line[] = [{ sku: 'A', qty: 1 }];
+    const atPress: Line[] = [{ id: 'A', sku: 'A', qty: 1 }];
     const current = markAllSentCurrent(atPress);
 
     // The added line never existed in the closure, so it is absent from the
@@ -109,10 +130,52 @@ describe('send-to-kitchen dispatch record', () => {
     expect(fixed.map((l) => l.sku)).toEqual(['A']);
   });
 
+  // ── Two lines, one SKU: the record must key on the LINE ────────────────
+  //
+  // Reachable, and the reason this file's fixture now carries an `id`: `addProduct`
+  // merges only lines agreeing on course, coursing status, note AND modifiers
+  // (usePosState.ts:94-102), so the same dish as a MAIN and as a DESSERT is two lines
+  // with one SKU. Both the component and this helper keyed the sent-map by SKU, which
+  // collapses them and then applies one line's quantity to the other:
+  //
+  //   A (main):    qty 2, dispatched 0  -> in the delta with qty 2
+  //   B (dessert): qty 1, dispatched 1  -> nothing outstanding, NOT in the delta
+  //
+  //   SKU-keyed:  sent = { S: 2 }  =>  B: 1 + 2 = 3 on a line of qty 1
+  //   id-keyed:   sent = { A: 2 }  =>  B untouched at 1
+  //
+  // A dispatchedQty ABOVE qty is the 'Sent' badge lying in its worst form, and the
+  // held tab persists the value (the dispatch fix made it persist the real one), so
+  // the corruption outlives the session.
+  it('does not apply one line\'s send to a sibling sharing its SKU', () => {
+    const lines: Line[] = [
+      { id: 'A', sku: 'SAME', qty: 2 },
+      { id: 'B', sku: 'SAME', qty: 1, dispatchedQty: 1 },
+    ];
+
+    const delta = dispatchDelta(lines);
+    // Only A has anything outstanding.
+    expect(delta.map((d) => [d.id, d.qty])).toEqual([['A', 2]]);
+
+    const fixed = markSentByDelta(lines, delta);
+    expect(fixed[0]!.dispatchedQty, 'A was fully sent').toBe(2);
+    expect(
+      fixed[1]!.dispatchedQty,
+      'B was NOT sent — a SKU-keyed map would have made it 3 of 1',
+    ).toBe(1);
+    // And the invariant that makes the badge trustworthy.
+    for (const l of fixed) {
+      expect(
+        (l.dispatchedQty ?? 0) <= l.qty,
+        `${l.id}: dispatchedQty must never exceed qty`,
+      ).toBe(true);
+    }
+  });
+
   it('the delta-derived record matches what was actually sent', () => {
     const lines: Line[] = [
-      { sku: 'A', qty: 2, dispatchedQty: 1 },
-      { sku: 'B', qty: 1 },
+      { id: 'A', sku: 'A', qty: 2, dispatchedQty: 1 },
+      { id: 'B', sku: 'B', qty: 1 },
     ];
     const delta = dispatchDelta(lines);
     const fixed = markSentByDelta(lines, delta);
@@ -169,5 +232,21 @@ describe('the dispatch write resolves against committed state', () => {
       /const updatedLines = lines\.map/.test(code),
       'updatedLines is still derived from the render closure',
     ).toBe(false);
+
+    // ⚠️ AND THE SENT-MAP MUST KEY ON THE LINE, NOT THE SKU.
+    //
+    // The helper in this file was SKU-keyed, and so was the component it mirrors — so
+    // the copy and the code were WRONG IN THE SAME WAY and the pure-logic cases passed.
+    // Only re-keying the helper by `id` exposed it. A cart can hold two lines with one
+    // SKU (addProduct separates them on course/status/note/modifiers), and a SKU-keyed
+    // map applies one line's send to its sibling, driving dispatchedQty above qty.
+    //
+    // The source guard is the only thing that reads the COMPONENT, which is why this
+    // belongs here and not in the cases above.
+    expect(
+      /sentBy(Id|LineId)/.test(code) && !/sentBySku/.test(code),
+      'the dispatch record must key on the line id — a SKU-keyed map lets two lines '
+      + 'sharing one SKU corrupt each other\'s dispatchedQty',
+    ).toBe(true);
   });
 });
