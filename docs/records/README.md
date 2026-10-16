@@ -141,6 +141,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The EDC wait window: a suspected gap that the code does not have](audits/2026-10-18-edc-wait-window-complete-guard.md) | — |
 | general | [Enumerating the schema, and a statutory sequence that advanced twice — 2026-10-18](audits/2026-10-18-enumerating-and-the-statutory-sequence.md) | — |
 | general | [Two gates that disagreed about what "fireable" means — 2026-10-18](audits/2026-10-18-fire-all-gate-disagreed.md) | — |
+| release | [Five drifted citations re-pointed, and the checker cannot see the fix — 2026-10-18](audits/2026-10-18-five-citations-repaired-and-a-blind-checker.md) | — |
 | general | [A revision counter that only moves forward - 2026-10-18](audits/2026-10-18-forward-only-counter.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [Four refutations, one real defect, and a regression my own test caught — 2026-10-18](audits/2026-10-18-four-refutations-and-a-missing-import.md) | — |
