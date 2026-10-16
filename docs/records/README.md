@@ -138,6 +138,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The kiosk handed customer A's order to customer B — 2026-10-18](audits/2026-10-18-kiosk-leaked-the-order.md) | — |
 | general | [My own fix overclaimed, one step softer — 2026-10-18](audits/2026-10-18-my-own-overclaim.md) | — |
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
+| payments | [A double-tap on 'Generate a new QR' minted a second Midtrans charge](audits/2026-10-18-qris-auto-reissue-double-charge.md) | — |
 | money | [The refund money path verified across three layers — 2026-10-18](audits/2026-10-18-refund-money-verified.md) | — |
 | general | [Executed, not scanned — and the splice that ate a describe block — 2026-10-18](audits/2026-10-18-restaurant-sale-executed.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
