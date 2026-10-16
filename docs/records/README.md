@@ -201,6 +201,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | inventory | [The money arm was a dead end; the stock arm was not - 2026-10-18](audits/2026-10-18-stock-adjust-double-and-checker-self-test.md) | — |
 | general | [A switch onto an occupied store deleted the cart on screen — 2026-10-18](audits/2026-10-18-switch-onto-occupied-store-deleted-the-cart.md) | — |
 | general | [The :303 assertion chases a class that no longer exists — 2026-10-18](audits/2026-10-18-the-303-assertion-chases-a-removed-class.md) | — |
+| sync | [The clearing is synchronous with the hash write — 2026-10-18](audits/2026-10-18-the-clearing-is-synchronous-with-the-hash-write.md) | — |
 | release | [The comment guarding a credentials overwrite cited the wrong line, twice](audits/2026-10-18-the-credential-comment-cited-a-lie.md) | — |
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
 | general | [A whole-tree sweep of the E2E selectors: one dead half, no breakage — 2026-10-18](audits/2026-10-18-the-e2e-selector-sweep-found-one-dead-half.md) | — |
