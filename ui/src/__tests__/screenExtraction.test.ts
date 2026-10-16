@@ -1961,6 +1961,13 @@ const SCREENS: ScreenEntry[] = [
       'restaurant/components/MenuPreferencesMenu.tsx',
       'restaurant/components/RestaurantSidebar.tsx',
       'restaurant/components/MenuSearchBar.tsx',
+      // The shortcut-help panel (round 93). The sidebar OWNS the sheet's rules for it
+      // and renders only the wrapper `restaurant-shortcuts-help`; the six inner
+      // names are spelled in this child, which is where they actually live. Without
+      // this cite the walk grades them dead — the classes are reachable, the walker
+      // simply never opens the file that spells them. Cited rather than prefix-excused
+      // so a genuinely unused one still reads dead.
+      'restaurant/components/RestaurantShortcutsHelp.tsx',
     ],
     // Cited, not muted: the sr-only span the menu card's "Add" label moved into
     // is styled by theme/components.css:1492, which both entry points
