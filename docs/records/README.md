@@ -167,6 +167,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Resuming a held cart left it in the list it was resumed from](audits/2026-10-18-resume-kept-the-held-row.md) | — |
 | general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
 | general | [Round 99's own comparison, one field further — 2026-10-18](audits/2026-10-18-round-99s-comparison-one-field-short.md) | — |
+| general | [Locked the sales-history scroll to the bar; no single declaration fixes it — 2026-10-18](audits/2026-10-18-sales-history-scroll-isolated-not-fixed.md) | — |
 | general | [Sales history scrolls the page sideways at 480px — 2026-10-18](audits/2026-10-18-sales-history-scrolls-the-page-sideways.md) | — |
 | release | [Sixteen same-file line citations pointed at blank lines, and nothing checked them](audits/2026-10-18-same-file-citations-drift.md) | — |
 | general | [Scoping the cart key closed a leak and opened a stranded ticket — 2026-10-18](audits/2026-10-18-scoped-cart-key-strands-a-ticket.md) | — |
