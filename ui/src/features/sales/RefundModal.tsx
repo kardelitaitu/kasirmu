@@ -45,14 +45,33 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
     });
   }, []);
 
-  const updateQty = useCallback((lineId: string, qty: number) => {
+  /**
+   * Step one line's refunded quantity by `delta`, resolving the sum INSIDE the
+   * updater so it reads the value the previous step actually committed.
+   *
+   * WHY A DELTA AND NOT AN ABSOLUTE `qty`: the stepper used to call
+   * `changeQty(line.id, selectedQty + 1)` where `selectedQty` came from the render
+   * snapshot (`selectedLines[line.id] ?? 0`, :257). Two clicks landing in the same
+   * React batch both closed over that one snapshot, both computed the same sum, and
+   * `{ ...prev, [lineId]: qty }` wrote it twice -- the second tap vanished.
+   *
+   * THE MONEY IS WHY THIS MATTERS MORE THAN THE STEPPER LOOKING RIGHT: the refunded
+   * amount is derived from `selectedQty` itself (:295), so a lost tap refunds a
+   * CASH amount smaller than the operator asked for. The `disabled` guard at the
+   * ceiling can only catch a tap at the maximum; every tap below it is exposed.
+   *
+   * Same defect and same remedy as the retail till, the shared POS cart and the KDS
+   * picker (rounds 89-91).
+   */
+  const changeQty = useCallback((lineId: string, delta: number) => {
     setSelectedLines((prev) => {
-      if (qty <= 0) {
-        const next = { ...prev };
-        delete next[lineId];
-        return next;
+      const next = (prev[lineId] ?? 0) + delta;
+      if (next <= 0) {
+        const cleared = { ...prev };
+        delete cleared[lineId];
+        return cleared;
       }
-      return { ...prev, [lineId]: qty };
+      return { ...prev, [lineId]: next };
     });
   }, []);
 
@@ -275,7 +294,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                           <button
                             type="button"
                             className="refund-qty-btn"
-                            onClick={() => updateQty(line.id, selectedQty - 1)}
+                            onClick={() => changeQty(line.id, -1)}
                             disabled={selectedQty <= 1}
                             aria-label={l10n.getString('decrease-qty-aria')}
                           >−</button>
@@ -285,7 +304,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                           <button
                             type="button"
                             className="refund-qty-btn"
-                            onClick={() => updateQty(line.id, selectedQty + 1)}
+                            onClick={() => changeQty(line.id, 1)}
                             disabled={selectedQty >= (line.qty ?? 1)}
                             aria-label={l10n.getString('increase-qty-aria')}
                           >+</button>
