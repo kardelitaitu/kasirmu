@@ -143,6 +143,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The SKU-keying class is clean, verified against the backend contract — 2026-10-18](audits/2026-10-18-sku-keying-is-clean.md) | — |
 | general | [The split's select-all tap cleared the line — 2026-10-18](audits/2026-10-18-split-tap-cleared-the-line.md) | — |
 | general | [Stale absolute quantity writes — a tree-wide sweep, and one more money defect — 2026-10-18](audits/2026-10-18-stale-absolute-qty-sweep.md) | — |
+| general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Two table-numbering defects, one of them mine — 2026-10-18](audits/2026-10-18-two-table-numbering-defects.md) | — |
 | general | [An unbounded quantity field, and an Escape that ate the sidebar — 2026-10-18](audits/2026-10-18-unbounded-qty-and-escape-layering.md) | — |
 | general | [Undo put the line back on top, and a wrong note of my own — 2026-10-18](audits/2026-10-18-undo-position-loss.md) | — |
