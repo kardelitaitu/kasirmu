@@ -337,6 +337,18 @@ export default function CustomerManagementScreen() {
 
   // ── Save / Update ──────────────────────────────────────────────
 
+  // Re-entry guard for the create/update write. The handler awaits an IPC round trip and
+  // the only thing stopping a second submit is the `saving` flag, which React commits on
+  // its NEXT render -- after the second dispatch of a real double tap. MEASURED: two
+  // clicks in one act() batch both reach this handler
+  // (CustomerManagementScreen.test.tsx 'creates a customer once for a double submit').
+  //
+  // The server does not backstop the create: core `create_customer` mints a fresh
+  // `uuid::Uuid::now_v7()` per call (crates/kasirmu-core/src/db/customers.rs:228) and INSERTs
+  // unconditionally, with no unique constraint on name -- so a double submit stores TWO
+  // customers with the same name and loyalty ledger. A ref, not the state, because only
+  // the ref is authoritative at the moment the second submit runs.
+  const savePendingRef = useRef(false);
   const handleSave = useCallback(async () => {
     // CUST-09: validate every field before any IPC round trip — the modal
     // stays open and the offending field is flagged with aria-invalid.
@@ -351,6 +363,8 @@ export default function CustomerManagementScreen() {
       return;
     }
 
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -376,6 +390,7 @@ export default function CustomerManagementScreen() {
       setError(requiredLocalized(l10n, 'customer-mgmt-error-save-failed'));
       void err;
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, editingId, closeModal, load, sessionToken, l10n]);
