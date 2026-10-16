@@ -148,6 +148,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [The cash-preset chips write to a rail parameter nothing reads (round 120)](audits/cash-preset-chips-unread.md) | — |
 | payments | [The cash presets are now read: rounds 120-121's inventory gets its first repair (round 122)](audits/cash-presets-wired.md) | — |
 | general | [Sampling the class-selector pattern across the suite (round 200)](audits/class-selector-pattern-sampled.md) | — |
+| general | [Enter during an in-flight shift close issued a SECOND close](audits/close-shift-enter-during-in-flight-close.md) | — |
 | general | [Hunting round 201's closure-after-await shape across the UI (round 202)](audits/closure-after-await-hunt.md) | — |
 | general | [The checker round 202 said a grep could not be (round 203)](audits/closure-checker-built.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
