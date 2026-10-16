@@ -519,6 +519,16 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // A store-switching test mutates these, so later cases need them restored.
     wsState.sessionToken = 'mock-session-token';
     wsState.activeWorkspace = 'store-pos';
+    // The three mocks the open-bill cases override, reset to the factory's own
+    // defaults for the reason the block above (:488-516) records: a `vi.fn()` from a
+    // `vi.mock` factory keeps its IMPLEMENTATION across cases, and a queued
+    // `mockResolvedValueOnce` survives even that. Measured: without these, this file
+    // alone is green but the FULL suite gains a fifth failure in
+    // TableManagementScreen.test.tsx ('does not clobber a section change that lands
+    // during a pending mutation'), which disappears when this file is removed.
+    vi.mocked(salesApi.listOpenBillsScoped).mockReset().mockResolvedValue([]);
+    vi.mocked(salesApi.getHeldCartScoped).mockReset().mockResolvedValue(null);
+    vi.mocked(salesApi.printSalesReceipt).mockReset().mockResolvedValue({ printed: true });
   });
 
   afterEach(() => {
@@ -950,6 +960,115 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         'refresh raced the write, so the list reflects pre-write state and the paid ' +
         'tab is invisible',
     ).toBe(readsBefore + 1);
+  }, 20000);
+
+  // ── A double Send-to-Kitchen must not dispatch twice ─────────────────────
+  //
+  // `handleSendToKitchen` (PosScreen.tsx:1188) has no re-entry guard: its early
+  // returns cover session, lines and the undispatched delta, but nothing about
+  // in-flight state. `sendingToKitchen` is set at :1200 and read ONLY to disable
+  // the button (CartActionBar.tsx:220) — the exact shape rounds 124 and 126 found
+  // and fixed on the auto-QR and open-bill paths, and a DOM `disabled` cannot help
+  // because React does not re-render between two clicks inside one await.
+  //
+  // Two entry points reach it unguarded: the button itself, and the `send-kitchen`
+  // hotkey (PosScreen.tsx:1835), which bypasses the DOM gate entirely. Its comment at
+  // :1811 calls these handlers 'self-guarding'; on the in-flight axis this one is not.
+  //
+  // A double dispatch sends the KITCHEN two tickets for one order — the food is
+  // cooked twice and the delta bookkeeping (`dispatchedQty`) is advanced against a
+  // state the second call already read.
+  it('dispatches once when Send to Kitchen is fired twice in one pass', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    wsState.scopeTypeKey = 'restaurant-pos';
+
+    // The button only renders with a table or an active tab, so resume the tab —
+    // the same setup the round-129 paid-tab case uses.
+    vi.mocked(salesApi.listOpenBillsScoped).mockResolvedValue([
+      { id: 'bill-1', label: 'Meja 3', item_count: 1, total_minor: 700, currency: 'USD',
+        created_at: '2026-01-01T00:00:00Z', bill_type: 'open_bill', customer_name: null },
+    ] as never);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
+      id: 'bill-1', label: 'Meja 3', item_count: 1, total_minor: 700, currency: 'USD',
+      created_at: '2026-01-01T00:00:00Z', bill_type: 'open_bill', customer_name: null,
+      deduction_location_id: null,
+      cart_data: JSON.stringify({ lines: [{ sku: 'ITEM-001', name: 'Test Item', qty: 1, unit_price: { minor_units: 700, currency: 'USD' } }] }),
+    } as never);
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001', name: 'Test Item', category: 'Test', price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001', in_stock: true, stock_qty: 100, tax_rate_ids: [], product_type: 'restaurant',
+      created_at: '', price_updated_at: '',
+    })) as never);
+
+    const user = userEvent.setup();
+    await renderPosScreenWithShift();
+
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-testid="cart-panel-line-item"]').length).toBe(1);
+    });
+
+    // Resume so `activeOpenBillId` is set — the other precondition for the button.
+    await user.click(screen.getByRole('button', { name: /view open bills/i }));
+    await waitFor(() => expect(document.querySelector('.pos-held-list-modal')).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: /resume/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /update open tab/i })).not.toBeNull());
+
+    // Hold the dispatch open so both presses land while it is in flight.
+    let release: ((v: unknown) => void) | undefined;
+    const held = new Promise<unknown>((resolve) => { release = resolve; });
+    // The dispatch command is `printSalesReceipt` (a kitchen/bar chit per the
+    // food/beverage split, PosScreen.tsx:1148), not the KDS order create — that one
+    // belongs to PaymentModal's settle path.
+    vi.mocked(salesApi.printSalesReceipt).mockImplementation(async () => held as never);
+
+    // The HOTKEY path, not the button: `send-kitchen` (PosScreen.tsx:1835) calls
+    // `handleSendToKitchen()` directly and never touches the DOM, so the button's
+    // `disabled` cannot reach it. Its own comment at :1811 calls these handlers
+    // 'self-guarding'; on the in-flight axis this one is not, which is why the
+    // button path above can be green while this one is not.
+    // Reachability first: the button must be mounted and ENABLED before the chord, or
+    // the presses below would be no-ops and the assertion would pass on zero dispatch.
+    const sendBtn = screen.getByTestId('pos-cart-send-kitchen-btn');
+    expect(
+      (sendBtn as HTMLButtonElement).disabled,
+      'the Send button never enabled, so the double-dispatch cannot be reached',
+    ).toBe(false);
+
+    // Two chords with no await between them — a repeated keypress on a held-down
+    // Shift, or a double-tap on a tablet's chord row. `useRestaurantShortcuts`
+    // (:42-58) has no cooldown and calls the handler directly.
+    await user.keyboard('{Shift>}K{/Shift}');
+    await user.keyboard('{Shift>}K{/Shift}');
+    await act(async () => { await Promise.resolve(); });
+
+    expect(
+      vi.mocked(salesApi.printSalesReceipt).mock.calls.length,
+      'two Send chords in one round-trip dispatched twice — the kitchen cooks the ' +
+        'order twice and the dispatchedQty bookkeeping is advanced against a state ' +
+        'the second call had already read',
+    ).toBe(1);
+    // The guard that makes it one, so the case states it rather than just passing:
+    // the SECOND chord arrives while the first dispatch is still in flight, and
+    // `handleSendToKitchen` recomputes its delta from `lines` on every entry
+    // (PosScreen.tsx:1195-1198). So the protection is the empty-delta early return,
+    // not the button's `disabled` (the hotkey never touches the DOM) and not a
+    // re-entry ref.
+    expect(
+      (screen.getByTestId('pos-cart-send-kitchen-btn') as HTMLButtonElement).disabled,
+      'the in-flight state is not reflected in the button while the delta guard is ' +
+        'what actually stops the second dispatch',
+    ).toBe(true);
+
+    await act(async () => { release?.([]); });
+
+    wsState.activeWorkspace = 'store-pos';
+    wsState.scopeTypeKey = 'store-pos';
+    vi.mocked(salesApi.getHeldCartScoped).mockReset().mockResolvedValue(null);
+    vi.mocked(salesApi.listOpenBillsScoped).mockReset().mockResolvedValue([]);
+    vi.mocked(salesApi.printSalesReceipt).mockReset().mockResolvedValue({ printed: true });
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_t: string, code: string) => mockLookupByBarcode(code)) as never);
   }, 20000);
 
   // The stale read resolves with DISTINCTLY DIFFERENT values -- true against the
