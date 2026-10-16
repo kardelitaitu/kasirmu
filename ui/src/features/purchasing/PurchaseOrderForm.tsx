@@ -13,14 +13,28 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { minorUnitExponent } from '@/types/domain';
+import { minorUnitExponent, parseMoneyInput, formatMoneyInput } from '@/types/domain';
 import './PurchaseOrderForm.css';
 
 interface LineItem {
   sku: string;
   product_name: string;
   qty: number;
+  /** Canonical cost in integer minor units — what the API takes. */
   unit_cost_minor: number;
+  /**
+   * What the operator actually typed, kept verbatim so the field round-trips.
+   *
+   * The input used to bind straight to `unit_cost_minor`, which forced the operator to
+   * type raw minor units and made the label explain an exponent ("in cents", later
+   * "minor units"). Both are wrong for a currency the store may not bill in, and the
+   * second is developer jargon the UX must never show
+   * (noMinorUnitsInUxCompliance.test.ts). Binding to the typed string and converting at
+   * the boundary with `parseMoneyInput` is the contract that suite already documents.
+   *
+   * Optional so an edit-loaded line without it falls back to formatting the minor value.
+   */
+  unit_cost_input?: string;
 }
 
 interface Props {
@@ -93,6 +107,42 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
   }, []);
 
   const subtotal = lines.reduce((sum, l) => sum + l.qty * l.unit_cost_minor, 0);
+
+  /**
+   * Format a line's cost for its input field.
+   *
+   * Prefers the operator's own text while they are typing, so a half-typed "45." is not
+   * rewritten under the cursor; falls back to `formatMoneyInput` for a line that arrived
+   * with only a minor value (an edit, or a fresh row). `formatMoneyInput` is the inverse
+   * of `parseMoneyInput` and is currency-aware, which is why the displayed example no
+   * longer has to claim an exponent.
+   */
+  const costInputValue = useCallback(
+    (line: LineItem) => line.unit_cost_input ?? formatMoneyInput(line.unit_cost_minor, currency),
+    [currency],
+  );
+
+  /**
+   * Accept free-form money as the operator types it.
+   *
+   * The RAW text is always kept (so spacing and grouping survive the keystroke), and the
+   * canonical minor value advances only when the text parses — so an in-progress "45." or
+   * "1.2" leaves the last good total standing instead of zeroing it, the same
+   * only-commit-valid-input rule the qty field already follows. An empty field is 0.
+   */
+  const updateLineCost = useCallback(
+    (idx: number, raw: string) => {
+      const parsed = parseMoneyInput(raw, currency);
+      setLines((prev) =>
+        prev.map((line, i) =>
+          i === idx
+            ? { ...line, unit_cost_input: raw, unit_cost_minor: parsed ?? line.unit_cost_minor }
+            : line,
+        ),
+      );
+    },
+    [currency],
+  );
 
   // Re-entry guard for the create/update write. The handler awaits an IPC round trip and
   // the only thing stopping a second tap is the `saving` state, which React commits on its
@@ -259,18 +309,16 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
                     <td>
                       <input
                         className="po-form-input po-form-input--sm po-form-input--num"
-                        type="number"
-                        min={0}
+                        // TEXT, not `type="number"`: a native number input coerces its value
+                        // to a JS number, so a decimal currency's "20.00" came back as "20"
+                        // and the operator could not type trailing zeros at all (measured
+                        // here, not assumed). money is a STRING while it is being typed, and
+                        // `inputMode` still raises a numeric keypad on touch.
+                        type="text"
+                        inputMode="decimal"
                         aria-label={l10n.getString('po-form-unit-cost')}
-                        value={line.unit_cost_minor}
-                        onChange={(e) => {
-                          // Whole number only — ignore fractional in-progress input
-                          // instead of silently truncating it via parseInt.
-                          const v = Number(e.target.value);
-                          if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                            updateLine(idx, 'unit_cost_minor', e.target.value === '' ? 0 : v);
-                          }
-                        }}
+                        value={costInputValue(line)}
+                        onChange={(e) => updateLineCost(idx, e.target.value)}
                         placeholder={l10n.getString('po-form-unit-cost-placeholder', { currency })}
                       />
                     </td>

@@ -34,11 +34,14 @@ po-form-sku = SKU
 po-form-product-name = Product Name
 po-form-qty = Qty
 po-form-unit-cost = Unit Cost
-# The field takes MINOR units of the store's currency, so "cents" was wrong twice
-# over: it names a USD/EUR subunit, and on an exponent-0 currency (IDR, JPY) the
-# value is whole units with no subunit at all. The form already scales its totals by
-# `minorUnitExponent(currency)`; this just makes the label agree with it.
-po-form-unit-cost-placeholder = minor units ({ $currency })
+# The field takes a NATURAL amount in the store's currency — the cashier types what
+# they would say out loud ("45.00", "45000") and the form converts at the boundary
+# via parseMoneyInput. The previous "in cents" named a USD/EUR subunit the field does
+# not use on an exponent-0 currency (IDR — whole rupiah, no subunit at all), and
+# naming the exponent instead ("minor units") is developer jargon the UX must never
+# show (noMinorUnitsInUxCompliance). The { $currency } variable is what the operator
+# actually needs: which currency they are typing.
+po-form-unit-cost-placeholder = Amount in { $currency }
 po-form-line-total = Line Total
 po-form-actions-label = Actions
 po-form-remove-line-aria = Remove line

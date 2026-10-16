@@ -197,17 +197,20 @@ describe('PurchaseOrderForm', () => {
     expect(screen.queryByRole('button', { name: /remove line/i })).not.toBeInTheDocument();
   });
 
-  it('names the store currency in the unit-cost placeholder, not a fixed "cents"', async () => {
-    // The field takes minor units of whatever the store bills in. "cents" was both a
-    // USD/EUR subunit word and simply wrong on an exponent-0 currency, where the value
-    // is whole units. This pins that the label follows the currency the form scales by.
+  it('names the store currency in the unit-cost placeholder without naming an exponent', async () => {
+    // The field takes a NATURAL amount in whatever the store bills in, so the label
+    // names the currency. It must NOT name a subunit or an exponent: "cents" was wrong
+    // on an exponent-0 currency (IDR has no subunit), and "minor units" is developer
+    // jargon the UX must never show — the guard for that is
+    // noMinorUnitsInUxCompliance.test.ts, which scans these bundles directly.
     currencyState.code = 'IDR';
     try {
       renderForm(<PurchaseOrderForm editingId={null} onClose={vi.fn()} onSaved={vi.fn()} />);
       expect(
-        screen.getByPlaceholderText((content) => stripIsolates(content) === 'minor units (IDR)'),
+        screen.getByPlaceholderText((content) => stripIsolates(content) === 'Amount in IDR'),
       ).toBeInTheDocument();
-      expect(screen.queryByPlaceholderText(/cents/)).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/cents/i)).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/minor/i)).not.toBeInTheDocument();
     } finally {
       currencyState.code = 'USD';
     }
@@ -219,23 +222,21 @@ describe('PurchaseOrderForm', () => {
     const skuInput = screen.getByPlaceholderText('SKU');
     const nameInput = screen.getByPlaceholderText('Product Name');
     const qtyInput = screen.getByDisplayValue('1');
-    // The field takes MINOR units of the store currency. The fixture store bills USD,
-    // so the placeholder names USD. It used to read "in cents", which named a subunit
-    // the field does not have on an exponent-0 currency (IDR — this product's primary
-    // market), where the value is whole rupiah.
     const costInput = screen.getByPlaceholderText(
-      (content) => stripIsolates(content) === 'minor units (USD)',
+      (content) => stripIsolates(content) === 'Amount in USD',
     );
 
     fillField('SKU', 'SKU-123');
     fireEvent.change(nameInput, { target: { value: 'Widget' } });
     fireEvent.change(qtyInput, { target: { value: '5' } });
-    fireEvent.change(costInput, { target: { value: '2000' } });
+    // A natural amount, as the operator would say it out loud.
+    fireEvent.change(costInput, { target: { value: '20.00' } });
 
     expect(skuInput).toHaveValue('SKU-123');
     expect(nameInput).toHaveValue('Widget');
     expect(qtyInput).toHaveValue(5);
-    expect(costInput).toHaveValue(2000);
+    // Held verbatim while typing — not reformatted under the cursor.
+    expect(costInput).toHaveValue('20.00');
   });
 
   it('shows computed line total and subtotal', async () => {
@@ -243,17 +244,43 @@ describe('PurchaseOrderForm', () => {
 
     const qtyInput = screen.getByDisplayValue('1');
     const costInput = screen.getByPlaceholderText(
-      (content) => stripIsolates(content) === 'minor units (USD)',
+      (content) => stripIsolates(content) === 'Amount in USD',
     );
 
     fireEvent.change(qtyInput, { target: { value: '3' } });
-    fireEvent.change(costInput, { target: { value: '1500' } });
+    // $15.00 each, typed naturally. parseMoneyInput turns it into 1500 minor units.
+    fireEvent.change(costInput, { target: { value: '15.00' } });
 
-    // Line total: 3 × 1500 = 4500 MINOR units of USD (exponent 2) → $45.00, which is
-    // why the cells show 45.00. On IDR the same 4500 minor units would read 4500.
-    // The line total cell + subtotal value should both show 45.00.
+    // Line total: 3 × 1500 = 4500 minor units, rendered through formatMoney at USD's
+    // exponent 2 — $45.00. The line-total cell and the subtotal both show it, which is
+    // what proves the typed MAJOR amount converted rather than being read as 15 minor
+    // units (which would have shown 0.45).
     const totalCells = screen.getAllByText('45.00');
     expect(totalCells.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('converts a natural IDR amount (exponent 0) and shows the right total', async () => {
+    // IDR has no subunit, so "45000" is 45000 minor units and the total reads 45000.
+    // Worth pinning separately from the USD case: on an exponent-0 currency the old
+    // raw-minor binding and the new parse agree, so only the USD case above would catch
+    // a regression that reverted the conversion.
+    currencyState.code = 'IDR';
+    try {
+      renderForm(<PurchaseOrderForm editingId={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+      const qtyInput = screen.getByDisplayValue('1');
+      const costInput = screen.getByPlaceholderText(
+        (content) => stripIsolates(content) === 'Amount in IDR',
+      );
+
+      fireEvent.change(qtyInput, { target: { value: '2' } });
+      fireEvent.change(costInput, { target: { value: '45000' } });
+
+      // 2 × 45000 minor units = 90000, rendered at exponent 0 as 90000.
+      expect(screen.getAllByText('90000').length).toBeGreaterThanOrEqual(2);
+    } finally {
+      currencyState.code = 'USD';
+    }
   });
 
   it('allows entering expected date and notes', async () => {
