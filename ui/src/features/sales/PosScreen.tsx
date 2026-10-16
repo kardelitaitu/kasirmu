@@ -398,6 +398,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [guestCount, setGuestCount] = useState('');
   const [editingCartLine, setEditingCartLine] = useState<CartLine | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const editingModifierGroups = useMemo(
+    () => (editingProduct ? getProductModifierGroups(editingProduct) : []),
+    [editingProduct],
+  );
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
 
   // ── Auto-persist active draft cart (crash & low-memory recovery) ─
@@ -2592,7 +2596,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           productName={editingProduct.name}
           basePriceMinor={editingProduct.price.minor_units}
           currency={editingCartLine.unit_price.currency}
-          groups={getProductModifierGroups(editingProduct)}
+          groups={editingModifierGroups}
           initialSelections={editingCartLine.modifiers}
           onConfirm={handleConfirmEditModifiers}
           onClose={() => {

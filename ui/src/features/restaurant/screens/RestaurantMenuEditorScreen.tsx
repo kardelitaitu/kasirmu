@@ -880,22 +880,60 @@ export default function RestaurantMenuEditorScreen({
     }
   }, [dirty, onBack]);
 
+  // ⚠️ CAPTURE PHASE, and that is load-bearing — not a style choice.
+  //
+  // This handler owns Escape for the editor, but for a long time it never got the
+  // chance to run. `PosScreen` mounts its OWN Escape cascade for the restaurant
+  // workspace (`PosScreen.tsx:1996`), which treats the menu editor as a sub-screen
+  // and closes the whole thing. Both listeners were on the same bubble phase, so
+  // whichever was registered first on `document` won, and that was PosScreen — this
+  // editor unmounted before its handler was ever called. Measured 2026-10-17
+  // (round 177) with an instrumented handler: `handler log=[]`.
+  //
+  // The consequence was a real defect on an UNTOUCHED item form: Escape threw the
+  // operator out of the editor and back onto the sales grid, losing the form. With a
+  // DIRTY form the unsaved-changes dialog happened to catch it, so the hole showed
+  // exactly when someone pressed Escape to abandon a form they had decided not to
+  // fill in — the common case.
+  //
+  // Capture fixes it at the right layer: this component is INSIDE PosScreen, so its
+  // handler is by definition closer to the focused element and must get the key
+  // first. The round-177 note proposed asking the editor whether it consumed the
+  // key; capture is the same ordering expressed by the DOM rather than by a
+  // hand-rolled handshake, and it needs no new prop.
   useEffect(() => {
     if (!onBack) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (categoryModal) {
+        // ⚠️ THE CLAIM IS THE STOP, NOT THE `return`. Capture runs first, so this
+        // handler sees the key BEFORE PosScreen — but the event then continues to
+        // PosScreen's own Escape cascade (`PosScreen.tsx:2000`), which closes the
+        // whole editor. Returning without stopping means the layer below acts on a
+        // key this layer already used. Measured 2026-10-17: the handler ran with
+        // `onBack=true draft=true`, called `cancelDraft()`, and the editor STILL
+        // disappeared — because nothing prevented the bubble phase.
+        e.preventDefault();
+        e.stopPropagation();
         setCategoryModal(null);
         return;
       }
       if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      // The open ITEM FORM is a plain <form>, not a dialog, so the guard above
+      // cannot see it. Abandoning the form is the correct response to Escape here —
+      // the operator is one layer in, and dropping the whole editor would discard
+      // the list they were working on too.
+      if (draft) {
+        cancelDraft();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       handleRequestBack();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onBack, categoryModal, handleRequestBack]);
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [onBack, categoryModal, handleRequestBack, draft, cancelDraft]);
 
   // Total counts for status pills
   const totalInCategory = useMemo(

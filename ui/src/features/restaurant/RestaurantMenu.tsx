@@ -227,6 +227,10 @@ export default function RestaurantMenu({
   // rejected read, cancelled read) deliberately leaves it false.
   const unavailableLoadedRef = useRef(false);
   const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
+  const customizingModifierGroups = useMemo(
+    () => (customizingProduct ? getProductModifierGroups(customizingProduct) : []),
+    [customizingProduct],
+  );
 
   useEffect(() => {
     if (!sessionToken || typeof locationsApi.getPrimaryLocationScoped !== 'function') return;
@@ -799,7 +803,7 @@ export default function RestaurantMenu({
           productName={customizingProduct.name}
           basePriceMinor={customizingProduct.price.minor_units}
           currency={customizingProduct.price.currency}
-          groups={getProductModifierGroups(customizingProduct)}
+          groups={customizingModifierGroups}
           onConfirm={handleConfirmModifiers}
           onClose={() => setCustomizingProduct(null)}
         />
