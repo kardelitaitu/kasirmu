@@ -145,24 +145,66 @@ async function measureRetailTier(page: Page): Promise<RetailTierMetrics> {
 }
 
 interface HistoryTierMetrics {
+  /** The receipt lane - deliberately KEPT at every tier (see the 640px rule comment). */
   receiptDisplay: string;
+  /** One of the two lanes the 640px tier folds: ITEMS (nth-child 4). */
+  itemsDisplay: string;
+  /** The other folded lane: PAYMENT (nth-child 6). */
+  paymentDisplay: string;
+  /** A lane the 640px tier must NOT fold, as a control against over-folding. */
+  statusDisplay: string;
   inputMinWidth: string;
   inputWidth: number;
-  filterGroupWidth: number;
+  /** The input wrapper - the successor to the deleted .sales-history-filter-group. */
+  searchGroupWidth: number;
+  /** The compact bar: nowrap + overflow-x auto is what the 640px tier is for. */
+  barFlexWrap: string;
+  barOverflowX: string;
+  barClientWidth: number;
+  barScrollWidth: number;
 }
 
-/** The properties the Sales History 640px tier changes. */
+/**
+ * The properties the Sales History 640px container tier changes.
+ *
+ * RETARGETED 2026-10-18. This helper used to query `.sales-history-filter-group` and assert the
+ * search input took the whole filter row. BOTH premises were removed by f5772454c ("compact
+ * 1-row sales history filter bar with right-aligned search", Oct 11): the class no longer exists
+ * anywhere in ui/src (its successor is .sales-history-search-group), min-width: 0 was replaced
+ * by a 9rem floor, and the bar now scrolls internally instead of wrapping. The case therefore
+ * could not pass against ANY rendering of the shipped screen - it was chasing a deleted
+ * selector, not reporting a regression.
+ *
+ * The assertions below are the MEASURED shipped behaviour at 360/480/1024/1366. The lane checks
+ * use the real column order (receipt 1, date 2, total 3, ITEMS 4, status 5, PAYMENT 6,
+ * cashier 7) and the 640px rule comment - receipt, date, total, status and the actions stay -
+ * so the kept lanes are asserted as kept rather than assumed.
+ */
 async function measureHistoryTier(page: Page): Promise<HistoryTierMetrics> {
   return page.evaluate(() => {
-    const receipt = document.querySelector('.sales-history-cell-receipt') as HTMLElement | null;
-    const input = document.querySelector('.sales-history-filter-input') as HTMLElement | null;
-    const group = document.querySelector('.sales-history-filter-group') as HTMLElement | null;
-    if (!receipt || !input || !group) throw new Error('sales-history tier surfaces missing');
+    const q = (sel: string) => document.querySelector(sel) as HTMLElement | null;
+    const receipt = q('.sales-history-cell-receipt');
+    const input = q('.sales-history-filter-input');
+    const group = q('.sales-history-search-group');
+    const bar = q('.sales-history-filters');
+    if (!receipt || !input || !group || !bar) throw new Error('sales-history tier surfaces missing');
+    const cellAt = (n: number) => {
+      const cell = document.querySelector(`.sales-history-table tbody td:nth-child(${n})`) as HTMLElement | null;
+      return cell ? getComputedStyle(cell).display : 'ABSENT';
+    };
+    const barStyle = getComputedStyle(bar);
     return {
       receiptDisplay: getComputedStyle(receipt).display,
+      itemsDisplay: cellAt(4),
+      paymentDisplay: cellAt(6),
+      statusDisplay: cellAt(5),
       inputMinWidth: getComputedStyle(input).minWidth,
       inputWidth: Math.round(input.getBoundingClientRect().width),
-      filterGroupWidth: Math.round(group.getBoundingClientRect().width),
+      searchGroupWidth: Math.round(group.getBoundingClientRect().width),
+      barFlexWrap: barStyle.flexWrap,
+      barOverflowX: barStyle.overflowX,
+      barClientWidth: bar.clientWidth,
+      barScrollWidth: bar.scrollWidth,
     };
   });
 }
@@ -300,39 +342,69 @@ test.describe('Narrow shell (<=640px content slot)', () => {
     }
   });
 
-  test('sales history: the 640px container tier engages (receipt lane folds, filters take the row)', async ({
+  test('sales history: the 640px container tier folds items and payment and the bar scrolls', async ({
     page,
   }) => {
     await openSalesHistory(page);
 
+    // ── WIDE: every tier inert, so both folded lanes are painted and the bar fits ──
     await resizeTo(page, WIDE);
     const wide = await measureHistoryTier(page);
     expect(wide.receiptDisplay, `receipt lane folded at ${WIDE.label}`).toBe('table-cell');
+    expect(wide.itemsDisplay, `items lane folded at ${WIDE.label}`).toBe('table-cell');
+    expect(wide.paymentDisplay, `payment lane folded at ${WIDE.label}`).toBe('table-cell');
+    expect(
+      wide.barScrollWidth,
+      `the bar already overflows at ${WIDE.label} (${wide.barScrollWidth} > ${wide.barClientWidth})`,
+    ).toBeLessThanOrEqual(wide.barClientWidth + 1);
     expect(
       parseFloat(wide.inputMinWidth),
       `search input lost its floor at ${WIDE.label} (min-width ${wide.inputMinWidth})`,
     ).toBeGreaterThan(0);
 
-    // 880px tier only: the id/cashier lanes fold there, but not the 640px rules.
+    // ── TABLET (1024): the 880px tiers fire, the 640px ones must NOT ──
     await resizeTo(page, TABLET);
     const tablet = await measureHistoryTier(page);
     expect(tablet.receiptDisplay, `640px tier fired at ${TABLET.label}`).toBe('table-cell');
+    expect(
+      tablet.itemsDisplay,
+      `the 640px tier folded ITEMS at ${TABLET.label}, which is the 880px tier firing early`,
+    ).toBe('table-cell');
     expect(
       parseFloat(tablet.inputMinWidth),
       `640px tier fired at ${TABLET.label} (min-width ${tablet.inputMinWidth})`,
     ).toBeGreaterThan(0);
 
+    // ── NARROW: the tier folds exactly two lanes and the bar scrolls instead of wrapping ──
     for (const vp of NARROW_VIEWPORTS) {
       await resizeTo(page, vp);
       const m = await measureHistoryTier(page);
 
-      expect(m.receiptDisplay, `receipt lane still painted at ${vp.label}`).toBe('none');
-      expect(m.inputMinWidth, `search input kept its 12.5rem floor at ${vp.label}`).toBe('0px');
-      // The fold that matters: the input now takes the whole row it wraps onto.
+      // The two folded lanes, per the rule at SalesHistoryScreen.css:1195 (items + payment).
+      expect(m.itemsDisplay, `items lane still painted at ${vp.label}`).toBe('none');
+      expect(m.paymentDisplay, `payment lane still painted at ${vp.label}`).toBe('none');
+
+      // The kept lanes, including the two controls that catch an over-eager fold: the rule
+      // comment names receipt and status as staying, and the receipt lane is the row's
+      // primary affordance, so a change there is a redesign rather than a tier tweak.
+      expect(m.receiptDisplay, `receipt lane folded at ${vp.label}, but it is a KEPT lane`).toBe('table-cell');
+      expect(m.statusDisplay, `status lane folded at ${vp.label}, but it is a KEPT lane`).toBe('table-cell');
+
+      // The tier's actual mechanism: a compact bar that scrolls its own content.
+      expect(m.barFlexWrap, `the filter bar wrapped at ${vp.label} instead of scrolling`).toBe('nowrap');
+      expect(m.barOverflowX, `the filter bar is not a scrollport at ${vp.label}`).toBe('auto');
       expect(
-        m.inputWidth,
-        `search input did not take the filter row at ${vp.label} (${m.inputWidth} of ${m.filterGroupWidth})`,
-      ).toBeGreaterThanOrEqual(m.filterGroupWidth - 1);
+        m.barScrollWidth,
+        `the compact bar does not overflow at ${vp.label}, so the scroll it exists for is gone`,
+      ).toBeGreaterThan(m.barClientWidth);
+
+      // The input keeps a floor (9rem = 144px at the default root size) rather than
+      // collapsing; asserted as > 0 so a root-font change does not break the case.
+      expect(
+        parseFloat(m.inputMinWidth),
+        `search input lost its floor at ${vp.label} (min-width ${m.inputMinWidth})`,
+      ).toBeGreaterThan(0);
+      expect(m.inputWidth, `search input collapsed at ${vp.label}`).toBeGreaterThan(0);
     }
   });
 
