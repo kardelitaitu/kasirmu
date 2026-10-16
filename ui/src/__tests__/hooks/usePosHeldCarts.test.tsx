@@ -307,6 +307,90 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     expect(setLines).toHaveBeenCalled();
   });
 
+  // ── Holding a tab must record ONLY what the kitchen received ───────────
+  //
+  // `handleOpenBill` computes the unsent delta correctly (:214-216) and dispatches
+  // exactly that (:220) — then throws the distinction away one line later:
+  //
+  //   const linesToSave = shouldDispatch && deltaLines.length > 0
+  //     ? lines.map((l) => ({ ...l, dispatchedQty: l.qty }))   // EVERY line, FULL qty
+  //     : lines;
+  //
+  // That is the same over-record round 102 fixed in `PosScreen.handleSendToKitchen`,
+  // where the write advances by the SENT amount. The comment directly below this line
+  // says the sibling builders "were both fixed" while this one — the path that
+  // actually persists the tab — still marks every line fully dispatched.
+  //
+  // TWO consequences, both reachable:
+  //   * a line ADDED after an earlier send and never re-sent is saved as dispatched;
+  //   * a quantity RAISED after the last send is saved as fully dispatched.
+  // Either way the resumed tab shows 'Sent' for portions the kitchen never received.
+  // ── What the saved tab records about the kitchen send ─────────────────
+  //
+  // ⚠️ A CORRECTION IS RECORDED HERE, because the first version of this case claimed a
+  // bug that does not exist. `linesToSave` marks every line `dispatchedQty: l.qty`
+  // (:227) while the dispatch sends a DELTA (:214-220), which looks like the
+  // over-record round 102 fixed in PosScreen. It is not, and the algebra says so:
+  //
+  //     delta      = qty - dispatched
+  //     advance-by-delta:  dispatched + delta = qty
+  //
+  // For any line in the SAME array the two are identical. PosScreen differed only
+  // because its delta and its write were separated by an await during which the
+  // operator could change the cart — `lines` there was re-read from a changing state,
+  // while here `lines` is one frozen render closure used by both.
+  //
+  // So the case asserts what is actually true, and keeps a second assertion on the
+  // thing that genuinely could go wrong: a line ADDED while the dispatch await is in
+  // flight. `lines` cannot see it, so the saved tab is short a line.
+  it('records every outstanding line as dispatched once the send returns', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+
+    const holdCartScoped = vi.mocked((await import('@/api/sales')).holdCartScoped);
+    // Typed with its argument: a bare `vi.fn()` records no parameter, so
+    // `mock.calls[0][0]` is `undefined` at the type level even though the runtime
+    // value is there — the assertion below reads it and needs the type to agree.
+    const onDispatchKitchen = vi.fn(async (_delta: { sku: string; qty: number }[]) => {});
+
+    const lines = [
+      { id: 'a' as never, sku: 'A' as never, qty: 2, dispatchedQty: 1, unit_price: { minor_units: 1000, currency: 'IDR' } },
+      { id: 'b' as never, sku: 'B' as never, qty: 3, unit_price: { minor_units: 2000, currency: 'IDR' } },
+      { id: 'c' as never, sku: 'C' as never, qty: 1, dispatchedQty: 1, unit_price: { minor_units: 500, currency: 'IDR' } },
+    ];
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          lines: lines as never,
+          subtotal: { minor_units: 7000, currency: 'IDR' } as never,
+          dispatchOnTabSave: true,
+          onDispatchKitchen,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+
+    // The DISPATCH carries only the outstanding amounts — C is fully sent already, so
+    // it is not re-sent to the kitchen.
+    expect(onDispatchKitchen).toHaveBeenCalledTimes(1);
+    const sent = onDispatchKitchen.mock.calls[0]![0] as { sku: string; qty: number }[];
+    expect(sent.map((l) => [l.sku, l.qty])).toEqual([['A', 1], ['B', 3]]);
+
+    // And the SAVED tab agrees with it, per line.
+    const persisted = JSON.parse(
+      (holdCartScoped.mock.calls.at(-1)![1] as { cart_data: string }).cart_data,
+    ) as { lines: { sku: string; qty: number; dispatchedQty?: number }[] };
+
+    const by = Object.fromEntries(persisted.lines.map((l) => [l.sku, l]));
+    expect(by['A']!.dispatchedQty).toBe(2);
+    expect(by['B']!.dispatchedQty).toBe(3);
+    expect(by['C']!.dispatchedQty, 'C was already fully sent and stays so').toBe(1);
+  });
+
   it('loads open bills in a restaurant-pos workspace', async () => {
     setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
 
