@@ -161,7 +161,7 @@ export default function ExpoScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Guarded against a store switch, and this one has a CONSEQUENCE the other pollers do
-  // not: `orders` supplies the RECALL candidates (:232) and restoreOrder passes one to
+  // not: `orders` supplies the RECALL candidates (:328) and restoreOrder passes one to
   // updateKdsStatusScoped with the CURRENT token, so a stale list offers a foreign order
   // for restoration. It is the id-discriminator hazard reached through the poll.
   //

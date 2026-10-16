@@ -3309,7 +3309,7 @@
  * .retail-search-input (:227-235), --color-fg-secondary from its ::placeholder
  * (:238), --font-weight-semibold from .retail-*-modal label (:1290), --text-xs
  * + a tertiary/secondary fg from .retail-edit-image-menu-note above, and the
- * selected tint is the .retail-view-toggle-btn--active recipe (:3263) with the
+ * selected tint is the .retail-view-toggle-btn--active recipe (:3133) with the
  * modal surface in place of --color-bg-elevated. No amount, quantity or tender
  * node is touched: this panel renders customer names and phone numbers only,
  * and nothing here changes font-size or alignment on any total. */

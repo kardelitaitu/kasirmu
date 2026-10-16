@@ -1024,7 +1024,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // `setShowPayment(true)` below, which is the exact shape the create-first comment
           // above (:972-978) says the reordering was meant to end: the operator is taken to
           // payment for the SPLIT portion while the ORIGINAL tab — still holding every line,
-          // because `setActiveOpenBillId(null)` (:993) is on the success path only — remains
+          // because `setActiveOpenBillId(null)` (:1020) is on the success path only — remains
           // to be settled later. That is one set of lines charged twice.
           //
           // Returning keeps the cart intact and the split modal open, so the cashier can
@@ -1288,7 +1288,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         // received, and the kitchen ticket would disagree with the saved bill.
         //
         // ⚠️ THIRD DEFECT, FOUND BY VERIFYING THIS FIX IN SHIPPED FORM: the payload
-        // maps `lines` — the closure captured BEFORE the dispatch await at :1169 — so
+        // maps `lines` — the closure captured BEFORE the dispatch await at :1202 — so
         // it carried the PRE-send `dispatchedQty`. Live state was corrected above and
         // the saved record was not:
         //

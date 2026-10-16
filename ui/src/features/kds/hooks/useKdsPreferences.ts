@@ -95,7 +95,7 @@ export function useKdsPreferences(): {
   // StockTransfersScreen, CustomerManagementScreen and EmailReportSettings.
   //
   // THE CONSEQUENCE IS PERSISTED, which is why this one is guarded rather than noted:
-  // the success path calls writeLocalPrefs(userId, serverPrefs) (:113), so a stale read
+  // the success path calls writeLocalPrefs(userId, serverPrefs) (:128), so a stale read
   // does not just display the previous store's KDS layout -- it writes it into local
   // storage under the current user, where it survives a reload, a restart, and going
   // offline. The comment at :86 says local storage is the INSTANT RESTORE source, so a
