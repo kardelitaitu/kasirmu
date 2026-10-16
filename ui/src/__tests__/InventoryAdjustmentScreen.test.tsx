@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import {
@@ -110,6 +110,72 @@ describe('InventoryAdjustmentScreen', () => {
     expect(screen.getByLabelText(/reason/i)).toBeInTheDocument();
   });
 
+  // A double submit on Apply must not apply the adjustment TWICE.
+  //
+  // `handleSubmit` sets `saving` and awaits; `saving` is STATE, so React commits it on
+  // its next render -- after the second submit of a real double tap -- and the button's
+  // own disabled state is not authoritative in the same task.
+  //
+  // The backend does NOT refuse the replay, and this is what distinguishes it from the
+  // refused-replay screens. `adjust_stock_at_location_with_reason` mints a FRESH movement
+  // id and INSERTs a delta row, then sets `new_qty = current_qty + delta`
+  // (crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:259-271). A stock
+  // adjustment is a RELATIVE delta with no key to replay against, so two submissions
+  // credit the quantity twice -- a silent stock gain or loss that only a physical count
+  // would catch, and that then feeds the next adjustment.
+  //
+  // SHAPE 3 (round 139): both submits inside ONE act() batch, before React re-renders.
+  it('applies a stock adjustment once for a double submit while the first is in flight', async () => {
+    let releaseAdjust: (v: unknown) => void = () => {};
+    const heldAdjust = new Promise((resolve) => { releaseAdjust = resolve; });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_products_scoped') return Promise.resolve(SAMPLE_PRODUCTS);
+      if (cmd === 'adjust_stock_scoped') return heldAdjust as never;
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+
+    const user = userEvent.setup();
+    renderWithFluentSync(<ToastProvider><InventoryAdjustmentScreen /></ToastProvider>, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByRole('searchbox'), 'latte');
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /caffè latte/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('option', { name: /caffè latte/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/reason/i)).toBeInTheDocument();
+    });
+
+    // The qty field's accessible name is the whole label, which also carries the
+    // "Current stock" hint; the reason is a <select>, not a textbox.
+    const qtyInput = document.getElementById('inv-field-qty') as HTMLInputElement;
+    await user.clear(qtyInput);
+    await user.type(qtyInput, '5');
+    fireEvent.change(document.getElementById('inv-field-reason') as HTMLSelectElement, { target: { value: 'restock' } });
+
+    const applyBtn = screen.getByRole('button', { name: /apply/i });
+    await act(async () => {
+      fireEvent.click(applyBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      applyBtn.removeAttribute('disabled');
+      fireEvent.click(applyBtn);
+    });
+
+    const adjustCalls = invokeMock.mock.calls.filter((c: unknown[]) => c[0] === 'adjust_stock_scoped');
+    expect(
+      adjustCalls.length,
+      'a second submit re-applied the adjustment; the backend mints a fresh movement id ' +
+        'per call with no dedupe, so the stock delta is credited twice',
+    ).toBe(1);
+
+    releaseAdjust(25);
+    await act(async () => { await heldAdjust; });
+  });
   it('rejects fractional quantities instead of silently truncating them', async () => {
     renderWithFluentSync(<ToastProvider><InventoryAdjustmentScreen /></ToastProvider>, inventoryFtl);
     await waitFor(() => {
