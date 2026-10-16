@@ -185,6 +185,35 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
 }
 
 /**
+ * Navigate to a TOOL route the way the picker tool card does.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM navigateTo. A raw hash write changes the ROUTE but
+ * establishes no WORKSPACE. For a fullscreen page that is fine — AppShell renders those
+ * before the workspace gate (AppShell.tsx:669, whose comment says so: "Fullscreen pages
+ * render ... without requiring an active workspace").
+ *
+ * A NON-fullscreen tool route is gated on an active workspace at AppShell.tsx:708 and
+ * falls through to the workspace PICKER when there is none. Measured 2026-10-18:
+ *
+ *   admin workspace + navigateTo("settings")  -> .workspace-fullscreen 1, picker 0  (ok)
+ *   admin workspace + navigateTo("shifts")    -> .workspace-home-wrapper 1, picker 1 (WRONG)
+ *   admin workspace + navigateTo("terminals") -> same                             (WRONG)
+ *
+ * settings passes only because it is registered fullscreen: true. Every other admin tool
+ * — shifts, terminals, audit, memo — cannot be reached by hash navigation at all, which is
+ * why shift.spec.ts waited for .shift-mgmt on a screen that never mounted.
+ *
+ * Clicking the actual tool card is the path a user takes AND the one that works, because
+ * WorkspaceHome sets the workspace as part of the navigation. Prefer this for any tool
+ * route; navigateTo stays correct for fullscreen pages and for same-workspace moves.
+ */
+export async function openToolCard(page: Page, label: string | RegExp): Promise<void> {
+  const card = page.getByTestId('workspace-tool-card').filter({ hasText: label });
+  await expect(card, `no tool card matching ${String(label)}`).toBeVisible({ timeout: 8_000 });
+  await card.first().click();
+}
+
+/**
  * Wait for the app to be fully loaded and ready.
  */
 export async function waitForApp(page: Page): Promise<void> {
