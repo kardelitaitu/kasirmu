@@ -993,7 +993,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           setActiveOpenBillId(null);
           loadOpenBills();
         } catch {
+          // REPORT AND STOP. This catch used to toast and fall through to the
+          // `setShowPayment(true)` below, which is the exact shape the create-first comment
+          // above (:972-978) says the reordering was meant to end: the operator is taken to
+          // payment for the SPLIT portion while the ORIGINAL tab — still holding every line,
+          // because `setActiveOpenBillId(null)` (:993) is on the success path only — remains
+          // to be settled later. That is one set of lines charged twice.
+          //
+          // Returning keeps the cart intact and the split modal open, so the cashier can
+          // retry the balance or cancel; a lost tab is recoverable, a double charge is not.
           addToast({ message: requiredLocalized(l10n, 'pos-toast-tab-balance-failed'), type: 'error' });
+          return;
         }
       }
       setLines(selectedLines);

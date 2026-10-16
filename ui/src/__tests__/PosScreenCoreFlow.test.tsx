@@ -531,6 +531,126 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // condition is `showTableNumberSetting || restaurant-pos`, so the input appears
   // with an empty cart. That is what makes this test able to pin the guard.
   //
+  // ── A failed split-bill hold must not send the cashier into payment ──
+  //
+  // `handleConfirmSplitBill` (PosScreen.tsx:925) balances the remaining lines onto a new
+  // tab. The create-first ordering at :979-987 is right and documented — but the CATCH at
+  // :995-997 only toasts, it does not return, so :999-1001 run regardless:
+  // setLines(selectedLines) / setShowSplitBillModal(false) / setShowPayment(true).
+  //
+  // `setActiveOpenBillId(null)` (:993) is on the SUCCESS path only, so the ORIGINAL tab
+  // still holds every line. The split portion is rung as a new sale AND the full original
+  // tab remains to be settled — a double charge, with the cashier told only "failed to
+  // update tab". The file's own comment at :974-977 names exactly this as what the
+  // create-first ordering was meant to end: "execution then CONTINUES to
+  // setShowPayment(true)".
+  it('does not open payment when balancing the remaining tab fails', async () => {
+    const user = userEvent.setup();
+    // Scan the lines while in store-pos (the barcode handler is
+    // `enabled: activeWorkspace !== 'restaurant-pos'`, PosScreen.tsx:611), then switch to
+    // restaurant-pos — which is what the split modal and the dine-in tab rule require.
+    wsState.activeWorkspace = 'store-pos';
+
+    // An open bill exists, so the split takes the `remainingLines.length > 0` branch.
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table T1',
+        cart_data: JSON.stringify({ lines: [] }),
+        item_count: 2,
+        total_minor: 1000,
+        currency: 'USD',
+        bill_type: 'open_bill',
+        customer_name: null,
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ] as never);
+    // The balancing hold is refused — a locked DB, a lapsed session.
+    vi.mocked(salesApi.holdCartScoped).mockRejectedValue(new Error('database is locked'));
+
+    await renderPosScreenWithShift();
+
+    // Two lines of the same product, so a split leaves a remainder. Same shape the
+    // scan-driven cases use (:989-1002) — `lookupByBarcodeScoped`, not the SKU lookup.
+    // A persistent implementation, not `mockResolvedValueOnce`: the file's own header
+    // (:491-503) records that a queued once-value survives into the next case, and the two
+    // scans here must each be answered independently.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    })) as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll('[data-testid="cart-panel-line-item"]').length,
+        'expected one cart line before the workspace switch',
+      ).toBe(1);
+    });
+
+    // Second line: bump the first line's quantity in store-pos, giving two lines in the
+    // cart without a second scan.
+    await user.click(screen.getByRole('button', { name: /increase quantity/i }));
+    await waitFor(() => {
+      const rows = document.querySelectorAll('[data-testid="cart-panel-line-item"]');
+      // Two lines OR one line at qty 2 — either gives the split a remainder.
+      expect(rows.length >= 1, 'expected cart lines to survive the workspace switch').toBe(true);
+    });
+
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // Open the split modal through the CartActionBar's own button, which is what the
+    // 'split-bill' shortcut claims (:1657).
+    await user.click(screen.getByText(/split bill/i));
+
+    // NO selection click: `SplitBillModal` auto-selects line[0] at qty 1 when it opens
+    // (:50-53), so a 2-unit single line already has one unit selected and one remaining.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-split-item-row--selected')).not.toBeNull();
+    });
+
+    await user.click(screen.getByTestId('pos-split-modal-confirm-btn'));
+
+    // Reachability first: the balancing hold must actually be attempted, or the toast
+    // assertion below would pass on a path that never ran.
+    await waitFor(() => {
+      expect(
+        vi.mocked(salesApi.holdCartScoped).mock.calls.length,
+        'the split never attempted to balance the remaining tab',
+      ).toBeGreaterThan(0);
+    });
+
+    // The failure IS reported (sales.ftl:1200).
+    await waitFor(() => {
+      expect(document.body.textContent ?? '').toMatch(/failed to update the remaining tab/i);
+    });
+
+    // The modal closes (the SplitBillModal's own finally), and payment must NOT open.
+    // If it does, the cashier rings the split portion while the original tab still holds
+    // every line.
+    expect(
+      document.querySelector('.payment-overlay, .payment-modal, [data-testid="payment-modal"]'),
+      'payment opened even though balancing the remaining tab failed',
+    ).toBeNull();
+
+    // Restore BOTH mocks. The file's own header (:491-503) records that a leftover
+    // mockRejectedValue answers every later case: the next test's save-tab hold then
+    // rejects too and its failure looks like a defect in the code under test.
+    vi.mocked(salesApi.holdCartScoped).mockReset().mockResolvedValue({ id: 'held-1' });
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => mockLookupByBarcode(code)) as never);
+    wsState.activeWorkspace = 'store-pos';
+  });
+
   // The stale read resolves with DISTINCTLY DIFFERENT values -- true against the
   // current false -- so the late write is observable rather than a no-op.
   it('ignores a slower receipt-settings read from the previous store', async () => {
