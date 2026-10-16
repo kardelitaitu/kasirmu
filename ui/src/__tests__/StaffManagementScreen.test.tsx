@@ -1420,6 +1420,60 @@ describe('StaffManagementScreen trash', () => {
     expect(await screen.findByTestId('staff-trash-empty', undefined, FAST_WAIT)).toHaveTextContent('Nothing in the trash');
   });
 
+  // A double tap on Restore must not send the restore twice.
+  //
+  // The case above proves the SEQUENTIAL shape -- one click, then the call. It cannot prove
+  // the double tap, because React commits `busy` on its next render, after the second
+  // dispatch. SHAPE 3 (round 139) sends both inside ONE act() batch.
+  //
+  // This arm is worth pinning even though the backend happens to defend it, because the
+  // defence is SUBTLE and easy to lose. `restore_user` is a compare-and-set:
+  //   UPDATE users SET deleted_at = NULL ... WHERE id = ?2 AND deleted_at IS NOT NULL
+  //     AND purged_at IS NULL AND deleted_at >= ?3        -- staff.rs:831-841
+  // and `rows == 0` returns NotFound. So the second call finds `deleted_at IS NULL` and is
+  // refused -- no row is restored twice. But the UI's `busy` guard is what keeps the round
+  // trip from being spent at all, and the assertion below is what would fail if someone
+  // later relaxed that WHERE clause, which is exactly the change the doc comment at
+  // staff.rs:815-826 invites a reader to consider making.
+  it('sends one restore call for a double tap while the first is in flight', async () => {
+    sessionPermissions.push('staff:delete');
+    let releaseRestore: ((v: unknown) => void) | undefined;
+    const held = new Promise((resolve) => { releaseRestore = resolve; });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'restore_staff_scoped') return held as never;
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      if (cmd === 'list_staff_trash_scoped') return Promise.resolve(TRASHED_STAFF);
+      if (cmd === 'list_role_trash_scoped') return Promise.resolve([]);
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    await openTrash();
+
+    const restoreBtn = screen.getByTestId('staff-trash-restore-staff-2');
+    await act(async () => {
+      fireEvent.click(restoreBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      restoreBtn.removeAttribute('disabled');
+      fireEvent.click(restoreBtn);
+    });
+
+    const restoreCalls = invokeMock.mock.calls.filter((c: unknown[]) => c[0] === 'restore_staff_scoped');
+    expect(
+      restoreCalls.length,
+      'a double tap spent two restore round trips; the backend CAS absorbs the replay, so ' +
+        'this pins that the UI guard is what keeps the second call from being made at all',
+    ).toBe(1);
+
+    releaseRestore?.({ id: 'staff-2' });
+    await act(async () => { await held; });
+  });
   it('restores a trashed member, who returns to the roster inactive', async () => {
     sessionPermissions.push('staff:delete');
     await openTrash();

@@ -20,7 +20,7 @@
  * - Roles appear only for a caller holding `staff:manage_roles`.
  * - Styles live in `StaffManagementScreen.css`; this file owns no CSS.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listRoleTrashScoped,
@@ -92,7 +92,28 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
 
   useEffect(() => { void load(); }, [load]);
 
+  // Re-entry guards for the two restore writes, keyed by row id. `busy` is STATE -- React
+  // commits it on its next render, after the second tap of a real double tap. MEASURED: two
+  // clicks in one act() batch both reach the handler (StaffManagementScreen.test.tsx 'sends
+  // one restore call for a double tap'), and both are SENT.
+  //
+  // The backend absorbs the replay, and that is worth being precise about because it is
+  // subtle: `restore_user` is a compare-and-set --
+  //   UPDATE users SET deleted_at = NULL ... WHERE id = ?2 AND deleted_at IS NOT NULL
+  //     AND purged_at IS NULL AND deleted_at >= ?3          -- staff.rs:831-841
+  // with `rows == 0` returning NotFound -- so the second call finds `deleted_at IS NULL`
+  // and no row is restored twice. `restore_role` is the same shape (roles.rs:627-637).
+  //
+  // What the backend does NOT absorb is the wasted round trip and, more importantly, the
+  // REFUSAL IT SURFACES: the second call's NotFound lands in the same catch that reports a
+  // genuine restore failure, so a double tap raises 'Failed to restore' for a member who WAS
+  // restored. That is the rounds 136-137 shape. A Set, not a boolean, because a staff row and
+  // a role row are independent: restoring one must not block the other.
+  const restoreInFlight = useRef(new Set<string>());
   const restoreStaff = useCallback(async (member: StaffMemberDto) => {
+    const key = `staff:${member.id}`;
+    if (restoreInFlight.current.has(key)) return;
+    restoreInFlight.current.add(key);
     if (!sessionToken) return;
     setBusy(`staff:${member.id}`);
     try {
@@ -106,12 +127,16 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
     } catch {
       addToast({ type: 'error', message: l10n.getString('staff-trash-restore-failed') });
     } finally {
+      restoreInFlight.current.delete(key);
       setBusy(null);
     }
   }, [sessionToken, addToast, l10n, onRestored, load]);
 
   const restoreRole = useCallback(async (role: RoleDto) => {
-    if (!sessionToken) return;
+    const key = `role:${role.id}`;
+    if (restoreInFlight.current.has(key)) return;
+    restoreInFlight.current.add(key);
+    if (!sessionToken) { restoreInFlight.current.delete(key); return; }
     setBusy(`role:${role.id}`);
     try {
       await restoreRoleScoped(sessionToken, role.id);
@@ -128,6 +153,7 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
     } catch {
       addToast({ type: 'error', message: l10n.getString('staff-trash-restore-failed') });
     } finally {
+      restoreInFlight.current.delete(key);
       setBusy(null);
     }
   }, [sessionToken, addToast, l10n, onRestored, load]);

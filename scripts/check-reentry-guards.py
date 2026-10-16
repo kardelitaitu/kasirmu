@@ -86,6 +86,22 @@ re-derive these: each is protected, and the protection is named so the search en
                         ref set, NOT a global flag: two DIFFERENT rows must settle
                         concurrently. Any per-item list of writes is this shape, and a global
                         guard there is the wrong fix.
+  * staff / role restore -- the CAS is the defence, the refusal is the defect.
+                        `restore_user` and `restore_role` are both compare-and-sets
+                        (`deleted_at IS NOT NULL AND purged_at IS NULL AND deleted_at >=
+                        cutoff`, `rows == 0` -> NotFound; staff.rs:831-841,
+                        roles.rs:627-637), so a replay restores nothing. But the refusal
+                        lands in the catch that reports a genuine failure, so a double tap
+                        says 'Failed to restore' for a member who WAS restored. Round 153
+                        FIXED with a per-key ref Set (a staff row and a role row must not
+                        block each other).
+  * create_role     -- REFUSED by the backend: ConstraintViolation -> CoreError::Conflict on
+                        a duplicate id or name (roles.rs:313-337, map_role_conflict).
+  * sync conflict resolve -- REFUSED and reported HONESTLY: the command returns ok=false and
+                        the UI surfaces 'already resolved elsewhere' rather than an error
+                        (SyncConflictReviewScreen.tsx:96-106). A claim-check worth copying.
+  * assignTableOrderScoped -- inside the checkout, which the COR-7 replay guard already
+                        serialises; not a double-tap surface.
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
