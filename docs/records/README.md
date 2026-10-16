@@ -142,6 +142,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The kiosk handed customer A's order to customer B — 2026-10-18](audits/2026-10-18-kiosk-leaked-the-order.md) | — |
 | kds | [The kitchen chord is safe, a comment was stale, and my own test leaked into another file](audits/2026-10-18-kitchen-chord-and-mock-leak.md) | — |
 | payments | [The manual QRIS confirm has no re-entry guard — and that is the DESIGN](audits/2026-10-18-manual-qris-confirm-contract.md) | — |
+| inventory | [The mechanical inventory, and the money arm of the class - 2026-10-18](audits/2026-10-18-mechanical-inventory-and-the-money-arm.md) | — |
 | general | [My own fix overclaimed, one step softer — 2026-10-18](audits/2026-10-18-my-own-overclaim.md) | — |
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
 | general | [A double-press on Save created two open bills](audits/2026-10-18-open-bill-save-double-press.md) | — |
