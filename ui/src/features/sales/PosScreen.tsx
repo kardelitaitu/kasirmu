@@ -1050,11 +1050,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // passed against a build with this refresh deliberately removed. Only the delta
           // distinguishes it — measured, not assumed.
           //
-          // Still NOT covered by that case: the duplicate being VISIBLE. Displaying it
-          // needs `activeOpenBillId` set, and that is only ever set by resuming an open
-          // bill (usePosHeldCarts.ts:418), which no case in the file does — so the
-          // `if (activeOpenBillId)` delete at :991 is never entered and the duplicate is
-          // never actually created. The remaining gap is narrow and located here.
+          // The duplicate being VISIBLE has a resume to stand on now: the case named
+          // 're-reads the open bills when a paid tab fails to delete' resumes a real
+          // tab, which is what sets `activeOpenBillId` (usePosHeldCarts.ts:418) and
+          // therefore what makes this branch reachable at all. The previous wording —
+          // 'no case in the file resumes one' — measured true when written and is
+          // false now.
+          //
+          // This handler's ORDERING is still pinned at the source layer, not by a case
+          // here: heldCartReplacementOrder.test.ts grades hold-before-delete across four
+          // sites including this one, on purpose, because reaching the handler needs the
+          // whole POS. What nothing shows is the DUPLICATE appearing in the rendered
+          // list — that needs this branch to run, and no case drives a split here.
           try {
             await loadOpenBills();
           } catch {
