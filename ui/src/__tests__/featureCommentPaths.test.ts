@@ -444,6 +444,29 @@ function crossFileCitations(source: string): Array<{ at: number; file: string; f
     }
     const block = lines.slice(blockStart, i + 1).join(" ").toLowerCase();
     if (/\b(moved|was|were|formerly|previously|used to|at tip|deleted|removed|retired)\b/.test(block)) return;
+    // `AS OF <sha>^` is the SECOND historical spelling, and the word list alone does
+    // NOT cover it. Measured 2026-10-18 (round 185): the eight KDS extractee headers
+    // read "Extracted verbatim from KdsScreen.tsx:718-855 AS OF 7d0dc4d60^" — three of
+    // them contain none of the words above, so a word-list-only exemption would flag
+    // correct citations. The anchor is what makes them historical: a range pinned to a
+    // commit that is COUNTERFACTUAL by construction (`^` = the parent), so it is
+    // SUPPOSED not to resolve against the working tree.
+    if (/\bas of\b/.test(block) && /\b[0-9a-f]{7,}\b/.test(block)) return;
+    // PAST-TENSE PROSE ABOUT REMOVED CODE is the third spelling, and it is the one
+    // that looks most like a defect. `tableLabel.ts` explains why the helper exists:
+    //
+    //   "Two sites BUILT this string by hand, identically:
+    //      PaymentModal.tsx:1113 ..."
+    //
+    // Those two sites no longer build it — that is the whole point of the note — so the
+    // numbers are correct precisely by NOT resolving. Present tense is the tell, and it
+    // is the discriminating test the two `tableLabel.ts` comments passed differently in
+    // round 185: :12 reads "Both places that render it ALSO add the word" (present) and
+    // its :648 WAS stale; :45 reads "Two sites built this string by hand" (past) and its
+    // :1113 is correctly un-resolvable.
+    //
+    // Deliberately narrow: only verbs that cannot be present tense about live code.
+    if (/\b(built|constructed|interpolated|duplicated|hand-built)\b/.test(block)) return;
     let m: RegExpExecArray | null;
     re.lastIndex = 0;
     while ((m = re.exec(line)) !== null) {
@@ -477,6 +500,50 @@ function resolveCitedFile(fromFile: string, ref: string): string | null {
     if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
   }
   return null;
+}
+
+
+/**
+ * Repo-wide basename index, for BARE-filename citations (`CartPanel.tsx:864`).
+ *
+ * A citation may spell its target three ways, and only two resolve by path:
+ *
+ *   * a relative or repo-relative path (`./x.ts`, `crates/...`) — resolved by
+ *     `resolveCitedFile`;
+ *   * a BARE basename with no directory component. This is the common form in prose
+ *     ("renders on restaurant POS unconditionally (CartPanel.tsx:898)") and it can only
+ *     be resolved by name. Measured 2026-10-18 (round 185): 121 distinct bare basenames,
+ *     resolving to 111 single-match citations, 14 ambiguous and 2 unknown.
+ *
+ * TEST FILES ARE EXCLUDED from the index. A production comment citing `X.test.tsx` is
+ * citing a test by name, and resolving it to the test would let a `:NN` in a test-path
+ * citation be graded — a different question, and one this pass does not ask.
+ */
+function repoBasenameIndex(): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  const skip = /(node_modules|\\target\\|\\coverage\\|\.git\\|dist)/;
+  const extensions = /\.(tsx?|css|rs|py|sh|json|sql|md|ftl|toml|html)$/;
+  const visit = (dir: string, depth: number): void => {
+    if (depth > 8 || skip.test(dir)) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;   // unreadable directory: skip it rather than fail the suite
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        visit(full, depth + 1);
+      } else if (extensions.test(e.name) && !/\.(test|spec)\./.test(e.name)) {
+        const bucket = index.get(e.name) ?? [];
+        bucket.push(full);
+        index.set(e.name, bucket);
+      }
+    }
+  };
+  visit(ROOT, 0);
+  return index;
 }
 
 describe('feature-source comments cite paths that exist', () => {
@@ -534,11 +601,23 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
 
     const offenders: string[] = [];
     let checked = 0;
+    const basenameIndex = repoBasenameIndex();
     for (const file of files) {
       const source = fs.readFileSync(file, "utf-8");
       for (const cite of crossFileCitations(source)) {
-        const abs = resolveCitedFile(file, cite.file);
-        if (abs === null) continue;   // prose, a vendored path, or a URL
+        // TWO SPELLINGS, one question. A path form resolves by path; a BARE basename
+        // can only resolve by name, so it is looked up in the repo index. Both are
+        // graded identically, and either lookup returning nothing means the token is
+        // prose (or a vendored path) and is skipped rather than failed.
+        let abs = resolveCitedFile(file, cite.file);
+        if (abs === null && !cite.file.includes("/")) {
+          const matches = basenameIndex.get(path.basename(cite.file)) ?? [];
+          // AMBIGUOUS is skipped, not guessed: two files sharing a basename cannot be
+          // told apart from the token alone, and picking one would grade the wrong
+          // file. Unambiguous is the only case this pass can judge.
+          abs = matches.length === 1 ? matches[0]! : null;
+        }
+        if (abs === null) continue;   // prose, a vendored path, or an ambiguous name
         checked += 1;
         const target = fs.readFileSync(abs, "utf-8").split(String.fromCharCode(10));
         // BLANK or PAST EOF — the no-false-positive subset. A line holding only
