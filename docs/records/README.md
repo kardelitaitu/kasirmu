@@ -132,6 +132,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A passing test that proved nothing, and the defect it hid — 2026-10-18](audits/2026-10-18-double-tap-false-failure.md) | — |
 | general | [The double-tap test that hid the defect — and the one that exposed it — 2026-10-18](audits/2026-10-18-double-tap-shape-that-exposed-it.md) | — |
 | general | [The EDC wait window: a suspected gap that the code does not have](audits/2026-10-18-edc-wait-window-complete-guard.md) | — |
+| general | [Enumerating the schema, and a statutory sequence that advanced twice — 2026-10-18](audits/2026-10-18-enumerating-and-the-statutory-sequence.md) | — |
 | general | [Two gates that disagreed about what "fireable" means — 2026-10-18](audits/2026-10-18-fire-all-gate-disagreed.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [A generic truth is worse than a specific one — 2026-10-18](audits/2026-10-18-generic-truth-is-worse.md) | — |
