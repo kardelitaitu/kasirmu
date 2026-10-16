@@ -81,6 +81,37 @@ function renderBarId(lines: CartLine[]) {
 const allHeld = () => COURSES.map((c) => held(c.id));
 
 describe('CourseSelectorBar', () => {
+  // ── Fire All must not offer an action no per-course button can ─────────
+  //
+  // The two gates in CourseSelectorBar do not agree:
+  //
+  //   per-course  : `l.courseId === course.id && l.coursingStatus === 'hold'`  (:24-26)
+  //   Fire All    : `l.coursingStatus === 'hold'`                              (:40-41)
+  //
+  // Fire All is therefore BROADER: a line on hold with NO course would raise the
+  // Fire All control while no per-course button could ever show it. The team has
+  // already paid for this shape once — `assignCourse`'s own doc says clearing a
+  // course "must drop `coursingStatus` as well: a status left at 'hold' on a line
+  // with no course keeps the 'Fire All' button alive and inflates its count"
+  // (usePosState.ts:224-227) — and `courseFiring.test.ts` pins that clearing
+  // drops both fields.
+  //
+  // So the state is unreachable THROUGH THE UI, and this case is not reporting a
+  // live bug. What it does is make the invariant explicit at the component that
+  // depends on it: if the two gates ever diverge on a REACHABLE state, this fails
+  // rather than shipping a control that fires nothing.
+  it('offers no Fire All for a hold line that has no course', () => {
+    // The unreachable-but-legal state, constructed directly: a hold with no course.
+    renderBar([makeLine({ coursingStatus: 'hold' })]);
+
+    expect(
+      screen.queryByTestId('fire-all-courses'),
+      'Fire All is gated on coursingStatus alone, so a course-less hold raises it — '
+      + 'and no per-course button can fire that line',
+    ).toBeNull();
+    expect(screen.queryAllByTestId(/^fire-course-/)).toHaveLength(0);
+  });
+
   it('renders no fire controls when no line is on hold', () => {
     const { container } = renderBar([
       makeLine({ courseId: 'main', coursingStatus: 'fired' }),
