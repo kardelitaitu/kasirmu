@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -122,6 +122,44 @@ describe('StockCountForm', () => {
     });
   });
 
+  // A double submit on Start Count must not create TWO counts.
+  //
+  // The case above (`disables buttons while saving`) proves the SEQUENTIAL shape: after
+  // one click the button is disabled. It cannot prove the double tap, because React
+  // commits `saving` on its next render -- after the second dispatch. SHAPE 3 (round 139)
+  // sends both inside ONE act() batch, which is what a real double tap does.
+  //
+  // The backend does NOT refuse the replay. The UI sends only `{countType, notes}`; the
+  // bridge mints `uuid::Uuid::now_v7()` per call and allocates the next number atomically
+  // inside the INSERT (inventory_counts.rs:301 + create_stock_count_with_next_number), so
+  // each call gets its own id AND its own count_number. `stock_counts` has no UNIQUE
+  // constraint other than count_number, which is exactly why two calls cannot collide: they
+  // become CNT-001 and CNT-002, two real drafts nobody asked for.
+  it('creates one stock count for a double submit while the first is in flight', async () => {
+    const mockCreate = createStockCount as ReturnType<typeof vi.fn>;
+    let releaseCreate: (v: unknown) => void = () => {};
+    const held = new Promise((resolve) => { releaseCreate = resolve; });
+    mockCreate.mockImplementation(() => held as never);
+
+    renderWithFluentSync(<StockCountForm onCreated={vi.fn()} onCancel={vi.fn()} />, inventoryFtl, scFtl);
+    const startBtn = screen.getByRole('button', { name: /start count/i });
+    await act(async () => {
+      fireEvent.click(startBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      startBtn.removeAttribute('disabled');
+      fireEvent.click(startBtn);
+    });
+
+    expect(
+      mockCreate.mock.calls.length,
+      'a double submit re-sent the create; the bridge mints a fresh id and the next ' +
+        'count_number per call, so this creates TWO draft stock counts',
+    ).toBe(1);
+
+    releaseCreate({ id: 'c-1', count_number: 'CNT-001' });
+    await act(async () => { await held; });
+  });
   it('disables buttons while saving', async () => {
     const mockCreate = createStockCount as ReturnType<typeof vi.fn>;
     // Never resolve — keeps saving=true

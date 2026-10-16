@@ -42,6 +42,16 @@ re-derive these: each is protected, and the protection is named so the search en
                         (stock_counts.rs:529-539) -- round 144 FIXED
   * checkout / sale -- COR-7 replay guard + UNIQUE payments.idempotency_key returns the
                         ORIGINAL receipt (pos/checkout.rs)
+  * categories      -- categories.name TEXT NOT NULL UNIQUE (20260813_init.sql) and
+                        create_category maps ConstraintViolation to CoreError::Conflict
+                        (products_categories.rs:52-60); products_tests.rs:614 pins it.
+                        CORRECTION to round 146, which listed categories among the
+                        leads with no unique constraint. That claim was wrong and came
+                        from a hand-picked table list rather than a full sweep -- which
+                        is the argument for enumerating the schema, not sampling it.
+  * stock counts    -- round 147 FIXED (no dedupe: the bridge mints a fresh UUID and
+                        the next count_number per call, so two calls produce two real
+                        drafts)
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { createStockCount, type StockCountDto } from '@/api/inventoryCounts';
@@ -23,7 +23,23 @@ export default function StockCountForm({ onCreated, onCancel }: Props) {
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
 
+  // Re-entry guard for the count create. `setSaving(true)` is STATE -- React commits it on
+  // its next render, after the second submit of a real double tap. MEASURED: two clicks in
+  // one act() batch both reach the handler (StockCountForm.test.tsx 'creates one stock
+  // count for a double submit'), and both are SENT.
+  //
+  // The backend does NOT refuse the replay, and the reason is worth stating precisely: the
+  // UI sends only {countType, notes}, the bridge mints `uuid::Uuid::now_v7()` per call
+  // (inventory_counts.rs:301) and allocates the next number atomically inside the INSERT
+  // (create_stock_count_with_next_number), so each call gets its own id AND its own
+  // count_number. `stock_counts` has no UNIQUE constraint that could collapse them --
+  // count_number is unique precisely BECAUSE it is freshly allocated, which is what makes
+  // two calls produce CNT-001 and CNT-002 instead of conflicting. Two draft counts that
+  // nobody asked for, and a count number skipped for no reason.
+  const submitPendingRef = useRef(false);
   const handleSubmit = useCallback(async () => {
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -38,6 +54,7 @@ export default function StockCountForm({ onCreated, onCancel }: Props) {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'sc-error-create'));
     } finally {
+      submitPendingRef.current = false;
       setSaving(false);
     }
   }, [countType, notes, onCreated, l10n, sessionToken]);
