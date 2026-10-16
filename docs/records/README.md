@@ -171,6 +171,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
 | release | [Nine cross-file citations no pass could see — 2026-10-18](audits/2026-10-18-nine-cross-file-citations-no-pass-could-see.md) | — |
 | general | [Nine false positives and a control that finally fired — 2026-10-18](audits/2026-10-18-nine-false-positives-and-a-control.md) | — |
+| products | [Not a product defect — a harness one, and three rounds of evidence said otherwise — 2026-10-18](audits/2026-10-18-not-a-product-defect-a-harness-one.md) | — |
 | general | [One control, three ways in, one tested — 2026-10-18](audits/2026-10-18-one-control-three-ways-in-one-tested.md) | — |
 | general | [A double-press on Save created two open bills](audits/2026-10-18-open-bill-save-double-press.md) | — |
 | general | [A paid open bill that failed to delete was never re-read](audits/2026-10-18-paid-tab-delete-not-reread.md) | — |
