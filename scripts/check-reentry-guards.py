@@ -52,6 +52,16 @@ re-derive these: each is protected, and the protection is named so the search en
   * stock counts    -- round 147 FIXED (no dedupe: the bridge mints a fresh UUID and
                         the next count_number per call, so two calls produce two real
                         drafts)
+  * tax invoice / e-Faktur -- IDEMPOTENT ONCE WRITTEN, but that is not enough:
+                        `issue_tax_invoice_for_sale` returns the existing number when
+                        `sales.statutory_number` already carries the series prefix
+                        (fiscal.rs:572-587), and that column is set by the SAME
+                        transaction -- so two issues in one tick both read NULL and both
+                        fall through to `claim_statutory_number_for_sale`, an atomic
+                        `UPDATE ... RETURNING` (fiscal.rs:438-455). The statutory sequence
+                        advances TWICE: a gap or duplicate in a legally numbered series.
+                        Round 148 FIXED in PaymentModal (the receipt surface) and the same
+                        defect stands in SalesHistoryScreen.handleIssueTaxInvoice.
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --

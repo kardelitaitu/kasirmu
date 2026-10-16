@@ -7,7 +7,7 @@
 // 7 tests.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/i18n/test-utils';
@@ -208,6 +208,68 @@ describe('PaymentModal — sale flow', () => {
   });
 
 
+  it('issues a tax invoice once for a double tap on the receipt', async () => {
+    // The receipt's Issue Tax Invoice button is guarded by the shared
+    // `issuingTaxInvoice` flag: ReceiptPreview.tsx:252-256 renders it with
+    // `loading={issuingTaxInvoice}` AND `disabled={loading}`, and the sibling Print /
+    // Skip buttons cross-disable on `issuingTaxInvoice` (ReceiptPreview.tsx:249, :257).
+    // The markup clearly intends mutual exclusion — but it relies on STATE, which React
+    // commits on its next render, after the second dispatch of a real double tap.
+    //
+    // The backend does not fully absorb it. `issue_tax_invoice_for_sale` is idempotent ONCE
+    // A NUMBER IS WRITTEN: it reads `sales.statutory_number` and returns the existing value
+    // when it already carries the series prefix (crates/kasirmu-core/src/db/fiscal.rs:572-587).
+    // But that column is set by the SAME transaction at the end, so two issues in one tick
+    // both read NULL, both fall through to `claim_statutory_number_for_sale` -- an atomic
+    // `UPDATE document_number_sequences ... RETURNING` (fiscal.rs:438-455) -- and the
+    // sequence advances twice. One of those numbers is written onto the sale, so a legally
+    // numbered series ends up with a gap or a duplicate. That is not cosmetic.
+    //
+    // SHAPE 3 (round 139): both taps inside ONE act() batch, before React can re-render.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    const issueBtn = await screen.findByRole('button', { name: /issue tax invoice/i });
+    // Hold the first issue open so both taps land inside the same in-flight window.
+    let releaseIssue: ((v: string) => void) | undefined;
+    const held = new Promise<string>((resolve) => { releaseIssue = resolve; });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'issue_tax_invoice_scoped') return held as never;
+      return DEFAULT_INVOKE_IMPL(cmd) as never;
+    });
+
+    await act(async () => {
+      fireEvent.click(issueBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second tap to the handler the way a real one would.
+      issueBtn.removeAttribute('disabled');
+      fireEvent.click(issueBtn);
+    });
+
+    const issueCalls = invokeMock.mock.calls.filter(
+      (c: unknown[]) => c[0] === 'issue_tax_invoice_scoped',
+    );
+    expect(
+      issueCalls.length,
+      'a second tap re-issued the invoice; both calls pass the idempotency read before ' +
+        'either commits, so the statutory sequence advances twice for one sale',
+    ).toBe(1);
+
+    releaseIssue?.('010000000000001');
+    await act(async () => { await held; });
+  });
   it('PRINTS a human-readable tender on the receipt, not the stored enum', async () => {
     // `bbc530642` lowercased the tender for the DB CHECK constraint. It also lowercased
     // `methodLabel`, which is a DIFFERENT value with a different consumer: the same

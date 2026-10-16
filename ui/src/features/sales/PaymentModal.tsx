@@ -1806,7 +1806,27 @@ retryCurrencyLoad,
       });
   }, [serialNumbers, lineItems]);
 
+  // Re-entry guard for the statutory invoice write. ReceiptPreview.tsx:252-256 already
+  // renders the button with `loading={issuingTaxInvoice}` and `disabled={loading}`, and the
+  // sibling Print / Skip buttons cross-disable on `issuingTaxInvoice` (:249, :257) -- the
+  // markup clearly intends mutual exclusion. But it relies on STATE, which React commits on
+  // its next render, after the second tap of a real double tap. MEASURED: two taps in one
+  // act() batch both reach the handler (PaymentModalSaleFlow.test.tsx 'issues a tax invoice
+  // once for a double tap'), and both are SENT.
+  //
+  // The backend does not fully absorb it. `issue_tax_invoice_for_sale` is idempotent ONCE A
+  // NUMBER IS WRITTEN -- it reads `sales.statutory_number` and returns the existing value
+  // when it already carries the series prefix
+  // (crates/kasirmu-core/src/db/fiscal.rs:572-587). But that column is set by the SAME
+  // transaction at the end, so two issues in one tick both read NULL and both fall through to
+  // `claim_statutory_number_for_sale`, an atomic `UPDATE document_number_sequences ...
+  // RETURNING` (fiscal.rs:438-455). The sequence advances TWICE. One number is written onto
+  // the sale, so a legally numbered series ends up with a gap or a duplicate -- not a
+  // cosmetic defect. A ref, not the state, because only the ref is authoritative at the
+  // moment the second tap runs.
+  const issueInvoicePendingRef = useRef(false);
   const handleIssueTaxInvoice = useCallback(async () => {
+    if (issueInvoicePendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. The other two halves of this condition stay silent —
       // no completed sale or no receipt args is a screen state — but a missing token
@@ -1815,6 +1835,7 @@ retryCurrencyLoad,
       return;
     }
     if (!completedSaleId || !receiptArgs) return;
+    issueInvoicePendingRef.current = true;
     setIssuingTaxInvoice(true);
     try {
       const invoiceNumber = await issueTaxInvoiceScoped(sessionToken, completedSaleId);
@@ -1840,6 +1861,7 @@ retryCurrencyLoad,
         type: 'error',
       });
     } finally {
+      issueInvoicePendingRef.current = false;
       setIssuingTaxInvoice(false);
     }
   }, [completedSaleId, sessionToken, receiptArgs, addToast]);
