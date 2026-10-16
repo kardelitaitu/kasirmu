@@ -1634,6 +1634,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       // invisible cart.
       if (!saleViewVisible) return;
 
+      // Guard: block hotkeys while a sub-view has replaced the sale screen. See
+      // `saleViewVisible` above — this is the guard whose ABSENCE let F1 pay for an
+      // invisible cart.
+
       // KEY-03: suppress high-impact hotkeys while the user is typing in an
       // input/textarea/select/contenteditable (covers shift notes, customer
       // notes, and the SKU input during manual entry) so a keystroke cannot

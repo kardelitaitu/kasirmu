@@ -24,6 +24,13 @@
 //      CAN run — not what `PosScreen` actually PASSES it. Renaming a key in PosScreen's
 //      `useMemo` would leave claim 3 green and the key silently dead, because nothing else
 //      renders the restaurant shortcut path.
+//   6. AN UNCONDITIONAL HANDLER. The keys belong to the SALE VIEW, and a sub-screen replaces
+//      that view (`showTables` / `showSalesHistory` / `showStockInquiry` each early-return).
+//      `useRestaurantShortcuts` registers on `document`, so an unconditional handler map is
+//      live behind those sub-screens — measured: `Shift+B` opened the split-bill modal over
+//      the Table Management list and `Shift+P` printed an interim bill for a cart the cashier
+//      could not see. Claims 3 and 5 read the static map and pass either way, so only this
+//      one can notice a regression to unconditional wiring.
 
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -132,5 +139,46 @@ describe('the restaurant shortcut manifest', () => {
         `${mod} must not match a bare Shift chord`,
       ).toBe(false);
     }
+  });
+  // Claim 6: the handler map is CONDITIONAL on the sale view being the one showing.
+  //
+  // Claims 3 and 5 read the static map, so they pass whether or not it is guarded —
+  // which is why the rounds-69/70 fix needed its own guard rather than relying on these.
+  // The fix is one clause (`|| !saleViewVisible`), so this reads the map's guard
+  // expression directly and requires it to name the view state.
+  it('supplies no shortcut handler while a sub-screen owns the view', () => {
+    const posScreen = fs.readFileSync(
+      path.join(ROOT, 'ui/src/features/sales/PosScreen.tsx'),
+      'utf-8',
+    );
+
+    // The derivation the guard reads. It must exist and must name all three
+    // sub-screen flags; a guard over a stale subset is the same bug with fewer views.
+    const deriv = /const saleViewVisible =([^;]*);/.exec(posScreen);
+    expect(
+      deriv,
+      'saleViewVisible is gone — the restaurant keys are probably unguarded again',
+    ).not.toBeNull();
+    for (const flag of ['showTables', 'showSalesHistory', 'showStockInquiry']) {
+      expect(
+        deriv![1]!,
+        deriv![1]!.includes(flag)
+          ? 'ok'
+          : `saleViewVisible no longer consults ${flag} — that sub-screen's keys are live behind it`,
+      ).toContain(flag);
+    }
+
+    // And the handler map must actually READ it. A derivation nobody references is
+    // dead code, which is how the tile memo read correct for a round (see
+    // MenuItemGrid).
+    const guard = /if \(activeWorkspace !== 'restaurant-pos'([^)]*)\) return \{\};/.exec(posScreen);
+    expect(
+      guard,
+      'the restaurant handler map is not guarded by the lease workspace check',
+    ).not.toBeNull();
+    expect(
+      guard![1]!,
+      'the handler map ignores saleViewVisible — the keys are live behind a sub-screen',
+    ).toContain('saleViewVisible');
   });
 });
