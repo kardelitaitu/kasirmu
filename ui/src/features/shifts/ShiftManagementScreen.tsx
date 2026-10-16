@@ -178,6 +178,14 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
 
   // ── Open shift ────────────────────────────────────────────────────
 
+  // Re-entry guard. NOTE, and it is a correction to this commit's own premise: the
+  // backend ALREADY refuses a second open -- the partial unique index
+  // `idx_shifts_open_per_user` (migrations/20261011_open_shift_uniqueness.sql) holds one
+  // open row per user, and `open_shift` counts before inserting. So this is
+  // defence-in-depth, NOT the fix for a live defect. What it does remove is the
+  // ERROR the replay would otherwise raise on a shift that opened fine.
+  const openShiftPendingRef = useRef(false);
+
   const handleOpenShift = useCallback(async () => {
     // SHIFT-03 + MONEY-02 + MONEY-05: opening balance is entered in major units
     // scaled by the active currency's exponent. Reject fractional input for
@@ -190,6 +198,8 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
     }
     const safeBalance = balance;
 
+    if (openShiftPendingRef.current) return;
+    openShiftPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -200,11 +210,19 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'shift-open-error'));
     } finally {
+      openShiftPendingRef.current = false;
       setSaving(false);
     }
   }, [openingBalance, currency, sessionToken, load, l10n]);
 
   // ── Close shift ───────────────────────────────────────────────────
+
+  // Re-entry guard, and again defence-in-depth rather than a defect fix:
+  // `close_shift` updates `WHERE id = ?14` with no status predicate
+  // (crates/kasirmu-core/src/db/shifts.rs:312-319), so a replay OVERWRITES the same
+  // row instead of creating a second one -- idempotent by construction. The guard
+  // removes a redundant round trip, not a duplicate.
+  const closeShiftPendingRef = useRef(false);
 
   const handleCloseShift = useCallback(async () => {
     if (!activeShift) return;
@@ -215,6 +233,8 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
       return;
     }
 
+    if (closeShiftPendingRef.current) return;
+    closeShiftPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -230,6 +250,7 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'shift-close-error'));
     } finally {
+      closeShiftPendingRef.current = false;
       setSaving(false);
     }
   }, [activeShift, closingBalance, currency, shiftNotes, sessionToken, l10n]);
@@ -253,6 +274,19 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
   // satisfy the checker rather than to describe a real case.
   const parsedPayout = parseBalanceInput(payoutAmount.trim(), currency);
 
+  // Re-entry guard for the payout write. `handleCreatePayout` awaits the IPC call and
+  // shares one `saving` flag with the open/close handlers, so nothing in the handler itself
+  // stops a second submit. Core's compare-and-set refuses a payout only against a CLOSED
+  // shift (crates/kasirmu-core/src/db/cash_payouts.rs:60-73), so two submits against an
+  // OPEN shift BOTH succeed, and `CashPayout::new` mints a fresh UUID per call
+  // (crates/kasirmu-core/src/cash_payout.rs:35): the drawer ends short by DOUBLE the
+  // removal, with no row to reconcile the duplicate against.
+  //
+  // A ref, not the `saving` state: React commits a useState flag on its next render, which is
+  // AFTER the second dispatch in the same task. MEASURED -- two clicks in one batch both
+  // reach this handler (ShiftManagementScreen.test.tsx 'records a safe drop once').
+  const payoutPendingRef = useRef(false);
+
   const handleCreatePayout = useCallback(async () => {
     if (!activeShift) return;
     const trimmed = payoutAmount.trim();
@@ -263,6 +297,8 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
     }
     const reason = payoutReason.trim() || 'safe drop';
 
+    if (payoutPendingRef.current) return;
+    payoutPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -274,6 +310,7 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'shift-payout-error'));
     } finally {
+      payoutPendingRef.current = false;
       setSaving(false);
     }
     // sessionToken is read at :182 by createCashPayoutScoped -- this moves cash out of a shift,

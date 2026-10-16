@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
@@ -328,6 +328,55 @@ describe('ShiftManagementScreen', () => {
     // difference as blank, which reads like an empty field rather than a type mismatch.
     expect(screen.getByLabelText('Payout amount')).toHaveValue(20000);
     expect(mockListShifts.mock.calls.length).toBe(1); // no reload after failure
+  });
+
+  // A double submit on Record Payout must not record the safe drop TWICE.
+  //
+  // The server does NOT protect this. core `create_cash_payout` compare-and-sets
+  // only against a CLOSED shift (crates/kasirmu-core/src/db/cash_payouts.rs:60-73,
+  // `WHERE EXISTS (SELECT 1 FROM shifts WHERE id = ?2 AND status = 'open')`), so two
+  // concurrent payouts against an OPEN shift BOTH succeed. `CashPayout::new` mints a
+  // fresh `uuid::Uuid::now_v7()` per call (crates/kasirmu-core/src/cash_payout.rs:35)
+  // and the unique index covers only the id, so nothing collapses them. Two submits
+  // therefore store two identical safe drops, the drawer is short by double the
+  // removal, and no later reconciliation can tell which row was the duplicate.
+  //
+  // The only guard is `loading={saving}` on the confirm button, and the handler has no
+  // in-flight check of its own. Compare rounds 136-137: there core refused the replay,
+  // so the worst outcome was a false toast. Here the write lands twice.
+  it('records a safe drop once for a double submit while the first is in flight', async () => {
+    let releasePayout: ((v: unknown) => void) | undefined;
+    const heldPayout = new Promise((resolve) => { releasePayout = resolve; });
+    mockCreateCashPayout.mockImplementation(() => heldPayout as never);
+    const user = await renderWithActiveShiftAndOpenPayout();
+
+    await user.type(screen.getByLabelText('Payout amount'), '20000');
+
+    // BOTH clicks inside ONE act() batch -- the part that matters, after two earlier
+    // rounds got this wrong twice. A plain sequential `fireEvent.click` already wraps
+    // each dispatch in its own act(), so React COMMITS `setSaving(true)` between them
+    // and the second lands on a disabled button: measured, that yields 1 call and
+    // reads as a guard that does not exist. A genuine double tap is two dispatches in
+    // ONE task, before React can re-render. That is the shape below, and it yields 2.
+    // `removeAttribute` is not a hack -- it is the point: without it the second
+    // dispatch is refused by a DOM flag React has not yet made authoritative.
+    const confirmBtn = screen.getByRole('button', { name: 'Record Payout' });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockCreateCashPayout.mock.calls.length,
+      'a second submit re-sent the payout while the first was in flight; core has no ' +
+        'dedupe, so this records TWO safe drops and the drawer is short by double',
+    ).toBe(1);
+
+    releasePayout?.(undefined);
+    await waitFor(() => {
+      expect(mockCreateCashPayout).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('disables the confirm button until the amount is a positive whole number', async () => {
