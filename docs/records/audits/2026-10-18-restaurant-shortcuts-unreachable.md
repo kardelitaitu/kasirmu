@@ -43,9 +43,20 @@ elsewhere in `RestaurantMenu.css`, but grepping for their definitions found **no
 in that sheet (4 sites) rather than something this round introduced.
 
 Corrected my block to `--font-mono` / `--text-xs` / `--text-sm` / `--text-md` and verified
-all 15 tokens against `tokens.css` before committing. The pre-existing `--font-size-*` sites
-are left alone and recorded here instead: touching them would restate an unrelated baseline
-inside a feature commit.
+all 15 tokens against `tokens.css` before committing.
+
+**Correction 2026-10-18 (round 95): the `--font-size-*` claim above was WRONG.** This record
+first asserted that four `--font-size-*` spellings in `RestaurantMenu.css` were undefined
+custom properties. Round 95 re-checked with `grep '\-\-font\-size'` and there is no such
+token anywhere in `ui/src`: the six hits are all the SINGLE name `--font-size`, a
+runtime-injected property set from React (`RestaurantMenu.tsx:683`, the menu size control)
+and read as `var(--font-size, 0)` (`RestaurantMenu.css:702, 793, 990, 1013`). That is a
+legitimate live control with a deliberate `0` fallback, not drift.
+
+The original claim came from my own regex matching `--font-size-xs` as a SUBSTRING of
+`var(--font-size, 0) * 1px`-style expressions — the same class of detector error this
+campaign keeps paying for, and the reason the sweep numbers in this file are stated with
+their detector's validation rather than alone. Nothing in the tree needed fixing.
 
 `themeTokenCompliance.test.ts` then caught the panel's `line-height: 1` — the frozen
 line-height-literal guard working exactly as designed. Rather than restate the count from 2 to
