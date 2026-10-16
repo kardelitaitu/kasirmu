@@ -557,7 +557,7 @@ export function usePosHeldCarts({
     // `getConflict` is a callback over lease state, so it changes whenever the
     // registry does — which is the point: the guard must read the CURRENT conflict
     // answer at resume time, not one captured when this callback was created.
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, getConflict, l10nRef]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, getConflict, l10nRef, activeOpenBillId, lines.length]);
 
   return {
     activeOpenBillId,
