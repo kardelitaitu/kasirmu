@@ -312,13 +312,16 @@ describe('TableManagementScreen', () => {
     mockListTables.mockResolvedValue([
       makeTable({ shape: 'circle' }),
       makeTable({ id: 't-2', shape: 'rectangle' }),
+      makeTable({ id: 't-3', shape: 'booth' }),
     ]);
     renderScreen();
     await waitFor(() => {
       const circleBtn = document.querySelector('.tables-table--circle');
       const rectBtn = document.querySelector('.tables-table--rectangle');
+      const boothBtn = document.querySelector('.tables-table--booth');
       expect(circleBtn).toBeDefined();
       expect(rectBtn).toBeDefined();
+      expect(boothBtn).toBeDefined();
     });
   });
 

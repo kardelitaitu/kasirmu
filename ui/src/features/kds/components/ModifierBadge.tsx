@@ -34,14 +34,14 @@ export type ModifierTone = 'removal' | 'addition' | 'neutral';
 /**
  * Removal phrasings: "NO ONIONS", "NO-ONIONS", "NO/NO GARLIC", "WITHOUT X",
  * "SKIP X", "DELETE X", "OMIT X", "HOLD THE X" (kitchen jargon for omit),
- * Indonesian: "TANPA X", "JANGAN X", "GAK PAKE X".
+ * Indonesian: "TANPA X", "JANGAN X", "GAK PAKE X", "TIDAK PAKE X", "TIDAK PAKAI X".
  * Tested FIRST so "WITHOUT" can never be re-read as an addition by the WITH
  * rule below.
  */
-const REMOVAL_RE = /^(?:no[\s\-/]|without\b|skip\b|delete\b|omit\b|hold\b|exclude\b|tanpa\b|jangan\b|gak\s*pake\b)/i;
+const REMOVAL_RE = /^(?:no[\s\-/]|without\b|skip\b|delete\b|omit\b|hold\b|exclude\b|tanpa\b|jangan\b|gak\s*pake\b|tidak\s*(?:pake|pakai)\b)/i;
 
-/** Addition phrasings: "EXTRA CHEESE", "MORE RICE", "ADD BACON", "DOUBLE X", "WITH X", "SIDE OF X", Indonesian: "EKSTRA X", "TAMBAH X". */
-const ADDITION_RE = /^(?:extra\b|more\b|add\b|double\b|triple\b|with\b|side\b|ekstra\b|tambah\b)/i;
+/** Addition phrasings: "EXTRA CHEESE", "MORE RICE", "ADD BACON", "DOUBLE X", "WITH X", "SIDE OF X", Indonesian: "EKSTRA X", "TAMBAH X", "PLUS X", "BANYAK X", "BANYAKIN X". */
+const ADDITION_RE = /^(?:extra\b|more\b|add\b|double\b|triple\b|with\b|side\b|ekstra\b|tambah\b|plus\b|banyak(?:in)?\b)/i;
 
 /**
  * Classify a modifier choice into a badge tone.

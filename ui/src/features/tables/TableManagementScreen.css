@@ -532,6 +532,11 @@
   border-radius: var(--radius-lg);
 }
 
+.tables-table--booth {
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-sm);
+  border-top-width: 3px !important;
+}
+
 .tables-table--arranging {
   cursor: grab !important;
   touch-action: none;
@@ -1235,6 +1240,11 @@
 .tables-table--square {
   aspect-ratio: 1 / 1;
   border-radius: var(--radius-md) !important;
+}
+
+.tables-table--booth {
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-sm) !important;
+  border-top-width: 3px !important;
 }
 
 .tables-table-joined-tag {

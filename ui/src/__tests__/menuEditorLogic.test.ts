@@ -373,6 +373,7 @@ describe('createDuplicateDraft', () => {
     expect(draft.name).toBe('Nasi Goreng (Copy)');
     expect(draft.categoryName).toBe('Mains');
     expect(draft.priceMinor).toBe(35000);
+    expect(draft.priceInput).toBe('35000');
     expect(draft.notes).toBe('Extra pedas');
     expect(draft.isActive).toBe(true);
     expect(draft.modifierGroups).toEqual([]);
@@ -390,6 +391,7 @@ describe('createDuplicateDraft', () => {
 
     const draft = createDuplicateDraft(original, ' [Duplikat]');
     expect(draft.name).toBe('Ayam Bakar [Duplikat]');
+    expect(draft.priceInput).toBe('28000');
     expect(draft.notes).toBe('');
     expect(draft.isActive).toBe(false);
   });
@@ -412,6 +414,7 @@ describe('createDuplicateDraft', () => {
 
     const draft = createDuplicateDraft(original);
     expect(draft.name).toBe('Kopi Susu (Copy)');
+    expect(draft.priceInput).toBe('18000');
     expect(draft.notes).toBe('');
     expect(draft.modifierGroups).toHaveLength(1);
     expect(draft.modifierGroups[0]?.name).toBe('Sweetness');
@@ -425,6 +428,15 @@ describe('modifier groups serialization & parsing', () => {
     expect(parseDraftModifierGroups('Allergens: nuts')).toEqual([]);
     expect(parseDraftModifierGroups('{invalid')).toEqual([]);
     expect(parseDraftModifierGroups('{"not": "array"}')).toEqual([]);
+  });
+
+  it('tolerates leading and trailing whitespace in JSON notes', () => {
+    const jsonWithSpaces = '  \n [ {"id": "mg-1", "name": "Level", "modifiers": [{"id": "o1", "name": "Pedas", "priceMinor": 0}] } ] \t ';
+    expect(parseDraftModifierGroups(jsonWithSpaces)).toHaveLength(1);
+    expect(parseDraftModifierGroups(jsonWithSpaces)[0]?.name).toBe('Level');
+
+    const descJson = ' \t {"description": "Gurih pedas", "modifiers": []} \n ';
+    expect(parseDraftNotes(descJson)).toBe('Gurih pedas');
   });
 
   it('parses multiple modifier groups and fills defaults for missing fields', () => {

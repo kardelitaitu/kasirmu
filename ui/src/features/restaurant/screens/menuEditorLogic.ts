@@ -144,7 +144,7 @@ export function createDuplicateDraft<
     notes?: string | null | undefined;
     is_active?: boolean | undefined;
   },
->(item: T, copySuffix = ' (Copy)'): {
+>(item: T, copySuffix = ' (Copy)', currency = 'IDR'): {
   sku: null;
   name: string;
   categoryName: string;
@@ -159,6 +159,7 @@ export function createDuplicateDraft<
     name: `${item.name}${copySuffix}`,
     categoryName: item.category ?? '',
     priceMinor: item.price.minor_units,
+    priceInput: formatMinorForInput(item.price.minor_units, currency),
     isActive: item.is_active !== false,
     notes: parseDraftNotes(item.notes),
     modifierGroups: parseDraftModifierGroups(item.notes),
@@ -185,9 +186,10 @@ export interface DraftModifierGroup {
  */
 export function parseDraftNotes(notes: string | null | undefined): string {
   if (!notes) return '';
-  if (notes.startsWith('{')) {
+  const trimmed = notes.trim();
+  if (trimmed.startsWith('{')) {
     try {
-      const parsed: unknown = JSON.parse(notes);
+      const parsed: unknown = JSON.parse(trimmed);
       if (
         parsed &&
         typeof parsed === 'object' &&
@@ -199,7 +201,7 @@ export function parseDraftNotes(notes: string | null | undefined): string {
       return '';
     }
   }
-  if (notes.startsWith('[')) return '';
+  if (trimmed.startsWith('[')) return '';
   return notes;
 }
 
@@ -208,17 +210,18 @@ export function parseDraftNotes(notes: string | null | undefined): string {
  */
 export function parseDraftModifierGroups(notes: string | null | undefined): DraftModifierGroup[] {
   if (!notes) return [];
+  const trimmed = notes.trim();
   let rawArray: unknown[] = [];
-  if (notes.startsWith('[')) {
+  if (trimmed.startsWith('[')) {
     try {
-      const parsed: unknown = JSON.parse(notes);
+      const parsed: unknown = JSON.parse(trimmed);
       if (Array.isArray(parsed)) rawArray = parsed;
     } catch {
       return [];
     }
-  } else if (notes.startsWith('{')) {
+  } else if (trimmed.startsWith('{')) {
     try {
-      const parsed: unknown = JSON.parse(notes);
+      const parsed: unknown = JSON.parse(trimmed);
       if (parsed && typeof parsed === 'object') {
         const candidate =
           (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifierGroups ||
