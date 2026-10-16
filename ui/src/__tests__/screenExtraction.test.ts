@@ -1244,7 +1244,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'TableManagementScreen',
     tsx: 'tables/TableManagementScreen.tsx',
     css: ['tables/TableManagementScreen.css'],
-    dynamicClassPrefixes: [ 'tables-table--circle', 'tables-table--rectangle', 'tables-table--available', 'tables-table--occupied', 'tables-table--cleaning', 'tables-table--reserved'],
+    dynamicClassPrefixes: [ 'tables-table--circle', 'tables-table--square', 'tables-table--rectangle', 'tables-table--available', 'tables-table--occupied', 'tables-table--cleaning', 'tables-table--reserved'],
     // `btn` (added 2026-10-16). tables/TableManagementScreen.css:746 carries
     // `.tables-detail-actions .btn` -- a DESCENDANT rule whose subject is `btn`, a class
     // this screen's own TSX never spells out. The children of
