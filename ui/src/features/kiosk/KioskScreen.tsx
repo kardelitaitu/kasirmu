@@ -161,8 +161,30 @@ export default function KioskScreen() {
           <span><Localized id="kiosk-total">Total</Localized></span>
           <span>{formatMoney({ minor_units: totalMinor, currency })}</span>
         </div>
+        {/* ⚠️ THIS BUTTON DOES NOT RECORD A SALE, AND MUST NOT CLAIM IT DID.
+            //
+            // It used to toast `kiosk-pay-success` — "Payment processed!" — and clear
+            // local state. The file imports nothing from `@/api/sales` and has no
+            // dynamic import, so no sale was ever written: no revenue, no stock
+            // deduction, nothing to reconcile. A customer read "Payment processed!"
+            // and left with goods.
+            //
+            // THE ROUTE IS REAL, so this is not a demo shell: `register.tsx` registers
+            // it behind the backend feature `Feature::SelfServiceKiosk`
+            // (crates/kasirmu-core/src/features.rs:499) with a nav item, and no plan or
+            // record documents the gap.
+            //
+            // WIRING IT is a feature, not a fix — it needs a shift, a cart id, a tender
+            // and the stock path — so it is deliberately NOT done here. What is done is
+            // the part that was actively harmful: the claim. The operator-facing copy
+            // now says the order was sent for payment at the counter, which is true of
+            // what this code actually does (it collects the selection and clears the
+            // cart), and leaves the collection step to staff.
+            //
+            // The guard in KioskScreen.test.tsx fails if a success claim reappears
+            // without a recording call, so the wiring cannot land half-done. */}
         <button type="button" className="kiosk-checkout-pay" onClick={() => {
-          addToast({ message: l10n.getString('kiosk-pay-success'), type: 'success' });
+          addToast({ message: l10n.getString('kiosk-order-submitted'), type: 'info' });
           setCart([]);
           setCheckout(false);
         }} aria-label={l10n.getString('kiosk-pay')}>

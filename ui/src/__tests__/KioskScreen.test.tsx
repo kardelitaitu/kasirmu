@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -169,6 +171,44 @@ describe('KioskScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Indomie Goreng')).toBeInTheDocument();
     });
+  });
+
+  // ── "Payment processed!" must be a claim the code can support ──────────
+  //
+  // The Pay button (:164-168) toasts `kiosk-pay-success` — "Payment processed!" /
+  // "Pembayaran berhasil!" — and clears local state. It calls NO sales API: the file
+  // imports nothing from `@/api/sales` (`listProductsScoped` and
+  // `listCategoriesScoped` are the only API imports) and contains no dynamic import.
+  //
+  // So a customer taps Pay, the kiosk tells them the payment succeeded, and NO SALE
+  // EXISTS: no revenue recorded, no stock deducted, nothing for reconciliation. On a
+  // CUSTOMER-FACING device with no staff in the loop, that is the strongest claim the
+  // UI can make about money and the one it is least entitled to.
+  //
+  // This is not a demo shell: `register.tsx` registers the route behind the real
+  // backend feature `Feature::SelfServiceKiosk` (`crates/kasirmu-core/src/features.rs:499`)
+  // with a nav item, and no plan or record documents the gap.
+  //
+  // A SOURCE check, because the fix is to wire a sale (or to stop claiming one) and
+  // the defect is the ABSENCE of a call — which a render test can only observe as
+  // "a toast appeared", the same thing it observes when the call succeeds.
+  it('does not claim the payment was processed without recording a sale', () => {
+    const src = readFileSync(resolve(__dirname, '../features/kiosk/KioskScreen.tsx'), 'utf-8');
+    // Strip comments before matching: a fix would explain itself in prose.
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    const claimsSuccess = /kiosk-pay-success/.test(code);
+    const recordsSale =
+      /completeSaleScoped|startSaleScoped|finalizeSale|from '@\/api\/sales'/.test(code) ||
+      /import\(/.test(code);
+
+    expect(
+      claimsSuccess && !recordsSale,
+      'the kiosk tells the customer "Payment processed!" while calling no sales API, '
+      + 'so no sale is recorded — either wire the sale or stop claiming it was paid',
+    ).toBe(false);
   });
 
   // ── The attract screen must also DISCARD the abandoned order ───────────

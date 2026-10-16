@@ -20,5 +20,9 @@ kiosk-load-error = Gagal memuat menu
 kiosk-retry = Coba lagi
 kiosk-price-volatility-title = Harga baru saja berubah
 kiosk-pay-success = Pembayaran berhasil!
+# Kiosk ini tidak memproses pembayaran atau mencatat penjualan — hanya menyiapkan
+# pesanan untuk dibayar di kasir. Klaim "Pembayaran berhasil!" yang lama tidak didukung
+# oleh pencatatan penjualan apa pun.
+kiosk-order-submitted = Pesanan dikirim ke kasir — silakan bayar di sana
 
 # ── Customers (remaining) ──
