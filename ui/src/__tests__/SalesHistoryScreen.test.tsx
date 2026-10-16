@@ -919,7 +919,48 @@ describe('ADR #7: reads are session-scoped when a workspace token exists', () =>
       expect(screen.queryByText('Void')).toBeNull();
     });
 
-    it('stamps e-Faktur NSFP on unstamped sale', async () => {
+    // ── The STAMP overlay is the THIRD focus-trapped overlay on this screen ─
+  //
+  // It is opened from INSIDE the detail panel ('Input e-Faktur NSFP'), so it is a
+  // second-level overlay: the trap that must own Escape at that moment is
+  // `stampPanelRef`, not `detailPanelRef`. Rounds 191 and 192 pinned DETAIL and VOID;
+  // this is the last of the three, and the only one whose trigger lives behind another
+  // overlay — which is why it needed its own case rather than being assumed covered.
+  //
+  // Asserting the screen survives as well as the overlay leaving is the half that
+  // discriminates: the bug this class produces is a dismissal that ALSO navigates away
+  // (see `restaurant-tables-toolbar.spec.ts`).
+  it('closes the e-Faktur STAMP overlay on Escape without leaving the screen', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListStaff.mockResolvedValue([]);
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Input e-Faktur NSFP'));
+    expect(screen.getByText('Input e-Faktur NSFP (DJP Coretax)')).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The STAMP overlay goes…
+    await waitFor(() => {
+      expect(screen.queryByText('Input e-Faktur NSFP (DJP Coretax)')).toBeNull();
+    });
+    // …and the SCREEN STAYS: its rows are still rendered.
+    expect(
+      container.querySelectorAll('.sales-history-row-wrap').length,
+      'Escape must dismiss the stamp overlay, not navigate away from the screen',
+    ).toBeGreaterThan(0);
+  });
+  it('stamps e-Faktur NSFP on unstamped sale', async () => {
       const user = userEvent.setup();
       mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
       mockListStaff.mockResolvedValue([]);
