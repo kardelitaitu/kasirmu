@@ -743,6 +743,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const handleConfirmReservation = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      // RE-ENTRY GUARD. The Reserving button is disabled while saving (:1957), but this
+      // handler is also the form's `onSubmit` (:1880) — pressing Enter in the guest-name
+      // field submits it directly and never consults the button. Without this, a double
+      // submit ran `holdCartScoped` (:773) TWICE, leaving two open bills against one table.
+      // Same shape and same reason as `handleSaveTableModal` above.
+      if (reservingTable) return;
       if (!sessionToken) {
         addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
         return;
@@ -800,7 +806,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         setReservingTable(false);
       }
     },
-    [reserveModal, sessionToken, l10n, addToast, loadTables],
+    [reserveModal, reservingTable, sessionToken, l10n, addToast, loadTables],
   );
 
   const handleSeatReservedGuests = useCallback(

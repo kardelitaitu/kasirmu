@@ -1545,6 +1545,63 @@ describe('TableManagementScreen', () => {
 
     release?.();
   });
+
+  // ── A double submit on Reserve must not create two reservations ────────
+  //
+  // `handleConfirmReservation` (:743) is the reserve form's `onSubmit` (:1880) and has no
+  // `reservingTable` re-entry check. The Reserving BUTTON is guarded —
+  // `disabled={!reserveModal.guestName.trim() || reservingTable}` (:1957) — but pressing
+  // Enter in the name field submits the form natively and never consults the button.
+  //
+  // Worse than the Add Table case: this handler's first write is `holdCartScoped` (:773),
+  // which CREATES a held cart / open bill. A double submit leaves two open bills against
+  // one table.
+  it('creates only ONE reservation when the Reserve form is submitted twice', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'T1', status: 'available' })]);
+
+    // Pending for the whole test: the first submit is still in flight when the second
+    // lands, which is the only arrangement that can produce two writes from one form.
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    mockHoldCart.mockReset();
+    mockHoldCart.mockImplementation((() => gate.then(() => ({ id: 'held-res' }))) as never);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByText('T1').length).toBeGreaterThan(0));
+
+    // Open the table detail, then the Reserve action.
+    await userEvent.click(screen.getAllByText('T1')[0]!);
+    // The Reserve action carries a testid (:1421); its accessible name is "Mark Reserved",
+    // not /reserve/i, so a role query would miss it.
+    const reserveBtn = await waitFor(() => {
+      const b = document.querySelector('[data-testid="tables-open-reserve-btn"]');
+      expect(b, 'the Reserve action was not found').not.toBeNull();
+      return b as HTMLElement;
+    });
+    await userEvent.click(reserveBtn);
+
+    // Fill the guest name the handler requires.
+    const nameInput = await waitFor(() => {
+      const el = document.querySelector('#reserve-modal-name');
+      expect(el, 'the reserve modal did not open').not.toBeNull();
+      return el as HTMLInputElement;
+    });
+    fireEvent.change(nameInput, { target: { value: 'Ada' } });
+
+    // Two submits with NO await between them — the form path, which is what pressing
+    // Enter twice in the name field produces.
+    const form = document.querySelector('.tables-modal-form') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+    expect(
+      mockHoldCart.mock.calls.length,
+      'a double submit created more than one reservation',
+    ).toBe(1);
+
+    release?.();
+  });
 });
 
 
