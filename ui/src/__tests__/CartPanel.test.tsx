@@ -590,6 +590,69 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     }
   });
 
+  // ── The order-type slider has THREE ways in; only click was covered ───
+  //
+  // The control can be changed by (1) clicking a radio, (2) arrow keys, and (3)
+  // swiping the row. Only the labels were asserted, so the two INTERACTION paths were
+  // never exercised — and they are different code paths: the buttons call `setOrderType`
+  // directly, while the arrows and the swipe both go through `handleOrderTypeNext/Prev`,
+  // which clamp at the ends of `ORDER_TYPES`.
+  //
+  // This is the same shape rounds 191-193 kept finding: one control, several mechanics,
+  // one tested. The clamp in particular is only reachable through these two.
+  it('changes the order type with the ARROW keys, and clamps at both ends', () => {
+    const setOrderType = vi.fn();
+    // `orderType` is a CONTROLLED prop, so a recorded `setOrderType` does not change what
+    // the component sees. Each step therefore needs its OWN render with the value the
+    // parent would now be passing — and its own unmount, because this file has no
+    // auto-cleanup and repeated renders stack `role="region" name="Cart"` in one document.
+    //
+    // The handler is on the radiogroup div; a keydown on a focused CHILD button bubbles
+    // to it, which is how a keyboard user actually drives this.
+    const press = (orderType: string, key: string) => {
+      const { unmount } = renderPanel({ orderTypePromptEnabled: true, orderType, setOrderType });
+      fireEvent.keyDown(screen.getByRole('radiogroup'), { key });
+      unmount();
+    };
+
+    press('dine_in', 'ArrowRight');
+    expect(setOrderType, 'ArrowRight advances one order type').toHaveBeenLastCalledWith('takeaway');
+
+    setOrderType.mockClear();
+    press('takeaway', 'ArrowRight');
+    expect(setOrderType).toHaveBeenLastCalledWith('delivery');
+
+    // CLAMP at the LAST type: no next exists, so nothing is set. Without the guard the
+    // index would run off the end, and nothing else asserts this.
+    setOrderType.mockClear();
+    press('delivery', 'ArrowRight');
+    expect(setOrderType, 'the last order type has no next').not.toHaveBeenCalled();
+
+    // And the mirror at the other end: 'dine_in' is first, so ArrowLeft sets nothing.
+    setOrderType.mockClear();
+    press('dine_in', 'ArrowLeft');
+    expect(setOrderType, 'the first order type has no previous').not.toHaveBeenCalled();
+  });
+
+  it('changes the order type on a horizontal SWIPE, the touch path', () => {
+    // Distinct from the keyboard case: this goes through `useSwipe`, whose handlers
+    // are spread onto the row (`:838`). The gesture is the one an operator uses on a
+    // tablet, and it was the only path with no case at all.
+    const setOrderType = vi.fn();
+    const { container } = renderPanel({
+      orderTypePromptEnabled: true,
+      orderType: 'dine_in',
+      setOrderType,
+    });
+
+    const row = container.querySelector('.pos-cart-order-type-row');
+    expect(row, 'the swipe target must be mounted for this to mean anything').not.toBeNull();
+
+    fireEvent.touchStart(row!, { touches: [{ clientX: 200, clientY: 10 }] });
+    fireEvent.touchEnd(row!, { changedTouches: [{ clientX: 40, clientY: 10 }] });
+
+    expect(setOrderType, 'a left swipe advances the order type').toHaveBeenLastCalledWith('takeaway');
+  });
   it('renders the guest-count placeholder from the bundle, not a literal', () => {
     // The placeholder was hardcoded 'Pax' while the aria-label already read the
     // bundle's `pos-cart-guest-count-label` ("Guests") — two names for one field,
