@@ -174,7 +174,7 @@ export type TenderMethod = 'cash' | 'card' | 'qris' | 'credit';
  *    including its fail-open rule for a null or empty list.
  *  · `credit` carries NO gate HERE, and that is deliberate: the rail is
  *    applied one level up, in `PaymentModal`, which filters this list with
- *    `creditOffered` before rendering the tabs (PaymentModal.tsx:2251). The
+ *    `creditOffered` before rendering the tabs (PaymentModal.tsx:2439). The
  *    owner question that used to block it — is credit a tender tab or a
  *    facility orthogonal to tender (todo-payment.md :887) — was answered by
  *    `abb1c324b`, which wired `coreRailWithheld(paymentRails, 'credit')` into

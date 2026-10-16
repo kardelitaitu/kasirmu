@@ -15,7 +15,7 @@ export interface SplitBillModalProps {
   /**
    * The order's type. The header names the table, and a table only identifies a
    * DINE-IN order — the Table field renders on restaurant POS unconditionally
-   * (CartPanel.tsx:864), so a takeaway with a stray number announced a table on
+   * (CartPanel.tsx:898), so a takeaway with a stray number announced a table on
    * the split dialog. Optional with a dine-in default so existing renders are
    * unchanged.
    */

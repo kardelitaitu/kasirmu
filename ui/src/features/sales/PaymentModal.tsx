@@ -583,7 +583,7 @@ retryCurrencyLoad,
   // 'qris', 'other'). `bbc530642` established that and is correct for this value.
   //
   // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
-  // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+  // verbatim by ReceiptPreview.tsx:188 and printed for the customer). It must be
   // human-readable.
   const storedMethod = useMemo(
     () =>
@@ -1443,7 +1443,7 @@ retryCurrencyLoad,
       // 'qris', 'other'). `bbc530642` established that and is correct for this value.
       //
       // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
-      // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+      // verbatim by ReceiptPreview.tsx:188 and printed for the customer). It must be
       // human-readable. That commit lowercased this one too, so a cash sale started
       // printing 'cash' where it had printed 'CASH'. The two were the same variable;
       // they are not the same fact.

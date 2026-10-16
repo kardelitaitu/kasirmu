@@ -68,8 +68,8 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
     // ── The tablet has NO backup-status command, and that is not a no-op ──
     //
     // `get_backup_status` and `get_backup_status_scoped` are DESKTOP-registered
-    // names only: defined at apps/desktop-tauri/src/commands/data.rs:33 and :133 and
-    // registered at apps/desktop-tauri/src/lib.rs:964-965. apps/mobile-tauri defines
+    // names only: defined at apps/desktop-tauri/src/commands/data.rs:36 and :136 and
+    // registered at apps/desktop-tauri/src/lib.rs:1411-1412. apps/mobile-tauri defines
     // neither and registers neither (its only backup door is `create_backup_to`,
     // apps/mobile-tauri/src/commands/data.rs:139), so on the tablet this invoke is
     // rejected by the IPC layer for an unknown command -- the catch below then fires

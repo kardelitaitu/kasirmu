@@ -34,7 +34,7 @@ export interface CartActionBarProps {
   /**
    * The order's type. Read by the Print Bill gate below: a table number only
    * identifies a check on a DINE-IN order, and the table field renders on
-   * restaurant POS unconditionally (CartPanel.tsx:864), so a takeaway with a
+   * restaurant POS unconditionally (CartPanel.tsx:898), so a takeaway with a
    * stray number would otherwise be offered an interim check naming a table it
    * does not have. Optional with a dine-in default so retail and every existing
    * test render are unchanged.
