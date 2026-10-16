@@ -53,8 +53,25 @@ line-height-literal guard working exactly as designed. Rather than restate the c
 the close button is a single glyph in a box with no flex row, the identical justification the
 2026-09-29 entry gives for the two existing sites in the same sheet.
 
+## A third guard this feature tripped, and why that is the system working
+
+`screenExtraction.test.ts`'s dead-class walk graded all seven new CSS classes as
+unreachable. They are reachable — but the sidebar renders only the wrapper
+`restaurant-shortcuts-help`; the six inner names are spelled in the CHILD
+`RestaurantShortcutsHelp.tsx`, which was not in the entry's `additionalTsx` list. The
+classes were live and the walker simply never opened the file that names them.
+
+Fixed by citing the child, not by prefix-excusing the names: a `dynamicClassPrefixes`
+entry would excuse the whole family, including a member that later becomes genuinely dead.
+Kill-tested — removing the cite restores `Dead classes: …` exactly.
+
+Three separate structural guards fired on this round's work (the line-height freeze, the
+theme-token contract, the dead-class walk) and every one of them was correct to fire or
+correctly satisfied by a named exemption. That is the pattern worth keeping.
+
 ## Verification
 
+- **Full suite: 811 files, 12,869 passed, 0 failed** (3 skipped, 3 todo).
 - `npx vitest run src/__tests__/RestaurantSidebar.logic.test.tsx` — 34/34.
 - `themeTokenCompliance.test.ts` 53/53; `restaurantShortcutParity.test.ts` green.
 - `npm run typecheck` 0 errors; `npm run lint` 0 errors (113 pre-existing
