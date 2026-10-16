@@ -167,6 +167,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
+| general | [Two wrong claims caught by reading the schema before the UI — 2026-10-18](audits/2026-10-18-two-claims-the-schema-refuted.md) | — |
 | general | [Two findings on the paid-tab path, and why the test still is not written](audits/2026-10-18-two-harness-findings-on-the-paid-tab-path.md) | — |
 | general | [Two refuted suspicions, and a guard that nothing would have noticed losing — 2026-10-18](audits/2026-10-18-two-refutations-and-a-thin-guard.md) | — |
 | general | [Two table-numbering defects, one of them mine — 2026-10-18](audits/2026-10-18-two-table-numbering-defects.md) | — |
