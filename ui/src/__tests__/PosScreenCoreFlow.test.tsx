@@ -1606,6 +1606,32 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
 
 
+    // ── A DECREASE ON A QTY-1 LINE IS DISABLED, NOT SILENT ───────────────────
+    //
+    // Asserted HERE, at qty 1, because the disabled state is qty-dependent: the
+    // increase below moves the line to 2, where the button is legitimately enabled.
+    // The first version of this case ran the check after the increase and failed
+    // against correct code — ordering is the whole correctness of the assertion.
+    //
+    // The old body was `updateQty(line.id, line.qty - 1)`, which on a qty-1 line
+    // computes `updateQty(id, 0)` — rejected outright by usePosState (`if (qty <= 0)
+    // return`, usePosState.ts:139). Read alone that looks like a silent no-op on the last
+    // unit; it is NOT reachable, because CartLineItem.tsx:391 sets
+    // `disabled={line.qty <= 1}`. Removing a line goes through the X button and
+    // `handleRemoveLine`. MEASURED, by asserting the state rather than assuming it.
+    //
+    // `changeQty(id, -1)` is still the right primitive for the reachable cases (qty >= 2),
+    // because it resolves the delta against committed state rather than a rendered
+    // snapshot — the same fix as the increase below.
+    const decreaseBtn = screen.getByRole('button', { name: /decrease quantity/i });
+    expect(
+      (decreaseBtn as HTMLButtonElement).disabled,
+      'the decrease button is clickable on a qty-1 line, so a press computes updateQty(id, 0) and does nothing',
+    ).toBe(true);
+    await userEvent.click(decreaseBtn);
+    // A disabled button changes nothing: the line is still there.
+    expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
+
     // Find the increase button and click
     const increaseBtn = screen.getByRole('button', { name: /increase quantity/i });
     await userEvent.click(increaseBtn);
@@ -1617,15 +1643,48 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine.textContent).toContain('2');
     });
 
-    // Click decrease button
-    const decreaseBtn = screen.getByRole('button', { name: /decrease quantity/i });
-    await userEvent.click(decreaseBtn);
+  });
+  it('adds one unit per tap when increase is pressed twice in one batch', async () => {
+    // The same stale-absolute-value defect as the retail till, on the SHARED cart — and
+    // this one is the restaurant POS's, since PosScreen renders both workspaces.
+    //
+    // `handleIncreaseQty` used to pass `updateQty(line.id, line.qty + 1)`. Two taps in
+    // one React batch both close over the same rendered `line.qty`, so both write the
+    // same value and the second press is lost. A double-tap on a touch till is ONE
+    // gesture, so this is the normal case rather than an edge.
+    await renderPosScreenWithShift();
 
-    // Verify qty back to 1 (exact match avoids matching button aria-labels)
-    await waitFor(() => {
-      const qtyValue = screen.getByLabelText('Quantity: 1');
-      expect(qtyValue).toBeInTheDocument();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    })) as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument());
+
+    const increase = screen.getByRole('button', { name: /increase quantity/i });
+    // Both clicks in ONE act(), so React batches them and the second handler closes over
+    // the qty from BEFORE the first — exactly a fast double-tap.
+    await act(async () => {
+      increase.click();
+      increase.click();
     });
+
+    // One unit in the cart + two presses = 3. A 2 means the second press was swallowed.
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Quantity: 3'),
+        'two taps on + produced fewer than two extra units, so one was lost to a stale read',
+      ).toBeInTheDocument(),
+    );
   });
 
   // ── Line Removal with Undo ───────────────────────────────────────────

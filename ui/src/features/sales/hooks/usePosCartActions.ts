@@ -39,7 +39,7 @@ export interface UsePosCartActionsParams {
   /** Bundle ref, threaded so the unbound-cart toast keeps its localised text. */
   l10nRef: L10nRef;
   addProduct: PosState['addProduct'];
-  updateQty: PosState['updateQty'];
+  changeQty: PosState['changeQty'];
   updateLinePrice: PosState['updateLinePrice'];
   removeLine: PosState['removeLine'];
   setLines: PosState['setLines'];
@@ -72,7 +72,7 @@ export function usePosCartActions({
   shiftUnavailableRef,
   l10nRef,
   addProduct,
-  updateQty,
+  changeQty,
   updateLinePrice,
   removeLine,
   setLines,
@@ -189,13 +189,24 @@ export function usePosCartActions({
     }
   }, [cartId, sessionToken, addToast, l10nRef]);
 
+  // DELTA, not an absolute quantity — the same fix as RetailPosScreen.handleIncreaseQty.
+  //
+  // `updateQty(id, line.qty - 1)` was wrong TWICE over:
+  //   1. two taps in one React batch both close over the same rendered `line.qty`, so both
+  //      write the same value and the second press is lost;
+  //   2. on a qty-1 line it computes `updateQty(id, 0)`, which usePosState REJECTS
+  //      (`if (qty <= 0) return`, usePosState.ts:139) — so the decrease button did nothing
+  //      at all rather than removing the line.
+  //
+  // `changeQty` resolves the delta inside the `setLines` updater against the committed
+  // state, and drops the line when it reaches zero.
   const handleDecreaseQty = useCallback((line: CartLine) => {
-    updateQty(line.id, line.qty - 1);
-  }, [updateQty]);
+    changeQty(line.id, -1);
+  }, [changeQty]);
 
   const handleIncreaseQty = useCallback((line: CartLine) => {
-    updateQty(line.id, line.qty + 1);
-  }, [updateQty]);
+    changeQty(line.id, 1);
+  }, [changeQty]);
 
   const handleOverrideConfirm = useCallback(async (newPriceMinor: number, _authorizingUserId: string) => {
     if (!overrideTarget) return;
