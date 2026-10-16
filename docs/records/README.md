@@ -125,6 +125,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Documentation-Code Audit — 2026-10-08](audits/2026-10-08-docs-audit.md) | — |
 | money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
+| release | [166 drifted citations: the population round 173 asked for — 2026-10-18](audits/2026-10-18-166-drifted-citations-measured.md) | — |
 | release | [A button that only worked by accident — 2026-10-18](audits/2026-10-18-a-button-that-worked-by-accident.md) | — |
 | general | [A dead button nothing was rescuing — 2026-10-18](audits/2026-10-18-a-dead-button-nothing-rescued.md) | — |
 | general | [A dead-control sweep that had to be made honest first — 2026-10-18](audits/2026-10-18-a-dead-control-sweep-made-honest.md) | — |
