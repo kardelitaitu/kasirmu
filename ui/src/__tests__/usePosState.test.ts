@@ -158,6 +158,65 @@ describe('usePosState', () => {
       expect(result.current.subtotal).toEqual({ minor_units: 1000, currency: 'USD' });
     });
 
+    // ── The currency anchor and an emptied cart ──────────────────────────────
+    //
+    // I first filed this as a defect: `cartCurrencyRef` is synced in a useEffect on
+    // [lines] (usePosState.ts:49-51), which runs AFTER the render that emptied the
+    // cart, while `removeLine` (:134) never touches the ref — so between the removal
+    // and the effect flush the ref could still hold the OLD currency and refuse a
+    // first line in a new one.
+    //
+    // IT DOES NOT BITE, and the reason is worth pinning rather than assuming:
+    //
+    //   * `addProduct` anchors SYNCHRONOUSLY when the ref is null (:86-91), so a
+    //     first add never depends on the effect;
+    //   * no reachable handler removes and adds in ONE tick — every `removeLine` call
+    //     site is a click handler (`usePosCartActions:218`, `RetailPosScreen:351`,
+    //     RefundModal's stepper) and every add is a separate interaction, so React
+    //     flushes the effect in between and the ref is released.
+    //
+    // The case below therefore asserts the OUTCOME the comment at :46-48 promises —
+    // "an empty cart resets the anchor so a new cart can start in any currency" — and
+    // passes. It does NOT claim to test a same-tick race, because there is no path
+    // that creates one; asserting that would be testing a fiction.
+    it('accepts a new currency after the cart is emptied by the last-line removal', () => {
+      const { result } = renderHook(() => usePosState());
+
+      act(() => { result.current.addProduct(makeProduct({ price: { minor_units: 1000, currency: 'IDR' } })); });
+      const lineId = result.current.lines[0]!.id;
+
+      act(() => { result.current.removeLine(lineId); });
+      expect(result.current.lines).toHaveLength(0);
+
+      let accepted = false;
+      act(() => {
+        accepted = result.current.addProduct(
+          makeProduct({ sku: 'USD-1' as Product['sku'], name: 'Usd Thing', price: { minor_units: 500, currency: 'USD' } }),
+        );
+      });
+
+      expect(accepted, 'an emptied cart must release its currency anchor').toBe(true);
+      expect(result.current.subtotal).toEqual({ minor_units: 500, currency: 'USD' });
+    });
+
+    // And the guard that the emptied-cart release must NOT weaken: a cart that still
+    // HAS lines keeps refusing another currency. Pinned next to it so a future change
+    // cannot fix one by breaking the other.
+    it('still refuses a second currency while the cart holds a line', () => {
+      const { result } = renderHook(() => usePosState());
+
+      act(() => { result.current.addProduct(makeProduct({ price: { minor_units: 1000, currency: 'IDR' } })); });
+      let accepted = true;
+      act(() => {
+        accepted = result.current.addProduct(
+          makeProduct({ sku: 'USD-2' as Product['sku'], name: 'Usd Two', price: { minor_units: 500, currency: 'USD' } }),
+        );
+      });
+
+      expect(accepted, 'a NON-empty cart must still refuse a second currency').toBe(false);
+      expect(result.current.lines).toHaveLength(1);
+    });
+
     // ── The two PRICE writers reject a cross-currency write, and nothing was
     //    asserting that, which is how their return value went unread ──────────
     //
