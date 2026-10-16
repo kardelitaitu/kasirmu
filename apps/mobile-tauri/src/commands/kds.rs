@@ -265,9 +265,16 @@ pub async fn update_kds_line_item_status_scoped(
 
     let terminal_id = ctx.terminal_id().await;
     let occurred_at = chrono::Utc::now().to_rfc3339();
+    let sale_id =
+        match kasirmu_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &item.kds_order_id)
+            .await
+        {
+            Ok(Some(parent)) => parent.sale_id,
+            _ => String::new(),
+        };
     let event = kasirmu_lan::KdsSyncEvent::LineItemBumped(kasirmu_lan::KdsLineItemBumped {
         kds_order_id: item.kds_order_id.clone(),
-        sale_id: String::new(),
+        sale_id,
         line_item_id: item.id.clone(),
         stations: vec![],
         to_status: item.item_status.clone(),
