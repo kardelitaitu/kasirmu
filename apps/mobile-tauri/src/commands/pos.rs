@@ -310,7 +310,10 @@ fn run_add_line_scoped_store(
         .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
 
     let unit_price = line_unit_price(args, cart.currency())?;
-    let line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    let mut line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    line.set_course(args.course.as_deref());
+    line.set_modifiers(args.modifiers_json.clone());
+    line.set_note(args.note.clone());
     let line_id = line.id;
     let line_total = line.total();
     cart.add_line(line)
@@ -648,11 +651,14 @@ fn settle_shortfall_resolved(
     let mut cart = kasirmu_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let line = kasirmu_core::CartLine::new(
+        let mut line = kasirmu_core::CartLine::new(
             kasirmu_core::Sku::new(&line_data.sku),
             line_data.qty,
             unit_price,
         );
+        line.set_course(line_data.course.as_deref());
+        line.set_modifiers(line_data.modifiers_json.clone());
+        line.set_note(line_data.note.clone());
         cart.add_line(line)
             .map_err(|e| AppError::Invalid(e.to_string()))?;
     }

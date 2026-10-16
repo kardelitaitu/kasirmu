@@ -8,7 +8,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
-import { assignTableOrderScoped, listTablesScoped } from '@/api/tables';
+import { assignTableOrderScoped, listTablesScoped, createTableScoped } from '@/api/tables';
 import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMoneyInput, type Money } from '@/types/domain';
@@ -996,12 +996,35 @@ retryCurrencyLoad,
           try {
             const tbls = await listTablesScoped(sessionToken);
             const bareInput = bareTableNumber(tableNumber);
-            const match = tbls.find(
+            let match = tbls.find(
               (t) =>
                 t.id === tableNumber ||
                 t.name === tableNumber ||
                 (bareTableNumber(t.name) === bareInput && bareInput !== ''),
             );
+            if (!match && bareInput !== '') {
+              try {
+                match = await createTableScoped(sessionToken, {
+                  id: '',
+                  name: `Table ${bareInput}`,
+                  capacity: 4,
+                  pos_x: 10,
+                  pos_y: 10,
+                  shape: 'square',
+                  width: 12,
+                  height: 12,
+                  status: 'available',
+                  active_sale_id: null,
+                  section: 'Main Area',
+                  active: true,
+                  sort_order: tbls.length + 1,
+                  created_at: '',
+                  updated_at: '',
+                });
+              } catch (createErr) {
+                console.warn('Auto-create table failed', createErr);
+              }
+            }
             if (match) {
               await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
             }
@@ -1579,12 +1602,35 @@ retryCurrencyLoad,
           try {
             const tbls = await listTablesScoped(sessionToken);
             const bareInput = bareTableNumber(tableNumber);
-            const match = tbls.find(
+            let match = tbls.find(
               (t) =>
                 t.id === tableNumber ||
                 t.name === tableNumber ||
                 (bareTableNumber(t.name) === bareInput && bareInput !== ''),
             );
+            if (!match && bareInput !== '') {
+              try {
+                match = await createTableScoped(sessionToken, {
+                  id: '',
+                  name: `Table ${bareInput}`,
+                  capacity: 4,
+                  pos_x: 10,
+                  pos_y: 10,
+                  shape: 'square',
+                  width: 12,
+                  height: 12,
+                  status: 'available',
+                  active_sale_id: null,
+                  section: 'Main Area',
+                  active: true,
+                  sort_order: tbls.length + 1,
+                  created_at: '',
+                  updated_at: '',
+                });
+              } catch (createErr) {
+                console.warn('Auto-create table failed', createErr);
+              }
+            }
             if (match) {
               await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
             }
