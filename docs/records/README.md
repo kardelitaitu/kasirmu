@@ -128,6 +128,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The blind-window sweep: 13 guards, 0 blind, and one false positive of mine — 2026-10-18](audits/2026-10-18-blind-window-sweep-clean.md) | — |
 | money | [A guard whose result nobody read — and the key that was never written — 2026-10-18](audits/2026-10-18-currency-guard-result-unread.md) | — |
 | general | [The dispatch fix was tested on a copy, not on the component — 2026-10-18](audits/2026-10-18-dispatch-tested-a-copy.md) | — |
+| general | [A passing test that proved nothing, and the defect it hid — 2026-10-18](audits/2026-10-18-double-tap-false-failure.md) | — |
 | general | [The EDC wait window: a suspected gap that the code does not have](audits/2026-10-18-edc-wait-window-complete-guard.md) | — |
 | general | [Two gates that disagreed about what "fireable" means — 2026-10-18](audits/2026-10-18-fire-all-gate-disagreed.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
