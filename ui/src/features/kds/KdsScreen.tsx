@@ -67,8 +67,12 @@ export interface KdsLayoutProps {
   slaThresholds?: SlaThresholds;
 }
 
+export interface KdsScreenProps {
+  onBack?: () => void;
+}
+
 /** KDS (Kitchen Display System) screen — real-time order queue in a single masonry view, with Open/Completed tabs and per-user preferences. */
-export default function KdsScreen() {
+export default function KdsScreen({ onBack }: KdsScreenProps = {}) {
   const workspaceScope = useWorkspaceScope();
   const { l10n } = useLocalization();
   const { goToWorkspacePicker } = useWorkspaceNav();
@@ -466,7 +470,8 @@ export default function KdsScreen() {
         setFilterCats={setFilterCats}
         completedFilter={completedFilter}
         setCompletedFilter={setCompletedFilter}
-        goToWorkspacePicker={goToWorkspacePicker}
+        goToWorkspacePicker={onBack ?? goToWorkspacePicker}
+        {...(onBack ? { backAriaLabel: requiredLocalized(l10n, 'back') } : {})}
         handleFilterBtnKeyDown={handleFilterBtnKeyDown}
         handleFilterPanelKeyDown={handleFilterPanelKeyDown}
       />

@@ -597,20 +597,8 @@ export default function TabletAppShell() {
           <StorageBanner />
           <MemoBanner kds />
           <div className="kds-workspace">
-            <div className="kds-workspace-header">
-              <button
-                type="button"
-                className="kds-workspace-back"
-                onClick={() => handleNavigate('pos')}
-                aria-label="Back to POS"
-              >
-                <Localized id="back">
-                  <span>&larr; Back</span>
-                </Localized>
-              </button>
-            </div>
             <LazyBoundary>
-              <KdsScreen />
+              <KdsScreen onBack={() => handleNavigate('pos')} />
             </LazyBoundary>
           </div>
           {settingsModal}
@@ -636,20 +624,8 @@ export default function TabletAppShell() {
           <StorageBanner />
           <MemoBanner kds />
           <div className="kds-workspace">
-            <div className="kds-workspace-header">
-              <button
-                type="button"
-                className="kds-workspace-back"
-                onClick={() => handleNavigate('pos')}
-                aria-label="Back to Store"
-              >
-                <Localized id="back">
-                  <span>&larr; Back</span>
-                </Localized>
-              </button>
-            </div>
             <LazyBoundary>
-              <KdsScreen />
+              <KdsScreen onBack={() => handleNavigate('pos')} />
             </LazyBoundary>
           </div>
           {settingsModal}

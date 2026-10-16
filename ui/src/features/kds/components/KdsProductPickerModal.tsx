@@ -91,16 +91,8 @@ export function addOrUpdatePicked(
   ];
 }
 
-/** Resolve a product category string to a KDS course ID. */
-export function resolveCourseFromCategory(category: string | null | undefined): string | null {
-  const c = (category ?? '').toLowerCase();
-  if (c.includes('appetizer') || c.includes('starter')) return 'appetizer';
-  if (c.includes('main') || c.includes('entree')) return 'main';
-  if (c.includes('side')) return 'side';
-  if (c.includes('dessert')) return 'dessert';
-  if (c.includes('drink') || c.includes('beverage')) return 'beverage';
-  return null;
-}
+import { resolveCourseFromCategory } from '@/types/domain';
+export { resolveCourseFromCategory };
 
 /**
  * Clamp a line-item quantity to the allowed positive range.

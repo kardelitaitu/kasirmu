@@ -29,7 +29,7 @@ import { RestaurantCartSheet } from '@/features/restaurant/components/Restaurant
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useOrientation } from '@/hooks/useOrientation';
 
-import { defaultTenderPresets, formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
+import { defaultTenderPresets, formatMoney, getProductModifierGroups, inferCourseForProduct, type CartLine, type CourseId, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -2158,6 +2158,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onRequestExit: handleRequestExit,
   };
 
+  const handleRestaurantAddProduct = useCallback(
+    (product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => {
+      const defaultCourse = meta?.courseId ?? inferCourseForProduct(product) ?? undefined;
+      const combinedMeta = defaultCourse || meta?.modifiers
+        ? {
+            ...(defaultCourse ? { courseId: defaultCourse } : {}),
+            ...(meta?.modifiers ? { modifiers: meta.modifiers } : {}),
+          }
+        : undefined;
+      handleAddProduct(product, combinedMeta);
+    },
+    [handleAddProduct],
+  );
+
   return (
     <>
     {/* ── Session died MID-SHIFT ──────────────────────────────────────────
@@ -2207,7 +2221,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <LocalizedErrorBoundary resetKeys={[activeWorkspace, menuRevision]}>
           <RestaurantMenu
             key={menuRevision}
-            onAddProduct={handleAddProduct}
+            onAddProduct={handleRestaurantAddProduct}
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
             cartActions={restaurantCartActions}

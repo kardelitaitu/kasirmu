@@ -44,6 +44,7 @@ export interface KdsHeaderLeftProps {
   setFilterMode: (m: 'all' | 'prepared') => void;
   setShowFilter: Dispatch<SetStateAction<boolean>>;
   goToWorkspacePicker: () => void;
+  backAriaLabel?: string | undefined;
   handleFilterBtnKeyDown: (e: KeyboardEvent) => void;
   handleFilterPanelKeyDown: (e: KeyboardEvent) => void;
 }
@@ -63,6 +64,7 @@ export function KdsHeaderLeft({
   setFilterMode,
   setShowFilter,
   goToWorkspacePicker,
+  backAriaLabel,
   handleFilterBtnKeyDown,
   handleFilterPanelKeyDown,
 }: KdsHeaderLeftProps) {
@@ -74,7 +76,7 @@ export function KdsHeaderLeft({
             type="button"
             className="kds-btn kds-btn--icon kds-back-btn"
             onClick={goToWorkspacePicker}
-            aria-label={requiredLocalized(l10n, 'kds-back-aria')}
+            aria-label={backAriaLabel ?? requiredLocalized(l10n, 'kds-back-aria')}
             data-testid="kds-topbar-back"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 19l-7-7 7-7" /></svg>

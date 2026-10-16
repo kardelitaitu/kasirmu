@@ -82,7 +82,12 @@ vi.mock('@/features/sales/PosScreen', () => ({
 }));
 
 vi.mock('@/features/kds/KdsScreen', () => ({
-  default: () => <div data-testid="kds-screen">KDS</div>,
+  default: ({ onBack }: { onBack?: () => void } = {}) => (
+    <div data-testid="kds-screen">
+      KDS
+      {onBack && <button onClick={onBack}>Back</button>}
+    </div>
+  ),
 }));
 
 // Workspace settings stub. TabletAppShell lazy-loads the real modal and only
