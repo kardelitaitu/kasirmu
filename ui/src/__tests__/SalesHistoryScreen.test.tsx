@@ -342,6 +342,47 @@ describe('SalesHistoryScreen', () => {
     });
   });
 
+  // ── The KEYBOARD path, which none of the cases above covered ──────────
+  //
+  // Every detail-modal case here opens the panel by CLICK. Escape is the path an
+  // operator uses at a till, and it is a DIFFERENT code path: the panel is closed by
+  // `useFocusTrap`'s document listener (`useExitAnimation` -> `requestClose`), not by
+  // the click handler. Measured 2026-10-18: this screen's three focus-trapped
+  // overlays had ZERO Escape coverage, so nothing pinned that Escape dismisses the
+  // overlay rather than the screen behind it.
+  //
+  // The bug that shape produced one layer up is real and recent: `PosScreen`'s Escape
+  // cascade is registered on `document` before the panel's trap, so it used to close
+  // the WHOLE screen along with the panel (see `restaurant-tables-toolbar.spec.ts`).
+  // `PosScreen` now stands down whenever `isAnyAriaModalOpen()`, and this case is what
+  // pins the resulting behaviour for Sales History.
+  it('closes the detail modal on Escape without leaving the screen', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByText('Sale Detail')).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The PANEL goes.
+    await waitFor(() => {
+      expect(screen.queryByText('Sale Detail')).toBeNull();
+    });
+    // And the SCREEN STAYS — still showing the rows it was showing before.
+    expect(
+      screen.getAllByText('View').length,
+      'Escape must dismiss the overlay, not navigate away from the screen',
+    ).toBeGreaterThan(0);
+  });
   it('renders line items with course and modifier choices in detail modal', async () => {
     const user = userEvent.setup();
     const detailWithModifiers = {
