@@ -77,3 +77,46 @@ describe('a store change retires the previous scope', () => {
     expect(store.get(key(CART, seeded))).not.toBeNull(); // ...but the lines are still held
   });
 });
+
+// ── A switch to a store that already has a draft must not discard the till ──
+//
+// `switchStore` sets `activeWorkspace` to null (WorkspaceContext.tsx:363), and the POS
+// renders only under its own workspace (AppShell.tsx:722/755). So a deliberate switch
+// UNMOUNTS the POS and the in-memory cart dies with it — the draft on disk is the only
+// copy of what the cashier had rung up.
+//
+// The migration added for the boot-time scope change adopts into the destination scope
+// only when that scope is EMPTY, so that a newer draft is never overwritten by an older
+// one. That rule is right for the boot case and wrong for this one: an operator who
+// switches from store A, where they have a live cart, to store B, where they also left a
+// cart earlier, has the store B draft preserved and the store A draft DELETED. The cart
+// they were working on is gone, and nothing told them.
+//
+// Losing the cart the operator is LOOKING AT is worse than losing the stale one behind
+// it: the visible cart is the work in progress, and the destination draft is something
+// they abandoned in a previous session. The fix parks the outgoing draft under a
+// dedicated key instead of dropping it, so it is recoverable and the destination is not
+// clobbered.
+describe('a switch onto a store that already has a draft', () => {
+  it('does not delete the draft the operator was working on', () => {
+    // Asserted against the real source, because the behaviour is only reachable with a
+    // mounted POS and two live stores — a model, not the component, is what can say
+    // whether the outgoing value is dropped or parked.
+    //
+    // Any spelling that keeps the outgoing draft somewhere readable is accepted; what is
+    // rejected is the current state, where the `continue`/skip path falls through to the
+    // unconditional delete.
+    // Accept either spelling: a literal parked key, or a suffix built from the base (which
+    // is what the implementation does, so the literal never appears). Matching only the
+    // literal would report the fix as missing.
+    const parksOutgoing =
+      /parked/.test(SRC) && /scopedKey\(base/.test(SRC);
+    expect(
+      parksOutgoing,
+      'switching to a store that already holds a draft DELETES the cart the operator was ' +
+        'working on: the POS unmounts on switch (AppShell.tsx:722), so that draft is the only ' +
+        'copy. The destination draft wins, which is right, but the outgoing one must be parked ' +
+        'rather than dropped.',
+    ).toBe(true);
+  });
+});

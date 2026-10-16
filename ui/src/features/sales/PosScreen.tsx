@@ -237,11 +237,31 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       try {
         const carried = localStorage.getItem(staleKey);
         if (carried === null) continue;
-        // Only adopt when the destination is empty. A draft already saved under the
-        // resolved scope is the newer one — the autosave has been running against it
-        // since the switch — so overwriting it would move the cart backwards in time.
-        if (localStorage.getItem(scopedKey(base, resolvedStoreId)) === null) {
-          localStorage.setItem(scopedKey(base, resolvedStoreId), carried);
+        const destination = scopedKey(base, resolvedStoreId);
+        if (localStorage.getItem(destination) === null) {
+          // Destination is empty: adopt outright. This is the boot-time case, where the
+          // scope moved after the cart was written and the migrated value is the same
+          // cart under its now-correct name.
+          localStorage.setItem(destination, carried);
+        } else {
+          // Destination ALREADY holds a draft: this is a deliberate switch onto a store
+          // the operator used before, not a resolution of the current one. The
+          // destination draft is not newer — it is from a different, earlier session —
+          // so neither value may simply overwrite the other.
+          //
+          // Overwriting would destroy the abandoned cart; deleting the outgoing one
+          // would destroy the cart the operator is LOOKING AT, which is worse. The POS
+          // UNMOUNTS on a switch (`switchStore` clears `activeWorkspace`, and AppShell
+          // renders the POS only under its own workspace at :722/:755), so the in-memory
+          // cart is already gone and this key holds its only copy.
+          //
+          // So the outgoing draft is PARKED under a dedicated key instead of dropped.
+          // It is not auto-restored — resurrecting a stale cart into a live till would
+          // be its own hazard — but it survives for recovery, and the destination keeps
+          // the draft it had.
+          try {
+            localStorage.setItem(scopedKey(base + '-parked', resolvedStoreId), carried);
+          } catch { /* quota: the outgoing draft is lost, which is the pre-existing state */ }
         }
         localStorage.removeItem(staleKey);
       } catch {
