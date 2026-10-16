@@ -49,11 +49,11 @@
 // The line reference in the old note had also drifted (`:668-672` -> `:1386-1392`).
 //
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { renderWithProviders, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -201,6 +201,13 @@ vi.mock('@/contexts/AuthContext', async () => {
   };
 });
 
+// The POS keys are store-scoped, and the scope CHANGES during a normal boot: the context
+// seeds `resolvedStoreId` to 'default' and only later replaces it with the device's bound
+// store. A frozen 'default' literal here cannot observe that transition at all, so the
+// scope-migration case below needs to move it. Every other case in this file still sees the
+// literal it always did, because nothing mutates this object unless a test asks to.
+const mutableWorkspace = { resolvedStoreId: 'default' };
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: 'store-pos',
@@ -214,7 +221,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     retry: vi.fn(),
     lastWorkspace: null,
     switchStore: vi.fn(),
-    resolvedStoreId: 'default',
+    resolvedStoreId: mutableWorkspace.resolvedStoreId,
     sessionToken: 'mock-session-token',
     swapSessionToken: vi.fn(),
     terminalId: '',
@@ -1966,5 +1973,72 @@ describe('PosScreen — Sub-screens (Stock Inquiry, Settings)', () => {
     // Since we can't easily test onNavigate callback in this setup,
     // we verify the button exists and click doesn't throw
     expect(settingsBtn).toBeInTheDocument();
+  });
+});
+
+// ── A cart survives the boot-time scope CHANGE ────────────────────────
+//
+// The POS keys are store-scoped, and the scope is not stable during a boot: the context
+// seeds `resolvedStoreId` to 'default' and only later replaces it with the store the
+// device is bound to. Every other suite in this repo mocks a CONSTANT scope, so none of
+// them can observe the transition — which is why a straddled draft went unnoticed.
+//
+// This drives the real effect through a re-render rather than reading the source for a
+// pattern, so it cannot pass on a comment that merely describes the fix.
+describe('PosScreen — a cart survives the boot-time scope change', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  afterEach(() => {
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  it('carries the draft into the resolved scope and retires the seeded key', async () => {
+    // A draft written under the scope in effect before the binding resolves. Not a
+    // contrived state: it is what the autosave produces on any boot where the device
+    // binding lands after the first render.
+    const seededKey = 'pos-active-draft:default';
+    const resolvedKey = 'pos-active-draft:store-1';
+    // `lines` must be non-empty: the autosave effect REMOVES the draft key whenever the
+    // in-memory cart is empty (PosScreen.tsx:334), so an empty fixture would be erased by
+    // the POS itself and this case would be asserting the fixture's fate, not the fix's.
+    localStorage.setItem(
+      seededKey,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'TEST-001',
+            name: 'Test Item',
+            qty: 1,
+            unit_price: { minor_units: 1000, currency: 'MUR' },
+          },
+        ],
+        tableNumber: 'T7',
+        orderType: 'takeaway',
+      }),
+    );
+
+    const view = await renderPosScreen();
+
+    // The binding resolves while the POS is mounted — the real transition.
+    await act(async () => {
+      mutableWorkspace.resolvedStoreId = 'store-1';
+      rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl, testPosFtl, testProductsFtl);
+    });
+
+    // The stale scope no longer holds a ticket...
+    await waitFor(() => {
+      expect(localStorage.getItem(seededKey)).toBeNull();
+    });
+    // ...because it was carried into the scope now in effect, not discarded. The cart is
+    // the cashier's unsaved work, so deleting it outright would be the worse bug.
+    await waitFor(() => {
+      const carried = localStorage.getItem(resolvedKey);
+      expect(carried).not.toBeNull();
+      expect(JSON.parse(carried!)).toMatchObject({ tableNumber: 'T7' });
+    });
   });
 });

@@ -203,6 +203,53 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     () => scopedKey('pos-active-draft', resolvedStoreId),
     [resolvedStoreId],
   );
+  // ── Retire the cart keys of the scope we just LEFT ──────────────────
+  //
+  // Scoping the keys by store (rounds 104/167/170) closed the cross-store leak and left
+  // this one open. `resolvedStoreId` is SEEDED to DEFAULT_STORE_ID and only later replaced
+  // by the real device binding (WorkspaceContext.tsx:132/229 -> :536), so the scope CHANGES
+  // during a normal boot, not only on a deliberate switch. The autosave effects below write
+  // under whichever scope is current, and both the restore and those saves read the value
+  // in these two `useMemo`s:
+  //
+  //   * Before resolution a cart lands under `pos-active-draft:default`.
+  //   * After resolution the same cart is re-saved under `pos-active-draft:<real id>`.
+  //
+  // Two keys then hold one ticket. The stale one is not read on this boot — that is the
+  // point of the scoping — but nothing ever removes it either. It stays until the operator
+  // happens to boot again inside the unresolved window, which is the very case the scoping
+  // exists to prevent, and the PREVIOUS store's cart is then restored ahead of the current
+  // one, because the restore prefers the resolved scope's keys over the seeded scope's.
+  //
+  // The fix treats a scope change as a MIGRATION rather than an abandonment: carry the draft
+  // across, then delete the key being left. Carrying it is deliberate. The cart is the
+  // cashier's unsaved work and the store it belongs to has not changed — only the knowledge
+  // of which store that is has. Deleting without carrying would empty the till mid-order,
+  // which is worse than a leak that is closed one boot later.
+  const previousScopeRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previousScope = previousScopeRef.current;
+    previousScopeRef.current = resolvedStoreId;
+    // First run: nothing to migrate, and the ref now records the scope in use.
+    if (previousScope === null || previousScope === resolvedStoreId) return;
+    for (const base of ['pos-active-draft', 'pos-locked-cart']) {
+      const staleKey = scopedKey(base, previousScope);
+      try {
+        const carried = localStorage.getItem(staleKey);
+        if (carried === null) continue;
+        // Only adopt when the destination is empty. A draft already saved under the
+        // resolved scope is the newer one — the autosave has been running against it
+        // since the switch — so overwriting it would move the cart backwards in time.
+        if (localStorage.getItem(scopedKey(base, resolvedStoreId)) === null) {
+          localStorage.setItem(scopedKey(base, resolvedStoreId), carried);
+        }
+        localStorage.removeItem(staleKey);
+      } catch {
+        // Storage unavailable or at quota. The in-memory cart is unaffected, so the
+        // operator loses nothing visible; only the stale key survives.
+      }
+    }
+  }, [resolvedStoreId]);
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend
