@@ -1181,6 +1181,11 @@ pos-toast-tab-held-by-other = { $terminal } sedang mengerjakan tagihan ini. Mint
 # Melanjutkan tagihan LAIN di atas keranjang yang sudah berisi tagihan pertama.
 # Pesanan tagihan pertama tidak boleh hilang karena salah ketuk, jadi dibatalkan.
 pos-toast-resume-cart-not-empty = Selesaikan atau simpan tagihan saat ini sebelum membuka tagihan lain
+# Perubahan harga ditolak karena mata uangnya berbeda dari keranjang. Keranjang
+# hanya mendukung satu mata uang (MONEY-AUDIT-F1), jadi baris yang tersisa di mata
+# uang lain tidak dapat dihargai ulang.
+retail-toast-override-failed = Gagal menerapkan perubahan harga
+pos-toast-line-price-currency-mismatch = Tidak dapat mengubah harga barang ini selama keranjang memuat mata uang lain
 pos-toast-bill-saved = Tagihan untuk { $label } disimpan
 pos-toast-bill-updated = Tagihan untuk { $label } diperbarui
 pos-toast-printer-unconfirmed = Printer tidak mengonfirmasi cetakan — periksa perangkatnya

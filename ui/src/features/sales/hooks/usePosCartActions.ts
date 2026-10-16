@@ -232,10 +232,24 @@ export function usePosCartActions({
     }
     try {
       await overrideLinePriceScoped(sessionToken, cId, overrideTarget.id, newPriceMinor);
-      updateLinePrice(overrideTarget.id, {
+      // READ THE RESULT. `updateLinePrice` returns `false` and writes nothing when the
+      // price's currency differs from the cart's anchor. The server has ALREADY
+      // accepted the override by this point, so ignoring it means the total the
+      // cashier watches does not match what the backend holds — the worst of the
+      // three call sites, because the sale was recorded and the preview was not.
+      const applied = updateLinePrice(overrideTarget.id, {
         minor_units: newPriceMinor,
         currency: overrideTarget.unit_price.currency,
       });
+      if (!applied) {
+        // The localized string IS the message here. `plainErrorMessage` is for a
+        // backend error shape; passing a synthetic Error to it just returns the
+        // fallback, so it would be ceremony.
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'pos-toast-line-price-currency-mismatch'),
+          type: 'error',
+        });
+      }
     } catch (err) {
       // The FALLBACK is what the cashier sees when the backend sent no message, so
       // it is localized too — plainErrorMessage's second argument is user-visible.

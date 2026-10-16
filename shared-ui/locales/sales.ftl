@@ -1222,6 +1222,10 @@ pos-toast-tab-held-by-other = { $terminal } is working on this tab. Ask them to 
 # Resuming a DIFFERENT tab over a cart that already holds one. The first tab's
 # order must not be discarded by a mis-tap, so the resume is refused and says so.
 pos-toast-resume-cart-not-empty = Finish or hold the current tab before opening another
+# A price write refused because its currency differs from the cart's. The cart runs
+# single-currency (MONEY-AUDIT-F1), so a line left in another currency cannot be repriced.
+retail-toast-override-failed = Could not apply the price override
+pos-toast-line-price-currency-mismatch = Cannot change this item's price while the cart holds another currency
 pos-toast-bill-saved = Tab for { $label } saved
 pos-toast-bill-updated = Tab for { $label } updated
 # POS hardware checks on the store settings card.

@@ -1290,12 +1290,24 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
     try {
       await overrideLinePriceScoped(sessionToken, cId, overrideTarget.id, newPriceMinor);
-      updateLinePrice(overrideTarget.id, {
+      // READ THE RESULT, and note the ordering: the server has ALREADY accepted the
+      // override, so a refused local write means the recorded sale and the watched
+      // total now disagree. Silently ignoring it is the worst of the three call
+      // sites for that reason. (`usePosCartActions.handleOverrideConfirm` carries the
+      // same fix.)
+      //
+      // The catch below also stops passing a hardcoded English fallback: this file
+      // already carries `retail-toast-override-failed`, and an Indonesian operator
+      // read English on the failure path.
+      const applied = updateLinePrice(overrideTarget.id, {
         minor_units: newPriceMinor,
         currency: overrideTarget.unit_price.currency,
       });
+      if (!applied) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-line-price-currency-mismatch'), type: 'error' });
+      }
     } catch (err) {
-      const msg = plainErrorMessage(err, 'Override failed');
+      const msg = plainErrorMessage(err, requiredLocalized(l10n, 'retail-toast-override-failed'));
       addToast({ message: msg, type: 'error' });
     } finally {
       setOverrideTarget(null);

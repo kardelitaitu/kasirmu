@@ -1639,15 +1639,32 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const handleConfirmEditModifiers = useCallback(
     (selections: ModifierSelection[], totalPriceMinor: number) => {
       if (!editingCartLine || !editingProduct) return;
-      updateLineModifiers(
+      // READ THE RESULT. `updateLineModifiers` returns `false` and writes nothing when
+      // the price's currency differs from the cart's anchor, and this handler
+      // discarded it and closed the modal regardless — so a refused edit dismissed the
+      // dialog, which reads to the cashier as "saved". The change was silently lost.
+      //
+      // The state is reachable: the restore paths fill `setLines` from a persisted
+      // payload with no currency check (usePosHeldCarts :426, PosScreen :229), so a
+      // cart can hold a line whose currency differs from `lines[0]`.
+      const applied = updateLineModifiers(
         editingCartLine.id,
         selections,
         { minor_units: totalPriceMinor, currency: editingCartLine.unit_price.currency },
       );
+      if (!applied) {
+        // Leave the modal OPEN so the operator can correct it, and say why. Closing
+        // it is what made the failure invisible.
+        addToast({
+          message: requiredLocalized(l10n, 'pos-toast-line-price-currency-mismatch'),
+          type: 'error',
+        });
+        return;
+      }
       setEditingCartLine(null);
       setEditingProduct(null);
     },
-    [editingCartLine, editingProduct, updateLineModifiers],
+    [editingCartLine, editingProduct, updateLineModifiers, addToast, l10n],
   );
 
   const handleSelectTableFromManagement = useCallback(

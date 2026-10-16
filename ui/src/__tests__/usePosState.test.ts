@@ -158,6 +158,82 @@ describe('usePosState', () => {
       expect(result.current.subtotal).toEqual({ minor_units: 1000, currency: 'USD' });
     });
 
+    // ── The two PRICE writers reject a cross-currency write, and nothing was
+    //    asserting that, which is how their return value went unread ──────────
+    //
+    // `addProduct`'s currency guard has a test (MONEY-AUDIT-F1, above). The two
+    // price writers carry the SAME guard and had NO test — so their `false` was
+    // never something a caller could be caught ignoring. And both call sites DID
+    // ignore it: `usePosCartActions.handleOverrideConfirm` :235 and
+    // `RetailPosScreen` :1293 discard it, and `PosScreen.handleConfirmEditModifiers`
+    // :1642 discards it AND closes the modal, which reads as "saved".
+    //
+    // This pins the guard's contract. A cart that reaches a state where the line
+    // being edited is in a different currency from `lines[0]` is reachable — the
+    // restore paths (`usePosHeldCarts` :426, `PosScreen` :229) pass a payload's
+    // `unit_price` through with no currency validation — and in that state the
+    // write must be refused rather than silently dropping the change.
+    it('updateLineModifiers refuses a cross-currency price', () => {
+      const { result } = renderHook(() => usePosState());
+      act(() => { result.current.addProduct(makeProduct({ price: { minor_units: 1000, currency: 'USD' } })); });
+      const line = result.current.lines[0]!;
+
+      let accepted = true;
+      act(() => {
+        accepted = result.current.updateLineModifiers(line.id, [], {
+          minor_units: 500,
+          currency: 'EUR',
+        });
+      });
+
+      expect(accepted).toBe(false);
+      expect(result.current.lines[0]!.unit_price).toEqual({ minor_units: 1000, currency: 'USD' });
+    });
+
+    it('updateLinePrice refuses a cross-currency price and leaves the line alone', () => {
+      const { result } = renderHook(() => usePosState());
+      act(() => { result.current.addProduct(makeProduct({ price: { minor_units: 1000, currency: 'USD' } })); });
+      const line = result.current.lines[0]!;
+
+      let accepted = true;
+      act(() => {
+        accepted = result.current.updateLinePrice(line.id, {
+          minor_units: 500,
+          currency: 'EUR',
+        });
+      });
+
+      expect(accepted).toBe(false);
+      expect(result.current.lines[0]!.unit_price).toEqual({ minor_units: 1000, currency: 'USD' });
+      expect(result.current.subtotal).toEqual({ minor_units: 1000, currency: 'USD' });
+    });
+
+    it('a resumed cart can hold a line whose currency differs from lines[0]', () => {
+      // THE REACHABLE STATE the guard exists for, pinned so the two cases above
+      // are not defensive fiction. `setLines` is exposed and the restore paths
+      // fill it from a persisted payload with no currency check, so a mixed
+      // payload lands in state as-is and `lines[0]` stops being a safe anchor.
+      const { result } = renderHook(() => usePosState());
+      act(() => {
+        result.current.setLines([
+          { id: 'l1' as never, sku: 'A' as never, qty: 1, unit_price: { minor_units: 1000, currency: 'USD' } },
+          { id: 'l2' as never, sku: 'B' as never, qty: 1, unit_price: { minor_units: 900, currency: 'EUR' } },
+        ]);
+      });
+
+      expect(result.current.lines).toHaveLength(2);
+      // Editing the EUR line must be refused, not applied.
+      let accepted = true;
+      act(() => {
+        accepted = result.current.updateLineModifiers(result.current.lines[1]!.id, [], {
+          minor_units: 400,
+          currency: 'EUR',
+        });
+      });
+      expect(accepted).toBe(false);
+      expect(result.current.lines[1]!.unit_price).toEqual({ minor_units: 900, currency: 'EUR' });
+    });
+
     it('computes discount amount as percentage of subtotal', () => {
       const { result } = renderHook(() => usePosState());
 
