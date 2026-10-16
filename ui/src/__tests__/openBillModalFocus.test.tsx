@@ -88,7 +88,7 @@ describe('OpenBillsPanel — keyboard focus', () => {
         openBills={[
           { id: 'h1', label: 'Hold #1', item_count: 1, total_minor: 100, currency: 'IDR', created_at: '2026-01-01T00:00:00Z', bill_type: 'open_bill', customer_name: null },
         ]}
-        handleResumeOpenBill={vi.fn(async () => {})}
+        handleResumeOpenBill={vi.fn(async () => true)}
       />,
     );
     const dialog = container.querySelector('[role="dialog"]');

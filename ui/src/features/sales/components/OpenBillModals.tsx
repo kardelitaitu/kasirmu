@@ -118,7 +118,12 @@ export interface OpenBillsPanelProps {
   /** Held-cart rows, already loaded by the hook - this component never fetches. */
   openBills: HeldCartRow[];
   /** Async recall of one held cart by id; used as a fire-and-forget click handler. */
-  handleResumeOpenBill: (id: string) => Promise<void>;
+  /**
+   * Returns whether the cart was actually replaced — the resume REFUSES when a
+   * different tab is already open (usePosHeldCarts round 96), and a caller that
+   * pre-set state must know which happened.
+   */
+  handleResumeOpenBill: (id: string) => Promise<boolean>;
 }
 
 /**

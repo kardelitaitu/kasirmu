@@ -110,7 +110,7 @@ describe('cart action bar & open-bill modals a11y', () => {
               created_at: '2026-09-14T01:00:00.000Z',
             } as never,
           ]}
-          handleResumeOpenBill={vi.fn(async () => {})}
+          handleResumeOpenBill={vi.fn(async () => true)}
         />,
         salesFtl,
       ),

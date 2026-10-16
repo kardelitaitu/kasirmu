@@ -1652,12 +1652,28 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   const handleSelectTableFromManagement = useCallback(
     (tableName: string) => {
-      setTableNumber(tableName);
       setShowTables(false);
-      // Find active tab matching this table to resume order if exists
+      // ⚠️ THE TABLE IS CLAIMED ONLY IF THE RESUME SUCCEEDS.
+      //
+      // `setTableNumber(tableName)` used to run FIRST and unconditionally, with the
+      // resume fired and forgotten (`void handleResumeOpenBill(...)`). That was
+      // survivable while the resume always replaced the cart — but it does not any
+      // more: it REFUSES when a different tab is already open (usePosHeldCarts,
+      // round 96). So the operator tapped table 5, the table number was set, and the
+      // resume was declined — leaving the PREVIOUS tab's lines sitting under table 5.
+      // The refusal protected the cart and mislabelled it in the same breath, which
+      // is worse than doing nothing.
+      //
+      // Ordering is now: try the resume, and set the table only when it reports that
+      // the cart was actually replaced. A table with no matching bill is still
+      // claimed immediately — there is nothing to refuse in that case.
       const matchingBill = openBills.find((b) => matchesTableBill(b, tableName));
       if (matchingBill) {
-        void handleResumeOpenBill(matchingBill.id);
+        void handleResumeOpenBill(matchingBill.id).then((resumed) => {
+          if (resumed) setTableNumber(tableName);
+        });
+      } else {
+        setTableNumber(tableName);
       }
       if (sessionToken) {
         void listTablesScoped(sessionToken)

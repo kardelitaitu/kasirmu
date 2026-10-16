@@ -227,6 +227,57 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     ).toHaveBeenCalled();
   });
 
+  // ── A resume must RESET the table it did not restore ────────────────
+  //
+  // The restore at :429 is conditional: `if (typeof data.tableNumber === 'string')`.
+  // A tab whose payload carries no table — a takeaway, or a bill held before the
+  // field existed — therefore leaves whatever table was ALREADY set untouched.
+  //
+  // THE PATH: `OpenBillModals.tsx:180` calls `handleResumeOpenBill(ob.id)` straight
+  // from the held-tabs list, with no table set beforehand by that screen. So an
+  // operator with table 5 open who taps a TAKEAWAY tab ends up with the takeaway's
+  // items under table 5.
+  //
+  // THE CONSEQUENCE IS ON PAPER, which is why it is worth a round: `completedSale.ts`
+  // puts `tableNumber` in the printed args and derives the receipt NUMBER from it
+  // (`:212`), so the check names a table the order does not have — the exact defect
+  // this file's own "DINE-IN ONLY" rule is repeated nine times to prevent, reached
+  // here through the field the guard does not read.
+  it('clears the table when resuming a tab that has none', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+
+    const setTableNumber = vi.fn();
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'takeaway-tab',
+      cart_data: JSON.stringify({
+        // NO tableNumber — a takeaway, or a tab held before the field existed.
+        lines: [{ sku: 'TA-1', qty: 1, unit_price: { minor_units: 5000, currency: 'IDR' } }],
+        orderType: 'takeaway',
+      }),
+    } as never);
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          setTableNumber: setTableNumber as never,
+          // The operator already has table 5 open.
+          tableNumber: 'T5',
+          lines: [],
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('takeaway-tab');
+    });
+
+    expect(
+      setTableNumber,
+      'the resumed tab carries no table, so the previously-set one must be cleared — '
+      + 'otherwise the takeaway prints a bill naming table 5',
+    ).toHaveBeenCalledWith('');
+  });
+
   it('resumes normally when the cart is empty', async () => {
     setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
 

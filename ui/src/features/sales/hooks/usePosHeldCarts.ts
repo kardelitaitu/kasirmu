@@ -323,7 +323,17 @@ export function usePosHeldCarts({
     }
   }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease]);
 
-  const handleResumeOpenBill = useCallback(async (id: string) => {
+  /**
+   * Load a held tab into the cart.
+   *
+   * RETURNS whether the cart was actually replaced, and callers that pre-set
+   * state MUST await it. `PosScreen.handleSelectTableFromManagement` set the
+   * table number and THEN fired this without awaiting, so a refused resume left
+   * the PREVIOUS tab's lines sitting under the newly chosen table number — the
+   * refusal protected the cart and mislabelled it in the same breath. The caller
+   * now awaits this and only claims the table on `true`.
+   */
+  const handleResumeOpenBill = useCallback(async (id: string): Promise<boolean> => {
     // ── The lease is checked HERE and claimed LATER, conditionally ───────────
     //
     // Two defects have lived on this line, in opposite directions:
@@ -388,12 +398,12 @@ export function usePosHeldCarts({
         message: requiredLocalized(l10nRef.current, 'pos-toast-resume-cart-not-empty'),
         type: 'warning',
       });
-      return;
+      return false;
     }
 
     try {
       const full = await getHeldCartScoped(sessionToken, id);
-      if (!full) return;
+      if (!full) return false;
       const data = JSON.parse(full.cart_data);
       if (data.lines && Array.isArray(data.lines)) {
         setLines(data.lines.map((l: {
@@ -426,9 +436,21 @@ export function usePosHeldCarts({
       if (typeof data.discountPercent === 'number') {
         setDiscount(data.discountPercent, data.discountLabel || '');
       }
-      if (typeof data.tableNumber === 'string') {
-        setTableNumber(data.tableNumber);
-      }
+      // SET-OR-CLEAR, not set-if-present.
+      //
+      // The conditional form left whatever table was already selected in place
+      // when the resumed tab had none — and a tab legitimately has none: a
+      // takeaway, or a bill held before the field existed. `OpenBillModals.tsx:180`
+      // calls this straight from the held-tabs list with no table set by that
+      // screen, so an operator with table 5 open who tapped a takeaway tab ended
+      // up with the takeaway's items under table 5.
+      //
+      // THE CONSEQUENCE IS ON PAPER: completedSale.ts puts this value in the
+      // printed args and derives the receipt NUMBER from it (:212), so the check
+      // named a table the order did not have — the rule this file restates as
+      // "DINE-IN ONLY" in nine places, reached here through the one field the
+      // conditional did not read.
+      setTableNumber(typeof data.tableNumber === 'string' ? data.tableNumber : '');
       // PAX is dine-in-only, and this gate is why the RECALL needs its own check
       // rather than relying on the save side: a tab persisted BEFORE 2026-10-12
       // carries guestCount even on a takeaway (the field was hidden but the value
@@ -484,8 +506,10 @@ export function usePosHeldCarts({
       }
 
       openBillsExit.requestClose();
+      return true;
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bill-resume-failed'), type: 'error' });
+      return false;
     }
     // `getConflict` is a callback over lease state, so it changes whenever the
     // registry does — which is the point: the guard must read the CURRENT conflict

@@ -160,4 +160,55 @@ describe('PosScreen cart persistence carries the order type', () => {
       'the apply must be live code, not inside a comment',
     ).toBe(true);
   });
+
+  // ── A refused resume must not leave the table claimed ────────────────────
+  //
+  // `handleSelectTableFromManagement` sets the table number and then resumes the
+  // matching bill. The resume REFUSES when a different tab is already open
+  // (usePosHeldCarts round 96), and it is `async`, so the old
+  // `setTableNumber(tableName)`-then-`void handleResumeOpenBill(...)` ordering
+  // claimed the table BEFORE the resume could decline — leaving the previous tab's
+  // lines sitting under the newly tapped table. The refusal protected the cart and
+  // mislabelled it in the same breath.
+  //
+  // A SOURCE CHECK, for the same reason the two guards above are: the behaviour
+  // lives in an async callback over hook state, and what has to hold is the ORDER
+  // of two statements plus the fact that the claim is conditional. A behavioural
+  // test would have to drive the whole POS through a resume refusal to observe it.
+  it('claims the table only after the resume reports success', () => {
+    const start = SRC.indexOf('const handleSelectTableFromManagement');
+    expect(start, 'the table-selection handler moved — re-point this guard').toBeGreaterThan(0);
+    const end = SRC.indexOf('const handleConfirmEditModifiers', start);
+    const body = SRC
+      .slice(start, end === -1 ? start + 4000 : end)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+    // (a) The claim is INSIDE the resume's success branch, not before it.
+    expect(
+      /\.then\(\s*\(?\s*resumed\s*\)?\s*=>\s*\{[^}]*setTableNumber\(/.test(body),
+      'setTableNumber must run only when the resume reported success — an '
+      + 'unconditional claim mislabels the cart the refusal just protected',
+    ).toBe(true);
+
+    // (b) The resume must NOT be fire-and-forget: `void handleResumeOpenBill(x);`
+    //     with no continuation cannot sequence the claim at all. `void` on a
+    //     `.then()` CHAIN is fine and is what the fix uses, so this checks for a
+    //     call with no continuation — the first draft banned `void` outright and
+    //     failed on the CORRECT code, which is how a guard ends up policing style
+    //     instead of behaviour.
+    const bareCall = /void\s+handleResumeOpenBill\([^)]*\)\s*;/.test(body);
+    expect(
+      bareCall,
+      'the resume is fire-and-forget here, so the table claim cannot be ordered '
+      + 'against its result',
+    ).toBe(false);
+
+    // (c) The no-matching-bill path still claims the table immediately — the guard
+    //     must not turn "open a fresh table" into a no-op.
+    expect(
+      /else\s*\{[^}]*setTableNumber\(/.test(body),
+      'a table with no matching bill must still be claimed without a resume',
+    ).toBe(true);
+  });
 });
