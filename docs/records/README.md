@@ -182,6 +182,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A switch onto an occupied store deleted the cart on screen — 2026-10-18](audits/2026-10-18-switch-onto-occupied-store-deleted-the-cart.md) | — |
 | release | [The comment guarding a credentials overwrite cited the wrong line, twice](audits/2026-10-18-the-credential-comment-cited-a-lie.md) | — |
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
+| general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
 | reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
