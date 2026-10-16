@@ -574,6 +574,103 @@ describe('KioskScreen', () => {
     expect(screen.getByText(/Table 4/)).toBeInTheDocument();
   });
 
+  it('serializes modifiers into modifiersJson, auto-creates missing table, and dismisses on Done', async () => {
+    const customizableProduct = {
+      sku: 'SKU-MOD-02',
+      name: 'Nasi Goreng Seafood',
+      category: 'cat-food',
+      price: { minor_units: 25000, currency: 'IDR' },
+      barcode: null,
+      in_stock: true,
+      stock_qty: 15,
+      tax_rate_ids: [],
+      created_at: '',
+      price_updated_at: '',
+      notes: JSON.stringify([
+        {
+          id: 'grp-topping',
+          name: 'Topping',
+          minSelections: 1,
+          maxSelections: 1,
+          modifiers: [
+            { id: 'opt-egg', name: 'Telur Ceplok', priceMinor: 3000 },
+          ],
+        },
+      ]),
+    };
+    mockListProducts.mockResolvedValue([...sampleProducts, customizableProduct]);
+    mockListCategories.mockResolvedValue(sampleCategories);
+    mockStartSaleScoped.mockResolvedValue({ cartId: 'cart-kiosk-999' });
+    mockCompleteSaleScoped.mockResolvedValue({
+      saleId: 'sale-kiosk-999',
+      receiptNumber: 'RCP-2026-999',
+      lineCount: 1,
+      total: { minor_units: 28000, currency: 'IDR' },
+    });
+    mockListTablesScoped.mockResolvedValue([{ id: 'tbl-1', name: 'Table 1', capacity: 4, active: true }]);
+    mockCreateTableScoped.mockResolvedValue({ id: 'tbl-99-new', name: 'Table 99', capacity: 4, active: true });
+    mockCreateKdsOrderFromSaleScoped.mockResolvedValue([]);
+
+    await renderKiosk(kioskFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Nasi Goreng Seafood')).toBeInTheDocument();
+    });
+
+    const tableInput = screen.getByLabelText(/table number/i);
+    await userEvent.type(tableInput, '99');
+
+    await userEvent.click(screen.getByText('Nasi Goreng Seafood'));
+    await waitFor(() => {
+      expect(screen.getByText('Topping')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText('Telur Ceplok'));
+    const confirmBtn = screen.getByRole('button', { name: /confirm|add/i });
+    await userEvent.click(confirmBtn);
+
+    await userEvent.click(screen.getByText('Checkout'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Pay')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText('Pay'));
+
+    await waitFor(() => {
+      expect(mockAddLineScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          cartId: 'cart-kiosk-999',
+          sku: 'SKU-MOD-02',
+          modifiersJson: expect.stringContaining('Telur Ceplok'),
+        }),
+      );
+    });
+
+    expect(mockCreateTableScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        name: 'Table 99',
+      }),
+    );
+    expect(mockAssignTableOrderScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      'tbl-99-new',
+      'sale-kiosk-999',
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Order Placed!')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/RCP-2026-999/)).toBeInTheDocument();
+
+    const doneBtn = screen.getByRole('button', { name: /done/i });
+    await userEvent.click(doneBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Tap to start')).toBeInTheDocument();
+    });
+  });
+
   it('completes QRIS payment flow and confirms order', async () => {
     mockListProducts.mockResolvedValue(sampleProducts);
     mockListCategories.mockResolvedValue(sampleCategories);
