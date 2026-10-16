@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -230,6 +230,83 @@ it('shows start form when no active shift exists', async () => {
       expect(screen.getByText('Shift Summary')).toBeInTheDocument();
       expect(screen.getByText('Transactions performed during this shift:')).toBeInTheDocument();
     });
+  });
+
+  // A second End Shift tap while the first is in flight must not re-send.
+  //
+  // core `end_inventory_shift` updates `WHERE status = 'active'` and
+  // returns NotFound when 0 rows change (crates/kasirmu-core/src/db/inventory.rs:434),
+  // so the double click does NOT end the shift twice -- but the SECOND call's
+  // rejection lands in handleEndShift's catch, which raises an ERROR toast reading
+  // as if the end had failed when the shift is already closed. The operator sees a
+  // failure on a successful operation and the summary modal was already dismissed
+  // in favour of that message. Same re-entry class as useAutoQr.handleAutoReissue
+  // (round 124) and usePosHeldCarts.handleOpenBill (round 126).
+  it('sends one end-shift call for a double tap while the first is in flight', async () => {
+    mockGetActiveShift.mockResolvedValue(activeShift);
+    // The backend's real answer to a second end: the row is no longer 'active'.
+    mockEndShift
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('active_inventory_shift not found'));
+    // Hold the FIRST end open so both taps land inside the same in-flight window.
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockEndShift.mockImplementationOnce(() => heldFirst as never);
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('End Shift')).toBeInTheDocument();
+    });
+
+    const endBtn = screen.getByText('End Shift');
+    // fireEvent, NOT user.click. userEvent awaits its own act(), which flushes the
+    // pending promise chain: MEASURED here, the first endInventoryShift had already
+    // SETTLED before the second click, so activeShift was null by then and the taps
+    // never overlapped. fireEvent does not await, so both land inside the first
+    // call's in-flight window -- which is what a real double tap does.
+    fireEvent.click(endBtn);
+    fireEvent.click(endBtn);
+
+    releaseFirst?.(undefined);
+    await act(async () => { await heldFirst; });
+
+    await waitFor(() => {
+      expect(screen.getByText('Shift Summary')).toBeInTheDocument();
+    });
+
+    expect(
+      mockEndShift.mock.calls.length,
+      'a second tap re-sent the end while the first was still in flight; the backend ' +
+        'rejects the replay and handleEndShift reports it as a failed shift close',
+    ).toBe(1);
+  });
+
+  // The guard above is invisible: nothing else proves the button is actually
+  // DISABLED while the end is in flight. Without this, removing `disabled` leaves
+  // every case green -- measured: ref-only and disabled-only are each sufficient to
+  // stop the second CALL, so the ref guard's own test cannot see the attribute.
+  it('disables the End Shift button while the end is in flight', async () => {
+    mockGetActiveShift.mockResolvedValue(activeShift);
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockEndShift.mockImplementationOnce(() => heldFirst as never);
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('End Shift')).toBeInTheDocument();
+    });
+
+    const endBtn = screen.getByText('End Shift').closest('button')!;
+    expect(endBtn).not.toBeDisabled();
+
+    fireEvent.click(endBtn);
+    await waitFor(() => {
+      expect(endBtn).toBeDisabled();
+    });
+
+    // Releasing returns the button to service, so a failed end can be retried.
+    releaseFirst?.(undefined);
+    await act(async () => { await heldFirst; });
   });
 
   it('shows empty state in summary when no transactions exist', async () => {

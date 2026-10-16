@@ -75,6 +75,20 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Re-entry guard for the shift write. `handleEndShift` awaits a transaction read
+  // before it writes, so the End button is live for that whole window; a double tap
+  // sent TWO `endInventoryShift` calls. core's `end_inventory_shift` updates
+  // `WHERE status = 'active'` and returns NotFound when 0 rows change
+  // (crates/kasirmu-core/src/db/inventory.rs:434), so the shift is not closed twice --
+  // but the replay's rejection lands in this handler's catch and raises an ERROR toast
+  // reading as a failed close on an operation that succeeded. The ref makes the guard
+  // synchronous (a `useState` flag updates too late), and `endShiftPending` drives the
+  // button's `disabled` so the operator sees the state instead of a no-op tap.
+  // Same re-entry class as useAutoQr.handleAutoReissue (round 124) and
+  // usePosHeldCarts.handleOpenBill (round 126).
+  const endShiftPendingRef = useRef(false);
+  const [endShiftPending, setEndShiftPending] = useState(false);
+
   // Exit-animation-pattern: hold the modal in the DOM through a mirrored
   // fade-out before unmounting (exit-animation-pattern skill; timing
   // matches the 200ms entry animation of .shift-summary-overlay).
@@ -163,6 +177,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
 
   const handleEndShift = async () => {
     if (!sessionToken || !activeShift) return;
+    if (endShiftPendingRef.current) return;
+    endShiftPendingRef.current = true;
+    setEndShiftPending(true);
 
     try {
       // Fetch transactions server-side for this shift window.
@@ -178,6 +195,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
       if (onShiftChange) onShiftChange(null);
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10nRef.current, 'inv-shift-error-end'), type: 'error' });
+    } finally {
+      endShiftPendingRef.current = false;
+      setEndShiftPending(false);
     }
   };
 
@@ -201,7 +221,13 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
                 <span>Active Shift</span>
               </Localized>
             </span>
-            <Button variant="danger" size="sm" className="shift-btn shift-btn-danger" onClick={handleEndShift}>
+            <Button
+              variant="danger"
+              size="sm"
+              className="shift-btn shift-btn-danger"
+              onClick={handleEndShift}
+              disabled={endShiftPending}
+            >
               <Localized id="inv-shift-end-btn">
                 <span>End Shift</span>
               </Localized>
