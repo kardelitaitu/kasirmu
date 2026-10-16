@@ -65,6 +65,19 @@ re-derive these: each is protected, and the protection is named so the search en
                         SalesHistoryScreen.handleIssueTaxInvoice. The first round's record
                         named the second as outstanding, which is why it is written down here
                         rather than left to be rediscovered.
+  * audit review checkpoint -- the WORST arm of this class. `save_review_checkpoint` is a
+                        plain INSERT with no idempotency and no unique key
+                        (audit.rs:909-944), it appends an `audit.review` event to the SAME
+                        hash-chained log it attests about, and the payload is a
+                        CLIENT-DERIVED high-water mark (AuditLogScreen.tsx:228-234) that
+                        after the first refresh points at the review event itself. Round 151
+                        FIXED in AuditLogScreen. If a new review surface appears, this is
+                        the one that must not be missed.
+  * fiscal document numbers / receipt sequence -- already defended in core:
+                        claim_statutory_number_for_sale is an atomic `UPDATE ... RETURNING`
+                        and claim_receipt_sequence an upsert, both inside the checkout
+                        transaction, and the COR-7 replay guard returns the original receipt.
+                        The counters are NOT the gap; the UI double-tap was.
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
