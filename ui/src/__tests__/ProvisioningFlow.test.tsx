@@ -319,6 +319,54 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     }, FAST_WAIT);
   });
 
+
+  // ── A double submit must not provision twice ───────────────────────
+  //
+  // `handleSubmit` (:564) sets `busy` (:575) but has no `busy` re-entry check, and it is the
+  // form's `onSubmit` (:644). The submit button IS guarded — `disabled={!canSubmit || busy}`
+  // (:1331) — but pressing Enter in a field submits the form natively and never consults
+  // the button.
+  //
+  // The most consequential of the double-submit family: `provisionDevice` CREATES the
+  // device, the location and the OWNER ACCOUNT in one call (:592-608), and this is the
+  // one-shot first-run operation.
+  it('does not call provisionDevice twice when the form is submitted twice', async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    vi.mocked(provisionDevice).mockReset();
+    vi.mocked(provisionDevice).mockImplementation((() => gate.then(() => ({
+      terminal_id: 'test-terminal-01',
+      location_id: 'loc-1',
+      owner_user_id: 'u-1',
+      preset: 'simple_retail',
+      features: [],
+      mode: 'local',
+      tenant_id: null,
+      device_credential_id: null,
+      tax_preset: 'id_default',
+      seed_sample_products: true,
+    }))) as never);
+
+    render(<ProvisioningFlow onProvisioned={vi.fn()} />);
+    // Step 1: offline mode (nothing to link), then walk the rest.
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fillBasicForm();
+
+    // Two submits with NO await between them — the form's own submit path, which is what
+    // pressing Enter twice in a text field produces.
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(form, 'the provisioning submit form was not found').not.toBeNull();
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(provisionDevice).toHaveBeenCalled());
+    expect(
+      vi.mocked(provisionDevice).mock.calls.length,
+      'a double submit provisioned the device twice',
+    ).toBe(1);
+
+    release?.();
+  });
   // ── P4: a linked account the server issued no terminal for ─────────
   //
   // The fixture above resolves `linkDeviceGoogle` with NO `terminal`, and that

@@ -564,6 +564,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      // RE-ENTRY GUARD. The submit button is disabled while busy (:1331), but this
+      // handler is also the form's `onSubmit` (:644) — pressing Enter in a field submits
+      // it directly and never consults the button. Without this, two submits ran
+      // `provisionDevice` twice, which CREATES the device, the location and the OWNER
+      // ACCOUNT in one call (:592-608). This is the one-shot first-run operation, so a
+      // duplicate either creates two of each or fails on the owner's uniqueness — and the
+      // merchant is at the first-run screen either way.
+      //
+      // Fourth instance of the round-60 mechanism (table Save, Reserve, EDC terminal).
+      if (busy) return;
       setErrorMsg(null);
       setSubmitError(null);
       if (provisionMode === 'linked' && !isLinked) {
@@ -621,6 +631,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       }
     },
     [
+      busy,
       addToast,
       canSubmit,
       isLinked,
