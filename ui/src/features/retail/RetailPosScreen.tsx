@@ -198,9 +198,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         // re-fetch only happens on the next explicit cart mutation.
         for (const sku of missing) pendingTrackFetchRef.current.delete(sku);
       });
-    // sessionToken is read at :189. Without it, a cart mutation after a cashier hot-swap re-ran
+    // sessionToken is read at :184. Without it, a cart mutation after a cashier hot-swap re-ran
     // this effect against the destroyed token, hit the catch above, and left trackSerialMap
-    // undefined for those SKUs -- which per the comment at :201 keeps the serial-capture UI
+    // undefined for those SKUs -- which per the comment at :196 keeps the serial-capture UI
     // hidden. Serial-tracked products would silently stop capturing serial numbers mid-shift,
     // and the effect would not retry until another explicit cart mutation.
   }, [lines, trackSerialMap, sessionToken]);
@@ -630,10 +630,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         });
       }
     } catch (err) {
-      // ROLL THE OPTIMISTIC EDIT BACK. The product was replaced at :549 and the editor
-      // closed at :554 before the write was attempted, so a refusal left the grid showing
+      // ROLL THE OPTIMISTIC EDIT BACK. The product was replaced at :591 and the editor
+      // closed at :596 before the write was attempted, so a refusal left the grid showing
       // the operator's new values while the server kept the old ones — until the next
-      // reload, long after the toast had gone. `prev` is captured at :548 for exactly this
+      // reload, long after the toast had gone. `prev` is captured at :590 for exactly this
       // and was never used; same defect as the add path one function down.
       if (prev) {
         setProducts((prevList) =>
@@ -711,7 +711,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       });
     } catch (err) {
       // ROLL THE OPTIMISTIC ROW BACK. The row was inserted at the top of this callback
-      // (:606) before the create was attempted, so a refusal would otherwise leave the
+      // (:687) before the create was attempted, so a refusal would otherwise leave the
       // operator looking at a product they believe is saved — and it vanishes on the next
       // reload. That is the same class the ADR #36 comment above describes fixing
       // ("previously the product only lived in local React state and vanished on reload"),
