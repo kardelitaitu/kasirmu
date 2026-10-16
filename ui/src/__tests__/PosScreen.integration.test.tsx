@@ -565,6 +565,11 @@ describe('PosScreen — Cart locked persistence', () => {
       expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
     });
 
+    // The discount row lives in the cart footer's options section, which starts
+    // COLLAPSED and is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx) — so the
+    // restored cart's discount is not queryable until it is expanded.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     expect(screen.getByText(/discount|diskon/i)).toBeInTheDocument();
   });
 
@@ -833,6 +838,10 @@ describe('PosScreen — Keyboard navigation (↑/↓/+/-/Del/Enter)', () => {
   it('does not navigate when typing in input fields', async () => {
     await addTwoProducts();
 
+    // Open the options section first: the discount button lives in it and the
+    // section is mounted only while open (CartFooterTotals.tsx).
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     // Open discount input
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -866,8 +875,20 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
     });
   }
 
-  it('opens discount input form when Add Discount button clicked', async () => {
+  // Same as setupCart, then opens the cart footer's options section.
+  //
+  // The tip segments and the service-charge toggle live inside that section,
+  // which the screen starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN
+  // (CartFooterTotals.tsx). While it is shut those controls do not exist in the
+  // DOM at all, so a case that drives one of them must expand it first — the
+  // cashier's own first action, taken here once rather than in every case.
+  async function setupCartWithOptionsOpen() {
     await setupCart();
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+  }
+
+  it('opens discount input form when Add Discount button clicked', async () => {
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -887,7 +908,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('applies discount when valid percentage entered and Apply clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -907,7 +928,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('closes discount form without applying when Cancel clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -925,7 +946,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('disables Apply button for invalid percentage (< 1)', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -938,7 +959,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('disables Apply button for invalid percentage (> 100)', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -951,7 +972,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('prevents non-integer percentage input', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -966,7 +987,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('disables Apply button when input is empty', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -978,7 +999,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('clears discount when Clear Discount button clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     // First apply a discount
     const discountBtn = screen.getByRole('button', { name: /discount/i });
@@ -1005,7 +1026,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('shows discount label when applied', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -1025,7 +1046,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('shows percentage as label when no custom label provided', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -1059,8 +1080,20 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
     });
   }
 
-  it('shows tip segment buttons (None, 15%, 18%, 20%)', async () => {
+  // Same as setupCart, then opens the cart footer's options section.
+  //
+  // The controls this block drives live inside that section, which the screen
+  // starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx).
+  // While it is shut they do not exist in the DOM at all, so a case must expand
+  // it first — the cashier's own first action, taken here once rather than in
+  // every case.
+  async function setupCartWithOptionsOpen() {
     await setupCart();
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+  }
+
+  it('shows tip segment buttons (None, 15%, 18%, 20%)', async () => {
+    await setupCartWithOptionsOpen();
 
     // Check all tip segment buttons are visible (they use aria-label)
     expect(screen.getByLabelText(/no tip/i)).toBeInTheDocument();
@@ -1070,14 +1103,14 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('selects None (0%) tip by default', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const noneBtn = screen.getByLabelText(/no tip/i);
     expect(noneBtn).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('selects 15% tip when clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
     await userEvent.click(fifteenBtn);
@@ -1087,7 +1120,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('selects 18% tip when clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const eighteenBtn = screen.getByLabelText(/set tip to 18 percent/i);
     await userEvent.click(eighteenBtn);
@@ -1096,7 +1129,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('selects 20% tip when clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const twentyBtn = screen.getByLabelText(/set tip to 20 percent/i);
     await userEvent.click(twentyBtn);
@@ -1105,7 +1138,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('shows tip preview row when tip is selected', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
     await userEvent.click(fifteenBtn);
@@ -1117,7 +1150,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('clears tip preview when None selected', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     // First select a tip
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
@@ -1138,7 +1171,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('updates tip when changing from one percentage to another', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
     await userEvent.click(fifteenBtn);
@@ -1175,22 +1208,34 @@ describe('PosScreen — Service charge toggle', () => {
     });
   }
 
-  it('shows service charge toggle button', async () => {
+  // Same as setupCart, then opens the cart footer's options section.
+  //
+  // The controls this block drives live inside that section, which the screen
+  // starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx).
+  // While it is shut they do not exist in the DOM at all, so a case must expand
+  // it first — the cashier's own first action, taken here once rather than in
+  // every case.
+  async function setupCartWithOptionsOpen() {
     await setupCart();
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+  }
+
+  it('shows service charge toggle button', async () => {
+    await setupCartWithOptionsOpen();
 
     // Service charge toggle should be visible
     expect(screen.getByLabelText(/toggle service charge/i)).toBeInTheDocument();
   });
 
   it('starts with service charge disabled', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('enables service charge when toggle clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn);
@@ -1199,7 +1244,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('disables service charge when toggle clicked again', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn); // Enable
@@ -1210,7 +1255,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('shows service charge preview when enabled', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn);
@@ -1222,7 +1267,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('hides service charge preview when disabled', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn);
@@ -1241,7 +1286,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('shows service charge label with correct percentage', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     // Label should show default percentage (10%)

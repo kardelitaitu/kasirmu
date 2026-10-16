@@ -103,9 +103,33 @@ export function CartFooterTotals({
         </button>
 
         {/* Collapsible body: discount + tip + service charge */}
-        <div
-          className={`pos-cart-options-collapse${showOptions ? ' pos-cart-options-collapse--open' : ''}`}
-        >
+        {/* MOUNTED ONLY WHILE OPEN. Kept as a conditional render rather than a CSS
+            clip because the closed subtree cannot be contained by any other means.
+            Measured on the live cart, with the section collapsed (its default):
+            `.pos-cart-options-collapse` and `.pos-cart-options-body` both computed
+            to height 0, yet `.pos-cart-discount-area` still laid out at
+            y 1252-1296 on a 1024x1366 tablet (y 657-679 on desktop) -- past the
+            bottom of `.pos-cart-options-section` itself (ends y 1242).
+            `.pos-cart-actions-row` is laid out over that same band, so
+            `+ Add Discount` and `+ Promotions` were painted underneath
+            `pos-cart-open-bill-btn`: `document.elementFromPoint` at the button's
+            own centre returned that sibling, and both controls were UNREACHABLE
+            for a cashier on a tablet. The tablet is where it bites because
+            `@media (pointer: coarse)` raises these buttons to
+            `min-height: var(--touch-target-min)` (44px) against a 22px desktop
+            button, and because a dine-in cart adds `pos-cart-actions-row--dining`
+            (CartActionBar.tsx:135), which wraps the actions row into the band.
+
+            Everything non-destructive was measured and NOTHING removed the box:
+            `min-height: 0` on the item, `minmax(0, 0fr)` on the track,
+            `overflow: hidden` on item/track/section, `visibility: hidden`,
+            `content-visibility: hidden`, `contain: size`, `position: absolute`
+            and `pointer-events: none` each left the button at y 1252 with
+            height 44. Only `display: none` takes it out of layout and the hit
+            tree -- which is what this render does, without losing the reveal:
+            the subtree mounts with `--open` already on it. */}
+        {showOptions ? (
+        <div className="pos-cart-options-collapse pos-cart-options-collapse--open">
           <div className="pos-cart-options-body">
             {/* Discount */}
             <div className="pos-cart-discount-area">
@@ -310,6 +334,7 @@ export function CartFooterTotals({
             </div>
           </div>
         </div>
+        ) : null}
       </div>
 
       {/* ── Tax line (live preview; F2-3 estimated marker) ── */}

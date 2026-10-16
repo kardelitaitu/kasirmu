@@ -1302,6 +1302,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine).toBeInTheDocument();
     });
 
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     // Click + Add Discount button
     const addDiscountBtn = screen.getByRole('button', { name: /add discount/i });
     await userEvent.click(addDiscountBtn);
@@ -1357,6 +1365,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click + Add Discount button
     const addDiscountBtn = screen.getByRole('button', { name: /add discount/i });
@@ -1423,6 +1439,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine).toBeInTheDocument();
     });
 
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     // Click 15% tip button (matches both test FTL '15% tip' and real FTL 'Set tip to 15 percent')
     const tipBtn = screen.getByRole('button', { name: /15/i });
     await userEvent.click(tipBtn);
@@ -1466,6 +1490,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click 15% tip
     const tipBtn = screen.getByRole('button', { name: /set tip to 15 percent/i });
@@ -1519,6 +1551,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine).toBeInTheDocument();
     });
 
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     // Click service charge toggle
     const serviceToggle = screen.getByRole('button', { name: /toggle service charge/i });
     await userEvent.click(serviceToggle);
@@ -1564,6 +1604,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Find the increase button and click
     const increaseBtn = screen.getByRole('button', { name: /increase quantity/i });
@@ -1620,6 +1661,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine).toBeInTheDocument();
     });
 
+
     // Click remove button (×)
     const removeBtn = screen.getByRole('button', { name: /remove ITEM-001/i });
     await userEvent.click(removeBtn);
@@ -1665,6 +1707,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click remove button
     const removeBtn = screen.getByRole('button', { name: /remove ITEM-001/i });
@@ -1718,6 +1761,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click Open Bill button (aria-label: 'Save as open bill' from pos-cart-open-bill-aria)
     const openBillBtn = screen.getByRole('button', { name: /save as open bill/i });
@@ -1846,6 +1890,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine).toBeInTheDocument();
     });
 
+
     // Focus the cart line element (needs data-line-id for keyboard handler)
     const cartLine = screen.getByTestId('cart-panel-line-item');
     cartLine.focus();
@@ -1892,6 +1937,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click Close Shift button - aria-label is "Close current shift"
     const closeShiftBtn = screen.getByRole('button', { name: /close current shift/i });
@@ -1946,6 +1992,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click Lock button (locks cart and logs out)
     const lockBtn = screen.getByRole('button', { name: /lock/i });

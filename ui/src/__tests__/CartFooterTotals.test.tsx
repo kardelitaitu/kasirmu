@@ -21,11 +21,19 @@ import { formatMoney, type CartLine, type LineId, type Money, type Sku } from '@
 // whole world as props. Accessible names are asserted as the bundle values, so
 // a renamed key fails here instead of shipping an unnamed control.
 //
-// One shape note that constrains every query below: the collapsible body is
-// NOT conditionally rendered. CartFooterTotals.tsx:106 always renders
-// div.pos-cart-options-collapse and only toggles the --open CLASS, so the tip
-// segments and the service toggle stay in the DOM while collapsed. Button
-// counts are therefore scoped to their own area, never to the footer.
+// One shape note that constrains every query below: the collapsible body IS
+// conditionally rendered. CartFooterTotals.tsx mounts div.pos-cart-options-collapse
+// (carrying --open) only while `showOptions` is true, so the tip segments, the
+// discount buttons and the service toggle exist ONLY in the open state. That is
+// deliberate: while collapsed the content used to stay in the DOM and in LAYOUT,
+// laid out past the bottom of its own section and underneath the actions row, so
+// "+ Add Discount" and "+ Promotions" were hit-tested through the overlay and
+// were unreachable on a touch tablet. Verified in the live tablet run; see the
+// note at CartFooterTotals.tsx:105.
+//
+// renderFooter() therefore defaults to showOptions: true -- the state in which
+// these controls are actually reachable -- and the collapse behaviour is
+// asserted explicitly, in both directions, by the first case.
 
 const SUBTOTAL: Money = { minor_units: 150000, currency: 'IDR' };
 const DISCOUNT: Money = { minor_units: 15000, currency: 'IDR' };
@@ -88,7 +96,7 @@ function renderFooter(overrides: Overrides = {}) {
         discountPercent={overrides.discountPercent ?? 0}
         discountLabel={overrides.discountLabel ?? ''}
         discountAmount={overrides.discountAmount ?? null}
-        showOptions={overrides.showOptions ?? false}
+        showOptions={overrides.showOptions ?? true}
         setShowOptions={setShowOptions}
         showDiscountInput={overrides.showDiscountInput ?? false}
         setShowDiscountInput={setShowDiscountInput}
@@ -150,9 +158,16 @@ describe('CartFooterTotals', () => {
     const chevron = container.querySelector('.pos-cart-options-chevron');
     expect(chevron?.getAttribute('aria-hidden')).toBe('true');
     expect(chevron?.className).not.toContain('pos-cart-options-chevron--open');
-    expect(container.querySelector('.pos-cart-options-collapse')?.className).not.toContain(
-      'pos-cart-options-collapse--open',
-    );
+    // Collapsed: the section is EMPTY, not merely clipped. Everything below the
+    // toggle unmounts, because a clip leaves the content laid out and
+    // hit-testable underneath the actions row -- measured at y 1252 on a
+    // 1024x1366 tablet, past the bottom of this section, which is why
+    // "+ Add Discount" and "+ Promotions" could not be clicked on a tablet.
+    // Asserted as absence of the whole subtree, not just of the open class.
+    expect(container.querySelector('.pos-cart-options-collapse')).toBeNull();
+    expect(container.querySelectorAll('.pos-cart-discount-actions button')).toHaveLength(0);
+    expect(container.querySelectorAll('.pos-cart-tip-segment')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Toggle service charge' })).toBeNull();
 
     fireEvent.click(toggle);
     // The component uses the functional updater form, so the argument is a
@@ -163,6 +178,9 @@ describe('CartFooterTotals', () => {
     expect((arg as (prev: boolean) => boolean)(true)).toBe(false);
 
     first.unmount();
+    // Open: the wrapper mounts and carries --open, which is what the reveal
+    // animation keys off (there is no closed state to animate to, since the
+    // subtree only exists while open).
     const open = renderFooter({ showOptions: true });
     expect(
       screen.getByRole('button', { name: 'Collapse options' }).getAttribute('aria-expanded'),
@@ -170,6 +188,10 @@ describe('CartFooterTotals', () => {
     expect(open.container.querySelector('.pos-cart-options-collapse')?.className).toContain(
       'pos-cart-options-collapse--open',
     );
+    // And the controls the collapsed state omits are the ones now present.
+    expect(open.container.querySelectorAll('.pos-cart-discount-actions button')).toHaveLength(2);
+    expect(open.container.querySelectorAll('.pos-cart-tip-segment')).toHaveLength(4);
+    expect(screen.getByRole('button', { name: 'Toggle service charge' })).not.toBeNull();
   });
 
   it('offers Add Discount and Promotions as the only two entry-point buttons, each opening its own surface', () => {
@@ -337,8 +359,10 @@ describe('CartFooterTotals', () => {
     });
     expect(empty.container.querySelector('[role="status"]')).toBeNull();
     expect(empty.container.querySelectorAll('.pos-cart-tax-row')).toHaveLength(0);
-    // The discount entry points and the tip segments are still mounted —
-    // emptiness is not a footer-wide render gate.
+    // The discount entry points and the tip segments are still mounted with an
+    // EMPTY cart (the harness renders the open state) — emptiness is not a
+    // footer-wide render gate. Distinct from the collapsed case, where they are
+    // absent because the whole section is unmounted.
     expect(empty.container.querySelectorAll('.pos-cart-discount-actions button')).toHaveLength(2);
     expect(empty.container.querySelectorAll('.pos-cart-tip-segment')).toHaveLength(4);
   });

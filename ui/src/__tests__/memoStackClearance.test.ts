@@ -45,6 +45,17 @@ import { resolve } from 'path';
  *   MemoBanner.css (.memo-stack, the consumer)
  *     bottom: var(--memo-bottom-inset, var(--space-6))
  *     → the fallback is LOAD-BEARING (see tokens.css link above).
+ * *   RestaurantFloatingCartBar.css (body:has(.restaurant-floating-cart-bar))
+ *     calc(cart-bar-height + space-3 + safe-area + space-6)
+ *     → the portrait cart BAR is a fixed SIBLING of the stack, so it needs
+ *       its own body-level override (bar y 1220-1269 vs stack y 1118-1259,
+ *       39px overlap, blocked the only route back into the cart).
+ *   RestaurantCartSheet.css (body:has(.restaurant-cart-sheet-panel))
+ *     calc(85dvh + space-3)
+ *     → the portrait cart SHEET is 85dvh tall and anchored to bottom: 0, so
+ *       the stack landed INSIDE it over the footer controls. Measured:
+ *       toggle x 131-894 y 1198-1242, memo-close x 300-344 y 1142-1186,
+ *       elementFromPoint(toggle centre) -> memo-banner-close.
  *
  * Exit-row inertness, the second half of the shipped guard:
  *   .memo-stack has pointer-events: none (click-through over bottom
@@ -69,10 +80,20 @@ const SHEETS = {
     __dirname,
     '../features/restaurant/components/RestaurantFloatingCartBar.css',
   ),
+  restaurantCartSheet: resolve(
+    __dirname,
+    '../features/restaurant/components/RestaurantCartSheet.css',
+  ),
 } as const;
 
 function readSheet(path: string): string {
-  return readFileSync(path, 'utf-8');
+  // Normalise CRLF -> LF. Some shipped sheets carry CRLF
+  // (RestaurantCartSheet.css among them) and the selector patterns below are
+  // line-anchored on \n, so a CRLF file would match nothing and the case would
+  // fail as "missing rule" for a rule that is present and correct. Reading is
+  // the only place line endings are visible, so folding them here keeps the
+  // assertions themselves about CSS rather than about each file's checkout.
+  return readFileSync(path, 'utf-8').replace(/\r\n/g, '\n');
 }
 
 /**
@@ -256,12 +277,53 @@ describe('Memo stack clearance — the token chain', () => {
     ).toBeNull();
   });
 
-  it('no other sheet declares the token — exactly one default, four scoped overrides, one consumer', () => {
+  it('the restaurant cart SHEET clears the stack (its own chain link)', () => {
+    // ADDED because the chain was missing this link too, and unlike the bar
+    // this one is not a fixed SIBLING of the stack: the sheet is
+    // `height: 85dvh; bottom: 0`, i.e. the viewport's bottom 85%, so the stack
+    // landed INSIDE the sheet and on top of the cart footer's own controls.
+    //
+    // Measured 2026-10-17 on the tablet project (1024x1366) with the sheet open
+    // and two live memos:
+    //
+    //   .memo-banner             x 21-499, y 1141-1282  (two, stacked)
+    //   .memo-banner-close       x 300-344, y 1142-1186 <- clickable, on top
+    //   .pos-cart-options-toggle x 131-894, y 1198-1242 <- the till's own control
+    //   document.elementFromPoint(toggle centre) -> memo-banner-close
+    //
+    // so "Expand options" -- the only way to reach the discount, tip and
+    // service-charge controls -- could not be clicked, and
+    // restaurant-cart-capabilities.spec.ts:49/:83 failed on the tablet project
+    // with the memo "intercepting pointer events" on exactly those two controls.
+    // The same spec passes on desktop because there the toggle sits at
+    // x 937-1340, clear of the stack at x 21-499.
+    //
+    // 85dvh is the panel's OWN height token's value, in the panel's own unit,
+    // so the two track the viewport together; --space-3 keeps the stack clear
+    // of the sheet's grabber handle.
+    const css = readSheet(SHEETS.restaurantCartSheet);
+    const bodyRule = blocksOf(css, 'body:has\\(\\.restaurant-cart-sheet-panel\\)');
+    expect(
+      bodyRule.length,
+      'RestaurantCartSheet.css must declare --memo-bottom-inset on body:has(.restaurant-cart-sheet-panel) — the sheet is 85dvh tall and anchored to bottom: 0, so the fixed stack lands inside it and over the cart footer controls',
+    ).toBeGreaterThan(0);
+    expect(
+      bodyRule.some((b) =>
+        /--memo-bottom-inset:\s*calc\(\s*85dvh\s*\+\s*var\(--space-3\)\s*\)/.test(b),
+      ),
+      'RestaurantCartSheet.css body:has(.restaurant-cart-sheet-panel) --memo-bottom-inset must be calc(85dvh + var(--space-3)) — the sheet\'s own height (matching its height: 85dvh) plus a gutter clear of the grabber handle',
+    ).toBe(true);
+  });
+
+  it('no other sheet declares the token — exactly one default, five scoped overrides, one consumer', () => {
     // Scopes: :root default (tokens), .tablet-shell (tablet),
     // .app-layout (desktop), body:has(.settings-footer) (settings),
-    // body:has(.restaurant-floating-cart-bar) (restaurant portrait), and the
+    // body:has(.restaurant-floating-cart-bar) (restaurant portrait bar),
+    // body:has(.restaurant-cart-sheet-panel) (restaurant portrait SHEET), and the
     // consumer read in MemoBanner.css. A stray declaration elsewhere would be a
-    // competing source of truth.
+    // competing source of truth. Each scope is pinned by its own case above, so
+    // this list is the closed set: adding a sixth override must come with a
+    // measurement and a case, not a silent calc().
     const expectedSheets = new Set(Object.values(SHEETS));
     const uiSrc = resolve(__dirname, '..');
     const cssFiles: string[] = [];
@@ -281,7 +343,7 @@ describe('Memo stack clearance — the token chain', () => {
     }
     expect(
       foreign,
-      'only tokens.css, tablet.css, AppLayout.css, SettingsPage.css, RestaurantFloatingCartBar.css and MemoBanner.css may touch --memo-bottom-inset; these files declare it outside the chain',
+      'only tokens.css, tablet.css, AppLayout.css, SettingsPage.css, RestaurantFloatingCartBar.css, RestaurantCartSheet.css and MemoBanner.css may touch --memo-bottom-inset; these files declare it outside the chain',
     ).toEqual([]);
   });
 });
