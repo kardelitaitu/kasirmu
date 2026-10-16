@@ -25,7 +25,7 @@
 //! comment is here to prevent. The mismatch error copy is likewise generic on
 //! purpose: echoing the real name would leak the answer just as surely.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import {
@@ -116,6 +116,20 @@ export function useRestore({ sessionToken, open }: {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const [restore, setRestore] = useState<RestoreState>(INITIAL);
+  // Re-entry guard for the one write on this surface. `submitting` drives the button's
+  // `loading` prop, and React commits it on its NEXT render -- after the second submit of
+  // a real double tap. MEASURED: two calls in one batch both reach the write
+  // (useRestore.test.tsx 'writes the restore request once for a double submit').
+  //
+  // The consequence is not a duplicate row. The bridge writes
+  // `<db>.restore-request.json` with `std::fs::write` UNCONDITIONALLY
+  // (crates/kasirmu-bridge/src/data/restore.rs:256), so the second write REPLACES the first
+  // and the LAST WRITE WINS. That pending request is what runs on the next boot, so a double
+  // submit -- or an operator who picks another generation while the first is in flight --
+  // silently changes WHICH GENERATION gets restored, and the banner would show only one
+  // pending request. A ref, not the state, because only the ref is authoritative at the
+  // moment the second submit runs.
+  const submitPendingRef = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const isAvailable = !isTabletShell() && sessionToken !== '';
@@ -184,6 +198,8 @@ export function useRestore({ sessionToken, open }: {
     // would refuse it anyway, but its refusal is the generic mismatch error and
     // an empty field is a clearer thing to catch here.
     if (restore.confirmName.trim() === '') return;
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
 
     setRestore((prev) => ({ ...prev, submitting: true }));
     try {
@@ -191,6 +207,7 @@ export function useRestore({ sessionToken, open }: {
         candidate_path: candidate.path,
         confirm_store_name: restore.confirmName.trim(),
       });
+      submitPendingRef.current = false;
       setRestore((prev) => ({
         ...prev,
         submitting: false,
@@ -206,6 +223,7 @@ export function useRestore({ sessionToken, open }: {
       // surface the field-level copy for the mismatch and the generic toast
       // otherwise. Keeping the typed input on screen lets the operator correct
       // it without reopening the dialog.
+      submitPendingRef.current = false;
       setRestore((prev) => ({ ...prev, submitting: false }));
       addToast({ message: l10n.getString('data-mgmt-toast-restore-store-mismatch'), type: 'error' });
     }
