@@ -924,6 +924,8 @@ export default function RestaurantMenuEditorScreen({
       // the operator is one layer in, and dropping the whole editor would discard
       // the list they were working on too.
       if (draft) {
+        e.preventDefault();
+        e.stopPropagation();
         cancelDraft();
         return;
       }
