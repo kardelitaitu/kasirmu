@@ -145,4 +145,57 @@ describe('KDS item-status write failures are reported', () => {
       + 'queue has no item-level action type and never retries it:\n' + lying.join('\n'),
     ).toEqual([]);
   });
+
+  // ── The two screens must CLASSIFY, not just report the same sentence ─────
+  //
+  // Both screens run the same operation — advance one line item — against the same
+  // API. Their failures must therefore reach the operator the same way, and the
+  // distinction is not cosmetic:
+  //
+  //   KdsScreen used a BARE catch and a fixed string, so every failure read
+  //   "Failed to update the order — try again". For an EXPIRED SESSION that advice is
+  //   wrong — the cook retries forever — where the shared copy says "Please sign in
+  //   again"; for an offline failure it hides "check your connection"; for a
+  //   permission refusal it invites a retry that can never succeed.
+  //
+  //   ExpoScreen classified it through `l10nErrorMessage`, which maps a typed
+  //   AppError to its own `app-error-*` copy and falls back to the screen's key.
+  //
+  // So the rule is: every item-status catch classifies its error. A bare `catch`
+  // cannot — it has nothing to classify — which is what makes this checkable from
+  // the source, and why it is here rather than in a render test.
+  it('every item-status catch classifies the error instead of using one fixed string', () => {
+    const unclassified: string[] = [];
+    for (const rel of SCREENS) {
+      const source = readFileSync(resolve(REPO, rel), 'utf8');
+      const CALL = 'updateKdsLineItemStatusScoped(';
+      const from = source.indexOf(CALL) + CALL.length;
+      const catchAt = source.indexOf('catch', from);
+      if (catchAt === -1) continue;
+      // A BARE catch binds nothing, so nothing can be classified.
+      const header = source.slice(catchAt, source.indexOf('{', catchAt)).trim();
+      if (header === 'catch') {
+        unclassified.push(rel + ' :: bare `catch {}` — the error is discarded');
+        continue;
+      }
+      const open = source.indexOf('{', catchAt);
+      let depth = 0;
+      let end = open;
+      for (let i = open; i < source.length; i++) {
+        if (source[i] === '{') depth++;
+        else if (source[i] === '}' && --depth === 0) { end = i; break; }
+      }
+      const body = source.slice(catchAt, end + 1)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+      if (!/l10nErrorMessage\(|userErrorMessage\(|plainErrorMessage\(/.test(body)) {
+        unclassified.push(rel + ' :: ' + body.replace(/\s+/g, ' ').slice(0, 120));
+      }
+    }
+    expect(
+      unclassified,
+      'an item-status failure is reported with a fixed string, so an expired session, '
+      + 'a permission refusal and a network drop all read the same:\n' + unclassified.join('\n'),
+    ).toEqual([]);
+  });
 });

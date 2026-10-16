@@ -4,6 +4,7 @@ import { DevProfiler } from '@/components/DevProfiler';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { useWorkspaceScope, useWorkspace } from '@/contexts/WorkspaceContext';
 import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
@@ -253,7 +254,7 @@ export default function KdsScreen() {
       if (nextStatus === 'ready') {
         speak(`${requiredLocalized(l10n, 'kds-order-up-tts')} ${item.display_name} ${requiredLocalized(l10n, 'kds-ready-tts')}!`);
       }
-    } catch {
+    } catch (itemErr) {
       // A FAILED item write used to be swallowed here with the note "the backend will
       // emit kds:orders-changed on next poll". A poll repairs the DISPLAY, not the
       // WRITE: the cook tapped "this dish is done", the status dot did not move, and
@@ -272,10 +273,23 @@ export default function KdsScreen() {
       // and nothing retries.
       //
       // A false reassurance is worse than silence: silence at least prompts a retry.
-      // `ExpoScreen.advanceItemStatus` (:321) is the sibling that got this right and
-      // raised `kds-error-update-failed`; the same string fits the same situation
-      // here, so this does not introduce a second wording either.
-      setError(requiredLocalized(l10n, 'kds-error-update-failed'));
+      //
+      // ⚠️ AND A GENERIC TRUTH IS WORSE THAN A SPECIFIC ONE. The first fix here raised
+      // the bare `kds-error-update-failed` ("Failed to update the order — try again")
+      // and dropped the error, so EVERY failure read the same. The sibling
+      // `ExpoScreen.advanceItemStatus` (:321) classifies it instead — and the shared
+      // copy is strictly more useful per kind:
+      //
+      //   app-error-session   "Your session has expired. Please sign in again."
+      //   app-error-permission "You don't have permission to do this."
+      //   app-error-offline   "You appear to be offline. Check your connection and try again."
+      //
+      // "try again" is actively wrong advice for the first two — the cook would retry
+      // forever on an expired session. `l10nErrorMessage` falls back to the screen's own
+      // key for an unclassified error, so this keeps the KDS wording where the error is
+      // genuinely unknown and is never worse than the fixed string.
+      console.error('KDS advance item failed', itemErr);
+      setError(l10nErrorMessage(itemErr, l10n, 'kds-error-update-failed'));
     }
   }, [sessionToken, speak, l10n]);
 
