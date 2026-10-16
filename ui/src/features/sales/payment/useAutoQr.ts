@@ -102,6 +102,22 @@ export function useAutoQr({
 }: UseAutoQrParams) {
   const [autoQr, setAutoQr] = useState<AutoQrState | null>(null);
   const autoIssueSeq = useRef(0);
+  // Re-entry guard for the REISSUE only, mirroring the `holdingRef` shape
+  // RetailPosScreen.tsx:1426 and usePosHeldCarts already use.
+  //
+  // `handleAutoReissue` incremented `autoIssueSeq` and then awaited the charge
+  // with nothing in between, so a double-tap on the expired panel's 'Generate a
+  // new QR' minted a SECOND Midtrans order on the SAME local sale. The
+  // idempotency key is built from that very counter (`${base}-${autoIssueSeq
+  // .current}`, :114-115), so each tap got a DIFFERENT key and the gateway could
+  // not dedupe them: two charges, one sale, two things to reconcile.
+  //
+  // A DOM `disabled` on the button could not have covered it — React does not
+  // re-render between two clicks that land inside one await, exactly as the
+  // retail hold note records. The ref closes the window; it is released in the
+  // handler's own `finally`, so a press that lands mid-flight is dropped rather
+  // than queued.
+  const reissuingRef = useRef(false);
 
   const issueAutoQr = useCallback(
     async (saleResult: CompleteSaleResult) => {
@@ -169,6 +185,7 @@ export function useAutoQr({
   }, [sessionToken, buildGatewaySale, issueAutoQr, addToast, setProcessing, attemptIdRef, l10nRef]);
 
   const handleAutoReissue = useCallback(async () => {
+    if (reissuingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. `!autoQr` stays silent — there is no auto-QR panel to
       // act on — but a missing token means the reissue cannot be attempted, and this
@@ -177,6 +194,7 @@ export function useAutoQr({
       return;
     }
     if (!autoQr) return;
+    reissuingRef.current = true;
     try {
       autoIssueSeq.current += 1;
       const charge = await issueAutoQr(autoQr.saleResult);
@@ -198,6 +216,11 @@ export function useAutoQr({
         }),
         type: 'error',
       });
+    } finally {
+      // Released once the write settles, so a second press that lands mid-await is
+      // dropped rather than queued. The failed path releases too: the expired QR
+      // stays on screen with its actions, and the cashier must be able to retry.
+      reissuingRef.current = false;
     }
   }, [autoQr, sessionToken, issueAutoQr, addToast, l10nRef]);
 
