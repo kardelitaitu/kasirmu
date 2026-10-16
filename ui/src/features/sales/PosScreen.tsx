@@ -815,13 +815,39 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // PROMO-3: the checkout consumed the promotion selection.
     setAppliedPromotions([]);
     // If this was an open bill being paid, delete it from DB.
+    //
+    // ⚠️ THE FAILURE BRANCH MUST RE-READ, and the delete must be AWAITED before the
+    // refresh — the same rule the split handler above states at :1006-1037, and the
+    // same reason its comment gives: `loadOpenBills()` on the success path alone left
+    // the list showing stale data over a half-committed write.
+    //
+    // This site had both halves wrong. The delete was fire-and-forget and the refresh
+    // fired in the SAME TICK, so the read raced the write; and when the delete
+    // REJECTED the tab was still in the database with nothing re-reading it. The
+    // operator saw a toast and a list built from whatever the server held an instant
+    // earlier — while `setActiveOpenBillId(null)` had already destroyed the only
+    // handle that could retry the delete.
+    //
+    // A paid tab left in the database is not cosmetic: the open-bills list is the only
+    // surface that can resume one, so the next waiter can recall a tab this cashier
+    // already settled and sell its lines a second time.
+    //
+    // Still fire-and-forget for the SALE's sake — the money is already taken and a
+    // locked DB must not fail a completed checkout — but the list is refreshed once
+    // the write settles, on BOTH paths.
     if (activeOpenBillId) {
-      void releaseLease(activeOpenBillId);
-      deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {
-        addToast({ message: requiredLocalized(l10n, 'pos-toast-held-cart-delete-failed'), type: 'error' });
-      });
+      const paidBillId = activeOpenBillId;
+      void releaseLease(paidBillId);
       setActiveOpenBillId(null);
-      loadOpenBills();
+      deleteHeldCartScoped(sessionToken, paidBillId)
+        .catch(() => {
+          addToast({ message: requiredLocalized(l10n, 'pos-toast-held-cart-delete-failed'), type: 'error' });
+        })
+        .finally(() => {
+          // `finally`, not `.then`: the refusal has to re-read too, or the paid tab
+          // stays invisible until a manual reload.
+          void loadOpenBills();
+        });
     }
     resetCart();
     try {
