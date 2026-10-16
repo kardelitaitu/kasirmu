@@ -190,6 +190,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The two helpers five specs were carrying, consolidated (round 207)](audits/e2e-helper-consolidation-cart-sheet.md) | — |
 | general | [The restaurant sidebar route, shared instead of walked four times (round 162)](audits/e2e-sidebar-route-shared.md) | — |
 | release | [The e2e gap was never Docker — it was my own pipe, and the suite is now run (round 295)](audits/e2e-was-never-docker.md) | — |
+| general | [A double submit on the EDC terminal form configured two terminals](audits/edc-terminal-form-double-submit.md) | — |
 | general | [The EDC terminal picker, which round 224 called unreachable (round 225)](audits/edc-terminal-picker.md) | — |
 | general | [The EDC Test Connection, and a toggle that was not needed (round 257)](audits/edc-test-connection.md) | — |
 | general | [The 8 remaining ids, and why a tag is not a classification (round 283)](audits/eight-id-classification-corrected.md) | — |
