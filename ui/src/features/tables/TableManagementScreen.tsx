@@ -692,9 +692,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         cart_data: JSON.stringify(parsed),
         item_count: full.item_count,
         total_minor: full.total_minor,
-        currency: full.currency,
+        currency: full.currency || storeCurrency,
         bill_type: 'open_bill',
         customer_name: parsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
+        ...(full.deduction_location_id ? { deduction_location_id: full.deduction_location_id } : {}),
       });
 
       // Only now is it safe to remove the old record: the bill exists under the new
@@ -740,7 +741,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } finally {
       setMovingTable(false);
     }
-  }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
+  }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail, storeCurrency]);
 
   const handleOpenMergeTable = useCallback((t: Table) => {
     const candidates = activeTableList.filter(

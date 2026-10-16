@@ -918,6 +918,59 @@ describe('TableManagementScreen', () => {
     );
   });
 
+  it('preserves deduction_location_id when moving an active table tab', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: 'loc-kitchen-bar',
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 2',
+          bill_type: 'open_bill',
+          deduction_location_id: 'loc-kitchen-bar',
+        }),
+      );
+    });
+  });
+
   // ── The move must not delete the bill before the new one exists ─────────────
   //
   // WHY: `handleMoveTable` ran DELETE -> HOLD. If the hold then failed there was
