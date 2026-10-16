@@ -166,6 +166,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [My own fix overclaimed, one step softer — 2026-10-18](audits/2026-10-18-my-own-overclaim.md) | — |
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
 | release | [Nine cross-file citations no pass could see — 2026-10-18](audits/2026-10-18-nine-cross-file-citations-no-pass-could-see.md) | — |
+| general | [One control, three ways in, one tested — 2026-10-18](audits/2026-10-18-one-control-three-ways-in-one-tested.md) | — |
 | general | [A double-press on Save created two open bills](audits/2026-10-18-open-bill-save-double-press.md) | — |
 | general | [A paid open bill that failed to delete was never re-read](audits/2026-10-18-paid-tab-delete-not-reread.md) | — |
 | general | [The paid-tab fix now has a load-bearing test — after three wrong assertions](audits/2026-10-18-paid-tab-fix-now-has-a-test.md) | — |
