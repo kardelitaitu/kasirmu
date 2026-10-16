@@ -82,10 +82,24 @@ test.describe('ADR #22 — Topology surface (Locations dashboard)', () => {
       localStorage.setItem('kasirmu-dev-toolbar-pos', JSON.stringify({ x: -400, y: -400 }));
     });
     await loginAs(page, 'admin', '9999');
-    await selectWorkspace(page, WORKSPACES.ADMIN);
-    // RETARGETED: the topology entry point is the Locations dashboard
-    // (#/locations) — there is no sidebar item and no topology page route.
-    await navigateTo(page, 'locations');
+    // REACH THE DASHBOARD THE WAY A USER DOES, via the Locator's tool card.
+    //
+    // `selectWorkspace(ADMIN) + navigateTo('locations')` cannot work, and the reason is
+    // structural, not staleness (round 208's diagnosis). Every tool card in the picker
+    // resolves to a FULLSCREEN page, and WorkspaceHome.handleShortcutNav
+    // (WorkspaceHome.tsx:553-565) therefore sets a workspace for fullscreen
+    // destinations ONLY -- `locations` is a plain page, so no workspace is established,
+    // AppShell.tsx:708 falls through to the picker, and the dashboard never mounts.
+    //
+    // Measured 2026-10-17 on the desktop project:
+    //   selectWorkspace(ADMIN) + navigateTo('locations')  -> multiStore 0, picker 1  (WRONG)
+    //   click the "Locations" tool card                   -> multiStore 1             (ok)
+    //
+    // The tool card is the real entry point for this surface, so this uses it. `settings`
+    // in the sibling block below is unaffected: it is registered `fullscreen: true`.
+    const locationsCard = page.locator('[data-testid="workspace-tool-card"]').filter({ hasText: /locations/i }).first();
+    await expect(locationsCard, 'the picker must offer a Locations tool card').toBeVisible({ timeout: 10_000 });
+    await locationsCard.click();
     await expect(page.locator('.multi-store-dashboard')).toBeVisible({ timeout: 10_000 });
   });
 
