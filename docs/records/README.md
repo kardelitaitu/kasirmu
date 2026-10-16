@@ -140,6 +140,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The double-tap test that hid the defect — and the one that exposed it — 2026-10-18](audits/2026-10-18-double-tap-shape-that-exposed-it.md) | — |
 | general | [The EDC wait window: a suspected gap that the code does not have](audits/2026-10-18-edc-wait-window-complete-guard.md) | — |
 | general | [Enumerating the schema, and a statutory sequence that advanced twice — 2026-10-18](audits/2026-10-18-enumerating-and-the-statutory-sequence.md) | — |
+| general | [Escape closes the table view, not the panel — 2026-10-18](audits/2026-10-18-escape-closes-the-view-not-the-panel.md) | — |
 | general | [Two gates that disagreed about what "fireable" means — 2026-10-18](audits/2026-10-18-fire-all-gate-disagreed.md) | — |
 | release | [Five drifted citations re-pointed, and the checker cannot see the fix — 2026-10-18](audits/2026-10-18-five-citations-repaired-and-a-blind-checker.md) | — |
 | general | [A revision counter that only moves forward - 2026-10-18](audits/2026-10-18-forward-only-counter.md) | — |
