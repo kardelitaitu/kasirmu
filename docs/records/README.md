@@ -221,6 +221,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | subscription | [The sales-history tier case was asserting two removed designs — 2026-10-18](audits/2026-10-18-the-tier-case-asserted-two-removed-designs.md) | — |
 | general | [The Void overlay is behind a swipe, which is why the probe missed it — 2026-10-18](audits/2026-10-18-the-void-overlay-is-behind-a-swipe.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
+| general | [Thirteen more specs on the same admin route gate — 2026-10-18](audits/2026-10-18-thirteen-more-specs-on-the-same-gate.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
 | general | [Three of my own cases were passing vacuously — 2026-10-18](audits/2026-10-18-three-of-my-own-cases-were-vacuous.md) | — |
 | general | [Three overlays, three cases, and the class is closed — 2026-10-18](audits/2026-10-18-three-overlays-three-opening-mechanics.md) | — |
