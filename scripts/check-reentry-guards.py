@@ -60,8 +60,11 @@ re-derive these: each is protected, and the protection is named so the search en
                         fall through to `claim_statutory_number_for_sale`, an atomic
                         `UPDATE ... RETURNING` (fiscal.rs:438-455). The statutory sequence
                         advances TWICE: a gap or duplicate in a legally numbered series.
-                        Round 148 FIXED in PaymentModal (the receipt surface) and the same
-                        defect stands in SalesHistoryScreen.handleIssueTaxInvoice.
+                        NOTE this defect had TWO call sites and round 148 fixed only the
+                        receipt one: PaymentModal.handleIssueTaxInvoice, then round 149
+                        SalesHistoryScreen.handleIssueTaxInvoice. The first round's record
+                        named the second as outstanding, which is why it is written down here
+                        rather than left to be rediscovered.
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --

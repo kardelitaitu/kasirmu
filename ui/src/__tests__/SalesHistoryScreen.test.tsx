@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // renderWithProviders* (not renderWithFluentSync): the reprint button now reports a
 // failed print through the toast context, so the screen needs a ToastProvider.
@@ -20,6 +20,11 @@ vi.mock('@/api/sales', () => ({
   voidSaleScoped: vi.fn(),
   stampFakturPajakScoped: vi.fn(),
   createFakturPenggantiScoped: vi.fn(),
+  // Both were ABSENT, so `handleIssueTaxInvoice` threw on its first call and no case
+  // exercised it. The statutory-invoice surface of this screen was untested until
+  // round 149, longer than any other write on it.
+  issueTaxInvoiceScoped: vi.fn(),
+  getSaleStatutoryNumberScoped: vi.fn(),
 }));
 
 vi.mock('@/api/staff', () => ({
@@ -73,6 +78,8 @@ import {
   listRefundsScoped,
   stampFakturPajakScoped,
   createFakturPenggantiScoped,
+  issueTaxInvoiceScoped,
+  getSaleStatutoryNumberScoped,
 } from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
@@ -89,6 +96,8 @@ const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockListRefunds = listRefundsScoped as ReturnType<typeof vi.fn>;
 const mockStampFakturPajakScoped = stampFakturPajakScoped as ReturnType<typeof vi.fn>;
 const mockCreateFakturPenggantiScoped = createFakturPenggantiScoped as ReturnType<typeof vi.fn>;
+const mockIssueTaxInvoiceScoped = issueTaxInvoiceScoped as ReturnType<typeof vi.fn>;
+const mockGetSaleStatutoryNumberScoped = getSaleStatutoryNumberScoped as ReturnType<typeof vi.fn>;
 const mockListStaff = listStaffScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.fn>;
 
@@ -576,7 +585,55 @@ describe('SalesHistoryScreen', () => {
   // from where it forgets it on listSales (see load(), SalesHistoryScreen.tsx:211-216), and reads
   // sale detail through the ambient getSale. The asymmetry inside a single Promise.all is what makes
   // the omission a slip rather than a policy.
-  describe('ADR #7: reads are session-scoped when a workspace token exists', () => {
+    // ── Statutory invoice (e-Faktur) ─────────────────────────────
+  //
+  // The same defect round 148 fixed in PaymentModal (the receipt surface). This screen's
+  // `handleIssueTaxInvoice` sets `issuingInvoice` and awaits with no ref guard, so the
+  // second tap of a real double tap still reaches the handler.
+  //
+  // The backend does not fully absorb it: `issue_tax_invoice_for_sale` is idempotent ONCE A
+  // NUMBER IS WRITTEN -- it reads `sales.statutory_number` and returns the existing value when
+  // it already carries the series prefix (crates/kasirmu-core/src/db/fiscal.rs:572-587). But
+  // that column is set by the SAME transaction, so two issues in one tick both read NULL and
+  // both fall through to `claim_statutory_number_for_sale`, an atomic
+  // `UPDATE document_number_sequences ... RETURNING` (fiscal.rs:438-455). The statutory
+  // sequence advances TWICE: a gap or duplicate in a legally numbered series.
+  it('issues a tax invoice once for a double tap on the detail panel', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListStaff.mockResolvedValue([]);
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleStatutoryNumberScoped.mockResolvedValue(null);
+    let releaseIssue: ((v: string) => void) | undefined;
+    const held = new Promise<string>((resolve) => { releaseIssue = resolve; });
+    mockIssueTaxInvoiceScoped.mockImplementation(() => held as never);
+
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    const issueBtn = await screen.findByRole('button', { name: /issue tax invoice/i });
+    // Both taps in ONE batch: a real double tap dispatches twice before React can
+    // commit `issuingInvoice` and disable the button (round 148's shape).
+    await act(async () => {
+      fireEvent.click(issueBtn);
+      issueBtn.removeAttribute('disabled');
+      fireEvent.click(issueBtn);
+    });
+
+    expect(
+      mockIssueTaxInvoiceScoped.mock.calls.length,
+      'a second tap re-issued the invoice; both calls pass the idempotency read before ' +
+        'either commits, so the statutory sequence advances twice for one sale',
+    ).toBe(1);
+
+    releaseIssue?.('010000000000001');
+    await act(async () => { await held; });
+  });
+describe('ADR #7: reads are session-scoped when a workspace token exists', () => {
     beforeEach(() => {
       mockListSales.mockClear();
       mockGetSale.mockClear();

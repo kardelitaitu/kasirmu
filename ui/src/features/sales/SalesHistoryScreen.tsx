@@ -784,13 +784,32 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   // ── Statutory Tax Invoice handler ──────────────────────────────────
   const [issuingInvoice, setIssuingInvoice] = useState(false);
 
+  // Re-entry guard for the statutory invoice write -- the SAME defect round 148 fixed on
+  // the receipt surface (PaymentModal, and ReceiptPreview.tsx:249-257 cross-disables its
+  // buttons on `issuingTaxInvoice`). Here `issuingInvoice` drives only the button's
+  // `loading`, and it is STATE: React commits it on its next render, after the second tap of
+  // a real double tap. MEASURED: two taps in one act() batch both reach the handler
+  // (SalesHistoryScreen.test.tsx 'issues a tax invoice once for a double tap').
+  //
+  // The backend does not fully absorb it. `issue_tax_invoice_for_sale` is idempotent ONCE A
+  // NUMBER IS WRITTEN -- it reads `sales.statutory_number` and returns the existing value when
+  // it already carries the series prefix (crates/kasirmu-core/src/db/fiscal.rs:572-587). But
+  // that column is set by the SAME transaction, so two issues in one tick both read NULL and
+  // both fall through to `claim_statutory_number_for_sale`, an atomic
+  // `UPDATE document_number_sequences ... RETURNING` (fiscal.rs:438-455). The sequence
+  // advances TWICE, leaving a gap or duplicate in a legally numbered series -- a compliance
+  // defect, not a cosmetic one. A ref, not the state, because only the ref is
+  // authoritative at the moment the second tap runs.
+  const issueInvoicePendingRef = useRef(false);
   const handleIssueTaxInvoice = useCallback(async () => {
+    if (issueInvoicePendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. See handleConfirmStamp above.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!detail) return;
+    issueInvoicePendingRef.current = true;
     setIssuingInvoice(true);
     try {
       const invNumber = await issueTaxInvoiceScoped(sessionToken, detail.id);
@@ -808,6 +827,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         type: 'error',
       });
     } finally {
+      issueInvoicePendingRef.current = false;
       setIssuingInvoice(false);
     }
     // l10n is read by the e-Faktur outcome toasts this handler raises.
