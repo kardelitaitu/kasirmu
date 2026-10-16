@@ -126,6 +126,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
+| general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
 | general | [Stale absolute quantity writes — a tree-wide sweep, and one more money defect — 2026-10-18](audits/2026-10-18-stale-absolute-qty-sweep.md) | — |
 | general | [49 of the 50 "modified" paths are phantoms, and one is real (round 289)](audits/49-of-50-modified-paths-are-phantoms.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
