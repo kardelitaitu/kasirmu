@@ -175,6 +175,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
 | reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
+| general | [The sweep that worked: writes no test ever names - 2026-10-18](audits/2026-10-18-the-sweep-that-worked.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
 | general | [Two wrong claims caught by reading the schema before the UI — 2026-10-18](audits/2026-10-18-two-claims-the-schema-refuted.md) | — |
