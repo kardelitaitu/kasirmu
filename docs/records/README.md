@@ -133,6 +133,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The KDS told the cook a queue existed — 2026-10-18](audits/2026-10-18-kds-promised-a-queue.md) | — |
 | payments | [The kiosk said "Payment processed!" and recorded nothing — 2026-10-18](audits/2026-10-18-kiosk-claimed-a-payment.md) | — |
 | general | [The kiosk handed customer A's order to customer B — 2026-10-18](audits/2026-10-18-kiosk-leaked-the-order.md) | — |
+| general | [My own fix overclaimed, one step softer — 2026-10-18](audits/2026-10-18-my-own-overclaim.md) | — |
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
 | general | [Executed, not scanned — and the splice that ate a describe block — 2026-10-18](audits/2026-10-18-restaurant-sale-executed.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
