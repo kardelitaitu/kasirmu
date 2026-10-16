@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useRef, type RefObject } from 'react';
-import { consumeShortcut } from '@/utils/modal-guard';
 
 /**
  * Elements the browser can actually move focus to by Tabbing.
@@ -54,25 +53,11 @@ function focusableWithin(panel: HTMLElement): HTMLElement[] {
  * @param panelRef - Ref to the dialog panel DOM element.
  * @param active   - Whether the trap should be active (typically `open && !exiting`).
  * @param onEscape - Called when Escape is pressed while the trap is active.
- * @param claimEscape - Whether this trap should CONSUME the Escape it handles, so no
- *   outer `document` listener also acts on the same key. Defaults to `false`.
- *
- *   ⚠️ WHY THIS IS OPT-IN, AND WHEN TO SET IT. The default (`false`) preserves the
- *   documented stacked-trap behaviour: two active traps BOTH receive Escape, which
- *   `useFocusTrap.test.ts` pins deliberately. Stopping propagation would break that.
- *
- *   It must be set whenever the OUTER Escape owner is not another trap but a plain
- *   background dismissal. Measured 2026-10-18 on the table detail panel: the panel
- *   called `onEscape` and closed itself, the key then travelled on to the PosScreen
- *   Escape cascade (`PosScreen.tsx:1997`), and the WHOLE table view closed with it —
- *   the operator lost the floor plan. Twelve tiles went to zero. The panel is the
- *   topmost owner (PosScreen uses no focus trap at all), so nothing else had a claim.
  */
 export function useFocusTrap(
   panelRef: RefObject<HTMLElement | null>,
   active: boolean,
   onEscape: () => void,
-  claimEscape = false,
 ): void {
   // Keep onEscape in a ref so handleKeyDown never needs to change,
   // preventing the effect from re-running (and scroll-lock flickering)
@@ -80,17 +65,9 @@ export function useFocusTrap(
   const onEscapeRef = useRef(onEscape);
   onEscapeRef.current = onEscape;
 
-  // Same ref treatment, for the same reason: reading it must not re-attach the listener.
-  const claimEscapeRef = useRef(claimEscape);
-  claimEscapeRef.current = claimEscape;
-
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // CONSUME BEFORE HANDLING, and only when asked (see `claimEscape`). Without
-        // this the key reaches the outer cascade and a dismissal becomes a
-        // navigation: the panel closes AND the screen behind it closes.
-        if (claimEscapeRef.current) consumeShortcut(e);
         onEscapeRef.current();
         return;
       }

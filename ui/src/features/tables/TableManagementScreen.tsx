@@ -453,10 +453,20 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     triggerRef.current?.focus();
   }, []);
 
-  // `claimEscape: true` — the panel is the topmost Escape owner while it is open.
-  // Without it the key closed the panel AND the whole table view behind it
-  // (PosScreen's cascade at :1997), losing the floor plan: measured 12 tiles -> 0.
-  useFocusTrap(detailRef, selected !== null, closeDetail, true);
+  // Escape closes the panel, not the floor plan.
+  //
+  // It did NOT, until 2026-10-18: the key closed the panel AND the whole table view
+  // behind it, losing the floor plan (measured 12 tiles -> 0). The cause was NOT this
+  // trap — it was `PosScreen`'s Escape cascade running first and closing the sub-screen
+  // the panel lives in. `PosScreen` now stands down when a modal is open
+  // (`isAnyAriaModalOpen()`), which is the fix; pinned by
+  // `e2e/restaurant-tables-toolbar.spec.ts` ('Escape closes the detail panel WITHOUT
+  // taking the floor plan with it').
+  //
+  // Do NOT try to fix this from here by calling `stopPropagation()`: both listeners sit
+  // on `document`, and propagation control does not reach a sibling listener on the SAME
+  // node. That mistake was made and measured in round 189.
+  useFocusTrap(detailRef, selected !== null, closeDetail);
 
   const openAddTableModal = useCallback(() => {
     setTableModal({
