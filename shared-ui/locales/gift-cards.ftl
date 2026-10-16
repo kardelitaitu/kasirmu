@@ -44,7 +44,8 @@ gift-cards-error-topup = Top-up failed
 gift-cards-error-issue = Failed to issue gift card
 
 # Gift Cards — placeholders & aria
-gift-cards-topup-placeholder = Amount
+gift-cards-issue-amount-placeholder = Amount in { $currency }
+gift-cards-topup-placeholder = Amount in { $currency }
 gift-cards-topup-aria = Top-up amount
 gift-cards-issue-to-placeholder = Customer name
 

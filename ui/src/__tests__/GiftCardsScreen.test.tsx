@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import giftCardsFtl from '@/locales/gift-cards.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -12,6 +13,23 @@ vi.mock('@/api/giftCards', () => ({
   unfreezeGiftCard: vi.fn(),
   topUpGiftCard: vi.fn(),
 }));
+
+// The CurrencyProvider resolves through \`invoke('get_default_currency')\`; the ambient
+// tauri mock answers IDR. Pinning the command is how the repo's other currency tests
+// set it (PaymentModalEdgeCases.test.tsx) — \`fallback\` alone is NOT enough, because it
+// is only used while loading or on failure and the ambient call succeeds.
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+
+function mockDefaultCurrency(code: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  invokeMock.mockImplementation((cmd: string): any => {
+    if (cmd === 'get_default_currency' || cmd === 'get_default_currency_scoped') {
+      return Promise.resolve(code);
+    }
+    return Promise.resolve({});
+  });
+}
 
 // Mock WorkspaceContext so GiftCardsScreen can use useWorkspace.
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -323,6 +341,41 @@ describe('GiftCardsScreen', () => {
 
     await waitFor(() => {
       expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 50000);
+    }, FAST_WAIT);
+  });
+
+  // ── the top-up amount is in the STORE's currency ──────────────────────
+  //
+  // `handleTopUp` read the typed value as raw minor units (\`Number(raw)\` with an
+  // \`isInteger\` guard), so on a 2-exponent currency an operator typing \`50\` meaning
+  // $50.00 topped the card up by 50 minor units — $0.50, a 100x under-credit. The
+  // case above measures IDR, where the two readings coincide and the bug is invisible.
+  it('interprets the top-up amount in the store currency (USD: 50 -> 5000 minor)', async () => {
+    mockDefaultCurrency('USD');
+    mockListGiftCards.mockResolvedValue(sampleCards);
+    mockTopUpGiftCard.mockResolvedValue({});
+
+    renderWithFluentSync(
+      <CurrencyProvider>
+        <ToastProvider><GiftCardsScreen /></ToastProvider>
+      </CurrencyProvider>,
+      giftCardsFtl,
+      sharedFtl,
+    );
+
+    await expandCard('GC-001');
+    await waitAndClickButton(/top up/i);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/amount in USD/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    fireEvent.change(screen.getByPlaceholderText(/amount in USD/i), { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirm top-up/i }));
+
+    await waitFor(() => {
+      // $50.00 is 5000 minor units, not 50.
+      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 5000);
     }, FAST_WAIT);
   });
 

@@ -11,10 +11,11 @@ import {
 import { useToast } from '@/components/Toast';
 import { requiredLocalized, EmptyState } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalCurrency } from '@/contexts/CurrencyContext';
 import { NoGiftCardsIcon } from '@/components/EmptyStateIllustrations';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, parseMoneyInput } from '@/types/domain';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -40,6 +41,11 @@ export default function GiftCardsScreen() {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  // The store's currency, used to read the top-up amount. Each CARD carries its own
+  // currency from the API for display, but the amount the operator TYPES is in the
+  // store's — that is the only currency the till is ringing up in.
+  const currencyCtx = useOptionalCurrency();
+  const currency = currencyCtx?.currency ?? 'IDR';
   // Dates follow the active Fluent locale (not the browser default).
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const [cards, setCards] = useState<GiftCardWithTransactions[]>([]);
@@ -84,10 +90,13 @@ export default function GiftCardsScreen() {
   }, [load, addToast, l10n, sessionToken]);
 
   const handleTopUp = useCallback(async (cardNumber: string) => {
-    // Reject non-integers (e.g. "500.5") rather than silently truncating.
-    const raw = topUpAmount.trim();
-    const amount = Number(raw);
-    if (raw === '' || !Number.isInteger(amount) || amount <= 0) {
+    // Currency-aware: the typed value is MAJOR units, so "50" is $50.00 (5000 minor)
+    // on a 2-exponent currency and Rp 50 (50 minor) on IDR. Reading it as raw minor
+    // units under-issued by 100x on a USD till — the same defect the issue form had.
+    // `parseMoneyInput` rejects the over-precision and non-numeric cases the old
+    // `Number.isInteger` guard caught, so its result is the whole validation.
+    const amount = parseMoneyInput(topUpAmount, currency);
+    if (amount === null || amount <= 0) {
       setTopUpError(l10n.getString('gift-cards-topup-invalid'));
       return;
     }
@@ -100,7 +109,7 @@ export default function GiftCardsScreen() {
     } catch (err) {
       setTopUpError(l10nErrorMessage(err, l10n, 'gift-cards-error-topup'));
     }
-  }, [topUpAmount, load, l10n, sessionToken]);
+  }, [topUpAmount, load, l10n, sessionToken, currency]);
 
   return (
     <div className="gift-cards-page">
@@ -248,7 +257,7 @@ export default function GiftCardsScreen() {
                         className="gift-card-topup-input"
                         id="gift-card-topup-amount"
                         name="gift-card-topup-amount"
-                        placeholder={requiredLocalized(l10n, 'gift-cards-topup-placeholder')}
+                        placeholder={requiredLocalized(l10n, 'gift-cards-topup-placeholder', { currency })}
                         value={topUpAmount}
                         onChange={(e) => { setTopUpAmount(e.target.value); setTopUpError(''); }}
                         aria-label={requiredLocalized(l10n, 'gift-cards-topup-aria')}

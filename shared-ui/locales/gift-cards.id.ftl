@@ -44,7 +44,8 @@ gift-cards-error-topup = Top-up gagal
 gift-cards-error-issue = Gagal menerbitkan kartu hadiah
 
 # Gift Cards — placeholders & aria
-gift-cards-topup-placeholder = Jumlah
+gift-cards-issue-amount-placeholder = Jumlah dalam { $currency }
+gift-cards-topup-placeholder = Jumlah dalam { $currency }
 gift-cards-topup-aria = Jumlah top-up
 gift-cards-issue-to-placeholder = Nama pelanggan
 
