@@ -773,6 +773,17 @@ export function CartPanel({
                 setTableNumber('');
                 setCustomerName?.('');
                 setActiveOpenBillId?.(null);
+                // ⚠️ THE PARTY SIZE BELONGS TO THE TAB TOO. Round 99 added the
+                // promotions line by comparing this handler against the HOLD path,
+                // and that comparison also leaves guestCount behind: the hold path
+                // clears it (usePosHeldCarts.ts:305) and so does the after-sale reset
+                // (PosScreen.tsx:871), while this handler did not.
+                //
+                // It is reachable and it is PERSISTED — the field renders for dine-in
+                // (:931-943) and the hold path's deps (:324) show `guestCount` is read
+                // when saving. So a leaked party size is saved onto the next order,
+                // against a table the operator has already left.
+                setGuestCount?.('');
                 // ⚠️ PROMOTIONS BELONG TO THE TAB, SO THEY GO WITH IT.
                 //
                 // This handler cleared the lines, the table, the customer and the tab id

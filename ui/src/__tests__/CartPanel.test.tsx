@@ -203,6 +203,48 @@ describe('CartPanel — order type vs the table field', () => {
   //
   // Per this file's own discipline there was NO test for New Tab at all, which is
   // how the omission survived.
+  it('New Tab clears the party size, like every other reset does', () => {
+    // ⚠️ THE ROUND-99 LESSON, APPLIED ONE FIELD FURTHER.
+    //
+    // Round 99 fixed New Tab to clear `appliedPromotions` by comparing it against the
+    // HOLD path, and named that path "the reference". Comparing them properly leaves
+    // ONE field the hold path clears and New Tab still does not:
+    //
+    //   hold  : resetCart(), setTableNumber(''), setCustomerName?.(''),
+    //           setGuestCount?.(''), setActiveOpenBillId(null), setAppliedPromotions([])
+    //   newTab: resetCart(), setTableNumber(''), setCustomerName?.(''),
+    //           setActiveOpenBillId?.(null), setAppliedPromotions([])
+    //
+    // `resetCart` already covers tip and service charge (usePosState.ts:398-406), so
+    // guestCount is the whole gap.
+    //
+    // Reachable and consequential: the field renders for dine-in
+    // (CartPanel.tsx:931-943), and the hold path's deps array (:324) shows
+    // `guestCount` is READ when saving a tab — so a leaked party size is PERSISTED
+    // onto the next order. Two of the three reset paths clear it: the after-sale
+    // reset (PosScreen.tsx:871) and the hold path. New Tab is the outlier.
+    const setGuestCount = vi.fn();
+    const { panel } = renderPanel({
+      ...restaurant,
+      lines: [makeLine('Espresso')],
+      tableNumber: 'Table 12',
+      orderType: 'dine_in',
+      activeOpenBillId: 'tab-1',
+      guestCount: '4',
+      setGuestCount,
+      appliedPromotions: [{ id: 'promo-1', name: 'Diskon 10%' } as never],
+      setAppliedPromotions: vi.fn(),
+    });
+
+    fireEvent.click(within(panel).getByTestId('pos-cart-new-tab-btn'));
+
+    expect(
+      setGuestCount,
+      'New Tab must drop the previous tab\'s party size — otherwise the next order '
+      + 'saves a guest count that belongs to a table the operator has already left',
+    ).toHaveBeenCalledWith('');
+  });
+
   it('New Tab clears the promotions a resumed tab carried, not just its lines', () => {
     // `setAppliedPromotions` is the REAL prop (CartPanelProps:290) — the earlier draft
     // of this case invented an `onResetPromotions` name, which made it fail for the
