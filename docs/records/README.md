@@ -128,6 +128,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The acceptance spec's clip rule, validated against a probe that lacked it (round 271)](audits/acceptance-clip-rule-validated.md) | — |
 | general | [Round 213's conclusion was wrong, and probing the popover is what showed it (round 214)](audits/active-tab-banner-correction.md) | — |
 | general | [The active-tab banner needs an open shift, and the shift control is in the popover (round 213)](audits/active-tab-banner-precondition.md) | — |
+| general | [A double submit on Add Table created two tables with the same name](audits/add-table-double-submit-creates-two-tables.md) | — |
 | products | [An archived screen still graded by 24 unit tests and 5 E2E tests (round 146)](audits/archived-product-screen-still-graded.md) | — |
 | staff | [Thirteen switches, twenty-seven roles, zero missing attributes (round 180)](audits/aria-role-attribute-sweep.md) | — |
 | general | [The surviving-assertion audit extended past the table screen — and came back clean (round 199)](audits/assertion-audit-beyond-tables.md) | — |
