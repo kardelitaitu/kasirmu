@@ -1,7 +1,28 @@
 // ── useActionCooldown + createCooldownWrapper tests ──────────────
 //
+// THE ONE FILE for this hook. It was previously THREE:
+//
+//   useActionCooldown.test.ts     10 cases — every one covered here
+//   useActionCooldown.test.tsx    12 cases — this file
+//   KdsUseActionCooldown.test.ts   7 cases — pure wrapper only, covered here
+//
+// Measuring the overlap (round 117) found FOUR of the eight distinct behaviours
+// asserted in all three files — "fires on first call", "blocks within the
+// cooldown", "allows after the window" and "forwards arguments" — 12 redundant
+// cases for a ~40-line hook, with exactly ONE case unique to any file
+// ("does not interfere with a different wrapper instance", which lives here).
+//
+// The two extra files were deleted rather than updated: each was a strict subset
+// of this one on both assertion STYLE (call-count only) and IMPORT surface, so
+// nothing was lost and the count went 27 cases -> 12.
+//
+// A new behaviour for this hook belongs here, in its own describe block. If a
+// case cannot be expressed without a wrapper the hook does not have, that is the
+// signal the hook changed shape and the file should be re-read, not duplicated.
+//
 // Covers: cooldown guard (200ms default), custom duration, args
-// forwarding, cooldown expiry reset, and the non-hook wrapper variant.
+// forwarding, cooldown expiry reset, the cooldownActive flag, wrapper-instance
+// isolation, and the non-hook wrapper variant.
 //
 // Pure timing logic — no React context mocking required.
 
