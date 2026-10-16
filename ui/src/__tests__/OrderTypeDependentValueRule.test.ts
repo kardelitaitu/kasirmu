@@ -93,6 +93,48 @@ const VALUE_HANDLERS: Array<{ rel: string; why: string }> = [
     rel: 'features/sales/utils/tableLabel.ts',
     why: 'display-only formatter — takes a table value, returns a label',
   },
+  {
+    // `buildKitchenChitReceipt` DERIVES `bareTableNumber(tableNumber || '')` into the chit
+    // identifier at :301, and that derivation is what flagged this file. It is a formatter:
+    // `tableNumber` arrives as a PARAMETER and the function makes no order-type decision, so
+    // the rule belongs to its callers — both of which gate it.
+    //
+    // `PosScreen.tsx:1225` computes `chitTable = orderType === 'dine_in' ? … : ''` and passes
+    // THAT to both call sites (`:1230`, `:1253`), so a takeaway chit already carries no
+    // table. Gating inside the formatter would gate nothing and would duplicate a decision
+    // the caller owns — the same reason `tableLabel.ts` above is excluded.
+    rel: 'features/sales/payment/completedSale.ts',
+    why: 'receipt/chit formatter — tableNumber is a parameter, gated by both PosScreen callers',
+  },
+];
+
+/**
+ * Sources whose dine-in-only derivations are gated by a DIFFERENT, stronger invariant than
+ * the POS order-type rule: the RECORD TYPE they operate on.
+ *
+ * These cannot be expressed as `orderType === 'dine_in'` and must NOT be bent into that shape.
+ * The distinction is the same one VALUE_HANDLERS draws, one step further out: a value-handler
+ * makes no decision, and these operate on a record that is dine-in BY CONSTRUCTION — so the
+ * order-type question was settled a layer down, at the point the record was created. Writing
+ * the check again here would be redundant, and writing it as the POS rule would mislead a
+ * reader into thinking the order type is in doubt when it is not.
+ *
+ * Every entry carries EVIDENCE, and the case below re-checks that evidence rather than
+ * trusting this comment — an entry whose file stops matching its evidence fails.
+ */
+const RECORD_TYPE_GATED: Array<{ rel: string; why: string; evidence: RegExp }> = [
+  {
+    // `handleConfirmMergeTable` derives PAX from `getTableBill(name)` on both operands. That
+    // matcher requires the bill's LABEL or CUSTOMER NAME to name the table
+    // (`tableLabel.ts:81`), and a non-dine-in bill can never satisfy it:
+    // `usePosHeldCarts.ts:261` computes `trimmedTable` as `''` unless `orderType === 'dine_in'`,
+    // `:291` omits `tableNumber` entirely when that is empty, and `:298` builds the stored
+    // label from the same `trimmedTable`. A takeaway or delivery tab is therefore saved with
+    // no table and a label naming none — unmatchable, so it cannot be either side of a merge.
+    rel: 'features/tables/TableManagementScreen.tsx',
+    why: 'merge/move operate on table bills, which are dine-in by construction',
+    evidence: /getTableBill\s*\(/,
+  },
 ];
 
 function collect(dir: string, out: string[] = []): string[] {
@@ -164,7 +206,8 @@ const SOURCES: Array<[string, string]> = ROOTS.flatMap((root) =>
       return [rel, text] as [string, string];
     })
     .filter(([, text]) => DINE_IN_ONLY.some((d) => new RegExp('\\b' + d.state + '\\b').test(text)))
-    .filter(([rel]) => !VALUE_HANDLERS.some((v) => v.rel === rel)),
+    .filter(([rel]) => !VALUE_HANDLERS.some((v) => v.rel === rel))
+    .filter(([rel]) => !RECORD_TYPE_GATED.some((v) => v.rel === rel)),
 );
 
 describe('the value-handler exclusions are still true', () => {
@@ -176,6 +219,20 @@ describe('the value-handler exclusions are still true', () => {
       rel + ' now references orderType, so it IS a decision site and must not be ' +
         'excluded. Reason given for excluding it: ' + why,
     ).toBe(false);
+  });
+});
+
+describe('the record-type-gated exclusions are still true', () => {
+  it.each(RECORD_TYPE_GATED)('$rel still operates on the record it claims', ({ rel, why, evidence }) => {
+    const text = readFileSync(join(UI_SRC, rel), 'utf-8');
+    // The evidence has to be checkable, or the exclusion is a silent bypass: if the file
+    // stops reading its dine-in-by-construction record, the reason above is no longer true
+    // and the entry must be deleted rather than left to excuse an ungated derivation.
+    expect(
+      evidence.test(text),
+      rel + ' no longer matches its evidence (' + evidence + '), so it is no longer ' +
+        'record-type gated. Reason given for excluding it: ' + why,
+    ).toBe(true);
   });
 });
 
