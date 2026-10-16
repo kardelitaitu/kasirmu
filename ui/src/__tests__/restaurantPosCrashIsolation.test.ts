@@ -217,7 +217,33 @@ const SURFACES: GuardedSurface[] = [
 function elementInsideBoundary(file: string, element: RegExp): { found: boolean; depth: number } {
   const lines = fs.readFileSync(file, 'utf-8').split(/\r?\n/);
   let depth = 0;
+  let inBlockComment = false;
   for (const line of lines) {
+    const trimmed = line.trim();
+
+    // ── COMMENTS ARE NOT CODE ────────────────────────────────────────
+    // This scanner is a text scan, so a line naming a component in PROSE
+    // matches too, and it returns the depth of that FIRST hit. Round 87 added
+    // "at the <MenuItemGrid> call site" to a comment above the real call
+    // site; the comment sat ABOVE the boundary that opens three lines
+    // later, so the scan reported depth 0 for a component that is in fact
+    // wrapped, and this suite went red on a correct tree. The failure was
+    // the detector's, and that is the more dangerous kind.
+    const opensBlock = /^\/\*/.test(trimmed);
+    const closesBlock = /\*\/$/.test(trimmed);
+    const isComment =
+      inBlockComment ||
+      opensBlock ||
+      closesBlock ||
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('*');
+
+    const before = inBlockComment;
+    if (inBlockComment) inBlockComment = !closesBlock;
+    if (!before && opensBlock && !closesBlock) inBlockComment = true;
+
+    if (isComment) continue;
+
     // Close BEFORE open on a line, so a self-closing boundary cannot skew depth.
     if (/<\/LocalizedErrorBoundary>/.test(line)) depth = Math.max(0, depth - 1);
     if (element.test(line)) return { found: true, depth };

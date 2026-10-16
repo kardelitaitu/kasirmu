@@ -776,7 +776,20 @@ describe('PosScreen — Keyboard navigation (↑/↓/+/-/Del/Enter)', () => {
     expect(firstLine).toBeInTheDocument();
   });
 
-  it('- key triggers handler on focused line', async () => {
+  // ── The '-' key on a quantity-1 line DELETES that line ───────────────
+  //
+  // This case used to assert `expect(firstLine).toBeInTheDocument()` after the
+  // keypress, which is the wrong claim and was only ever true because the old
+  // `updateQty(id, -1)` was rejected by its own `qty <= 0` guard -- so the tap
+  // silently did nothing and the row stayed. `changeQty(lineId, -1)` (rounds
+  // 89-92) resolves the delta inside the `setLines` updater and filters a line
+  // whose qty reaches 0, which is the correct till behaviour: decrementing the
+  // last unit removes the row rather than leaving a 0-quantity line.
+  //
+  // The panel must stay alive -- that is the original claim, restated -- and the
+  // line count must drop from 2 to 1. A regression to the no-op form would leave
+  // 2 rows, so this case is now directional rather than merely non-throwing.
+  it('- key decrements, and removes the line at its last unit', async () => {
     await addTwoProducts();
 
     const firstLine = screen.getAllByTestId('cart-panel-line-item')[0]!;
@@ -785,8 +798,13 @@ describe('PosScreen — Keyboard navigation (↑/↓/+/-/Del/Enter)', () => {
       fireEvent.keyDown(firstLine, { key: '-' });
     });
 
-    // Handler should not throw
-    expect(firstLine).toBeInTheDocument();
+    // The cart panel survives: a throw inside the handler would unmount it.
+    expect(screen.getByRole('region', { name: /cart/i })).toBeInTheDocument();
+    // And the line is gone rather than stranded at zero.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(1);
+    });
+    expect(screen.queryByTestId('cart-panel-line-item')).not.toBeNull();
   });
 
   it('Delete key triggers remove line handler', async () => {

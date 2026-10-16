@@ -145,10 +145,15 @@ describe('useEdcTenderPhase', () => {
 
     expect(edcApi.edcTerminalStatusScoped).toHaveBeenCalledWith('test-session-token', 'term-lane-2');
     expect(edcApi.edcSale).toHaveBeenCalledWith('test-session-token', 50000, 'IDR', 'term-lane-2');
+    // 'settled' — the only card status in the payments.gateway_status CHECK
+    // vocabulary. The old spelling here was 'captured', which the column's CHECK
+    // rejects, so this expectation was pinning the very value that made a paid sale
+    // unrecordable. Corrected when useEdcTenderPhase.ts:225-229 moved to the closed
+    // union (ADR-64 D4); PaymentModalSaleFlow.test.tsx:2224 already read 'settled'.
     expect(mockBuildGatewaySale).toHaveBeenCalledWith({
       method: 'CARD',
       gatewayReference: 'tx-123',
-      gatewayStatus: 'captured',
+      gatewayStatus: 'settled',
       gatewayResponse: JSON.stringify({
         auth_code: 'AUTH999',
         card_scheme: 'Visa',
