@@ -750,13 +750,33 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     }
   }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
 
+  // Re-entry guard for the pengganti write. `penggantiLoading` is STATE -- React commits it
+  // on its next render, after the second tap of a real double tap. MEASURED: two taps in one
+  // act() batch both reach the handler
+  // (SalesHistoryScreen.test.tsx 'creates one faktur pengganti for a double tap').
+  //
+  // This is not a duplicate-row defect and the backend does not refuse it -- it cannot: a
+  // pengganti is a deliberate INCREMENT. `create_faktur_pengganti` reads the stored status,
+  // refuses at MAX_PENGGANTI_STATUS and writes current_status + 1
+  // (crates/kasirmu-core/src/db/faktur_pajak.rs:278-300), and its own test drives two calls in a
+  // row on purpose, asserting 00 -> 01 -> 02 (faktur_pajak_tests.rs:195-205). So an accidental
+  // second revision is indistinguishable from an intentional one.
+  //
+  // The consequence is therefore different in kind: the NSFP is preserved and no row is
+  // duplicated, but the STATUS CODE is a finite sequential slot in a legally numbered series
+  // and it only ever moves FORWARD. One extra tap advances the sale to 02 with no revision 01
+  // ever intended, and there is no decrement path to undo it. A ref, not the state, because
+  // only the ref is authoritative at the moment the second tap runs.
+  const penggantiPendingRef = useRef(false);
   const handleCreatePengganti = useCallback(async () => {
+    if (penggantiPendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. See handleConfirmStamp above.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!detail || !detail.fakturPajak) return;
+    penggantiPendingRef.current = true;
     setPenggantiLoading(true);
     try {
       const updated = await createFakturPenggantiScoped(sessionToken, detail.id);
@@ -777,6 +797,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         type: 'error',
       });
     } finally {
+      penggantiPendingRef.current = false;
       setPenggantiLoading(false);
     }
   }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);

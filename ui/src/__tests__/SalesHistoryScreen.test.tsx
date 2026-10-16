@@ -730,6 +730,66 @@ describe('ADR #7: reads are session-scoped when a workspace token exists', () =>
         expect(mockCreateFakturPenggantiScoped).toHaveBeenCalledWith('session-1', sampleDetail.id);
       });
     });
+    // A double tap on Create Faktur Pengganti must not burn TWO revisions.
+    //
+    // This is NOT a duplicate-row defect and it is not refused by the backend. A pengganti
+    // is a deliberate INCREMENT: `create_faktur_pengganti` reads the stored status, refuses
+    // at `MAX_PENGGANTI_STATUS`, and writes `current_status + 1`
+    // (crates/kasirmu-core/src/db/faktur_pajak.rs:278-300). Its own test drives two calls in a
+    // row on purpose and asserts 00 -> 01 -> 02 (faktur_pajak_tests.rs:195-205), so the
+    // backend cannot tell an intentional second revision from an accidental one.
+    //
+    // The consequence is different from every other case in this class: the NSFP is preserved
+    // and no row is duplicated, but the STATUS CODE is a finite sequential slot in a legally
+    // numbered series, and it only ever moves FORWARD. One extra tap permanently advances a
+    // sale's revision to 02 with no revision 01 ever intended -- and there is no way back,
+    // because there is no decrement path.
+    //
+    // The handler sets `penggantiLoading` and awaits with no ref guard, so a real double tap
+    // (two dispatches in one task) reaches the write twice (round 148's shape).
+    it('creates one faktur pengganti for a double tap while the first is in flight', async () => {
+      const fpDetail = {
+        ...sampleDetail,
+        fakturPajak: {
+          nsfp: '2600000000123', kodeTransaksi: '01', status: '00',
+          formatted: '01002600000000123',
+        },
+      };
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(fpDetail);
+      mockListRefunds.mockResolvedValue([]);
+      let releasePengganti: ((v: unknown) => void) | undefined;
+      const held = new Promise((resolve) => { releasePengganti = resolve; });
+      mockCreateFakturPenggantiScoped.mockImplementation(() => held as never);
+
+      const user = userEvent.setup();
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      const penggantiBtn = await screen.findByText('Create Faktur Pengganti');
+      await act(async () => {
+        fireEvent.click(penggantiBtn);
+        penggantiBtn.removeAttribute('disabled');
+        fireEvent.click(penggantiBtn);
+      });
+
+      expect(
+        mockCreateFakturPenggantiScoped.mock.calls.length,
+        'a second tap advanced the sale revision again; the status code only ever ' +
+          'increments, so one extra tap permanently moves this sale to status 02 with no ' +
+          'revision 01 ever intended, and no path back',
+      ).toBe(1);
+
+      releasePengganti?.({
+        nsfp: '2600000000123', kodeTransaksi: '01', status: '01',
+        formatted: '01012600000000123',
+      });
+      await act(async () => { await held; });
+    });
     it('lets STAFF create a pengganti but not void — the two actions need different permissions', async () => {
       // The two role-gated actions on this screen are NOT the same gate:
       //
