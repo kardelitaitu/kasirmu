@@ -186,6 +186,15 @@ export default function TerminalManagementScreen() {
   const [overrides, setOverrides] = useState<TerminalFeatureOverride[]>([]);
   const [overridesLoading, setOverridesLoading] = useState(false);
   const [overridesError, setOverridesError] = useState<string | null>(null);
+  /** In-flight guard for the feature-override toggles. The switch is a
+   *  controlled checkbox whose `checked` derives from `overrides`, so two fast
+   *  clicks before the refetch resolves both read the SAME stale `checked` and
+   *  both write `!currentEnabled` — the operator's second click vanished and
+   *  the switch snapped back to where it started. Freeze the whole set while a
+   *  write is outstanding: the optimistic `overrides` update lands first, so a
+   *  second click is either a no-op or the deliberate reverse AFTER this
+   *  round-trip, never a duplicate of it. */
+  const [overrideSaving, setOverrideSaving] = useState(false);
 
   // Device binding (ADR #4 Phase 3)
   const [binding, setBinding] = useState<DeviceBindingDto | null>(null);
@@ -397,12 +406,37 @@ export default function TerminalManagementScreen() {
 
   const handleToggleOverride = async (featureKey: string, currentEnabled: boolean) => {
     if (!editingId) return;
+    if (overrideSaving || overridesLoading) return;
+    // Two windows must be frozen, not one: the write round-trip AND the
+    // initial load. Clicking a toggle before the list arrives would snapshot
+    // an EMPTY `previous` and roll the switch back to nothing, and it would
+    // also refetch over the load's own response.
+    const nextEnabled = !currentEnabled;
+    // Optimistic so the controlled checkbox reflects the click immediately —
+    // otherwise it re-renders from the unchanged `overrides` and visibly snaps
+    // back for the whole round-trip.
+    const previous = overrides;
+    // Only the update-existing case can be predicted honestly — a first-time
+    // override needs `terminalId`/`createdAt`/`updatedAt` that only the
+    // backend can supply, and inventing them here would put a row in this list
+    // that is not what the server stored. The refetch below writes the real
+    // list either way; this only stops the switch snapping back mid-flight.
+    setOverrides((prev) =>
+      prev.map((o) => (o.feature === featureKey ? { ...o, enabled: nextEnabled } : o)),
+    );
+    setOverridesError(null);
+    setOverrideSaving(true);
     try {
-      await setTerminalOverrideScoped(sessionToken, editingId, featureKey, !currentEnabled);
+      await setTerminalOverrideScoped(sessionToken, editingId, featureKey, nextEnabled);
       const data = await listTerminalOverridesScoped(sessionToken, editingId);
       setOverrides(asArray<typeof data[number]>(data));
     } catch {
+      // The write or the refetch failed: undo the optimistic flip, or the
+      // switch keeps advertising a state the backend never stored.
+      setOverrides(previous);
       setOverridesError(l10n.getString('terminal-error-override-update'));
+    } finally {
+      setOverrideSaving(false);
     }
   };
 
@@ -820,6 +854,7 @@ export default function TerminalManagementScreen() {
                                   id={toggleId}
                                   className="terminal-mgmt-toggle-input"
                                   checked={checked}
+                                  disabled={overrideSaving || overridesLoading}
                                   onChange={() =>
                                     handleToggleOverride(
                                       featureKey,

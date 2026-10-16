@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -11,12 +11,13 @@ import terminalsFtl from '@/locales/terminals.ftl?raw';
 import type { TerminalDto } from '@/api/terminals';
 
 const { mockListTerminals, mockRegisterTerminal, mockDeleteTerminal,
-  mockListTerminalOverrides } =
+  mockListTerminalOverrides, mockSetTerminalOverride } =
   vi.hoisted(() => ({
     mockListTerminals: vi.fn(),
     mockRegisterTerminal: vi.fn(),
     mockDeleteTerminal: vi.fn(),
     mockListTerminalOverrides: vi.fn(),
+    mockSetTerminalOverride: vi.fn(),
   }));
 
 vi.mock('@/api/terminals', () => ({
@@ -25,7 +26,7 @@ vi.mock('@/api/terminals', () => ({
   updateTerminalScoped: () => Promise.resolve({ id: 't-1' }),
   deleteTerminalScoped: (_sessionToken: string, id: string) => mockDeleteTerminal(_sessionToken, id),
   listTerminalOverridesScoped: (_sessionToken: string, id: string) => mockListTerminalOverrides(id),
-  setTerminalOverrideScoped: () => Promise.resolve(),
+  setTerminalOverrideScoped: (...args: unknown[]) => mockSetTerminalOverride(...args),
   deleteTerminalOverrideScoped: () => Promise.resolve(),
   getDeviceBindingScoped: () => Promise.resolve({ bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false }),
   setDeviceBindingScoped: () => Promise.resolve(),
@@ -100,6 +101,7 @@ describe('TerminalManagementScreen', () => {
     mockRegisterTerminal.mockResolvedValue({ id: 'new-t' });
     mockDeleteTerminal.mockResolvedValue(undefined);
     mockListWorkspacesForStoreScoped.mockResolvedValue([]);
+    mockSetTerminalOverride.mockResolvedValue(undefined);
   });
 
   it('renders the title', async () => {
@@ -248,5 +250,97 @@ describe('TerminalManagementScreen', () => {
       expect(screen.getAllByText('Front Counter').length).toBeGreaterThanOrEqual(1);
     });
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  // ── Feature-override toggles: in-flight guard ──────────────────────
+  //
+  // The override switch is a CONTROLLED checkbox whose `checked` derives from
+  // the `overrides` list. Two fast clicks before the refetch resolved both
+  // read the same stale `checked`, so both wrote the SAME `!currentEnabled` —
+  // the second click vanished and the switch snapped back to where it started.
+  // A manager toggling a terminal feature got the wrong end state.
+
+  /** Switch into edit mode on the one terminal, with one override row shown. */
+  async function openOverrides(enabled: boolean, overrides: Record<string, unknown>[] = []) {
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    mockListTerminalOverrides.mockResolvedValue([
+      { terminalId: 't-1', feature: 'cloud-sync', enabled, createdAt: '', updatedAt: '' },
+      ...overrides,
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Front Counter')).toBeDefined());
+    await userEvent.click(screen.getAllByText('Edit')[0]!.closest('button')!);
+    const box = await waitFor(() => {
+      const el = screen.getByLabelText(/Override .*Cloud Sync/i) as HTMLInputElement;
+      // The load must have settled: the guard refuses clicks while it is in
+      // flight, so clicking earlier would measure the guard, not the write.
+      expect(el.disabled).toBe(false);
+      return el;
+    });
+    return box;
+  }
+
+  it('writes the toggle only once when a second click lands mid-round-trip', async () => {
+    let release!: () => void;
+    mockSetTerminalOverride.mockReturnValue(
+      new Promise<void>((res) => { release = () => res(); }),
+    );
+    const checkbox = await openOverrides(false);
+
+    expect(checkbox.checked).toBe(false);
+    await userEvent.click(checkbox);
+    // Reachability: the FIRST click must reach the write, or the guard is
+    // simply swallowing every toggle and this test measures nothing.
+    await waitFor(() => expect(mockSetTerminalOverride).toHaveBeenCalledTimes(1));
+    // The optimistic flip landed, so the switch already shows the new value.
+    expect(checkbox.checked).toBe(true);
+
+    // Second click while the first is still in flight — the control is frozen.
+    await userEvent.click(checkbox);
+    expect(mockSetTerminalOverride).toHaveBeenCalledTimes(1);
+
+    release();
+    await waitFor(() => expect(mockSetTerminalOverride).toHaveBeenCalledTimes(1));
+  });
+
+  it('sends the flipped value, not the stale one, and survives a rapid double click', async () => {
+    // The defect's signature: with no guard, both calls carry `true` because
+    // both read the same stale `checked === false`. Asserting the ARGUMENTS is
+    // what distinguishes "one write" from "two identical writes".
+    let release!: () => void;
+    mockSetTerminalOverride.mockReturnValue(
+      new Promise<void>((res) => { release = () => res(); }),
+    );
+    const checkbox = await openOverrides(false);
+
+    await userEvent.click(checkbox);
+    await userEvent.click(checkbox);
+
+    await waitFor(() => expect(mockSetTerminalOverride).toHaveBeenCalled());
+    const writes = mockSetTerminalOverride.mock.calls.filter(([, , , enabled]) => enabled === true);
+    expect(writes).toHaveLength(1);
+    release();
+  });
+
+  it('rolls the switch back when the override write fails', async () => {
+    // A deferred rejection, not `mockRejectedValue`: an immediately-rejecting
+    // promise lets React batch the optimistic set and the rollback into ONE
+    // render, so the intermediate `checked === true` is never observable and
+    // the mid-flight assertion below would fail against a CORRECT
+    // implementation. The deferred form is what makes the two states
+    // distinguishable.
+    let fail!: (e: Error) => void;
+    mockSetTerminalOverride.mockReturnValue(
+      new Promise<void>((_res, rej) => { fail = rej; }),
+    );
+    const checkbox = await openOverrides(false);
+
+    await userEvent.click(checkbox);
+    // Optimistic first…
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    // …then the failure undoes it, or the switch advertises a state the
+    // backend never stored.
+    await act(async () => { fail(new Error('offline')); });
+    await waitFor(() => expect(checkbox.checked).toBe(false));
   });
 });
