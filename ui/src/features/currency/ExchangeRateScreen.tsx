@@ -153,7 +153,7 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
   //
   // What makes it worth guarding rather than a label: the switch is the visible
   // state of the RATE-SYNC DAEMON, and this file already refuses to lie about that
-  // daemon. The catch arm of toggleAutoSync (:152) rolls the toggle back because
+  // daemon. The catch arm of toggleAutoSync (:219) rolls the toggle back because
   // "an optimistic toggle that stays flipped lies about the daemon's actual state"
   // -- a stale read here does the same lie from the other direction, showing a
   // daemon state that belongs to the previous store, with no error to hint at it.
