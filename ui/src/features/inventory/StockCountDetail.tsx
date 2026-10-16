@@ -154,7 +154,22 @@ export default function StockCountDetail({ countId, onBack }: Props) {
     }
   }, [countId, load, sessionToken]);
 
+  // Re-entry guard for the complete write. `setSaving(true)` is STATE -- React commits it
+  // on its next render, after the second tap of a real double tap -- so the button's
+  // `loading={saving}` is not authoritative in the same task. MEASURED: two taps in one
+  // act() batch both reach the handler
+  // (StockCountDetail.test.tsx 'sends one complete call for a double tap').
+  //
+  // core refuses the replay by compare-and-set (`UPDATE stock_counts SET status =
+  // 'completed' ... WHERE id = ?3 AND status IN ('draft','in_progress')`,
+  // crates/kasirmu-core/src/db/stock_counts.rs:529-539), so no second inventory adjustment
+  // is applied -- but its rejection lands in the catch that also serves the genuine
+  // failure case, so the operator sees 'Failed to complete count' for a count that DID
+  // complete. A ref, not the state, for the reason every sibling guard records.
+  const completePendingRef = useRef(false);
   const handleComplete = useCallback(async () => {
+    if (completePendingRef.current) return;
+    completePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -167,6 +182,7 @@ export default function StockCountDetail({ countId, onBack }: Props) {
     } catch (err) {
       setError(l10nErrorMessage(err, l10nRef.current, 'sc-error-complete'));
     } finally {
+      completePendingRef.current = false;
       setSaving(false);
     }
   }, [countId, load, sessionToken]);

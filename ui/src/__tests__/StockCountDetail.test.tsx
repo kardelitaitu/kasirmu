@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
@@ -276,6 +276,48 @@ describe('StockCountDetail', () => {
     });
   });
 
+  // A double tap on Complete must not send the complete twice.
+  //
+  // `handleComplete` has NO in-flight guard: it calls `setSaving(true)` and awaits, and
+  // `saving` is STATE -- React commits it on its next render, after the second tap of a
+  // real double tap -- so the button's `loading={saving}` is not authoritative in the
+  // same task.
+  //
+  // core refuses the replay by compare-and-set:
+  //   UPDATE stock_counts SET status = 'completed' ... WHERE id = ?3
+  //     AND status IN ('draft', 'in_progress')      -- stock_counts.rs:529-539
+  // and `claimed != 1` returns Validation. So NO second inventory adjustment is applied.
+  // But that rejection lands in the catch that also reports the genuine failure case
+  // asserted below ('Failed to complete count'), so a double tap shows an error for a
+  // count that DID complete. Same shape as the purchasing and shift guards (136-141).
+  //
+  // SHAPE 3 (round 139): both taps inside ONE act() batch, before React can re-render.
+  it('sends one complete call for a double tap while the first is in flight', async () => {
+    mockGetStockCount.mockResolvedValue(sampleCount);
+    mockGetLines.mockResolvedValue(sampleLines);
+    let releaseComplete: (v: unknown) => void = () => {};
+    const held = new Promise((resolve) => { releaseComplete = resolve; });
+    mockComplete.mockImplementation(() => held as never);
+    renderWithFluentSync(<ToastProvider><StockCountDetail countId="sc-1" onBack={vi.fn()} /></ToastProvider>, stockCountingFtl, sharedFtl);
+
+    const completeBtn = await screen.findByRole('button', { name: /complete count/i });
+    await act(async () => {
+      fireEvent.click(completeBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      completeBtn.removeAttribute('disabled');
+      fireEvent.click(completeBtn);
+    });
+
+    expect(
+      mockComplete.mock.calls.length,
+      'a second tap re-sent the complete; core refuses the replay, so the failure is ' +
+        'reported for a count that DID complete',
+    ).toBe(1);
+
+    releaseComplete([{ id: 'adj-1' }]);
+    await act(async () => { await held; });
+  });
   it('shows error when completeStockCount fails', async () => {
     const user = userEvent.setup();
     mockGetStockCount.mockResolvedValue(sampleCount);

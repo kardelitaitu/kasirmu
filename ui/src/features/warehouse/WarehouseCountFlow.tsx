@@ -86,6 +86,21 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
   // a stale closure.
   const scansInFlight = useRef(new Set<string>());
 
+  // Re-entry guard for the COMPLETE write, which shares this file's own reasoning above
+  // but not its mechanism. `handleComplete` calls `setSaving(true)` and awaits, and `saving` is
+  // STATE -- React commits it on its next render, after the second tap of a real double
+  // tap -- so the button's `disabled={saving || ...}` is not authoritative in the same task.
+  //
+  // The backend DOES refuse the replay by compare-and-set:
+  //   UPDATE stock_counts SET status = 'completed' ... WHERE id = ?3
+  //     AND status IN ('draft', 'in_progress')      -- stock_counts.rs:529-539
+  // and `claimed != 1` returns Validation. So no second inventory adjustment is applied --
+  // but the rejection lands in the same catch that reports genuine failures, so the
+  // operator is told the COMPLETE FAILED for a count that did complete. Same shape as the
+  // purchasing and shift guards (rounds 136-141). A ref, not the state, because only the
+  // ref is authoritative at the moment the second tap runs.
+  const completePendingRef = useRef(false);
+
   const loadCounts = useCallback(async () => {
     if (!sessionToken) return;
     try {
@@ -254,6 +269,8 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
 
   const handleComplete = useCallback(async () => {
     if (!sessionToken || !activeCount) return;
+    if (completePendingRef.current) return;
+    completePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -271,6 +288,7 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'warehouse-count-error'));
     } finally {
+      completePendingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, activeCount, loadCounts, onCompleted, l10n, addToast]);
