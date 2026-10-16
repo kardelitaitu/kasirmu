@@ -143,6 +143,34 @@ export function usePosState() {
   }, []);
 
   /**
+   * Adjust a line's quantity by a DELTA, resolved against the committed state.
+   *
+   * WHY THIS EXISTS RATHER THAN `updateQty(id, n + 1)` AT EVERY TAP SITE.
+   *
+   * `updateQty` takes an ABSOLUTE quantity, so a `+` button has to compute the next
+   * value from whatever `qty` it captured when the row rendered. Two taps inside one
+   * React batch both close over that same snapshot, so both write the same number and
+   * `setLines` — which overwrites rather than accumulates — ends at one increment for
+   * two presses. MEASURED on the retail till: batched taps asked for qty 2 twice.
+   *
+   * On a touch device a double-tap is one gesture, so that is the normal case rather than
+   * an edge, and the stock guard that reads the same snapshot is walked past with it.
+   *
+   * The delta is applied INSIDE the `setLines` updater, which React calls with the real
+   * committed state, so concurrent calls accumulate instead of clobbering. A delta that
+   * lands the line at zero or below removes nothing — it rejects, matching `updateQty`'s
+   * non-positive rule (use `removeLine` for that).
+   */
+  const changeQty = useCallback((lineId: LineId, delta: number) => {
+    if (delta === 0) return;
+    setLines((prev) =>
+      prev.map((l) => (l.id === lineId ? { ...l, qty: l.qty + delta } : l))
+        // Applied after the map so a rejected delta leaves the array untouched.
+        .filter((l) => !(l.id === lineId && l.qty <= 0)),
+    );
+  }, []);
+
+  /**
    * Override the unit price of a line (manager price override).
    *
    * The new price must be in the cart's currency — a cross-currency override
@@ -389,6 +417,7 @@ export function usePosState() {
     addProduct,
     removeLine,
     updateQty,
+    changeQty,
     updateLinePrice,
     updateLineModifiers,
     updateLineNote,

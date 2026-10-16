@@ -320,7 +320,9 @@ describe('existing factory imports compile', () => {
 
   it('imports the retail POS fixtures + mock factories without error', async () => {
     const mod = await import('@/__tests__/test-utils/mocks/retailPos');
-    expect(mod.retailProducts).toHaveLength(4);
+    // 5, not 4: the service item added in round 81 (SKU-SVC) is sellable on both
+    // grids, so it belongs in the shared retail fixture set.
+    expect(mod.retailProducts).toHaveLength(5);
     expect(mod.retailProducts[0]?.sku).toBe('SKU-001');
     expect(mod.retailCategories).toHaveLength(2);
     expect(typeof mod.createRetailProductsApiMock).toBe('function');

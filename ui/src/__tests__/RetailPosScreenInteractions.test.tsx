@@ -421,6 +421,77 @@ describe('RetailPosScreen — interactions', () => {
     await userEvent.click(diskonBtn);
     return screen.getByRole('spinbutton', { name: /discount/i });
   }
+  // ── The qty increase must not pass a STALE absolute value ─────────────
+  //
+  // `handleIncreaseQty` (RetailPosScreen.tsx:838) computes an ABSOLUTE value from the
+  // rendered prop — `updateQty(line.id, line.qty + 1)` — and `updateQty`
+  // (usePosState.ts:138) OVERWRITES the row rather than incrementing it:
+  //
+  //     setLines((prev) => prev.map((l) => (l.id === lineId ? { ...l, qty } : l)))
+  //
+  // So two taps landing in ONE React batch both close over the same `line.qty` and both
+  // write the same value. The second tap is silently swallowed: the cashier presses `+`
+  // twice and the cart goes up by one. On a touch till a double-tap is one gesture, so
+  // that is the normal case, not an edge.
+  //
+  // The stock guard directly above (RetailPosScreen.tsx:844) is stale the same way — it
+  // tests `line.qty + 1` against remaining stock, so fast taps walk past the limit the
+  // guard exists to hold.
+  //
+  // WHY THE ARGUMENTS ARE THE OBSERVABLE: `usePosState` is mocked here, so `updateQty`
+  // is a spy and what the handler DECIDED is visible directly. A suite running the real
+  // hook could not tell the difference — a saturating row looks exactly like a correct
+  // one — which is why this lives in the mocked-suite rather than a rendering suite.
+  it('asks for a rising quantity when + is pressed twice in one batch', async () => {
+    const posState = await import('@/features/sales/usePosState');
+    const updateQty = vi.fn();
+    const changeQty = vi.fn();
+    vi.mocked(posState.usePosState).mockReturnValue(createUsePosStateMock({
+      changeQty,
+      lines: [{
+        id: 'line-1' as LineId,
+        sku: 'SKU-001' as Sku,
+        name: 'Indomie Goreng',
+        category: '',
+        qty: 1,
+        unit_price: { minor_units: 100000, currency: 'IDR' },
+      }],
+      total: { minor_units: 100000, currency: 'IDR' },
+      subtotal: { minor_units: 100000, currency: 'IDR' },
+      updateQty,
+    }));
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+
+    // One tap first, so the reachability half is settled separately: the handler must
+    // reach the write at all, or the batch assertion below passes trivially.
+    // Class selector, not a role/name one: the suite's sales.ftl bundle does not
+    // translate this aria key, so the accessible name is the raw id and the working
+    // cart tests in this file all address the cart by class (:654, :654, :1097).
+    const increase = screen.getByRole('button', { name: /Increase quantity/i });
+    await userEvent.click(increase);
+    await waitFor(() => expect(changeQty).toHaveBeenCalledTimes(1));
+
+    // Now both taps inside a single act(), so React batches them and the second handler
+    // closes over the SAME stale `line.qty` — the state a fast double-tap produces.
+    await act(async () => {
+      increase.click();
+      increase.click();
+    });
+
+    // The two batched taps must ask for DIFFERENT rising values. A repeated 2,2 is the
+    // lost increment: the row would end at qty 2 after two presses.
+    // The write is now a DELTA, so each tap asks for the same +1 and `usePosState`'s
+    // `changeQty` resolves it inside the `setLines` updater against the committed state.
+    // That is what makes two batched taps accumulate: a repeated delta is CORRECT, where
+    // a repeated absolute value (2,2) was the lost increment.
+    const batched = changeQty.mock.calls.slice(1).map((c) => c[1] as number);
+    expect(
+      batched,
+      'two batched taps did not each ask for one more unit',
+    ).toEqual([1, 1]);
+    expect(updateQty, 'the handler still writes an absolute quantity, so the stale read can return').not.toHaveBeenCalledWith('line-1', 2);
+  });
   it('refuses a fractional percent discount', async () => {
     const setDiscount = vi.fn();
     const input = await openRetailDiscount(setDiscount);

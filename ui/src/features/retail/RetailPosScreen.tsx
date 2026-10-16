@@ -136,7 +136,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const {
     lines, total, subtotal, discountPercent, discountLabel, discountAmount,
     tipAmount, serviceChargeAmount,
-    addProduct, removeLine, updateQty, updateLinePrice, assignCourse, setDiscount, resetCart,
+    addProduct, removeLine, updateQty, changeQty, updateLinePrice, assignCourse, setDiscount, resetCart,
   } = usePosState();
 
   const lineCount = lines.reduce((a, l) => a + l.qty, 0);
@@ -834,20 +834,43 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     openProductImagesScoped(sessionToken, p.sku).catch(() => {});
   }, [sessionToken]);
 
-  /** Stock-aware cart qty increase — checks stock_qty before incrementing. */
+  /**
+   * Stock-aware cart qty increase — checks stock_qty before incrementing.
+   *
+   * READS THE LIVE ROW, not the rendered prop. Both this guard and the write used to
+   * derive from `line`, the object captured when the row last rendered — and both call
+   * sites pass the SAME stale object when two taps land in one React batch (a fast
+   * double-tap on a touch till is one gesture, so this is the normal case).
+   *
+   * MEASURED: two batched taps asked for qty 2 twice (`updateQty(id, 2)` then
+   * `updateQty(id, 2)`), so `updateQty` — which OVERWRITES the row rather than
+   * incrementing (`usePosState.ts:138`) — ended at 2 after two presses. The cashier
+   * pressed `+` twice and the cart went up by one.
+   *
+   * The stock guard was stale for the same reason and is the more serious half: it tested
+   * `line.qty + 1` against remaining stock, so rapid taps could walk past the ceiling the
+   * guard exists to enforce on a SKU that is nearly out.
+   */
   const handleIncreaseQty = useCallback((line: { sku: string; id: LineId; qty: number }) => {
+    // The row as the cart ACTUALLY holds it. `linesRef` is assigned on every render
+    // (:145), so it always carries the committed state rather than a render snapshot.
+    const current = linesRef.current.find((l) => l.id === line.id) ?? line;
     const product = products.find((p) => p.sku === line.sku);
     if (product?.stock_qty != null) {
       const otherLinesQty = linesRef.current
         .filter((l) => l.sku === line.sku && l.id !== line.id)
         .reduce((s, l) => s + l.qty, 0);
-      if (otherLinesQty + line.qty + 1 > product.stock_qty) {
+      if (otherLinesQty + current.qty + 1 > product.stock_qty) {
         addToast({ message: requiredLocalized(l10n, 'retail-toast-insufficient-stock', { name: product.name }), type: 'warning' });
         return;
       }
     }
-    updateQty(line.id, line.qty + 1);
-  }, [products, updateQty, addToast, l10n]);
+    // The DELTA form, so the increment resolves against whatever the cart holds when
+    // React flushes it — not the `qty` this row rendered with. Reading `current.qty`
+    // (:858) fixes the stock GUARD; passing a delta fixes the WRITE, and only the write
+    // being a delta makes two batched taps accumulate to two increments.
+    changeQty(line.id, 1);
+  }, [products, changeQty, addToast, l10n]);
 
   /** Open the modifier editor for a cart line. */
   const handleEditModifiers = useCallback((line: CartLine) => {
