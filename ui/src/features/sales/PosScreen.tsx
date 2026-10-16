@@ -1181,27 +1181,28 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // The other half is a raised quantity: marking the closure's `l.qty` when the
       // operator has since increased it would show 'Sent' for portions the kitchen never
       // received. Advancing by the sent amount keeps the badge honest in both cases.
-      // ⚠️ THE DELTA, NOT THE CLOSURE. Functional form, and only the lines the delta
-      // actually carried are advanced.
+      // ⚠️ RESOLVED INSIDE THE UPDATER, not built from `lines`.
       //
-      // The previous body was `setLines(lines.map((l) => ({ ...l, dispatchedQty: l.qty })))`
-      // — `lines` is this render's closure, captured BEFORE the await. The cart stays
-      // editable while the send is in flight (`sendingToKitchen` drives only a button's
-      // processing state and is never read as a guard), so anything added during the
-      // await was absent from the replacement array and `setLines` DROPPED it. Measured
-      // live (round 201): two lines before Send, one more added during, and the cart
-      // came back with two — the operator's item silently gone, with no message.
+      // The delta map above is correct; the WRITE was not. It read
+      // `const updatedLines = lines.map(...)` — the render closure captured BEFORE the
+      // await — and then `setLines(updatedLines)` REPLACED the array with it. That is
+      // the round-201 defect this comment describes as fixed, still live in the write:
+      // a line added while the send was in flight is absent from `updatedLines` and
+      // `setLines` dropped it, silently.
       //
-      // The other half is a raised quantity: marking the closure's `l.qty` when the
-      // operator has since increased it would show 'Sent' for portions the kitchen never
-      // received. Advancing by the sent amount keeps the badge honest in both cases.
+      // posDispatchRecord.test.ts pins the arithmetic at the logic layer (its own header
+      // says the component body "is not reachable from a unit test"), which is why the
+      // copy could be correct while this write stayed wrong. Resolving inside the
+      // updater against the COMMITTED state makes the component satisfy the same
+      // contract the pure functions encode.
       const sentBySku = new Map(deltaLines.map((d) => [d.sku, d.qty]));
-      const updatedLines = lines.map((l) => {
-        const sentQty = sentBySku.get(l.sku);
-        if (sentQty === undefined) return l;
-        return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
-      });
-      setLines(updatedLines);
+      setLines((prev) =>
+        prev.map((l) => {
+          const sentQty = sentBySku.get(l.sku);
+          if (sentQty === undefined) return l;
+          return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
+        }),
+      );
 
       // Persist to open bill if active or table assigned
       //
@@ -1225,8 +1226,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // reachable sequence.
       const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
       if (activeOpenBillId || trimmedTable) {
+        // ⚠️ READ FROM `lines` AND PERSIST THE SENT AMOUNT.
+        //
+        // Two defects lived in this block, and the typecheck surfaced both when the
+        // write above stopped building `updatedLines`:
+        //
+        //   1. it mapped `updatedLines` — the SAME pre-await closure the dispatch
+        //      write had, so a tab held after a send recorded whatever the cart held
+        //      when the send STARTED, not what it holds now;
+        //   2. `dispatchedQty: l.qty` wrote the WHOLE quantity as dispatched. The
+        //      send explicitly advances by the SENT amount (the delta), because a
+        //      raised quantity was never sent — so this persisted the exact
+        //      over-record the dispatch write was fixed to avoid, into the
+        //      payload the resume reads back.
+        //
+        // A resumed tab would therefore show 'Sent' for portions the kitchen never
+        // received, and the kitchen ticket would disagree with the saved bill.
         const cartData = JSON.stringify({
-          lines: updatedLines.map((l) => ({
+          lines: lines.map((l) => ({
             sku: l.sku,
             name: l.name,
             qty: l.qty,
@@ -1235,7 +1252,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
             ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
             ...(l.note ? { note: l.note } : {}),
-            dispatchedQty: l.qty,
+            ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -1257,7 +1274,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         const held = await holdCartScoped(sessionToken, {
           label,
           cart_data: cartData,
-          item_count: updatedLines.length,
+          item_count: lines.length,
           total_minor: subtotal?.minor_units ?? 0,
           currency: subtotal?.currency ?? activeCurrency,
           bill_type: 'open_bill',
