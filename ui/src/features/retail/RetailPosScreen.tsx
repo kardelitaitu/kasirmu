@@ -1299,8 +1299,18 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [showHeldCartsList, setShowHeldCartsList] = useState(false);
   const [heldCartsList, setHeldCartsList] = useState<HeldCartRow[]>([]);
 
+  //
+  // Re-entry guard for handleHold. The Hold/Resume button (RetailFnBar.tsx:69) is only
+  // `disabled` on an EMPTY cart, and React does not re-render between two clicks that land
+  // inside one await — so a double-click, or F4 twice before the first settles, issued TWO
+  // holdCartScoped writes for one sale and left the cashier with a duplicate tab to find
+  // and delete. The same guard shape `usePosHeldCarts` and `useAutoQr` already use.
+  const holdingRef = useRef(false);
+
   const handleHold = useCallback(async () => {
     if (lines.length === 0) return;
+    if (holdingRef.current) return;
+    holdingRef.current = true;
     try {
       const cartData = JSON.stringify({
         lines: lines.map((l) => ({ sku: l.sku, name: l.name, category: l.category, qty: l.qty, unit_price: l.unit_price })),
@@ -1321,6 +1331,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-order-held'), type: 'success' });
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-hold'), type: 'error' });
+    } finally {
+      // Released only once the write settles, so a second press that lands mid-await is
+      // dropped rather than queued.
+      holdingRef.current = false;
     }
   }, [lines, discountPercent, discountLabel, subtotal, resetCart, addToast, l10n, sessionToken]);
 

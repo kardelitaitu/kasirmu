@@ -1097,6 +1097,139 @@ describe('RetailPosScreen — interactions', () => {
   // is saved; it vanishes on the next reload. Same class as the ADR #36 comment at :602-604
   // describes fixing ("previously the product only lived in local React state and vanished
   // on reload"), reintroduced on the FAILURE path.
+
+  // ── A double-tap on Hold must not create two held carts ────────────────
+  //
+  // `handleHold` (RetailPosScreen.tsx:1302) has no in-flight guard: no saving flag,
+  // no ref, no cooldown. It is reachable from two places that both allow a fast
+  // repeat — the Hold/Resume function-bar button (:1858/:1877, `disabled` only on an
+  // empty cart) and the F4 hotkey (:1587), whose guards cover overlays and typing but
+  // not re-entry.
+  //
+  // A DOM `disabled` cannot help either: React does not re-render between two clicks
+  // that land inside one await, so both fire. Two holds for one sale leaves the
+  // cashier with a duplicate tab and a cart they then have to find and delete.
+  it('does not create a second held cart when Hold is pressed twice in one pass', async () => {
+    // Locally imported like the other hold cases in this file: `@/api/sales` is fully
+    // mocked here, so a namespace import at module scope is not available.
+    const salesApi = await import('@/api/sales');
+
+    // The default factory returns an EMPTY cart, and `handleHold` opens with
+    // `if (lines.length === 0) return;` — so on the shared default F4 is a silent no-op
+    // and this test would pass on zero writes either way. Seed one line, exactly as the
+    // neighbouring hold case documents (:749-751).
+    const posState = await import('@/features/sales/usePosState');
+    vi.mocked(posState.usePosState).mockReturnValue(
+      createUsePosStateMock({
+        lines: [
+          {
+            id: 'line-1' as LineId,
+            sku: 'SKU-001' as Sku,
+            name: 'Indomie Goreng',
+            category: 'cat-food',
+            qty: 1,
+            unit_price: { minor_units: 3500, currency: 'IDR' },
+          } as never,
+        ],
+        subtotal: { minor_units: 3500, currency: 'IDR' },
+        total: { minor_units: 3500, currency: 'IDR' },
+      }),
+    );
+
+    vi.mocked(salesApi.holdCartScoped).mockResolvedValue({
+      id: 'held-1',
+      label: 'Hold #1',
+      item_count: 1,
+      total_minor: 3500,
+      currency: 'IDR',
+      created_at: '2026-01-01T00:00:00Z',
+      bill_type: 'hold',
+      customer_name: null,
+    } as never);
+
+    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // The way a cashier's second press actually arrives: two F4s back to back with no
+    // await between them. The SKU input must not be focused — the handler suppresses
+    // F4 while editing.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await userEvent.keyboard('{F4}');
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await userEvent.keyboard('{F4}');
+
+    // Wait for the WRITE, not the toast: the toast assertion below would depend on
+    // the success path, and what is under test is how many writes fire.
+    await waitFor(() => {
+      expect(vi.mocked(salesApi.holdCartScoped).mock.calls.length).toBeGreaterThan(0);
+    });
+
+    // THE ASSERTION: exactly one hold-cart write for one sale.
+    // (Note the two F4s above are separated by userEvent's own await, so the first hold
+    // completes and flips `heldCartId` before the second — which routes to handleResume.
+    // The synchronous-button path below is the one where two writes can land inside one
+    // await, which is what a double-click does.)
+    expect(
+      vi.mocked(salesApi.holdCartScoped).mock.calls.length,
+      'a double-press created more than one held cart',
+    ).toBe(1);
+    vi.mocked(salesApi.holdCartScoped).mockReset();
+  });
+
+  it('does not create a second held cart when the HOLD BUTTON is double-clicked', async () => {
+    const salesApi = await import('@/api/sales');
+    const posState = await import('@/features/sales/usePosState');
+    vi.mocked(posState.usePosState).mockReturnValue(
+      createUsePosStateMock({
+        lines: [
+          {
+            id: 'line-1' as LineId,
+            sku: 'SKU-001' as Sku,
+            name: 'Indomie Goreng',
+            category: 'cat-food',
+            qty: 1,
+            unit_price: { minor_units: 3500, currency: 'IDR' },
+          } as never,
+        ],
+        subtotal: { minor_units: 3500, currency: 'IDR' },
+        total: { minor_units: 3500, currency: 'IDR' },
+      }),
+    );
+
+    // A pending hold for the whole test: the FIRST click never resolves, so the handler is
+    // still inside its await when the second click lands. That is the race a real
+    // double-click produces and the only way two writes can fire from one cart.
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    vi.mocked(salesApi.holdCartScoped).mockReset();
+    vi.mocked(salesApi.holdCartScoped).mockImplementation((() => gate.then(() => ({
+      id: 'held-1', label: 'Hold #1', item_count: 1, total_minor: 3500, currency: 'IDR',
+      created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null,
+    }))) as never);
+
+    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // Hold/Resume is the function-bar button labelled "Hold" (RetailFnBar.tsx:69-71,
+    // key `pos-cart-hold`) — NOT the first .retail-fn-btn, which is Pay.
+    const holdBtn = await waitFor(() => {
+      const b = Array.from(document.querySelectorAll('.retail-fn-btn'))
+        .find((el) => el.textContent?.includes('Hold'));
+      expect(b, 'the Hold function-bar button was not found').toBeDefined();
+      return b as HTMLElement;
+    });
+
+    // Two clicks with NO await between them.
+    fireEvent.click(holdBtn!);
+    fireEvent.click(holdBtn!);
+
+    expect(
+      vi.mocked(salesApi.holdCartScoped).mock.calls.length,
+      'a double-click on Hold issued more than one hold write',
+    ).toBe(1);
+
+    release?.();
+  });
   it('does not leave an unsaved product on screen when the add is refused', async () => {
     // `@/api/products` is fully mocked, so the mock is reached through vi.mocked rather
     // than a namespace import (which the module mock does not provide).
