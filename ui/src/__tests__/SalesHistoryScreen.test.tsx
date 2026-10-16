@@ -383,6 +383,51 @@ describe('SalesHistoryScreen', () => {
       'Escape must dismiss the overlay, not navigate away from the screen',
     ).toBeGreaterThan(0);
   });
+  // ── The VOID overlay is a SEPARATE overlay from the detail panel ──────
+  //
+  // It is reached by SWIPING a row left (`SwipeableOrderRow` -> `useSwipe` ->
+  // `onSwipeLeft` sets `revealed`), not by tapping, so none of the detail-modal cases
+  // exercise it. Its own trap (`voidPanelRef`) is a second instance of the same
+  // pattern, and round 191 pinned only the DETAIL one — do not assume that case covers
+  // this. Measured 2026-10-18: the E2E probe could not find the Void affordance at all
+  // because it lives behind a swipe, which is why this is a unit case.
+  it('closes the VOID overlay on Escape without leaving the screen', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.sales-history-row-wrap').length).toBeGreaterThan(0);
+    });
+
+    // Swipe the first row LEFT to reveal its actions. `useSwipe` reads clientX from
+    // the touch payload, so start/finish must be supplied explicitly.
+    const row = container.querySelector('.sales-history-row-wrap') as HTMLElement;
+    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 10 }] });
+    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 40, clientY: 10 }] });
+
+    const voidBtn = await screen.findByText('Void');
+    await user.click(voidBtn);
+
+    // The overlay is up: it is an ARIA modal, which is the predicate PosScreen uses.
+    await waitFor(() => {
+      expect(container.querySelectorAll('[aria-modal="true"]').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The OVERLAY goes…
+    await waitFor(() => {
+      expect(container.querySelectorAll('[aria-modal="true"]').length).toBe(0);
+    });
+    // …and the SCREEN STAYS: the rows are still there.
+    expect(
+      container.querySelectorAll('.sales-history-row-wrap').length,
+      'Escape must dismiss the void overlay, not navigate away from the screen',
+    ).toBeGreaterThan(0);
+  });
   it('renders line items with course and modifier choices in detail modal', async () => {
     const user = userEvent.setup();
     const detailWithModifiers = {
