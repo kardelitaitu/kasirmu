@@ -77,7 +77,8 @@ function ensureDevice() {
       }
     } catch {}
     try {
-      execFileSync(ADB_BIN, ["connect", "192.168.0.185:36929"], { encoding: "utf8", timeout: 2000 });
+      const target = process.env.ADB_DEVICE || process.env.ANDROID_ADB_DEVICE || "192.168.0.185:45487";
+      execFileSync(ADB_BIN, ["connect", target], { encoding: "utf8", timeout: 2000 });
     } catch {}
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
   }
