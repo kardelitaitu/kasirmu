@@ -1895,6 +1895,36 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       showPaymentsSettings, showRestaurantSettings, restaurantSidebarOpen, showSplitBillModal,
       showExitConfirm, showTableNumberSetting, showPromotions, showDiscountInput]);
 
+  // ⚠️ DECLARED ABOVE THE SUB-SCREEN EARLY RETURNS, NOT BELOW THEM.
+  //
+  // This callback sat at :2161 in commit 4b7d5cf4c, i.e. after every sub-screen
+  // early return in this component (`showTables`, `showSalesHistory`,
+  // `showStockInquiry`, `showReceipts`, ... eight of them). React's rules-of-hooks
+  // require every hook to run in the same order on EVERY render, so on any sub-view
+  // this hook was simply never registered — and `RestaurantMenu`'s `onAddProduct`
+  // (`:2224`) resolved to `undefined` there. `npm run lint` caught it as
+  // `react-hooks/rules-of-hooks` at 2161:38 once another lane's file landed; the
+  // runtime consequence is the Menu Editor's add path being inert whenever a
+  // sub-screen had been visited.
+  //
+  // Its only dependency is `handleAddProduct`, destructured from `usePosCartActions`
+  // at :573 — long before any early return — so moving it up is safe and changes no
+  // behaviour on the sale view.
+  //
+  const handleRestaurantAddProduct = useCallback(
+    (product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => {
+      const defaultCourse = meta?.courseId ?? inferCourseForProduct(product) ?? undefined;
+      const combinedMeta = defaultCourse || meta?.modifiers
+        ? {
+            ...(defaultCourse ? { courseId: defaultCourse } : {}),
+            ...(meta?.modifiers ? { modifiers: meta.modifiers } : {}),
+          }
+        : undefined;
+      handleAddProduct(product, combinedMeta);
+    },
+    [handleAddProduct],
+  );
+
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
     return (
@@ -2158,19 +2188,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onRequestExit: handleRequestExit,
   };
 
-  const handleRestaurantAddProduct = useCallback(
-    (product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => {
-      const defaultCourse = meta?.courseId ?? inferCourseForProduct(product) ?? undefined;
-      const combinedMeta = defaultCourse || meta?.modifiers
-        ? {
-            ...(defaultCourse ? { courseId: defaultCourse } : {}),
-            ...(meta?.modifiers ? { modifiers: meta.modifiers } : {}),
-          }
-        : undefined;
-      handleAddProduct(product, combinedMeta);
-    },
-    [handleAddProduct],
-  );
 
   return (
     <>
