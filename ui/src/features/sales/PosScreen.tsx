@@ -1017,26 +1017,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // Refreshing makes it visible and settleable. Best-effort: a second failure
           // here must not mask the one being reported.
           //
-          // UNTESTED, and here is the measured reason so it is not re-derived a third
-          // time. THREE conditions must hold to reach this line at all, and the existing
-          // harness satisfies none of the third:
+          // The refresh IS covered now — see "the failure branch did not re-read the
+          // open bills" in PosScreenCoreFlow.test.tsx, which sets `wsState.scopeTypeKey`
+          // and DIFFERENCES the `listOpenBillsScoped` call count. A bare count was tried
+          // first and was worthless: the mount effect already satisfies `> 0`, so it
+          // passed against a build with this refresh deliberately removed. Only the delta
+          // distinguishes it — measured, not assumed.
           //
-          //   1. `remainingLines.length > 0 && sessionToken` (:929) — reachable;
-          //   2. the refresh itself needs the workspace SCOPE's `typeKey ===
-          //      'restaurant-pos'` (usePosHeldCarts.ts:122/:140), a DIFFERENT field from
-          //      `activeWorkspace` that the screen's dine-in rules read. PosScreenCoreFlow
-          //      hardcoded `typeKey: 'store-pos'`; `wsState.scopeTypeKey` is now settable
-          //      there, so this one is solved;
-          //   3. the DELETE that this catch guards is inside `if (activeOpenBillId)` (:991),
-          //      and `activeOpenBillId` is set ONLY by resuming an open bill
-          //      (usePosHeldCarts.ts:418). No existing case resumes one, so `delete` is
-          //      never attempted and the half-committed state is never entered — measured
-          //      with a probe: hold 1, delete 0, listOpenBills 1.
-          //
-          // Reaching it needs a case that seeds `listHeldCartsScoped`, opens the bill list
-          // and resumes, THEN splits. In the real app `typeKey` comes from
-          // `activeInstance.type_key` (WorkspaceContext.tsx:785), so a restaurant terminal
-          // does refresh.
+          // Still NOT covered by that case: the duplicate being VISIBLE. Displaying it
+          // needs `activeOpenBillId` set, and that is only ever set by resuming an open
+          // bill (usePosHeldCarts.ts:418), which no case in the file does — so the
+          // `if (activeOpenBillId)` delete at :991 is never entered and the duplicate is
+          // never actually created. The remaining gap is narrow and located here.
           try {
             await loadOpenBills();
           } catch {

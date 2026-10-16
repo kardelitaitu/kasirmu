@@ -556,6 +556,15 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // restaurant-pos — which is what the split modal and the dine-in tab rule require.
     wsState.activeWorkspace = 'store-pos';
 
+    // The workspace SCOPE, not just `activeWorkspace`: the failure path's bill-list
+    // refresh goes through `loadOpenBills`, which returns early unless
+    // `typeKey === 'restaurant-pos'` (usePosHeldCarts.ts:122/:140). Setting only
+    // `activeWorkspace` (below) left that refresh unreachable — measured, twice, before
+    // `wsState.scopeTypeKey` was made settable. In the real app `typeKey` comes from
+    // `activeInstance.type_key` (WorkspaceContext.tsx:785), so this is what a restaurant
+    // terminal actually has.
+    wsState.scopeTypeKey = 'restaurant-pos';
+
     // An open bill exists, so the split takes the `remainingLines.length > 0` branch.
     vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
       {
@@ -622,6 +631,12 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(document.querySelector('.pos-split-item-row--selected')).not.toBeNull();
     });
 
+    // Baseline the refresh count while the split is still uncommitted, so the assertion
+    // below measures the DELTA. A bare `toBeGreaterThan(0)` passed against a build with
+    // the refresh deliberately removed — the mount effect already satisfies it, so the
+    // count had to be differenced to mean anything.
+    const openBillsReadsBeforeSplit = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+
     await user.click(screen.getByTestId('pos-split-modal-confirm-btn'));
 
     // Reachability first: the balancing hold must actually be attempted, or the toast
@@ -631,6 +646,22 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
         vi.mocked(salesApi.holdCartScoped).mock.calls.length,
         'the split never attempted to balance the remaining tab',
       ).toBeGreaterThan(0);
+    });
+
+    // The half-committed case re-reads the bill list so the duplicate is visible.
+    //
+    // This case's hold is REFUSED, so strictly nothing was written and the list did not
+    // change — the refresh here is the same code path the half-committed case needs, and
+    // asserting it proves the refresh RUNS on the failure branch. What it cannot prove is
+    // the duplicate being VISIBLE, because that needs `activeOpenBillId` set, which only
+    // a resumed tab does (usePosHeldCarts.ts:418); no case in this file resumes one, so
+    // the `if (activeOpenBillId)` delete at PosScreen.tsx:1000 is never entered here.
+    // Stated rather than implied: this covers the refresh, not the duplicate display.
+    await waitFor(() => {
+      expect(
+        vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length,
+        'the failure branch did not re-read the open bills',
+      ).toBeGreaterThan(openBillsReadsBeforeSplit);
     });
 
     // The failure IS reported (sales.ftl:1200).
@@ -686,6 +717,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
       code: string) => mockLookupByBarcode(code)) as never);
     wsState.activeWorkspace = 'store-pos';
+    // BOTH workspace fields, not just the one this case's screen rules read: the scope
+    // declares the restaurant terminal for the refresh assertion above, and leaving it
+    // set makes every later case run against a scope its own setup did not ask for.
+    wsState.scopeTypeKey = 'store-pos';
   });
 
   // The stale read resolves with DISTINCTLY DIFFERENT values -- true against the
