@@ -97,7 +97,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
   // Carries the array a `setSections` updater produced out to the awaited
-  // `setSettingScoped` write. See `handleRenameSection` (:1318) for why a local
+  // `setSettingScoped` write. See `handleRenameSection` (:1319) for why a local
   // `let` cannot do this.
   const sectionsResultRef = useRef<string[] | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
@@ -1411,11 +1411,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
       }
       // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
-      // `handleRenameSection` above (:1318). The `updateTableScoped` awaits at
+      // `handleRenameSection` above (:1319). The `updateTableScoped` awaits at
       // :1361-1376 leave the screen interactive, so a section added during them was
       // dropped by this replacement. `check-state-closure-after-await.py` reports this
       // line as its second candidate. Carried out through the same ref for the same
-      // reason: see the local-`let` hazard noted at :1318.
+      // reason: see the local-`let` hazard noted at :1319.
       setSections((prev) => {
         const next = prev.filter((s) => s !== secName);
         sectionsResultRef.current = next;
