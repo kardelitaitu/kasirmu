@@ -19,6 +19,33 @@ defect:
   * no unique index -> a DUPLICATE ROW (customers, cash payouts, memos), or worse, a
     fixed-path overwrite where the last write wins (the restore request).
 
+ALREADY CHECKED AND REFUTED (rounds 141, 144-146, by reading the backend). Do not
+re-derive these: each is protected, and the protection is named so the search ends.
+
+  * purchase orders  -- idx_purchase_orders_po_number (UNIQUE) refuses the replay
+  * suppliers        -- idx_suppliers_code ON suppliers(code) (UNIQUE)
+  * products         -- products.sku TEXT NOT NULL UNIQUE + UNIQUE barcode
+  * staff            -- username UNIQUE + idx_users_tenant_username; create_user_in_tx
+                        maps ConstraintViolation to CoreError::Conflict (staff.rs:593-600)
+  * gift-card redeem -- EXPLICIT idempotency on (card_id, sale_id), fail-closed
+                        (gift_cards.rs:330-419)
+  * gift-card issue  -- gift_cards.card_number TEXT UNIQUE
+  * void sale        -- compare-and-set `WHERE id = ?2 AND status = 'active'`, rows == 0
+                        -> Conflict (sales_lifecycle.rs:903-914)
+  * stock transfer
+    - create         -- mints a DISTINCT transfer_number (`TRF-{ts}-{random tail}`, the
+                        tail exists so two calls cannot collide) -- round 142 FIXED
+    - receive        -- idempotent by DIFFERENCE: validated received_qty >=
+                        previous_received_qty, and only the delta is credited
+                        (stock_transfers.rs:654-661)
+  * stock count complete -- compare-and-set, claimed != 1 -> Validation
+                        (stock_counts.rs:529-539) -- round 144 FIXED
+  * checkout / sale -- COR-7 replay guard + UNIQUE payments.idempotency_key returns the
+                        ORIGINAL receipt (pos/checkout.rs)
+  * cash payout     -- round 139 FIXED (was: no dedupe at all)
+  * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
+  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+                        idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
 sites to a handful. Two of the three in the first run were settings upserts -- idempotent
@@ -91,6 +118,18 @@ def _handler_body(lines, start):
     return "\n".join(body)
 
 
+def scan_text(text):
+    """Same logic as scan_file, on an in-memory string (used by --self-test)."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ts", delete=False, encoding="utf-8") as handle:
+        handle.write(text)
+        path = handle.name
+    try:
+        return scan_file(path)
+    finally:
+        os.unlink(path)
+
 def scan_file(path):
     with open(path, encoding="utf-8", errors="replace") as handle:
         lines = handle.read().splitlines()
@@ -133,7 +172,10 @@ def iter_sources(root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--strict", action="store_true", help="exit 1 on any candidate")
+    parser.add_argument("--self-test", action="store_true", help="assert the matcher's shapes")
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
 
     findings = []
     for path in iter_sources(SCAN_ROOT):
@@ -153,6 +195,63 @@ def main():
             print("  %s:%d  %s  in %s()  -> %s"
                   % (f["file"], f["line"], f["flag"], f["handler"], f["calls"]))
     return 1 if (args.strict and findings) else 0
+
+
+def self_test():
+    """Assert the matcher on the shapes that must and must not fire.
+
+    The fixtures are deliberately the two shapes this script exists to tell apart, and
+    the one that makes it safe: a ref-guarded handler must NOT be reported even though it
+    is otherwise identical. Round 145 shipped a fix with the check but not the set; a
+    matcher that only looked for the check would have called that guarded.
+    """
+    cases = [
+        # (label, source, expected_count)
+        ('unguarded write after await', 
+         "const [saving, setSaving] = useState(false);\n"
+         "const save = useCallback(async () => {\n"
+         "  setSaving(true);\n"
+         "  await createThing();\n"
+         "  setSaving(false);\n"
+         "}, []);\n", 1),
+        ('ref-guarded write is not a candidate', 
+         "const [saving, setSaving] = useState(false);\n"
+         "const pendingRef = useRef(false);\n"
+         "const save = useCallback(async () => {\n"
+         "  if (pendingRef.current) return;\n"
+         "  setSaving(true);\n"
+         "  await createThing();\n"
+         "  setSaving(false);\n"
+         "}, []);\n", 0),
+        ('a read-only handler is not a candidate', 
+         "const [loading, setLoading] = useState(false);\n"
+         "const load = useCallback(async () => {\n"
+         "  setLoading(true);\n"
+         "  await listThings();\n"
+         "  setLoading(false);\n"
+         "}, []);\n", 0),
+        ('a write with no await cannot double-send', 
+         "const [saving, setSaving] = useState(false);\n"
+         "const save = useCallback(() => {\n"
+         "  setSaving(true);\n"
+         "  createThingSync();\n"
+         "  setSaving(false);\n"
+         "}, []);\n", 0),
+    ]
+    failures = 0
+    for label, source, expected in cases:
+        got = len(scan_text(source))
+        if got != expected:
+            failures += 1
+            print("  FAIL %-40s expected %d, got %d" % (label, expected, got))
+        else:
+            print("  ok   %-40s (%d)" % (label, got))
+    if failures:
+        print("self-test: %d failure(s)" % failures)
+        return 2
+    print("self-test: all %d cases pass" % len(cases))
+    return 0
+
 
 
 if __name__ == "__main__":
