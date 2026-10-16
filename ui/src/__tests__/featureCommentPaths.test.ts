@@ -300,7 +300,13 @@ describe('feature-source comments cite same-file lines that still hold', () => {
     }
 
     console.info(`[featureCommentPaths] same-file citations: ${total} total, ${inRange} in range, ${total - inRange} to review`);
-    console.info(`[featureCommentPaths] same-file citations: ${total} total, ${inRange} in range, ${total - inRange} to review`);
+    // ⚠️ THE REPORT MUST ACTUALLY BE PRINTED. `suspicious` was filled and never read
+    // (round 132): the summary line above ran, the list below did not, so the guard
+    // silently claimed a report it never emitted — and the round-131 record described
+    // that non-existent report. A dead accumulator is worse than none.
+    if (suspicious.length > 0) {
+      console.info('[featureCommentPaths] same-file citations to review:\n  ' + suspicious.join('\n  '));
+    }
     expect(total, 'no same-file line citations found — the extractor is wrong').toBeGreaterThan(5);
 
     // ── WHAT IS ENFORCED, AND WHAT IS ONLY REPORTED ──────────────────────────
@@ -321,15 +327,27 @@ describe('feature-source comments cite same-file lines that still hold', () => {
     // blank. No comment can be citing a blank line correctly. That is a true invariant
     // with no false positives, and it is the half that grows monotonically — a file
     // that SHRINKS turns correct citations into dangling ones.
-    const blankOrBeyond = sameFileCitations('').length === 0;
-    void blankOrBeyond;
     const dangling: string[] = [];
     for (const file of files) {
       const source = fs.readFileSync(file, 'utf-8');
       const lines = source.split('\n');
       for (const cite of sameFileCitations(source)) {
+        // A HISTORICAL reference is a claim about the past, not a pointer: the
+        // `deleted|removed|retired` exemption the two path passes already carry, extended
+        // to line numbers. EodReportScreen.tsx:27 reads 'was :154 and :187 at tip
+        // b2247947e' — those were never meant to resolve here.
+        const context = [lines[cite.at - 2] ?? '', lines[cite.at - 1] ?? ''].join(' ').toLowerCase();
+        if (/\b(was|were|formerly|previously|used to|at tip)\b/.test(context)) continue;
         const slice = lines.slice(cite.from - 1, cite.to);
-        if (cite.from > lines.length || slice.every((l) => l.trim() === '')) {
+        // PUNCTUATION-ONLY is the second no-false-positive class: no comment can be
+        // citing a line whose whole content is `}` or `});`. Measured 2026-10-18
+        // (round 132): 7 of the 154 heuristic candidates land on exactly that, and all
+        // seven were genuinely drifted; the other 147 stay only reported.
+        const punctuationOnly = (from: number, to: number) => {
+          const s = lines.slice(from - 1, to);
+          return s.length > 0 && s.every((l) => /^[\s)\]};,]*$/.test(l));
+        };
+        if (cite.from > lines.length || slice.every((l) => l.trim() === '') || punctuationOnly(cite.from, cite.to)) {
           dangling.push(
             `${path.relative(ROOT, file).split(path.sep).join('/')}:${cite.at} cites :${cite.from}` +
               `${cite.to !== cite.from ? '-' + cite.to : ''} — ${cite.line}`,
