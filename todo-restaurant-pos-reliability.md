@@ -1971,8 +1971,24 @@ Verified: full suite **696 files / 11,555 passed, 0 failed**; typecheck 0; eslin
 0 missing; both JSON configs parse; the diff is exactly four lines, one `media-src` clause per
 key.
 
-### F40 — the payments screen's rail toggles do not persist on the tablet (round 89) — OPEN
+### F40 — the payments screen's rail toggles do not persist on the tablet (round 89) — ✅ FIXED (round 90, `267e23e9e`)
 
+<!-- ⚠️ CORRECTED 2026-10-18 (round 182). This heading read '— OPEN' for 92 rounds. F40 was
+     FIXED one round after it was filed, and the fix's own block 50 lines below this heading
+     says so in its title: 'F40 — CAUSE FOUND AND FIXED (round 90) — 267e23e9e'. The heading was
+     never re-read. Re-verified this round against the tree rather than the prose: the finally
+     seed is at RestaurantPaymentsScreen.tsx:542-545, and RestaurantPaymentsScreen.test.tsx:1425
+     mocks getPrimary -> null (the device's exact condition) and asserts 'Unsaved changes'. -->
+
+**Status re-verified 2026-10-18 (round 182): FIXED and COVERED.** The round-89 text below is kept
+as the negative result that led to the fix. To confirm it rather than trust it, I read the tree:
+
+  · the fix's conditional baseline seed is present at `RestaurantPaymentsScreen.tsx:542-545`
+    (`if (originalsRef.current.drafts.length === 0)` … `draftsRef.current.map(...)`);
+  · the regression cases exist at `RestaurantPaymentsScreen.test.tsx:1425+`, in a describe block
+    named *'no primary location still tracks dirty (F40)'*, mocking `getPrimary -> null` — the
+    device's condition that round 89's mocks had supplied a location for;
+  · both suites run green (part of the 50 the payments screen carries).
 A round that **did not close its finding**, recorded as such because the negative result is the
 deliverable.
 
