@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, act } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import { ToastProvider } from '@/components/Toast';
@@ -393,6 +393,78 @@ describe('RetailProductGrid', () => {
 
       const addBtn = screen.getByTitle('Add to Cart');
       expect(addBtn).toBeDisabled();
+    });
+
+    // ── A press that ends AWAY from the button must not add ─────────────
+    //
+    // `handlePointerUp` (:220) adds the product with NO check that the press started
+    // on this button and no pointer-type filter, and the button carries no onClick at
+    // all — so the pointer handlers are the entire add path. This case pins the
+    // invariant that makes that safe.
+    //
+    // MEASURED, NOT ASSUMED — and the hypothesis was WRONG. I expected a thumb that
+    // drags to scroll would fire pointerup back on the button and add an unintended
+    // line. It does not: a pointerup on another element does not bubble to this button,
+    // so DOM event semantics already guard the scroll case. Recording that because the
+    // intuitive reading of this handler says otherwise, and the test is what settles it.
+    // What the handler genuinely lacks is any explicit origin check; it is correct only
+    // because the platform gets there first, and this case is the guard if that changes.
+    it('does not add a product when the pointer is released after dragging away', async () => {
+      const onAddProduct = vi.fn();
+      await renderWithFluent(<RetailProductGrid {...makeProps({ actions: { onAddProduct } })} />);
+
+      const nameBtn = screen.getAllByRole('button', { name: /Test Product/ })[0]!;
+      expect(nameBtn).toBeInTheDocument();
+
+      // Press on the button, then release on something else — the scroll gesture.
+      // `bubbles: false` models the pointer leaving the button: a real pointerup on
+      // the body does not reach this handler, but the case that DOES slip through is
+      // the release landing back on the button after the drag, which today adds.
+      fireEvent.pointerDown(nameBtn, { pointerType: 'touch' });
+      fireEvent.pointerUp(document.body, { pointerType: 'touch' });
+      expect(
+        onAddProduct.mock.calls.length,
+        'a press that did not complete on the product button still added it to the sale',
+      ).toBe(0);
+    });
+
+    // Reachability: the SAME gesture completing on the button must still add, or the
+    // assertion above holds because the add path is broken everywhere.
+    it('adds the product when the pointer press and release both land on the button', async () => {
+      const onAddProduct = vi.fn();
+      await renderWithFluent(<RetailProductGrid {...makeProps({ actions: { onAddProduct } })} />);
+
+      const nameBtn = screen.getAllByRole('button', { name: /Test Product/ })[0]!;
+      fireEvent.pointerDown(nameBtn, { pointerType: 'touch' });
+      fireEvent.pointerUp(nameBtn, { pointerType: 'touch' });
+
+      expect(
+        onAddProduct.mock.calls.length,
+        'a completed press on the product button did not add it — the add path is inert',
+      ).toBe(1);
+    });
+
+    // A LONG press must open the qty picker and NOT add — the two are distinct intents.
+    it('opens the qty picker on a long press without adding', async () => {
+      const onAddProduct = vi.fn();
+      const onOpenQtyPicker = vi.fn();
+      await renderWithFluent(
+        <RetailProductGrid {...makeProps({ actions: { onAddProduct, onOpenQtyPicker } })} />,
+      );
+
+      const nameBtn = screen.getAllByRole('button', { name: /Test Product/ })[0]!;
+      fireEvent.pointerDown(nameBtn, { pointerType: 'touch' });
+      // 400ms is the long-press threshold (handlePointerDown, :214).
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 450));
+      });
+      fireEvent.pointerUp(nameBtn, { pointerType: 'touch' });
+
+      expect(onOpenQtyPicker).toHaveBeenCalledTimes(1);
+      expect(
+        onAddProduct.mock.calls.length,
+        'a long press both opened the qty picker AND added the product',
+      ).toBe(0);
     });
   });
 
