@@ -1809,12 +1809,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // object is empty and none of these keys exist there.
   //
   // Each action routes through an EXISTING self-guarding handler:
-  //   * `handlePrintBill` returns early on no lines/total/session (`:845-850`);
+  //   * `handlePrintBill` returns early on no lines/total/session (`:914-918`);
   //   * `handleSendToKitchen` returns early on no session/lines/undelivered delta
-  //     (`:1042-1052`);
+  //     (`:1189-1198`);
   //   * `setShowSplitBillModal(true)` opens the split MODAL, not its confirm, so the
-  //     dine-in-only rule in `handleConfirmSplitBill` (`:884`) still applies;
+  //     dine-in-only rule in `handleConfirmSplitBill` (`:964`) still applies;
   //   * `setShowTables(true)` is the sidebar row's own action, already feature-gated.
+  //
+  // ⚠️ The three ranges above are the only thing making the 'self-guarding' claim
+  // checkable, and they had ALL drifted — by 68, 146 and 80 lines respectively. A
+  // stale range is worse than none: it points a reader at unrelated code and makes an
+  // assertion look verified when nothing was checked, which is the shape that hid a
+  // false claim in round 126. Re-point them when the handlers move rather than
+  // deleting them.
   //
   // Save Tab is the one exception and it is deliberate. Its precondition chain (shift
   // guard + the open-bill-input branch) is INLINE component logic in CartActionBar, so

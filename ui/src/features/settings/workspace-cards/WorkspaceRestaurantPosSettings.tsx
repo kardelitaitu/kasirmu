@@ -89,7 +89,7 @@ export function WorkspaceRestaurantPosSettings({
   useEffect(() => {
     // Only seed initial values once; subsequent re-runs must not
     // overwrite user edits (e.g. when settings.receipt changes).
-    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set at :73/:76, never
+    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set at :130/:138, never
     // reset), so listing sessionToken in the deps alone would have changed nothing -- the guard
     // short-circuits every later run. Latching on the token makes a store switch re-seed, which
     // is what the touchedRef guard at :71 is already built for.

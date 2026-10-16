@@ -1518,14 +1518,14 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       // `heldCartsList`, so the local list kept offering a record the server no
       // longer holds, with two reachable consequences:
       //
-      //  1. The reminder popup counts `heldCartsList.length` (:2080) — the one
+      //  1. The reminder popup counts `heldCartsList.length` (:2103) — the one
       //     affordance that tells a cashier 'there are carts on hold'. After
       //     resuming the last one it still claimed one, and every resume left the
       //     count inflated by one for the rest of the shift.
       //  2. That popup's row opens the modal with a bare `setShowHeldCartsList(true)`
-      //     (:2084) — no refetch — so the held carts list showed a cart that no
+      //     (:2107) — no refetch — so the held carts list showed a cart that no
       //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
-      //     `if (!full) return;` (:1462): no modal change, no toast, nothing. A
+      //     `if (!full) return;` (:1464): no modal change, no toast, nothing. A
       //     dead control with no way for the cashier to learn why.
       //
       // Filtering by id, not by index or by clearing the list: the resumed cart is
@@ -1709,7 +1709,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     showShortcuts, showCreditList, showClearConfirm, showOpenShift, showCloseShift,
     closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, deleteHeldTarget]);
 
-  // A SUB-VIEW is an early return that REPLACES this screen (:1666 Sales History,
+  // A SUB-VIEW is an early return that REPLACES this screen (:1864 Sales History,
   // :1675 Table Management, :1684 Stock Inquiry; the payment modal is the fourth
   // at :1626). `isAnyOverlayOpen` covers the local DIALOGS but none of these, and
   // although their flags sat in the dependency array below the handler never READ

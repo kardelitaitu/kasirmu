@@ -277,7 +277,7 @@ export default function KdsScreen() {
       // ⚠️ AND A GENERIC TRUTH IS WORSE THAN A SPECIFIC ONE. The first fix here raised
       // the bare `kds-error-update-failed` ("Failed to update the order — try again")
       // and dropped the error, so EVERY failure read the same. The sibling
-      // `ExpoScreen.advanceItemStatus` (:321) classifies it instead — and the shared
+      // `ExpoScreen.advanceItemStatus` (:306) classifies it instead — and the shared
       // copy is strictly more useful per kind:
       //
       //   app-error-session   "Your session has expired. Please sign in again."

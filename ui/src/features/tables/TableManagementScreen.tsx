@@ -710,7 +710,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       // The writes are sequential (hold → delete → release → status), so this catch
       // can fire AFTER the destination bill already exists: the hold succeeded and
       // only the delete/release/status step failed. `loadTables()` sat on the success
-      // path only (:657), so the floor plan kept rendering the PRE-move state — the
+      // path only (:699), so the floor plan kept rendering the PRE-move state — the
       // operator was told "move failed" while looking at a plan that no longer
       // described the data, with the dialog still open over it. Retrying against that
       // stale plan is what turns one duplicate bill into two.

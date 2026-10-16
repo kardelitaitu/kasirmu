@@ -77,7 +77,7 @@ export default function InventoryAdjustmentScreen() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-    // sessionToken is read at :66 (from useWorkspace() at :52). Because :85 is
+    // sessionToken is read at :67 (from useWorkspace() at :53). Because :84 is
     // `useEffect(..., [load])`, load's identity is what triggers a refetch -- with the token
     // missing, switching stores left this screen listing the previous store's products until a
     // manual reload.
@@ -171,7 +171,7 @@ export default function InventoryAdjustmentScreen() {
     } finally {
       setSaving(false);
     }
-    // sessionToken is read at :152 by adjustStockScoped -- a write that changes stock counts.
+    // sessionToken is read at :157 by adjustStockScoped -- a write that changes stock counts.
     // With the token missing from this array, an adjustment submitted after a cashier hot-swap
     // presented the destroyed session, so the write failed (or, if the old session were still
     // live, adjusted the wrong store's stock) while the form looked like any other retryable

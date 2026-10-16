@@ -1095,9 +1095,10 @@ export default function RestaurantReceiptsScreen({
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    // Same guard as the five other token-dependent callbacks in this file (`:533`, `:806`,
-    // `:972`, `:1012`). This one pushed its FIRST task with `sessionToken ?? ''` and only
-    // guarded the later ones with `if (sessionToken && …)` (`:1121`, `:1143`), so an empty
+    // Same guard as the five other token-dependent callbacks in this file (`:195`,
+    // `:213`, `:808`, `:975`, `:1015`). This one pushed its FIRST task with
+    // `sessionToken ?? ''` and only guarded the later ones with `if (sessionToken && …)`,
+    // so an empty
     // token fired a bogus `set_receipt_settings_scoped('')` before the guarded tasks skipped.
     //
     // Not reachable through the UI today — the mock always supplies a token, and the Save

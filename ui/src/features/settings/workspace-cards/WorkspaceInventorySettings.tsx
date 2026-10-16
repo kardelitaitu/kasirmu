@@ -66,7 +66,7 @@ export function WorkspaceInventorySettings({
     // `loaded` is a one-way latch (set true at :74, never reset), so adding sessionToken to the
     // deps below would NOT have re-fetched -- the guard at :54 short-circuits every later run.
     // Latching on the token instead: the body already refuses to overwrite fields the operator
-    // has touched (:61, :64), which is the signature of a function written to be re-entered.
+    // has touched (:58, :65), which is the signature of a function written to be re-entered.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
     if (reloadNonce === 0 && loadedForRef.current === sessionToken) return;
     // (the latch used to be set HERE, before the read — see the .finally() below)
@@ -102,7 +102,7 @@ export function WorkspaceInventorySettings({
       loadedForRef.current = sessionToken;
       setLoaded(true);
     });
-    // sessionToken is a prop (:21) read at :57 and :58. Without it here, a card mounted before a
+    // sessionToken is a prop (:21) read at :75 and :76. Without it here, a card mounted before a
     // store switch kept showing the previous store's thresholds. `loaded` still drives the
     // dirty-tracking memo at :49, so it is kept rather than replaced.
   }, [loaded, sessionToken, reloadNonce]);
