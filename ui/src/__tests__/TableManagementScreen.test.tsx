@@ -1602,6 +1602,66 @@ describe('TableManagementScreen', () => {
 
     release?.();
   });
+
+  // ── Open-bill read failure must not read as "no open bills" ────────
+  //
+  // `listOpenBillsScoped` was `.catch(() => [])` inside the floor-plan load.
+  // An empty list is a CLAIM — every table is free — and `openBills` is what
+  // marks a table occupied and what the reservation path reads when it converts
+  // a booking into a tab. So a FAILED read rendered a running tab as a free
+  // table, and a cashier could seat a walk-in over it.
+
+  it('says nothing about tabs when the bills read succeeds', async () => {
+    // The NEGATIVE half, on its own so it cannot pass for the wrong reason: with
+    // a healthy bills read the banner must not appear at all.
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListOpenBills.mockResolvedValue([
+      { id: 'bill-1', label: 'Table 1', customer_name: '', total_minor: 5000, currency: 'USD' },
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    expect(
+      screen.queryByText(/Could not check which tables have an open tab/i),
+    ).toBeNull();
+    expect(screen.queryByText(/Could not load the floor plan/i)).toBeNull();
+    // And the bill DID bind to the table, so the read was genuinely exercised.
+    expect(document.querySelector('.tables-table--has-bill')).not.toBeNull();
+  });
+
+  it('says the open tabs could not be checked when the bills read fails', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListOpenBills.mockRejectedValue(new Error('ipc down'));
+    renderScreen();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Could not check which tables have an open tab/i),
+      ).toBeDefined(),
+    );
+    // It must NOT claim the floor plan failed — the plan loaded fine.
+    expect(screen.queryByText(/Could not load the floor plan/i)).toBeNull();
+    // The floor plan is still usable: the table still renders.
+    expect(screen.getByText('Table 1')).toBeDefined();
+  });
+
+  it('does not render an occupied table as free when the bills read fails', async () => {
+    // The consequence, not just the banner: before the fix the failed read
+    // resolved to [], so this table showed as available while it had a live tab.
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListOpenBills.mockRejectedValue(new Error('ipc down'));
+    renderScreen();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Could not check which tables have an open tab/i),
+      ).toBeDefined(),
+    );
+    // The unverified state is surfaced rather than silently asserted as free.
+    expect(document.querySelector('.tables-error')?.['textContent']).toMatch(
+      /open tab/i,
+    );
+  });
 });
 
 

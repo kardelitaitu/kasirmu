@@ -17,6 +17,7 @@ tables-action-error = Gagal memperbarui meja ini.
 tables-status-unknown = Status tidak dikenal
 tables-table-label = { $name }, { $status }
 tables-load-error = Gagal memuat denah.
+tables-bills-unknown = Gagal memeriksa meja yang memiliki tagihan terbuka.
 tables-empty = Belum ada meja yang dikonfigurasi.
 tables-empty-desc = Tambahkan meja untuk membuat denah Anda.
 tables-empty-filtered = Tidak ada meja di bagian ini.

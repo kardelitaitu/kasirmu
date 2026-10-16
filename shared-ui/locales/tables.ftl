@@ -19,6 +19,7 @@ tables-action-error = Could not update this table.
 tables-status-unknown = Unknown status
 tables-table-label = { $name }, { $status }
 tables-load-error = Could not load the floor plan.
+tables-bills-unknown = Could not check which tables have an open tab.
 tables-empty = No tables configured yet.
 tables-empty-desc = Add tables to build your floor plan.
 tables-empty-filtered = No tables in this section.

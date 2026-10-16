@@ -94,6 +94,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
+  /** The open-bill/tab read failed, so `openBills` is NOT authoritative.
+   *
+   *  `listOpenBillsScoped` was `.catch(() => [])` inside the floor-plan load,
+   *  which reports "no open bills" for a read that merely failed — and
+   *  `openBills` is what marks a table as occupied and what `handleReserveConfirm`
+   *  reads when converting a reservation to a tab. A cashier would therefore see
+   *  a table with a RUNNING TAB rendered as free and could seat a walk-in over
+   *  it. TBL-02 deliberately keeps known-good tables visible on a refresh
+   *  failure; the bills list has no such known-good fallback, so it must say so
+   *  instead of asserting empty. */
+  const [billsUnknown, setBillsUnknown] = useState(false);
   const [selected, setSelected] = useState<Table | null>(null);
   const [section, setSection] = useState<string | null>(null);
   const toastCtx = useOptionalToast();
@@ -233,11 +244,20 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     setLoading(true);
     setError(null);
     try {
+      // The bills read reports its own failure rather than resolving to `[]`:
+      // an empty list is a CLAIM (every table is free), and a failed read is
+      // not entitled to make it. `null` keeps the load itself succeeding so the
+      // floor plan still renders — see `billsUnknown` above.
+      let billsFailed = false;
       const [tableData, billData] = await Promise.all([
         listTablesScoped(sessionToken, section ?? undefined),
-        listOpenBillsScoped(sessionToken).catch(() => []),
+        listOpenBillsScoped(sessionToken).catch(() => {
+          billsFailed = true;
+          return [] as HeldCartRow[];
+        }),
       ]);
       if (seq !== loadSeqRef.current) return;
+      setBillsUnknown(billsFailed);
       // asArray: see utils/ipc-payload — the render maps/finds these.
       const loadedTables = asArray<typeof tableData[number]>(tableData);
       setTables(loadedTables);
@@ -1077,6 +1097,23 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           <span className="tables-error-text">
             <Localized id="tables-load-error">Could not load the floor plan.</Localized>
             {error && <span className="tables-error-detail">{error}</span>}
+          </span>
+          <Button variant="primary" size="sm" onClick={retry}>
+            <Localized id="retry">Retry</Localized>
+          </Button>
+        </div>
+      )}
+
+      {/* A bills-only failure: the floor plan loaded, so this must NOT claim the
+          plan failed — but it must stop the empty tab list from reading as
+          "every table is free". Non-blocking: the cashier can still see the
+          plan while choosing to retry. */}
+      {billsUnknown && !error && (
+        <div className="tables-error" role="alert">
+          <span className="tables-error-text">
+            <Localized id="tables-bills-unknown">
+              Could not check which tables have an open tab.
+            </Localized>
           </span>
           <Button variant="primary" size="sm" onClick={retry}>
             <Localized id="retry">Retry</Localized>
