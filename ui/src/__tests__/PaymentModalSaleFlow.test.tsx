@@ -2211,7 +2211,17 @@ describe('PaymentModal — EDC card-present tender', () => {
     expect(complete.args.paymentMethod).toBe('CARD');
     expect(complete.args.paymentSplits[0]?.method).toBe('CARD');
     expect(complete.args.paymentSplits[0]?.gatewayReference).toBe('EDC-TXN-1');
-    expect(complete.args.paymentSplits[0]?.gatewayStatus).toBe('captured');
+    // 'settled', not 'captured'.
+    //
+    // This assertion is what pinned the bug: it accepted `'captured'`, a value the
+    // `payments.gateway_status` CHECK rejects (migration
+    // 20261018_gateway_status_adr64_vocabulary.sql; the enforcement test at
+    // migrations_tests.rs:3786 lists 'processing'/'unknown'/'PENDING' as the
+    // rejected set and ADR-64's own card payments use 'settled', payment_tests.rs:266).
+    // The UI wrote it verbatim into `paymentSplits[].gatewayStatus`, which
+    // payments.rs:122 inserts unvalidated — so an EDC charge failed the checkout
+    // transaction AFTER the terminal had taken the customer's money.
+    expect(complete.args.paymentSplits[0]?.gatewayStatus).toBe('settled');
     const parsed = JSON.parse(complete.args.paymentSplits[0]?.gatewayResponse ?? '{}') as {
       card_last4?: string;
       auth_code?: string;

@@ -55,17 +55,21 @@ import { requiredLocalized } from '@/components';
 import type { useToast } from '@/components/Toast';
 import { edcSale, edcTerminalStatusScoped, listEdcTerminalsScoped, type EdcTerminalDto } from '@/api/edc';
 import type { CompleteSaleResult } from '@/api/sales';
+import type { GatewayStatus } from '@/api/types/payment';
 import { plainErrorMessage } from '@/utils/app-error';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
 /** Bundle ref, threaded in so the localized terminal copy keeps its dep chain. */
 type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
-/** buildGatewaySale's own split argument, restated as the narrow read-only shape. */
+/** buildGatewaySale's own split argument, restated as the narrow read-only shape.
+ *  `gatewayStatus` is the CLOSED union (ADR-64 D4), not `string`: this field wrote
+ *  `'captured'`, a value the `payments.gateway_status` CHECK rejects, so an EDC
+ *  charge failed the checkout after the terminal had already taken the money. */
 type GatewaySaleSplit = {
   method: string;
   gatewayReference: string;
-  gatewayStatus: string;
+  gatewayStatus: GatewayStatus;
   gatewayResponse: string;
 };
 
@@ -218,7 +222,11 @@ export function useEdcTenderPhase({
       const saleResult = await buildGatewaySale({
         method: 'CARD',
         gatewayReference: result.transactionId ?? '',
-        gatewayStatus: 'captured',
+        // 'settled', not 'captured': the terminal holds the money, which is the
+        // status ADR-64's own card-payment tests use (payment_tests.rs:266). The
+        // old spelling is not in the CHECK's vocabulary, so INSERTing it failed the
+        // whole transaction — a paid sale that could not be recorded.
+        gatewayStatus: 'settled',
         gatewayResponse: JSON.stringify({
           auth_code: result.authCode,
           card_scheme: result.cardScheme,

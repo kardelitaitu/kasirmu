@@ -48,7 +48,7 @@ import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage, rejectionText } from '@/utils/app-error';
 import './PaymentModal.css';
 
-import type { PaymentMethod } from '@/api/types/payment';
+import type { GatewayStatus, PaymentMethod } from '@/api/types/payment';
 export type { PaymentMethod };
 
 /**
@@ -840,7 +840,10 @@ retryCurrencyLoad,
   );
 
   const buildGatewaySale = useCallback(
-    async (split: { method: string; gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
+    // `gatewayStatus` is the CLOSED union (ADR-64 D4), not `string`. This is the
+    // function every tender hook calls, so typing it here is the guard that stops a
+    // fourth site writing a value the `payments.gateway_status` CHECK rejects.
+    async (split: { method: string; gatewayReference: string; gatewayStatus: GatewayStatus; gatewayResponse: string }) => {
       const { cartId } = await startSaleScoped(sessionToken!, { currency: cartCurrency });
 
       if (discountPercent > 0) {

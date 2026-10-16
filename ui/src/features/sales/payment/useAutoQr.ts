@@ -36,6 +36,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { requiredLocalized } from '@/components';
 import type { useToast } from '@/components/Toast';
 import { voidPendingSale, type CompleteSaleResult } from '@/api/sales';
+import type { GatewayStatus } from '@/api/types/payment';
 import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
 import { plainErrorMessage } from '@/utils/app-error';
 
@@ -45,11 +46,13 @@ type AddToast = ReturnType<typeof useToast>['addToast'];
 type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
 /** The banner shape the shell's paymentError atom holds. */
 type PaymentErrorState = { message: string; retryable: boolean };
-/** buildGatewaySale's own split argument, restated as the narrow read-only shape. */
+/** buildGatewaySale's own split argument, restated as the narrow read-only shape.
+ *  `gatewayStatus` is the CLOSED union (ADR-64 D4), matching the other two tender
+ *  hooks — the three copies of this shape drifted independently before. */
 type GatewaySaleSplit = {
   method: string;
   gatewayReference: string;
-  gatewayStatus: string;
+  gatewayStatus: GatewayStatus;
   gatewayResponse: string;
 };
 
