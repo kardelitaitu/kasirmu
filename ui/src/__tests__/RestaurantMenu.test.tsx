@@ -1123,19 +1123,43 @@ describe('RestaurantMenu', () => {
     expect(screen.getByRole('tab', { name: /Dessert Baru/i })).toBeInTheDocument();
   });
 
-  it('displays products with standard or untyped productType on restaurant selling grid', () => {
-    const standardProduct = {
+  // ── The grid shows RESTAURANT items, and ONLY restaurant items ───────
+  //
+  // This case used to be titled "displays products with standard or untyped
+  // productType" and forced `productType: 'standard'` in with an `as unknown as
+  // Product` cast. That value is impossible: migration
+  // 20261020_product_type_check.sql:41 declares
+  // `product_type TEXT NOT NULL DEFAULT 'retail' CHECK (product_type IN
+  // ('retail','restaurant','service'))`, and :26 backfills every legacy / NULL /
+  // 'both' row to 'retail'. So the old assertion described a row the database
+  // cannot hold, and the cast is what kept the compiler quiet about it.
+  //
+  // The REAL contract has two halves and both are pinned now: a restaurant item
+  // appears, and a retail one does NOT — because the restaurant grid is the till
+  // for a restaurant, and a retail SKU belongs to the other workspace's grid.
+  it('shows restaurant items on the selling grid and excludes retail ones', () => {
+    const retailProduct = {
       sku: 'ROTI-BAKAR',
       name: 'Roti Bakar',
       category: 'Snack',
-      productType: 'standard',
+      productType: 'retail',
       price: { minor_units: 15000, currency: 'IDR' },
       inStock: true,
       createdAt: '2026-01-04',
     } as unknown as Product;
 
+    const snackItem = {
+      sku: 'KERIPIK-SNACK',
+      name: 'Keripik Snack',
+      category: 'Snack',
+      productType: 'restaurant',
+      price: { minor_units: 8000, currency: 'IDR' },
+      inStock: true,
+      createdAt: '2026-01-04',
+    } as unknown as Product;
+
     mockUseProducts.mockReturnValue({
-      products: [...mockProducts, standardProduct],
+      products: [...mockProducts, retailProduct, snackItem],
       categories: ['Makanan', 'Minuman', 'Snack'],
       categoryMeta: [
         { id: 'cat-snack', name: 'Snack', colour: '#eab308', icon: 'snack' },
@@ -1147,8 +1171,11 @@ describe('RestaurantMenu', () => {
 
     renderMenu();
 
+    // The restaurant item is on the grid, in its own category.
     expect(screen.getByRole('tab', { name: /Snack/i })).toBeInTheDocument();
-    expect(screen.getByText('Roti Bakar')).toBeInTheDocument();
+    expect(screen.getByText('Keripik Snack')).toBeInTheDocument();
+    // The retail item is NOT — it belongs to the retail workspace's grid.
+    expect(screen.queryByText('Roti Bakar')).toBeNull();
   });
 
   it('reloads product catalog and unavailable status on visibility change', () => {

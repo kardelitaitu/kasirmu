@@ -348,8 +348,15 @@ export default function RestaurantMenuEditorScreen({
   }, [reloadData]);
 
   // Keep menu editor focused on restaurant products (or items created here)
+  //
+  // `'standard'` was a dead variant: migration 20261020_product_type_check.sql closes
+  // `products.product_type` to ('retail','restaurant','service') and backfills every
+  // legacy / NULL / 'both' row to 'retail'. The comparison matched nothing a real read
+  // can return. The `!p.product_type` arm STAYS, unlike its twin in RestaurantMenu.tsx —
+  // this screen creates items in memory before they are persisted, and an item that has
+  // not round-tripped yet has no type.
   const restaurantItems = useMemo(
-    () => items.filter((p) => p.product_type === 'restaurant' || !p.product_type || p.product_type === 'standard'),
+    () => items.filter((p) => p.product_type === 'restaurant' || !p.product_type),
     [items],
   );
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups } from '@/types/domain';
+import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups, isRestaurantMenuItem } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
 import { useAuth } from '@/contexts/AuthContext';
@@ -560,12 +560,20 @@ export default function RestaurantMenu({
 
   // Restaurant and retail are separate workspaces. Products tagged for restaurant
   // that are active are shown on the selling grid.
+  //
+  // The canonical guard, not a hand-rolled comparison. The old spelling accepted
+  // `'standard'` and `'both'` — values that exist in NEITHER the union
+  // (`Product.productType` is `'retail' | 'restaurant' | 'service'`, domain.ts:150) nor
+  // the database: migration 20261020_product_type_check.sql backfills every legacy /
+  // NULL / `both` row to `'retail'` and closes the set to those three. The only reason
+  // two impossible comparisons sat here for years is the `as string` cast that
+  // bypassed the checker — the tell that the expression was never validated.
+  //
+  // `!p.productType` went with them for the same reason: a persisted product can no
+  // longer be null/absent, so that arm could only ever match an unpersisted object and
+  // therefore decided nothing.
   const isRestaurantProduct = useCallback(
-    (p: Product) =>
-      p.productType === 'restaurant' ||
-      !p.productType ||
-      (p.productType as string) === 'standard' ||
-      (p.productType as string) === 'both',
+    (p: Product) => isRestaurantMenuItem(p),
     [],
   );
 
