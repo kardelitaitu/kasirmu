@@ -2350,6 +2350,81 @@ describe('PaymentModal — EDC card-present tender', () => {
     );
     view.unmount();
   });
+
+  // ── No ledger write may occur while the terminal still holds the card ─────
+  //
+  // WHAT THIS PINS, and the mechanism is NOT the one I first assumed.
+  //
+  // I expected `canComplete`'s card arm (PaymentModal.tsx:1276-1280) to be the
+  // guard. It is not. MEASURED with a probe on this exact window:
+  //   { method:'card', sufficient:true, edcTerminalFailed:false,
+  //     cashOffered:true, cardOffered:true, totalMin:700, splitMode:false }
+  // so `canComplete` is TRUE for the whole tap/insert/swipe wait. Complete Sale is
+  // dark only because `loading={processing}` reaches Button.tsx:70-72, where
+  // `isDisabled = disabled || isProcessing || isSuccess` and
+  // `isProcessing = state==='processing' || loading===true`.
+  //
+  // So the protection is the shared `processing` flag that `handleTerminalPay`
+  // sets at its top and clears in its `finally` (useEdcTenderPhase.ts:169, :261).
+  // Nothing in `canComplete` reads the live EDC overlay, and the button carries no
+  // `state="processing"` of its own (the only <Button> in this file are at
+  // PaymentModal.tsx:2336 and :2340, and the settle one passes `loading` only).
+  // The failure this would produce is the same class as the declined-capture case
+  // above: `complete` has no card branch, so it would run startSaleScoped ->
+  // addLineScoped -> completeSaleScoped with `storedMethod` 'card' and record a
+  // CARD sale for money the terminal never took.
+  //
+  // THE ASSERTION IS THEREFORE ON THE LEDGER, not on the button's disabled
+  // attribute: whatever disables the control, the sale must not be booked. That
+  // is the invariant worth holding, and it is the one a future edit to `processing`
+  // handling would break first.
+  it('books no sale while the card-present capture is still waiting', async () => {
+    const view = await mount();
+    // A capture that never settles: the terminal is holding the tap.
+    let releaseCapture: (v: unknown) => void = () => {};
+    const capture = new Promise<unknown>((resolve) => { releaseCapture = resolve; });
+    await overrideInvoke(
+      'edc_sale',
+      () => capture,
+      async () => {
+        await clickTerminalPay();
+        // The overlay is up and the terminal owns the card (role=status is the
+        // preflight|waiting branch; the declined branch is role=alert).
+        await waitFor(() =>
+          expect(screen.getByRole('status')).toBeInTheDocument(),
+        );
+
+        // THE ASSERTION. Nothing has been captured, so a sale recorded now is a
+        // CARD tender with no money behind it.
+        expect(
+          callsOf('complete_sale_scoped'),
+          'a sale was booked while the terminal still held the card -- ' +
+            'that records CARD payment for money never taken',
+        ).toHaveLength(0);
+
+        // And the settle control must not be armed during the wait. This is a
+        // SECOND, weaker assertion on purpose: it documents today's mechanism
+        // (the shared `processing` flag) without being the thing the case exists
+        // for, so a refactor that keeps the ledger safe but changes how the
+        // button is disabled still shows exactly which half moved.
+        expect(
+          screen.getByTestId('settle-button'),
+          'Complete must stay dark while the terminal holds the card',
+        ).toBeDisabled();
+
+        // Release the capture so the flow unwinds and the unmount is clean.
+        releaseCapture({
+          success: false,
+          transactionId: null,
+          authCode: null,
+          cardScheme: null,
+          cardLast4: null,
+          message: 'cancelled',
+        });
+      },
+    );
+    view.unmount();
+  });
 });
 
 // ── Local payment rails gating (agents-5 R1) ─────────────────────────
