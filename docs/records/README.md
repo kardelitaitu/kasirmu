@@ -204,6 +204,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | release | [The 156 citations are right and the counter is wrong — 2026-10-18](audits/2026-10-18-the-flagged-citations-are-correct.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
 | general | [The navigation "defect" was my harness, and the rule is documented — 2026-10-18](audits/2026-10-18-the-navigation-defect-was-my-harness.md) | — |
+| quality | [The overlays were already fixed — their coverage was not — 2026-10-18](audits/2026-10-18-the-overlays-were-fixed-their-coverage-was-not.md) | — |
 | general | [The 197px page scroll is FIXED — the fix had to go on the scroller — 2026-10-18](audits/2026-10-18-the-page-scroll-is-fixed-on-the-scroller.md) | — |
 | reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
