@@ -133,6 +133,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A red order-type checker I had written off as noise — 2026-10-18](audits/2026-10-18-a-red-checker-i-called-noise.md) | — |
 | general | [A suspected data-loss defect, refuted — 2026-10-18](audits/2026-10-18-a-suspected-draft-loss-defect-refuted.md) | — |
 | general | [An attestation, and a false alarm almost reported as a defect — 2026-10-18](audits/2026-10-18-an-attestation.md) | — |
+| general | [An OPEN heading that outlived its fix by 92 rounds — 2026-10-18](audits/2026-10-18-an-open-heading-that-outlived-its-fix.md) | — |
 | general | [A real defect found, and deliberately not fixed — 2026-10-18](audits/2026-10-18-an-untouched-form-loses-the-editor.md) | — |
 | general | [The blind-window sweep: 13 guards, 0 blind, and one false positive of mine — 2026-10-18](audits/2026-10-18-blind-window-sweep-clean.md) | — |
 | inventory | [A false "new file" that clobbered 13 tests, and the two defects found around it — 2026-10-18](audits/2026-10-18-clobbered-tests-and-stock-double-move.md) | — |
