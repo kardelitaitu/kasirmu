@@ -4871,9 +4871,30 @@ Both now set `loadFailed`, which disables Save. `TerminalPreferencesCard.tsx:70`
 was checked and is a **false positive**: its catch populates an EDC dropdown, and
 its `originalsRef` is seeded separately from `hw.profile` at `:88`.
 
-`RestaurantPaymentsScreen.tsx:454-455` is a **real instance still open** — it
+`RestaurantPaymentsScreen.tsx` — **BOTH BLOCKED ITEMS ARE CLOSED. Re-verified 2026-10-18
+(round 181), and the "still open" text below this line was STALE.**
+
+The file went CLEAN and both items were fixed by the lane that held it:
+
+  · **F4 instance** — `:482-489` now sets `setLoadFailed(true)` in BOTH gateway-read
+    catch arms, which is exactly the repair this finding prescribed. Verified by the
+    guard that names the symptom: `e2e/restaurant-payments-load-failure.spec.ts`
+    *"a failed gateway read is reported instead of looking clean"* — 5/5 passed.
+  · **the 10 `aria-label`s** — the file now carries 9 `aria-label`s plus
+    `RestaurantPaymentsScreen.a11y.test.tsx`, which passes. `RestaurantPaymentsScreen.test.tsx`
+    is 49 tests, all green (50/50 with the a11y suite).
+
+**The coordination constraint is what expired, not the work.** Both items were parked on
+*"another lane's uncommitted change to that file"*, and that lane committed. The lesson is
+the same one this file keeps recording from the other direction: a blocked item needs its
+BLOCKER re-checked, not just its own status — otherwise "blocked" silently becomes
+"abandoned" the moment the blocker clears.
+
+_(Original stale text follows, kept as the dated reasoning:)_
+
+~~`RestaurantPaymentsScreen.tsx:454-455` is a **real instance still open** — it
 `.catch(() => null)`s two gateway reads whose results seed the drafts baseline. It
-is blocked on another lane's uncommitted change to that file.
+is blocked on another lane's uncommitted change to that file.~~
 
 **The recurring-test lesson, again.** My first version of both new tests asserted
 only "Save is disabled after a failed read" — and **passed against the bug**,
@@ -4882,10 +4903,8 @@ The discriminating property is the EDIT: on the bug, editing afterwards sets
 `dirty` true and re-enables Save. Both tests now edit after the failure and both
 fail against a reintroduced bug.
 
-**Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s). ⚠️ That file is
-currently DIRTY with another lane's uncommitted change, so editing it would sweep
-their work into this lane's commit (AGENTS.md §7.3). It must wait until the file is
-clean — this is a coordination constraint, not a technical one.
+~~**Still open:** `RestaurantPaymentsScreen` (10 `aria-label`s).~~ — **CLOSED 2026-10-18
+(round 181): the file is clean and the a11y suite passes. See the note above.**
 
 ### P7 — Parity verification (closes F12) — ✅ DONE 2026-10-09
 
