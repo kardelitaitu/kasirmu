@@ -127,6 +127,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
 | release | [A button that only worked by accident — 2026-10-18](audits/2026-10-18-a-button-that-worked-by-accident.md) | — |
 | general | [A dead button nothing was rescuing — 2026-10-18](audits/2026-10-18-a-dead-button-nothing-rescued.md) | — |
+| general | [A dead-control sweep that had to be made honest first — 2026-10-18](audits/2026-10-18-a-dead-control-sweep-made-honest.md) | — |
 | general | [An attestation, and a false alarm almost reported as a defect — 2026-10-18](audits/2026-10-18-an-attestation.md) | — |
 | general | [The blind-window sweep: 13 guards, 0 blind, and one false positive of mine — 2026-10-18](audits/2026-10-18-blind-window-sweep-clean.md) | — |
 | inventory | [A false "new file" that clobbered 13 tests, and the two defects found around it — 2026-10-18](audits/2026-10-18-clobbered-tests-and-stock-double-move.md) | — |
