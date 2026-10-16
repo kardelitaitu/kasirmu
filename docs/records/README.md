@@ -141,6 +141,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | money | [The refund money path verified across three layers — 2026-10-18](audits/2026-10-18-refund-money-verified.md) | — |
 | general | [Executed, not scanned — and the splice that ate a describe block — 2026-10-18](audits/2026-10-18-restaurant-sale-executed.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
+| general | [Resuming a held cart left it in the list it was resumed from](audits/2026-10-18-resume-kept-the-held-row.md) | — |
 | general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
 | general | [Round 99's own comparison, one field further — 2026-10-18](audits/2026-10-18-round-99s-comparison-one-field-short.md) | — |
 | general | [The retail till reconciled the drawer against pre-refund totals — 2026-10-18](audits/2026-10-18-shift-read-once-then-stale.md) | — |
