@@ -184,6 +184,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
 | general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
+| general | [The navigation "defect" was my harness, and the rule is documented — 2026-10-18](audits/2026-10-18-the-navigation-defect-was-my-harness.md) | — |
 | reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
 | general | [The sweep that worked: writes no test ever names - 2026-10-18](audits/2026-10-18-the-sweep-that-worked.md) | — |
