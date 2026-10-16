@@ -20,6 +20,10 @@ multi-store-label-terminals = Terminals
 multi-store-section-stores-overview = Stores overview
 multi-store-section-terminal-status = Terminal status
 multi-store-error-load = Failed to load data
+# A refused Set-as-Primary / Delete. Both used to fail silently, so the click did nothing
+# with no explanation — the badge and the row simply stayed where they were.
+multi-store-error-set-primary = Could not set this store as primary — please try again
+multi-store-error-delete = Could not delete this store — please try again
 
 # ── Locations → Topology entry points (todo-global-saas-2 §"Locations and
 # Topology navigation") ──

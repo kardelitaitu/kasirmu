@@ -18,6 +18,10 @@ multi-store-label-terminals = Terminal
 multi-store-section-stores-overview = Ikhtisar toko
 multi-store-section-terminal-status = Status terminal
 multi-store-error-load = Gagal memuat data
+# Lihat `multi-store-error-set-primary` di multi-location.ftl: aksi ini sebelumnya gagal
+# tanpa pesan apa pun, sehingga klik tampak tidak berfungsi.
+multi-store-error-set-primary = Tidak dapat menjadikan toko ini sebagai utama — silakan coba lagi
+multi-store-error-delete = Tidak dapat menghapus toko ini — silakan coba lagi
 
 # ── Titik masuk Lokasi → Topologi (todo-global-saas-2 §"Locations and
 # Topology navigation") ──

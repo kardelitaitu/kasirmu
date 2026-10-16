@@ -8,6 +8,7 @@ import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
 import { openUpgradePricing } from '@/utils/upgrade';
 import { asArray } from '@/utils/ipc-payload';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Modal } from '@/components/Modal';
@@ -37,6 +38,15 @@ export default function MultiStoreDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /**
+   * A failed Set-as-Primary or Delete.
+   *
+   * Both handlers used to end in `catch { // silently fail }`, so a refused action was a
+   * click that did nothing with no explanation. The `error` state above cannot carry this:
+   * it replaces the whole dashboard (:229), which is wrong for one failed row action. This
+   * is the same inline `role="alert"` the prefix editor already uses (:491-495).
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
   /** Location whose read-only details modal is open (View details). */
   const [detailsStore, setDetailsStore] = useState<LocationProfile | null>(null);
   // W7-A: ticket-prefix editor (the frozen-at-stamping surface). Lives in
@@ -69,27 +79,33 @@ export default function MultiStoreDashboardScreen() {
   useEffect(() => { load(); }, [load]);
 
   const handleSetPrimary = useCallback(async (id: string) => {
+    setActionError(null);
     try {
       await setPrimaryLocationScoped(sessionToken, id);
       setStores((prev) =>
         prev.map((s) => ({ ...s, is_primary: s.id === id })),
       );
-    } catch {
-      // silently fail
+    } catch (err) {
+      // Reported, not dropped. The setter above runs AFTER the await, so a refusal leaves
+      // the badge where it was — which looks identical to the click never landing. Without
+      // a message the operator just clicks again.
+      setActionError(l10nErrorMessage(err, l10n, 'multi-store-error-set-primary'));
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   const handleDelete = useCallback(async (id: string) => {
     setDeletingId(id);
     try {
       await deleteLocationProfileScoped(sessionToken, id);
       setStores((prev) => prev.filter((s) => s.id !== id));
-    } catch {
-      // silently fail
+    } catch (err) {
+      // Reported, not dropped. A delete is destructive, and the backend refuses one with
+      // dependents; the row staying put with no message reads as "the button is broken".
+      setActionError(l10nErrorMessage(err, l10n, 'multi-store-error-delete'));
     } finally {
       setDeletingId(null);
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   // ── W7-A: ticket-prefix editor (frozen-at-stamping contract) ──────
   // The modal's open transition reads THAT location's prefix; saving
@@ -309,6 +325,11 @@ export default function MultiStoreDashboardScreen() {
                         >
                           <Localized id="multi-store-btn-configure-topology">Configure topology</Localized>
                         </Button>
+                        {actionError && (
+                          <span className="multi-store-prefix-error" role="alert" data-testid="multi-store-action-error">
+                            {actionError}
+                          </span>
+                        )}
                         {!store.is_primary && (
                           <>
                             <Button
