@@ -150,8 +150,11 @@ export default function ItemModifierModal({
         const wasSelected = current.has(modifierId);
 
         if (wasSelected) {
-          // Allow deselecting only if above minSelections.
-          if (current.size <= group.minSelections) return prev;
+          // Single-select radio behavior: clicking the already-selected option in a
+          // required single-select group does not uncheck it (standard radio button).
+          // For multi-select or optional groups, allow deselecting so the user can
+          // change their choices or uncheck options without getting permanently trapped.
+          if (group.maxSelections === 1 && group.minSelections >= 1) return prev;
           current.delete(modifierId);
           return { ...prev, [groupId]: current };
         }
