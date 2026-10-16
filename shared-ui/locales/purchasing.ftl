@@ -34,7 +34,11 @@ po-form-sku = SKU
 po-form-product-name = Product Name
 po-form-qty = Qty
 po-form-unit-cost = Unit Cost
-po-form-unit-cost-placeholder = in cents
+# The field takes MINOR units of the store's currency, so "cents" was wrong twice
+# over: it names a USD/EUR subunit, and on an exponent-0 currency (IDR, JPY) the
+# value is whole units with no subunit at all. The form already scales its totals by
+# `minorUnitExponent(currency)`; this just makes the label agree with it.
+po-form-unit-cost-placeholder = minor units ({ $currency })
 po-form-line-total = Line Total
 po-form-actions-label = Actions
 po-form-remove-line-aria = Remove line

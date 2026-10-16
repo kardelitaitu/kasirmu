@@ -20,8 +20,11 @@ vi.mock('@/api/purchasing', () => ({
 }));
 
 // Line totals render via the store default currency (USD fixtures → 45.00).
+// Mutable so a case can bill the store in another currency — the form is meant to
+// follow it (minorUnitExponent), and the placeholder is part of that contract.
+const currencyState = vi.hoisted(() => ({ code: 'USD' }));
 vi.mock('@/contexts/CurrencyContext', () => ({
-  useCurrency: () => ({ currency: 'USD', setCurrency: vi.fn(), loading: false }),
+  useCurrency: () => ({ currency: currencyState.code, setCurrency: vi.fn(), loading: false }),
 }));
 
 import PurchaseOrderForm from '@/features/purchasing/PurchaseOrderForm';
@@ -35,6 +38,15 @@ const poBundle = new FluentBundle('en-US');
 poBundle.addResource(new FluentResource(poFtl));
 poBundle.addResource(new FluentResource(sharedFtl));
 const poL10n = new ReactLocalization([poBundle]);
+
+/**
+ * Fluent wraps every interpolated variable in Unicode bidi ISOLATE characters
+ * (U+2068/U+2069), so a placeholder built from `{ $currency }` never matches a plain
+ * string. Same helper the POS integration suite carries for the same reason.
+ */
+function stripIsolates(text: string): string {
+  return text.replace(/[\u2068\u2069]/g, '');
+}
 
 // Wrapper to provide Fluent + render.
 function renderForm(el: React.ReactElement): ReturnType<typeof render> {
@@ -185,13 +197,35 @@ describe('PurchaseOrderForm', () => {
     expect(screen.queryByRole('button', { name: /remove line/i })).not.toBeInTheDocument();
   });
 
+  it('names the store currency in the unit-cost placeholder, not a fixed "cents"', async () => {
+    // The field takes minor units of whatever the store bills in. "cents" was both a
+    // USD/EUR subunit word and simply wrong on an exponent-0 currency, where the value
+    // is whole units. This pins that the label follows the currency the form scales by.
+    currencyState.code = 'IDR';
+    try {
+      renderForm(<PurchaseOrderForm editingId={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+      expect(
+        screen.getByPlaceholderText((content) => stripIsolates(content) === 'minor units (IDR)'),
+      ).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/cents/)).not.toBeInTheDocument();
+    } finally {
+      currencyState.code = 'USD';
+    }
+  });
+
   it('updates line fields — SKU, product name, qty, unit cost', async () => {
     renderForm(<PurchaseOrderForm editingId={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     const skuInput = screen.getByPlaceholderText('SKU');
     const nameInput = screen.getByPlaceholderText('Product Name');
     const qtyInput = screen.getByDisplayValue('1');
-    const costInput = screen.getByPlaceholderText('in cents');
+    // The field takes MINOR units of the store currency. The fixture store bills USD,
+    // so the placeholder names USD. It used to read "in cents", which named a subunit
+    // the field does not have on an exponent-0 currency (IDR — this product's primary
+    // market), where the value is whole rupiah.
+    const costInput = screen.getByPlaceholderText(
+      (content) => stripIsolates(content) === 'minor units (USD)',
+    );
 
     fillField('SKU', 'SKU-123');
     fireEvent.change(nameInput, { target: { value: 'Widget' } });
@@ -208,12 +242,15 @@ describe('PurchaseOrderForm', () => {
     renderForm(<PurchaseOrderForm editingId={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     const qtyInput = screen.getByDisplayValue('1');
-    const costInput = screen.getByPlaceholderText('in cents');
+    const costInput = screen.getByPlaceholderText(
+      (content) => stripIsolates(content) === 'minor units (USD)',
+    );
 
     fireEvent.change(qtyInput, { target: { value: '3' } });
     fireEvent.change(costInput, { target: { value: '1500' } });
 
-    // Line total: 3 × 1500 = 4500 cents → $45.00
+    // Line total: 3 × 1500 = 4500 MINOR units of USD (exponent 2) → $45.00, which is
+    // why the cells show 45.00. On IDR the same 4500 minor units would read 4500.
     // The line total cell + subtotal value should both show 45.00.
     const totalCells = screen.getAllByText('45.00');
     expect(totalCells.length).toBeGreaterThanOrEqual(2);

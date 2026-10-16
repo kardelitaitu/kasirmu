@@ -271,7 +271,7 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
                             updateLine(idx, 'unit_cost_minor', e.target.value === '' ? 0 : v);
                           }
                         }}
-                        placeholder={l10n.getString('po-form-unit-cost-placeholder')}
+                        placeholder={l10n.getString('po-form-unit-cost-placeholder', { currency })}
                       />
                     </td>
                     <td className="po-form-line-total">
