@@ -94,6 +94,42 @@ describe('CloseShiftConfirm — Enter must not close the shift from a text field
     ).not.toHaveBeenCalled();
   });
 
+
+  it('does NOT confirm a SECOND time when Enter is pressed while the close is in flight', async () => {
+    // The Confirm button is guarded — `disabled={closingShift || ...}` (:192-197) — but the
+    // overlay's Enter binding above it is NOT (:104). `closingShift` is set by the hook as
+    // soon as the first write starts and only cleared in its `finally`, so a cashier who
+    // clicks Close Shift and then presses Enter (the natural confirmation gesture, and the
+    // one this dialog deliberately supports) fires a SECOND `closeShiftScoped` while the
+    // first is still in flight. Closing a shift is a money event.
+    //
+    // The button's `disabled` cannot cover it: a keydown on the overlay never consults the
+    // button's state at all. Focus is on Cancel exactly as the reachability case below
+    // uses — that case proves this focus DOES reach the overlay handler, so this one is not
+    // vacuous by construction.
+    const handleConfirmCloseShift = vi.fn();
+    renderDialog({
+      closingShift: true,
+      handleConfirmCloseShift,
+    });
+    // Cancel is `disabled={closingShift}` (:182), so focusing it is a NO-OP while in
+    // flight and the keydown would land on <body> instead of the overlay. Focus the panel
+    // itself, which is not disabled, so the handler is genuinely reached.
+    const panel = document.querySelector('.pos-close-shift-modal') as HTMLElement | null;
+    expect(panel, 'the close-shift panel was not found').not.toBeNull();
+    panel!.setAttribute('tabindex', '-1');
+    panel!.focus();
+    await userEvent.keyboard('{Enter}');
+
+    // THE ASSERTION: a second close must not be issued while the first is in flight.
+    // (The reachability this test depends on was established by inverting the assertion:
+    // with the panel focused, Enter DOES reach the handler even while closing.)
+    expect(
+      handleConfirmCloseShift,
+      'Enter during an in-flight close issued a second close',
+    ).not.toHaveBeenCalled();
+  });
+
   it('still confirms on Enter when focus is not in a text field', async () => {
     // The shortcut is a deliberate affordance for a keyboarded till; guard the
     // inversion so a fix cannot simply delete it.
