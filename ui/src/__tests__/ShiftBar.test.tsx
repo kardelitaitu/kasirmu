@@ -207,8 +207,17 @@ it('shows start form when no active shift exists', async () => {
     // fireEvent, NOT user.click: userEvent awaits its own act(), which flushes the
     // pending promise chain, so the first start would already have settled and the two
     // submits would never overlap. Measured in round 136 on the End button.
-    fireEvent.submit(form);
-    fireEvent.submit(form);
+    // SHAPE 3 (round 139): BOTH submits inside ONE act() batch. Sequential `fireEvent`
+    // wraps each dispatch in its own act(), so React commits `setStartShiftPending(true)`
+    // between them and the second is refused by the disabled button -- a genuine double
+    // submit is two dispatches in one task, before re-render. Batching removes the
+    // intervening commit, which is the whole point.
+    await act(async () => {
+      form.querySelector('button[type=submit]')?.removeAttribute('disabled');
+      fireEvent.submit(form);
+      form.querySelector('button[type=submit]')?.removeAttribute('disabled');
+      fireEvent.submit(form);
+    });
 
     expect(
       mockStartShift.mock.calls.length,
@@ -336,8 +345,19 @@ it('shows start form when no active shift exists', async () => {
     // SETTLED before the second click, so activeShift was null by then and the taps
     // never overlapped. fireEvent does not await, so both land inside the first
     // call's in-flight window -- which is what a real double tap does.
-    fireEvent.click(endBtn);
-    fireEvent.click(endBtn);
+    // SHAPE 3 (round 139): BOTH taps inside ONE act() batch. The sequential form was a
+    // WEAKER test than it looked -- `fireEvent` wraps each dispatch in its own act(), so
+    // React commits `setEndShiftPending(true)` between the taps and the second lands
+    // disabled. A genuine double tap is two dispatches in one task, before re-render, and
+    // that is what this must cover. Round 139 proved the point on ShiftManagementScreen:
+    // sequential `fireEvent` reported 1 call on a path that really sent 2.
+    await act(async () => {
+      fireEvent.click(endBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second dispatch to the handler the way a real one would.
+      endBtn.removeAttribute('disabled');
+      fireEvent.click(endBtn);
+    });
 
     releaseFirst?.(undefined);
     await act(async () => { await heldFirst; });
