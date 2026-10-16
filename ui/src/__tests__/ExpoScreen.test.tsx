@@ -289,6 +289,17 @@ describe('groupByStation', () => {
     expect(columns[2]!.orders.map((o) => o.id)).toEqual(['c']);
   });
 
+  it('normalizes empty string and whitespace zones to unzoned bucket', () => {
+    const columns = groupByStation([
+      makeOrder({ id: 'a', kitchen_zone: '  bar  ' }),
+      makeOrder({ id: 'b', kitchen_zone: '' }),
+      makeOrder({ id: 'c', kitchen_zone: '   ' }),
+    ]);
+    expect(columns.map((c) => c.zone)).toEqual(['bar', null]);
+    expect(columns[0]!.orders.map((o) => o.id)).toEqual(['a']);
+    expect(columns[1]!.orders.map((o) => o.id)).toEqual(['b', 'c']);
+  });
+
   it('returns no columns for an empty board', () => {
     expect(groupByStation([])).toEqual([]);
   });

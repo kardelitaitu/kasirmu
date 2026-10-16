@@ -95,7 +95,7 @@ export interface ExpoStationColumn {
 export function groupByStation(orders: KdsOrder[]): ExpoStationColumn[] {
   const map = new Map<string | null, KdsOrder[]>();
   for (const order of orders) {
-    const zone = order.kitchen_zone;
+    const zone = order.kitchen_zone && order.kitchen_zone.trim() ? order.kitchen_zone.trim() : null;
     if (!map.has(zone)) map.set(zone, []);
     map.get(zone)!.push(order);
   }
@@ -355,7 +355,7 @@ export default function ExpoScreen() {
 
   const bannerError = loadError ?? actionError;
   const stationName = (zone: string | null): string =>
-    zone ?? requiredLocalized(l10n, 'kds-expo-no-station');
+    (zone && zone.trim()) ? zone.trim() : requiredLocalized(l10n, 'kds-expo-no-station');
 
   const renderContent = () => {
     if (initialLoading) {

@@ -1598,6 +1598,24 @@ describe('TableManagementScreen', () => {
         customer_name: 'Sarah Connor',
       },
     ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-res-1',
+      label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+      cart_data: JSON.stringify({
+        customerName: 'Sarah Connor',
+        phone: '081234567890',
+        partySize: 4,
+        reservationTime: '20:00',
+        notes: 'VIP guest - quiet corner requested',
+      }),
+      item_count: 0,
+      total_minor: 0,
+      currency: 'IDR',
+      created_at: new Date().toISOString(),
+      bill_type: 'open_bill',
+      customer_name: 'Sarah Connor',
+      deduction_location_id: null,
+    });
 
     renderScreen();
     await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
@@ -1612,6 +1630,78 @@ describe('TableManagementScreen', () => {
 
     expect(screen.getByTestId('tables-reservation-card').textContent).toContain('Sarah Connor');
     expect(screen.getByTestId('tables-reservation-card').textContent).toContain('20:00 (4p)');
+    await waitFor(() => {
+      expect(screen.getByTestId('tables-reservation-card').textContent).toContain('081234567890');
+      expect(screen.getByTestId('tables-reservation-card').textContent).toContain('VIP guest - quiet corner requested');
+    });
+  });
+
+  it('preserves pre-ordered lines, partySize, notes and deduction_location_id when seating reserved guests', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-res-1',
+        label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+        item_count: 2,
+        total_minor: 75000,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: 'Sarah Connor',
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-res-1',
+      label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'SKU-STEAK', name: 'Ribeye Steak', qty: 2, unit_price: { minor_units: 37500, currency: 'IDR' } }],
+        customerName: 'Sarah Connor',
+        partySize: 4,
+        guestCount: '4',
+        notes: 'Nut allergy',
+        phone: '081299998888',
+      }),
+      item_count: 2,
+      total_minor: 75000,
+      currency: 'IDR',
+      created_at: new Date().toISOString(),
+      bill_type: 'open_bill',
+      customer_name: 'Sarah Connor',
+      deduction_location_id: 'loc-vip-kitchen',
+    });
+
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen />
+      </LocalizationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-seat-guests-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-seat-guests-btn'));
+
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 1 (Sarah Connor)',
+          bill_type: 'open_bill',
+          deduction_location_id: 'loc-vip-kitchen',
+          item_count: 2,
+          total_minor: 75000,
+        }),
+      );
+    });
+
+    const holdCall = mockHoldCart.mock.calls.find((call) => call[0]?.label === 'Table 1 (Sarah Connor)');
+    expect(holdCall).toBeDefined();
+    const parsedData = JSON.parse(holdCall![0].cart_data);
+    expect(parsedData.guestCount).toBe('4');
+    expect(parsedData.notes).toBe('Nut allergy');
+    expect(parsedData.orderType).toBe('dine_in');
+    expect(parsedData.lines).toHaveLength(1);
+    expect(parsedData.lines[0].sku).toBe('SKU-STEAK');
   });
 
   it('seats reserved guests when Seat Guests is clicked, transitioning status to occupied and calling onSelectTable', async () => {

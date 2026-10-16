@@ -63,6 +63,23 @@ export interface CompletedSaleReceiptInput {
 }
 
 /**
+ * Format custom notes and modifier selections into a clean receipt line note.
+ */
+export function formatReceiptLineNote(
+  modifiers?: { modifierName: string }[] | null,
+  note?: string | null,
+): string | undefined {
+  const noteParts: string[] = [];
+  if (modifiers && modifiers.length > 0) {
+    noteParts.push(modifiers.map((m) => m.modifierName).join(', '));
+  }
+  if (note?.trim()) {
+    noteParts.push(note.trim());
+  }
+  return noteParts.length > 0 ? noteParts.join(' | ') : undefined;
+}
+
+/**
  * Build the receipt preview for a just-completed sale from the ADR #7 read-back.
  *
  * Field-for-field what both call sites did. Two places worth a second look:
@@ -124,6 +141,7 @@ export function buildCompletedSaleReceipt({
       const tax = computedLine?.tax_amount
         ? { minorUnits: computedLine.tax_amount.minor_units, currency: computedLine.tax_amount.currency }
         : null;
+      const note = formatReceiptLineNote(line.modifiers, line.note);
       return {
         name: line.name ?? line.sku,
         quantity: line.qty,
@@ -133,7 +151,7 @@ export function buildCompletedSaleReceipt({
           currency: line.unit_price.currency,
         },
         ...(tax ? { taxAmount: tax } : {}),
-        ...(line.note ? { note: line.note } : {}),
+        ...(note ? { note } : {}),
       };
     }),
     // `completedSale?.` on the SUBTOTAL too, not just on `completedSale`.
@@ -214,13 +232,14 @@ export function buildPreCheckoutBillReceipt({
       const lineTax = taxAmount && cartLines.length > 0 && taxAmount.minor_units > 0
         ? { minorUnits: Math.round(taxAmount.minor_units / cartLines.length), currency: cartCurrency }
         : undefined;
+      const note = formatReceiptLineNote(line.modifiers, line.note);
       return {
         name: line.name ?? line.sku,
         quantity: line.qty,
         unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
         totalPrice: { minorUnits: line.unit_price.minor_units * line.qty, currency: line.unit_price.currency },
         ...(lineTax ? { taxAmount: lineTax } : {}),
-        ...(line.note ? { note: line.note } : {}),
+        ...(note ? { note } : {}),
       };
     }),
     subtotal: { minorUnits: subtotal.minor_units, currency: cartCurrency },
@@ -300,19 +319,13 @@ export function buildKitchenChitReceipt({
       if (line.coursingStatus === 'hold') {
         displayName = `[HOLD] ${displayName}`;
       }
-      const noteParts: string[] = [];
-      if (line.modifiers && line.modifiers.length > 0) {
-        noteParts.push(line.modifiers.map((m) => m.modifierName).join(', '));
-      }
-      if (line.note?.trim()) {
-        noteParts.push(line.note.trim());
-      }
+      const note = formatReceiptLineNote(line.modifiers, line.note);
       return {
         name: displayName,
         quantity: line.qty,
         unitPrice: { minorUnits: 0, currency: cartCurrency },
         totalPrice: { minorUnits: 0, currency: cartCurrency },
-        ...(noteParts.length > 0 ? { note: noteParts.join(' | ') } : {}),
+        ...(note ? { note } : {}),
       };
     }),
     subtotal: { minorUnits: 0, currency: cartCurrency },

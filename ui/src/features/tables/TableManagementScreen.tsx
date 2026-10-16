@@ -219,6 +219,48 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     [getTableBill],
   );
 
+  const [selectedReservation, setSelectedReservation] = useState<ReservationDetails | null>(null);
+
+  useEffect(() => {
+    if (!selected || selected.status !== 'reserved' || !sessionToken) {
+      setSelectedReservation(null);
+      return;
+    }
+    const bill = getTableBill(selected.name);
+    if (!bill) {
+      setSelectedReservation(null);
+      return;
+    }
+    const initial = getTableReservation(selected.name);
+    setSelectedReservation(initial);
+    let cancelled = false;
+    const resPromise = getHeldCartScoped(sessionToken, bill.id);
+    if (resPromise && typeof resPromise.then === 'function') {
+      resPromise
+        .then((full) => {
+          if (cancelled || !full || !full.cart_data) return;
+          try {
+            const data = JSON.parse(full.cart_data);
+            setSelectedReservation({
+              guestName: data.customerName || initial?.guestName || 'Guest',
+              phone: data.phone || initial?.phone,
+              partySize: typeof data.partySize === 'number' ? data.partySize : initial?.partySize,
+              time: data.reservationTime || initial?.time,
+              notes: data.notes || initial?.notes,
+            });
+          } catch {
+            // keep initial
+          }
+        })
+        .catch(() => {
+          // keep initial
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, sessionToken, getTableBill, getTableReservation]);
+
   // Match table with active joined table(s) if merged
   const getTableJoined = useCallback(
     (tableName: string): string | null => {
@@ -953,7 +995,37 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const reservationBill = openBills.find((b) => matchesTableBill(b, table.name));
       try {
         if (reservationBill) {
+          const resPromise = getHeldCartScoped(sessionToken, reservationBill.id);
+          const resFull = resPromise && typeof resPromise.then === 'function' ? await resPromise.catch(() => null) : null;
+          let resLines: unknown[] = [];
+          let resPartySize: number | undefined;
+          let resGuestCount: string | undefined;
+          let resNotes: string | undefined;
+          let resPhone: string | undefined;
+          if (resFull?.cart_data) {
+            try {
+              const data = JSON.parse(resFull.cart_data);
+              if (Array.isArray(data.lines)) resLines = data.lines;
+              if (typeof data.partySize === 'number') resPartySize = data.partySize;
+              if (typeof data.guestCount === 'string') resGuestCount = data.guestCount;
+              else if (resPartySize) resGuestCount = String(resPartySize);
+              if (typeof data.notes === 'string') resNotes = data.notes;
+              if (typeof data.phone === 'string') resPhone = data.phone;
+            } catch {
+              // fallback
+            }
+          }
           const customerName = reservationBill.customer_name || '';
+          const seatedPayload = {
+            lines: resLines,
+            customerName,
+            tableNumber: table.name,
+            orderType: 'dine_in',
+            ...(resGuestCount ? { guestCount: resGuestCount } : {}),
+            ...(resPartySize ? { partySize: resPartySize } : {}),
+            ...(resNotes ? { notes: resNotes } : {}),
+            ...(resPhone ? { phone: resPhone } : {}),
+          };
           // CREATE FIRST, DELETE SECOND — the same fix as handleConfirmMoveTable and
           // handleConfirmMergeTable above, on the third handler in this file that
           // replaces a held cart.
@@ -965,12 +1037,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           // reading every held-cart write in the file rather than trusting that list.
           await holdCartScoped(sessionToken, {
             label: heldCartLabel(table.name, customerName) ?? `Table ${table.name}`,
-            cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name }),
-            item_count: 0,
-            total_minor: 0,
-            currency: storeCurrency,
+            cart_data: JSON.stringify(seatedPayload),
+            item_count: resFull?.item_count ?? resLines.length,
+            total_minor: resFull?.total_minor ?? 0,
+            currency: resFull?.currency || storeCurrency,
             bill_type: 'open_bill',
             customer_name: customerName,
+            ...(resFull?.deduction_location_id ? { deduction_location_id: resFull.deduction_location_id } : {}),
           });
           // The seated bill exists now, so removing the reservation cannot lose data.
           await deleteHeldCartScoped(sessionToken, reservationBill.id);
@@ -1850,7 +1923,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
       {selected && (() => {
         const activeBill = getTableBill(selected.name);
-        const reservation = selected.status === 'reserved' ? getTableReservation(selected.name) : null;
+        const reservation = selected.status === 'reserved' ? (selectedReservation ?? getTableReservation(selected.name)) : null;
         return (
           <div className="tables-detail" ref={detailRef} role="dialog" aria-modal="true" aria-label={l10n.getString('tables-detail-label')}>
             <h2>{selected.name}</h2>

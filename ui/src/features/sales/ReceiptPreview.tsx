@@ -95,6 +95,11 @@ export default function ReceiptPreview({
             <span className="receipt-preview-date">{receipt.date}</span>
             <span className="receipt-preview-receipt-number">{receipt.receiptNumber}</span>
           </div>
+          {receipt.tableNumber && (
+            <div className="receipt-preview-table-info" style={{ marginTop: '0.25rem', fontWeight: 600, fontSize: '0.85rem' }} data-testid="receipt-preview-table">
+              Table: {receipt.tableNumber}
+            </div>
+          )}
           {receipt.statutoryNumber && receipt.statutoryNumber !== receipt.receiptNumber && (
             <div className="receipt-preview-statutory-number" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
               Invoice No: {receipt.statutoryNumber}
