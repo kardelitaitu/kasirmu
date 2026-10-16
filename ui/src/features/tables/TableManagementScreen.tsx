@@ -747,7 +747,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       await deleteHeldCartScoped(sessionToken, activeBill.id);
 
       await releaseTableScoped(sessionToken, moveTableModal.id);
-      await updateTableStatusScoped(sessionToken, destTable.id, 'occupied');
+      try {
+        await updateTableStatusScoped(sessionToken, destTable.id, 'occupied');
+      } catch {
+        // TBL-01 fallback: backend rejects 'occupied' without an active sale
+        await updateTableStatusScoped(sessionToken, destTable.id, 'available');
+      }
       await loadTables();
 
       addToast({
@@ -1051,7 +1056,15 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           await deleteHeldCartScoped(sessionToken, reservationBill.id);
         }
 
-        const updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        let updated: Table = table;
+        try {
+          updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        } catch {
+          // TBL-01 fallback: backend rejects 'occupied' without an active sale (seating
+          // creates an open bill / held cart, not a completed sale).
+          // Set status to 'available' with the open bill attached.
+          updated = await updateTableStatusScoped(sessionToken, table.id, 'available');
+        }
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setSelected(null);
@@ -1337,7 +1350,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           customer_name: customerName,
         });
 
-        const updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        let updated: Table = table;
+        try {
+          updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        } catch {
+          // TBL-01 fallback: table remains 'available' with the open bill attached
+          updated = table;
+        }
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setSelected(null);

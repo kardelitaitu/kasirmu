@@ -86,10 +86,12 @@ export function matchesTableBill(
   const bare = bareTableNumber(tableName);
   if (!bare) return false;
   const escapedBare = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\b(?:table|meja)\\s+${escapedBare}\\b`, 'i');
+  const trimmedTable = tableName.trim();
+  const escapedTable = trimmedTable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(^|\\b)(?:(?:table|meja)\\s+)?(?:${escapedBare}|${escapedTable})\\b`, 'i');
 
   const bareLower = bare.toLowerCase();
-  const tableLower = tableName.toLowerCase();
+  const tableLower = trimmedTable.toLowerCase();
 
   if (bill.label) {
     const lblLower = bill.label.toLowerCase();
