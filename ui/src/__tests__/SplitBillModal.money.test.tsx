@@ -180,4 +180,24 @@ describe('SplitBillModal — the split conserves the bill', () => {
     expect(selected[0]!.qty + remaining[0]!.qty).toBe(3);
     expect(remaining[0]!.unit_price.minor_units * remaining[0]!.qty).toBe(50000);
   });
+
+  it('clamps dispatchedQty to each partition quantity so dispatchedQty never exceeds qty', async () => {
+    const itemWithDispatch = {
+      ...line('l1', 'Ribeye Steak', 3, 150000),
+      dispatchedQty: 3,
+    };
+    const onConfirmSplit = makeConfirmSplit();
+    renderModal([itemWithDispatch], onConfirmSplit);
+
+    // Starting state is 1 of 3 selected, 2 remaining
+    fireEvent.click(screen.getByTestId('pos-split-modal-confirm-btn'));
+    await vi.waitFor(() => expect(onConfirmSplit).toHaveBeenCalled());
+
+    const [selected, remaining] = onConfirmSplit.mock.calls[0]!;
+    expect(selected[0]!.qty).toBe(1);
+    expect(selected[0]!.dispatchedQty).toBe(1);
+
+    expect(remaining[0]!.qty).toBe(2);
+    expect(remaining[0]!.dispatchedQty).toBe(2);
+  });
 });

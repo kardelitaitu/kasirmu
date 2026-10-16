@@ -121,6 +121,7 @@ export function SplitBillModal({
         selected.push({
           ...l,
           qty: chosenQty,
+          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: Math.min(chosenQty, l.dispatchedQty) } : {}),
         });
         selMinor += l.unit_price.minor_units * chosenQty;
       }
@@ -129,6 +130,7 @@ export function SplitBillModal({
         remaining.push({
           ...l,
           qty: remainingQty,
+          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: Math.min(remainingQty, l.dispatchedQty) } : {}),
         });
         remMinor += l.unit_price.minor_units * remainingQty;
       }

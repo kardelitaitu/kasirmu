@@ -980,6 +980,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
               ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
               ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
               ...(l.note ? { note: l.note } : {}),
+              ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
             })),
             discountPercent,
             discountLabel,
@@ -1011,6 +1012,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             currency: remainingLines[0]?.unit_price.currency || activeCurrency,
             bill_type: 'open_bill',
             customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+            ...(deductionLocationIdRef.current ? { deduction_location_id: deductionLocationIdRef.current } : {}),
           });
           // The remaining tab exists under this id now, so removing the previous
           // record cannot lose data — a failure here leaves two tabs, not none.
@@ -1095,6 +1097,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills,
       addToast,
       setLines,
+      deductionLocationIdRef,
       // l10n is read by the failure toasts this handler raises (round 15's
       // localization pass), so it must be listed or the toast renders in the
       // locale the cashier was NOT using after a switch.
