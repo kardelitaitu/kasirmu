@@ -3,9 +3,14 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { listProductsScoped, listCategoriesScoped } from '@/api/products';
 import type { ProductDto, CategoryDto } from '@/api/products';
+import { startSaleScoped, addLineScoped, completeSaleScoped, type AddLineArgs } from '@/api/sales';
+import { listTablesScoped, createTableScoped, assignTableOrderScoped } from '@/api/tables';
+import { createKdsOrderFromSaleScoped } from '@/api/kds';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, getProductModifierGroups, type Product } from '@/types/domain';
+import ItemModifierModal, { type ModifierSelection } from '@/features/sales/components/ItemModifierModal';
+import QrisQrDisplay from '@/components/QrisQrDisplay';
 import './KioskScreen.css';
 
 const IDLE_TIMEOUT_MS = 60000;
@@ -18,11 +23,23 @@ function isPriceRecent(p: ProductDto): boolean {
 }
 
 interface CartItem {
+  id: string;
   product: ProductDto;
   qty: number;
+  modifiers?: ModifierSelection[];
+  note?: string;
 }
 
-/** Self-service kiosk screen — customer-facing product browsing, cart management, and checkout with idle timeout reset. */
+interface OrderSuccessData {
+  saleId: string;
+  receiptNumber?: string | null | undefined;
+  totalMinor: number;
+  orderType: 'dine_in' | 'takeaway';
+  tableNumber?: string | undefined;
+  method: 'counter' | 'qris';
+}
+
+/** Self-service kiosk screen — customer-facing product browsing, item modifier customization, cart management, and real checkout / KDS dispatch with idle timeout reset. */
 export default function KioskScreen() {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -36,33 +53,26 @@ export default function KioskScreen() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [checkout, setCheckout] = useState(false);
   const [idle, setIdle] = useState(false);
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway'>('dine_in');
+  const [tableNumber, setTableNumber] = useState('');
+  const [customizingProduct, setCustomizingProduct] = useState<ProductDto | null>(null);
+  const [showQrisModal, setShowQrisModal] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState<OrderSuccessData | null>(null);
+  const [countdown, setCountdown] = useState(10);
+  const [processingOrder, setProcessingOrder] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   /**
    * Return the kiosk to the attract screen, DISCARDING any abandoned order.
-   *
-   * ⚠️ THE ORDER IS CLEARED HERE, NOT ON PAY.
-   *
-   * This used to clear only the `idle` flag, and `setCart([])` / `setCheckout(false)`
-   * existed on the Pay handler alone (:138-139). So an order abandoned at the attract
-   * screen survived into the next customer's session:
-   *
-   *   1. Customer A adds items, taps Checkout, walks away.
-   *   2. 60 s pass; the attract screen appears.
-   *   3. Customer B taps "Tap to start" — `idle` goes false and `checkout` is STILL
-   *      TRUE, so B lands on A's checkout total, reads A's items, and can tap Pay.
-   *
-   * Measured: with the Pay button visible before the timeout, it was still visible
-   * after B's tap. This is a customer-facing device with no staff in the loop, and
-   * the order it leaked is someone else's — which is why the reset is unconditional
-   * rather than only on the idle PATH.
-   *
-   * Idling out is the kiosk's "session over". Any per-session state belongs to that
-   * session, so there is exactly one place to drop it.
+   * Unconditionally resets cart, checkout, success, table, and modifier modals.
    */
   const endSession = useCallback(() => {
     setCart([]);
     setCheckout(false);
+    setOrderSuccess(null);
+    setTableNumber('');
+    setCustomizingProduct(null);
+    setShowQrisModal(false);
     setIdle(true);
   }, []);
 
@@ -100,36 +110,183 @@ export default function KioskScreen() {
     };
   }, [resetIdle]);
 
+  // Countdown timer on order success screen before returning to attract mode
+  useEffect(() => {
+    if (!orderSuccess) return;
+    setCountdown(10);
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          endSession();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [orderSuccess, endSession]);
+
   const filtered = activeCategory
     ? products.filter((p) => p.category === activeCategory)
     : products;
 
+  const handleProductCardClick = (product: ProductDto) => {
+    const groups = getProductModifierGroups(product as unknown as Product);
+    if (groups.length > 0) {
+      setCustomizingProduct(product);
+    } else {
+      addToCart(product);
+    }
+    resetIdle();
+  };
+
   const addToCart = (product: ProductDto) => {
     setCart((prev) => {
-      const existing = prev.find((c) => c.product.sku === product.sku);
+      const existing = prev.find(
+        (c) => c.product.sku === product.sku && (!c.modifiers || c.modifiers.length === 0),
+      );
       if (existing) {
         return prev.map((c) =>
-          c.product.sku === product.sku
+          c.id === existing.id
             ? { ...c, qty: c.qty + 1 }
             : c
         );
       }
-      return [...prev, { product, qty: 1 }];
+      const id = `${product.sku}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      return [...prev, { id, product, qty: 1 }];
     });
     resetIdle();
   };
 
-  const updateQty = (sku: string, delta: number) => {
+  const handleConfirmModifiers = (selections: ModifierSelection[], totalPriceMinor: number) => {
+    if (!customizingProduct) return;
+    const prod = customizingProduct;
+    setCustomizingProduct(null);
+    const customizedProduct: ProductDto = {
+      ...prod,
+      price: {
+        ...prod.price,
+        minor_units: totalPriceMinor,
+      },
+    };
+    const id = `${prod.sku}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setCart((prev) => [
+      ...prev,
+      {
+        id,
+        product: customizedProduct,
+        qty: 1,
+        modifiers: selections,
+      },
+    ]);
+    resetIdle();
+  };
+
+  const updateQty = (id: string, delta: number) => {
     setCart((prev) => {
       const next = prev
         .map((c) =>
-          c.product.sku === sku
+          c.id === id
             ? { ...c, qty: Math.max(0, c.qty + delta) }
             : c
         )
         .filter((c) => c.qty > 0);
       return next;
     });
+    resetIdle();
+  };
+
+  const processOrder = async (method: 'counter' | 'qris') => {
+    if (processingOrder || cart.length === 0) return;
+    setProcessingOrder(true);
+    try {
+      const { cartId } = await startSaleScoped(sessionToken, { currency });
+      for (const item of cart) {
+        const lineArgs: AddLineArgs = {
+          cartId,
+          sku: item.product.sku,
+          qty: item.qty,
+          unitPriceMinor: item.product.price.minor_units,
+          unitPriceCurrency: item.product.price.currency,
+          ...((item.modifiers && item.modifiers.length > 0) || item.note
+            ? {
+                modifiersJson: JSON.stringify([
+                  ...(item.modifiers ?? []).map((m) => ({
+                    name: m.groupName,
+                    choice: m.modifierName,
+                    price_minor: m.priceMinor,
+                  })),
+                  ...(item.note ? [{ name: 'Note', choice: item.note, price_minor: 0 }] : []),
+                ]),
+              }
+            : {}),
+        };
+        await addLineScoped(sessionToken, lineArgs);
+      }
+
+      const saleResult = await completeSaleScoped(sessionToken, {
+        cartId,
+        paymentMethod: method === 'qris' ? 'qris' : 'counter',
+        tenderedMinor: null,
+      });
+
+      if (orderType === 'dine_in' && tableNumber.trim()) {
+        try {
+          const tbls = await listTablesScoped(sessionToken);
+          const searchNum = tableNumber.trim().toLowerCase();
+          let match = tbls.find(
+            (t) => t.name.toLowerCase() === searchNum || t.name.toLowerCase() === `table ${searchNum}`,
+          );
+          if (!match) {
+            match = await createTableScoped(sessionToken, {
+              id: '',
+              name: tableNumber.trim().toLowerCase().startsWith('table') ? tableNumber.trim() : `Table ${tableNumber.trim()}`,
+              capacity: 4,
+              pos_x: 0,
+              pos_y: 0,
+              shape: 'square',
+              width: 100,
+              height: 100,
+              status: 'occupied',
+              active_sale_id: null,
+              section: 'main',
+              active: true,
+              sort_order: tbls.length + 1,
+            });
+          }
+          if (match) {
+            await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
+          }
+        } catch (tableErr) {
+          console.warn('assignTableOrderScoped failed', tableErr);
+        }
+      }
+
+      try {
+        await createKdsOrderFromSaleScoped(sessionToken, saleResult.saleId);
+      } catch (kdsErr) {
+        console.warn('createKdsOrderFromSale failed', kdsErr);
+      }
+
+      setOrderSuccess({
+        saleId: saleResult.saleId,
+        receiptNumber: saleResult.receiptNumber,
+        totalMinor,
+        orderType,
+        tableNumber: tableNumber.trim() || undefined,
+        method,
+      });
+      setCart([]);
+    } catch (err) {
+      console.error('Kiosk checkout failed', err);
+      addToast({
+        message: l10n.getString('kiosk-checkout-error') || 'Order processing failed',
+        type: 'warning',
+      });
+    } finally {
+      setProcessingOrder(false);
+    }
   };
 
   const totalMinor = cart.reduce((s, c) => s + c.product.price.minor_units * c.qty, 0);
@@ -146,13 +303,71 @@ export default function KioskScreen() {
   }
 
   if (checkout) {
+    if (orderSuccess) {
+      return (
+        <div className="kiosk-success" role="region" aria-label={l10n.getString('kiosk-order-success-title') || 'Order Success'}>
+          <div className="kiosk-success-card">
+            <div className="kiosk-success-icon" aria-hidden="true">&#10003;</div>
+            <h2 className="kiosk-success-title">
+              <Localized id="kiosk-order-success-title">Order Placed!</Localized>
+            </h2>
+            <p className="kiosk-success-number">
+              <Localized id="kiosk-order-number" vars={{ number: orderSuccess.receiptNumber || orderSuccess.saleId }}>
+                <span>Order #{orderSuccess.receiptNumber || orderSuccess.saleId}</span>
+              </Localized>
+            </p>
+            <p className="kiosk-success-type">
+              {orderSuccess.orderType === 'dine_in' ? (
+                <Localized id="kiosk-table-assigned" vars={{ table: orderSuccess.tableNumber || '1' }}>
+                  <span>Table {orderSuccess.tableNumber || '1'}</span>
+                </Localized>
+              ) : (
+                <Localized id="kiosk-takeaway-label">Takeaway</Localized>
+              )}
+            </p>
+            <p className="kiosk-success-instructions">
+              {orderSuccess.method === 'counter' ? (
+                <Localized id="kiosk-pay-cashier-instructions">
+                  Please take your order ticket and pay at the cashier counter.
+                </Localized>
+              ) : (
+                <Localized id="kiosk-pay-qris-instructions">
+                  Payment confirmed! Your order is being prepared in the kitchen.
+                </Localized>
+              )}
+            </p>
+            <p className="kiosk-success-timer">
+              <Localized id="kiosk-auto-reset" vars={{ seconds: countdown }}>
+                <span>Returning to start in {countdown}s</span>
+              </Localized>
+            </p>
+            <button
+              type="button"
+              className="kiosk-success-btn"
+              onClick={endSession}
+              aria-label={l10n.getString('kiosk-done') || 'Done'}
+            >
+              <Localized id="kiosk-done">Done</Localized>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="kiosk-checkout" role="region" aria-label={l10n.getString('kiosk-section-checkout')}>
         <h2><Localized id="kiosk-checkout-title">Checkout</Localized></h2>
         <div className="kiosk-checkout-items">
           {cart.map((c) => (
-            <div key={c.product.sku} className="kiosk-checkout-row">
-              <span>{c.product.name} &times; {c.qty}</span>
+            <div key={c.id} className="kiosk-checkout-row">
+              <div className="kiosk-cart-item-info">
+                <span>{c.product.name} &times; {c.qty}</span>
+                {c.modifiers && c.modifiers.length > 0 && (
+                  <span className="kiosk-checkout-modifiers">
+                    {c.modifiers.map((m) => m.modifierName).join(', ')}
+                  </span>
+                )}
+              </div>
               <span>{formatMoney({ minor_units: c.product.price.minor_units * c.qty, currency })}</span>
             </div>
           ))}
@@ -161,75 +376,117 @@ export default function KioskScreen() {
           <span><Localized id="kiosk-total">Total</Localized></span>
           <span>{formatMoney({ minor_units: totalMinor, currency })}</span>
         </div>
-        {/* ⚠️ THIS BUTTON DOES NOT RECORD A SALE, AND MUST NOT CLAIM IT DID.
-            //
-            // It used to toast `kiosk-pay-success` — "Payment processed!" — and clear
-            // local state. The file imports nothing from `@/api/sales` and has no
-            // dynamic import, so no sale was ever written: no revenue, no stock
-            // deduction, nothing to reconcile. A customer read "Payment processed!"
-            // and left with goods.
-            //
-            // THE ROUTE IS REAL, so this is not a demo shell: `register.tsx` registers
-            // it behind the backend feature `Feature::SelfServiceKiosk`
-            // (crates/kasirmu-core/src/features.rs:499) with a nav item, and no plan or
-            // record documents the gap.
-            //
-            // WIRING IT is a feature, not a fix — it needs a shift, a cart id, a tender
-            // and the stock path — so it is deliberately NOT done here. What is done is
-            // the part that was actively harmful: the claim.
-            //
-            // ⚠️ AND THE FIRST VERSION OF THIS FIX OVERCLAIMED TOO. It said "Order sent
-            // to the counter", which asserts the order REACHES the counter — but this
-            // handler sends nothing anywhere: no API call, no notification, no print. It
-            // clears local state. A customer would read "sent to the counter" and the
-            // staff would never have seen the order. The copy now states only what
-            // happens: the selection is cleared and the session ends.
-            //
-            // The backend's own description of this feature is "Locked-down full-screen
-            // self-service mode" (crates/kasirmu-core/src/features.rs:107) — a DISPLAY
-            // mode. It performs none of the seven operations a real sale path does
-            // (startSaleScoped, addLineScoped, completeSaleScoped, finalizeSale,
-            // printSalesReceipt, createKdsOrderFromSaleScoped, openCashDrawerScoped), so
-            // the honest copy is the one that claims none of them.
-            //
-            // The guard in KioskScreen.test.tsx fails if a success claim reappears
-            // without a recording call, so the wiring cannot land half-done. */}
-        <button type="button" className="kiosk-checkout-pay" onClick={() => {
-          addToast({ message: l10n.getString('kiosk-order-cleared'), type: 'info' });
-          setCart([]);
-          setCheckout(false);
-        }} aria-label={l10n.getString('kiosk-pay')}>
-          <Localized id="kiosk-pay">Pay</Localized>
-        </button>
-        <button type="button" className="kiosk-checkout-back" onClick={() => setCheckout(false)} aria-label={l10n.getString('back')}>
-          <Localized id="back">Back</Localized>
-        </button>
+        <div className="kiosk-checkout-actions">
+          <button
+            type="button"
+            className="kiosk-checkout-pay"
+            disabled={processingOrder}
+            onClick={() => void processOrder('counter')}
+            aria-label={l10n.getString('kiosk-pay')}
+          >
+            <Localized id="kiosk-pay">Pay</Localized>
+          </button>
+          <button
+            type="button"
+            className="kiosk-checkout-qris"
+            disabled={processingOrder}
+            onClick={() => setShowQrisModal(true)}
+            aria-label={l10n.getString('kiosk-pay-qris') || 'Pay with QRIS'}
+          >
+            <Localized id="kiosk-pay-qris">Pay with QRIS</Localized>
+          </button>
+          <button
+            type="button"
+            className="kiosk-checkout-back"
+            disabled={processingOrder}
+            onClick={() => setCheckout(false)}
+            aria-label={l10n.getString('back')}
+          >
+            <Localized id="back">Back</Localized>
+          </button>
+        </div>
+
+        {showQrisModal && (
+          <QrisQrDisplay
+            isOpen={showQrisModal}
+            amount={totalMinor}
+            currency={currency}
+            reference={`KIOSK-${Date.now().toString(36).toUpperCase()}`}
+            onClose={() => setShowQrisModal(false)}
+            onPaymentConfirmed={() => {
+              setShowQrisModal(false);
+              void processOrder('qris');
+            }}
+          />
+        )}
       </div>
     );
   }
 
   return (
     <div className="kiosk" role="region" aria-label={l10n.getString('kiosk-section-kiosk')}>
-      <div className="kiosk-categories" role="tablist" aria-label={l10n.getString('kiosk-section-categories')}>
-        <button type="button"
-          className={`kiosk-cat-chip ${activeCategory === null ? 'active' : ''}`}
-          onClick={() => setActiveCategory(null)}
-          role="tab"
-          aria-selected={activeCategory === null}
-        >
-          <Localized id="kiosk-all">All</Localized>
-        </button>
-        {categories.map((cat) => (
+      <div className="kiosk-top-bar">
+        <div className="kiosk-dining-bar" role="region" aria-label={l10n.getString('kiosk-dining-mode') || 'Dining Option'}>
+          <div className="kiosk-dining-toggle" role="radiogroup" aria-label={l10n.getString('kiosk-dining-mode') || 'Dining Option'}>
+            <button
+              type="button"
+              className={`kiosk-dining-btn ${orderType === 'dine_in' ? 'active' : ''}`}
+              onClick={() => { setOrderType('dine_in'); resetIdle(); }}
+              role="radio"
+              aria-checked={orderType === 'dine_in'}
+            >
+              <Localized id="kiosk-dine-in">Dine In</Localized>
+            </button>
+            <button
+              type="button"
+              className={`kiosk-dining-btn ${orderType === 'takeaway' ? 'active' : ''}`}
+              onClick={() => { setOrderType('takeaway'); resetIdle(); }}
+              role="radio"
+              aria-checked={orderType === 'takeaway'}
+            >
+              <Localized id="kiosk-takeaway">Takeaway</Localized>
+            </button>
+          </div>
+          {orderType === 'dine_in' && (
+            <div className="kiosk-table-input-wrap">
+              <label htmlFor="kiosk-table-input" className="kiosk-table-label">
+                <Localized id="kiosk-table-number">Table Number</Localized>:
+              </label>
+              <input
+                id="kiosk-table-input"
+                type="text"
+                inputMode="numeric"
+                className="kiosk-table-input"
+                value={tableNumber}
+                onChange={(e) => { setTableNumber(e.target.value); resetIdle(); }}
+                placeholder={l10n.getString('kiosk-table-placeholder') || 'Table #'}
+                aria-label={l10n.getString('kiosk-table-number') || 'Table Number'}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="kiosk-categories" role="tablist" aria-label={l10n.getString('kiosk-section-categories')}>
           <button type="button"
-            key={cat.id}
-            className={`kiosk-cat-chip ${activeCategory === cat.id ? 'active' : ''}`}
-            onClick={() => setActiveCategory(cat.id)}
+            className={`kiosk-cat-chip ${activeCategory === null ? 'active' : ''}`}
+            onClick={() => setActiveCategory(null)}
             role="tab"
-            aria-selected={activeCategory === cat.id}
+            aria-selected={activeCategory === null}
           >
-            {cat.name}
+            <Localized id="kiosk-all">All</Localized>
           </button>
-        ))}
+          {categories.map((cat) => (
+            <button type="button"
+              key={cat.id}
+              className={`kiosk-cat-chip ${activeCategory === cat.id ? 'active' : ''}`}
+              onClick={() => setActiveCategory(cat.id)}
+              role="tab"
+              aria-selected={activeCategory === cat.id}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loadError && (
@@ -242,39 +499,48 @@ export default function KioskScreen() {
       )}
 
       <div className="kiosk-grid" role="list" aria-label={l10n.getString('kiosk-section-products')}>
-        {filtered.map((p) => (
-          // The grid is a role="list", so each card must be wrapped in a list
-          // item: the card root is a <button>, and role="listitem" is not
-          // allowed on a button. Third occurrence of this exact shape in the
-          // codebase (TableManagementScreen, MenuItemGrid) — the container
-          // otherwise advertises a list a screen reader reads as empty.
-          <div key={p.sku} role="listitem">
-          <button type="button"
-            className="kiosk-product-card"
-            onClick={() => addToCart(p)}
-            aria-label={l10n.getString('kiosk-product-label', { name: p.name, price: formatMoney({ minor_units: p.price.minor_units, currency }) })}
-          >
-            {isPriceRecent(p) && <span className="kiosk-price-volatility-hint" title={l10n.getString('kiosk-price-volatility-title')} />}
-            <span className="kiosk-product-name">{p.name}</span>
-            <span className="kiosk-product-price">{formatMoney({ minor_units: p.price.minor_units, currency })}</span>
-            {p.stock_qty !== null && p.stock_qty <= 5 && (
-              <span className="kiosk-stock-badge"><Localized id="kiosk-stock-left" vars={{ count: p.stock_qty }}><span>{p.stock_qty} left</span></Localized></span>
-            )}
-          </button>
-          </div>
-        ))}
+        {filtered.map((p) => {
+          const modGroups = getProductModifierGroups(p as unknown as Product);
+          const hasModifiers = modGroups.length > 0;
+          return (
+            <div key={p.sku} role="listitem">
+              <button type="button"
+                className="kiosk-product-card"
+                onClick={() => handleProductCardClick(p)}
+                aria-label={l10n.getString('kiosk-product-label', { name: p.name, price: formatMoney({ minor_units: p.price.minor_units, currency }) })}
+              >
+                {isPriceRecent(p) && <span className="kiosk-price-volatility-hint" title={l10n.getString('kiosk-price-volatility-title')} />}
+                <span className="kiosk-product-name">{p.name}</span>
+                <span className="kiosk-product-price">{formatMoney({ minor_units: p.price.minor_units, currency })}</span>
+                {hasModifiers && (
+                  <span className="kiosk-customizable-badge"><Localized id="kiosk-customizing">Customizable</Localized></span>
+                )}
+                {p.stock_qty !== null && p.stock_qty <= 5 && (
+                  <span className="kiosk-stock-badge"><Localized id="kiosk-stock-left" vars={{ count: p.stock_qty }}><span>{p.stock_qty} left</span></Localized></span>
+                )}
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {cart.length > 0 && (
         <div className="kiosk-cart" role="region" aria-label={l10n.getString('kiosk-section-cart')}>
           <div className="kiosk-cart-items">
             {cart.map((c) => (
-              <div key={c.product.sku} className="kiosk-cart-item">
-                <span className="kiosk-cart-name">{c.product.name}</span>
+              <div key={c.id} className="kiosk-cart-item">
+                <div className="kiosk-cart-item-info">
+                  <span className="kiosk-cart-name">{c.product.name}</span>
+                  {c.modifiers && c.modifiers.length > 0 && (
+                    <span className="kiosk-cart-modifiers">
+                      {c.modifiers.map((m) => m.modifierName).join(', ')}
+                    </span>
+                  )}
+                </div>
                 <div className="kiosk-cart-controls">
-                  <button type="button" onClick={() => updateQty(c.product.sku, -1)} aria-label={l10n.getString('kiosk-decrease')}>&minus;</button>
+                  <button type="button" onClick={() => updateQty(c.id, -1)} aria-label={l10n.getString('kiosk-decrease')}>&minus;</button>
                   <span>{c.qty}</span>
-                  <button type="button" onClick={() => updateQty(c.product.sku, 1)} aria-label={l10n.getString('kiosk-increase')}>+</button>
+                  <button type="button" onClick={() => updateQty(c.id, 1)} aria-label={l10n.getString('kiosk-increase')}>+</button>
                 </div>
                 <span className="kiosk-cart-price">{formatMoney({ minor_units: c.product.price.minor_units * c.qty, currency })}</span>
               </div>
@@ -288,6 +554,18 @@ export default function KioskScreen() {
             <Localized id="kiosk-checkout">Checkout</Localized>
           </button>
         </div>
+      )}
+
+      {customizingProduct && (
+        <ItemModifierModal
+          open={Boolean(customizingProduct)}
+          productName={customizingProduct.name}
+          basePriceMinor={customizingProduct.price.minor_units}
+          currency={customizingProduct.price.currency}
+          groups={getProductModifierGroups(customizingProduct as unknown as Product)}
+          onConfirm={handleConfirmModifiers}
+          onClose={() => setCustomizingProduct(null)}
+        />
       )}
     </div>
   );

@@ -7,9 +7,31 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import kioskFtl from '@/locales/kiosk.ftl?raw';
 
-const { mockListProducts, mockListCategories } = vi.hoisted(() => ({
+const {
+  mockListProducts,
+  mockListCategories,
+  mockStartSaleScoped,
+  mockAddLineScoped,
+  mockCompleteSaleScoped,
+  mockListTablesScoped,
+  mockCreateTableScoped,
+  mockAssignTableOrderScoped,
+  mockCreateKdsOrderFromSaleScoped,
+} = vi.hoisted(() => ({
   mockListProducts: vi.fn(),
   mockListCategories: vi.fn(),
+  mockStartSaleScoped: vi.fn().mockResolvedValue({ cartId: 'cart-123' }),
+  mockAddLineScoped: vi.fn().mockResolvedValue({ lineId: 'line-1' }),
+  mockCompleteSaleScoped: vi.fn().mockResolvedValue({
+    saleId: 'sale-kiosk-99',
+    receiptNumber: 'RCP-KIOSK-001',
+    lineCount: 1,
+    total: { minor_units: 15000, currency: 'IDR' },
+  }),
+  mockListTablesScoped: vi.fn().mockResolvedValue([{ id: 'tbl-1', name: 'Table 4', capacity: 4, active: true }]),
+  mockCreateTableScoped: vi.fn().mockResolvedValue({ id: 'tbl-created', name: 'Table 9', capacity: 4, active: true }),
+  mockAssignTableOrderScoped: vi.fn().mockResolvedValue({}),
+  mockCreateKdsOrderFromSaleScoped: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/api/products', () => ({
@@ -17,6 +39,22 @@ vi.mock('@/api/products', () => ({
   listProductsScoped: () => mockListProducts(),
   listCategories: () => mockListCategories(),
   listCategoriesScoped: () => mockListCategories(),
+}));
+
+vi.mock('@/api/sales', () => ({
+  startSaleScoped: (...args: unknown[]) => mockStartSaleScoped(...args),
+  addLineScoped: (...args: unknown[]) => mockAddLineScoped(...args),
+  completeSaleScoped: (...args: unknown[]) => mockCompleteSaleScoped(...args),
+}));
+
+vi.mock('@/api/tables', () => ({
+  listTablesScoped: (...args: unknown[]) => mockListTablesScoped(...args),
+  createTableScoped: (...args: unknown[]) => mockCreateTableScoped(...args),
+  assignTableOrderScoped: (...args: unknown[]) => mockAssignTableOrderScoped(...args),
+}));
+
+vi.mock('@/api/kds', () => ({
+  createKdsOrderFromSaleScoped: (...args: unknown[]) => mockCreateKdsOrderFromSaleScoped(...args),
 }));
 
 // Kiosk renders prices/totals via the store default currency (IDR fixtures).
@@ -396,5 +434,192 @@ describe('KioskScreen', () => {
       expect(screen.getByText('Indomie Goreng')).toBeInTheDocument();
     });
     expect(screen.queryByText('Failed to load the menu')).not.toBeInTheDocument();
+  });
+
+  it('toggles dining mode and accepts table number', async () => {
+    mockListProducts.mockResolvedValue(sampleProducts);
+    mockListCategories.mockResolvedValue(sampleCategories);
+    await renderKiosk(kioskFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Dine In')).toBeInTheDocument();
+    });
+
+    const tableInput = screen.getByLabelText(/table number/i);
+    expect(tableInput).toBeInTheDocument();
+    await userEvent.type(tableInput, '8');
+    expect(tableInput).toHaveValue('8');
+
+    await userEvent.click(screen.getByRole('radio', { name: /takeaway/i }));
+    expect(screen.queryByLabelText(/table number/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('radio', { name: /dine in/i }));
+    expect(screen.getByLabelText(/table number/i)).toBeInTheDocument();
+  });
+
+  it('opens modifier modal when tapping a customizable item and adds with modifiers', async () => {
+    const customizableProduct = {
+      sku: 'SKU-MOD-01',
+      name: 'Kopi Susu Gula Aren',
+      category: 'cat-drink',
+      price: { minor_units: 18000, currency: 'IDR' },
+      barcode: null,
+      in_stock: true,
+      stock_qty: 30,
+      tax_rate_ids: [],
+      created_at: '',
+      price_updated_at: '',
+      notes: JSON.stringify([
+        {
+          id: 'grp-ice',
+          name: 'Ice Level',
+          minSelections: 1,
+          maxSelections: 1,
+          modifiers: [
+            { id: 'opt-normal-ice', name: 'Normal Ice', priceMinor: 0 },
+            { id: 'opt-less-ice', name: 'Less Ice', priceMinor: 1000 },
+          ],
+        },
+      ]),
+    };
+    mockListProducts.mockResolvedValue([...sampleProducts, customizableProduct]);
+    mockListCategories.mockResolvedValue(sampleCategories);
+    await renderKiosk(kioskFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Kopi Susu Gula Aren')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Customizable')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('Kopi Susu Gula Aren'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Ice Level')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Less Ice')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('Less Ice'));
+    const confirmBtn = screen.getByRole('button', { name: /confirm|add/i });
+    await userEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Less Ice')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Checkout')).toBeInTheDocument();
+  });
+
+  it('places order via Pay at Cashier, dispatches KDS ticket, and assigns table', async () => {
+    mockListProducts.mockResolvedValue(sampleProducts);
+    mockListCategories.mockResolvedValue(sampleCategories);
+    mockStartSaleScoped.mockResolvedValue({ cartId: 'cart-kiosk-101' });
+    mockCompleteSaleScoped.mockResolvedValue({
+      saleId: 'sale-kiosk-101',
+      receiptNumber: 'RCP-2026-101',
+      lineCount: 1,
+      total: { minor_units: 3500, currency: 'IDR' },
+    });
+    mockListTablesScoped.mockResolvedValue([{ id: 'tbl-4', name: 'Table 4', capacity: 4, active: true }]);
+    mockCreateKdsOrderFromSaleScoped.mockResolvedValue([]);
+
+    await renderKiosk(kioskFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Indomie Goreng')).toBeInTheDocument();
+    });
+
+    const tableInput = screen.getByLabelText(/table number/i);
+    await userEvent.type(tableInput, '4');
+
+    await userEvent.click(screen.getByText('Indomie Goreng'));
+    await userEvent.click(screen.getByText('Checkout'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Pay')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText('Pay'));
+
+    await waitFor(() => {
+      expect(mockStartSaleScoped).toHaveBeenCalled();
+    });
+    expect(mockAddLineScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        cartId: 'cart-kiosk-101',
+        sku: 'SKU-001',
+        qty: 1,
+      }),
+    );
+    expect(mockCompleteSaleScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        cartId: 'cart-kiosk-101',
+        paymentMethod: 'counter',
+      }),
+    );
+    expect(mockAssignTableOrderScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      'tbl-4',
+      'sale-kiosk-101',
+    );
+    expect(mockCreateKdsOrderFromSaleScoped).toHaveBeenCalledWith(
+      expect.any(String),
+      'sale-kiosk-101',
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Order Placed!')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/RCP-2026-101/)).toBeInTheDocument();
+    expect(screen.getByText(/Table 4/)).toBeInTheDocument();
+  });
+
+  it('completes QRIS payment flow and confirms order', async () => {
+    mockListProducts.mockResolvedValue(sampleProducts);
+    mockListCategories.mockResolvedValue(sampleCategories);
+    mockStartSaleScoped.mockResolvedValue({ cartId: 'cart-qris-202' });
+    mockCompleteSaleScoped.mockResolvedValue({
+      saleId: 'sale-qris-202',
+      receiptNumber: 'RCP-QRIS-202',
+      lineCount: 1,
+      total: { minor_units: 3500, currency: 'IDR' },
+    });
+
+    await renderKiosk(kioskFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Indomie Goreng')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText('Indomie Goreng'));
+    await userEvent.click(screen.getByText('Checkout'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Pay with QRIS')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText('Pay with QRIS'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /scan with your payment app/i })).toBeInTheDocument();
+    });
+
+    const confirmPaymentBtn = screen.getByText('I received the payment');
+    await userEvent.click(confirmPaymentBtn);
+
+    await waitFor(() => {
+      expect(mockCompleteSaleScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          cartId: 'cart-qris-202',
+          paymentMethod: 'qris',
+        }),
+      );
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      expect(screen.getByText('Order Placed!')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/RCP-QRIS-202/)).toBeInTheDocument();
   });
 });
