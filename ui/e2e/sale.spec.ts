@@ -131,35 +131,34 @@ test.describe('Complete Sale Flow', () => {
     await tenderInput.click();
     await tenderInput.pressSequentially('9999999', { delay: 30 });
 
-    // Find and click confirm / settle button.
+    // Settle the sale. The button must EXIST — this file's contract is hard
+    // assertions ("All `if` guards removed — tests hard-fail on regressions"), and a
+    // guarded click here is what made the original failure unreadable: when the click
+    // was skipped the next assertion failed on `.retail-cart-empty`, pointing at the
+    // cart instead of at the missing button.
+    //
+    // 'Complete' is the real label on this modal; it is listed first so the assertion
+    // names it. The alternatives stay for locale/rounding of the other flows.
     const confirmBtn = page.locator(
-      '[data-testid="settle-button"], button:has-text("Confirm"), button:has-text("Settle"), button:has-text("OK")',
+      '[data-testid="settle-button"], button:has-text("Complete"), button:has-text("Confirm"), button:has-text("Settle")',
     ).first();
-    const confirmCount = await confirmBtn.count();
-    if (confirmCount > 0) {
-      await confirmBtn.click();
-    }
+    await expect(confirmBtn, 'the settle control must be present to complete the sale').toBeVisible({
+      timeout: 8_000,
+    });
+    await confirmBtn.click();
 
-    // After completing, receipt preview must appear OR payment modal closes.
-    const receiptPaper = page.locator('.receipt-preview-paper');
-    const receiptVisible = await receiptPaper.isVisible({ timeout: 5_000 }).catch(() => false);
+    // The receipt preview replaces the POS, so it MUST appear — it is the
+    // observable proof the sale committed.
+    await expect(page.locator('.receipt-preview-paper')).toBeVisible({ timeout: 10_000 });
 
-    if (receiptVisible) {
-      // Click "Print Receipt" or "Skip" to dismiss receipt preview.
-      const skipBtn = page.locator('button:has-text("Skip"), button:has-text("Lewati")');
-      const printBtn = page.locator('button:has-text("Print"), button:has-text("Cetak")');
-
-      if (await skipBtn.isVisible().catch(() => false)) {
-        await skipBtn.click();
-      } else if (await printBtn.isVisible().catch(() => false)) {
-        await printBtn.click();
-      }
-    }
+    // Dismiss it and return to the till. `Skip` is the non-printing exit.
+    await page.locator('button:has-text("Skip")').first().click();
+    await expect(page.locator('.receipt-preview-paper')).toHaveCount(0, { timeout: 8_000 });
 
     // Cart must be empty after completing sale — the action bar (incl.
     // Pay) only renders while the cart has lines; the empty state shows
     // instead.
-    await expect(page.locator('.retail-cart-empty')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.retail-cart-empty')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('.retail-cart-action-btn--pay')).toHaveCount(0);
   });
 
@@ -370,9 +369,21 @@ test.describe('Payment Methods', () => {
     await expect(paymentModal).toBeVisible({ timeout: 5_000 });
 
     // Select QRIS payment method.
+    //
+    // Click the LABEL, not the input. The radio is styled-radio markup
+    // (PaymentModal.css:341-348): position:absolute, opacity:0, width:0, height:0,
+    // pointer-events:none — so it is deliberately a 0x0 box and the <label> is the real
+    // pointer target (measured 191.5x36.75). `check({ force: true })` still failed with
+    // "Element is outside of the viewport", because force bypasses actionability but not
+    // the zero-box check. Measured 2026-10-17: clicking the label checks the radio, the
+    // .payment-qris-section renders, and the input stays keyboard-reachable
+    // (focus -> INPUT/qris, Space -> checked). Nothing about the product needed changing.
     const qrisRadio = page.locator('input[value="qris"]');
-    await expect(qrisRadio).toBeAttached({ timeout: 5_000 });
-    await qrisRadio.check({ force: true });
+    await expect(qrisRadio, 'the QRIS radio stays in the DOM behind its styled label').toBeAttached({
+      timeout: 5_000,
+    });
+    await page.locator('label.payment-method-label--qris').click();
+    await expect(qrisRadio, 'clicking the label must select the rail').toBeChecked();
 
     // QRIS section must render with description.
     await expect(page.locator('.payment-qris-section')).toBeVisible({ timeout: 5_000 });
