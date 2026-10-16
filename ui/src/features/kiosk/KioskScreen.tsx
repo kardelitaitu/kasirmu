@@ -38,11 +38,39 @@ export default function KioskScreen() {
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
 
+  /**
+   * Return the kiosk to the attract screen, DISCARDING any abandoned order.
+   *
+   * ⚠️ THE ORDER IS CLEARED HERE, NOT ON PAY.
+   *
+   * This used to clear only the `idle` flag, and `setCart([])` / `setCheckout(false)`
+   * existed on the Pay handler alone (:138-139). So an order abandoned at the attract
+   * screen survived into the next customer's session:
+   *
+   *   1. Customer A adds items, taps Checkout, walks away.
+   *   2. 60 s pass; the attract screen appears.
+   *   3. Customer B taps "Tap to start" — `idle` goes false and `checkout` is STILL
+   *      TRUE, so B lands on A's checkout total, reads A's items, and can tap Pay.
+   *
+   * Measured: with the Pay button visible before the timeout, it was still visible
+   * after B's tap. This is a customer-facing device with no staff in the loop, and
+   * the order it leaked is someone else's — which is why the reset is unconditional
+   * rather than only on the idle PATH.
+   *
+   * Idling out is the kiosk's "session over". Any per-session state belongs to that
+   * session, so there is exactly one place to drop it.
+   */
+  const endSession = useCallback(() => {
+    setCart([]);
+    setCheckout(false);
+    setIdle(true);
+  }, []);
+
   const resetIdle = useCallback(() => {
     if (idle) setIdle(false);
     clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => setIdle(true), IDLE_TIMEOUT_MS);
-  }, [idle]);
+    idleTimer.current = setTimeout(endSession, IDLE_TIMEOUT_MS);
+  }, [idle, endSession]);
 
   const loadMenu = useCallback(() => {
     setLoadError(false);
@@ -56,9 +84,9 @@ export default function KioskScreen() {
 
   useEffect(() => {
     loadMenu();
-    idleTimer.current = setTimeout(() => setIdle(true), IDLE_TIMEOUT_MS);
+    idleTimer.current = setTimeout(endSession, IDLE_TIMEOUT_MS);
     return () => clearTimeout(idleTimer.current);
-  }, [loadMenu]);
+  }, [loadMenu, endSession]);
 
   useEffect(() => {
     const handler = () => resetIdle();

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import kioskFtl from '@/locales/kiosk.ftl?raw';
@@ -169,6 +169,80 @@ describe('KioskScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Indomie Goreng')).toBeInTheDocument();
     });
+  });
+
+  // ── The attract screen must also DISCARD the abandoned order ───────────
+  //
+  // `resetIdle` clears only the `idle` flag. `setCart([])` and `setCheckout(false)`
+  // exist on the PAY handler alone (:138-139), so an order abandoned at the attract
+  // screen survives into the next customer's session.
+  //
+  // The consequence is not cosmetic and this is a CUSTOMER-FACING device with no
+  // staff in the loop:
+  //
+  //   1. Customer A adds items and taps Checkout, then walks away.
+  //   2. 60 s pass; the attract screen appears.
+  //   3. Customer B taps "Tap to start".
+  //   4. `idle` goes false and `checkout` is STILL TRUE — so B lands on A's
+  //      checkout total, sees A's items, and can tap Pay.
+  //
+  // Both existing idle cases start from an EMPTY cart and no checkout, so neither
+  // can observe it: idle-with-an-order is the state that matters and nothing
+  // constructed it.
+  it('discards an abandoned order when the attract screen is dismissed', async () => {
+    // FAKE TIMERS FROM THE START, and every interaction goes through `fireEvent`.
+    //
+    // The first draft enabled fake timers only before the idle advance, which cannot
+    // work: the mount effect (:57-61) and every `resetIdle` install their timer with
+    // whatever `setTimeout` is current AT THAT MOMENT. Clicks made under real timers
+    // left a real timer pending, so `advanceTimersByTime` had nothing of its own to
+    // fire — measured, the checkout screen was still up after advancing 61 s.
+    vi.useFakeTimers();
+    try {
+      mockListProducts.mockResolvedValue(sampleProducts);
+      mockListCategories.mockResolvedValue(sampleCategories);
+      await renderKiosk(kioskFtl);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Customer A builds an order and opens checkout.
+      fireEvent.click(screen.getByText('Indomie Goreng'));
+      fireEvent.click(screen.getByText('Checkout'));
+      expect(screen.getByText('Pay'), 'A is at the checkout step').toBeInTheDocument();
+
+      // A walks away; the kiosk idles out. The idle listener is on `window`
+      // click/touch/keydown (:63-73), so every interaction resets the timer.
+      await act(async () => {
+        vi.advanceTimersByTime(61000);
+      });
+      expect(
+        screen.getByText('Tap to start'),
+        'the kiosk must idle out while a checkout is open',
+      ).toBeInTheDocument();
+
+      // Customer B starts a session.
+      fireEvent.click(screen.getByText('Tap to start'));
+
+      expect(
+        screen.queryByText('Pay'),
+        'customer B landed on customer A\'s checkout — the abandoned order, its total, '
+        + 'and the Pay button all survived the attract screen',
+      ).toBeNull();
+      // The cart region renders ONLY when the cart is non-empty (KioskScreen:209), so
+      // its absence is the assertion — there is no "Cart is empty" string on this
+      // screen, which the first draft of this case assumed.
+      expect(
+        screen.queryByRole('region', { name: /cart/i }),
+        'the abandoned cart must be gone, not merely off the checkout step',
+      ).toBeNull();
+    } finally {
+      // IN A `finally`: the first draft restored real timers after the assertions, so
+      // a failure left them installed and broke the SEVEN cases below it — a test that
+      // fails loudly is fine, one that poisons its neighbours is not.
+      vi.useRealTimers();
+    }
   });
 
   it('increments quantity when same product is added again', async () => {
