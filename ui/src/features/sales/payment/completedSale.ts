@@ -257,6 +257,15 @@ export function isBeverageItem(line: CartLine): boolean {
   return cat.includes('beverage') || cat.includes('drink') || cat.includes('minuman') || cat.includes('bar');
 }
 
+const COURSE_SORT_ORDER: Record<string, number> = {
+  appetizer: 1,
+  main: 2,
+  side: 3,
+  dessert: 4,
+  beverage: 5,
+  drinks: 5,
+};
+
 /**
  * Format a kitchen order ticket (KOT / chit) for food orders sent to the kitchen.
  * Formats line items with their quantity, modifiers, course indicators, and notes.
@@ -270,13 +279,26 @@ export function buildKitchenChitReceipt({
   printerTarget,
   documentKind,
 }: KitchenChitReceiptInput): PrintSalesReceiptArgs {
+  const tablePart = bareTableNumber(tableNumber || '');
+  const customerPart = customerName ? customerName.trim().replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() : '';
+  const identifier = tablePart || customerPart || 'ORDER';
+
+  const sortedLines = [...cartLines].sort((a, b) => {
+    const orderA = a.courseId ? (COURSE_SORT_ORDER[a.courseId] ?? 99) : 99;
+    const orderB = b.courseId ? (COURSE_SORT_ORDER[b.courseId] ?? 99) : 99;
+    return orderA - orderB;
+  });
+
   return {
     date: new Date().toISOString(),
-    receiptNumber: chitNumber ?? `KOT-${bareTableNumber(tableNumber || '') || 'ORDER'}-${Date.now().toString().slice(-4)}`,
-    items: cartLines.map((line) => {
+    receiptNumber: chitNumber ?? `KOT-${identifier}-${Date.now().toString().slice(-4)}`,
+    items: sortedLines.map((line) => {
       let displayName = line.name ?? line.sku;
       if (line.courseId) {
         displayName = `[${courseLabel(line.courseId)}] ${displayName}`;
+      }
+      if (line.coursingStatus === 'hold') {
+        displayName = `[HOLD] ${displayName}`;
       }
       const noteParts: string[] = [];
       if (line.modifiers && line.modifiers.length > 0) {

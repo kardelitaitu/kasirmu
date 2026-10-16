@@ -772,8 +772,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       ]);
       if (!srcFull || !destFull) throw new Error('Held carts not found');
 
-      let srcParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
-      let destParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
+      let srcParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string; guestCount?: string } = {};
+      let destParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string; guestCount?: string } = {};
       try { srcParsed = JSON.parse(srcFull.cart_data); } catch { srcParsed = {}; }
       try { destParsed = JSON.parse(destFull.cart_data); } catch { destParsed = {}; }
 
@@ -782,10 +782,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const combinedLines = [...destLines, ...srcLines];
 
       const combinedTotalMinor = destFull.total_minor + srcFull.total_minor;
-      const combinedItemCount = destFull.item_count + srcFull.item_count;
+      const combinedItemCount = combinedLines.length;
 
       destParsed.tableNumber = destTable.name;
       destParsed.lines = combinedLines;
+
+      const srcPax = parseInt(srcParsed.guestCount || '', 10);
+      const destPax = parseInt(destParsed.guestCount || '', 10);
+      if (!isNaN(srcPax) && srcPax > 0) {
+        const combinedPax = (isNaN(destPax) || destPax <= 0 ? 0 : destPax) + srcPax;
+        destParsed.guestCount = String(combinedPax);
+      }
 
       const originalCustomer = destParsed.customerName;
       const joinedTag = `[+T${bareTableNumber(mergeTableModal.name)}]`;
@@ -794,6 +801,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       destParsed.customerName = mergedCustomer;
 
       const newLabel = heldCartLabel(destTable.name, originalCustomer) ?? `Table ${destTable.name}`;
+      const deductionLocationId = destFull.deduction_location_id || srcFull.deduction_location_id;
+      const combinedCurrency = destFull.currency || srcFull.currency || storeCurrency;
 
       // CREATE FIRST, DELETE SECOND — same fix as handleMoveTable above.
       //
@@ -805,10 +814,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         cart_data: JSON.stringify(destParsed),
         item_count: combinedItemCount,
         total_minor: combinedTotalMinor,
-        currency: destFull.currency || storeCurrency,
+        currency: combinedCurrency,
         bill_type: 'open_bill',
         customer_name: mergedCustomer,
-        ...(destFull.deduction_location_id ? { deduction_location_id: destFull.deduction_location_id } : {}),
+        ...(deductionLocationId ? { deduction_location_id: deductionLocationId } : {}),
       });
 
       // The combined bill now exists, so removing the two sources is safe: a failure

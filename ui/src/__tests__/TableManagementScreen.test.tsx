@@ -1302,6 +1302,93 @@ describe('TableManagementScreen', () => {
     );
   });
 
+  it('preserves deduction_location_id and combines guestCount when merging tables', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        item_count: 1,
+        total_minor: 35000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockImplementation((id: string) => {
+      if (id === 'bill-1') {
+        return Promise.resolve({
+          id: 'bill-1',
+          label: 'Table 1',
+          cart_data: JSON.stringify({
+            lines: [{ sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } }],
+            guestCount: '2',
+          }),
+          item_count: 1,
+          total_minor: 25000,
+          currency: 'IDR',
+          created_at: '2026-10-12T00:00:00Z',
+          bill_type: 'open_bill',
+          customer_name: null,
+          deduction_location_id: 'loc-station-kitchen',
+        });
+      }
+      return Promise.resolve({
+        id: 'bill-2',
+        label: 'Table 2',
+        cart_data: JSON.stringify({
+          lines: [{ sku: 'SKU-2', name: 'Es Teh', qty: 1, unit_price: { minor_units: 35000, currency: 'IDR' } }],
+          guestCount: '3',
+        }),
+        item_count: 1,
+        total_minor: 35000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+        deduction_location_id: null,
+      });
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-merge-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-merge-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-confirm-btn'));
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 2',
+          item_count: 2,
+          total_minor: 60000,
+          deduction_location_id: 'loc-station-kitchen',
+        }),
+      );
+    });
+
+    const holdCall = mockHoldCart.mock.calls.find((call) => call[0]?.label === 'Table 2');
+    expect(holdCall).toBeDefined();
+    const parsedData = JSON.parse(holdCall![0].cart_data);
+    expect(parsedData.guestCount).toBe('5');
+  });
+
   // The merge deleted BOTH bills before creating the combined one, so a failed hold
   // lost two tables' open bills at once. Same fix and same assertion shape as the move
   // case above: the negative check on the deletes is what proves the fix.

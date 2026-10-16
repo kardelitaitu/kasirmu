@@ -158,6 +158,21 @@ describe('KdsTicketCard', () => {
     expect(mockPlayAlert).not.toHaveBeenCalled();
   });
 
+  it('does not play alert when order is served or cancelled even if level transitions to red', () => {
+    const { rerender } = renderCard({ status: 'served' });
+    expect(mockPlayAlert).not.toHaveBeenCalled();
+
+    mockSlaResult.level = 'red';
+    rerender(
+      withFluent(
+        <KdsTicketCard order={{ ...baseOrder, status: 'served', notes: 'trigger' }} onAdvance={onAdvance} sessionToken="test-token" />,
+        sharedFtl, kdsFtl,
+      ),
+    );
+
+    expect(mockPlayAlert).not.toHaveBeenCalled();
+  });
+
   it('sets aria-label on the Advance button with SLA info', () => {
     mockSlaResult.level = 'yellow';
     mockSlaResult.display = '12m 0s';

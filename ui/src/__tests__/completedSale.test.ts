@@ -304,6 +304,48 @@ describe('buildKitchenChitReceipt', () => {
     expect(chit.printerTarget).toBe('bar');
     expect(chit.documentKind).toBe('bar');
   });
+
+  it('sorts line items by course order and tags held items with [HOLD]', () => {
+    const lines: CartLine[] = [
+      {
+        ...makeCartLine('Lava Cake', 1, 30000),
+        courseId: 'dessert',
+        coursingStatus: 'hold',
+      },
+      {
+        ...makeCartLine('Spring Rolls', 2, 20000),
+        courseId: 'appetizer',
+        coursingStatus: 'fired',
+      },
+      {
+        ...makeCartLine('Beef Steak', 1, 75000),
+        courseId: 'main',
+        coursingStatus: 'fired',
+      },
+    ];
+
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: '7',
+    });
+
+    expect(chit.items).toHaveLength(3);
+    expect(chit.items?.[0]?.name).toBe('[Appetizer] Spring Rolls');
+    expect(chit.items?.[1]?.name).toBe('[Main Course] Beef Steak');
+    expect(chit.items?.[2]?.name).toBe('[HOLD] [Dessert] Lava Cake');
+  });
+
+  it('uses customerName when tableNumber is absent for takeaway chit numbering', () => {
+    const lines: CartLine[] = [makeCartLine('Paket Hemat', 1, 25000)];
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      customerName: 'Bpk. Ahmad',
+    });
+
+    expect(chit.receiptNumber).toMatch(/^KOT-BPKAHMAD-\d+$/);
+  });
 });
 
 describe('isBeverageItem', () => {

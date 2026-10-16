@@ -172,19 +172,21 @@ export const KdsTicketCard = memo(function KdsTicketCard({
 
   // Play audio alert when ticket transitions into the red threshold.
   useEffect(() => {
+    if (order.status === 'served' || order.status === 'cancelled') return;
     if (prevLevel.current !== null && prevLevel.current !== 'red' && level === 'red') {
       playAlert();
     }
     prevLevel.current = level;
-  }, [level, playAlert]);
+  }, [level, playAlert, order.status]);
 
   // Play a second alert when ticket escalates to red-urgent (≥15 min).
   useEffect(() => {
+    if (order.status === 'served' || order.status === 'cancelled') return;
     if (urgent && !prevUrgent.current) {
       playAlert();
     }
     prevUrgent.current = urgent;
-  }, [urgent, playAlert]);
+  }, [urgent, playAlert, order.status]);
 
   const [editing, setEditing] = useState(false);
   const [editSummary, setEditSummary] = useState(order.items_summary);
