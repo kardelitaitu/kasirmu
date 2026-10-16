@@ -639,6 +639,20 @@ export default function RestaurantMenu({
     setPreferencesOpen(false);
   }, [persistMenuPreference]);
 
+  // Both of these were INLINE ARROWS at the <MenuItemGrid> call site, so they were a new
+  // function on every render of this screen — which is every keystroke in the search box
+  // and every 86 toggle. That defeats any memo on the grid regardless of what the grid
+  // does with them. Named and stabilised here so `MenuItemGrid`'s own memo can apply.
+  const handleGridRetry = useCallback(() => {
+    if (sessionError) retrySessionToken?.();
+    reload();
+  }, [sessionError, retrySessionToken, reload]);
+
+  const handleClearFilter = useCallback(() => {
+    setSearchQuery('');
+    setActiveCategory('All');
+  }, []);
+
   const filtered = useMemo(() => {
     let result = restaurantProducts;
     if (effectiveCategory !== 'All') result = result.filter((p) => p.category === effectiveCategory);
@@ -745,13 +759,10 @@ export default function RestaurantMenu({
       <MenuItemGrid
         loading={loading || isTransientSessionError}
         error={isTransientSessionError ? null : (sessionError ?? error)}
-        onRetry={() => {
-          if (sessionError) retrySessionToken?.();
-          reload();
-        }}
+        onRetry={handleGridRetry}
         items={filtered}
         hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
-        onClearFilter={() => { setSearchQuery(''); setActiveCategory('All'); }}
+        onClearFilter={handleClearFilter}
         pinned={pinned}
         unavailable={unavailable}
         colors={colors}
