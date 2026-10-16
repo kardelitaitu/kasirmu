@@ -192,6 +192,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
 | general | [A whole-tree sweep of the E2E selectors: one dead half, no breakage — 2026-10-18](audits/2026-10-18-the-e2e-selector-sweep-found-one-dead-half.md) | — |
 | general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
+| release | [The 156 citations are right and the counter is wrong — 2026-10-18](audits/2026-10-18-the-flagged-citations-are-correct.md) | — |
 | general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
 | general | [The navigation "defect" was my harness, and the rule is documented — 2026-10-18](audits/2026-10-18-the-navigation-defect-was-my-harness.md) | — |
 | general | [The 197px page scroll is FIXED — the fix had to go on the scroller — 2026-10-18](audits/2026-10-18-the-page-scroll-is-fixed-on-the-scroller.md) | — |
