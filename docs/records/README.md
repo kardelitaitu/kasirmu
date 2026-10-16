@@ -125,6 +125,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Documentation-Code Audit — 2026-10-08](audits/2026-10-08-docs-audit.md) | — |
 | money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
+| money | [A guard whose result nobody read — and the key that was never written — 2026-10-18](audits/2026-10-18-currency-guard-result-unread.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
 | general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
