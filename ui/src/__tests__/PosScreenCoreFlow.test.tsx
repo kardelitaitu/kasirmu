@@ -194,6 +194,7 @@ const wsState = vi.hoisted(() => ({
   // Mutable for the course-firing case below: the course bar only renders on
   // `restaurant-pos`, and a store switch is what re-runs the read being raced.
   activeWorkspace: 'store-pos' as string,
+  scopeTypeKey: 'store-pos' as string,
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -217,7 +218,11 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspaceScope: () => ({
     storeId: 'default',
     instanceId: 'default',
-    typeKey: 'store-pos',
+    // Mutable so a case can declare the restaurant workspace: `loadOpenBills`
+    // bails on `typeKey !== 'restaurant-pos'` (usePosHeldCarts.ts:122/:140), which
+    // is a DIFFERENT field from `activeWorkspace` — measured, after a test that set
+    // only `activeWorkspace` found the refresh permanently unreachable.
+    typeKey: wsState.scopeTypeKey,
   }),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

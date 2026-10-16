@@ -1003,6 +1003,35 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           //
           // Returning keeps the cart intact and the split modal open, so the cashier can
           // retry the balance or cancel; a lost tab is recoverable, a double charge is not.
+          // HALF-COMMITTED: re-read the open bills BEFORE reporting.
+          //
+          // The writes are ordered hold-then-delete, so this catch can fire after the
+          // hold SUCCEEDED — the original tab still holds every line and a new tab now
+          // holds the same remaining ones, which is the documented, hand-resolvable
+          // duplicate the create-first order trades for not losing the tab. But
+          // `loadOpenBills()` sits on the success path (:995), so until now the list
+          // was never re-read and the screen kept showing ONE bill over data that held
+          // TWO. The operator could not see, select, or settle the duplicate — the
+          // "recoverable" mess was recoverable only by someone with database access.
+          //
+          // Refreshing makes it visible and settleable. Best-effort: a second failure
+          // here must not mask the one being reported.
+          //
+          // UNTESTED, and here is why so the next round does not re-derive it. The refresh
+          // goes through `loadOpenBills`, which returns early unless the workspace SCOPE's
+          // `typeKey === 'restaurant-pos'` (usePosHeldCarts.ts:122/:140) — a different field
+          // from `activeWorkspace`, which is what the screen's own dine-in rules read.
+          // PosScreenCoreFlow's WorkspaceContext mock hardcodes
+          // `useWorkspaceScope: () => ({ typeKey: 'store-pos' })`, so the refresh is
+          // unreachable there no matter what the case sets; a test written against it
+          // fails on correct production code. In the real app `typeKey` comes from
+          // `activeInstance.type_key` (WorkspaceContext.tsx:785), so a restaurant terminal
+          // does refresh. To cover this, mock the scope per-case first.
+          try {
+            await loadOpenBills();
+          } catch {
+            /* the toast below already reports the failure */
+          }
           addToast({ message: requiredLocalized(l10n, 'pos-toast-tab-balance-failed'), type: 'error' });
           // `false`, not a bare `return`: the modal closes on ANY resolution that
           // is not an explicit false, so returning nothing closed it and stranded
@@ -1246,6 +1275,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         type: 'success',
       });
     } catch (err) {
+      // HALF-COMMITTED — and this is the branch where it matters most, because the
+      // kitchen has ALREADY been told to cook (:1240-1243). If the hold succeeded and
+      // only the delete of the previous tab failed, food is being prepared while
+      // `loadOpenBills()` on the success path (:1259) left the bill list showing the
+      // OLD tab. The operator would then reconcile a running order against a list that
+      // cannot show both records.
+      try {
+        await loadOpenBills();
+      } catch {
+        /* the toast below already reports the failure */
+      }
       addToast({
         message: l10nErrorMessage(err, l10n, 'pos-toast-kitchen-dispatch-failed'),
         type: 'error',
