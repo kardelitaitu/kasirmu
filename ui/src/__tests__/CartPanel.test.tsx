@@ -187,6 +187,45 @@ describe('CartPanel — order type vs the table field', () => {
       unmount();
     }
   });
+
+  // ── New Tab must clear EVERYTHING the tab owned, not most of it ─────────
+  //
+  // The handler (`CartPanel.tsx:768-776`) clears `activeOpenBillId`, the table and the
+  // customer, and releases the lease — but NOT `appliedPromotions`. Promotions are not
+  // cosmetic: they ride to checkout as `promotionIds` (`PosScreen.tsx:2210`) and
+  // pre-select in the promotions modal (`:2249`). So starting a new tab after a
+  // discounted one carries that tab's discounts into the NEXT sale, and the operator
+  // has no reason to look — the cart is empty and the banner is gone.
+  //
+  // The sibling reset is the reference: `usePosHeldCarts` hold path (`:302-307`)
+  // clears `setAppliedPromotions([])` alongside exactly these fields. New Tab is the
+  // same reset with one line missing.
+  //
+  // Per this file's own discipline there was NO test for New Tab at all, which is
+  // how the omission survived.
+  it('New Tab clears the promotions a resumed tab carried, not just its lines', () => {
+    // `setAppliedPromotions` is the REAL prop (CartPanelProps:290) — the earlier draft
+    // of this case invented an `onResetPromotions` name, which made it fail for the
+    // wrong reason before the fix and would have kept failing after it.
+    const setAppliedPromotions = vi.fn();
+    const { panel } = renderPanel({
+      ...restaurant,
+      lines: [makeLine('Espresso')],
+      tableNumber: 'Table 12',
+      orderType: 'dine_in',
+      activeOpenBillId: 'tab-1',
+      appliedPromotions: [{ id: 'promo-1', name: 'Diskon 10%' } as never],
+      setAppliedPromotions,
+    });
+
+    fireEvent.click(within(panel).getByTestId('pos-cart-new-tab-btn'));
+
+    expect(
+      setAppliedPromotions,
+      'New Tab must drop the previous tab\'s promotions, or they ride into the next '
+      + 'sale as promotionIds and pre-select in the promotions modal',
+    ).toHaveBeenCalledWith([]);
+  });
 });
 
 describe('CartPanel (smoke)', () => {
