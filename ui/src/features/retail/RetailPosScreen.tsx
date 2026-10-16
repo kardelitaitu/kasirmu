@@ -379,6 +379,35 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [pendingProduct, setPendingProduct] = useState<ProductDto | null>(null);
   const [qtyInput, setQtyInput] = useState('1');
 
+  // The one ceiling for this picker, shared by the display and the commit.
+  //
+  // WHY IT IS A BUSINESS BOUND AND NOT A SCHEMA ONE: the DB CHECK on cart/sale
+  // line quantity is `qty > 0` (20260813_init.sql:208) with no upper limit, so
+  // nothing downstream would have caught an absurd value. The only other gate,
+  // the stock check in `handleConfirmQty`, is skipped entirely for a product
+  // whose `stock_qty` is null — every service item and anything inventory does
+  // not cover. Measured before the fix: typing 999999 into the box committed
+  // exactly 999999 units.
+  //
+  // WHY IT LIVES HERE AND NOT ONLY AT THE COMMIT: the modal renders its total
+  // from the raw input (RetailModals.tsx:655), so a bound applied only at
+  // commit leaves a wrong MONEY figure on screen the cashier reads as a price.
+  // Clamping on the write bounds both paths at one place, which is the point —
+  // two ceilings would drift.
+  const MAX_QTY_PER_LINE = 9999;
+  const clampQtyInput = useCallback((raw: string) => {
+    // Keep the box editable while the user is mid-typing: an empty or partial
+    // string parses to 0, which the lower bound turns into '1'. Only clamp the
+    // upper end, so backspacing still behaves.
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n)) return '1';
+    return String(Math.min(MAX_QTY_PER_LINE, Math.max(1, n)));
+  }, []);
+
+  const handleQtyInputChange = useCallback((raw: string) => {
+    setQtyInput(clampQtyInput(raw));
+  }, [clampQtyInput]);
+
   const handleOpenQtyPicker = useCallback((p: ProductDto) => {
     setPendingProduct(p);
     setQtyInput('1');
@@ -387,7 +416,23 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   const handleConfirmQty = useCallback(() => {
     if (!pendingProduct) return;
-    const qty = Math.max(1, parseInt(qtyInput, 10) || 1);
+    // CLAMPED AT THE COMMIT SITE. The lower bound alone was the old rule, so a
+    // quantity typed into the picker box — which reaches `setQtyInput` raw as
+    // `onInputChange` with no validation (RetailModals.tsx:618 -> :2046) — went
+    // straight through for any product whose `stock_qty` is null, which is every
+    // service item and anything inventory does not cover. Measured: typing
+    // 999999 committed exactly 999999 units.
+    //
+    // The ceiling is a BUSINESS bound, not a schema one: the DB CHECK is
+    // `qty > 0` (20260813_init.sql:208) with no upper limit, so nothing
+    // downstream would have caught it. A till quantity has no legitimate reading
+    // at 10,000 units — an operator who fat-fingers a 9 into a box meaning 1
+    // cannot tell 9 from 999999 on a touch screen, and the modal's own total
+    // line (RetailModals.tsx:655) multiplies the unit price by the raw value, so
+    // the wrong figure is on screen as MONEY before the confirm is even pressed.
+    // Backstop: the writer above already clamps, so this only fires for a
+    // value that arrived by another path.
+    const qty = Math.min(MAX_QTY_PER_LINE, Math.max(1, parseInt(qtyInput, 10) || 1));
     if (pendingProduct.stock_qty != null) {
       const inCart = linesRef.current.filter((l) => l.sku === pendingProduct.sku).reduce((s, l) => s + l.qty, 0);
       if (inCart + qty > pendingProduct.stock_qty) {
@@ -400,6 +445,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     setShowQtyPicker(false);
     setPendingProduct(null);
   }, [pendingProduct, qtyInput, addProduct, addToast, l10n, announce]);
+
 
   // ── Keyboard shortcut overlay ────────────────────────────────────
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -2043,7 +2089,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
           exit: { shouldRender: retailQtyExit.shouldRender, exiting: retailQtyExit.exiting, requestClose: retailQtyExit.requestClose },
           product: pendingProduct ? { name: pendingProduct.name, price: pendingProduct.price } : null,
           input: qtyInput,
-          onInputChange: setQtyInput,
+          onInputChange: handleQtyInputChange,
           onConfirm: handleConfirmQty,
           onCancel: () => retailQtyExit.requestClose(),
         }}

@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import { createUsePosStateMock } from '@/__tests__/test-utils/mocks/usePosState';
 import { mockedBarcode } from '@/__tests__/test-utils/mocks/barcodeScanner';
+import { retailProducts } from '@/__tests__/test-utils/mocks/retailPos';
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
@@ -219,6 +220,80 @@ describe('RetailPosScreen — interactions', () => {
     await userEvent.click(screen.getByText('Add'));
     expect(mockAddProduct).toHaveBeenCalledTimes(1);
     expect(mockAddProduct).toHaveBeenCalledWith(expect.objectContaining({ sku: 'SKU-001' }), 1);
+  });
+
+  // ── The quantity picker accepts any quantity typed into it ─────────
+  //
+  // `setQtyInput` is handed to the modal RAW as `onInputChange`
+  // (RetailPosScreen.tsx:2046) with no validation, and `handleConfirmQty`
+  // (:388-402) clamps only the LOWER bound — `Math.max(1, parseInt(...) || 1)`.
+  // The stock check at :391-397 is the only other gate and it is SKIPPED for a
+  // product whose `stock_qty` is null — every service item, and any product the
+  // inventory table does not cover. With it skipped there is nothing left: the
+  // typed value goes straight to `addProduct`, the cart, and the server.
+  //
+  // The money consequence is on screen at RetailModals.tsx:655: the modal's own
+  // total multiplies the unit price by that quantity, so the cashier reads a
+  // wrong figure before confirming.
+  //
+  // A STOCKED product does not demonstrate it — the stock guard rejects
+  // 999999 on SKU-001 (stock 100) and the case would pass for the wrong reason,
+  // the same trap the round-93 popularity fixture fell into. The fixture below
+  // removes `stock_qty` so the only thing that can stop the value is a ceiling.
+  it('clamps an absurd typed quantity to a sane ceiling', async () => {
+    const productsApi = vi.mocked(await import('@/api/products'));
+    productsApi.listProductsScoped.mockResolvedValue(
+      retailProducts.map((p) => (p.sku === 'SKU-001' ? { ...p, stock_qty: null } : p)),
+    );
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
+    fireEvent.pointerDown(productBtn);
+    await act(async () => { await new Promise(r => setTimeout(r, 500)); });
+    fireEvent.pointerUp(productBtn);
+    await waitFor(() => expect(screen.getByDisplayValue('1')).toBeInTheDocument());
+
+    const input = screen.getByDisplayValue('1');
+    fireEvent.change(input, { target: { value: '999999' } });
+    await userEvent.click(screen.getByText('Add'));
+
+    expect(
+      mockAddProduct,
+      'a typed quantity of 999999 reached the cart unbounded; clamp it at commit',
+    ).toHaveBeenCalled();
+
+    const qty = mockAddProduct.mock.calls[0]![1] as number;
+    expect(Number.isInteger(qty), 'the committed quantity must be a whole number').toBe(true);
+    expect(qty, 'the committed quantity must have a ceiling').toBeLessThanOrEqual(9999);
+  });
+
+  // The same field, and the money it drives. The modal's total line multiplies
+  // the unit price by whatever the box holds (RetailModals.tsx:655), so an
+  // unbounded value puts a figure on screen the cashier reads as a price before
+  // confirming. Asserted as MONEY, because that is what is wrong with it.
+  it('shows a bounded total for an absurd typed quantity', async () => {
+    const productsApi = vi.mocked(await import('@/api/products'));
+    productsApi.listProductsScoped.mockResolvedValue(
+      retailProducts.map((p) => (p.sku === 'SKU-001' ? { ...p, stock_qty: null } : p)),
+    );
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
+    fireEvent.pointerDown(productBtn);
+    await act(async () => { await new Promise(r => setTimeout(r, 500)); });
+    fireEvent.pointerUp(productBtn);
+    await waitFor(() => expect(screen.getByDisplayValue('1')).toBeInTheDocument());
+
+    // The heading is unique once the modal is up; the product card's own span
+    // also carries the name, so the modal is addressed by its class.
+    const modal = document.querySelector('.retail-qty-modal')!;
+    fireEvent.change(screen.getByDisplayValue('1'), { target: { value: '999999' } });
+
+    // SKU-001 is 3,500 IDR; 999,999 units would total 3,499,996,500 — billions.
+    const total = modal.querySelector('.retail-qty-total')?.textContent ?? '';
+    expect(total, `the displayed total is unbounded: ${total}`).not.toMatch(/499\.?996/);
   });
 
   it('adds product on single tap of a product button', async () => {
