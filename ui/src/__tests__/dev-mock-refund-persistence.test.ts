@@ -16,7 +16,7 @@
 // process_refund minted a `refund-<now>` id and DISCARDED it, while
 // list_refunds / list_refunds_scoped answered `[]` unconditionally. A refund
 // therefore appeared to succeed and then vanished, and Sales History — which
-// reads a sale's refunds through listRefundsScoped (SalesHistoryScreen.tsx:534)
+// reads a sale's refunds through listRefundsScoped (SalesHistoryScreen.tsx:11)
 // — showed none for every sale, including one just refunded.
 //
 // This is the SAME defect shape as the KDS create stub fixed in 0e2ddc7ac: a

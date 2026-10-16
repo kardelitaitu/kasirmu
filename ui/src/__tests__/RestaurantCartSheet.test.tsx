@@ -41,7 +41,7 @@ describe('RestaurantCartSheet', () => {
   it('hides the table chip on a NON-dine-in order, even with a table number set', () => {
     // Same rule as the floating bar beside it, and the same tenth-consumer reason:
     // the chip renders from `tableNumber` alone, and the Table field renders on
-    // restaurant POS unconditionally (CartPanel.tsx:864), so a takeaway with a
+    // restaurant POS unconditionally (CartPanel.tsx:898), so a takeaway with a
     // stray number showed a table on the sheet that holds the whole sale.
     render(
       withFluent(

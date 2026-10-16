@@ -13,7 +13,7 @@
 // The builder's `|| 'ORDER'` fallback is correct for a MISSING table, which is why
 // the defect is invisible from inside it: the problem is that a value arrives at
 // all. The Table field renders on restaurant POS unconditionally
-// (CartPanel.tsx:864), so a takeaway with a stray number sends the pass a ticket
+// (CartPanel.tsx:898), so a takeaway with a stray number sends the pass a ticket
 // that names table 99 — and the kitchen plates for a table that did not order.
 //
 // Of the twelve sites this is the one with the DIRECT physical consequence: every

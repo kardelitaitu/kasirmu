@@ -164,7 +164,7 @@ export function OpenBillsPanel({
               {/*
                 R21 (owner, 2026-09-20): the EMPTY ARM of this list was deleted rather
                 than left dead. The overlay's only opener gates on
-                `openBills.length > 0` — `CartPanel.tsx:689` is the single
+                `openBills.length > 0` — `CartPanel.tsx:1144` is the single
                 `setShowOpenBills(true)` call site — so at zero bills the list cannot be
                 opened and its empty state was unreachable UI: unverifiable and
                 impossible to regression-test. The string and the class went with it.

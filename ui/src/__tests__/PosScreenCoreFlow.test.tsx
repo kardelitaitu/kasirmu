@@ -964,7 +964,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
   // ── A double Send-to-Kitchen must not dispatch twice ─────────────────────
   //
-  // `handleSendToKitchen` (PosScreen.tsx:1188) has no re-entry guard: its early
+  // `handleSendToKitchen` (PosScreen.tsx:1302) has no re-entry guard: its early
   // returns cover session, lines and the undispatched delta, but nothing about
   // in-flight state. `sendingToKitchen` is set at :1200 and read ONLY to disable
   // the button (CartActionBar.tsx:220) — the exact shape rounds 124 and 126 found
@@ -1238,7 +1238,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // is the order-type selector (Dine-in / Takeaway / Delivery) surviving a switch
   // away from the workspace it belongs to.
   //
-  // Observable: `div.pos-cart-order-type-row` (CartPanel.tsx:804), gated on
+  // Observable: `div.pos-cart-order-type-row` (CartPanel.tsx:838), gated on
   // `orderTypePromptEnabled && setOrderType` -- the same container idiom as the
   // course bar above, and unlike the course bar it has no per-item early return.
   it('ignores a slower order-type-prompt read from the previous store', async () => {

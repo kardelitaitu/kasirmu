@@ -557,7 +557,7 @@ describe('RetailPosScreen — interactions', () => {
   }
   // ── The qty increase must not pass a STALE absolute value ─────────────
   //
-  // `handleIncreaseQty` (RetailPosScreen.tsx:838) computes an ABSOLUTE value from the
+  // `handleIncreaseQty` (RetailPosScreen.tsx:896) computes an ABSOLUTE value from the
   // rendered prop — `updateQty(line.id, line.qty + 1)` — and `updateQty`
   // (usePosState.ts:138) OVERWRITES the row rather than incrementing it:
   //

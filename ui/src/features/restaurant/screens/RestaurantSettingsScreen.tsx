@@ -28,7 +28,7 @@
 //
 // TABLE CAPTURE IS NOT A TOGGLE HERE, deliberately. The cart's table input is
 // part of what a restaurant POS IS, so it renders unconditionally
-// (`CartPanel.tsx:655`) and the only table-number control is the PRINT toggle in
+// (`CartPanel.tsx:898`) and the only table-number control is the PRINT toggle in
 // RestaurantReceiptsScreen (`receipt.showTableNumber`, `:1889`). This screen used
 // to render a second toggle writing `restaurant.table_number`, a key with NO
 // reader anywhere: it persisted and reloaded faithfully while changing nothing.

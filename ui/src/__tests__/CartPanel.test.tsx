@@ -146,7 +146,7 @@ describe('CartPanel — order type vs the table field', () => {
   // the open-bill payload) that ignored the order type. Those guards stop the
   // damage, but the FIELD itself is still offered and still honoured for DISPLAY
   // on every order type: the panel renders the bare table name in the active-tab
-  // banner (CartPanel.tsx:669) with no orderType check. So a cashier who switches
+  // banner (CartPanel.tsx:761) with no orderType check. So a cashier who switches
   // Dine-In -> Takeaway keeps a Table badge on an order that has no table.
   //
   // This pins the DISPLAY half, which the earlier fixes did not touch.
@@ -478,7 +478,7 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
   });
 
   // The action bar (and so the Save Tab button) only mounts once a subtotal
-  // exists — `CartPanel.tsx:854` guards CartFooterTotals on `subtotal &&`.
+  // exists — `CartPanel.tsx:1083` guards CartFooterTotals on `subtotal &&`.
   // Every save-tab case therefore supplies one.
   const withSubtotal = () => ({ ...withFields(), subtotal: SUBTOTAL });
 

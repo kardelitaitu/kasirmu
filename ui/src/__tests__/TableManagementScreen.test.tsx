@@ -2046,7 +2046,7 @@ describe('TableManagementScreen', () => {
 
   // ── A rename in flight must not drop a section added during it ────────────
   //
-  // `handleRenameSection` (TableManagementScreen.tsx:1306) awaits one
+  // `handleRenameSection` (TableManagementScreen.tsx:101) awaits one
   // `updateTableScoped` per table in the section (:1316-1320) and only THEN reads
   // `sections` to build the replacement:
   //

@@ -3024,7 +3024,7 @@ describe('PaymentModal — local payment rails gating', () => {
 
   // ── The checked-tender signal, row by row ─────────────────────────────
   //
-  // PaymentModal.css:184 styles the selected tender through an ADJACENT-
+  // PaymentModal.css:362 styles the selected tender through an ADJACENT-
   // SIBLING rule - `input[type="radio"]:checked + .payment-method-name` - so a
   // row is only treated when the element right after its radio carries that
   // class. The case above reads each row's NAME; nobody read whether the name

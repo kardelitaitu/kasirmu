@@ -61,6 +61,7 @@ import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
 import { scopedKey } from '@/utils/scopedStorage';
+import { reviveDraftLines } from './utils/draftCart';
 import { isEditableTarget } from '@/utils/isEditableTarget';
 import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
@@ -277,35 +278,71 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // and percentage promotions stack instead of overwriting the manual
   // discount slot. Declared before the restore effect so a lock/unlock
   // cycle can rehydrate the selection.
+  // ── The store's currency, resolved BEFORE the draft restore ──────────────
+  //
+  // This used to be declared far below, next to its first consumer. It moved up
+  // because the restore now has to VALIDATE a draft against it: the draft records
+  // the currency its minor units were written under, and a minor unit is
+  // exponent-relative (IDR/JPY are 0, USD/EUR are 2), so the two are only
+  // comparable once the store has answered.
+  //
+  // `currencyReady` is what makes that ordering explicit, and it is load-bearing:
+  // `CurrencyProvider` starts on its `fallback` ('USD') with `loading: true`, so
+  // validating against `currencyCtx.currency` too early would compare the draft to
+  // the FALLBACK and wave a stale USD draft straight through — the very defect this
+  // guards. With no provider mounted (tests, or a shell that omits it) the local
+  // state is the authority and is ready immediately.
+  const [storeCurrency, setStoreCurrency] = useState<string>('IDR');
+  const currencyCtx = useOptionalCurrency();
+  const currencyReady = currencyCtx ? !currencyCtx.loading : true;
+
+  useEffect(() => {
+    if (currencyCtx?.currency) {
+      setStoreCurrency(currencyCtx.currency);
+      return;
+    }
+    if (!sessionToken) return;
+    let cancelled = false;
+    getStoreSettingsScoped(sessionToken)
+      .then((settings) => {
+        if (!cancelled && settings.currency) {
+          setStoreCurrency(settings.currency);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionToken, currencyCtx?.currency]);
+
+  // Set once the restore effect has actually reached its verdict. The persist
+  // effect below must not touch storage before then: on the first render `lines` is
+  // empty, so its else-branch would delete the draft the restore has not yet read.
+  const draftRestoreSettledRef = useRef(false);
+
   const [appliedPromotions, setAppliedPromotions] = useState<Promotion[]>([]);
   useEffect(() => {
+    // Wait for the store currency, then settle exactly once. Must return BEFORE the
+    // ref is set, so a still-loading currency leaves the draft intact for the retry
+    // this effect performs when `currencyReady` flips.
+    if (!currencyReady) return;
+    draftRestoreSettledRef.current = true;
     try {
       const raw = localStorage.getItem(LOCKED_CART_KEY) ?? localStorage.getItem(ACTIVE_DRAFT_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: {
-          sku: string;
-          name?: string;
-          category?: string;
-          qty: number;
-          unit_price: { minor_units: number; currency: string };
-          courseId?: CartLine['courseId'];
-          coursingStatus?: CartLine['coursingStatus'];
-          modifiers?: CartLine['modifiers'];
-          note?: string;
-        }) => ({
-          id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
-          sku: l.sku as Sku,
-          name: l.name,
-          category: l.category,
-          qty: l.qty,
-          unit_price: l.unit_price,
-          ...(l.courseId ? { courseId: l.courseId } : {}),
-          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
-          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
-          ...(l.note ? { note: l.note } : {}),
-        })));
+        const revived = reviveDraftLines(data.lines, storeCurrency);
+        if (revived === null) {
+          // Written under a currency the store no longer uses. Its amounts cannot be
+          // re-read in the store's — stamping the new code onto the old minor units
+          // would misprice them by the exponent ratio (100x between IDR and USD) —
+          // so the draft is DROPPED rather than shown wrong. An empty cart is
+          // recoverable; a wrong price at the till is not. Both keys go, or the
+          // refusal would be undone on the next mount by whichever key survived.
+          localStorage.removeItem(LOCKED_CART_KEY);
+          localStorage.removeItem(ACTIVE_DRAFT_KEY);
+          return;
+        }
+        setLines(revived);
       }
       if (typeof data.discountPercent === 'number') {
         setDiscount(data.discountPercent, data.discountLabel || '');
@@ -340,7 +377,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
-  }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge, LOCKED_CART_KEY, ACTIVE_DRAFT_KEY]);
+  }, [currencyReady, storeCurrency, setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge, LOCKED_CART_KEY, ACTIVE_DRAFT_KEY]);
 
   const [showOptions, setShowOptions] = useState(false);
   const [showTables, setShowTables] = useState(false);
@@ -365,6 +402,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // ── Auto-persist active draft cart (crash & low-memory recovery) ─
   useEffect(() => {
+    // Hold off until the restore has reached its verdict. On the first render `lines`
+    // is empty (and, inside a `CurrencyProvider`, the currency is still loading, so
+    // the restore has deliberately not run yet), and the else-branch below would
+    // delete a draft that has not been read — the one thing this mechanism exists to
+    // prevent. The settle flag is set by the restore effect just before it commits.
+    if (!draftRestoreSettledRef.current) return;
     if (lines.length > 0) {
       try {
         const draft = {
@@ -559,26 +602,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     },
     [],
   );
-
-  const [storeCurrency, setStoreCurrency] = useState<string>('IDR');
-  const currencyCtx = useOptionalCurrency();
-
-  useEffect(() => {
-    if (currencyCtx?.currency) {
-      setStoreCurrency(currencyCtx.currency);
-      return;
-    }
-    if (!sessionToken) return;
-    let cancelled = false;
-    getStoreSettingsScoped(sessionToken)
-      .then((settings) => {
-        if (!cancelled && settings.currency) {
-          setStoreCurrency(settings.currency);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [sessionToken, currencyCtx?.currency]);
 
   const activeCurrency = currencyCtx?.currency ?? storeCurrency ?? subtotal?.currency ?? 'IDR';
 
@@ -1632,7 +1655,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // PINNED (round 84, 2026-10-13). Removing the success-path `if (stale()) return;`
   // below fails PosScreenCoreFlow.test.tsx -> 'ignores a slower order-type-prompt read
-  // from the previous store', on `div.pos-cart-order-type-row` (CartPanel.tsx:804).
+  // from the previous store', on `div.pos-cart-order-type-row` (CartPanel.tsx:838).
   //
   // It went unnoticed because the round-82 sweep removed ALL THREE guards of this
   // shape at once and failed on the receipt case alone -- so this one and the
