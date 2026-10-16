@@ -21,6 +21,7 @@ import {
   redactedDiagnostic,
   userErrorKey,
   userErrorMessage,
+  l10nErrorMessage,
   withCorrelationId,
 } from '@/utils/app-error';
 
@@ -142,6 +143,55 @@ describe('userErrorKey / userErrorMessage', () => {
     );
   });
 
+  // `l10nErrorMessage` is the wrapper 184 call sites use, and it DELEGATES to
+  // `userErrorMessage` (app-error.ts:350). That delegation is the whole reason a screen
+  // passing its own fallback key still gets the conflict copy -- and nothing pinned it,
+  // so breaking one line in the wrapper would silently stop the app-error-* mapping from
+  // reaching every screen that calls it, while the assertions above stayed green.
+  //
+  // The distinction this exists to keep: a backend that REFUSES a replay (the unique index
+  // on suppliers.code, the CAS on stock counts and staff restore) is reported as
+  // 'This record was changed by someone else' or '...already exists' -- NOT as the screen's
+  // generic save failure. That is the SyncConflictReviewScreen behaviour, and it depends
+  // entirely on this delegation holding.
+  it('l10nErrorMessage inherits the conflict and duplicate mapping', () => {
+    // A stub l10n: `getString(key, fallback)` returns the fallback, which is what
+    // userErrorMessage resolves through.
+    // Mirror `fluentErrorGetter` (app-error.ts:315-317): Fluent's getString takes
+    // (key, args, fallback), so the caller's fallback is the THIRD argument. A stub that
+    // reads the second one would make this case fail while the real call sites pass --
+    // which is how the first draft of this test was wrong.
+    const l10n = {
+      getString: (key: string, _args: unknown, fallback?: string) => fallback ?? key,
+    } as never;
+    expect(l10nErrorMessage({ kind: 'core', subKind: 'Conflict', message: 'x' }, l10n, 'screen-fallback')).toBe(
+      'This record was changed by someone else. Refresh and try again.',
+    );
+    expect(
+      l10nErrorMessage(
+        { kind: 'core', subKind: 'Conflict', message: 'conflict: category already exists (name)' },
+        l10n,
+        'screen-fallback',
+      ),
+    ).toBe('An item or category with this name or code already exists.');
+    // The screen's fallback is for an error that is NOT a typed AppError at all. A typed
+    // 'internal' error maps to app-error-generic instead (:133), which is why the first two
+    // assertions above are meaningful rather than vacuous: a conflict is DISTINGUISHED from
+    // a generic internal failure, and both are distinguished from an untyped throw.
+    // The screen's fallback key IS reachable -- but only through the real Fluent lookup.
+    // `userErrorMessage` passes `USER_ERROR_FALLBACKS[fallbackKey] ?? USER_ERROR_FALLBACKS
+    // ['app-error-generic']` as the fallback ARGUMENT (app-error.ts:334), so a stub that
+    // returns the argument cannot see the key at all. A real `l10n.getString(key, null,
+    // fallback)` resolves the FTL entry for an unknown key to the fallback. Modelling that
+    // is the difference between this case passing and proving nothing.
+    const realish = {
+      getString: (key: string, _args: unknown, fallback?: string) =>
+        key === 'screen-fallback' ? 'Could not save the supplier.' : (fallback ?? key),
+    } as never;
+    expect(
+      l10nErrorMessage(new Error('plain network throw'), realish, 'screen-fallback'),
+    ).toBe('Could not save the supplier.');
+  });
   it('never returns the raw backend message as the user copy', () => {
     const raw = 'sqlite: UNIQUE constraint failed: products.sku';
     const out = userErrorMessage({ kind: 'core', subKind: 'Db', message: raw }, getString);
