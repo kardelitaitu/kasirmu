@@ -132,6 +132,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A guard I mis-scoped, and the orphan it could not see — 2026-10-18](audits/2026-10-18-a-guard-i-mis-scoped-and-the-orphan.md) | — |
 | general | [A red order-type checker I had written off as noise — 2026-10-18](audits/2026-10-18-a-red-checker-i-called-noise.md) | — |
 | general | [An attestation, and a false alarm almost reported as a defect — 2026-10-18](audits/2026-10-18-an-attestation.md) | — |
+| general | [A real defect found, and deliberately not fixed — 2026-10-18](audits/2026-10-18-an-untouched-form-loses-the-editor.md) | — |
 | general | [The blind-window sweep: 13 guards, 0 blind, and one false positive of mine — 2026-10-18](audits/2026-10-18-blind-window-sweep-clean.md) | — |
 | inventory | [A false "new file" that clobbered 13 tests, and the two defects found around it — 2026-10-18](audits/2026-10-18-clobbered-tests-and-stock-double-move.md) | — |
 | money | [A guard whose result nobody read — and the key that was never written — 2026-10-18](audits/2026-10-18-currency-guard-result-unread.md) | — |
