@@ -250,6 +250,7 @@ function LayerFloatingButtons({
   l10n,
   toggleFullscreen,
   handleLogoutClick,
+  onOpenProfile,
   error,
   retry,
   greeting,
@@ -260,6 +261,8 @@ function LayerFloatingButtons({
   l10n: ReturnType<typeof useLocalization>['l10n'];
   toggleFullscreen: () => void;
   handleLogoutClick: () => void;
+  /** Opens the signed-in user's own account settings. */
+  onOpenProfile: () => void;
   error: string | null;
   retry: () => void;
   greeting: { word: string; lang: string };
@@ -285,7 +288,19 @@ function LayerFloatingButtons({
         </button>
         {session && (
           <>
-            <button type="button" className="workspace-home-user-profile" aria-label={l10n.getString('workspace-home-user-aria', { name: displayName })}>
+            {/* ⚠️ THIS BUTTON HAD NO onClick AND NO ANCESTOR HANDLER, so it was dead
+                outright -- unlike TransactionLogScreen's Details button (round 155), which
+                was rescued by a click bubbling to its row. Here the wrapper is
+                `div.ws-header-buttons` (:274) and the immediate parent is a fragment, so a
+                click did nothing at all: a labelled, focusable, rendered <button> that
+                answered to neither pointer nor keyboard. Pinned by
+                WorkspaceHome.test.tsx 'opens the user profile from the toolbar button'. */}
+            <button
+              type="button"
+              className="workspace-home-user-profile"
+              aria-label={l10n.getString('workspace-home-user-aria', { name: displayName })}
+              onClick={onOpenProfile}
+            >
               <div className="workspace-home-user-avatar">
                 <div className="workspace-home-user-avatar-inner">
                   <RoleIcon role={roleName} size={16} />
@@ -722,9 +737,17 @@ export default function WorkspaceHome() {
 
   // ── Shared floating layer props ────────────────────────────────
 
+  // The toolbar profile button opens the signed-in user's OWN account settings, the same
+  // registered page the Tools grid reaches for 'staff'. Wrapped, not passed directly:
+  // `handleShortcutNav` takes a ROUTE, and an onClick hands it the MouseEvent.
+  const openProfile = useCallback(
+    () => handleShortcutNav('staff'),
+    [handleShortcutNav],
+  );
+
   const floatingProps = {
     session, displayName, roleName, l10n,
-    toggleFullscreen, handleLogoutClick, error, retry, greeting,
+    toggleFullscreen, handleLogoutClick, onOpenProfile: openProfile, error, retry, greeting,
   };
 
   // ── Loading state ────────────────────────────────────────────
