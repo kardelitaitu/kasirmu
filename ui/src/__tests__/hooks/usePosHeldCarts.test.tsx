@@ -1041,4 +1041,74 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
         'tab, which is the only thing the flow exists to do',
     ).toBe(2);
   });
+
+  it('preserves and restores deduction_location_id across hold and resume', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped, getHeldCartScoped } = await import('@/api/sales');
+    const deductionLocationIdRef = { current: 'loc-bar-fridge' };
+    const onRestoreDeductionLocation = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '7',
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 1,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 25000, currency: 'IDR' },
+          deductionLocationIdRef,
+          onRestoreDeductionLocation,
+        }),
+      ),
+    );
+
+    vi.mocked(holdCartScoped).mockResolvedValueOnce({ id: 'held-7' });
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+
+    expect(holdCartScoped).toHaveBeenCalledWith(
+      'tok',
+      expect.objectContaining({
+        deduction_location_id: 'loc-bar-fridge',
+      }),
+    );
+
+    // Now simulate resume with a different locked location on the held cart
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'held-7',
+      label: 'Table 7',
+      cart_data: JSON.stringify({
+        lines: [
+          {
+            sku: 'COFFEE',
+            name: 'Coffee',
+            qty: 1,
+            unit_price: { minor_units: 25000, currency: 'IDR' },
+          },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-16T12:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: 'Table 7',
+      deduction_location_id: 'loc-kitchen-storage',
+    });
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('held-7');
+    });
+
+    expect(deductionLocationIdRef.current).toBe('loc-kitchen-storage');
+    expect(onRestoreDeductionLocation).toHaveBeenCalledWith('loc-kitchen-storage');
+  });
 });

@@ -33,6 +33,8 @@ import { defaultTenderPresets, formatMoney, getProductModifierGroups, inferCours
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
+  getCartDeductionLocation,
+  getCartDeductionLocationScoped,
   holdCartScoped,
   listOpenBillsScoped,
   printSalesReceipt,
@@ -767,6 +769,25 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       },
       [],
     ),
+    deductionLocationIdRef,
+    onRestoreDeductionLocation: useCallback(
+      async (locId: string | null) => {
+        if (!locId) {
+          setDeductionLocationName(null);
+          return;
+        }
+        try {
+          const info = sessionToken
+            ? await getCartDeductionLocationScoped(sessionToken, locId)
+            : await getCartDeductionLocation(locId);
+          setDeductionLocationName(info?.locationName ?? locId);
+          if (info?.overriddenAt) setDeductionOverridden(true);
+        } catch {
+          setDeductionLocationName(locId);
+        }
+      },
+      [sessionToken, setDeductionLocationName, setDeductionOverridden],
+    ),
   });
 
   // The shift-close guard reads this. Assigned during render rather than in an effect
@@ -1348,6 +1369,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           currency: subtotal?.currency ?? activeCurrency,
           bill_type: 'open_bill',
           customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+          ...(deductionLocationIdRef.current ? { deduction_location_id: deductionLocationIdRef.current } : {}),
         });
         setActiveOpenBillId(held.id);
 
@@ -1381,7 +1403,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     } finally {
       setSendingToKitchen(false);
     }
-  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n]);
+  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n, deductionLocationIdRef]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -2341,6 +2363,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // resolves to its default (print). Passing `null` through would make an
           // unread setting indistinguishable from an explicit false.
           {...(autoPrintKitchen === null ? {} : { autoPrintKitchen })}
+          deductionLocationId={deductionLocationIdRef.current}
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />

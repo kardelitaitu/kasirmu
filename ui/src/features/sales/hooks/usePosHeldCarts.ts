@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { useToast } from '@/components/Toast';
 import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
@@ -63,6 +63,10 @@ export interface UsePosHeldCartsParams {
   setOrderType?: (orderType: 'dine_in' | 'takeaway' | 'delivery') => void;
   dispatchOnTabSave?: boolean | null;
   onDispatchKitchen?: (deltaLines: CartLine[]) => Promise<void>;
+  /** ADR-19 §5.1 / §6.3 locked inventory station ref. */
+  deductionLocationIdRef?: MutableRefObject<string | null>;
+  /** Callback to restore location display state on bill resume. */
+  onRestoreDeductionLocation?: (locationId: string | null) => void;
 }
 
 /**
@@ -103,6 +107,8 @@ export function usePosHeldCarts({
   setOrderType,
   dispatchOnTabSave,
   onDispatchKitchen,
+  deductionLocationIdRef,
+  onRestoreDeductionLocation,
 }: UsePosHeldCartsParams) {
   // An open bill is a Restaurant POS concept: `list_open_bills_scoped` — its
   // only reader — refuses every other vertical in the bridge
@@ -313,6 +319,7 @@ export function usePosHeldCarts({
         bill_type: 'open_bill',
         // Same doubling as the label above, in the customer field.
         customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+        ...(deductionLocationIdRef?.current ? { deduction_location_id: deductionLocationIdRef.current } : {}),
       });
       const wasUpdating = !!activeOpenBillId;
       resetCart();
@@ -521,6 +528,12 @@ export function usePosHeldCarts({
         }
       }
       setActiveOpenBillId(id);
+      if (deductionLocationIdRef) {
+        deductionLocationIdRef.current = full.deduction_location_id ?? null;
+      }
+      if (full.deduction_location_id !== undefined) {
+        onRestoreDeductionLocation?.(full.deduction_location_id);
+      }
 
       // CLAIM ONLY WHEN NOBODY ELSE HOLDS IT — see the note at the top of this handler.
       //

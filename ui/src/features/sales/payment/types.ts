@@ -67,4 +67,6 @@ export interface PaymentModalProps {
    * Absent/false is the zero-change default: no stamp requested.
    */
   taxEstimated?: boolean;
+  /** ADR-19 §5.1 / §6.3 locked inventory station UUID. */
+  deductionLocationId?: string | null;
 }

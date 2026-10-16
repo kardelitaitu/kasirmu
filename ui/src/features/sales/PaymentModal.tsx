@@ -119,6 +119,7 @@ export default function PaymentModal({
   serviceChargeMinor = 0,
   promotionIds,
   taxEstimated,
+  deductionLocationId,
 }: PaymentModalProps) {
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
@@ -1352,6 +1353,7 @@ retryCurrencyLoad,
             ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
             ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
             ...(l.note ? { note: l.note } : {}),
+            ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -1377,6 +1379,7 @@ retryCurrencyLoad,
           // already reads "Table 12", so this wrote "Table Table 12" into the bill's
           // customer_name.
           customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+          ...(deductionLocationId ? { deduction_location_id: deductionLocationId } : {}),
         });
         setDone(true);
         return;
