@@ -149,6 +149,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The paid-tab fix now has a load-bearing test — after three wrong assertions](audits/2026-10-18-paid-tab-fix-now-has-a-test.md) | — |
 | payments | [A double-tap on 'Generate a new QR' minted a second Midtrans charge](audits/2026-10-18-qris-auto-reissue-double-charge.md) | — |
 | money | [The refund money path verified across three layers — 2026-10-18](audits/2026-10-18-refund-money-verified.md) | — |
+| general | [Four refutations, then a test harness that found the defect anyway — 2026-10-18](audits/2026-10-18-refused-is-not-harmless.md) | — |
 | general | [Executed, not scanned — and the splice that ate a describe block — 2026-10-18](audits/2026-10-18-restaurant-sale-executed.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
 | general | [Resuming a held cart left it in the list it was resumed from](audits/2026-10-18-resume-kept-the-held-row.md) | — |
