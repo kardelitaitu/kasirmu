@@ -1764,4 +1764,66 @@ describe('TopologyScreen', () => {
     expect(screen.getByRole('button', { name: 'topology-branch-add' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'topology-branch-add-confirm' })).not.toBeInTheDocument();
   });
+
+  // ── Add Branch in-flight guard ─────────────────────────────────────
+  //
+  // The branch-creation hand-off had no in-flight flag while its sibling
+  // deletion did (`deleteBranchSaving`). `createLocationProfileScoped` is a
+  // round-trip, and the confirm BUTTON and the input's Enter key both call
+  // `handleAddBranch`, so a second Enter (or a double click) before the first
+  // resolved created TWO location profiles under one name. Deleting is
+  // idempotent by id; creating is not — a duplicate profile also consumes a
+  // slot of the C2.2 `max_locations` quota the gate counts on.
+
+  it('creates only one branch when Enter is pressed again mid-round-trip', async () => {
+    await renderReady();
+    act(() => { screen.getByRole('button', { name: 'topology-branch-add' }).click(); });
+
+    // The create only settles once we let the deferred resolve — that window
+    // IS the round-trip. Flipping the deferred (rather than leaving the first
+    // call pending forever) also proves the guard releases on success.
+    let release!: (v: unknown) => void;
+    mockCreateStore.mockReturnValue(new Promise((res) => { release = res; }));
+
+    const input = screen.getByRole('textbox', { name: 'topology-branch-add-name-placeholder' });
+    fireEvent.change(input, { target: { value: 'Second Floor' } });
+
+    // First Enter starts the create.
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Reachability: the guard must not be swallowing the FIRST submit.
+    await waitFor(() => expect(mockCreateStore).toHaveBeenCalledTimes(1));
+
+    // Second Enter while that call is still in flight.
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(mockCreateStore).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release({ id: 'store-2', name: 'Second Floor', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockCreateStore).toHaveBeenCalledTimes(1));
+  });
+
+  it('disables the Add Branch confirm button while the create is in flight', async () => {
+    // The flag also has to reach the control: a cashier who clicks twice on
+    // a tablet must see the second click refused, and `state="processing"`
+    // is the design system's way of saying so.
+    await renderReady();
+    act(() => { screen.getByRole('button', { name: 'topology-branch-add' }).click(); });
+
+    let release!: (v: unknown) => void;
+    mockCreateStore.mockReturnValue(new Promise((res) => { release = res; }));
+
+    const input = screen.getByRole('textbox', { name: 'topology-branch-add-name-placeholder' });
+    fireEvent.change(input, { target: { value: 'Third Floor' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(mockCreateStore).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'topology-branch-add-confirm' })).toBeDisabled();
+
+    await act(async () => {
+      release({ id: 'store-3', name: 'Third Floor', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' });
+      await Promise.resolve();
+    });
+  });
 });

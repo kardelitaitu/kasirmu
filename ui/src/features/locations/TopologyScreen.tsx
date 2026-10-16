@@ -304,6 +304,12 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   );
   const [addingBranch, setAddingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
+  /** In-flight guard for branch creation, the twin of `deleteBranchSaving`
+   *  below. `createLocationProfileScoped` is a round-trip, and BOTH the confirm
+   *  button and the input's Enter key call this handler — so a second click or
+   *  a second Enter before the first resolves created TWO location profiles
+   *  under the same name. Deleting is idempotent by id; creating is not. */
+  const [addBranchSaving, setAddBranchSaving] = useState(false);
   /** Two-step branch deletion: armed state + in-flight guard. The target
    *  id is captured at arm time so a mid-confirm branch switch can neither
    *  change what the confirm message names nor what the button deletes. */
@@ -584,6 +590,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   const handleAddBranch = async () => {
     const name = newBranchName.trim();
     if (!name) return;
+    if (addBranchSaving) return;
     if (atLocationLimit) return; // the inline banner explains why
     if (!sessionToken) {
       // Session not minted yet (admin-shell fallback race) — fail honestly
@@ -594,6 +601,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       });
       return;
     }
+    setAddBranchSaving(true);
     try {
       const created = await createLocationProfileScoped(sessionToken, { id: `store-${crypto.randomUUID()}`, name });
       setStores((prev) => [...prev, created]);
@@ -607,6 +615,8 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
         message: `${l10n.getString('topology-branch-add-error')}: ${l10nErrorMessage(err, l10n)}`,
         type: 'error',
       });
+    } finally {
+      setAddBranchSaving(false);
     }
   };
 
@@ -874,11 +884,11 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
                   className="topology-branch-add-input"
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') void handleAddBranch(); if (e.key === 'Escape') { setAddingBranch(false); setNewBranchName(''); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { if (addBranchSaving) return; void handleAddBranch(); } if (e.key === 'Escape') { setAddingBranch(false); setNewBranchName(''); } }}
                   aria-label={l10n.getString('topology-branch-add-name-placeholder')}
                   placeholder={l10n.getString('topology-branch-add-name-placeholder')}
                 />
-                <Button variant="primary" onClick={() => void handleAddBranch()} disabled={!newBranchName.trim()}>
+                <Button variant="primary" onClick={() => void handleAddBranch()} disabled={!newBranchName.trim()} state={addBranchSaving ? 'processing' : 'ready'}>
                   {l10n.getString('topology-branch-add-confirm')}
                 </Button>
                 <Button variant="secondary" onClick={() => { setAddingBranch(false); setNewBranchName(''); }}>
