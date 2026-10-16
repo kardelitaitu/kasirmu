@@ -1508,6 +1508,27 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       }
       await deleteHeldCartScoped(sessionToken, cartId);
       setHeldCartId(null);
+      // DROP THE ROW, the same write `handleDeleteHeldCart` makes (:1553).
+      //
+      // The delete above is the commit, and it is the ONLY thing that made this
+      // path correct — the round-118 case pins that a rejected delete reports a
+      // failure rather than a success. What it never did was remove the row from
+      // `heldCartsList`, so the local list kept offering a record the server no
+      // longer holds, with two reachable consequences:
+      //
+      //  1. The reminder popup counts `heldCartsList.length` (:2080) — the one
+      //     affordance that tells a cashier 'there are carts on hold'. After
+      //     resuming the last one it still claimed one, and every resume left the
+      //     count inflated by one for the rest of the shift.
+      //  2. That popup's row opens the modal with a bare `setShowHeldCartsList(true)`
+      //     (:2084) — no refetch — so the held carts list showed a cart that no
+      //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
+      //     `if (!full) return;` (:1462): no modal change, no toast, nothing. A
+      //     dead control with no way for the cashier to learn why.
+      //
+      // Filtering by id, not by index or by clearing the list: the resumed cart is
+      // one row among possibly several, and the others must survive.
+      setHeldCartsList((prev) => prev.filter((c) => c.id !== cartId));
       setShowHeldCartsList(false);
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-resume'), type: 'error' });

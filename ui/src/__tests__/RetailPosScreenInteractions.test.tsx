@@ -1634,4 +1634,135 @@ describe('RetailPosScreen — interactions', () => {
 
     updateProduct.mockReset();
   });
+
+  // ── Resuming a hold must remove it from the browse list it came from ──────
+  //
+  // `handleResumeCart` ENDS by DELETING the record (RetailPosScreen.tsx:1509) —
+  // the delete IS the commit, the same fact the neighbouring 'does NOT claim a
+  // held cart was resumed' case documents. What it does NOT do is drop the row
+  // from `heldCartsList`, while its sibling `handleDeleteHeldCart` does exactly
+  // that (:1553). One state write, two paths, only one of them performing it.
+  //
+  // TWO CONSEQUENCES, both on the browse path:
+  //
+  //  1. The reminder popup counts `heldCartsList.length` (:2080) — the one
+  //     affordance that says 'there are carts on hold'. After resuming the last
+  //     hold it still claims one, and each resume keeps the count inflated by one.
+  //  2. The popup's own row opens the modal WITHOUT refetching (:2084, a bare
+  //     `setShowHeldCartsList(true)`), so the held carts list shows a cart that no
+  //     longer exists on the server. Tapping it calls getHeldCartScoped, which
+  //     returns null, and `if (!full) return;` (:1462) exits in silence — no modal
+  //     change, no toast, nothing. The cashier taps a row and the UI does nothing,
+  //     with no way to learn why.
+  //
+  // THE FIX MUST NOT BE 'refetch on every open': the mount effect and
+  // `showHeldCartList` already own the fetch, and the popup path is deliberately
+  // synchronous. Keeping the local list authoritative is the cheaper, correct
+  // shape — it is what the delete path already does.
+  it('drops a resumed hold from the browse list and the reminder count', async () => {
+    const salesApi = await import('@/api/sales');
+    const posState = await import('@/features/sales/usePosState');
+
+    // ONE hold: `handleResume` auto-resumes a lone cart (:1534), which is the
+    // shortest route through the real resume path.
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
+      {
+        id: 'held-only',
+        label: 'Hold #900',
+        item_count: 1,
+        total_minor: 3500,
+        currency: 'IDR',
+        created_at: '2026-01-01T00:00:00Z',
+        bill_type: 'hold',
+        customer_name: null,
+      },
+    ]);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
+      id: 'held-only',
+      label: 'Hold #900',
+      item_count: 1,
+      total_minor: 3500,
+      currency: 'IDR',
+      created_at: '2026-01-01T00:00:00Z',
+      bill_type: 'hold',
+      customer_name: null,
+      deduction_location_id: null,
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'SKU-001', name: 'Indomie Goreng', category: 'cat-food', qty: 1, unit_price: { minor_units: 3500, currency: 'IDR' } }],
+      }),
+    });
+
+    // A non-empty cart so the F4 binding routes to `handleResume` rather than the
+    // browse branch (`lines.length === 0` -> showHeldCartList), and so `heldCartId`
+    // gets set by the resume. SKU-001 is the real fixture product.
+    vi.mocked(posState.usePosState).mockReturnValue(
+      createUsePosStateMock({
+        lines: [
+          {
+            id: 'line-1' as LineId,
+            sku: 'SKU-001' as Sku,
+            name: 'Indomie Goreng',
+            category: 'cat-food',
+            qty: 1,
+            unit_price: { minor_units: 3500, currency: 'IDR' },
+          } as never,
+        ],
+        subtotal: { minor_units: 3500, currency: 'IDR' },
+        total: { minor_units: 3500, currency: 'IDR' },
+      }),
+    );
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() =>
+      expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThanOrEqual(1),
+    );
+
+    // BASELINE. The popup counts the one hold the mount effect seeded (:1579).
+    await waitFor(() =>
+      expect(document.querySelector('.retail-reminder-row--held-cart')).not.toBeNull(),
+    );
+    expect(
+      document.querySelector('.retail-reminder-row--held-cart')!.textContent,
+      'baseline: the one seeded hold must be counted',
+    ).toMatch(/1/);
+
+    // Resume it. F4 with a non-empty cart and a held id routes to handleResume
+    // (:1770), which auto-resumes the lone cart and DELETES it server-side.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await userEvent.keyboard('{F4}');
+    await waitFor(() => expect(salesApi.deleteHeldCartScoped).toHaveBeenCalledWith(expect.any(String), 'held-only'));
+
+    // THE ASSERTION. The record is gone from the server, so the browse list and
+    // the popup count must not still offer it.
+    await waitFor(() => {
+      const row = document.querySelector('.retail-reminder-row--held-cart');
+      expect(
+        row,
+        'the resumed hold is deleted server-side but still counted by the ' +
+          'reminder popup, so it keeps claiming a cart that no longer exists',
+      ).toBeNull();
+    });
+
+    // CONSEQUENCE 2, from the same missing write, and it is why the row count
+    // matters rather than merely being a cosmetic drift. The popup's held-cart row
+    // opens the modal with a BARE `setShowHeldCartsList(true)` (:2084) — no refetch —
+    // so the modal renders this same local array. While the stale row survived, that
+    // modal listed a cart the server no longer held, and tapping it called
+    // getHeldCartScoped, received null, and hit `if (!full) return;` (:1462): no
+    // modal change, no toast, no error. A control that does nothing at all, with
+    // nothing on screen to explain it.
+    //
+    // Asserted indirectly, because the F4 browse branch auto-resumes a LONE cart
+    // (:1534-38) and so never renders the modal — the same shape the sibling
+    // 'does NOT silently take over a lone hold' case documents. The observable is
+    // that the popup row, which is the ONLY reachable entry to that modal on an
+    // empty-then-refilled till, is gone: there is nothing left to tap.
+    expect(
+      document.querySelector('.retail-reminder-row--held-cart'),
+      'the popup row is the entry to the stale list — with it gone there is no dead ' +
+        'control left to tap',
+    ).toBeNull();
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([]);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue(null);
+  });
 });
