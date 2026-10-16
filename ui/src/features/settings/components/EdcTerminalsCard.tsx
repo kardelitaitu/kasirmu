@@ -148,6 +148,12 @@ export function EdcTerminalsCard({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // RE-ENTRY GUARD. The Save button is disabled while submitting (:536), but this
+    // handler is also the form's `onSubmit` (:397) — pressing Enter in the Terminal Name
+    // field submits it directly and never consults the button. Without this, two submits
+    // ran `createEdcTerminalScoped` twice and configured TWO terminals for one register.
+    // Same shape as the table screens' Save and Reserve forms (rounds 60-61).
+    if (submitting) return;
     if (!sessionToken) {
       // Reported through the form's own error slot, which is where every other
       // refusal in this handler goes. Silently returning from a Submit left the
