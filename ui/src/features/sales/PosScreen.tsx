@@ -1379,7 +1379,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         // received, and the kitchen ticket would disagree with the saved bill.
         //
         // ⚠️ THIRD DEFECT, FOUND BY VERIFYING THIS FIX IN SHIPPED FORM: the payload
-        // maps `lines` — the closure captured BEFORE the dispatch await at :1202 — so
+        // maps `lines` — the closure captured BEFORE the dispatch await at :1293 — so
         // it carried the PRE-send `dispatchedQty`. Live state was corrected above and
         // the saved record was not:
         //
@@ -1897,7 +1897,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Restaurant keyboard shortcuts (round 159) ───────────────────────────
   //
   // Restaurant-ONLY, gated on `activeWorkspace` like every other restaurant branch here
-  // (`:395`, `:586`, `:1811`). The retail till shares this component, so its handler
+  // (`:458`, `:472`, `:681`). The retail till shares this component, so its handler
   // object is empty and none of these keys exist there.
   //
   // Each action routes through an EXISTING self-guarding handler:

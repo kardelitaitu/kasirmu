@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requiredLocalized } from '@/components';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
@@ -97,7 +98,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
   // Carries the array a `setSections` updater produced out to the awaited
-  // `setSettingScoped` write. See `handleRenameSection` (:1319) for why a local
+  // `setSettingScoped` write. See `handleRenameSection` (:1394) for why a local
   // `let` cannot do this.
   const sectionsResultRef = useRef<string[] | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
@@ -621,13 +622,14 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   // ⚠️ THE FLOOR PLAN HONOURS THE SECTION FILTER HERE, and until round 244 it did not.
   //
-  // The chips computed their counts from `activeTableList` (`:500`, `:506`) while the grid
-  // rendered the UNFILTERED `tables` (`:1045` before this fix). Measured 2026-10-15: the seeded
-  // plan showed `Indoor 5/6` and the grid still drew all 12 tiles.
+  // The chips computed their counts from `activeTableList`, built at `:635` and read at
+  // `:636`/`:637`/`:641`, while the grid rendered the UNFILTERED `tables` (that render site has
+  // since moved; it was `:1045` when this fix landed). Measured 2026-10-15: the seeded plan
+  // showed `Indoor 5/6` and the grid still drew all 12 tiles.
   //
   // Two further consequences the raw list hid: `showEmpty` keyed on `tables.length`, so the
-  // "no tables in this section" branch (`:1035`) was unreachable while any table existed, and a
-  // section whose every table was deleted would have shown the wrong empty message.
+  // "no tables in this section" branch was unreachable while any table existed, and a section
+  // whose every table was deleted would have shown the wrong empty message.
   const visibleTables =
     section === null ? tables : tables.filter((t) => (t.section || 'Main') === section);
   const showEmpty = !loading && !error && visibleTables.length === 0;
@@ -1462,13 +1464,25 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     [sessionToken, tables, section, loadTables, addToast, l10n],
   );
 
-  const handleDeleteSection = useCallback(
+  // CONSENT IS THE DESIGNED DIALOG, NOT AN OS ONE.
+  //
+  // This used to be `window.confirm()`, which the native-dialog guard flags for the
+  // reason it states: an OS modal is off-design, unlocalized by the app's own bundles,
+  // and BLOCKS the event loop. On a tablet mid-service that last property is the
+  // operational one -- the whole till freezes behind the dialog.
+  //
+  // Split into a request and the work: `handleDeleteSection` records WHAT to delete and
+  // opens the dialog; `confirmDeleteSection` runs the same body it always did once the
+  // operator agrees. The work is unchanged, including the ref-carried result and the
+  // state-closure reasoning it documents -- only the way consent is asked has moved.
+  const [pendingSectionDelete, setPendingSectionDelete] = useState<string | null>(null);
+  const [deletingSection, setDeletingSection] = useState(false);
+
+  const confirmDeleteSection = useCallback(
     async (secName: string) => {
       if (!sessionToken || secName === 'Main') return;
       const tablesInSection = tables.filter((t) => (t.section || 'Main') === secName);
       if (tablesInSection.length > 0) {
-        const confirmMsg = l10n.getString('tables-delete-section-confirm', { section: secName });
-        if (!window.confirm(confirmMsg)) return;
         try {
           await Promise.all(
             tablesInSection.map((t) =>
@@ -1484,11 +1498,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
       }
       // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
-      // `handleRenameSection` above (:1319). The `updateTableScoped` awaits at
+      // `handleRenameSection` above (:1394). The `updateTableScoped` awaits at
       // :1361-1376 leave the screen interactive, so a section added during them was
       // dropped by this replacement. `check-state-closure-after-await.py` reports this
       // line as its second candidate. Carried out through the same ref for the same
-      // reason: see the local-`let` hazard noted at :1319.
+      // reason: see the local-`let` hazard noted at :1394.
       setSections((prev) => {
         const next = prev.filter((s) => s !== secName);
         sectionsResultRef.current = next;
@@ -1515,6 +1529,14 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     // re-create the callbacks (and re-arm the very staleness this guards against).
     [sessionToken, tables, section, loadTables, addToast, l10n],
   );
+
+  // The REQUEST half. It asks; it does not delete. Kept as its own callback so every
+  // existing caller (`onClick={() => void handleDeleteSection(name)}` at the section
+  // chips) keeps working unchanged while the consent step is inserted ahead of the work.
+  const handleDeleteSection = useCallback((secName: string) => {
+    if (secName === 'Main') return;
+    setPendingSectionDelete(secName);
+  }, []);
 
   const [showLegend, setShowLegend] = useState(false);
 
@@ -2851,6 +2873,34 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           </div>
         </div>
       )}
+
+      {/* Consent for the destructive section delete. Replaces the `window.confirm()`
+          this handler used to raise: themed, localized through the app's own bundles,
+          and NON-BLOCKING, so the till stays responsive while the operator decides.
+          `tables-delete-section-confirm` is the message the OS dialog used to carry,
+          reused verbatim so the wording the operator already knows is unchanged. */}
+      <ConfirmDialog
+        open={pendingSectionDelete !== null}
+        onCancel={() => setPendingSectionDelete(null)}
+        onConfirm={async () => {
+          const target = pendingSectionDelete;
+          setPendingSectionDelete(null);
+          if (target !== null) {
+            setDeletingSection(true);
+            try {
+              await confirmDeleteSection(target);
+            } finally {
+              setDeletingSection(false);
+            }
+          }
+        }}
+        title={requiredLocalized(l10n, 'tables-delete-section')}
+        message={requiredLocalized(l10n, 'tables-delete-section-confirm', {
+          section: pendingSectionDelete ?? '',
+        })}
+        variant="danger"
+        loading={deletingSection}
+      />
     </div>
   );
 }

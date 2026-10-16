@@ -67,7 +67,12 @@ const KNOWN_NOISE_SELECTORS = [
   // selectors, so the ::after entry alone is not enough.
   '.pos-split-modal',
   '.tables-modal-dialog',
-  // The active preview tab, elevated once its shadow was tokenised.
+
+  // The arrange-tables inspector bar — `box-shadow: var(--shadow-lg)` on the
+  // floating toolbar over the floor plan (TableManagementScreen.css:1180).
+  // Named on both sides like the entry above: the coverage walk reads CSS
+  // selectors, so the ::after entry alone is not enough.
+  '.tables-arrange-inspector',  // The active preview tab, elevated once its shadow was tokenised.
   '.restaurant-preview-tab.active',
   // The exact-tender quick button, same reason. Covered rather than waived on
   // purpose: the exempt-prefix door was tried first and breached its ceiling
@@ -851,7 +856,17 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     //
     // The ordering rule the earlier entry states was followed: surfaces fixed FIRST
     // (the ::after rules are what actually paint the overlay), entries named second.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 122 selectors; measured 107 with 22 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(107);
+    //
+    // Ceiling 107 -> 108, 2026-10-18. The +1 is the SAME sanctioned shape as the +2
+    // above: .tables-arrange-inspector carries `box-shadow: var(--shadow-lg)`
+    // (TableManagementScreen.css:1180) and was given ::after entries in all three
+    // components.css lists in the SAME change that named it here, so the surface IS
+    // dithered and this door's own rule is satisfied. It is not a new waiver.
+    //
+    // It was never a hardcoded literal that tokenising made visible — the rule was
+    // simply written without the overlay. The shadow walk found it, which is the walk
+    // doing its job; the population moved 122 -> 123 with it.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 123 selectors; measured 108 with 23 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(108);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is
