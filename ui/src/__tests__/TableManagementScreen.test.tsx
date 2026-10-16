@@ -1383,6 +1383,53 @@ describe('TableManagementScreen', () => {
     });
   });
 
+  // ── A PARTIAL reservation failure must close the form ────────────────
+  //
+  // `holdCartScoped` runs BEFORE `updateTableStatusScoped`, so the catch can fire
+  // with the reservation bill already written. Everything that made the success
+  // visible sat below it: the table never entered the pool, the plan was never
+  // re-read, and `setReserveModal(null)` never ran — so the form stayed OPEN with
+  // the guest's name still typed in it.
+  //
+  // The operator reads an error plus an open form as "it did not save" and presses
+  // Reserve again. That is exactly the duplicate reservation bill the re-entry guard
+  // in this handler exists to prevent, arriving through the failure branch instead
+  // of a double submit — and the guard does not catch it, because the first attempt
+  // genuinely finished.
+  it('closes the reserve form when the status write fails after the bill was created', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'available', capacity: 4 });
+    mockListTables.mockResolvedValue([table]);
+    // The bill is created; the STATUS write is what fails.
+    mockHoldCart.mockResolvedValue({ id: 'bill-new' });
+    mockUpdateTableStatus.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => expect(screen.getByTestId('tables-open-reserve-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-open-reserve-btn'));
+    await waitFor(() => expect(screen.getByLabelText(/Guest Name/i)).toBeDefined());
+    await userEvent.type(screen.getByLabelText(/Guest Name/i), 'Dr. Alice');
+
+    await userEvent.click(screen.getByTestId('tables-reserve-confirm-btn'));
+
+    // Reachability: the status write really was attempted, or this measures nothing.
+    await waitFor(() => expect(mockUpdateTableStatus).toHaveBeenCalled());
+
+    // The form is gone, so the guest name cannot be submitted a second time against
+    // a reservation that already exists.
+    await waitFor(() =>
+      expect(screen.queryByTestId('tables-reserve-confirm-btn')).toBeNull(),
+    );
+    // And exactly ONE reservation bill was written.
+    expect(mockHoldCart).toHaveBeenCalledTimes(1);
+    // The plan was re-read, so it reflects what the backend now holds.
+    await waitFor(() =>
+      expect(mockListTables.mock.calls.length).toBeGreaterThan(1),
+    );
+  });
+
   it('renders reservation details in floorplan card and detail drawer for reserved table', async () => {
     const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
     mockListTables.mockResolvedValue([table]);

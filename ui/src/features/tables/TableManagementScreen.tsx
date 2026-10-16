@@ -849,6 +849,25 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         setReserveModal(null);
         await loadTables();
       } catch (err) {
+        // PARTIAL FAILURE — the reservation bill may already exist.
+        //
+        // `holdCartScoped` runs before `updateTableStatusScoped`, so this catch can fire
+        // with the bill written and only the STATUS write failed. Everything that makes
+        // the success visible sits below it: the table never enters the pool, the plan is
+        // never re-read, and `setReserveModal(null)` never runs — so the form stays open
+        // with the guest's name still in it. The operator reads that as "it did not save"
+        // and presses Reserve again, and THAT is how the duplicate reservation bill the
+        // re-entry guard above exists to prevent actually happens — through the failure
+        // branch rather than a double submit.
+        //
+        // Re-reading and closing makes the screen describe what the backend holds, so a
+        // retry is a deliberate act against a truthful plan rather than a blind repeat.
+        try {
+          await loadTables();
+        } catch {
+          // Best-effort; the toast below already reports the failure.
+        }
+        setReserveModal(null);
         addToast({
           message: l10nErrorMessage(err, l10n, 'tables-action-error'),
           type: 'error',
@@ -907,6 +926,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
         await loadTables();
       } catch (err) {
+        // PARTIAL FAILURE — see handleConfirmReservation above for the full reasoning.
+        // Here the stakes are the same and the window is wider: the hold and the DELETE
+        // of the reservation both precede `updateTableStatusScoped`, so this catch can fire
+        // with the reservation already gone and the seated bill in its place while the
+        // table still reads `reserved` on an unrefreshed plan. The party is then neither
+        // booked nor visibly seated, and the operator has no way to see which.
+        try {
+          await loadTables();
+        } catch {
+          // Best-effort; the toast below already reports the failure.
+        }
         addToast({
           message: l10nErrorMessage(err, l10n, 'tables-action-error'),
           type: 'error',
