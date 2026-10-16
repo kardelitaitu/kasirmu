@@ -1,12 +1,34 @@
 # The retail till reconciled the drawer against pre-refund totals — 2026-10-18
 
-<!- - Audit stamp: 2026-10-18 · autonomous goal round 118 · status: 1 defect fixed in a
+<!- - Audit stamp: 2026-10-18 · autonomous goal round 118 · status: 1 coherence defect fixed in a
      surface this session had never executed · branch: 0.0.41 · commit: `4735cc3f6` -->
 
 <!- - Scope: the retail till, per round 117's recommendation to try the surfaces never
      executed. Tree verified green at 811/811 (12,888 passed) going in. -->
 
-## The defect
+## ⚠️ CORRECTED 2026-10-18 (round 120): the money impact was OVERSTATED
+
+The FIX is correct and stays. The REASONING that made it sound like a reconciliation
+defect does not, and is corrected here rather than left standing.
+
+What I claimed: "the cashier's count against the system disagrees by exactly the amount
+they just handed back."
+
+What is actually true, checked in round 120:
+
+- **Both** screens set the shift summary from the CLOSE RESPONSE, not the client copy —
+  `usePosShifts.ts:255` (`setClosedShiftSummary(closed)`, from `closeShiftScoped`) and
+  `RetailPosScreen.tsx:1164`. The summary the cashier reads is always the server's.
+- The retail screen's only reads of `activeShift` are `activeShift.id` for the close call
+  (:1163) and `activeShift.openedAt` for the shift-duration display (:1657). **No money
+  field is read from it anywhere.**
+
+So no user-visible figure was ever stale. The defect was **coherence** — state the till
+believed disagreed with what the server held — and the fix is right for that reason, not
+because a reconciliation was wrong. Recorded because the earlier wording would have led a
+reader to hunt a money bug that cannot occur.
+
+## The defect, restated accurately
 
 `ShiftDto` carries exactly the money a refund moves —
 
