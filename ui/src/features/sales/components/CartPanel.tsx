@@ -269,7 +269,12 @@ export interface CartPanelProps {
   canOverridePrice?: boolean | undefined;
   setOverrideTarget: Dispatch<SetStateAction<CartLine | null>>;
   ensureCart: (currency: string) => Promise<CartId | null>;
-  animatedUndoStack: AnimatedUndoStack<CartLine>;
+  /**
+   * The undo stack as the cart hook builds it. Only the RENDER flags
+   * (`shouldRender`, `isExiting`) are read here — the entries are opened through
+   * the Undo button, so the component never inspects a `RemovedLine`.
+   */
+  animatedUndoStack: AnimatedUndoStack<{ line: CartLine; index: number }>;
   handleUndoRemove: () => void;
   handleDismissUndo: () => void;
   subtotal: Money | null;

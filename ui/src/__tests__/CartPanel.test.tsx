@@ -53,7 +53,10 @@ const NO_EXIT: UseExitAnimationResult = {
   requestClose: noop,
 };
 
-const EMPTY_UNDO: AnimatedUndoStack<CartLine> = {
+// The cart hook now stacks `RemovedLine` (the line plus the index it held), so
+// Undo restores to the original POSITION rather than prepending. This fixture
+// mirrors that shape.
+const EMPTY_UNDO: AnimatedUndoStack<{ line: CartLine; index: number }> = {
   stack: [],
   isExiting: false,
   shouldRender: false,

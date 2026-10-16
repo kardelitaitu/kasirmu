@@ -24,6 +24,21 @@ type PosState = ReturnType<typeof usePosState>;
 /** Structural twin of the caller's useRef(l10n) result — non-null current. */
 type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
 
+/**
+ * A cart line removed from the sale, held on the undo stack together with the
+ * index it occupied so Undo can put it BACK rather than on top.
+ *
+ * This exists because `CartLine` is position-free: the list order IS the
+ * position, so a bare line cannot be restored to its original spot. See
+ * `handleRemoveLine` for the measurement that made the difference visible.
+ */
+interface RemovedLine {
+  /** The line that was removed. */
+  line: CartLine;
+  /** Index the line held in `lines` at removal time. */
+  index: number;
+}
+
 export interface UsePosCartActionsParams {
   sessionToken: string;
   addToast: AddToast;
@@ -74,7 +89,6 @@ export function usePosCartActions({
   addProduct,
   changeQty,
   updateLinePrice,
-  removeLine,
   setLines,
   setDiscount,
   discountInput,
@@ -266,27 +280,54 @@ export function usePosCartActions({
   // CartLineItem 200ms exit timer that prevents concurrent pushes
   // from landing during the fade on the component layer. MAX size
   // 5 so the cashier can recover from a batch of mistakes.
-  const animatedUndoStack = useAnimatedUndoStack<CartLine>({
+  const animatedUndoStack = useAnimatedUndoStack<RemovedLine>({
     maxSize: 5,
-    getId: (line) => String(line.id),
+    // Keyed on the line id so the race-safety id-set check in the hook is
+    // unchanged by the extra `index` the wrapper carries.
+    getId: (removed) => String(removed.line.id),
   });
 
   // Push a removed cart line onto the undo stack so the cashier
   // can recover up to the last 5 removes via the floating pill.
+  //
+  // ⚠️ THE INDEX IS CAPTURED HERE, and it is the whole point of `RemovedLine`.
+  // `handleUndoRemove` used to re-insert with `[popped, ...prev]` — always the
+  // TOP — because `CartLine` is position-free (types/domain.ts:109-128) and the
+  // undo stack stored the bare line. Measured: removing the 3rd of 3 lines and
+  // pressing Undo produced [removed, 1st, 3rd] instead of [1st, removed, 3rd],
+  // so the ticket order changed underneath the waiter.
+  //
+  // The index is read INSIDE the updater, so it is the index against the
+  // committed list rather than against whatever the row rendered with — the same
+  // committed-state discipline `changeQty` uses.
   const handleRemoveLine = useCallback((line: CartLine) => {
-    removeLine(line.id);
-    animatedUndoStack.push(line);
-  }, [removeLine, animatedUndoStack]);
+    let removedIndex = -1;
+    setLines((prev) => {
+      removedIndex = prev.findIndex((l) => l.id === line.id);
+      return prev.filter((l) => l.id !== line.id);
+    });
+    // -1 means the line was not in the committed list (a double-remove off a
+    // stale row). Clamped to 0 on restore, which is the old behaviour and the
+    // only sensible reading when no position was recorded.
+    animatedUndoStack.push({ line, index: Math.max(0, removedIndex) });
+  }, [setLines, animatedUndoStack]);
 
-  // Pop the top of the undo stack and re-insert the line into the
-  // cart. When the pop empties the stack, the hook schedules the
+  // Pop the top of the undo stack and re-insert the line at the index it was
+  // removed from. When the pop empties the stack, the hook schedules the
   // fade so the pill unmounts via the exit keyframe instead of
   // snapping away.
   const handleUndoRemove = useCallback(() => {
     const popped = animatedUndoStack.pop();
     if (popped === undefined) return;
     triggerInteraction('undo-cart');
-    setLines((prev) => [popped, ...prev]);
+    setLines((prev) => {
+      const restored = [...prev];
+      // Clamp: lines may have been removed or reordered while this sat on the
+      // stack (it holds up to 5), so the recorded index can exceed the list.
+      const at = Math.min(Math.max(0, popped.index), restored.length);
+      restored.splice(at, 0, popped.line);
+      return restored;
+    });
   }, [animatedUndoStack, setLines]);
 
   // Dismiss the pill via the race-safe exit fade. Concurrent

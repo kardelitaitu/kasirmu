@@ -1788,6 +1788,81 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
   });
 
+  // ── Undo must restore the line WHERE IT WAS ─────────────────────────
+  //
+  // `handleUndoRemove` re-inserts with `setLines((prev) => [popped, ...prev])`
+  // (usePosCartActions.ts:289) — always at the TOP. `useAnimatedUndoStack` stores
+  // the bare `CartLine` (getId is `line.id`) and `CartLine` has no position field
+  // (types/domain.ts:109-128), so the original index is not recorded anywhere and
+  // cannot be restored.
+  //
+  // WHY IT MATTERS ON A RESTAURANT TICKET: line order is the order the items were
+  // added, and the kitchen reads the ticket top-down. Removing the 3rd of 5 lines
+  // and pressing Undo reorders the ticket, so the printed check and the KDS ticket
+  // no longer match what the waiter built.
+  //
+  // The pre-existing undo case (:"undoes line removal") removes the ONLY line, so
+  // every position is the same and the defect is invisible to it. This case needs
+  // three lines and removes the middle one.
+  it('restores an undone line to its original position, not the top', async () => {
+    await renderPosScreenWithShift();
+
+    await waitFor(() => {
+      expect(screen.getByText('0m')).toBeInTheDocument();
+    });
+
+    // Three distinct products, scanned in order.
+    const items = [
+      { sku: 'ITEM-A', name: 'Alpha', barcode: 'BAR-A' },
+      { sku: 'ITEM-B', name: 'Bravo', barcode: 'BAR-B' },
+      { sku: 'ITEM-C', name: 'Charlie', barcode: 'BAR-C' },
+    ];
+    for (const it of items) {
+      vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+        sku: it.sku,
+        name: it.name,
+        category: 'Test',
+        price: { minor_units: 700, currency: 'USD' },
+        barcode: it.barcode,
+        in_stock: true,
+        stock_qty: 100,
+        tax_rate_ids: [],
+        product_type: 'standard',
+        created_at: '',
+        price_updated_at: '',
+      } as never);
+      await act(async () => {
+        mockedBarcode.triggerScan(it.barcode);
+      });
+    }
+
+    const lineNames = () =>
+      Array.from(document.querySelectorAll('[data-testid="cart-panel-line-item"]')).map((el) =>
+        (el.querySelector('[data-testid="cart-line-name"]') ?? el).textContent?.trim() ?? '',
+      );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(3);
+    });
+    const before = lineNames();
+
+    // Remove the MIDDLE line — the only position a prepend can corrupt.
+    await userEvent.click(screen.getByRole('button', { name: /remove ITEM-B/i }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(2);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /^undo$/i }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(3);
+    });
+
+    expect(
+      lineNames(),
+      'undo moved the restored line to the top; the ticket order changed underneath the waiter',
+    ).toEqual(before);
+  });
+
   // ── Open Bill Tests ──────────────────────────────────────────────────
 
   it('opens Open Bill input, saves, and reopens cart', async () => {
