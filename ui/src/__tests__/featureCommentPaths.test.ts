@@ -194,6 +194,40 @@ function barePrefixed(source: string): string[] {
  * catches the dominant failure: the file grew and the citation now lands on an
  * unrelated line. Reported with the comment text so a human resolves it, never fixed
  * by rewriting the comment automatically.
+
+ * ── CROSS-FILE LINE CITATIONS (`name.ts:NN`), THE THIRD PASS ─────────────────
+ *
+ * The other two passes each cover half of a cross-file citation and together
+ * cover NEITHER of its parts:
+ *
+ *   * the same-file pass SKIPS anything carrying a `name.ts:` prefix (see its own
+ *     `re` guard) — the token is treated as a claim about ANOTHER file, correctly;
+ *   * the path pass resolves the FILE and stops there.
+ *
+ * So `CartPanel.tsx:864` was verified to name a file that exists, and the 864 was
+ * never checked by anything. Measured 2026-10-18 (round 184): scanning every
+ * comment line under `features/` for a resolvable `name.ext:NN` token found **113**
+ * such citations and **9** pointing at a line that is blank, punctuation-only, or
+ * past EOF. Three of the nine were the SAME drifted target (CartPanel.tsx:864,
+ * an unrelated `}}` — see round 183 for the first), which is what a citation looks
+ * like once the file it points into grows and nothing re-checks the number.
+ *
+ * WHAT IS ENFORCED is deliberately only the no-false-positive subset, exactly as
+ * the same-file pass concluded: a line that is BLANK or PAST EOF cannot be the
+ * thing any comment means to cite. Those nine are fixed; this pass keeps them fixed.
+ *
+ * WHAT IS EXEMPT, and why each exemption is not a loophole:
+ *
+ *   * A HISTORICAL reference — "Moved verbatim out of KdsScreen.tsx:913-923" — is a
+ *     claim about the past. It must not resolve, and does not. Detected with the
+ *     same word list the same-file pass uses.
+ *   * A SECTION ANCHOR may name the comment banner above a symbol rather than the
+ *     symbol. `data.rs:33` is the `── Commands ──` line directly above
+ *     `get_backup_status` at :34, and the citing comment says so by naming the
+ *     banner. Requiring an exact symbol line would flag a correct citation, so a
+ *     line that CONTAINS text is accepted however near it lands.
+ *   * A cite into a file OUTSIDE the repo (a vendored path, a URL) cannot resolve
+ *     and is skipped rather than failed.
  */
 function sameFileCitations(source: string): Array<{ at: number; from: number; to: number; line: string }> {
   const found: Array<{ at: number; from: number; to: number; line: string }> = [];
@@ -387,6 +421,64 @@ describe('feature-source comments cite same-file lines that still hold', () => {
     ).toEqual([]);
   });
 });
+
+/** A resolvable `name.ext:NN` or `name.ext:NN-MM` token inside a comment line. */
+function crossFileCitations(source: string): Array<{ at: number; file: string; from: number; to: number; line: string }> {
+  const found: Array<{ at: number; file: string; from: number; to: number; line: string }> = [];
+  const lines = source.split(String.fromCharCode(10));
+  // Extensions worth resolving. A token without one (`:NN`) is the same-file pass.
+  const re = /([A-Za-z0-9_./-]+\.(?:tsx?|css|rs|py|sh|json|sql|md|ftl|toml|html))\s*:\s*(\d{2,4})(?:-(\d{2,4}))?/g;
+  lines.forEach((line, i) => {
+    const tr = line.trim();
+    if (!tr.startsWith("//") && !tr.startsWith("*")) return;
+    // A HISTORICAL reference is a claim about the past, not a pointer. Same word
+    // list as the same-file pass, widened to the comment BLOCK (the marker can sit
+    // a line or two above the token), because both measured instances read that way:
+    // "Moved verbatim out of KdsScreen.tsx:913-923" and the saveDiff block.
+    let blockStart = i;
+    for (let up = 1; up <= 12 && i - up >= 0; up += 1) {
+      const prev = lines[i - up]!.trim();
+      if (prev === "") break;
+      if (!prev.startsWith("//") && !prev.startsWith("*") && !prev.startsWith("/*")) break;
+      blockStart = i - up;
+    }
+    const block = lines.slice(blockStart, i + 1).join(" ").toLowerCase();
+    if (/\b(moved|was|were|formerly|previously|used to|at tip|deleted|removed|retired)\b/.test(block)) return;
+    let m: RegExpExecArray | null;
+    re.lastIndex = 0;
+    while ((m = re.exec(line)) !== null) {
+      found.push({
+        at: i + 1,
+        file: m[1]!,
+        from: Number(m[2]),
+        to: m[3] ? Number(m[3]) : Number(m[2]),
+        line: tr.slice(0, 110),
+      });
+    }
+  });
+  return found;
+}
+
+/**
+ * Resolve a `name.ext` token as written in a comment to a real file on disk.
+ *
+ * Three spellings are in use and all three resolve: relative to the CITING file
+ * (`./x.ts`), relative to `ui/` (the common `features/...` form), and relative to
+ * the repo root (`crates/...`, `apps/...`). Anything else is prose or a vendored
+ * path and returns null — the caller skips it rather than failing.
+ */
+function resolveCitedFile(fromFile: string, ref: string): string | null {
+  const candidates = [
+    path.resolve(path.dirname(fromFile), ref),
+    path.resolve(ROOT, "ui", ref),
+    path.resolve(ROOT, ref),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
+  }
+  return null;
+}
+
 describe('feature-source comments cite paths that exist', () => {
   it('every repo-relative path in a feature comment resolves', () => {
     const files = walk(FEATURES);
@@ -411,6 +503,73 @@ describe('feature-source comments cite paths that exist', () => {
       missing.sort(),
       `feature comment(s) citing a path that does not exist. A moved file leaves every ` +
         `reference dangling, and these are read as pointers:\n  ${missing.join('\n  ')}`,
+    ).toEqual([]);
+  });
+});
+describe('feature-source comments cite OTHER files at a line that holds text', () => {
+  it("the resolver is not vacuous — a known-good citation resolves and is accepted", () => {
+    // SELF-TEST, run before the population is trusted. A checker that cannot resolve
+    // anything reports zero offenders for the same reason a broken probe reports zero
+    // executions: an instrument that cannot fire is indistinguishable from a clean
+    // tree. So pin a citation that MUST resolve and whose line MUST hold text.
+    //
+    // The subject is THIS file, so the case cannot go stale by another file moving.
+    const synthetic =
+      // NOTE the two-digit line: the extractor requires `:NN` (2-4 digits), which is
+      // what keeps a bare `:1` in prose from being read as a citation. My first draft
+      // of this self-test used `:1` and the case FAILED — the self-test catching the
+      // author, which is the whole reason it exists.
+      "// the guard lives at " + path.basename(__filename) + ":11 (this very line)";
+    const cites = crossFileCitations(synthetic);
+    expect(cites.length, "the cross-file extractor found nothing in a known-good line").toBe(1);
+    const abs = resolveCitedFile(__filename, cites[0]!.file);
+    expect(abs, "a sibling file in the same directory must resolve").not.toBeNull();
+    const target = fs.readFileSync(abs!, "utf-8").split(String.fromCharCode(10));
+    expect(target[0]!.trim(), "line 1 must hold text or this self-test proves nothing").not.toBe("");
+  });
+
+  it("no cross-file line citation points at a blank or past-EOF line", () => {
+    const files = walk(FEATURES);
+    expect(files.length, "no files scanned — FEATURES is wrong").toBeGreaterThan(100);
+
+    const offenders: string[] = [];
+    let checked = 0;
+    for (const file of files) {
+      const source = fs.readFileSync(file, "utf-8");
+      for (const cite of crossFileCitations(source)) {
+        const abs = resolveCitedFile(file, cite.file);
+        if (abs === null) continue;   // prose, a vendored path, or a URL
+        checked += 1;
+        const target = fs.readFileSync(abs, "utf-8").split(String.fromCharCode(10));
+        // BLANK or PAST EOF — the no-false-positive subset. A line holding only
+        // `}` or `});` is punctuation-only and equally cannot be what a comment
+        // means to cite. Anything with real text is accepted, including a section
+        // banner named by the comment above a symbol (see the header note).
+        const slice = target.slice(cite.from - 1, cite.to);
+        const blankOrPastEof =
+          cite.from > target.length ||
+          slice.every((l) => /^[\s)\];},]*$/.test(l));
+        if (blankOrPastEof) {
+          const reads =
+            cite.from > target.length
+              ? "<past EOF: " + target.length + " lines>"
+              : JSON.stringify((target[cite.from - 1] ?? "").trim().slice(0, 40));
+          offenders.push(
+            path.relative(ROOT, file).split(path.sep).join("/") + ":" + cite.at +
+              " cites " + cite.file + ":" + cite.from +
+              (cite.to !== cite.from ? "-" + cite.to : "") + " — reads " + reads,
+          );
+        }
+      }
+    }
+
+    // A FLOOR, so a refactor that shrinks the finder to nothing fails here instead of
+    // reporting a clean tree. Measured 2026-10-18 (round 184): 113 resolvable.
+    expect(checked, "no cross-file citations resolved — the extractor is wrong").toBeGreaterThan(50);
+    expect(
+      offenders.sort(),
+      "feature comment(s) cite another file at a line that is blank or past its end. " +
+        "The cited file shrank and the number was never re-checked:\n  " + offenders.join("\n  "),
     ).toEqual([]);
   });
 });
