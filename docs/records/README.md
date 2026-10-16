@@ -207,6 +207,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Three red suites that were never anyone else's — 2026-10-18](audits/2026-10-18-three-red-suites-that-were-mine.md) | — |
 | general | [Two wrong claims caught by reading the schema before the UI — 2026-10-18](audits/2026-10-18-two-claims-the-schema-refuted.md) | — |
 | general | [Two findings on the paid-tab path, and why the test still is not written](audits/2026-10-18-two-harness-findings-on-the-paid-tab-path.md) | — |
+| general | [Two blocked items whose blocker had expired — 2026-10-18](audits/2026-10-18-two-items-whose-blocker-expired.md) | — |
 | general | [Two refuted suspicions, and a guard that nothing would have noticed losing — 2026-10-18](audits/2026-10-18-two-refutations-and-a-thin-guard.md) | — |
 | general | [Two table-numbering defects, one of them mine — 2026-10-18](audits/2026-10-18-two-table-numbering-defects.md) | — |
 | general | [An unbounded quantity field, and an Escape that ate the sidebar — 2026-10-18](audits/2026-10-18-unbounded-qty-and-escape-layering.md) | — |
