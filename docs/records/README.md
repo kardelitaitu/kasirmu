@@ -127,6 +127,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
 | money | [A guard whose result nobody read — and the key that was never written — 2026-10-18](audits/2026-10-18-currency-guard-result-unread.md) | — |
 | general | [The dispatch fix was tested on a copy, not on the component — 2026-10-18](audits/2026-10-18-dispatch-tested-a-copy.md) | — |
+| general | [Two gates that disagreed about what "fireable" means — 2026-10-18](audits/2026-10-18-fire-all-gate-disagreed.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | kds | [The KDS told the cook a queue existed — 2026-10-18](audits/2026-10-18-kds-promised-a-queue.md) | — |
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
