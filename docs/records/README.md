@@ -157,6 +157,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The SKU-keying class is clean, verified against the backend contract — 2026-10-18](audits/2026-10-18-sku-keying-is-clean.md) | — |
 | general | [The split's select-all tap cleared the line — 2026-10-18](audits/2026-10-18-split-tap-cleared-the-line.md) | — |
 | general | [Stale absolute quantity writes — a tree-wide sweep, and one more money defect — 2026-10-18](audits/2026-10-18-stale-absolute-qty-sweep.md) | — |
+| reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
 | general | [Two findings on the paid-tab path, and why the test still is not written](audits/2026-10-18-two-harness-findings-on-the-paid-tab-path.md) | — |
