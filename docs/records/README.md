@@ -187,6 +187,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The sweep that worked: writes no test ever names - 2026-10-18](audits/2026-10-18-the-sweep-that-worked.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
+| general | [Three red suites that were never anyone else's — 2026-10-18](audits/2026-10-18-three-red-suites-that-were-mine.md) | — |
 | general | [Two wrong claims caught by reading the schema before the UI — 2026-10-18](audits/2026-10-18-two-claims-the-schema-refuted.md) | — |
 | general | [Two findings on the paid-tab path, and why the test still is not written](audits/2026-10-18-two-harness-findings-on-the-paid-tab-path.md) | — |
 | general | [Two refuted suspicions, and a guard that nothing would have noticed losing — 2026-10-18](audits/2026-10-18-two-refutations-and-a-thin-guard.md) | — |
