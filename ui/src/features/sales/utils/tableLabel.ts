@@ -12,8 +12,8 @@
  *   Both places that render it ALSO add the word:
  *
  *     PaymentModal.tsx  <Localized id="payment-table-number" vars={{ number: tableNumber }}>
- *                       with `payment-table-number = Table { $number }` (sales.ftl:40)
- *     CartPanel.tsx:648 `Table ${tableNumber}`
+ *                       with `payment-table-number = Table { $number }` (sales.ftl:45)
+ *     CartPanel.tsx:761 `Table ${bareTableNumber(tableNumber!)}`
  *
  *   which composed "Table Table 12" on a real restaurant order.
  *

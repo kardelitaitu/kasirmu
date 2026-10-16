@@ -125,7 +125,7 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
       });
     // addToast and l10n stay excluded, as the original comment said -- but the reason is now
     // narrower than 'they are stable': l10n is NOT reliably stable in this codebase
-    // (FastPINOverlay.tsx:334 documents an infinite re-render loop from it), so listing it here
+    // (FastPINOverlay.tsx:335 documents an infinite re-render loop from it), so listing it here
     // would refetch backup status on every locale change. sessionToken is the one that must be
     // present, because it selects which command runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
