@@ -2042,3 +2042,55 @@ describe('PosScreen — a cart survives the boot-time scope change', () => {
     });
   });
 });
+
+// ── A draft must survive the mount that reads it ──────────────────────
+//
+// The plain reload: the scope is ALREADY the resolved store, so nothing migrates. The
+// restore effect (`:281`) reads the draft and calls `setLines`; the autosave effect
+// (`:367`) then runs with the new lines and rewrites the same value. State updates are
+// asynchronous, so the autosave's FIRST pass runs with `lines` still at its initial
+// `[]` — and its else-branch is an unconditional `removeItem(ACTIVE_DRAFT_KEY)` (`:401`).
+//
+// If that empty pass wins the race, the draft is deleted on the very mount that was
+// meant to restore it: the cashier reloads after an OS memory trim and their cart is
+// gone, even though the crash-recovery draft was sitting on disk the whole time.
+describe('PosScreen — a draft survives the mount that restores it', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  it('restores the lines and leaves the draft readable', async () => {
+    const key = 'pos-active-draft:default';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'TEST-001',
+            name: 'Test Item',
+            qty: 2,
+            unit_price: { minor_units: 1000, currency: 'MUR' },
+          },
+        ],
+        tableNumber: 'T3',
+        orderType: 'dine_in',
+      }),
+    );
+
+    await renderPosScreen();
+
+    // The cart is on screen: the restore worked.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item').length).toBeGreaterThan(0);
+    });
+
+    // And the draft is still on disk, so a second reload recovers the same cart.
+    await waitFor(() => {
+      const raw = localStorage.getItem(key);
+      expect(raw, 'the mount autosave deleted the draft it had just restored').not.toBeNull();
+      expect(JSON.parse(raw!).tableNumber).toBe('T3');
+    });
+  });
+});
