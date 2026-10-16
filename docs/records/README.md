@@ -220,6 +220,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | release | [Twelve more drifted citations — and a commit that swept a lane's work — 2026-10-18](audits/2026-10-18-twelve-citations-and-a-swept-commit.md) | — |
 | general | [Two wrong claims caught by reading the schema before the UI — 2026-10-18](audits/2026-10-18-two-claims-the-schema-refuted.md) | — |
 | general | [Two findings on the paid-tab path, and why the test still is not written](audits/2026-10-18-two-harness-findings-on-the-paid-tab-path.md) | — |
+| general | [Two hypotheses tested and refuted, one type error fixed — 2026-10-18](audits/2026-10-18-two-hypotheses-refuted-and-a-type-error.md) | — |
 | general | [Two blocked items whose blocker had expired — 2026-10-18](audits/2026-10-18-two-items-whose-blocker-expired.md) | — |
 | general | [Two refuted suspicions, and a guard that nothing would have noticed losing — 2026-10-18](audits/2026-10-18-two-refutations-and-a-thin-guard.md) | — |
 | general | [Two table-numbering defects, one of them mine — 2026-10-18](audits/2026-10-18-two-table-numbering-defects.md) | — |
