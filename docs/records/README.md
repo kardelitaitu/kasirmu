@@ -133,6 +133,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [A generic truth is worse than a specific one — 2026-10-18](audits/2026-10-18-generic-truth-is-worse.md) | — |
 | general | [A recalled held tab validates its qty and unit_price](audits/2026-10-18-held-tab-recall-validates-qty-and-price.md) | — |
+| general | [A hook registered after eight early returns, and a count its two readers disagreed about](audits/2026-10-18-hook-after-early-return-and-count-disagreement.md) | — |
 | kds | [The KDS told the cook a queue existed — 2026-10-18](audits/2026-10-18-kds-promised-a-queue.md) | — |
 | payments | [The kiosk said "Payment processed!" and recorded nothing — 2026-10-18](audits/2026-10-18-kiosk-claimed-a-payment.md) | — |
 | general | [The kiosk handed customer A's order to customer B — 2026-10-18](audits/2026-10-18-kiosk-leaked-the-order.md) | — |
