@@ -609,7 +609,7 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     //
     // The handler is on the radiogroup div; a keydown on a focused CHILD button bubbles
     // to it, which is how a keyboard user actually drives this.
-    const press = (orderType: string, key: string) => {
+    const press = (orderType: 'dine_in' | 'takeaway' | 'delivery', key: string) => {
       const { unmount } = renderPanel({ orderTypePromptEnabled: true, orderType, setOrderType });
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key });
       unmount();
