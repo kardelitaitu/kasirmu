@@ -152,6 +152,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
 | general | [Round 99's own comparison, one field further — 2026-10-18](audits/2026-10-18-round-99s-comparison-one-field-short.md) | — |
 | release | [Sixteen same-file line citations pointed at blank lines, and nothing checked them](audits/2026-10-18-same-file-citations-drift.md) | — |
+| general | [A checker found what six rounds of reading did not — 2026-10-18](audits/2026-10-18-section-closure-after-await.md) | — |
 | general | [The retail till reconciled the drawer against pre-refund totals — 2026-10-18](audits/2026-10-18-shift-read-once-then-stale.md) | — |
 | general | [The shift-summary is server-supplied in both screens — 2026-10-18](audits/2026-10-18-shift-summary-is-server-supplied.md) | — |
 | general | [The restaurant shortcuts had never been executed — 2026-10-18](audits/2026-10-18-shortcuts-never-executed.md) | — |
