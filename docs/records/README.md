@@ -264,6 +264,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Following an authored modifier group to the till that sells it (round 212)](audits/modifier-group-to-till.md) | — |
 | general | [The end-to-end proof round 210 handed off (round 211)](audits/modifier-groups-persist-e2e.md) | — |
 | general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
+| general | [Two store actions that failed with no message at all](audits/multistore-set-primary-delete-silent-failure.md) | — |
 | general | [My own round-11 fix was a dead end, and the probe that found it (round 299)](audits/my-own-round-11-fix-was-a-dead-end.md) | — |
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
