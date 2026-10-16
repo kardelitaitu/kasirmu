@@ -436,6 +436,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Worker cap, happy-dom and merging: three experiments, two refusals (2026-10-12)](audits/ui-test-levers-measured.md) | — |
 | general | [The view-gated exemption is now verified by a spec (round 274)](audits/view-gate-verified.md) | — |
 | general | [The view-gated split CAN hide a gap, and two guards for it do not bind (round 273)](audits/view-gated-split-can-hide.md) | — |
+| general | [The three "unguarded" write handlers are guarded server-side — and one guard was unpinned](audits/void-double-fire-refused-server-side.md) | — |
 | inventory | [A guard that asserted A ⊆ A: dead warehouse shortcut keys, and the test that could not see them](audits/warehouse-shortcut-guard-circular.md) | — |
 | general | [Two cards never read their settings, and one missing prop explains it (round 237)](audits/workspace-cards-missing-token.md) | — |
 | ui | [F10's modal renders again, and one F4 guard stays out of reach (round 232)](audits/workspace-modal-provider-fix.md) | — |
