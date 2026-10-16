@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import purchasingFtl from '@/locales/purchasing.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -233,6 +233,49 @@ describe('SuppliersScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Save failed');
     });
+  });
+
+  // A double tap on Create must not report FAILURE for a supplier that was saved.
+  //
+  // The backend refuses the replay, so no duplicate row is stored: core inserts into a
+  // table whose `code` column carries a unique index (idx_suppliers_code,
+  // migrations/20260813_init.sql:1172-1173), so the second create is rejected. But that
+  // rejection lands in the SAME catch that handles genuine failures -- see the case
+  // below, which asserts 'Save failed' on a rejected promise. So a double tap raises
+  // 'Save failed' while the supplier WAS created: the operator is told the write failed
+  // on a record that exists. Same re-entry class as ShiftBar's open/close shift (rounds
+  // 136-137).
+  //
+  // SHAPE 3 (round 139): both taps inside ONE act() batch, because sequential `fireEvent`
+  // wraps each dispatch in its own act() and React commits `setSaving(true)` between them
+  // -- measured on three other screens, that reports 1 call where a real double tap sends
+  // 2. Batching removes the intervening commit.
+  it('does not report a failure for a supplier saved by a double tap on Create', async () => {
+    mockListSuppliers.mockResolvedValue(sampleSuppliers);
+    mockCreateSupplier.mockResolvedValue({ id: 'sup-3', code: 'SUP-DUP', name: 'Dup Co', status: 'active' });
+    renderWithFluentSync(<SuppliersScreen />, purchasingFtl, sharedFtl, supplierFtl);
+
+    clickButton(/add supplier/i);
+    fillField(0, 'SUP-DUP');
+    fillField(1, 'Dup Co');
+
+    const createBtn = screen.getByRole('button', { name: /create/i });
+    await act(async () => {
+      fireEvent.click(createBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      createBtn.removeAttribute('disabled');
+      fireEvent.click(createBtn);
+    });
+
+    // The supplier WAS created -- exactly one write, and the modal closed.
+    await waitFor(() => {
+      expect(mockCreateSupplier).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      screen.queryByRole('alert'),
+      'a double tap on Create surfaced a failure alert for a supplier that WAS saved',
+    ).toBeNull();
   });
 
   it('closes modal when Cancel is clicked', async () => {

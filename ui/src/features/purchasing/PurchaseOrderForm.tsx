@@ -94,6 +94,18 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
 
   const subtotal = lines.reduce((sum, l) => sum + l.qty * l.unit_cost_minor, 0);
 
+  // Re-entry guard for the create/update write. The handler awaits an IPC round trip and
+  // the only thing stopping a second tap is the `saving` state, which React commits on its
+  // NEXT render -- after the second dispatch of a real double tap. MEASURED: two clicks in
+  // one act() batch both reach this handler (PurchaseOrderForm.test.tsx 'sends the create
+  // once for a double tap'), and both are SENT.
+  //
+  // core refuses the replay on the unique po_number
+  // (idx_purchase_orders_po_number, migrations/20260813_init.sql), so a duplicate PO is not
+  // stored -- but its rejection lands in the catch that reports genuine failures, so the
+  // double tap reads as a failed create of a PO that WAS created. A ref, not the state,
+  // because only the ref is authoritative at the moment the second submit runs.
+  const submitPendingRef = useRef(false);
   const handleSave = useCallback(async () => {
     if (!poNumber.trim()) { setError(l10nRef.current.getString('po-form-error-po-required')); return; }
     if (!supplierId) { setError(l10nRef.current.getString('po-form-error-supplier-required')); return; }
@@ -102,6 +114,8 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
       return;
     }
 
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -122,6 +136,7 @@ export default function PurchaseOrderForm({ editingId, onClose, onSaved }: Props
     } catch (err) {
       setError(l10nErrorMessage(err, l10nRef.current, 'po-form-error-generic'));
     } finally {
+      submitPendingRef.current = false;
       setSaving(false);
     }
   }, [poNumber, supplierId, expectedDate, notes, lines, onSaved, sessionToken]); // l10n via ref — stable dep chain

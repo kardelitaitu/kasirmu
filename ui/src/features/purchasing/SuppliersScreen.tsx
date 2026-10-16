@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listSuppliers,
@@ -111,6 +111,19 @@ export default function SuppliersScreen() {
     setError(null);
   }, []);
 
+  // Re-entry guard for the create/update write. The handler awaits an IPC round trip and
+  // the only thing stopping a second tap is the `saving` state, which React commits on
+  // its NEXT render -- after the second dispatch of a real double tap. MEASURED: two
+  // clicks in one act() batch both reach this handler
+  // (SuppliersScreen.test.tsx 'does not report a failure for a supplier saved by a double
+  // tap'), and both are SENT -- the second is not refused locally.
+  //
+  // core does refuse the replay, so no duplicate row is stored (`idx_suppliers_code` + BT + `,
+  // migrations/20260813_init.sql), but the rejection lands in the SAME catch that handles
+  // genuine failures -- so without this guard the double tap raises 'Save failed' while the
+  // supplier WAS created. A ref, not the state, because only the ref is authoritative at
+  // the moment the second submit runs.
+  const savePendingRef = useRef(false);
   const handleSave = useCallback(async () => {
     if (!form.name.trim()) {
       setError(l10n.getString('supplier-name-required'));
@@ -120,6 +133,8 @@ export default function SuppliersScreen() {
       setError(l10n.getString('supplier-code-required'));
       return;
     }
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -156,6 +171,7 @@ export default function SuppliersScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'supplier-save-failed'));
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, editingId, closeModal, load, l10n, sessionToken]);

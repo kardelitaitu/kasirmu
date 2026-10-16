@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, render } from '@testing-library/react';
+import { screen, fireEvent, render, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -261,6 +261,54 @@ describe('PurchaseOrderForm', () => {
 
     await vi.waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // A double tap on Create PO must not send the create twice.
+  //
+  // core refuses the replay -- `purchase_orders.po_number` carries a unique index
+  // (idx_purchase_orders_po_number, migrations/20260813_init.sql) -- so a duplicate PO is
+  // not stored. But the handler has no in-flight guard of its own, only `saving` state,
+  // which React commits on its NEXT render: after the second dispatch of a real double
+  // tap. MEASURED on three sibling screens, and confirmed here, that the second create
+  // IS SENT -- so the round trip is wasted and its rejection surfaces as a failure toast
+  // on a PO that was created.
+  //
+  // SHAPE 3 (round 139): both taps inside ONE act() batch. Sequential `fireEvent` wraps
+  // each dispatch in its own act() and React commits `setSaving(true)` between them, which
+  // disables the button -- that shape reports 1 call where a real double tap sends 2.
+  it('sends the create once for a double tap while the first is in flight', async () => {
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    const heldCreate = new Promise((resolve) => { releaseCreate = resolve; });
+    mockCreatePO.mockImplementation(() => heldCreate as never);
+
+    renderForm(<PurchaseOrderForm editingId={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Acme Corp (SUP001)')).toBeInTheDocument();
+    });
+    fillField('PO-001', 'PO-001');
+    await selectOption(/supplier/i, 'sup-1');
+    fillField('SKU', 'SKU-001');
+    fireEvent.change(screen.getByPlaceholderText('Product Name'), { target: { value: 'Test Product' } });
+
+    const createBtn = screen.getByRole('button', { name: /create po/i });
+    await act(async () => {
+      fireEvent.click(createBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      createBtn.removeAttribute('disabled');
+      fireEvent.click(createBtn);
+    });
+
+    expect(
+      mockCreatePO.mock.calls.length,
+      'a double tap on Create PO sent the create twice; core rejects the replay on its ' +
+        'unique po_number, so the failure is reported for a PO that WAS created',
+    ).toBe(1);
+
+    releaseCreate?.({ id: 'po-new' });
+    await vi.waitFor(() => {
+      expect(mockCreatePO).toHaveBeenCalledTimes(1);
     });
   });
 
