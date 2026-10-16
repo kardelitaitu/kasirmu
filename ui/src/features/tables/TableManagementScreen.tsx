@@ -453,7 +453,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     triggerRef.current?.focus();
   }, []);
 
-  useFocusTrap(detailRef, selected !== null, closeDetail);
+  // `claimEscape: true` — the panel is the topmost Escape owner while it is open.
+  // Without it the key closed the panel AND the whole table view behind it
+  // (PosScreen's cascade at :1997), losing the floor plan: measured 12 tiles -> 0.
+  useFocusTrap(detailRef, selected !== null, closeDetail, true);
 
   const openAddTableModal = useCallback(() => {
     setTableModal({

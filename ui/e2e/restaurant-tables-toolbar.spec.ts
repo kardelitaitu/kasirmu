@@ -82,11 +82,18 @@ test('arrange mode stops a tile opening its table', async ({ page }) => {
 
   // Leave the panel so the next tap is unambiguous, then enter arrange mode.
   //
-  // The panel's OWN Close button, not Escape: on this screen Escape belongs to the shell's
-  // workspace-navigation shortcut, which closes the whole TABLE VIEW back to the POS grid
-  // (AppShell.tsx:79 exempts only `restaurant-pos` from the picker return, so the tiles go
-  // with it). Measured 2026-10-18: `.tables-table` 12 -> 0 after Escape. The panel is not an
-  // ARIA modal and could never have owned the key.
+  // The panel's OWN Close button — kept not because Escape is broken but because a Close
+  // button is what an operator presses, and this case is about the PANEL leaving before
+  // arrange mode is entered.
+  //
+  // ⚠️ The reason previously written here was WRONG and is corrected 2026-10-18. It said
+  // Escape "belongs to the shell" and that the panel "is not an ARIA modal and could never
+  // have owned the key". Both are false: the panel is `role="dialog" aria-modal="true"`
+  // (`TableManagementScreen.tsx:1972`) and its focus trap DOES handle Escape. What actually
+  // happened was an ORDER bug in `PosScreen`'s Escape cascade, which ran first (it registers
+  // on `document` before the panel mounts) and closed the whole table view — `.tables-table`
+  // 12 -> 0. `PosScreen` now stands down when a modal is open, and
+  // `restaurant-tables-toolbar.spec.ts` pins that Escape closes the panel ALONE.
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.locator('.tables-detail-actions')).toHaveCount(0, { timeout: 5_000 });
   await arrange.click();
@@ -100,6 +107,35 @@ test('arrange mode stops a tile opening its table', async ({ page }) => {
   ).toHaveCount(0, { timeout: 5_000 });
 });
 
+test('Escape closes the detail panel WITHOUT taking the floor plan with it', async ({ page }) => {
+  await openTables(page);
+
+  const tiles = page.locator('.tables-table');
+  const before = await tiles.count();
+  expect(before, 'the floor plan must be populated for this to mean anything').toBeGreaterThan(0);
+
+  // Click the TILE, not its name span: the floor plan list intercepts a click on the
+  // inner label, which is what the sibling case above guards against too.
+  await tiles.first().click();
+  await expect(page.locator('.tables-detail')).toBeVisible({ timeout: TIMEOUT });
+
+  await page.keyboard.press('Escape');
+
+  // The PANEL closes — that is the dismissal the operator asked for.
+  await expect(page.locator('.tables-detail')).toHaveCount(0, { timeout: TIMEOUT });
+  // And the FLOOR PLAN SURVIVES. Measured 2026-10-18 before the fix: Escape on this
+  // screen closed the panel AND the whole table view behind it, 12 tiles -> 0, because
+  // `PosScreen`'s Escape cascade is registered on `document` BEFORE the panel's focus
+  // trap and acted on a key the panel had already handled. `PosScreen.tsx` now stands
+  // down when an ARIA modal is open (`isAnyAriaModalOpen()`), which is the question the
+  // old comment had argued was unnecessary because "a sub-screen is not a modal" — true
+  // of the sub-screen, and false of a modal opened INSIDE it.
+  await expect(
+    tiles,
+    'Escape closed the whole table view instead of just the panel',
+  ).toHaveCount(before, { timeout: TIMEOUT });
+  await expect(page.getByText(/^Table \d+$/).first()).toBeVisible({ timeout: TIMEOUT });
+});
 test('the assign button names the action its state implies', async ({ page }) => {
   await openTables(page);
 

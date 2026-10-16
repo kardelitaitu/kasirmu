@@ -77,17 +77,17 @@ test('Print Bill offers itself only for a table with a bill', async ({ page }) =
 
   // And a BILLED one does — the pair is what pins the gate rather than the button.
   //
-  // CLOSE THE PANEL WITH ITS OWN CONTROL, NOT Escape. Measured 2026-10-18: Escape on this
-  // screen is owned by the SHELL, not by the detail panel. `useWorkspaceNavShortcuts` returns
-  // to the workspace picker on Escape, and its guard deliberately exempts only
-  // `restaurant-pos` (`AppShell.tsx:79`) -- so on this screen Escape closes the TABLE VIEW and
-  // returns to the POS grid, taking every tile with it (measured: `.tables-table` 12 -> 0),
-  // while `.tables-detail-actions` also goes to 0. The old sequence then looked for a billed
-  // tile on a screen that no longer existed.
+  // CLOSE THE PANEL WITH ITS OWN CONTROL. A Close button is what an operator presses, and
+  // this case is about reaching a BILLED tile rather than about the dismissal key.
   //
-  // The panel is NOT an ARIA modal (`isAnyAriaModalOpen()` is false for it), so it could never
-  // claim Escape. It has its own Close button, which is what an operator presses -- and the
-  // plan stays clickable underneath, so the billed tile is reachable directly.
+  // ⚠️ The reasoning that used to sit here was WRONG and is corrected 2026-10-18. It claimed
+  // Escape "is owned by the SHELL, not by the detail panel" and that the panel "is NOT an
+  // ARIA modal (`isAnyAriaModalOpen()` is false for it), so it could never claim Escape".
+  // The panel IS an ARIA modal (`TableManagementScreen.tsx:1972`) and its focus trap DOES
+  // handle Escape. The real defect was order: `PosScreen`'s Escape cascade runs first and
+  // closed the whole table view along with the panel (`.tables-table` 12 -> 0). That is fixed
+  // and pinned in `restaurant-tables-toolbar.spec.ts`. This Close button stays because it is
+  // the better affordance to test the billed-tile transition with.
   await page.getByRole('button', { name: 'Close' }).click();
   await openBilledTable(page);
   await expect(page.locator('[data-testid="tables-print-bill-btn"]')).toBeVisible({

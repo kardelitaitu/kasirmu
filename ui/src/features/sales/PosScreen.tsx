@@ -63,6 +63,7 @@ import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
 import { scopedKey } from '@/utils/scopedStorage';
 import { reviveDraftLines } from './utils/draftCart';
 import { isEditableTarget } from '@/utils/isEditableTarget';
+import { isAnyAriaModalOpen } from '@/utils/modal-guard';
 import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
 import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
@@ -297,10 +298,22 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const currencyReady = currencyCtx ? !currencyCtx.loading : true;
 
   useEffect(() => {
-    if (currencyCtx?.currency) {
+    // ⚠️ Adopt the context's currency ONLY once it has finished loading. While
+    // `loading` is true the provider is still publishing its `fallback`, which is
+    // 'USD' by DEFAULT (CurrencyContext.tsx) and NOT the store's currency. Publishing
+    // that here — even for one render — made the restore below validate an IDR draft
+    // against USD, and that direction of error is the destructive one: the draft is
+    // judged foreign and DELETED, so a correct cart was lost on a store that had
+    // simply not answered yet. Measured: the provider's own mount effect sets
+    // `loading` false only after the async read settles, so this guard is what keeps
+    // the fallback out of `storeCurrency` entirely.
+    if (currencyCtx && !currencyCtx.loading) {
       setStoreCurrency(currencyCtx.currency);
       return;
     }
+    // Still loading (or no provider): fall back to the store's own settings read.
+    // The restore waits for `currencyReady` regardless, so this path only decides
+    // what `storeCurrency` holds in the meantime; it must not be the fallback.
     if (!sessionToken) return;
     let cancelled = false;
     getStoreSettingsScoped(sessionToken)
@@ -311,7 +324,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [sessionToken, currencyCtx?.currency]);
+    // `currencyCtx` itself is the dependency, not the two fields read from it: the
+    // effect's guard is on the CONTEXT (`currencyCtx && !currencyCtx.loading`), so a
+    // new provider value with the same currency and loading flag is still a new
+    // authority. Naming the fields let that go stale.
+  }, [sessionToken, currencyCtx]);
 
   // Set once the restore effect has actually reached its verdict. The persist
   // effect below must not touch storage before then: on the first render `lines` is
@@ -1993,6 +2010,26 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // ⚠️ A MODAL INSIDE A SUB-SCREEN OWNS THE KEY, and this cascade must stand down.
+      //
+      // The comment above says `isAnyAriaModalOpen()` is deliberately not consulted, on
+      // the grounds that "a sub-screen is not a modal, so nothing else owns Escape while
+      // it is open". That is true of the sub-screen ITSELF and false of an ARIA modal
+      // opened INSIDE it — the table detail panel is one, as are an item form and a
+      // confirm. Measured 2026-10-18: with the detail panel open, Escape closed the panel
+      // AND the whole table view behind it, 12 tiles to 0, because this cascade acted on a
+      // key the panel had already handled.
+      //
+      // Order is what makes this necessary rather than merely tidy: both listeners sit on
+      // `document` in the bubble phase and this one is registered FIRST, so it runs before
+      // the panel trap. Neither `defaultPrevented` (not yet set) nor `stopPropagation()`
+      // (which does not reach a sibling listener on the SAME node) can help from there.
+      // Asking whether a modal is open is the only question that answers correctly here.
+      //
+      // The guard stays narrow: a modal is only ever a sub-screen child, never the
+      // sub-screen itself, so the sub-screen branches below still own Escape when no
+      // modal is up.
+      if (isAnyAriaModalOpen()) return;
       if (isEditableTarget(e.target)) return;
       if (showTables) { setShowTables(false); return; }
       if (showSalesHistory) { setShowSalesHistory(false); return; }
