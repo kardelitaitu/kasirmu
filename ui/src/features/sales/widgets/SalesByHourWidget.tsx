@@ -5,6 +5,7 @@ import { exportSalesByHourScoped, type SalesByHourRow } from '@/api/sales';
 import { formatMoney, type Money } from '@/types/domain';
 import { Skeleton } from '@/components/Skeleton';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalCurrency } from '@/contexts/CurrencyContext';
 /**
  * Sales by Hour Widget — shows a bar chart of sales broken down
  * by hour of the day. Registered with the WidgetRegistry.
@@ -40,7 +41,19 @@ export default function SalesByHourWidget() {
   useEffect(() => { load(); }, [load]);
 
   const peakHour = Math.max(...hourly.map((h) => h.total_minor), 0);
-  const currency = 'USD';
+  // ⚠️ The store's currency, NOT a literal. This read `'USD'` unconditionally, so on
+  // an IDR till every hourly figure rendered with a "$" — the same defect the POS cart
+  // had, and `SalesByHourRow` cannot supply the answer because it carries no currency
+  // field at all (api/sales.ts: only hour, total_minor, sale_count). The currency
+  // context is the same authority every other money figure in the app formats with.
+  //
+  // `useOptionalCurrency`, not `useCurrency`: this widget is rendered by the
+  // dashboard inside `AppProviders`, but it is also mounted bare by its own suite and
+  // by the widget registry, and `useCurrency` THROWS outside a provider. The fallback
+  // is grouped with the rest of the app's (`PosScreen` uses the same shape) rather
+  // than a second opinion about what an unknown store bills in.
+  const currencyCtx = useOptionalCurrency();
+  const currency = currencyCtx?.currency ?? 'IDR';
 
   if (loading) {
     return (
