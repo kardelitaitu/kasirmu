@@ -213,6 +213,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The Void overlay is behind a swipe, which is why the probe missed it — 2026-10-18](audits/2026-10-18-the-void-overlay-is-behind-a-swipe.md) | — |
 | general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
 | general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
+| general | [Three overlays, three cases, and the class is closed — 2026-10-18](audits/2026-10-18-three-overlays-three-opening-mechanics.md) | — |
 | general | [Three POS hypotheses, all refuted — 2026-10-18](audits/2026-10-18-three-pos-hypotheses-all-refuted.md) | — |
 | general | [Three red suites that were never anyone else's — 2026-10-18](audits/2026-10-18-three-red-suites-that-were-mine.md) | — |
 | release | [Twelve more drifted citations — and a commit that swept a lane's work — 2026-10-18](audits/2026-10-18-twelve-citations-and-a-swept-commit.md) | — |
