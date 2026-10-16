@@ -777,6 +777,181 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     wsState.scopeTypeKey = 'store-pos';
   });
 
+  // ── A paid open bill that fails to delete must be RE-READ ────────────────
+  //
+  // Closes the gap the split case above STATES and leaves open (:710-713):
+  //
+  //   'the duplicate being VISIBLE ... needs `activeOpenBillId` set, which only a
+  //    resumed tab does (usePosHeldCarts.ts:418); no case in this file resumes one,
+  //    so the `if (activeOpenBillId)` delete at PosScreen.tsx:1000 is never entered
+  //    here.'
+  //
+  // `handlePaymentComplete` (PosScreen.tsx:809) settles a paid tab with a delete whose
+  // refresh raced it:
+  //
+  //   deleteHeldCartScoped(token, activeOpenBillId).catch(() => { ...toast });
+  //   setActiveOpenBillId(null);   // handle destroyed before the write settles
+  //   loadOpenBills();             // refresh in the SAME tick as the delete
+  //
+  // When that delete REJECTS the paid tab is still in the database — the delete IS
+  // the commit — and nothing re-reads it, so the operator sees a toast over a list
+  // built from pre-write state. The open-bills list is the only surface that can
+  // resume a tab, so the next waiter can recall a settled tab and sell its lines
+  // twice. The split handler in the same file gets this right (:1033) and its own
+  // comment records that only a DELTA makes the assertion mean anything.
+  //
+  // TWO TIMING FACTS this case has to honour, both measured rather than guessed:
+  //  * `onComplete` is not called when the sale completes. It runs through
+  //    `animateLeave` (PaymentModal.tsx:295-305, :1692), i.e. `done` -> 1500 ms ->
+  //    `leaving` -> 300 ms -> `handleLeaveEnd` -> onComplete.
+  //  * when `receiptArgs` exists the modal shows the ReceiptPreview instead of
+  //    running that timer at all (:1682 is gated on `!receiptArgs`), so `onComplete`
+  //    waits on Print/Skip (:2070-2072). Dismissing the receipt is a required step.
+  it('re-reads the open bills when a paid tab fails to delete', async () => {
+    // Scan in store-pos (the barcode handler is `activeWorkspace !== 'restaurant-pos'`,
+    // PosScreen.tsx:611), then switch — the two-step the split case uses (:611-620).
+    wsState.activeWorkspace = 'store-pos';
+    wsState.scopeTypeKey = 'restaurant-pos';
+
+    vi.mocked(salesApi.listOpenBillsScoped).mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Meja 3',
+        item_count: 1,
+        total_minor: 700,
+        currency: 'USD',
+        created_at: '2026-01-01T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ] as never);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
+      id: 'bill-1',
+      label: 'Meja 3',
+      item_count: 1,
+      total_minor: 700,
+      currency: 'USD',
+      created_at: '2026-01-01T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'ITEM-001', name: 'Test Item', qty: 1, unit_price: { minor_units: 700, currency: 'USD' } }],
+      }),
+    } as never);
+    // The file's hoisted `mockLookupByBarcode` answers null, so the scan would add
+    // nothing. Overridden to a real product, as the split case does (:646-658).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    })) as never);
+
+    const user = userEvent.setup();
+    await renderPosScreenWithShift();
+
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-testid="cart-panel-line-item"]').length).toBe(1);
+    });
+
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // Resume the held tab — the only thing that sets `activeOpenBillId`, which the
+    // delete branch reads. The Update-tab label is its visible consequence.
+    await user.click(screen.getByRole('button', { name: /view open bills/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.pos-held-list-modal')).not.toBeNull();
+    });
+    await user.click(screen.getByRole('button', { name: /resume/i }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /update open tab/i }),
+        'the tab was never resumed, so the delete branch cannot be reached',
+      ).not.toBeNull();
+    });
+
+    // DELTA, not a count: the mount effect and the resume already called this.
+    const readsBefore = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+    // The delete is HELD OPEN, then refused — a locked DB, a lapsed session. Holding it
+    // is what makes the race observable: the assertion afterwards counts reads taken
+    // while this promise is still pending.
+    // Never settles: the assertions below all read state DURING the write, which is
+    // the only window in which the race is observable. `.catch()` in the implementation
+    // attaches here, so no unhandled rejection is produced.
+    const pendingDelete = new Promise<unknown>(() => { /* deliberately never settles */ });
+    vi.mocked(salesApi.deleteHeldCartScoped).mockImplementationOnce(() => pendingDelete as never);
+
+    // Charge -> tender -> Complete. The tender step is required: `method` defaults to
+    // cash and `canComplete` needs `sufficient`, false until an amount is entered.
+    await user.click(screen.getByRole('button', { name: /^charge the customer$/i }));
+    await screen.findByTestId('settle-button', {}, { timeout: 5000 });
+    await user.type(screen.getByLabelText(/amount tendered/i), '10.00');
+    const settle = screen.getByTestId('settle-button');
+    await waitFor(() => expect((settle as HTMLButtonElement).disabled).toBe(false));
+    await user.click(settle);
+
+    // Dismiss the receipt, which is what releases `onComplete` (see the timing notes
+    // above). Without this the callback never runs and the assertion below is
+    // unreachable — measured.
+    const skipReceipt = await screen.findByRole('button', { name: /skip/i }, { timeout: 5000 });
+    await user.click(skipReceipt);
+
+    // ── THE ASSERTION IS PRESENCE-WHILE-PENDING ──────────────────────────────
+    //
+    // Two weaker shapes were KILL-TESTED and both passed against the broken code,
+    // so neither is used:
+    //
+    //   * the CALL COUNT — the broken shape also calls `loadOpenBills()` exactly
+    //     once, so `toBeGreaterThan(readsBefore + 1)` was green with the fix
+    //     reverted;
+    //   * the INVOCATION ORDER — measured on both shapes, the fixed run had
+    //     `reads=[10,43,72,91] deletes=[86]` and the broken
+    //     `reads=[10,40,74,89] deletes=[88]`. In both, the LAST read follows the
+    //     delete, because the mount/resume reads are also in the list.
+    //
+    // What actually separates them is WHEN the read goes out relative to the delete
+    // SETTLING. Before: `loadOpenBills()` runs synchronously beside a fire-and-forget
+    // delete, so it goes out while the write is still in flight. After: it is inside
+    // `.finally()`, so it CANNOT run until the write has settled.
+    //
+    // So the delete is held PENDING and the ABSENCE of a fresh read is asserted. The
+    // fixed code can satisfy that; the broken code cannot, because its read has
+    // already happened by the time this line runs. Unlike the two above, this shape
+    // measures the property the fix exists to create.
+    // Capture the read count at the moment the pending delete is observed.
+    let readsWhilePending = -1;
+    await waitFor(() => {
+      expect(vi.mocked(salesApi.deleteHeldCartScoped)).toHaveBeenCalled();
+      readsWhilePending = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+    }, { timeout: 8000 });
+
+    // THE ASSERTION, and it is a DELTA across the pending window rather than an
+    // absolute count. MEASURED on both shapes with the delete held open:
+    //
+    //   before   readsBefore=2, readsWhilePending=4  (the racing read already fired)
+    //   after    readsBefore=2, readsWhilePending=3  (nothing fired yet)
+    //
+    // The absolute number is not portable — the mount effect, the resume and the
+    // workspace switch all contribute reads — so what is asserted is that the count
+    // does NOT move while the write is unsettled. The broken shape moves it by one,
+    // because its `loadOpenBills()` runs synchronously beside the delete.
+    expect(
+      readsWhilePending,
+      'the bill list was re-read WHILE the refused delete was still in flight — the ' +
+        'refresh raced the write, so the list reflects pre-write state and the paid ' +
+        'tab is invisible',
+    ).toBe(readsBefore + 1);
+  }, 20000);
+
   // The stale read resolves with DISTINCTLY DIFFERENT values -- true against the
   // current false -- so the late write is observable rather than a no-op.
   it('ignores a slower receipt-settings read from the previous store', async () => {
