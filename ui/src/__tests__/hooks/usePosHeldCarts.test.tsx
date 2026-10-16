@@ -933,4 +933,112 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
       'a non-numeric unit_price.minor_units was restored as-is; the subtotal becomes NaN',
     ).toBe(true);
   });
+
+  // ── A double-press on Save must not create two tabs ─────────────────────
+  //
+  // `handleOpenBill` (usePosHeldCarts.ts:202) has NO re-entry guard. Its
+  // `openingBill` flag is a useState BOOLEAN that is written at :211 and cleared
+  // at :322 — and READ NOWHERE as a guard. Its only readers are the two buttons in
+  // OpenBillModals.tsx:95/103, which it disables. A disabled DOM button cannot help
+  // either: React does not re-render between two clicks that land inside one await,
+  // so both calls proceed and each reaches `holdCartScoped`, creating TWO open bills
+  // for one sale — a duplicate tab the operator then has to find and delete.
+  //
+  // This is the round-124 shape. The retail sibling has the working guard
+  // (RetailPosScreen.tsx:1426 `holdingRef`), and that file's comment at :1425 names
+  // `usePosHeldCarts` as already using 'the same guard shape'. MEASURED: it does
+  // not — it uses a state flag with no read-back, which is a different mechanism
+  // with a different failure mode, and the comment therefore tells a reader the
+  // class is handled where it is not.
+  it('creates only one open bill when Save is pressed twice in one pass', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped } = await import('@/api/sales');
+
+    // Hold the write open so both presses land while it is in flight.
+    let release: ((v: unknown) => void) | undefined;
+    const held = new Promise<unknown>((resolve) => { release = resolve; });
+    vi.mocked(holdCartScoped).mockImplementation(async () => held as never);
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '5',
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 2,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 50000, currency: 'IDR' },
+        }),
+      ),
+    );
+
+    // Two presses with no await between them: exactly how a double-tap arrives.
+    await act(async () => {
+      void result.current.handleOpenBill();
+      void result.current.handleOpenBill();
+    });
+
+    expect(
+      vi.mocked(holdCartScoped).mock.calls.length,
+      'two Save presses in one round-trip created two open bills for one sale — ' +
+        'the duplicate tab the retail hold guard exists to prevent',
+    ).toBe(1);
+
+    await act(async () => { release?.({ id: 'held-1' }); });
+  });
+
+  // ── A REFUSED save must release the guard ───────────────────────────────
+  //
+  // The tab the operator is trying to record is the whole point of the flow, so a
+  // refused hold (locked DB, lapsed session) has to end with a usable screen: the
+  // catch toasts the failure and a retry must reach `holdCartScoped` again.
+  // `openingBillRef` is cleared in the handler's `finally` for this reason — a
+  // guard held across the failure would strand the operator, which is the lock-out
+  // class the EDC phase's clearTerminalFailed and useAutoQr's finally both avoid.
+  it('lets the cashier retry after a refused save', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    const { holdCartScoped } = await import('@/api/sales');
+    const { result } = renderHook(() =>
+      usePosHeldCarts(
+        params({
+          activeShift: { id: 'sh-1' } as never,
+          tableNumber: '5',
+          lines: [
+            {
+              id: 'line-1' as never,
+              sku: 'COFFEE' as never,
+              name: 'Coffee',
+              qty: 2,
+              unit_price: { minor_units: 25000, currency: 'IDR' },
+            },
+          ],
+          subtotal: { minor_units: 50000, currency: 'IDR' },
+        }),
+      ),
+    );
+
+    // First attempt is refused.
+    vi.mocked(holdCartScoped).mockRejectedValueOnce(new Error('database is locked'));
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+    expect(vi.mocked(holdCartScoped).mock.calls.length).toBe(1);
+    expect(addToast).toHaveBeenCalled();
+
+    // Retry must not be blocked by the failed attempt's guard.
+    await act(async () => {
+      await result.current.handleOpenBill();
+    });
+    expect(
+      vi.mocked(holdCartScoped).mock.calls.length,
+      'a refused save held the guard — the operator could not retry recording the ' +
+        'tab, which is the only thing the flow exists to do',
+    ).toBe(2);
+  });
 });

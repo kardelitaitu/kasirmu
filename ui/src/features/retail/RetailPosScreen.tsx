@@ -1422,7 +1422,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // `disabled` on an EMPTY cart, and React does not re-render between two clicks that land
   // inside one await — so a double-click, or F4 twice before the first settles, issued TWO
   // holdCartScoped writes for one sale and left the cashier with a duplicate tab to find
-  // and delete. The same guard shape `usePosHeldCarts` and `useAutoQr` already use.
+  // and delete. `useAutoQr` guards the same way (`reissuingRef`); so does
+  // `usePosHeldCarts.handleOpenBill` now, via `openingBillRef` — the claim this comment
+  // used to make about both, before round 126 measured that neither had one.
   const holdingRef = useRef(false);
 
   const handleHold = useCallback(async () => {

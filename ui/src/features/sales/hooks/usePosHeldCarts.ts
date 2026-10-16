@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { useToast } from '@/components/Toast';
 import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
@@ -192,6 +192,20 @@ export function usePosHeldCarts({
   );
   const [openBillName, setOpenBillName] = useState('');
   const [openingBill, setOpeningBill] = useState(false);
+  // Re-entry guard for handleOpenBill. `openingBill` above is NOT one: it is a state
+  // boolean written at the top of `handleOpenBill` and cleared in its `finally`,
+  // and READ NOWHERE
+  // as a condition — its only readers are the two buttons in OpenBillModals.tsx:95/103,
+  // which it disables. A disabled DOM control cannot close this window: React does not
+  // re-render between two clicks that land inside one await, so both calls proceed and
+  // each reaches `holdCartScoped`, creating TWO open bills for one sale.
+  //
+  // MEASURED before this ref existed: two presses in one round-trip produced two
+  // holdCartScoped calls ('expected 2 to be 1'). RetailPosScreen's own hold note
+  // (:1425) cites this hook as already using 'the same guard shape' it uses — it did
+  // not, which is how the gap stayed invisible on the restaurant side while the
+  // retail side was protected.
+  const openingBillRef = useRef(false);
 
   useEffect(() => {
     if (sessionToken || showOpenBills) {
@@ -208,6 +222,8 @@ export function usePosHeldCarts({
       return;
     }
     if (!subtotal || lines.length === 0) return;
+    if (openingBillRef.current) return;
+    openingBillRef.current = true;
     setOpeningBill(true);
     try {
       const shouldDispatch = dispatchOnTabSave !== false;
@@ -319,6 +335,9 @@ export function usePosHeldCarts({
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bill-save-failed'), type: 'error' });
     } finally {
+      // Released on both paths: a REFUSED save must leave the cashier able to retry,
+      // and the tab it refused to create is exactly what they are trying to record.
+      openingBillRef.current = false;
       setOpeningBill(false);
     }
   }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease]);
