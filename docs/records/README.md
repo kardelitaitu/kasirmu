@@ -299,6 +299,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The POS localStorage sweep, and a currency-sensitivity gap (round 105)](audits/pos-storage-key-sweep.md) | — |
 | general | [A real double-submit race, and a hypothesis the code disproved](audits/price-override-double-submit-race.md) | — |
 | general | [The printed receipt sample is pinned, and its tax mode documented (round 135)](audits/printed-sample-pinned.md) | — |
+| general | [A double submit on first-run provisioning ran it twice](audits/provisioning-double-submit.md) | — |
 | payments | [The QRIS mode setting and the two buttons beside it (round 124)](audits/qris-mode-and-two-buttons.md) | — |
 | payments | [The QRIS mode control, and the round-183 hazard it now pins (round 191)](audits/qris-mode-persistence.md) | — |
 | payments | [The QRIS field mounts late, and the bisect is solid while the spec still fails (round 285)](audits/qris-mounts-late.md) | — |
