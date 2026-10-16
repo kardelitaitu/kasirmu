@@ -161,9 +161,21 @@ describe("useCartKeyboardNav — the cart key handler", () => {
 
     // A qty field lives INSIDE a line row, so the row resolves — the input guard is the
     // only thing standing between "+" in a text field and an unintended quantity bump.
-    const { rowEl } = row("a");
+    const { rowEl, child } = row("a");
     const input = document.createElement("input");
     rowEl.appendChild(input);
+
+    // POSITIVE CONTROL FIRST. This case asserts only negatives, so a handler that never
+    // ran at all would satisfy it — measured: with `handleCartPanelKeyDown` replaced by a
+    // no-op, this case still passed. Pressing the same key on the ROW (not the input)
+    // proves the handler is live before the guard is asserted.
+    const onRow = key("+", child);
+    result.current.handleCartPanelKeyDown(onRow.ev as never);
+    expect(
+      handleIncreaseQty,
+      "control: + on the row DOES change a quantity, so the guard below is meaningful",
+    ).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
+    handleIncreaseQty.mockClear();
 
     const k = key("+", input);
     result.current.handleCartPanelKeyDown(k.ev as never);
@@ -270,8 +282,15 @@ describe("useCartKeyboardNav — the cart key handler", () => {
       }),
     );
 
-    const outside = document.createElement("div");
-    document.body.appendChild(outside);
+    // POSITIVE CONTROL FIRST — see the input-guard case for the measurement. This case is
+    // negative-only, so it passed against a no-op handler until this line was added.
+    const { child } = row("a");
+    const onLine = key("+", child);
+    result.current.handleCartPanelKeyDown(onLine.ev as never);
+    expect(handleIncreaseQty, "control: + INSIDE a row does act").toHaveBeenCalledTimes(1);
+    handleIncreaseQty.mockClear();
+
+    const outside = focusableDiv();
     for (const k of ["+", "-", "Delete"]) {
       const ev = key(k, outside);
       result.current.handleCartPanelKeyDown(ev.ev as never);
@@ -295,9 +314,15 @@ describe("useCartKeyboardNav — the cart key handler", () => {
         handleRemoveLine: vi.fn(),
       }),
     );
-    const outside = document.createElement("div");
-    document.body.appendChild(outside);
-    const k = key("Tab", outside);
+    // POSITIVE CONTROL FIRST — this case is negative-only and passed against a no-op.
+    // A HANDLED key must still be consumed, so `false` below means "not handled", not
+    // "the handler never ran".
+    const focused = focusableDiv();
+    const handled = key("ArrowDown", focused);
+    result.current.handleCartPanelKeyDown(handled.ev as never);
+    expect(handled.wasPrevented(), "control: a handled key IS consumed").toBe(true);
+
+    const k = key("Tab", focused);
     result.current.handleCartPanelKeyDown(k.ev as never);
     expect(k.wasPrevented(), "an unhandled key must not be consumed").toBe(false);
   });
