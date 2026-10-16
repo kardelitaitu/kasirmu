@@ -1219,6 +1219,9 @@ pos-toast-bill-resume-failed = Failed to reopen the tab
 # Resumed a tab another terminal currently holds. Names them, so the operator can ask.
 # Refusing is what leaves the lease intact — see usePosHeldCarts.handleResumeOpenBill.
 pos-toast-tab-held-by-other = { $terminal } is working on this tab. Ask them to finish, or use Take Over on the tab.
+# Resuming a DIFFERENT tab over a cart that already holds one. The first tab's
+# order must not be discarded by a mis-tap, so the resume is refused and says so.
+pos-toast-resume-cart-not-empty = Finish or hold the current tab before opening another
 pos-toast-bill-saved = Tab for { $label } saved
 pos-toast-bill-updated = Tab for { $label } updated
 # POS hardware checks on the store settings card.

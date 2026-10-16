@@ -5,7 +5,7 @@ import {
   usePosHeldCarts,
   type UsePosHeldCartsParams,
 } from '@/features/sales/hooks/usePosHeldCarts';
-import { listOpenBillsScoped } from '@/api/sales';
+import { listOpenBillsScoped, getHeldCartScoped } from '@/api/sales';
 
 vi.mock('@/api/sales', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/sales')>();
@@ -83,6 +83,177 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
     // Restore the harness default so a mockReturnValue from a previous test
     // cannot leak (vitest's clearAllMocks clears calls, not return values).
     setScope({ storeId: 'default', instanceId: 'default', typeKey: 'default' });
+  });
+
+  // ── Resuming a SECOND tab must not silently eat the first one ───────
+  //
+  // `handleResumeOpenBill` calls `setLines(data.lines.map(...))`
+  // (usePosHeldCarts.ts:385) — a WHOLESALE REPLACE. With a live cart that is the
+  // order under construction being discarded, reached by one mis-tap in the
+  // held-tabs list.
+  //
+  // THE SCOPE IS DELIBERATE, because the first version of this guard got it wrong
+  // and the existing cases caught it. Refusing EVERY resume over a non-empty cart
+  // breaks the primary flow: opening a tab while the cart already has items for
+  // THAT table is how an operator works at all, and the two cases at :468/:547
+  // resume exactly that way. The destruction case is narrower — a SECOND tab over
+  // the cart of the first, i.e. one that is ALREADY being edited.
+  //
+  // So the guard reads `activeOpenBillId`: another tab is active, the cart is
+  // not empty, and the id being resumed is not the one already loaded.
+  it('refuses to resume a second tab while a first is open', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+
+    const setLines = vi.fn();
+    const addToast2 = vi.fn();
+
+    // Tab 1 is opened FIRST — that is what sets `activeOpenBillId`, which is
+    // internal state (:127), not a prop. Nothing else can put the hook into the
+    // "a tab is already open" condition.
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'tab-1',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'HELD-1', qty: 1, unit_price: { minor_units: 5000, currency: 'IDR' } }],
+      }),
+    } as never);
+    // Tab 2 is the mis-tap.
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'tab-2',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'HELD-2', qty: 1, unit_price: { minor_units: 9000, currency: 'IDR' } }],
+      }),
+    } as never);
+
+    const cartForTab1 = [
+      {
+        id: 'live-1' as never,
+        sku: 'LIVE-1' as never,
+        qty: 2,
+        unit_price: { minor_units: 3500, currency: 'IDR' },
+      },
+    ];
+
+    const { result, rerender } = renderHook(
+      (props: { lines: typeof cartForTab1 }) =>
+        usePosHeldCarts(
+          params({
+            setLines: setLines as never,
+            addToast: addToast2 as never,
+            lines: props.lines,
+            subtotal: { minor_units: 7000, currency: 'IDR' },
+          }),
+        ),
+      { initialProps: { lines: cartForTab1 } },
+    );
+
+    // OPEN TAB 1 while the cart is EMPTY — the legitimate first open.
+    await act(async () => {
+      await result.current.handleResumeOpenBill('tab-1');
+    });
+    expect(result.current.activeOpenBillId).toBe('tab-1');
+    setLines.mockClear();
+    addToast2.mockClear();
+
+    // The waiter is mid-order now: rows are in the cart, tab 1 is still the
+    // active bill. This is the state the destruction happens in.
+    rerender({ lines: cartForTab1 });
+
+    // Mis-tap: resume tab 2.
+    await act(async () => {
+      await result.current.handleResumeOpenBill('tab-2');
+    });
+
+    expect(
+      setLines,
+      'resuming a second tab replaced the first tab\'s live cart outright',
+    ).not.toHaveBeenCalled();
+    expect(addToast2, 'the refusal must be reported, not silent').toHaveBeenCalled();
+    expect(
+      result.current.activeOpenBillId,
+      'the first tab must stay open — the operator did not lose their place',
+    ).toBe('tab-1');
+  });
+
+  it('still re-opens the tab already open, with a full cart', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+
+    const setLines = vi.fn();
+    const cartForTab1 = [
+      {
+        id: 'live-1' as never,
+        sku: 'LIVE-1' as never,
+        qty: 2,
+        unit_price: { minor_units: 3500, currency: 'IDR' },
+      },
+    ];
+    const payload = {
+      id: 'tab-1',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'HELD-1', qty: 1, unit_price: { minor_units: 5000, currency: 'IDR' } }],
+      }),
+    };
+    // `activeOpenBillId` is internal state (:127), so the only way to reach the
+    // "this tab is already open" branch is to open it — twice. The first call
+    // leaves the cart EMPTY, which is what makes the second one legal.
+    vi.mocked(getHeldCartScoped).mockResolvedValue(payload as never);
+
+    const { result, rerender } = renderHook(
+      (props: { lines: typeof cartForTab1 }) =>
+        usePosHeldCarts(
+          params({
+            setLines: setLines as never,
+            lines: props.lines,
+            subtotal: { minor_units: 7000, currency: 'IDR' },
+          }),
+        ),
+      { initialProps: { lines: [] as typeof cartForTab1 } },
+    );
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('tab-1');
+    });
+    expect(result.current.activeOpenBillId).toBe('tab-1');
+    setLines.mockClear();
+
+    // Now the cart has rows and the SAME tab is active — a refresh, not a switch.
+    rerender({ lines: cartForTab1 });
+    await act(async () => {
+      await result.current.handleResumeOpenBill('tab-1');
+    });
+
+    expect(
+      setLines,
+      're-opening the SAME tab must still refresh it with a full cart',
+    ).toHaveBeenCalled();
+  });
+
+  it('resumes normally when the cart is empty', async () => {
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+
+    const setLines = vi.fn();
+    vi.mocked(getHeldCartScoped).mockResolvedValueOnce({
+      id: 'held-1',
+      cart_data: JSON.stringify({
+        lines: [
+          {
+            sku: 'HELD-1',
+            qty: 1,
+            unit_price: { minor_units: 5000, currency: 'IDR' },
+          },
+        ],
+      }),
+    } as never);
+
+    const { result } = renderHook(() =>
+      usePosHeldCarts(params({ setLines: setLines as never })),
+    );
+
+    await act(async () => {
+      await result.current.handleResumeOpenBill('held-1');
+    });
+
+    // The guard is on the cart being non-empty, so an empty cart still resumes.
+    expect(setLines).toHaveBeenCalled();
   });
 
   it('loads open bills in a restaurant-pos workspace', async () => {

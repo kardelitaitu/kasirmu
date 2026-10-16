@@ -351,6 +351,46 @@ export function usePosHeldCarts({
     // held by this terminal still gets re-claimed (harmless, extends the window).
     const conflict = getConflict(id);
 
+    // ── Never replace a LIVE cart in silence ───────────────────────────────
+    //
+    // The resume below is `setLines(data.lines.map(...))` — a WHOLESALE REPLACE.
+    // With a non-empty cart that is a silent destruction of the order the
+    // operator is building, reached by a single mis-tap in the held-tabs list:
+    // MEASURED, resuming over a 2-unit live cart called setLines once and the
+    // live lines were gone. No confirmation, and the undo pill cannot help —
+    // it holds lines removed individually, and this was never a per-line
+    // removal.
+    //
+    // The hook's neighbours all stop and tell the operator: holding refuses
+    // without a shift, and the lease check above raises a conflict banner.
+    // This one neither replaced nor reported, so it now refuses with a toast
+    // and leaves the cart untouched.
+    //
+    // Not a silent `resetCart()` either — an un-confirmed reset is the same
+    // destruction one keystroke earlier. The recovery path for an operator who
+    // DOES want the tab is the Tables screen, where the held cart is listed.
+    // EXEMPT two shapes, and the distinction is what makes the guard safe:
+    //
+    //   * the tab THIS cart already belongs to — re-opening the open bill being
+    //     edited is how an operator refreshes it, and it legitimately runs with a
+    //     full cart;
+    //   * the FIRST resume of a session, where nothing is active yet and the cart
+    //     holds an in-progress order for THIS table. That is the primary way an
+    //     operator opens a tab at all, and refusing it would strand them.
+    //
+    // What remains is the destruction case: resuming a SECOND tab over the cart of
+    // the first. Two different tabs' worth of order in one cart, with the first
+    // silently discarded.
+    const resumingActiveTab = !!activeOpenBillId && activeOpenBillId === id;
+    const alreadyEditingATab = !!activeOpenBillId && !resumingActiveTab;
+    if (lines.length > 0 && alreadyEditingATab) {
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'pos-toast-resume-cart-not-empty'),
+        type: 'warning',
+      });
+      return;
+    }
+
     try {
       const full = await getHeldCartScoped(sessionToken, id);
       if (!full) return;

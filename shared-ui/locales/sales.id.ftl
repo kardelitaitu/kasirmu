@@ -1178,6 +1178,9 @@ pos-toast-open-bills-failed = Gagal memuat tagihan terbuka
 pos-toast-bill-save-failed = Gagal menyimpan tagihan
 pos-toast-bill-resume-failed = Gagal membuka kembali tagihan
 pos-toast-tab-held-by-other = { $terminal } sedang mengerjakan tagihan ini. Minta mereka menyelesaikannya, atau gunakan Take Over pada tagihan.
+# Melanjutkan tagihan LAIN di atas keranjang yang sudah berisi tagihan pertama.
+# Pesanan tagihan pertama tidak boleh hilang karena salah ketuk, jadi dibatalkan.
+pos-toast-resume-cart-not-empty = Selesaikan atau simpan tagihan saat ini sebelum membuka tagihan lain
 pos-toast-bill-saved = Tagihan untuk { $label } disimpan
 pos-toast-bill-updated = Tagihan untuk { $label } diperbarui
 pos-toast-printer-unconfirmed = Printer tidak mengonfirmasi cetakan — periksa perangkatnya
