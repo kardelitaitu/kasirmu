@@ -1177,7 +1177,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
             name: 'Course Item',
             category: 'Main',
             qty: 1,
-            unit_price: { minor_units: 15000, currency: 'USD' },
+            unit_price: { minor_units: 15000, currency: 'IDR' },
           },
         ],
         orderType: 'dine_in',
@@ -2842,7 +2842,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
             sku: 'MIN-1',
             name: 'Minimal Item',
             qty: 1,
-            unit_price: { minor_units: 250, currency: 'USD' },
+            // The STORE currency: a draft that disagrees with it is refused rather than
+            // relabelled (see utils/draftCart.ts), and this case is about the optional
+            // FIELDS, not the currency.
+            unit_price: { minor_units: 250, currency: 'IDR' },
           },
         ],
       }),
@@ -2900,7 +2903,8 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
           sku: 'ITEM-001',
           name: 'Recovered Draft Item',
           qty: 2,
-          unit_price: { minor_units: 700, currency: 'USD' },
+          // Store currency: a draft that disagrees is refused, not relabelled.
+          unit_price: { minor_units: 700, currency: 'IDR' },
         },
       ],
       discountPercent: 10,
@@ -3016,7 +3020,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
             name: 'Bill Item',
             category: 'Main',
             qty: 1,
-            unit_price: { minor_units: 15000, currency: 'USD' },
+            unit_price: { minor_units: 15000, currency: 'IDR' },
           },
         ],
         orderType: 'dine_in',
