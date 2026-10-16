@@ -1017,16 +1017,26 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // Refreshing makes it visible and settleable. Best-effort: a second failure
           // here must not mask the one being reported.
           //
-          // UNTESTED, and here is why so the next round does not re-derive it. The refresh
-          // goes through `loadOpenBills`, which returns early unless the workspace SCOPE's
-          // `typeKey === 'restaurant-pos'` (usePosHeldCarts.ts:122/:140) — a different field
-          // from `activeWorkspace`, which is what the screen's own dine-in rules read.
-          // PosScreenCoreFlow's WorkspaceContext mock hardcodes
-          // `useWorkspaceScope: () => ({ typeKey: 'store-pos' })`, so the refresh is
-          // unreachable there no matter what the case sets; a test written against it
-          // fails on correct production code. In the real app `typeKey` comes from
+          // UNTESTED, and here is the measured reason so it is not re-derived a third
+          // time. THREE conditions must hold to reach this line at all, and the existing
+          // harness satisfies none of the third:
+          //
+          //   1. `remainingLines.length > 0 && sessionToken` (:929) — reachable;
+          //   2. the refresh itself needs the workspace SCOPE's `typeKey ===
+          //      'restaurant-pos'` (usePosHeldCarts.ts:122/:140), a DIFFERENT field from
+          //      `activeWorkspace` that the screen's dine-in rules read. PosScreenCoreFlow
+          //      hardcoded `typeKey: 'store-pos'`; `wsState.scopeTypeKey` is now settable
+          //      there, so this one is solved;
+          //   3. the DELETE that this catch guards is inside `if (activeOpenBillId)` (:991),
+          //      and `activeOpenBillId` is set ONLY by resuming an open bill
+          //      (usePosHeldCarts.ts:418). No existing case resumes one, so `delete` is
+          //      never attempted and the half-committed state is never entered — measured
+          //      with a probe: hold 1, delete 0, listOpenBills 1.
+          //
+          // Reaching it needs a case that seeds `listHeldCartsScoped`, opens the bill list
+          // and resumes, THEN splits. In the real app `typeKey` comes from
           // `activeInstance.type_key` (WorkspaceContext.tsx:785), so a restaurant terminal
-          // does refresh. To cover this, mock the scope per-case first.
+          // does refresh.
           try {
             await loadOpenBills();
           } catch {
