@@ -366,6 +366,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    // RE-ENTRY GUARD. The Save button is disabled while saving (`state='processing'`),
+    // but this handler is also the form's `onSubmit` (:1525) — so pressing Enter in the
+    // name field submits it directly and never consults the button. Without this, a
+    // double submit created TWO tables with the same name: `create_table`
+    // (kasirmu-core/src/db/tables.rs:130) is a plain INSERT minting a fresh UUID, with no
+    // uniqueness on `name`, so nothing downstream could collapse them.
+    if (tableModalSaving) return;
     if (!sessionToken) {
       // Reported, not dropped: the operator presses Save and nothing happens.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
@@ -436,7 +443,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } finally {
       setTableModalSaving(false);
     }
-  }, [tableModal, sessionToken, tables, sections, l10n, addToast]);
+  }, [tableModal, tableModalSaving, sessionToken, tables, sections, l10n, addToast]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
     if (!sessionToken) {

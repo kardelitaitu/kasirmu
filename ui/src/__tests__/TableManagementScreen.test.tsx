@@ -1494,6 +1494,57 @@ describe('TableManagementScreen', () => {
       expect(now, 'the floor plan kept a position the server refused').toBe(before);
     });
   });
+
+  // ── A double submit on Add Table must not create two tables ───────────
+  //
+  // `handleSaveTableModal` (:367) has no `tableModalSaving` re-entry check. The Save
+  // button IS guarded — `state={tableModalSaving ? 'processing' : 'ready'}` (:1609) and
+  // Button's `isDisabled = disabled || isProcessing` (Button.tsx:72) — but the FORM is
+  // `onSubmit={handleSaveTableModal}` (:1525), so pressing Enter in a text field submits
+  // it directly and never consults the button.
+  //
+  // The backend cannot catch it either: `create_table` (kasirmu-core/src/db/tables.rs:130)
+  // is a plain INSERT that mints a fresh UUID per call, with no uniqueness on `name`. Two
+  // submits make two tables with the same name, and the operator then has to work out
+  // which one the floor plan reads from.
+  it('creates only ONE table when the Add Table form is submitted twice', async () => {
+    mockListTables.mockResolvedValue([]);
+    // Pending for the whole test: the first submit is still in flight when the second
+    // lands, which is the only arrangement that can produce two writes from one form.
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    mockCreateTable.mockReset();
+    mockCreateTable.mockImplementation((() =>
+      gate.then(() => makeTable({ id: 't-new', name: 'T1' }))) as never);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-add-table-btn')).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('tables-add-table-btn'));
+
+    // Fill the name the handler requires (`if (!tableModal || !tableModal.name.trim()) return`).
+    const nameInput = await waitFor(() => {
+      const form = document.querySelector('.tables-modal-form');
+      expect(form, 'the add-table modal did not open').not.toBeNull();
+      const input = form!.querySelector('input[type="text"], input:not([type])');
+      expect(input, 'no name field in the add-table modal').not.toBeNull();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(nameInput, { target: { value: 'T1' } });
+
+    // Two submits with NO await between them — the form path, which is what pressing
+    // Enter twice in the name field produces.
+    const form = document.querySelector('.tables-modal-form') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(mockCreateTable).toHaveBeenCalled());
+    expect(
+      mockCreateTable.mock.calls.length,
+      'a double submit created more than one table',
+    ).toBe(1);
+
+    release?.();
+  });
 });
 
 
