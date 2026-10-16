@@ -6,7 +6,7 @@
 // the payment modal or long-press timers. 24 tests.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import { createUsePosStateMock } from '@/__tests__/test-utils/mocks/usePosState';
@@ -597,6 +597,72 @@ describe('RetailPosScreen — rendering', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: /credit reminders/i })).toBeInTheDocument());
   });
 
+  it('settles a credit sale once for a double tap while the first is in flight', async () => {
+    // The credit list is a real write surface that had never been exercised: before this
+    // case no test in the suite named `settleCreditScoped` at all, so a double tap here was
+    // invisible.
+    //
+    // `RetailModals.tsx:387` disables the row button on `settlingId === c.saleId` -- a
+    // STATE guard, so React commits it on its next render, after the second dispatch of a
+    // real double tap. Unlike the batch handlers, this one is per-row: a different row can
+    // legitimately settle concurrently, which is why the guard is per-sale rather than global
+    // and why the same-task case is the one that matters.
+    //
+    // The backend does not refuse the replay either:
+    //   UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'
+    // (crates/kasirmu-bridge/src/settings.rs:657) -- no status predicate, no idempotency key,
+    // and it writes on ZERO matched rows without checking `rows`, so it reports success even
+    // for a sale that was already settled or was never a credit sale. A double tap therefore
+    // moves `settled_at` to a LATER timestamp: the payment record now claims the credit was
+    // cleared a second time, and the first timestamp is gone -- the round-143 last-write-wins
+    // shape, on a payment.
+    const sp = await import('@/features/sales/usePosState');
+    vi.mocked(sp.usePosState).mockReturnValue(createUsePosStateMock({
+      lines: [{ id: 'line-1' as LineId, sku: 'SKU-001' as Sku, name: 'Indomie Goreng', category: 'cat-food', qty: 1, unit_price: { minor_units: 3500, currency: 'IDR' } }],
+      total: { minor_units: 3500, currency: 'IDR' },
+      subtotal: { minor_units: 3500, currency: 'IDR' },
+    }));
+    const { createSettingsApiMock } = await import('@/__tests__/test-utils/mocks/api');
+    const settingsMock = createSettingsApiMock({
+      getStoreSettingsScoped: vi.fn(() =>
+        Promise.resolve({ name: 'TOKO TEST', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' })),
+      listCreditSalesScoped: vi.fn(() => Promise.resolve([
+        { saleId: 'sale-c1', total: { minor_units: 35000, currency: 'IDR' },
+          createdAt: '2026-07-01T10:00:00Z', settledAt: null },
+      ])),
+    });
+    const settle = settingsMock.settleCreditScoped as ReturnType<typeof vi.fn>;
+    let releaseSettle: ((v: unknown) => void) | undefined;
+    const held = new Promise((resolve) => { releaseSettle = resolve; });
+    settle.mockImplementation(() => held as never);
+
+    // Re-point the module mock at this instance so the handler calls the spy we read.
+    const settingsMod = await import('@/api/settings');
+    Object.assign(settingsMod, { listCreditSalesScoped: settingsMock.listCreditSalesScoped, settleCreditScoped: settle });
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('F1')).toBeInTheDocument());
+    await userEvent.keyboard('{Control>}k{/Control}');
+    await waitFor(() => expect(screen.getByRole('heading', { name: /credit reminders/i })).toBeInTheDocument());
+
+    const settleBtn = screen.getByRole('button', { name: /settle/i });
+    // Both taps in ONE batch: a real double tap dispatches twice before React can commit
+    // `settlingId` and disable the row (round 148's shape).
+    await act(async () => {
+      fireEvent.click(settleBtn);
+      settleBtn.removeAttribute('disabled');
+      fireEvent.click(settleBtn);
+    });
+
+    expect(
+      settle.mock.calls.length,
+      'a second tap re-settled the credit sale; the UPDATE has no status predicate, so ' +
+        'settled_at moves to a later time and the first timestamp is lost',
+    ).toBe(1);
+
+    releaseSettle?.(undefined);
+    await act(async () => { await held; });
+  });
   it('F11 key badge is present in the function bar', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await waitFor(() => expect(screen.getByText('F1')).toBeInTheDocument());

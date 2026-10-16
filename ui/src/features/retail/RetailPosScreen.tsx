@@ -1642,7 +1642,27 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     loadCreditSales();
   }, [loadCreditSales]);
 
+  // Re-entry guard for the credit settle. The row button already disables on
+  // `settlingId === c.saleId` (RetailModals.tsx:387), but that is STATE -- React commits it on
+  // its next render, after the second dispatch of a real double tap. MEASURED: two clicks in
+  // one act() batch both reach the handler (RetailPosScreen.test.tsx 'settles a credit sale
+  // once for a double tap'), and both are SENT.
+  //
+  // The backend does not refuse the replay: `settle_credit_scoped` runs
+  //   UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'
+  // (crates/kasirmu-bridge/src/settings.rs:657) with no status predicate and no idempotency
+  // key, and it does not check the matched row count -- so it also reports success for a sale
+  // that was already settled or was never a credit sale. A double tap therefore moves
+  // `settled_at` to a LATER timestamp and the first one is lost: the payment record claims the
+  // credit was cleared twice. The round-143 last-write-wins shape, on a payment.
+  //
+  // Per-row, not global, and deliberately so: two DIFFERENT credit rows can be settled
+  // concurrently and must not block each other. The set is mutated in place so the guard is
+  // authoritative at the moment of the second dispatch and needs no re-render.
+  const settlingIdsInFlight = useRef(new Set<string>());
   const handleSettleCredit = useCallback(async (saleId: string) => {
+    if (settlingIdsInFlight.current.has(saleId)) return;
+    settlingIdsInFlight.current.add(saleId);
     setSettlingId(saleId);
     try {
       await settleCreditScoped(sessionToken, saleId);
@@ -1651,6 +1671,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-settle'), type: 'error' });
     } finally {
+      settlingIdsInFlight.current.delete(saleId);
       setSettlingId(null);
     }
   }, [addToast, l10n, sessionToken]);

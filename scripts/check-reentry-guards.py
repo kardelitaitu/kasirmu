@@ -78,6 +78,14 @@ re-derive these: each is protected, and the protection is named so the search en
                         and claim_receipt_sequence an upsert, both inside the checkout
                         transaction, and the COR-7 replay guard returns the original receipt.
                         The counters are NOT the gap; the UI double-tap was.
+  * credit settle   -- PER-ROW, and that is the design. `settle_credit_scoped` runs
+                        `UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND
+                        method = 'credit'` (settings.rs:657) with no status predicate and no
+                        row-count check, so it also reports success for a sale already
+                        settled or never a credit sale. Round 152 FIXED with a per-sale-id
+                        ref set, NOT a global flag: two DIFFERENT rows must settle
+                        concurrently. Any per-item list of writes is this shape, and a global
+                        guard there is the wrong fix.
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
