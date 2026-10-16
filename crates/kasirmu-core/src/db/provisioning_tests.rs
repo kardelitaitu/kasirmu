@@ -472,11 +472,11 @@ fn provisioning_writes_the_bootstrap_subscription_the_local_tier_needs() {
 
     // tenant_id defaults to "default" when args carry none, which is the tenant
     // the capabilities read and the reconcile's own default both use.
-    let (tier, status, signature): (String, String, String) = conn
+    let (tier, status, signature, allowed_types): (String, String, String, String) = conn
         .query_row(
-            "SELECT tier_key, status, signature FROM tenant_subscription WHERE tenant_id = 'default'",
+            "SELECT tier_key, status, signature, allowed_types_json FROM tenant_subscription WHERE tenant_id = 'default'",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .expect("a provisioned local terminal must have its bootstrap subscription row");
 
@@ -488,6 +488,25 @@ fn provisioning_writes_the_bootstrap_subscription_the_local_tier_needs() {
     // bootstrap rather than a server grant — which is why the reconcile's guard 2
     // refuses to touch a PRESENT row.
     assert_eq!(signature, "BOOTSTRAP_FREE");
+    // Restaurant includes kds so local restaurant installs can operate kitchen displays.
+    assert!(
+        allowed_types.contains("kds"),
+        "restaurant must allow kds in allowed_types: {allowed_types}"
+    );
+
+    // Retail does not provision kds.
+    let conn2 = fresh();
+    let mut retail_args = args_for("dev-retail-01");
+    retail_args.location_kind = LocationKind::Retail;
+    provision_device(&conn2, &retail_args).unwrap();
+    let retail_allowed: String = conn2
+        .query_row(
+            "SELECT allowed_types_json FROM tenant_subscription WHERE tenant_id = 'default'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(!retail_allowed.contains("kds"));
 }
 
 /// `provision_device` writes its location to the GLOBAL db and leaves the store db alone.
