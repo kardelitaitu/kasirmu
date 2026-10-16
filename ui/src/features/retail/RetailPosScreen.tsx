@@ -1568,17 +1568,40 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     showShortcuts, showCreditList, showClearConfirm, showOpenShift, showCloseShift,
     closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, deleteHeldTarget]);
 
+  // A SUB-VIEW is an early return that REPLACES this screen (:1666 Sales History,
+  // :1675 Table Management, :1684 Stock Inquiry; the payment modal is the fourth
+  // at :1626). `isAnyOverlayOpen` covers the local DIALOGS but none of these, and
+  // although their flags sat in the dependency array below the handler never READ
+  // them — so the retail function keys stayed live while a replacement screen owned
+  // the view. F1 (Pay) opened the payment dialog for a cart the cashier could not
+  // see, and F2/F3/F4 could clear, discount or re-hold that same invisible cart.
+  // That is money, so the keys are unbound unless the sale view is the one showing.
+  //
+  // `showPayment` is included for the same reason it is in the deps: without it the
+  // hotkeys keep acting on the cart BEHIND the payment dialog.
+  const saleViewVisible = !(showPayment && total) && !showSalesHistory &&
+    !showTables && !showStockInquiry;
+
   useEffect(() => {
 
     const handler = (e: KeyboardEvent) => {
       // Guard: block all hotkeys while any aria-modal is open (e.g. WorkspaceSettingsModal)
       if (isAnyModalOpen()) return;
 
+      // Guard: block hotkeys while a sub-view has replaced the sale screen. See
+      // `saleViewVisible` above — this is the guard whose ABSENCE let F1 pay for an
+      // invisible cart.
+
       // Escape: handled per-modal by useFocusTrap (Phase A gave all overlays
       // aria-modal="true", so isAnyModalOpen() above already returned).
 
       // Guard: block hotkeys while local overlays/dialogs are visible
       if (isAnyOverlayOpen()) return;
+
+      // Guard: block hotkeys while a sub-view has replaced the sale screen. See
+      // `saleViewVisible` above — this is the guard whose ABSENCE let F1 pay for an
+      // invisible cart.
+      if (!saleViewVisible) return;
 
       // KEY-03: suppress high-impact hotkeys while the user is typing in an
       // input/textarea/select/contenteditable (covers shift notes, customer
@@ -1619,7 +1642,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   // handleOpenSettings deliberately excluded — F10 removed (handled by AppShell).
-  }, [isAnyModalOpen, isAnyOverlayOpen, showPayment, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, showHeldCartList, heldCartId, activeShift, session, addToast, onNavigate, goToSubView]);
+  }, [isAnyModalOpen, isAnyOverlayOpen, saleViewVisible, showPayment, total, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, showHeldCartList, heldCartId, activeShift, session, addToast, onNavigate, goToSubView]);
 
   // ── Render ───────────────────────────────────────────────────
 

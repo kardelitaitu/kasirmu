@@ -654,6 +654,78 @@ describe('RetailPosScreen — interactions', () => {
     expect(screen.getByText('Sales History')).toBeInTheDocument();
   });
 
+  // ── Retail function keys must not fire behind a sub-view ─────────────
+  //
+  // A sub-view is an early return that REPLACES the screen (RetailPosScreen.tsx
+  // :1666 Sales History, :1675 Table Management, :1684 Stock Inquiry; payment is
+  // the fourth at :1626). \`isAnyOverlayOpen\` covers the local DIALOGS and none of
+  // those, and although the flags sat in the keydown effect's dependency array the
+  // handler never READ them — so F1 (Pay) opened the payment dialog for a cart the
+  // cashier could not see, and F2/F3/F4 could clear, discount or re-hold it.
+
+  it('does not run retail hotkeys while a sub-view is showing', async () => {
+    const posState = await import('@/features/sales/usePosState');
+    // A line so the cart is not empty; several keys return early on an empty cart,
+    // which would make the assertion below hold for the wrong reason.
+    vi.mocked(posState.usePosState).mockReturnValue(
+      createUsePosStateMock({
+        lines: [
+          {
+            id: 'line-1' as LineId,
+            sku: 'SKU-001' as Sku,
+            name: 'Indomie Goreng',
+            category: 'cat-food',
+            qty: 1,
+            unit_price: { minor_units: 3500, currency: 'IDR' },
+          },
+        ],
+        total: { minor_units: 3500, currency: 'IDR' },
+        subtotal: { minor_units: 3500, currency: 'IDR' },
+      }),
+    );
+    // F12 → `onNavigate('kds')` is the observable. It is an optional PROP, so a spy
+    // here cannot be faked by any other part of the harness, and it needs neither a
+    // shift nor a modal — measured: F1 was tried first and is unreachable in this
+    // suite because its API mock rejects `getActiveShiftScoped` (:95), so
+    // `handlePay` early-returned on the open-shift guard and BOTH the reachability
+    // assertion and the negative failed for a reason unrelated to the guard.
+    const onNavigate = vi.fn();
+    await renderWithProviders(
+      <RetailPosScreen onNavigate={onNavigate} />,
+      salesFtl, productsFtl, tablesFtl, catFtl,
+    );
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
+
+    // REACHABILITY. F12 must reach the navigator on the SALE view, or the
+    // assertion after the sub-view opens proves nothing about the guard.
+    await userEvent.keyboard('{F12}');
+    await waitFor(() => {
+      expect(
+        onNavigate.mock.calls.map((c) => c[0]),
+        'F12 did not reach onNavigate on the sale view — this test would then measure nothing',
+      ).toContain('kds');
+    });
+    onNavigate.mockClear();
+
+    // Hand the view to Sales History…
+    await userEvent.keyboard('{F6}');
+    await waitFor(() => expect(screen.getByTestId('sales-history-screen')).toBeInTheDocument());
+
+    // …and the function keys must now be inert. They belong to the sale view; behind
+    // a sub-view F1 opened the payment dialog for a cart the cashier could not see.
+    await userEvent.keyboard('{F12}');
+    await userEvent.keyboard('{F1}');
+    await userEvent.keyboard('{F2}');
+    expect(
+      onNavigate.mock.calls.map((c) => c[0]),
+      'F12 navigated away while Sales History owned the view',
+    ).not.toContain('kds');
+    expect(
+      document.querySelector('[data-testid="payment-modal"]'),
+      'F1 opened the payment dialog while Sales History owned the view',
+    ).toBeNull();
+  });
+
   // ── Keyboard shortcut: F7 → Customer Search ──────────────────
 
   it('opens Customer Search overlay when F7 is pressed', async () => {
