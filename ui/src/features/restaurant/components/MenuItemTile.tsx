@@ -283,4 +283,40 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
       )}
     </button>
   );
+}, (prev, next) => {
+  // WHY THIS COMPARATOR EXISTS, and why the default one was not merely suboptimal.
+  //
+  // MenuItemGrid passes product={{ ...product, inStock: ... }} (:107) -- a NEW object
+  // literal on every render of the grid, so a default shallow compare never matched and
+  // this memo was DEAD CODE: every one of up to ~100 tiles re-rendered on every grid
+  // render, on the tablet that is the restaurant till. Comparing the product BY VALUE is
+  // what the memo always intended.
+  //
+  // WHAT THIS DOES AND DOES NOT BUY, stated so the scope is not overstated. The grid is
+  // still re-rendered wholesale by its own parent: onRetry (:748) and onClearFilter (:754)
+  // are inline arrows, addedSku (:759) changes for every tile on one add, and
+  // pinned/unavailable/colors are recreated on any toggle. Those are grid-level costs and
+  // this comparator does not address them. It removes the per-tile cost of the fresh
+  // product object, which is the one part this component owns.
+  //
+  // Comparing the product BY VALUE because the tile draws the name, price and
+  // availability, so those decide whether its output can differ. sourceInStock is compared
+  // because it routes the context menu, and added/pinned/color because they change the
+  // card's own chrome. index is deliberately NOT compared: it only drives the CSS
+  // animation-delay stagger, and including it would defeat the memo on any reorder.
+  if (prev.added !== next.added) return false;
+  if (prev.pinned !== next.pinned) return false;
+  if (prev.color !== next.color) return false;
+  if (prev.sourceInStock !== next.sourceInStock) return false;
+  if (prev.onAdd !== next.onAdd) return false;
+  if (prev.onContextMenu !== next.onContextMenu) return false;
+  const a = prev.product;
+  const b = next.product;
+  return (
+    a.sku === b.sku &&
+    a.name === b.name &&
+    a.inStock === b.inStock &&
+    a.price.minor_units === b.price.minor_units &&
+    a.price.currency === b.price.currency
+  );
 });
