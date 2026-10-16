@@ -128,6 +128,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | money | [A guard whose result nobody read — and the key that was never written — 2026-10-18](audits/2026-10-18-currency-guard-result-unread.md) | — |
 | general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
 | general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
+| general | [Executed, not scanned — and the splice that ate a describe block — 2026-10-18](audits/2026-10-18-restaurant-sale-executed.md) | — |
 | general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
 | general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
 | general | [The restaurant shortcuts had never been executed — 2026-10-18](audits/2026-10-18-shortcuts-never-executed.md) | — |
