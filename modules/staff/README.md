@@ -28,7 +28,7 @@ The Staff module owns the staff management vertical. It handles user CRUD, role 
 
 ## Currently Owns
 
-- **Types** — User and Role domain types (`crates/kasirmu-core/src/user.rs`)
+- **Types** — User and Role domain types (defined in `platform_core::staff` / `platform_core::rbac`, re-exported by `crates/kasirmu-core/src/user.rs` — ADR-61 moved them there on 2026-09-28; that file is a re-export stub, not the definition)
 - **Backend** — User/Role CRUD (`crates/kasirmu-core/src/db/staff.rs`)
 - **Commands** — Staff Tauri commands (`apps/desktop-tauri/src/commands/staff.rs`, `apps/desktop-tauri/src/commands/auth.rs`)
 - **Frontend** — Staff management screen (`ui/src/features/staff/`)

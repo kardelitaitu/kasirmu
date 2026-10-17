@@ -46,11 +46,14 @@ removed by the caller after the run (`docker stop kasirmu-pg-sync-tdd`).
 
 ```
 platform/sync/
-├── queue/       — Local change log (wraps kasirmu-core offline_queue table)
-├── transport/   — HTTP client for communicating with remote sync server
-├── replication/ — Push + pull orchestration
-└── conflict/    — Conflict resolution strategies (LWW initially)
+├── queue.rs          — Local change log (wraps kasirmu-core offline_queue table); queue/ holds its helpers
+├── pg_transport.rs   — HTTP/PG client for communicating with the remote sync server
+├── replication.rs    — Push + pull orchestration
+└── conflict.rs       — Conflict resolution strategies (LWW initially); crdt/ holds the CRDT types
 ```
+
+These are flat files, not directories: `transport/` never existed as a path (the transport
+lives in `pg_transport.rs`), and `queue/` and `crdt/` are the only subdirectories here.
 
 ## Usage
 

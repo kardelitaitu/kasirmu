@@ -18,9 +18,10 @@ strips dangerous globals (`io`, `loadfile`, process `os` functions, etc.) and ex
 | `calc_line_tax` | `(sku, qty, unit_price_minor, currency) → {rate_bps, is_inclusive} \| nil` | Override tax rate per line — called during tax computation |
 | `validate_order` | `(lines_json, total_minor, currency) → string[]` | Return validation errors — called before completion |
 
-Example scripts live in `scripts/examples/` (seven of them: `discount_bulk.lua`, `tax_overrides.lua`,
+Example scripts live in `<repo-root>/scripts/examples/` — at the **repository root**, not beside this
+crate (seven of them: `discount_bulk.lua`, `tax_overrides.lua`,
 `validate_order.lua`, `buy_x_get_y.lua`, `happy_hour.lua`, `loyalty_bonus.lua`, `min_order.lua`), plus a
-nested `scripts/examples/example-discount/` form.
+nested `example-discount/` form.
 
 `LuaRuntime::load_dir(dir)` takes the directory as an argument and sorts by file name before loading each
 `.lua` file — it does not default to a path, so the caller names the directory. In production the caller
