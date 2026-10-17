@@ -78,7 +78,7 @@ export function RestaurantCartSheet({
         </div>
 
         {/* Header */}
-        <div className="restaurant-cart-sheet-header">
+        <header className="restaurant-cart-sheet-header">
           <div className="restaurant-cart-sheet-title-group">
             <h2 className="restaurant-cart-sheet-title">
               {l10n.getString('restaurant-cart-sheet-title')}
@@ -116,7 +116,7 @@ export function RestaurantCartSheet({
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-        </div>
+        </header>
 
         {/* Body (hosts CartPanel) */}
         <div className="restaurant-cart-sheet-body">

@@ -276,7 +276,7 @@ export default function ItemModifierModal({
         ref={panelRef}
       >
         {/* ── Header ─────────────────────────────────────── */}
-        <div className="modifier-header">
+        <header className="modifier-header">
           <h2 className="modifier-title">{productName}</h2>
           <button
             type="button"
@@ -289,7 +289,7 @@ export default function ItemModifierModal({
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-        </div>
+        </header>
 
         {/* ── Body: modifier groups ──────────────────────── */}
         <div className="modifier-body">
@@ -383,7 +383,7 @@ export default function ItemModifierModal({
         </div>
 
         {/* ── Footer: price summary + confirm ───────────── */}
-        <div className="modifier-footer">
+        <footer className="modifier-footer">
           <div className="modifier-price-summary">
             <div className="modifier-price-row">
               <span className="modifier-price-label">
@@ -441,7 +441,7 @@ export default function ItemModifierModal({
               </Localized>
             </button>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   );
