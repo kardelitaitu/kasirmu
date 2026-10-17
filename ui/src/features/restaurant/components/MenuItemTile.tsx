@@ -27,11 +27,10 @@ import { useLocalization } from '@fluent/react';
 const TOUCH_SLOP_PX = 8;
 
 /**
- * Add-badge glyphs for the card's accent strip — a filled circle with a
+ * Add-badge glyphs for the card's action badge — a filled circle with a
  * plus (default), check (400ms added flash), or minus (unavailable).
- * The circle is a two-tone badge: fill comes from CSS (--color-accent-fg)
- * and the glyph is stroked in --color-accent, so it reads as a button on
- * the coloured strip while keeping contrast in every theme.
+ * Positioned in the bottom-right corner of the menu tile with smooth
+ * micro-interactions and high contrast in all themes.
  */
 type AddGlyph = 'plus' | 'check' | 'minus';
 
