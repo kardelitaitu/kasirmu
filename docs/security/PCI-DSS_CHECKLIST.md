@@ -129,7 +129,7 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 | Feature | Implementation |
 |---------|----------------|
 | **PAN masking** | `kasirmu_security::mask::mask_pan()` — first 6 + last 4 digits. Implemented and tested, with **no production callers** (no PAN is stored). |
-| **Encrypted storage** | AES-256-GCM via `kasirmu-security` (future: KEK in OS keyring) |
+| **Encrypted storage** | AES-256-GCM via **`kasirmu-crypto`** (`crates/kasirmu-crypto/src/lib.rs:51,944,964` — this row named `kasirmu-security` until 2026-10-11, which does not implement the cipher). Scope is **named credential families only** — SMTP password, sync API key, PG sync password, gateway config, LAN PSK — and **not the database**: there is no whole-DB encryption, so read this row as "secrets at rest", never as "the data at rest". (Future: KEK in OS keyring.) |
 | **Key management** | OS-level keyring (`kasirmu_security::Keyring`) |
 | **RBAC** | `platform_core::rbac` — `has_permission` over `role-owner`/`role-admin`/`role-manager`/`role-staff` constants, re-exported as `kasirmu_core::rbac` |
 | **Audit logging** | `AuditLog` feature — immutable, append-only |
