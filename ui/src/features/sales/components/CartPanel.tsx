@@ -562,7 +562,7 @@ export function CartPanel({
         onKeyDown={handleCartPanelKeyDown}
         {...cartSwipe}
       >
-        <div className="pos-cart-header">
+        <header className="pos-cart-header">
           {/* ── Left: order/sale title + count + deduction badge ── */}
           <div className="pos-cart-header-title-area">
             <h2 className="pos-cart-title">
@@ -739,7 +739,7 @@ export function CartPanel({
               </button>
             </div>
           )}
-        </div>
+        </header>
 
         {/* ── Area: Order context (active tab, order type, table/pax) ── */}
         <section className="pos-cart-order-context" aria-label={l10n.getString('restaurant-setting-order-type') || 'Order Context'}>
@@ -1006,7 +1006,10 @@ export function CartPanel({
         )}
 
         {/* ── Cart lines ────────────────────────────── */}
-        <div className="pos-cart-lines">
+        <section
+          className="pos-cart-lines"
+          aria-label={l10n.getString(activeWorkspace === 'restaurant-pos' ? 'pos-cart-panel-title-order' : 'pos-cart-panel-title')}
+        >
           {lines.length === 0 ? (
             <div className="pos-cart-empty-msg">
               <ShoppingBagIcon />
@@ -1081,7 +1084,7 @@ export function CartPanel({
               </button>
             </div>
           )}
-        </div>
+        </section>
 
         {/* ── Area: Footer totals + checkout actions ──── */}
         {lines.length > 0 && subtotal && (
