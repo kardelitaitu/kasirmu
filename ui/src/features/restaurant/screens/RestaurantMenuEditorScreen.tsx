@@ -967,7 +967,7 @@ export default function RestaurantMenuEditorScreen({
   return (
     <div className="restaurant-settings-screen">
       {/* ── Page Header ────────────────────────────────────────── */}
-      <div className="restaurant-settings-header" data-testid="restaurant-menu-editor-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-menu-editor-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
@@ -1056,7 +1056,7 @@ export default function RestaurantMenuEditorScreen({
             <Localized id="save">Save Changes</Localized>
           </button>
         </div>
-      </div>
+      </header>
 
       {/* ── Main Layout: Category Rail + Items View ─────────────── */}
       <div className="restaurant-settings-main">

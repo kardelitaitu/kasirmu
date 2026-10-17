@@ -1385,7 +1385,7 @@ export default function RestaurantReceiptsScreen({
 
   return (
     <div className="restaurant-settings-screen">
-      <div className="restaurant-settings-header" data-testid="restaurant-receipts-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-receipts-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
@@ -1506,7 +1506,7 @@ export default function RestaurantReceiptsScreen({
             </span>
           </button>
         </div>
-      </div>
+      </header>
 
       <div className="restaurant-settings-main">
       <div className="restaurant-settings-layout">

@@ -897,7 +897,7 @@ export function RestaurantPaymentsScreen({
 
   return (
     <div className="restaurant-settings-screen">
-      <div className="restaurant-settings-header" data-testid="restaurant-payments-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-payments-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
@@ -987,7 +987,7 @@ export function RestaurantPaymentsScreen({
             </button>
           </div>
         )}
-      </div>
+      </header>
 
       {/* F4: the read failed, so the values shown are defaults. Without Retry the
           flag is a one-way latch and Save could never return this session. */}

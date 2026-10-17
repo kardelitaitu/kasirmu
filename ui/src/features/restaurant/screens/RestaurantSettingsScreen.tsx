@@ -454,7 +454,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   return (
     <div className="restaurant-settings-screen">
       {/* Header */}
-      <div className="restaurant-settings-header" data-testid="restaurant-settings-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-settings-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
@@ -531,7 +531,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
             </button>
           </div>
         )}
-      </div>
+      </header>
 
       {/* Main Body */}
       <div className="restaurant-settings-main">
