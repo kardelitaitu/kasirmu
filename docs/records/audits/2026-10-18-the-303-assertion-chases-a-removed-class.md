@@ -101,3 +101,5 @@ attempt starts there rather than on overflow again.
    NOT re-test the ancestor chain or the clipping wrapper. All refuted and tabulated.
 3. The next scroll probe should target the fixed-position overlays as the suspicion above
    states.
+
+> last audited 18-10-26 by docs-auditor round-2

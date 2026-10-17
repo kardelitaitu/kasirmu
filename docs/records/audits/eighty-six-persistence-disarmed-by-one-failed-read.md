@@ -101,3 +101,5 @@ the re-poll's matters.
 the gate shut (`setSettingScoped` not called). That test guards the hazard this fix must not
 re-open, and it stayed green throughout — which is the check that this change widened the
 gate rather than removed it.
+
+> last audited 11-10-26 by docs-auditor round-2

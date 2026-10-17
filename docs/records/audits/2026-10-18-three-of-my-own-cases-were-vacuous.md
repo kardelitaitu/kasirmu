@@ -89,3 +89,5 @@ file I did.
 Also worth carrying: **verify the mutation landed before reading the result.** A failed
 `replace` and an ignored mutation produce the same green suite, which is how a
 self-audit can report the opposite of the truth.
+
+> last audited 18-10-26 by docs-auditor round-2

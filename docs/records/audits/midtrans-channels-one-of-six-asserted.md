@@ -125,3 +125,5 @@ three payment channels a merchant had disabled, on the payment surface of all pl
 **Not verified**: e2e. Docker Desktop is still not running on this machine, and the other
 session's files (`receiptLogic.ts`, `posDispatchRecord.test.ts`) are still uncommitted in the
 same directory - untouched, per the shared-index rules.
+
+> last audited 15-10-26 by docs-auditor round-2

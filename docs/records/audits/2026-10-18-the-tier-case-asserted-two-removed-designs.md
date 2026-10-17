@@ -85,3 +85,5 @@ which I deliberately did not touch this round.
 3. Worth a sweep in a later round: any other E2E case whose NAME encodes a design decision
    should be checked against the current CSS, because a rename like f5772454c leaves the name
    behind as a false promise.
+
+> last audited 18-10-26 by docs-auditor round-2

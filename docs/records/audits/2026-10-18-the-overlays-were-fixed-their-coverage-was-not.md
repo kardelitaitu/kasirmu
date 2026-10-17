@@ -68,3 +68,5 @@ theirs to finish, and I have not touched it.
    own case rather than assuming the detail case covers it.
 2. `npm run typecheck` is currently RED from another lane. Do not read that as this lane
    failure, and do not fix their file.
+
+> last audited 18-10-26 by docs-auditor round-2

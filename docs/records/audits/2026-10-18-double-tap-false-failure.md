@@ -108,3 +108,5 @@ noise and committing it would have added a checker nobody can act on. The reusab
 the method, not the script: the closure checker's docstring states its own blind spot, and
 reading a tool's stated limits is what located this defect after every checker came back
 clean.
+
+> last audited 18-10-26 by docs-auditor round-2

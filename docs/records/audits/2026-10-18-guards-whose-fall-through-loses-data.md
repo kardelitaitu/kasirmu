@@ -92,3 +92,5 @@ unexplored rather than merely unvisited:
 2. Whether the mount-restore pattern is right for the OTHER screens that restore unsaved
    state from localStorage — the race refuted here is structural, and a screen whose autosave
    does not depend on the restored field would actually lose the value.
+
+> last audited 18-10-26 by docs-auditor round-2

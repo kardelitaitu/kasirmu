@@ -72,3 +72,5 @@ rather than the till, so they are lower priority for this objective's focus.
 - The kill-test produced a **stronger** result than expected: I predicted the focus cases
   would fail, and the Escape cases failing with `got 0` is what proved the ownership moved.
   A kill-test that measures more than you asked for is worth reading carefully.
+
+> last audited 16-10-26 by docs-auditor round-2

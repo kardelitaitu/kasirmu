@@ -131,3 +131,5 @@ And the second lesson, from the test: **a test that fails when you fix a bug is 
 the test.** The instinct is to make it pass again; the correct move is to read what it asserts
 and decide which of the two — the test or the code — is describing the intended behaviour. Here
 the test was describing the bug, in an assertion that named its own inversion.
+
+> last audited 15-10-26 by docs-auditor round-2

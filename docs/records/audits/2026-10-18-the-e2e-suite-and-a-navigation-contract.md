@@ -95,3 +95,5 @@ correct rule for the tool-card path.
    documented prerequisite in `ui/e2e/README.md` already, but nothing in this session had
    ever satisfied it — worth noting that "the gate is green" was never verified here
    before this round.
+
+> last audited 18-10-26 by docs-auditor round-2

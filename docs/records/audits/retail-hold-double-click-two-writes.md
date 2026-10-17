@@ -74,3 +74,5 @@ the natural next sweep, and is recorded rather than claimed done here.
   `barcode-lookup-failure-was-silent.md` (48) — the same "operator not told" family. This
   one is worse because nothing appears to fail at all: the duplicate is created
   successfully and silently.
+
+> last audited 11-10-26 by docs-auditor round-2

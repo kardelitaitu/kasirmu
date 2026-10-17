@@ -109,3 +109,5 @@ And the completion status of the double-tap sweep: the same-task filter now cove
 `Suppliers`, `PurchaseOrderForm`, `StockTransfersScreen` and `MemosScreen`. `products`
 is protected by its UNIQUE sku. What is NOT yet covered is the group that had no test file at
 all — `MemosScreen` was the only one I found, and finding it took a clobber to notice.
+
+> last audited 18-10-26 by docs-auditor round-2

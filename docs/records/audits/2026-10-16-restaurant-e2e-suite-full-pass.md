@@ -54,3 +54,5 @@ cart is a bottom sheet whose backdrop covers the grid). The tablet project is th
 not covered by this pass, and that gap is the specs' own design, not an assumption here.
 Screen-level layout at 1024x1366 was verified separately by live probe (zero sub-44px
 targets, zero overflow, zero offscreen controls).
+
+> last audited 16-10-26 by docs-auditor round-2

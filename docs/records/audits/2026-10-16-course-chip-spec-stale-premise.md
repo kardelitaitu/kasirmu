@@ -76,3 +76,5 @@ is inference-independent by construction. Neither case is vacuous.
 With its two neighbours (`restaurant-cart-line-badges`, `restaurant-course-firing`):
 **10 passed / 0 failed**. `tsc --noEmit` clean; `lint` 0 errors.
 Committed `57b3bc95e`.
+
+> last audited 16-10-26 by docs-auditor round-2

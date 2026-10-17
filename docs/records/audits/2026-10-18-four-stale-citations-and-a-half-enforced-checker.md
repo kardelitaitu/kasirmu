@@ -77,3 +77,5 @@ fourth did.
    population (its docstring measured 199 flagged of 239 at round 131, and warns that failing
    on all of them "would make this guard noise").
 3. The 197px scroll defect closed in round 172 stayed closed through this round gates.
+
+> last audited 18-10-26 by docs-auditor round-2

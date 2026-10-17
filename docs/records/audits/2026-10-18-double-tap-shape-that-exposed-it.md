@@ -110,3 +110,5 @@ remaining sites from round 138's list — `ProductManagementScreen`,
 `PurchaseOrderForm`, `StockCountForm`, `WarehouseCountFlow`, `InventoryAdjustmentScreen`,
 `LoyaltyManagementScreen`, `TaxConfigurationScreen` — are the candidates, and the payout
 was the only one of its group proven broken.
+
+> last audited 18-10-26 by docs-auditor round-2

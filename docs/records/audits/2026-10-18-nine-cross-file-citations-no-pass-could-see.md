@@ -98,3 +98,5 @@ leaves the suite unchanged. Verified by sha256: the restore is byte-identical
    dirty at hash `ff144486f`, re-verified this round.
 3. No Android device attached, so the tablet lane and F40 device confirmation stay blocked on
    hardware.
+
+> last audited 18-10-26 by docs-auditor round-2

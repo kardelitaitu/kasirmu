@@ -74,3 +74,5 @@ Recorded because a wrong measurement left in a record is worse than none:
 * A green suite is evidence about asserted contracts, not proof of correctness. The two defects
   this objective found by reading and driving rather than by a red test — the Analytics crash
   and the Escape cascade — were both invisible to the suite as it stood.
+
+> last audited 16-10-26 by docs-auditor round-2

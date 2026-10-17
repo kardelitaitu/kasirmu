@@ -99,3 +99,5 @@ is the gap, because every class I have closed was found by static analysis:
 2. The restaurant POS on the actual tablet — there is a documented `android-ui-automation`
    path over CDP for reading what the device really renders, which is the one evidence source
    that can contradict a green unit suite.
+
+> last audited 18-10-26 by docs-auditor round-2

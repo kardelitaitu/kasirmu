@@ -110,3 +110,5 @@ AssertionError: expected [] to deeply equal [ 'minor unit(s)' ]
   examined and left alone: no exposed line carries a brace after a regex slash, and the two
   comment-only hits in `dev-mock/` are inside block comments already stripped first. They
   remain duplication worth consolidating, recorded rather than silently changed.
+
+> last audited 16-10-26 by docs-auditor round-2

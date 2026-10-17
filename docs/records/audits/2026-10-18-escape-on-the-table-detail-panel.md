@@ -115,3 +115,5 @@ they are **not from this change**, verified three ways rather than assumed:
 The 25 that passed include every spec this change touches: `restaurant-tables-toolbar` (4/4,
 including the new case), `restaurant-tables-print-bill`, `restaurant-table-merge`,
 `restaurant-table-move`, `restaurant-menu-editor` (2/2) and `narrow-shell`.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -65,3 +65,5 @@ next one looked covered and was not, because the previous case exercised a diffe
    first. Coverage claims should be made per MECHANISM, not per file.
 3. The round-189 predicate (`isAnyAriaModalOpen()`) is what makes all three correct at
    runtime; these cases are what keep it that way.
+
+> last audited 18-10-26 by docs-auditor round-2

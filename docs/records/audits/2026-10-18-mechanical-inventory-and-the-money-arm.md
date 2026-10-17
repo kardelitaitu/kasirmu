@@ -93,3 +93,5 @@ money arm:
 
 Each needs only the question the checker cannot answer: does the backend refuse it, or does
 it add up?
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -100,3 +100,5 @@ question is not *"is this code correct"* but **"which inputs can reach it, and i
 those"**. A property test with a sweep is excellent — and its sweep had a lower bound that hid a
 whole half of the domain. The bound was not wrong; it was simply never stated, and the first thing
 to check about any exhaustive-looking test is where it starts and stops.
+
+> last audited 15-10-26 by docs-auditor round-2

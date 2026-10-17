@@ -92,3 +92,5 @@ files. Two concrete next steps:
 - The `saving`-as-guard pattern now has a complete inventory across the tree. A grep for
   `setSaving(true)` with no `PendingRef` in the same handler is the mechanical version of
   every lead this session has chased by hand, and it has not been run.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -76,3 +76,5 @@ desktop viewport cannot grade a touch target; a static viewport cannot grade rea
 also raised a non-zero reading as a probable defect twice before proving it broken — the
 positive-control discipline applies in both directions, and a non-zero needs disproving just
 as a zero needs a control.
+
+> last audited 16-10-26 by docs-auditor round-2

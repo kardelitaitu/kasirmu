@@ -87,3 +87,5 @@ migration, the cleanup, the stale reader -- is invisible to it. Other scoped key
 way: `readScoped`/`writeScoped` in `utils/scopedStorage.ts` back 30 sites in
 `RestaurantReceiptsScreen`, and they carry a legacy ADOPTION path that no suite exercises with a
 changing store id. That adoption is the next class worth a round.
+
+> last audited 18-10-26 by docs-auditor round-2

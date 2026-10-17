@@ -100,3 +100,5 @@ directly comparable, plus a clean-path case on Payments:
    never own the key. Those specs work around it by clicking Close. **The workaround is
    correct but the behaviour is still arguably wrong** — worth a round if the panel is expected
    to be dismissable by keyboard.
+
+> last audited 18-10-26 by docs-auditor round-2

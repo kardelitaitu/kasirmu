@@ -92,3 +92,5 @@ parser version is the one that found the real defect. 51 of the 52 are design sh
 buttons (`features/design/*`), which is expected and needs no action. The two worth a
 look next are `WorkspaceHome.tsx:288` (a user-profile control) and `KioskScreen.tsx:247`,
 both of which need the same bubbling check before anyone calls them dead.
+
+> last audited 18-10-26 by docs-auditor round-2

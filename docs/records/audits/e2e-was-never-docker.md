@@ -100,3 +100,5 @@ The API-level specs (`e2e/api.spec.ts`, and 10 skips in `product/adr22` etc. tha
 backend) do need the Docker stack. Those are **integration** tests against the cloud server and
 remain blocked by the missing daemon. The distinction worth carrying forward: *all UI e2e is
 verified; API e2e is not* — rather than the blanket claim made before.
+
+> last audited 15-10-26 by docs-auditor round-2

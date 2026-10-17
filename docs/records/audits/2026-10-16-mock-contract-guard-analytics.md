@@ -77,3 +77,5 @@ hourly occupancy, menu engineering.
 
 `tsc --noEmit` clean, `lint` 0 errors, `npm run test` **818 files / 13,035 passing / 0 failed**.
 Committed `66e956c48`.
+
+> last audited 16-10-26 by docs-auditor round-2

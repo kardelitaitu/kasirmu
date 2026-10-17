@@ -97,3 +97,5 @@ is exactly what produced this round answer. But the framing was wrong from the f
 asked "why does the workspace clear?" instead of "is this path one a user takes?". **A failing
 test names a SYMPTOM; whether it names the PRODUCT is a separate question, and it is cheaper to
 ask first.**
+
+> last audited 18-10-26 by docs-auditor round-2

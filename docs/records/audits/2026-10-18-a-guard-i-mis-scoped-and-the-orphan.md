@@ -106,3 +106,5 @@ instead of `cpSync(recursive: true)`, is a real design question for whoever owns
 For my own lane: the second lead from round 162 — grading the dither walk through the element
 name — is still open and is the one with recurring evidence behind it, since every tripwire
 breach in that file has been a symptom of the hand-synced both-sides rule.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -107,3 +107,5 @@ unverified commit, which is how a small mistake becomes a large one.
    population, and 21 are the round-178 "names a construct" shape — reviewed, not drifted.
 3. When editing a file that is dirty with another lane's content, the safety rule has to extend
    to the pathspec even when the edit itself is justified.
+
+> last audited 18-10-26 by docs-auditor round-2

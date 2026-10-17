@@ -84,3 +84,5 @@ The transferable part is Finding 3. The file's own comment predicted the exact f
 mode, I read it while adding the case, and still hit it — because the list it names is
 of mocks THAT FILE'S CASES override, and I extended the file without extending the list.
 A documented invariant is not enforced by having been read.
+
+> last audited 18-10-26 by docs-auditor round-2

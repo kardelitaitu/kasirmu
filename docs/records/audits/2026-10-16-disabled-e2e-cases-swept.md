@@ -67,3 +67,5 @@ A sweep is only worth running if the property it checks is the property that dec
 outcome. Re-reading the *reasons* would have confirmed all fourteen (they are well written and
 one of them was mine and wrong). Driving the *routes* is what separated the kiosk from its six
 neighbours, and the answer turned on one registry flag.
+
+> last audited 16-10-26 by docs-auditor round-2

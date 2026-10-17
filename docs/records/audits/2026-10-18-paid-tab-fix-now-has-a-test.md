@@ -81,3 +81,5 @@ record from rounds 78/83. This round adds its twin: **an ORDERING assertion can 
 satisfied by unrelated later calls**, and both are cured the same way, by holding the
 subject's own write open so the window being asserted about is the only thing that can
 move within it.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -116,3 +116,5 @@ form that keeps paying is: **find where a rule is enforced, then check whether i
 every place the same data can be reached.** Two doors were gated; the third was not; and the only
 thing covering the third was a filter in a different language, in a different process, that no
 other caller of the command would inherit.
+
+> last audited 16-10-26 by docs-auditor round-2

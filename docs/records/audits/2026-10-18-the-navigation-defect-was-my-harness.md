@@ -97,3 +97,5 @@ table`, `the plan has a free table`, a 480x800 horizontal scroll) and are still 
 3. Method note worth keeping: **round 165 found a real reproduction and a wrong cause.** A
    reproduction is evidence that something is wrong; it is not evidence about WHAT. The cause
    needed the setter/remount/render probes, and only the third one told the truth.
+
+> last audited 18-10-26 by docs-auditor round-2

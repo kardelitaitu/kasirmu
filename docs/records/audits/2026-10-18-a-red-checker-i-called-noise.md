@@ -96,3 +96,5 @@ The suite count from this session is ~810 passed with 4-5 failing files, and at 
 those failure files is now known to have been a real, fixable, in-scope guard. Each remaining
 one deserves the same treatment this round gave this file: read the failure, trace the named
 lines, and only then decide whose it is.
+
+> last audited 18-10-26 by docs-auditor round-2

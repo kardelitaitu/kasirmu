@@ -98,3 +98,5 @@ already does the right thing, and it now has a test that keeps it doing it.
 What is genuinely left is not another instance of either class. The two remaining failures in
 the suite are other lanes in-flight edits, and the honest next move is either to let them
 land or to take a different question entirely -- the sweep has been answered.
+
+> last audited 18-10-26 by docs-auditor round-2

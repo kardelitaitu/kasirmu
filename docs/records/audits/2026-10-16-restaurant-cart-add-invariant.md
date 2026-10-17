@@ -79,3 +79,5 @@ directions. There is no gap to close here.
 reporting: the delta is the button's own padding box, the element computes
 `overflow: visible`, and the text children's `scrollWidth` equals their
 `clientWidth`. Nothing is clipped, so this was **not** filed as a defect.
+
+> last audited 16-10-26 by docs-auditor round-2

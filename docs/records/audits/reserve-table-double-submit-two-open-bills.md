@@ -74,3 +74,5 @@ a defect.
 - `retail-hold-double-click-two-writes.md` (57) — the `holdCartScoped` create, from the
   button side rather than the form side.
 - `void-double-fire-refused-server-side.md` (59) — the triage rule: create vs set.
+
+> last audited 11-10-26 by docs-auditor round-2

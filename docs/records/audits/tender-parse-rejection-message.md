@@ -79,3 +79,5 @@ surfaced something `vitest` accepted — here, scratch files that would have bee
 - Two earlier hypotheses this round were negatives (no parser divergence, no lost update in
   the dual write). Recording them took three lines each and stops the next reader re-running
   the same checks.
+
+> last audited 16-10-26 by docs-auditor round-2

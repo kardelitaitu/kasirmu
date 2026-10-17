@@ -66,3 +66,5 @@ This is the **desktop project**. The tablet project runs only the specs that opt
 a passing suite is evidence about the asserted contracts, not proof the product is free of
 defects — the Escape-cascade defect of round 177 and the cart-sheet overlap fixed on
 2026-10-17 were both found by reading and measuring, not by a red test.
+
+> last audited 16-10-26 by docs-auditor round-2

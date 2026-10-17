@@ -75,3 +75,5 @@ Cheap, and the reason to run typecheck after every structural edit rather than a
    **a handler must CLAIM the key it consumes** (187), and **peers on one node cannot be
    ordered by propagation — they need a shared predicate** (189). Round 190 adds the third:
    **an API added for a failed diagnosis must be proven inert and then deleted, not kept**.
+
+> last audited 18-10-26 by docs-auditor round-2

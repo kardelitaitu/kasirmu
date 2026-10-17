@@ -59,3 +59,5 @@ from the objective's own words — restaurant POS, its screens, the tablet shell
 gating — have each been driven and measured, and both suites plus all UI gates are green.
 
 That is the state to judge completion on, not a reason to keep generating probes.
+
+> last audited 16-10-26 by docs-auditor round-2

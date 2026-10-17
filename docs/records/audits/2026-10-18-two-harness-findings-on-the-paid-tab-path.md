@@ -76,3 +76,5 @@ Determine why `handlePaymentComplete` is unreachable from a completed sale in
 it against `onComplete`, and if the callback IS invoked, catch and report what it
 throws. Only once that is answered is a test for round 127's fix writable — and the
 answer may itself be the round's finding.
+
+> last audited 18-10-26 by docs-auditor round-2

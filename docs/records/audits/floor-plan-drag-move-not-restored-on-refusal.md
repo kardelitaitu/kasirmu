@@ -79,3 +79,5 @@ zero result means anything.
   `retail-optimistic-writes-not-rolled-back.md` (round 52) — the same three-part
   contract, in the retail grid.
 - `mockfactory-gap-list-as-coverage-map.md` (round 53) — why no drag test existed at all.
+
+> last audited 11-10-26 by docs-auditor round-2

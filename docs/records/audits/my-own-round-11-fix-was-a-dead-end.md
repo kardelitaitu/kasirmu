@@ -101,3 +101,5 @@ And the reason this round existed at all: I audited someone else's guard in 297,
 *"when a refusal is added, ask whether it is the right answer HERE"* has to be asked of your own
 changes the same round they are made, because that is the round that still has the context to know
 what the refusal costs.
+
+> last audited 15-10-26 by docs-auditor round-2

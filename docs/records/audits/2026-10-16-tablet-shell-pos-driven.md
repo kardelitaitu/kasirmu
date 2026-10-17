@@ -72,3 +72,5 @@ Restored byte-identically afterwards (`git diff --stat` empty). The case discrim
 `tablet-shell.spec.ts`: **10 passed / 0 failed across both projects** (was 4 cases, all
 stopping before the POS). `tsc --noEmit` clean, `lint` 0 errors.
 Committed `91c4925fd`.
+
+> last audited 16-10-26 by docs-auditor round-2

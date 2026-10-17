@@ -89,3 +89,5 @@ the best finding this round was not a defect at all: SyncConflictReviewScreen sh
 a refusal should take -- check the claim, report the difference, do not call it a failure.
 That is worth copying to the screens where the backend defends the write and the UI still
 lies.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -83,3 +83,5 @@ and 185 each had to re-learn at a wider radius.
 2. Round-177 Escape defect remains the top open item: `PosScreen.tsx` still dirty at
    `ff144486f`, re-verified this round.
 3. No Android device attached; the tablet lane stays blocked on hardware.
+
+> last audited 18-10-26 by docs-auditor round-2

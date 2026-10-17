@@ -95,3 +95,5 @@ the evidence above only sets up.
 3. Remaining unexamined from round 165 list: `the seeded bill must attach to a table` and
    `the plan has a free table` (both fixtures/preconditions), plus the viewport-clipped-click
    errors. Those are separate from this layout finding.
+
+> last audited 18-10-26 by docs-auditor round-2

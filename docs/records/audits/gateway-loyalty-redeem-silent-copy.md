@@ -82,3 +82,5 @@ about at :1168-1171).
 Four rounds, four features, one shape: **a mute handler sitting next to a handler that
 reports.** Three of the four were found by reading the two side by side rather than by a
 behaviour report, which is the argument for the class-based sweep.
+
+> last audited 11-10-26 by docs-auditor round-2

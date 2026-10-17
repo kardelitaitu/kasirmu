@@ -134,3 +134,5 @@ A suite that takes ten minutes for 1521 tests invites two wrong responses: assum
 stop running it. Both were avoided by measuring which module dominates and why. The result —
 **Argon2 cost, already tuned, deliberately preserved** — is the kind of fact that stops the next
 person from "optimising" a security parameter to make CI faster.
+
+> last audited 16-10-26 by docs-auditor round-2

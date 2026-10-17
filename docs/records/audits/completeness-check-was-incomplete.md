@@ -89,3 +89,5 @@ fails when one loses its gate or a sixth arrives without one. That is as far as 
 the remaining questions about the restaurant path are behavioural, not about enforcement
 coverage, and the full restaurant surface has been green at every layer — unit, integration and
 browser — since round 296.
+
+> last audited 16-10-26 by docs-auditor round-2

@@ -77,3 +77,5 @@ produced the finding.
 - `edc-terminal-form-double-submit.md` (62) — the third instance, and the checklist rule.
 - `add-table-double-submit-creates-two-tables.md` (60),
   `reserve-table-double-submit-two-open-bills.md` (61).
+
+> last audited 11-10-26 by docs-auditor round-2

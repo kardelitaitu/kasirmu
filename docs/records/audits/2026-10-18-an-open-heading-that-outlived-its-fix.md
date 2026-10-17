@@ -83,3 +83,5 @@ the workspace override on `orderTypePromptEnabled` (P1/D2 removed it and says so
 remaining `|| activeWorkspace === restaurant-pos` at `:898` carries an explicit
 INTENTIONAL rationale — table capture is part of what a restaurant POS is, so it is an owner
 decision, not a leftover.
+
+> last audited 18-10-26 by docs-auditor round-2

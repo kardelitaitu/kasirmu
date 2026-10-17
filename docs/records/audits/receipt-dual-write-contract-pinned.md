@@ -70,3 +70,5 @@ to correct repeatedly. Two cases now pin it:
 - **Assert the change you caused, not just the result.** Checking `aria-checked` went
   `true` → `false` is what separates "the toggle worked and the footer is empty" from
   "the footer was empty anyway".
+
+> last audited 16-10-26 by docs-auditor round-2

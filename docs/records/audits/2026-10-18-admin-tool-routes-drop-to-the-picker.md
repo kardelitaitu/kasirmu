@@ -99,3 +99,5 @@ mistake this session has already measured twice (rounds 177, 189).
 2. This is the first **user-visible** defect found since round 193, and it came from running the
    suite rather than scanning it. Three rounds of static analysis returned zero; one batch of
    E2E returned a five-route regression.
+
+> last audited 18-10-26 by docs-auditor round-2

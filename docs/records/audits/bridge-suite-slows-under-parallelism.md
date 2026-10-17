@@ -104,3 +104,5 @@ time is that the claim was checked against the code: `fresh_db`'s body shows the
 the crate source shows the `Sync` bound. **A mechanism counts as measured only when the code is read
 and the numbers reproduce.** Three runs inside 0.6s, against a 2.2x inversion, is the part that
 makes this one stick.
+
+> last audited 16-10-26 by docs-auditor round-2

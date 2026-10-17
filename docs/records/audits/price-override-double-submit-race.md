@@ -85,3 +85,5 @@ locking the operator out is a worse failure than a double submit.
 - **Recording a disproved hypothesis is worth the two minutes.** The next reader who greps
   for "void button not disabled" will find the test file and its header first, which is
   exactly where the correction belongs.
+
+> last audited 16-10-26 by docs-auditor round-2

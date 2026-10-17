@@ -110,3 +110,5 @@ Each was confirmed by reading the offending lines out of the COMMITTED blob
 (`git show 4347b36d2:...`), not from the worktree. This round's commit touches
 neither of those files and changes no CSS. Recorded here so the next round does
 not re-derive it.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -78,3 +78,5 @@ is the nearest of the six to the till and the obvious next candidate.
   occasionally.
 - Checking the siblings a fix names is cheap and was worth doing twice: both held, which is
   what makes the guarded inventory trustworthy rather than merely updated.
+
+> last audited 16-10-26 by docs-auditor round-2

@@ -131,3 +131,5 @@ keys that gate table transfer, bill printing, kitchen dispatch on tab save, and 
 **Still not verified by e2e**: `run-e2e.mjs` requires a Docker backend and Docker Desktop is not
 running on this machine, so no e2e run has been possible in this session. Every result above is
 vitest-layer, which is the layer these two gaps lived in.
+
+> last audited 15-10-26 by docs-auditor round-2

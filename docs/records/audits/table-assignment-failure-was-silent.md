@@ -82,3 +82,5 @@ Four `console`-only sites remain, re-read individually rather than assumed:
 - A file's own stated policy (report when the operator must act) is usable evidence, and
   cheaper than inventing a rule: `PaymentModal` had already written this one down for a
   different condition.
+
+> last audited 16-10-26 by docs-auditor round-2

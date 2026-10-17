@@ -78,3 +78,5 @@ sentence, which is a much cheaper test than a backend audit of each one.
 - `add-table-double-submit-creates-two-tables.md` (60) — first instance.
 - `reserve-table-double-submit-two-open-bills.md` (61) — second instance, where the button
   was already guarded and the form path was the only gap.
+
+> last audited 11-10-26 by docs-auditor round-2

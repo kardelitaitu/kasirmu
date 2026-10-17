@@ -95,3 +95,5 @@ Two of the three fixed sites had already written the reasoning for why the guard
 matters (`ShiftManagementScreen`'s "exact wrong action", `useMultiCurrency`'s note on
 `Promise.all` discarding answers). The pattern is well understood in this codebase; the miss
 is coverage, not comprehension.
+
+> last audited 11-10-26 by docs-auditor round-2

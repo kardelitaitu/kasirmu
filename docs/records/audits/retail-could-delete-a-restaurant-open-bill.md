@@ -106,3 +106,5 @@ always the same and it is worth stating as the operative one:
 
 Round 302 answered it for one door and left two named-but-unexamined. This round closed them. If a
 sixth held-cart command is ever added, the five existing gates are the checklist it has to pass.
+
+> last audited 16-10-26 by docs-auditor round-2

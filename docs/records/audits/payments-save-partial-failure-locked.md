@@ -74,3 +74,5 @@ record that only lists defects would suggest this path was never examined.
 **Not changed:** the four writes stay in one `Promise.all`. All-or-nothing reporting is the
 documented behaviour and the operator-visible contract is one toast; what matters is that
 "nothing" is reported honestly, which the new test pins.
+
+> last audited 11-10-26 by docs-auditor round-2

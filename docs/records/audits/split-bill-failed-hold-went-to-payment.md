@@ -79,3 +79,5 @@ AssertionError: payment opened even though balancing the remaining tab failed:
   carries its own over-split guard.
 - Rounds 57-64, the double-invocation family — a different shape, but the same instinct:
   **ask what the handler does AFTER its failure branch.**
+
+> last audited 11-10-26 by docs-auditor round-2

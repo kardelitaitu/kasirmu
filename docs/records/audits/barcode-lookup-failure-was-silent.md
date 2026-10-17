@@ -95,3 +95,5 @@ assertion targets `.toast` specifically, after `renderPosScreenWithShift()`.
 Round 47 (`kds-item-status-failure-was-silent.md`) is the same shape one feature over: a
 reported path beside a mute one. Round 48's sweep started from that finding rather than a
 random file, which is why this one was found in the checkout path specifically.
+
+> last audited 11-10-26 by docs-auditor round-2

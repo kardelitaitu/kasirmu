@@ -111,3 +111,5 @@ The reproducing assertion already exists — `restaurant-menu-editor.spec.ts:60`
    produce a wrong result, because ownership is decided by listener order rather than by layer
    depth.** A nested overlay invisible to the outer owner is silently un-dismissable.
 3. The other 6 Escape sites are now cleared; do not re-sweep this class without a new reason.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -84,3 +84,5 @@ kill-test left no residue.
   heuristic, not money movement.
 - **`usePosCartActions.ensureCart`** — its inner catch has a deliberate, documented fallback
   (:102-119); the outer catch reports. Both correct.
+
+> last audited 11-10-26 by docs-auditor round-2

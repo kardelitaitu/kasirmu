@@ -107,3 +107,5 @@ finding 2 is the functional one.
 `sale.spec.ts`: **12/12** (was 10/12). `e2e-sale-to-history.spec.ts`: **1/1** (was 0/1).
 Together with `pos-workflows` and `e2e-pos-to-kds`: **18 passed / 0 failed**.
 `tsc --noEmit` clean, `lint` 0 errors. Committed `36dc98c1e`.
+
+> last audited 16-10-26 by docs-auditor round-2

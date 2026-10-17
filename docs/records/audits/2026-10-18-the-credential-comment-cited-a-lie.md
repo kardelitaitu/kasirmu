@@ -88,3 +88,5 @@ That is the third instance of this class in four rounds (126 a false claim, 131 
 drifted pointers, 132 a report that never ran), and all three were found by reading
 the cited line instead of trusting the citation. The guard now enforces the subset
 where a citation cannot possibly be right; the rest still needs a person to look.
+
+> last audited 18-10-26 by docs-auditor round-2

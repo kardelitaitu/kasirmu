@@ -91,3 +91,5 @@ Escape-shaped cases, and repairing two of four was the whole fix rather than a p
    "leave the workspace view". Both were reasonable and only one was true.
 3. `PosScreen.tsx` is still dirty from another lane (last written ~40 min before this
    round). Untouched.
+
+> last audited 18-10-26 by docs-auditor round-2

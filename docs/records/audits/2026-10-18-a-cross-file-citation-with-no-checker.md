@@ -83,3 +83,5 @@ a live instance of it, not a hypothetical.
    `PosScreen.tsx` dirty at hash `ff144486f`, re-verified this round.
 3. No Android device is attached (`adb devices` empty), so the tablet-verification lane
    — including F40 device confirmation — cannot run this round. Blocked on hardware, not tooling.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -78,3 +78,5 @@ while the other direction rotted.
   validate the file against reality — only against itself. That is enough here (the claim is
   "this comment describes this save map"), but it is worth naming: it would not catch both
   being wrong together, which is what `deadSettingsKey.test.ts` covers from the reader side.
+
+> last audited 16-10-26 by docs-auditor round-2

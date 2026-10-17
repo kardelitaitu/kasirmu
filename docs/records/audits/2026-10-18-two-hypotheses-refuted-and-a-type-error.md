@@ -95,3 +95,5 @@ declarations, and declarations are what a test helper quietly weakens.
    query to a directory that could not contain the answer.
 2. Run `npx tsc --noEmit` after adding or editing any test helper. It is the only gate that
    sees a weakened parameter type; vitest passes regardless.
+
+> last audited 18-10-26 by docs-auditor round-2

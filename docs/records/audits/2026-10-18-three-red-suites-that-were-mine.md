@@ -111,3 +111,5 @@ Two things I would check next, in this order:
 2. Whether the dither-coverage walk can be made to grade through the element NAME, which this
    file's own header names as the durable remedy for the hand-synced both-sides rule.
    Every tripwire breach so far has been a symptom of that structural weakness.
+
+> last audited 18-10-26 by docs-auditor round-2

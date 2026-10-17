@@ -97,3 +97,5 @@ needs its own read of whether the failure is operator-actionable before adding n
   moment to check that its window still covers what it claims.
 - `addToast` in a dependency array with no `addToast` call is a fossil of intent — worth
   grepping for when auditing a handler.
+
+> last audited 16-10-26 by docs-auditor round-2

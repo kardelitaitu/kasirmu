@@ -96,3 +96,5 @@ this round tested — that space is now exhausted and recorded so it is not re-w
    filter-bar design). Round 167 raised this and it remains open.
 3. Harm-model correction to carry into any future write-up: this is a latent scroll RANGE, not
    an observed auto-scroll. Do not restate it as "the page scrolls on its own".
+
+> last audited 18-10-26 by docs-auditor round-2

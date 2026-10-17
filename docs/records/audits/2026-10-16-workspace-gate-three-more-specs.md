@@ -61,3 +61,5 @@ Per the round-206 lesson, every remaining spec using `selectWorkspace(ADMIN)` wa
 nine files, of which six target `settings` (registered `fullscreen: true`, so unaffected) and
 `staff-trash` / `topbar-height` were run and pass. No further instances of this cause remain
 in the specs exercised so far.
+
+> last audited 16-10-26 by docs-auditor round-2

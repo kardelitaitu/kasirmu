@@ -74,3 +74,5 @@ accessible name carries its description. The product finding was a correction to
 previously written down as measured fact. **A recorded measurement is not exempt from re-checking
 when a later probe disagrees with it** — and the disagreement is the signal, in whichever
 direction it resolves.
+
+> last audited 16-10-26 by docs-auditor round-2

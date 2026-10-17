@@ -100,3 +100,5 @@ matcher that might no longer match anything — it still goes red.
 - A usable pattern for this tree: `grep` a validator's key phrase against the file it
   claims to validate. Claim 3 named the hook, so PosScreen was outside it by
   construction.
+
+> last audited 16-10-26 by docs-auditor round-2

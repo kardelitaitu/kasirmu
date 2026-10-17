@@ -87,3 +87,5 @@ unmounts per step, with both reasons in the comments.
 2. The rule has now paid off four rounds running: **enumerate the mechanics, not the files.**
    A grep for the hook or callback that a NON-click path goes through is the cheap version of it,
    and it is what found this one.
+
+> last audited 18-10-26 by docs-auditor round-2

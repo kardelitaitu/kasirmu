@@ -70,3 +70,5 @@ all, not a failed one).
 The generalisable lesson: **a mock factory's KNOWN_GAPS list is a coverage map.** A name on
 that list is a call no test can make, and it deserves reading as a suspect rather than as
 an accepted gap.
+
+> last audited 11-10-26 by docs-auditor round-2

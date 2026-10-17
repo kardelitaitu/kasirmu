@@ -120,3 +120,5 @@ Six more `aria-modal` dialogs with no trap, none on the POS cashier path:
 - Verifying a plan's claims is not busywork: three separate headline assertions were
   checked against the tree and all three held, which is what made it safe to look for
   work the plan does not already cover.
+
+> last audited 16-10-26 by docs-auditor round-2

@@ -98,3 +98,5 @@ another session's hunk; the fix was verified but not committed, and the audit sa
 session's `ed1db7450` has since landed the working tree, so the round-292 fix is now in HEAD —
 verified by grepping the committed file, not by assuming. The loose end is closed, and this
 round's fix sits on top of it.
+
+> last audited 16-10-26 by docs-auditor round-2

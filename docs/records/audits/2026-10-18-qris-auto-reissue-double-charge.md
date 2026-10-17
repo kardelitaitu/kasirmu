@@ -90,3 +90,5 @@ the missing guard actually lives.
 
 That is the round-122 lesson applied again in reverse: when a test cannot reach
 its subject, the fix is to move the test, not to weaken what it asserts.
+
+> last audited 18-10-26 by docs-auditor round-2

@@ -89,3 +89,5 @@ question for a later round: the same "replay rejected, UI calls it a failure" sh
 a create/close path is guarded server-side and unguarded client-side — `CategoryManagement`,
 `CustomerManagement` and `ThresholdConfigScreen` all appeared in round 136's candidate
 scan and have not been individually read.
+
+> last audited 18-10-26 by docs-auditor round-2

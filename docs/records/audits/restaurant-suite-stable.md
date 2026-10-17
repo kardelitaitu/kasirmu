@@ -71,3 +71,5 @@ titles, and fields whose write boundary is unit-tested.
 **Reliability**: 140 restaurant cases pass together on desktop, and the newest 24 pass twice in a
 row. The full UI suite has held at 12,716 passed across the last ten rounds without a single
 regression introduced by this session's changes.
+
+> last audited 15-10-26 by docs-auditor round-2

@@ -91,3 +91,5 @@ unpinned guard was fixed by *asserting* it, not by changing it.
   because `holdCartScoped` appends a NEW row rather than updating one in place. That is the
   distinguishing test for this whole class: **does the write create, or does it set a
   value?** A create can duplicate; a set cannot.
+
+> last audited 11-10-26 by docs-auditor round-2

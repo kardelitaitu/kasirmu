@@ -87,3 +87,5 @@ five phantom missing test files.
 2. **Two comments in one file disagreeing is the detectable form of this class.** A grep for a
    role or symbol the file claims to use, checked against the file actual `role=` attributes,
    would catch it mechanically — worth doing if a third instance appears.
+
+> last audited 18-10-26 by docs-auditor round-2

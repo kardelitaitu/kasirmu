@@ -75,3 +75,5 @@ guessed. The burndown is a background task, not this goal.
 2. `RetailPosScreen` has 14 genuinely remaining; `TableManagementScreen` (19) is next by rank and is
    clean, so it is editable.
 3. `PosScreen.tsx` is still held by another lane and remains untouchable.
+
+> last audited 18-10-26 by docs-auditor round-2

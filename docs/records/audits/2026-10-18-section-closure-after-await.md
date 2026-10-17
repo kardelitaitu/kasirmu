@@ -102,3 +102,5 @@ The same checker output should be re-run against the rest of the tree; it was wr
 defect class that has now been found twice. `handleAddSection` (`:1276`) was checked this
 round and is clean: it has no `await` before its `sections` read, which is precisely the
 condition the checker keys on.
+
+> last audited 18-10-26 by docs-auditor round-2

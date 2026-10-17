@@ -86,3 +86,5 @@ and a reason to read a failure as a description of behaviour before reading it a
 2. `refund.spec.ts` is the last spec known to be red at HEAD. If the full run finds no
    others, the E2E gate is green for the first time this session and that is worth recording as
    the baseline.
+
+> last audited 18-10-26 by docs-auditor round-2

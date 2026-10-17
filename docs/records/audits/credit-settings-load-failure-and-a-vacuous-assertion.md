@@ -95,3 +95,5 @@ Recorded as a judgement call, not left unexamined.
   lines (plus `setError`) went from 6 candidates to 2. Treat any window-based enumeration as
   a starting point.
 - Assert on the element a fix creates, not on text that is present either way.
+
+> last audited 16-10-26 by docs-auditor round-2
