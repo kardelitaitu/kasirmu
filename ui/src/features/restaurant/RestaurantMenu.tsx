@@ -208,7 +208,7 @@ export default function RestaurantMenu({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const sidebarButtonRef = useRef<HTMLButtonElement>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
-  const [menuRoot, setMenuRoot] = useState<HTMLDivElement | null>(null);
+  const [menuRoot, setMenuRoot] = useState<HTMLElement | null>(null);
 
   const [addedSku, setAddedSku] = useState<string | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -681,13 +681,14 @@ export default function RestaurantMenu({
   }, [effectiveCategory, restaurantProducts, searchQuery, pinned, sortMode, popularityCounts]);
 
   return (
-    <div
+    <section
       ref={setMenuRoot}
       className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}${hasFloatingCartBar ? ' restaurant-menu--has-floating-bar' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
+      aria-label={l10n.getString('restaurant-menu-items-aria') || 'Menu items'}
     >
       {/* ── Header row: sidebar + preferences hamburger + search ── */}
-      <div className="restaurant-header">
+      <header className="restaurant-header">
         <div className="restaurant-header-left">
           <button
             type="button"
@@ -724,7 +725,7 @@ export default function RestaurantMenu({
           contextMenuOpenRef={contextMenuOpenRef}
           popoverRef={hamburgerDropdownRef}
         />
-      </div>
+      </header>
 
       {/* Crash isolation (F9). The sidebar is a panel over a LIVE sale: a throw
           inside it must not take the POS screen with it, or the cashier loses the
@@ -745,37 +746,41 @@ export default function RestaurantMenu({
         />
       </LocalizedErrorBoundary>
 
-      {/* ── Category pills ─────────────────────────── */}
-      <MenuCategoryTabBar
-        options={categoryOptions}
-        active={effectiveCategory}
-        onSelect={setActiveCategory}
-        metaMap={catMetaMap}
-      />
+      {/* ── Category pills area ─────────────────────── */}
+      <nav className="restaurant-categories-area" aria-label={l10n.getString('restaurant-categories-aria') || 'Menu categories'}>
+        <MenuCategoryTabBar
+          options={categoryOptions}
+          active={effectiveCategory}
+          onSelect={setActiveCategory}
+          metaMap={catMetaMap}
+        />
+      </nav>
 
-      {/* ── Product grid ───────────────────────────── */}
+      {/* ── Product grid area ───────────────────────── */}
       {/* Crash isolation (F9). This is the whole ordering surface: a throw in a grid
           row used to propagate past RestaurantMenu into PosScreen and unmount the
           POS screen, taking the cart with it mid-service. `resetKeys` clears the
           caught error when the item list changes, so a bad row does not brick the
           grid for the rest of the shift. */}
-      <LocalizedErrorBoundary onReset={reload} resetKeys={[String(filtered.length), effectiveCategory]}>
-      <MenuItemGrid
-        loading={loading || isTransientSessionError}
-        error={isTransientSessionError ? null : (sessionError ?? error)}
-        onRetry={handleGridRetry}
-        items={filtered}
-        hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
-        onClearFilter={handleClearFilter}
-        pinned={pinned}
-        unavailable={unavailable}
-        colors={colors}
-        catMetaMap={catMetaMap}
-        addedSku={addedSku}
-        onAdd={handleItemAdd}
-        onContextMenu={handleContextMenu}
-      />
-      </LocalizedErrorBoundary>
+      <div className="restaurant-grid-area">
+        <LocalizedErrorBoundary onReset={reload} resetKeys={[String(filtered.length), effectiveCategory]}>
+        <MenuItemGrid
+          loading={loading || isTransientSessionError}
+          error={isTransientSessionError ? null : (sessionError ?? error)}
+          onRetry={handleGridRetry}
+          items={filtered}
+          hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
+          onClearFilter={handleClearFilter}
+          pinned={pinned}
+          unavailable={unavailable}
+          colors={colors}
+          catMetaMap={catMetaMap}
+          addedSku={addedSku}
+          onAdd={handleItemAdd}
+          onContextMenu={handleContextMenu}
+        />
+        </LocalizedErrorBoundary>
+      </div>
 
       {/* ── Context menu ─────────────────────────────── */}
       {contextMenu && (
@@ -809,6 +814,6 @@ export default function RestaurantMenu({
         />
         </LocalizedErrorBoundary>
       )}
-    </div>
+    </section>
   );
 }

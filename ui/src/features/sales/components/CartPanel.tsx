@@ -741,8 +741,10 @@ export function CartPanel({
           )}
         </div>
 
-        {/* ── Active Tab Indicator Banner ── */}
-        {activeOpenBillId && (
+        {/* ── Area: Order context (active tab, order type, table/pax) ── */}
+        <section className="pos-cart-order-context" aria-label={l10n.getString('restaurant-setting-order-type') || 'Order Context'}>
+          {/* ── Active Tab Indicator Banner ── */}
+          {activeOpenBillId && (
           <div className="pos-cart-active-tab-banner" data-testid="pos-active-tab-banner">
             <span className="pos-cart-active-tab-info">
               <span className="pos-cart-active-tab-dot" aria-hidden="true">●</span>
@@ -990,14 +992,17 @@ export function CartPanel({
             </button>
           </div>
         )}
+        </section>
 
-        {/* ── Course firing bar ──────────────────────── */}
+        {/* ── Area: Course firing ─────────────────────── */}
         {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false && (
-          <CourseSelectorBar
-            lines={lines}
-            fireCourse={fireCourse}
-            fireAllCourses={fireAllCourses}
-          />
+          <section className="pos-cart-course-bar-area" aria-label="Course Firing">
+            <CourseSelectorBar
+              lines={lines}
+              fireCourse={fireCourse}
+              fireAllCourses={fireAllCourses}
+            />
+          </section>
         )}
 
         {/* ── Cart lines ────────────────────────────── */}
@@ -1078,66 +1083,68 @@ export function CartPanel({
           )}
         </div>
 
-        {/* ── Footer: subtotal + discount + tip + service + pay ──── */}
+        {/* ── Area: Footer totals + checkout actions ──── */}
         {lines.length > 0 && subtotal && (
-          <CartFooterTotals
-            lines={lines}
-            subtotal={subtotal}
-            discountPercent={discountPercent}
-            discountLabel={discountLabel}
-            discountAmount={discountAmount}
-            showOptions={showOptions}
-            setShowOptions={setShowOptions}
-            showDiscountInput={showDiscountInput}
-            setShowDiscountInput={setShowDiscountInput}
-            setShowPromotions={setShowPromotions}
-            appliedPromotions={appliedPromotions}
-            setAppliedPromotions={setAppliedPromotions}
-            discountInput={discountInput}
-            setDiscountInput={setDiscountInput}
-            discountName={discountName}
-            setDiscountName={setDiscountName}
-            handleApplyDiscount={handleApplyDiscount}
-            handleClearDiscount={handleClearDiscount}
-            tipPercent={tipPercent}
-            setTipPercent={setTipPercent}
-            tipAmount={tipAmount}
-            serviceChargeEnabled={serviceChargeEnabled}
-            serviceChargePercent={serviceChargePercent}
-            serviceChargeAmount={serviceChargeAmount}
-            setServiceCharge={setServiceCharge}
-            cartTax={cartTax}
-            taxEstimated={taxEstimated}
-            taxState={taxState}
-            retryTaxEstimate={retryTaxEstimate}
-          >
-            <CartActionBar
-              activeShift={activeShift}
-              shiftUnavailable={shiftUnavailable}
-              handlePay={handlePay}
-              addToast={addToast}
-              setShowOpenBillInput={setShowOpenBillInput}
-              setCartId={setCartId}
-              deductionLocationIdRef={deductionLocationIdRef}
-              setDeductionLocationName={setDeductionLocationName}
-              setDeductionOverridden={setDeductionOverridden}
-              resetCart={resetCart}
-              tableNumber={tableNumber}
-              orderType={orderType}
-              customerName={customerName}
-              activeOpenBillId={activeOpenBillId}
-              handleOpenBill={handleOpenBill}
-              saveTabEnabled={saveTabEnabled}
-              hasLines={lines.length > 0}
-              printBillEnabled={printBillEnabled}
-              handlePrintBill={handlePrintBill}
-              splitBillEnabled={splitBillEnabled}
-              handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
-              hasUndispatchedItems={hasUndispatchedItems}
-              sendingToKitchen={sendingToKitchen}
-              handleSendToKitchen={handleSendToKitchen}
-            />
-          </CartFooterTotals>
+          <footer className="pos-cart-footer-area">
+            <CartFooterTotals
+              lines={lines}
+              subtotal={subtotal}
+              discountPercent={discountPercent}
+              discountLabel={discountLabel}
+              discountAmount={discountAmount}
+              showOptions={showOptions}
+              setShowOptions={setShowOptions}
+              showDiscountInput={showDiscountInput}
+              setShowDiscountInput={setShowDiscountInput}
+              setShowPromotions={setShowPromotions}
+              appliedPromotions={appliedPromotions}
+              setAppliedPromotions={setAppliedPromotions}
+              discountInput={discountInput}
+              setDiscountInput={setDiscountInput}
+              discountName={discountName}
+              setDiscountName={setDiscountName}
+              handleApplyDiscount={handleApplyDiscount}
+              handleClearDiscount={handleClearDiscount}
+              tipPercent={tipPercent}
+              setTipPercent={setTipPercent}
+              tipAmount={tipAmount}
+              serviceChargeEnabled={serviceChargeEnabled}
+              serviceChargePercent={serviceChargePercent}
+              serviceChargeAmount={serviceChargeAmount}
+              setServiceCharge={setServiceCharge}
+              cartTax={cartTax}
+              taxEstimated={taxEstimated}
+              taxState={taxState}
+              retryTaxEstimate={retryTaxEstimate}
+            >
+              <CartActionBar
+                activeShift={activeShift}
+                shiftUnavailable={shiftUnavailable}
+                handlePay={handlePay}
+                addToast={addToast}
+                setShowOpenBillInput={setShowOpenBillInput}
+                setCartId={setCartId}
+                deductionLocationIdRef={deductionLocationIdRef}
+                setDeductionLocationName={setDeductionLocationName}
+                setDeductionOverridden={setDeductionOverridden}
+                resetCart={resetCart}
+                tableNumber={tableNumber}
+                orderType={orderType}
+                customerName={customerName}
+                activeOpenBillId={activeOpenBillId}
+                handleOpenBill={handleOpenBill}
+                saveTabEnabled={saveTabEnabled}
+                hasLines={lines.length > 0}
+                printBillEnabled={printBillEnabled}
+                handlePrintBill={handlePrintBill}
+                splitBillEnabled={splitBillEnabled}
+                handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
+                hasUndispatchedItems={hasUndispatchedItems}
+                sendingToKitchen={sendingToKitchen}
+                handleSendToKitchen={handleSendToKitchen}
+              />
+            </CartFooterTotals>
+          </footer>
         )}
 
         {/* ── Open Bills badge (only visible when open bills exist) ── */}

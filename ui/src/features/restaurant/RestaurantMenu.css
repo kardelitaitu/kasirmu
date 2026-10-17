@@ -658,6 +658,14 @@
   outline-offset: 2px;
 }
 
+/* ── Categories area wrapper ──────────────────────── */
+.restaurant-categories-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
 /* ── Category tabs ──────────────────────────────── */
 .restaurant-categories {
   display: flex;
@@ -759,6 +767,15 @@
 
 .restaurant-category-pill--active .restaurant-pill-icon {
   opacity: 1;
+}
+
+/* ── Grid area wrapper ────────────────────────────── */
+.restaurant-grid-area {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* ── Product grid ───────────────────────────────── */

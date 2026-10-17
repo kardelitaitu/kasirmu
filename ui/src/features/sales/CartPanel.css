@@ -74,8 +74,7 @@
 
 .pos-resize-handle:hover,
 .pos-resize-handle:focus-visible,
-.pos-resize-handle:active,
-body.is-resizing .pos-resize-handle {
+.pos-resize-handle:active {
   background: var(--color-accent-dim);
 }
 
@@ -98,8 +97,7 @@ body.is-resizing .pos-resize-handle {
   height: var(--space-14);
 }
 
-.pos-resize-handle:active::after,
-body.is-resizing .pos-resize-handle::after {
+.pos-resize-handle:active::after {
   background: var(--color-accent);
   height: var(--space-16);
   box-shadow: 0 0 10px var(--color-accent);
@@ -504,6 +502,30 @@ body.is-resizing .pos-resize-handle::after {
 
 .pos-cart-conflict-takeover-btn:hover {
   background: color-mix(in srgb, var(--color-warning) 80%, black);
+}
+
+/* ── Order context area wrapper ────────────────────── */
+
+.pos-cart-order-context {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ── Course bar area wrapper ────────────────────────── */
+
+.pos-cart-course-bar-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ── Cart footer area wrapper ───────────────────────── */
+
+.pos-cart-footer-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }
 
 /* ── Table-number & Customer-name row ─────────────────── */

@@ -2382,8 +2382,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         e.preventDefault();
       }}
     >
-      {/* ── Left: Product lookup ─────────────────── */}
-      <div className="pos-products">
+      {/* ── Section: Product lookup / menu ─────────────────── */}
+      <section className="pos-products">
         {/* Crash isolation (F9) at the SHELL level, not only inside it. Round 20
             wrapped two children of RestaurantMenu, but the component itself is
             rendered here and was still bare: a throw in its own body — the header,
@@ -2410,7 +2410,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <ProductLookupScreen onAddProduct={handleAddProduct} />
           </LocalizedErrorBoundary>
         )}
-      </div>
+      </section>
 
       {/* ── Resize handle & Cart panel (landscape / desktop) ── */}
       {!isPortraitRestaurant && (
