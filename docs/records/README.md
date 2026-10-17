@@ -132,6 +132,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Restaurant POS: all 64 E2E specs exercised in one session](audits/2026-10-16-restaurant-e2e-suite-full-pass.md) | — |
 | general | [Two sale-path specs failed on their own arrangement, not on the till](audits/2026-10-16-sale-path-spec-arrangement.md) | — |
 | general | [Touch targets: measure under the pointer the device actually reports](audits/2026-10-16-touch-target-pointer-context.md) | — |
+| general | [Two UI guards were red at HEAD: nine stale citations and one uncovered shadow](audits/2026-10-16-two-ui-guards-red-at-head.md) | — |
 | general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
 | general | [Three more specs navigated past the workspace gate — the same cause, found by sweep](audits/2026-10-16-workspace-gate-three-more-specs.md) | — |
 | release | [166 drifted citations: the population round 173 asked for — 2026-10-18](audits/2026-10-18-166-drifted-citations-measured.md) | — |
