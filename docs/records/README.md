@@ -131,6 +131,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Reachability, not position: a measurement error in my own layout probes](audits/2026-10-16-reachability-vs-position-probe-correction.md) | — |
 | general | [Restaurant POS reliability: the cart-add invariant holds under rapid input](audits/2026-10-16-restaurant-cart-add-invariant.md) | — |
 | general | [Restaurant POS: all 64 E2E specs exercised in one session](audits/2026-10-16-restaurant-e2e-suite-full-pass.md) | — |
+| general | [Route reachability: 47 pages, 42 nav items, 0 dead links, 0 orphans](audits/2026-10-16-route-reachability-closure.md) | — |
 | general | [Two sale-path specs failed on their own arrangement, not on the till](audits/2026-10-16-sale-path-spec-arrangement.md) | — |
 | general | [Touch targets: measure under the pointer the device actually reports](audits/2026-10-16-touch-target-pointer-context.md) | — |
 | general | [Two UI guards were red at HEAD: nine stale citations and one uncovered shadow](audits/2026-10-16-two-ui-guards-red-at-head.md) | — |
