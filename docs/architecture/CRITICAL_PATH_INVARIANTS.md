@@ -22,9 +22,8 @@ without saying so below.
 
 **The invariant is conditional, and stating it unconditionally would be false.**
 `WorkspaceInventoryLocation.allow_negative_stock`
-(`foundation/src/inventory.rs:380`) is a per-location policy flag, and the stock
-write is a raw `UPDATE inventory SET qty = qty + ?1`. A location that opts in may
-oversell; a location that does not must be refused.
+(`foundation/src/inventory.rs:380`) is a per-location policy flag. A location that
+opts in may oversell; a location that does not must be refused.
 
 > **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368`
 > for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`)
@@ -32,22 +31,43 @@ oversell; a location that does not must be refused.
 > model was extracted there), and `adjust_stock_tx` **no longer exists** — `get_stock` and
 > `adjust_stock_tx` were REMOVED on 2026-09-29 (`modules/inventory/src/repository.rs:147`)
 > because they read `inventory.sku` / `low_stock_threshold`, columns the migrations do not
-> carry, and had no caller. The raw `UPDATE` shape they described is still the live write
-> path, so the invariant itself is unchanged; only the anchors were. See the "Not a gate"
-> note at the foot of this file for why this drifted unnoticed.
+> carry, and had no caller. The invariant itself is unchanged; only the anchors were.
+> See the "Not a gate" note at the foot of this file for why this drifted unnoticed.
+>
+> **Repaired 2026-10-19 (second pass, two claims found false).**
+> 1. The write path is no longer "a raw `UPDATE inventory SET qty = qty + ?1`".
+>    `adjust_stock_at_location_with_reason`
+>    (`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190`) is the only
+>    live writer — 63 call sites, none using a deprecated sibling. It performs an
+>    `INSERT … ON CONFLICT DO UPDATE` on **`stock_summary`** as the canonical row
+>    (`adjust.rs:282-289`), then a recomputed-SUM upsert on the legacy `inventory`
+>    table (`adjust.rs:314-323`), which ADR-18 §2a keeps as a deferred
+>    composite-PK rebuild. A raw `qty = qty + ?1` string has zero hits in
+>    production Rust.
+> 2. The Database layer below was described as an unconditional `CHECK (qty >= 0)`
+>    on `inventory`. That constraint **does exist** in the schema
+>    (`20260813_init.sql:171`), but it is deliberately **not a backstop**: when
+>    `allow_negative` is set, the writer catches that `ConstraintViolation` and
+>    downgrades it to a `tracing::warn!` (`adjust.rs:302-336`), so it cannot refuse
+>    the opt-in path. Its own docstring states plainly that
+>    "no `CHECK (qty >= 0)` exists" on `stock_summary` (`adjust.rs:173-187`).
+>    The real Layer 2 is a **conditional trigger pair** on `stock_summary`.
+>    Describing the floor as defended unconditionally was a false assurance.
 
-Where it is enforced — **two independent layers**, which is worth knowing:
+Where it is enforced — **two independent layers**, and the second is
+**conditional on the location binding**, which is the same conditionality as the
+invariant itself:
 
 | Layer | Where | What it does |
 |---|---|---|
-| Rust guard | `crates/kasirmu-core/src/db/products_stock_query.rs:470` | `.filter(\|&v\| v >= 0)` on the new quantity; rejects with `"adjustment would cause negative stock (previous: N, delta: M)"` |
-| Rust guard (batch) | `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs:156` | same, for a batch whose ANY member would go negative |
-| **Database** | CHECK constraint `qty >= 0` on `inventory` (`crates/kasirmu-core/migrations/20260813_init.sql:171`) | refuses the write even if the Rust guard is removed |
+| Rust guard | `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:249` | `.filter(\|&v\| v >= 0)` on the new quantity inside `adjust_stock_at_location_with_reason`; rejects with `CoreError::InsufficientStockAtLocation`. **The two rows that used to sit here — `products_stock_query.rs:470` and `products_stock_adjust/batch.rs:156` — are inside `#[deprecated]` functions with zero production callers** (`products_stock_query.rs:435`, `batch.rs:132`), so they no longer guard anything |
+| **Database (conditional)** | trigger pair `stock_summary_qty_nonnegative_{insert,update}` (`crates/kasirmu-core/migrations/20261012_stock_summary_qty_nonnegative.sql`) | rejects the `stock_summary` upsert — but **only when that location's binding has NOT opted into `allow_negative_stock`**, so it never fights the opt-in path. `rusqlite::ErrorCode::ConstraintViolation` (primary code 19) is mapped to the same error variant, which also covers a CHECK's 787 (`adjust.rs:290-299`) |
 
-**Measured, not assumed:** relaxing the Rust guard to `v >= i64::MIN` still
-fails, with `CHECK constraint failed: qty >= 0` — the floor is defended at both
-layers. That was found while writing the adversarial tests below, and no
-single-layer test would have shown it.
+**Measured, not assumed:** relaxing the Rust guard to `v >= i64::MIN` still fails,
+on the conditional trigger, for a location that has not opted in. That was found
+while writing the adversarial tests below, and no single-layer test would have
+shown it. The claim that this survives for an **opted-in** location is false by
+construction — that path is meant to succeed.
 
 **Enforced by:**
 - `foundation/src/inventory_tests.rs:307` — `inventory_new_rejects_negative_qty`
@@ -131,8 +151,9 @@ items are never delivered back to it, since they are already local.
 
 ## What this document is not
 
-- **Not a full invariant inventory.** Measured 2026-09-28: **12 `debug_assert!`
-  sites** across the tree (the P3-1 box said 79 — that figure was stale) and 290
+- **Not a full invariant inventory.** Measured 2026-10-19: **14 `debug_assert!`
+  sites** across the tree (the 2026-09-28 reading was 12; the P3-1 box before that
+  said 79 — that figure was stale) and 371
   lines mentioning "invariant", most of them prose in audit stamps. This list is
   the four the box named, not every assertion in the codebase.
 - **Not a gate.** Nothing checks that these tests still exist. If one is renamed,

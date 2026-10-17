@@ -97,16 +97,16 @@ dependency), and `the_real_loyalty_grant_names_a_declared_dependency` pins the i
 `scripts/verify-core-size.py` enforces a ceiling on `crates/kasirmu-core` production lines
 (`scripts/core-size-baseline.json`). The required gate `core-size-ratchet`
 (`scripts/gates.json`) fails when core grows above the recorded ceiling without a
-deliberate `--emit-baseline` commit. Current baseline: **37176 lines across 178 files**.
+deliberate `--emit-baseline` commit. Current ceiling: **38703 lines across 178 files**
+(re-raised 2026-10-14 by `341ba7227`; this line said 37176 until 2026-10-19).
 
-> **Measured 11-10-26: this gate is RED at HEAD.** `python3 scripts/verify-core-size.py`
-> reports **measured 38703 vs ceiling 37176 (+1527 lines)** and exits 1. Nothing in the working
-> tree is dirty on this path (`scripts/core-size-baseline.json` is committed-clean and the only
-> modified file under `crates/kasirmu-core/` is a README), so the growth is committed work that
-> was merged without the deliberate ceiling edit the paragraph above requires. The mechanism the
-> section describes is intact — the gate runs, and a red gate proves nothing, which is exactly
-> the failure this section already warns about elsewhere. **Ratio unchanged and worth reading:
-> the same drift that once left this ceiling behind has recurred.**
+> **Measured 2026-10-19: this gate is RED at HEAD — again.** `python3 scripts/verify-core-size.py`
+> reports **measured 39068 vs ceiling 38703 (+365 lines)** and exits 1. The callout below was
+> written when the ceiling was 37176 and the gap was +1527; the deliberate re-emit it asked for
+> then **did happen** (38703), which is why the gap shrank. What has happened since is the same
+> drift a third time: committed growth merged without the ceiling edit. The mechanism is intact
+> — the gate runs and it catches this — and that is the point worth keeping. A ceiling that is
+> only ever moved after the fact is a changelog, not a ratchet.
 
 That figure was re-emitted to the true measured count, not because core was allowed to drift, but
 because the ceiling had been left behind by committed work — the payment-gateway and cloud-export
