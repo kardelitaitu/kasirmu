@@ -661,10 +661,10 @@
 /* ── Category tabs ──────────────────────────────── */
 .restaurant-categories {
   display: flex;
-  gap: 0;
+  gap: var(--space-2);
   overflow-x: auto;
   scrollbar-width: thin;
-  padding-bottom: 0;
+  padding: var(--space-2) var(--space-3);
   -webkit-overflow-scrolling: touch;
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-border);
@@ -676,7 +676,7 @@
 }
 
 .restaurant-categories::-webkit-scrollbar {
-  height: 6px;
+  height: 4px;
 }
 
 .restaurant-categories::-webkit-scrollbar-track {
@@ -695,42 +695,57 @@
 .restaurant-category-pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   flex-shrink: 0;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1_5) var(--space-3_5);
   font-family: var(--font-sans);
   font-size: calc(var(--text-sm) - 0.125rem + var(--font-size, 0) * 0.09375rem);
   font-weight: var(--font-weight-medium);
-  color: var(--color-fg-tertiary);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  color: var(--color-fg-secondary);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
   white-space: nowrap;
   min-height: var(--touch-target-min);
   transition:
     color var(--duration-150) var(--ease-out),
-    border-color var(--duration-150) var(--ease-out);
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    box-shadow var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out);
 }
 
 .restaurant-category-pill:hover {
   color: var(--color-fg);
-  border-bottom-color: var(--color-border-hover);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+}
+
+.restaurant-category-pill:active {
+  transform: scale(0.96);
 }
 
 .restaurant-category-pill--active {
-  color: var(--pill-color, var(--color-accent));
-  border-bottom-color: var(--pill-color, var(--color-accent));
+  color: var(--color-accent-fg);
+  background: var(--pill-color, var(--color-accent));
+  border-color: var(--pill-color, var(--color-accent));
+  font-weight: var(--font-weight-semibold);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pill-color, var(--color-accent)) 35%, transparent);
 }
 
 .restaurant-category-pill--active:hover {
-  color: var(--pill-color, var(--color-accent));
-  border-bottom-color: var(--pill-color, var(--color-accent));
+  color: var(--color-accent-fg);
+  background: var(--pill-color, var(--color-accent));
+  border-color: var(--pill-color, var(--color-accent));
+  filter: brightness(1.05);
 }
 
 .restaurant-category-pill:focus-visible {
   outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 /* Icon SVG before the label */
@@ -738,7 +753,7 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: 0.8;
   transition: opacity var(--duration-150) var(--ease-out);
 }
 
