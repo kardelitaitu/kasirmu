@@ -78,7 +78,7 @@ We operate globally and some of the providers listed above (and our own infrastr
 ## 7. Retention
 
 - **Account data** is kept while your account is active and for a short period after you request deletion to allow for recovery and to comply with legal obligations.
-- **Cloud-synced business data** is deleted when you delete your account or cancel your plan, as described in the Terms of Service, except where we are legally required to keep records.
+- **Cloud-synced business data** is deleted on a verified request by operator action, as described in the Terms of Service, except where we are legally required to keep records. Deletion is performed by our operators rather than automatically.
 - **Server logs** are kept for a limited period (typically up to 90 days) and then deleted or anonymized.
 - **Backups** may retain data for a limited additional period for disaster recovery, after which they are purged.
 
@@ -89,7 +89,7 @@ When you ask us to delete your data, we delete or anonymize it within a reasonab
 We apply reasonable technical and organizational measures to protect your data, including:
 
 - Encryption in transit (TLS) for all communication with our servers;
-- Passwords stored only as strong one-way hashes (Argon2id);
+- Passwords stored only as salted one-way hashes (bcrypt for your account password; Argon2id for local staff PINs);
 - Cryptographically signed license keys to prevent tampering;
 - Access controls and logging on production systems;
 - Restricted access to production data for our team and providers.

@@ -16,14 +16,16 @@ Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · F
 
 Terminals — the registers you see in the topology — are the devices that run
 kasir.mu: a counter register, a tablet, or a kitchen screen. Each terminal has
-a name and a device identifier (hostname or MAC address) that the app reports
-automatically. Managing terminals requires the manager role.
+a name and a device identifier (hostname or MAC address) that **you enter
+yourself** — it is not detected automatically, and registration is refused
+without it. Managing terminals requires the manager role.
 
 ## Registering a terminal
 
 Open the Terminals screen from the main navigation's Tools section and
 register the device. Give it a readable name
-("Front Counter") and the device identifier, and optionally a shared secret
+("Front Counter") and the device identifier (required — the form is rejected
+until you supply one), and optionally a shared secret
 for sync authentication and JSON metadata. Terminals can be deactivated or
 deleted later; deleting is permanent.
 

@@ -78,7 +78,7 @@ Kami beroperasi secara global dan sebagian penyedia yang disebutkan di atas (ser
 ## 7. Retensi (jangka waktu penyimpanan)
 
 - **Data akun** disimpan selama akun Anda aktif dan untuk jangka waktu singkat setelah Anda meminta penghapusan, untuk memungkinkan pemulihan dan memenuhi kewajiban hukum.
-- **Data bisnis yang disinkronkan** dihapus saat Anda menghapus akun atau membatalkan paket, sebagaimana dijelaskan dalam Syarat dan Ketentuan Layanan, kecuali kami diwajibkan oleh hukum untuk menyimpan catatan.
+- **Data bisnis yang disinkronkan** dihapus atas permintaan terverifikasi melalui tindakan operator, sebagaimana dijelaskan dalam Syarat dan Ketentuan Layanan, kecuali kami diwajibkan oleh hukum untuk menyimpan catatan. Penghapusan dilakukan oleh operator kami, bukan secara otomatis.
 - **Log server** disimpan dalam jangka waktu terbatas (biasanya hingga 90 hari) lalu dihapus atau dianonimkan.
 - **Cadangan (backup)** dapat menyimpan data untuk jangka waktu tambahan yang terbatas untuk pemulihan bencana, kemudian dibersihkan.
 
@@ -89,7 +89,7 @@ Ketika Anda meminta penghapusan data, kami menghapus atau menganonimkannya dalam
 Kami menerapkan langkah keamanan teknis dan organisasi yang wajar untuk melindungi data Anda, antara lain:
 
 - Enkripsi selama transmisi (TLS) untuk seluruh komunikasi dengan server kami;
-- Kata sandi hanya disimpan sebagai hash satu arah yang kuat (Argon2id);
+- Kata sandi hanya disimpan sebagai hash satu arah bergaram (bcrypt untuk kata sandi akun Anda; Argon2id untuk PIN staf lokal);
 - Kunci lisensi yang ditandatangani secara kriptografis untuk mencegah pemalsuan;
 - Kontrol akses dan pencatatan pada sistem produksi;
 - Pembatasan akses ke data produksi bagi tim dan penyedia kami.

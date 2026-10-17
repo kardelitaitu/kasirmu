@@ -46,7 +46,7 @@ We may add, change, or remove features over time. We will try to give reasonable
 2. **License to us.** To operate the Service, you grant us a limited, non-exclusive, revocable license to store, process, and transmit Customer Data, and to use aggregated and anonymized data for service improvement and analytics, in each case solely to provide and secure the Service.
 3. **Your responsibility.** You are responsible for the accuracy and lawfulness of Customer Data you upload, and for complying with any laws that apply to it (including any personal-data laws if Customer Data contains personal data of your customers or staff). You must have the rights needed to grant the license above.
 4. **Backups are your responsibility.** The software is offline-first: your primary copy of Customer Data lives on your own devices. Cloud sync is provided as a convenience on paid plans and is not a backup service. You are solely responsible for backing up your data on your own infrastructure.
-5. **Deletion.** When you cancel a paid plan or delete your account, synced Customer Data is deleted from our servers in accordance with our Privacy Policy, subject to legal record-keeping requirements. We are not responsible for data you lose because you did not maintain your own backups.
+5. **Deletion.** When you cancel a paid plan or delete your account, synced Customer Data is deleted from our servers by operator action following a verified request, in accordance with our Privacy Policy, subject to legal record-keeping requirements. Deletion is not automatic. We are not responsible for data you lose because you did not maintain your own backups.
 
 ## 6. Acceptable use
 
