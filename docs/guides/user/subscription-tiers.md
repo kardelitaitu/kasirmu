@@ -243,12 +243,18 @@ a category a tier does not include.
 prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active staff
 users with the owner excluded.
 
-\*\* Sales history cap — **enforced** in both clients' history commands
-(`apps/desktop-tauri/src/commands/history.rs`,
-`apps/mobile-tauri/src/commands/history.rs`, C1.2): the tier window is read from the
+\*\* Sales history cap — **enforced in the TABLET client only**
+(`apps/mobile-tauri/src/commands/history.rs:69`, and the paged variant at `:329`): the tier
+window is read from the
 tenant subscription **after signature verification** and applied by
 `list_sales_with_history_cap(days)`, which returns the rows plus a `capped` flag instead
-of erroring — the blurred-preview-with-CTA behaviour this note asked for. Free users see
+of erroring — the blurred-preview-with-CTA behaviour this note asked for. **The desktop
+shell does not apply it**: `apps/desktop-tauri/src/commands/history.rs` contains no
+`list_sales_with_history_cap` and no `sales_history_days` read (zero hits, verified
+2026-10-19), so a Free user on the desktop app can still page past the 3-month window.
+This sentence claimed "both clients" until then; the desktop half was never wired, and
+wiring it is a code change rather than a doc one — recorded here rather than silently
+narrowed. Free users see
 only the last 3 months; after 3+ months the owner naturally wants to compare months, which
 remains the primary Free → Plus trigger.
 

@@ -95,9 +95,17 @@ cargo run -p kasirmu-cli -- seed-demo --all
 cargo run -p kasirmu-cli -- seed-demo --restaurant --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p kasirmu-cli -- seed
+cargo run -p kasirmu-cli -- init-db
+```
 
-> ⚠️ **Corrected 09-09-26.** Neither option listed here existed as written. The `Settings →
+> ⚠️ **Corrected 09-09-26, and the command itself repaired 2026-10-19.** Neither option
+> listed here existed **as first written**.
+> (`cargo run -p kasirmu-cli -- seed` is still wrong and was left in place by the 09-09-26
+> pass, which corrected the note but not the command: there is **no `seed` subcommand** —
+> `crates/kasirmu-cli/src/cli.rs:40-44` declares `Migrate` then `InitDb`, and the verb for
+> Option B is `init-db`. That false command also unclosed the code fence — the note you are
+> reading began INSIDE the block, so everything after it to end-of-file rendered as one
+> code block. Both are fixed here.) The `Settings →
 > Database → Seed Sample Data` menu is not in the app — that string appears only in these
 > launch guides, in nothing under `ui/src`. There is no CI-produced seeded database either:
 > `test-data` is absent from every workflow and from `scripts/` (0 hits), so
