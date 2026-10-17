@@ -144,4 +144,17 @@ atau `updated` antar lokal. `updated` kedua lokal bergerak bersama setiap
 kali konten berubah — itulah sinyal kesegaran halaman, jadi mengedit
 halaman tanpa membarukannya adalah drift.
 
+>
+> **Pemeriksaan ini tidak ditegakkan di mana pun.** Tidak ada langkah di
+> `.githooks/pre-commit`, `scripts/check.sh`, entri `scripts/gates.json`, job CI,
+> maupun skrip `website/package.json` yang memanggil
+> `website/scripts/check-doc-parity.py` (diverifikasi 2026-10-19 dengan
+> `git grep -n check-doc-parity -- .githooks scripts/gates.json scripts/check.sh
+> .github/workflows website/package.json`, yang tidak menghasilkan apa pun).
+> Statusnya hijau hari ini — 20 pasangan halaman — tetapi hanya karena ada yang
+> menjalankannya manual. Perlakukan sebagai anjuran: jalankan setelah menambah,
+> mengganti nama, atau menghapus halaman, dan jangan berasumsi pipeline yang
+> lulus sudah memeriksanya. Jalur pada perintah di atas relatif terhadap
+> `website/`; dari akar repositori perintah yang sama gagal dengan
+> `can't open file`, dan itulah satu-satunya jebakan pemakaiannya.
 > last audited 11-10-26 by docs-auditor

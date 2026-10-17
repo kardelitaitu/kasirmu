@@ -84,8 +84,9 @@ regardless of which you picked.
 
 Downloading to kick the tyres, with no real counter to put it on yet — that
 is the [Quickstart](../quickstart/) path, and it commits nothing: the free
-plan starts on first launch with no account, no card, and no setup you
-cannot clear later. Pick **Offline only** in the wizard, add two test
+plan starts on first launch with no card, no cost, and no setup you
+cannot clear later. The wizard defaults to a linked account — pick
+**Offline only** in the wizard if you would rather work without one — add two test
 products, ring one test sale, and you have seen the whole loop — sales,
 receipt, and shift counting all work as they would for real. When you are
 ready, [Activation](../activation/) and cloud sync turn it into a live
@@ -97,7 +98,8 @@ In a hurry? [Quickstart](../quickstart/) takes you from download to a
 working counter in about 15 minutes.
 
 1. [Install kasir.mu](../installation/) on Windows — the free plan starts on
-   first launch, no account required. Other platforms are coming soon.
+   first launch, with no card and no cost. Choose **Offline only** in the wizard
+   if you would rather not link an account. Other platforms are coming soon.
 2. Run the [Setup Wizard](../setup-wizard/) — account (or offline only),
    shop type, owner login.
 3. [Activate a license key](../activation/) when you're ready to unlock more

@@ -86,8 +86,10 @@ transaksi uji terlepas dari pilihan Anda.
 
 Mengunduh untuk mencoba, tanpa konter sungguhan untuk dipakai — itulah jalur
 [Mulai Cepat](../quickstart/), dan jalur ini tidak mengikat apa pun: paket
-gratis dimulai saat peluncuran tanpa akun, tanpa kartu, dan tanpa pengaturan
-yang tidak bisa Anda bersihkan nanti. Pilih **Offline saja** di wizard,
+gratis dimulai saat peluncuran tanpa kartu, tanpa biaya, dan tanpa pengaturan
+yang tidak bisa Anda bersihkan nanti. Wizard menawarkan mode tertaut akun
+sebagai bawaan — pilih **Offline saja** di wizard bila Anda ingin bekerja
+tanpa akun —
 tambahkan dua produk uji, hitung satu transaksi uji, dan Anda sudah melihat
 seluruh putarannya — penjualan, struk, dan penghitungan shift semuanya
 berjalan seperti sungguhan. Saat siap, [Aktivasi](../activation/) dan
@@ -99,7 +101,8 @@ Terburu-buru? [Mulai Cepat](../quickstart/) membawa Anda dari unduhan ke
 kasir yang siap dihitung dalam sekitar 15 menit.
 
 1. [Pasang kasir.mu](../installation/) di Windows — paket gratis dimulai saat
-   peluncuran pertama, tanpa perlu akun. Platform lain segera hadir.
+   peluncuran pertama, tanpa kartu dan tanpa biaya. Anda dapat memilih
+   **Offline saja** di wizard bila tidak ingin menautkan akun. Platform lain segera hadir.
 2. Jalankan [Wizard Pengaturan](../setup-wizard/) — akun (atau offline
    saja), jenis toko, login owner.
 3. [Aktifkan kunci lisensi](../activation/) saat siap membuka lebih banyak

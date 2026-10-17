@@ -21,7 +21,7 @@ Anda berada:
 | Ruang Kerja     | Fungsinya                                                                  | Muncul sebagai kartu |
 | --------------- | -------------------------------------------------------------------------- | ------------ |
 | Store POS       | Kasir ritel — pencarian produk, pelanggan, dan loyalitas                   | Siap         |
-| Retail POS      | Kasir ritel (jenis ritel kedua yang di-seed)                               | Siap         |
+| Retail POS      | Kasir ritel — jenis ritel kedua yang di-seed. Memetakan ke **lima layar yang sama** dengan Store POS (penjualan, pelanggan, loyalitas, riwayat penjualan, promosi); bedanya kartu dan fitur yang dibundel paket, bukan kumpulan layarnya | Siap         |
 | POS Restoran    | Kasir layanan meja — kategori menu dan manajemen meja                      | Siap         |
 | Tampilan Dapur  | Antrean pesanan untuk dapur — ketuk tiket untuk memajukan statusnya        | Siap         |
 | Gudang          | Produk, tingkat stok, bundel, kategori, dan laporan inventaris             | Siap         |
