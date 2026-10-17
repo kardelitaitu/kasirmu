@@ -19,7 +19,7 @@ status of each (what is live today vs. wired-but-not-started).
 | Read/write products, stock, sales, rates from an **external process** (KDS, scanner, dashboard, sync job) | REST API (`crates/kasirmu-api`) | Live on **cloud-server**; on the **desktop app** it runs loopback-only behind Settings → Local API (off by default, §2.1); tablet: not started |
 | Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `kasir` CLI (`crates/kasirmu-cli`) | Stable — see [kasirmu-cli README](../../../crates/kasirmu-cli/README.md) |
 | Drive custom hardware (printer, scanner, drawer, display) | Rust HAL traits (`crates/kasirmu-hal`) | Stable — plugin-guide §HAL |
-| Call the app's internals (Tauri IPC commands — the current surface is **519 distinct commands: 500 registered in the desktop shell, 428 in the tablet**, re-measured 2026-10-11 (was 511/493/413 on 2026-10-08)). This sentence used to carry two different totals from two dates ("450 registered as measured 08-09-26 … **478 distinct as measured 2026-09-14**") with nothing marking which was current, so a reader could not tell what the tree held. Only the latest tuple is kept. **It moves with every command**: re-run `python .agents/skills/docs-auditor/scripts/check-api-surface.py`, which prints `registered   desktop=500 tablet=428 distinct=519`, or `python scripts/verify-ipc-parity.py` for the per-shell gate — and note the "in both" intersection is neither tool's output; it comes from intersecting the two `generate_handler!` lists (`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
+| Call the app's internals (Tauri IPC commands — the current surface is **519 distinct commands: 500 registered in the desktop shell, 428 in the tablet**, re-measured 2026-10-11 (was 511/493/413 on 2026-10-08)). This sentence used to carry two different totals from two dates ("450 registered as measured 08-09-26 … **478 distinct as measured 2026-09-14**") with nothing marking which was current, so a reader could not tell what the tree held. Only the latest tuple is kept. **It moves with every command**: re-run `python .agents/skills/docs-auditor/scripts/check-api-surface.py`, which prints `registered   desktop=500 tablet=428 distinct=519`, or `python scripts/verify-ipc-parity.py` for the per-shell gate — and note the "in both" intersection is neither tool's output; it comes from intersecting the two `generate_handler!` lists (`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`) and is **409** (re-derived 2026-10-11 by brace-matched extraction over both lists) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
 
 ## 2. REST API at a glance
 
@@ -33,7 +33,7 @@ status of each (what is live today vs. wired-but-not-started).
 | Host | What it serves | Evidence |
 |---|---|---|
 | **Cloud server** (`kasirmu-cloud`, the unified deployment) | The full surface: `kasirmu-api` router + sync + webhooks + docs + metrics | `apps/cloud-server/src/main.rs` `build_router()` merges `kasirmu_api::router(...)` with `sync_router`, `webhooks_router`, `docs_router` |
-| **Desktop app** (`kasirmu-app`) | The `kasirmu-api` router **only**, bound to `127.0.0.1` (default port 3099), **off by default** — enable in Settings → Local API. Tokens are minted in that panel; the server signs with a per-install secret generated on first enable | `apps/desktop-tauri/src/local_api.rs` (embeds `kasirmu_api::router()`; never `serve()`, which binds 0.0.0.0) |
+| **Desktop app** (`kasirmu-app`) | The `kasirmu-api` router **only**, bound to `127.0.0.1` (default port 3099), **off by default** — enable in Settings → Local API. Tokens are minted in that panel; the server signs with a per-install secret generated on first enable | `crates/kasirmu-local-api/src/lib.rs` — the server lives in its own crate so a headless binary can start it without the Tauri shell (it embeds `kasirmu_api::router()`; it never calls `serve()`, which binds 0.0.0.0). `apps/desktop-tauri/src/local_api.rs` is now an 11-line re-export shim (`pub use kasirmu_local_api::*;`) |
 | **Tablet app** | Nothing yet — no `local_api` module | grep `local_api` → only `apps/desktop-tauri` |
 
 Production cloud origin: `https://license.ozpos.my.id` (the Northflank
@@ -52,7 +52,7 @@ deployment, by design:
 - it serves **one store's database at a time** — by default the
   **primary store**, the same `store-{id}.sqlite` file the register
   reads (resolved via `locations.is_primary` in the **global** DB — `primary_store_id()`
-  at `apps/desktop-tauri/src/local_api.rs:95` runs
+  at `crates/kasirmu-local-api/src/lib.rs:126` (the query is at `:129`) runs
   `SELECT id FROM locations WHERE is_primary = 1 LIMIT 1`); multi-store
   installs can switch the served store in the same Settings panel
   (restarts the server against the new file). Scripts see exactly what

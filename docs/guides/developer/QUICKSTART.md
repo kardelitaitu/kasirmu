@@ -138,8 +138,10 @@ The Rust test suite is fully offline — no browser, no network, no hardware. Mo
 # Format
 cargo fmt --all
 
-# Lint — `-D warnings` at the end is what makes this command fail on a warning
-cargo clippy --all-targets --all-features -- -D warnings
+# Lint — `-D warnings` at the end is what makes this command fail on a warning.
+# `--workspace` matters: without it only the default members are linted, while CI
+# (.github/workflows/dev-ci.yml#cargo-clippy) runs `--workspace --all-targets`.
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # UI lint — plain `eslint .`, no --max-warnings 0: it REPORTS warnings and still exits 0
 cd ui && npm run lint
@@ -149,16 +151,19 @@ cd ui && npm run typecheck
 ```
 
 `AGENTS.md` makes formatting and `cargo clippy -- -D warnings` mandatory — as policy, on you.
-The commit path will not do either one for you. **The pre-commit hook runs seven steps and none
-of them formats Rust**: line-ending normalization, bundle parity, FTL dedupe, migration
-column types, PG schema drift, the Go gate, and FTL orphans
-(`grep -c '^# ──' .githooks/pre-commit` → 7, and `grep -n 'cargo fmt\|rustfmt' .githooks/pre-commit`
-returns nothing). A whole-workspace `cargo fmt --all` step did live there until **2026-09-13,
-when it was removed** — and the reason it was removed is the reason it must stay out: it fired
-whenever any `.rs` file was staged but formatted the *entire* workspace in the working tree, so
-with several sessions in the checkout at once it rewrote other people's in-flight, unstaged,
-unrecoverable `.rs` files. Format your own files (`cargo fmt --all` before you stage, or
-`cargo fmt` scoped to what you touched); never re-add a workspace-wide format to a hook.
+The commit path will not do either one for you. **The pre-commit hook runs eight steps**, and the
+last of them is a **check-only** Rust format over the files you staged: line-ending normalization,
+bundle parity, FTL dedupe, migration column types, PG schema drift, the Go gate, FTL orphans, and
+staged `rustfmt --check` (`grep -c '^# ──' .githooks/pre-commit` → 8; step 8 is
+`# ── Rust format: staged files only`, and it runs `rustfmt --check --edition 2024` over staged
+`.rs` files — never `-w`, so it never rewrites your tree). A whole-workspace `cargo fmt --all`
+step did live there until **2026-09-13, when it was removed** — and the reason it was removed is
+the reason it must stay out: it fired whenever any `.rs` file was staged but formatted the
+*entire* workspace in the working tree, so with several sessions in the checkout at once it
+rewrote other people's in-flight, unstaged, unrecoverable `.rs` files. The step that replaced it
+inspects only staged paths, which is why it carries none of that hazard. Format your own files
+(`cargo fmt --all` before you stage, or `cargo fmt` scoped to what you touched); never re-add a
+workspace-wide **format** (the write form) to a hook.
 
 Formatting is still enforced — check-only, and after the commit. `cargo fmt --all -- --check`
 runs in CI, in `pre-push`, in `scripts/check.sh` and in `scripts/release.sh`:

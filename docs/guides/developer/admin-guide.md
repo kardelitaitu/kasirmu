@@ -11,9 +11,13 @@
 3. On first launch, follow the setup wizard to:
    - Set store name, currency, and tax settings
    - Create the owner account (username + PIN)
-   - Choose a workspace preset — the wizard offers **six**: Simple Retail, Restaurant,
-     Full Store, Cafe / Bakery, Franchise, and Custom
-     (`ui/src/features/setup/ProvisioningFlow.tsx`; the `Preset` union now lives in `ui/src/api/settings.ts`, the preset→feature bundles in `crates/kasirmu-core/src/features.rs`). This line listed three until
+   - Choose a workspace preset — **the wizard renders two store types: Shop (Simple
+     Retail) and Restaurant or cafe**. The `Preset` union defines six slugs (Simple Retail,
+     Restaurant, Full Store, Cafe / Bakery, Franchise, Custom), but the wizard's
+     `STORE_TYPES` array (`ui/src/features/setup/ProvisioningFlow.tsx:90-105`) exposes only
+     the first two; the other four are reachable only via `provisionDevice` directly. The
+     `Preset` union lives in `ui/src/api/settings.ts`, the preset→feature bundles in
+     `crates/kasirmu-core/src/features.rs`. This line listed three until
      08-09-26, and the 2026-07-26 audit stamp below actively certified it as "user-facing
      guidance consistent with workspace seeds" — certifying a shortened list as correct is
      worse than not checking it, because the check is what a later reader trusts.
