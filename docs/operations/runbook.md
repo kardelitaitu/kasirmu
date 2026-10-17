@@ -294,7 +294,9 @@ Tenant isolation ships in two halves; both must be true before multi-tenant
 data is exposed:
 
 1. **Schema side (already shipped):** the generated PG migration enables RLS
-   + a `tenant_isolation` policy on the 15 tenant tables, and the sync data
+   + a `tenant_isolation` policy on **29** tenant tables (the `RLS_TABLES` array at
+   `crates/kasirmu-core/migrations/20260813_init.pg.sql:3805-3809`; this line said 15
+   until 2026-10-11), and the sync data
    layer opens every transaction with `SET LOCAL oz.tenant_id`.
 2. **Cutover (must be run):** as the DB owner, run
    `psql "$DATABASE_URL" -f scripts/rls-cutover.sql` — it creates the
@@ -303,7 +305,10 @@ data is exposed:
    `oz_webhook_resolver` role (NOLOGIN BYPASSRLS — used by the webhook
    handlers for their pre-tenant resolution reads via tx-scoped `SET LOCAL
    ROLE`, so it never needs a password), and `FORCE ROW LEVEL SECURITY`s
-   the 15 tables so the table-owner bypass no longer applies. Then enable
+   **22** tables (the array in `scripts/rls-cutover.sql:186-192` — fewer than the
+   schema's 29, and the script's own verification note at `:198` expects 21 rows; read
+   both numbers from those files rather than from this sentence) so the table-owner
+   bypass no longer applies. Then enable
    login on the role and **point `DATABASE_URL` at `oz_app`** **and set
    `OZ_APPLY_SCHEMA=0`** — without it, startup re-applies `PG_INIT` (full
    DDL) and fails with `permission denied for schema public`, because
@@ -357,8 +362,12 @@ To confirm a service's log rotation is applied (its log file should stay
 well under 50 MB):
 
 ```bash
-docker inspect -f '{{.LogPath}}' oz-pos-pos-cloud-server-1
-ls -lh "$(docker inspect -f '{{.LogPath}}' oz-pos-pos-cloud-server-1)"
+# The service is `pos-cloud-server` (ops/docker/docker-compose.yml:41). No `container_name`
+# is set, so Compose derives the container name from the PROJECT directory name — on a
+# checkout at `kasirmu/` that is `kasirmu-pos-cloud-server-1`. Confirm with
+# `docker ps --format '{{.Names}}'` rather than trusting the prefix here.
+docker inspect -f '{{.LogPath}}' kasirmu-pos-cloud-server-1
+ls -lh "$(docker inspect -f '{{.LogPath}}' kasirmu-pos-cloud-server-1)"
 ```
 
 ### Prune Policy (safe cron)
@@ -381,7 +390,9 @@ actual databases:
 ```bash
 # Inspect before deleting anything
 docker volume ls
-docker volume inspect oz-pos_oz_cloud_data
+# Named volume is `oz_cloud_data` (docker-compose.yml:167-170); Compose prefixes it with
+# the project name, so on a `kasirmu/` checkout it is `kasirmu_oz_cloud_data`.
+docker volume inspect kasirmu_oz_cloud_data
 
 # Manual cleanup of orphaned volumes only
 docker volume prune
@@ -444,7 +455,7 @@ longer exists — migrating that data requires a PocketBase backup → restore
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
-| `OZ_DB_POOL_SIZE` | `20` | Postgres pool size (ignored for SQLite) |
+| `OZ_DB_POOL_SIZE` | `8` | Postgres pool size (ignored for SQLite). The code default is **8** — `env_usize("OZ_DB_POOL_SIZE", 8)` at `apps/cloud-server/src/config.rs:226`. This row said `20` until 2026-10-11; 20 was documented in six places against a code default of 8. |
 | `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. The image defaults to `/data/kasir.db` (SQLite); this variable overrides the connection string. |
 | `OZ_LOG_FORMAT` | `json` or unset | log output format (plain unless `json`) |
 | `OZ_APPLY_SCHEMA` | `0` post-cutover | default applies full DDL at startup; set `0` once the schema exists and the app runs as the restricted `oz_app` role (§6.3) |
