@@ -458,7 +458,7 @@ export function RestaurantSidebar({
     >
       {profile && (
         <>
-          <div className="restaurant-sidebar-profile">
+          <header className="restaurant-sidebar-profile">
             {onChangePhoto ? (
               <button
                 type="button"
@@ -475,7 +475,7 @@ export function RestaurantSidebar({
               <span className="restaurant-sidebar-name">{profile.displayName}</span>
               <span className="restaurant-sidebar-role">{profile.roleName}</span>
             </div>
-          </div>
+          </header>
           <div className="restaurant-sidebar-divider" role="separator" />
         </>
       )}
@@ -769,14 +769,14 @@ export function RestaurantSidebar({
           names the product. `margin-top: auto` pins it to the foot of the flex
           column, so it sits flush with the bottom when the rows do not fill the
           panel and scrolls with them when they do. */}
-      <div className="restaurant-sidebar-footer">
+      <footer className="restaurant-sidebar-footer">
         <span className="restaurant-sidebar-version">v{currentVersion}</span>
         <Localized id="restaurant-sidebar-copyright">
           <span className="restaurant-sidebar-copyright">
             &copy; 2026 kasir.mu. All rights reserved.
           </span>
         </Localized>
-      </div>
+      </footer>
     </aside>
   );
 
