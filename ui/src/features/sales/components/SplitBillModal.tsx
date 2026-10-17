@@ -175,7 +175,7 @@ export function SplitBillModal({
         aria-label={l10n.getString('pos-split-modal-title') || 'Split Bill by Item'}
         data-testid="pos-split-bill-modal"
       >
-        <div className="pos-split-modal-header">
+        <header className="pos-split-modal-header">
           <h2 className="pos-split-modal-title">
             <Localized id="pos-split-modal-title">
               <span>Split Bill by Item</span>
@@ -193,7 +193,7 @@ export function SplitBillModal({
           >
             ✕
           </button>
-        </div>
+        </header>
 
         <div className="pos-split-modal-list">
           {lines.map((line) => {
@@ -280,7 +280,7 @@ export function SplitBillModal({
           </div>
         </div>
 
-        <div className="pos-split-modal-actions">
+        <footer className="pos-split-modal-actions">
           <Button variant="ghost" size="sm" onClick={onClose}>
             <Localized id="pos-split-modal-cancel">
               <span>Cancel</span>
@@ -301,7 +301,7 @@ export function SplitBillModal({
               <span>Pay Selected ({formatMoney(selMoney)})</span>
             </Localized>
           </Button>
-        </div>
+        </footer>
       </div>
     </div>
   );

@@ -123,7 +123,7 @@ export function Modal({
 
         {/* ── Header ────────────────────────────── */}
         {(title || (showCloseButton && closeButtonPosition !== 'outside')) && (
-          <div className="modal-header">
+          <header className="modal-header">
             {title && (
               <h2 id={titleId} className="modal-title">
                 {title}
@@ -154,14 +154,14 @@ export function Modal({
                 </svg>
               </button>
             )}
-          </div>
+          </header>
         )}
 
         {/* ── Body ──────────────────────────────── */}
         <div className="modal-body">{children}</div>
 
         {/* ── Footer ────────────────────────────── */}
-        {footer && <div className="modal-footer">{footer}</div>}
+        {footer && <footer className="modal-footer">{footer}</footer>}
       </div>
     </div>
   );
