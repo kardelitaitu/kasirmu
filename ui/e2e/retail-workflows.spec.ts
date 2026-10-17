@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, establishWorkspace, navigateViaSidebar } from './helpers';
+import { loginAs, establishWorkspace, navigateViaSidebar, navigateTo } from './helpers';
 
 /**
  * E2E: Retail Workflows — Tables, Gift Cards, Kiosk, Customers, Categories, Loyalty
@@ -90,19 +90,29 @@ test.fixme('Gift Cards screen renders with list', async ({ page }) => {
 
   // ── Kiosk (Self-Service) ───────────────────────────────────
 
-  // ── DISABLED: the dev-mock does not enable this feature ────────────────
-// ui/src/dev-mock/handlers/system.ts:744 answers get_enabled_features with
-//   ['sales', 'inventory', 'reporting', 'staff', 'settings']
-// and this screen is registered behind a feature key that set does NOT contain
-// (see the register entry named on the test). The screen is therefore correctly
-// absent from the nav, and the assertion below cannot pass against this mock.
-// test.fixme, not a deleted test and not a softened one: the CSS contract is
-// still worth checking under a mock that enables the feature. Re-enable by
-// adding the key to that handler's list (or running the spec under a preset
-// that carries it). See docs/records/audits/2026-10-16-admin-navigation-sidebar-vs-feature-gate.md
-// Registered with feature: 'self-service-kiosk' (ui/src/features/kiosk/register.tsx:8)
-test.fixme('Kiosk screen renders attract screen or product grid', async ({ page }) => {
+  // ── RE-ENABLED 2026-10-17: the feature gate hides the NAV ITEM, not the page ──
+//
+// This case was disabled on the reasoning that `self-service-kiosk` is absent from the
+// dev-mock's enabled set (ui/src/dev-mock/handlers/system.ts:744 answers
+// ['sales','inventory','reporting','staff','settings']). That much is true — but it does
+// NOT follow that the screen is unreachable, and the test was wrong to conclude it.
+//
+// The feature key gates the NAV ENTRY (register.tsx registers the page and the nav item
+// with the same key, and the nav item is what the gate filters). `kiosk` is registered
+// `fullscreen: true`, and AppShell renders a fullscreen page at :669 — BEFORE the
+// workspace gate at :708 and independently of the sidebar. So a hash navigation reaches
+// it whatever the enabled set is.
+//
+// Measured 2026-10-17, desktop project, `#/kiosk`:
+//   { kiosk: 1, attract: 0, grid: 1, cards: 45 }
+// which is exactly what this case asserts. Re-instated as a live test rather than a
+// fixme. The sibling entries in this file that remain `test.fixme` are the ones whose
+// screens are NOT fullscreen and therefore really are unreachable with no active
+// workspace — the distinction the disabled block above did not draw.
+test('Kiosk screen renders attract screen or product grid', async ({ page }) => {
     await goTo(page);
+    // A hash write is what reaches a fullscreen page; `goTo` establishes no workspace.
+    await navigateTo(page, 'kiosk');
 
     // Fullscreen kiosk view must load.
     await expect(page.locator('.kiosk')).toBeVisible({ timeout: SCREEN_TIMEOUT });
