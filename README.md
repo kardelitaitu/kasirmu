@@ -52,7 +52,7 @@
 | **Local database** | SQLite (rusqlite WAL mode) on each terminal; zero server round-trips during checkout | [`docs/architecture/`](./docs/architecture/) |
 | **Cloud database** | PostgreSQL sync receiver with asynchronous outbox delta replication | [`crates/kasirmu-core/`](./crates/kasirmu-core/) |
 | **Test coverage** | **73.9% measured Rust workspace line coverage** (99.4% in `foundation`, 83.8% in `kasirmu-core`) | [`scripts/coverage-floors.json`](./scripts/coverage-floors.json) |
-| **Automated test suite** | **11,412 Rust `#[test]`/`#[tokio::test]` attributes** and **795 frontend test files** | [`README-technical.md`](./README-technical.md) |
+| **Automated test suite** | **11,283 Rust `#[test]`/`#[tokio::test]` attributes** and **819 frontend test files** | [`README-technical.md`](./README-technical.md) |
 | **Test code volume** | **545,209 lines of test code** across Rust `*_tests.rs` / `tests/`, `ui/src/**/*.test.ts(x)`, `ui/e2e/` specs and `website/src/**/*.test.ts(x)` — **36.2%** of the codebase (re-derived 2026-10-15; the commands are in §4) | [`README-technical.md`](./README-technical.md) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
 | **Current release** | **v0.0.41** (phases 1–7 of the 20-phase roadmap delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
@@ -164,8 +164,8 @@ A point-of-sale system sits directly between a merchant and their revenue. It ca
 3. **Transactional ACID guarantees:** Every inventory movement, refund, and shift closure executes within an explicit `rusqlite` database transaction. Write-ahead logging (WAL) prevents corruption even if power is cut mid-transaction.
 4. **Tested like mission-critical software:**
    - **73.9% measured Rust workspace line coverage** (reaching **99.4%** in `foundation` and **83.8%** in `kasirmu-core`).
-   - **11,412 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the workspace — 9,686 `#[test]` alone (2026-10-15).
-   - **795 frontend test files** in Vitest (`.test.*` under `ui/src`, of which 0 are `.spec.*`; re-derive with `ls ui/src/**/*.test.* | wc -l`).
+   - **11,283 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the tracked tree — **9,532** `#[test]` alone (re-measured 2026-10-11 over `git ls-files '*.rs'`; gitignored `scratch/` adds 98 more that are not shipped, which is why a bare recursive grep from a dev checkout reads higher).
+   - **819 frontend test files** in Vitest (`.test.*` under `ui/src`, of which 0 are `.spec.*`; re-derive with `ls ui/src/**/*.test.* | wc -l`). The 104 Playwright specs live under `ui/e2e/` and are not in that count.
    - **545,209 lines of test code — 36.2%** of the codebase is automated suites, mocks and property checks. Re-derived 2026-10-15 (four commands, summed): `git ls-files '*.rs' | grep -E '(_tests\.rs$|/tests/)' | xargs cat | wc -l` → 284,737 · `git ls-files | grep -E '^ui/src/.*\.test\.(ts|tsx)
 5. **Universal Hardware Abstraction Layer (HAL):** Vendor-independent driver traits for printers, scanners, cash drawers, scales, customer displays, and payment terminals—backed by mock implementations that allow 100% CI testing without physical hardware.
 6. **Deterministic offline conflict resolution:**
@@ -212,7 +212,7 @@ The entire platform was architected, engineered, and maintained by a **solo deve
    ┌────────────────────────────────────────────────────────┐
    │         Autonomous AI Engineering Agents               │
    │  • 1.51M+ lines of verified code                       │
-   │  • 11,400+ automated Rust tests                        │
+   │  • 11,283 automated Rust tests                        │
    │  • Cross-platform desktop (Windows/Linux) & tablet     │
    │  • 14 modular business domains & HAL hardware drivers  │
    └────────────────────────────────────────────────────────┘
@@ -338,7 +338,7 @@ We believe in radical transparency:
 
 ### Prerequisites
 - [Rust](https://rustup.rs/) (1.80+ recommended)
-- [Node.js](https://nodejs.org/) (20+ LTS)
+- [Node.js](https://nodejs.org/) (22+ LTS; CI pins **24**, `.github/workflows/dev-ci.yml:224`)
 - OS: **Windows 10/11 (Primary production platform)**; macOS or Linux for development
 
 ### 4-step setup
@@ -383,7 +383,7 @@ For comprehensive technical, financial, and market documentation, see:
 ### For developers & contributors
 - **Explore verified architecture:** Inspect the engineering specification in [`README-technical.md`](./README-technical.md).
 - **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
-- **Inspect automated tests:** Run `cargo test --workspace` (11,412 test functions) or Vitest (795 frontend test files).
+- **Inspect automated tests:** Run `cargo test --workspace` (11,283 test functions) or Vitest (819 frontend test files).
 
 ### For investors & commercial partners
 - **Schedule a Demonstration:** Contact **support@kasir.mu** to review live benchmarks, edge synchronization, and the visual node topology canvas.

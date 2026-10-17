@@ -643,7 +643,7 @@ Each app crate has an identical command surface, wired through `platform-startup
 
 ## Build & Run Instructions
 1. **Install Rust toolchain** (stable) and `cargo`.
-2. **Install Node.js** (≥ 22) for the front‑end.
+2. **Install Node.js** (≥ 22) for the front‑end — CI pins **24** (`.github/workflows/dev-ci.yml:224`).
 3. **Install Tauri prerequisites** — see [Tauri docs](https://tauri.app/v2/guides/) for platform‑specific SDKs.
 4. **Bootstrap workspace**:
    ```bash
