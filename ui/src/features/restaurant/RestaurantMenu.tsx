@@ -220,7 +220,7 @@ export default function RestaurantMenu({
   // (it is only the empty seed) and pushing it would overwrite the real
   // 86'd list with `[]`. It is flipped in the `.then` of ANY successful
   // `getSettingScoped` — both the initial fetch (:306) AND the visibility
-  // re-poll (:342, :354). The re-poll matters: while only the initial fetch
+  // re-poll (:343, :352). The re-poll matters: while only the initial fetch
   // could flip it, a first read that failed shut the gate for the life of the
   // mount, so the recovery path could load the server list into the UI while
   // every subsequent edit stayed local. Every other path (no token, no API,
@@ -355,7 +355,7 @@ export default function RestaurantMenu({
         // OPEN THE GATE ON THE RECOVERY PATH TOO. This is the fix for the defect this
         // comment replaces: the gate was set ONLY by the initial fetch (:306), so a
         // first read that failed shut it permanently. The re-poll would then load the
-        // authoritative list into the UI (:342-349) while the gate at :500 stayed
+        // authoritative list into the UI (:343-353) while the gate at :316 stayed
         // shut, leaving the terminal able to DISPLAY the 86 list and unable to persist
         // any edit to it — the F5 cross-terminal feature silently dead after one
         // transient failure, which is precisely the failure this effect exists to

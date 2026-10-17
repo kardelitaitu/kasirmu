@@ -184,7 +184,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ⚠️ STORE-SCOPED. These were plain constants (`pos-locked-cart`, `pos-active-draft`),
   // and the payload they carry is entirely store-specific: the lines, `tableNumber`,
   // `customerName`, `guestCount` and `orderType`. A store switch remounts the POS —
-  // `WorkspaceContext.switchStore` sets `setActiveWorkspace(null)` (:363) — and the mount
+  // `WorkspaceContext.tsx` `switchStore` sets `setActiveWorkspace(null)` (WorkspaceContext.tsx:363) — and the mount
   // effect below restores whatever this key holds, so the operator who rang up a cart at
   // one store and moved to another was shown the FIRST store's cart and table number.
   //
@@ -1423,7 +1423,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         // received, and the kitchen ticket would disagree with the saved bill.
         //
         // ⚠️ THIRD DEFECT, FOUND BY VERIFYING THIS FIX IN SHIPPED FORM: the payload
-        // maps `lines` — the closure captured BEFORE the dispatch await at :1293 — so
+        // maps `lines` — the closure captured BEFORE the dispatch await at :1337 — so
         // it carried the PRE-send `dispatchedQty`. Live state was corrected above and
         // the saved record was not:
         //

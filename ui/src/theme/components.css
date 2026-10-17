@@ -461,6 +461,12 @@
 .ssel-dropdown::after,
 .multi-store-stat-card::after,
 .product-card::after,
+/* The kiosk success card (KioskScreen.css:487) carries `box-shadow: var(--shadow-lg)`
+   — the order-confirmation card raised over the attract screen. Found by the shadow
+   walk on 2026-10-17, which is the walk doing its job: the card was written without
+   the overlay. Wired into all three lists (main + both @media parity blocks) like
+   .tables-arrange-inspector, the last surface found the same way. */
+.kiosk-success-card::after,
 .kiosk-product-card::after,
 .setup-preset-card::after,
 .setup-step-panel::after,
@@ -673,7 +679,13 @@
   .ssel-dropdown::after,
   .multi-store-stat-card::after,
   .product-card::after,
-  .kiosk-product-card::after,
+  /* The kiosk success card (KioskScreen.css:487) carries `box-shadow: var(--shadow-lg)`
+   — the order-confirmation card raised over the attract screen. Found by the shadow
+   walk on 2026-10-17, which is the walk doing its job: the card was written without
+   the overlay. Wired into all three lists (main + both @media parity blocks) like
+   .tables-arrange-inspector, the last surface found the same way. */
+.kiosk-success-card::after,
+.kiosk-product-card::after,
   .setup-preset-card::after,
   .setup-step-panel::after,
   .pos-cart-line::after,
@@ -847,7 +859,13 @@
   .ssel-dropdown::after,
   .multi-store-stat-card::after,
   .product-card::after,
-  .kiosk-product-card::after,
+  /* The kiosk success card (KioskScreen.css:487) carries `box-shadow: var(--shadow-lg)`
+   — the order-confirmation card raised over the attract screen. Found by the shadow
+   walk on 2026-10-17, which is the walk doing its job: the card was written without
+   the overlay. Wired into all three lists (main + both @media parity blocks) like
+   .tables-arrange-inspector, the last surface found the same way. */
+.kiosk-success-card::after,
+.kiosk-product-card::after,
   .setup-preset-card::after,
   .setup-step-panel::after,
   .pos-cart-line::after,

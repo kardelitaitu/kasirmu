@@ -98,7 +98,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
   // Carries the array a `setSections` updater produced out to the awaited
-  // `setSettingScoped` write. See `handleRenameSection` (:1394) for why a local
+  // `setSettingScoped` write. See `handleRenameSection` (:1426) for why a local
   // `let` cannot do this.
   const sectionsResultRef = useRef<string[] | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
@@ -635,7 +635,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   // ⚠️ THE FLOOR PLAN HONOURS THE SECTION FILTER HERE, and until round 244 it did not.
   //
-  // The chips computed their counts from `activeTableList`, built at `:635` and read at
+  // The chips computed their counts from `activeTableList`, built at `:649` and read at
   // `:636`/`:637`/`:641`, while the grid rendered the UNFILTERED `tables` (that render site has
   // since moved; it was `:1045` when this fix landed). Measured 2026-10-15: the seeded plan
   // showed `Indoor 5/6` and the grid still drew all 12 tiles.
@@ -780,7 +780,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       // The writes are sequential (hold → delete → release → status), so this catch
       // can fire AFTER the destination bill already exists: the hold succeeded and
       // only the delete/release/status step failed. `loadTables()` sat on the success
-      // path only (:699), so the floor plan kept rendering the PRE-move state — the
+      // path only (:702), so the floor plan kept rendering the PRE-move state — the
       // operator was told "move failed" while looking at a plan that no longer
       // described the data, with the dialog still open over it. Retrying against that
       // stale plan is what turns one duplicate bill into two.
@@ -1530,11 +1530,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
       }
       // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
-      // `handleRenameSection` above (:1394). The `updateTableScoped` awaits at
+      // `handleRenameSection` above (:1426). The `updateTableScoped` awaits at
       // :1361-1376 leave the screen interactive, so a section added during them was
       // dropped by this replacement. `check-state-closure-after-await.py` reports this
       // line as its second candidate. Carried out through the same ref for the same
-      // reason: see the local-`let` hazard noted at :1394.
+      // reason: see the local-`let` hazard noted at :1426.
       setSections((prev) => {
         const next = prev.filter((s) => s !== secName);
         sectionsResultRef.current = next;

@@ -121,6 +121,10 @@ const KNOWN_NOISE_SELECTORS = [
   '.multi-store-stat-card',
   '.product-card',
   '.kiosk-product-card',
+  // Kiosk order-confirmation card (KioskScreen.css:487) — `box-shadow: var(--shadow-lg)`.
+  // Found by the shadow walk on 2026-10-17 and given the OVERLAY, not a waiver, so this
+  // entry and the ::after lists in theme/components.css are the two halves of one grant.
+  '.kiosk-success-card',
   '.setup-preset-card',
   '.setup-step-panel',
   '.pos-cart-line',
@@ -866,7 +870,18 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // It was never a hardcoded literal that tokenising made visible — the rule was
     // simply written without the overlay. The shadow walk found it, which is the walk
     // doing its job; the population moved 122 -> 123 with it.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 123 selectors; measured 108 with 23 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(108);
+    // Ceiling 108 -> 109, 2026-10-17. The +1 is the SAME sanctioned shape as the +1 and
+    // +2 above: .kiosk-success-card carries `box-shadow: var(--shadow-lg)`
+    // (KioskScreen.css:487) and was given ::after entries in all three components.css
+    // lists in the SAME change that named it here, so the surface IS dithered and this
+    // door's own rule is satisfied. It is not a new waiver.
+    //
+    // Like .tables-arrange-inspector above, it was never a hardcoded literal that
+    // tokenising made visible — the card was simply written without the overlay. The
+    // shadow walk found it, which is the walk doing its job; the population moved
+    // 123 -> 124 with it, so the ceiling is +1 and the headroom below the floor is
+    // unchanged in absolute terms.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 124 selectors; measured 109 with 24 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(109);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is
