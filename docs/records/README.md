@@ -127,6 +127,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | reporting | [Analytics crashed on open: a mock returned an object where the contract declares an array](audits/2026-10-16-analytics-voided-summary-shape.md) | — |
 | general | [The course chip spec was asserting a state the till never produces](audits/2026-10-16-course-chip-spec-stale-premise.md) | — |
 | quality | [Full E2E coverage pass: all 104 specs exercised](audits/2026-10-16-e2e-suite-full-coverage-pass.md) | — |
+| general | [The feature gate hides the nav item, not the page — a wrongly disabled kiosk case](audits/2026-10-16-feature-gate-vs-reachability-kiosk.md) | — |
 | money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
 | reporting | [Closing the mock/contract gap that shipped the Analytics crash](audits/2026-10-16-mock-contract-guard-analytics.md) | — |
 | general | [Reachability, not position: a measurement error in my own layout probes](audits/2026-10-16-reachability-vs-position-probe-correction.md) | — |
