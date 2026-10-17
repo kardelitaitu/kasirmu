@@ -42,10 +42,26 @@ Clicking `Dashboard` under **Reports** produced `.reporting-dashboard` with the 
 
 ### Why the picker's tool cards cannot substitute
 
-All eleven entries in `ui/src/features/workspaces/tools.tsx` resolve to
-`fullscreen: true` pages (staff, locations, terminals, shifts, memos, promotions,
-analytics, dashboard, audit-log, settings, topology). That is not an accident of the
-list — it is why `WorkspaceHome.handleShortcutNav` (`WorkspaceHome.tsx:553-565`)
+> **CORRECTION 2026-10-16 (round 219).** This paragraph originally claimed ALL
+> ELEVEN tool cards resolve to `fullscreen: true` pages. **That was wrong for six of
+> them.** The registry's own flags, read in the browser (`getPage(route).fullscreen`):
+>
+> | fullscreen: true (5) | fullscreen: false (6) |
+> |---|---|
+> | staff, analytics, dashboard, settings, topology | locations, terminals, shifts, memos, promotions, audit-log |
+>
+> The distinction matters and the wrong version obscured it: a tool card whose route is
+> NOT fullscreen reaches the workspace gate at `AppShell.tsx:708` with no workspace, so
+> it can only fall through to the picker. Measured with a proper reset between cards, all
+> six DO open their own screen — Shifts -> `shift-mgmt`, Terminals -> `terminal-mgmt`,
+> Promotions -> `promo-mgmt`, Audit Log -> `audit-log`, Locations ->
+> `multi-store-dashboard`, Memos -> `permission-denied` (correct: it requires
+> `memo:write`). So there is no product defect on this path; the earlier "falls back to
+> the picker" readings were the probe failing to reset the picker between clicks.
+
+Five of the eleven entries in `ui/src/features/workspaces/tools.tsx` resolve to
+`fullscreen: true` pages (staff, analytics, dashboard, settings, topology). That is why
+`WorkspaceHome.handleShortcutNav` (`WorkspaceHome.tsx:553-565`)
 deliberately calls `setActiveWorkspace` **only when the destination is NOT fullscreen**,
 and its comment at `:530-552` records the 2026-10-05 defect that produced the rule:
 setting the workspace for a fullscreen page let the shell's workspace-rebind effect
