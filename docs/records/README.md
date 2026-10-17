@@ -137,6 +137,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Route reachability: 47 pages, 42 nav items, 0 dead links, 0 orphans](audits/2026-10-16-route-reachability-closure.md) | — |
 | general | [Two sale-path specs failed on their own arrangement, not on the till](audits/2026-10-16-sale-path-spec-arrangement.md) | — |
 | general | [Session verification: every spec I touched is green in both projects](audits/2026-10-16-session-verification-restaurant-pos.md) | — |
+| general | [Every reachable screen driven: the sidebar sweep closes the last large surface](audits/2026-10-16-sidebar-sweep-all-destinations.md) | — |
 | ui | [The tablet shell's POS had never been driven past the login screen](audits/2026-10-16-tablet-shell-pos-driven.md) | — |
 | general | [Touch targets: measure under the pointer the device actually reports](audits/2026-10-16-touch-target-pointer-context.md) | — |
 | general | [Two UI guards were red at HEAD: nine stale citations and one uncovered shadow](audits/2026-10-16-two-ui-guards-red-at-head.md) | — |
