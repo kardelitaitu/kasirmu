@@ -421,7 +421,7 @@ export default function StockShortfallDialog({
   return (
     <div className="shortfall-overlay" role="dialog" aria-modal="true" aria-label={l10n.getString('shortfall-dialog-aria')}>
       <div className="shortfall-modal" ref={panelRef}>
-        <div className="shortfall-header">
+        <header className="shortfall-header">
           <div className="shortfall-header-icon" aria-hidden="true">
             <svg viewBox="0 0 20 20" fill="currentColor" width="28" height="28">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -437,7 +437,7 @@ export default function StockShortfallDialog({
               </p>
             </Localized>
           </div>
-        </div>
+        </header>
 
         <div className="shortfall-list" aria-live="polite" aria-atomic="true">
           {shortfallResult.shortfalls.map((shortfall) => {
@@ -445,8 +445,8 @@ export default function StockShortfallDialog({
             const isSplit = splitMode[shortfall.sku] ?? false;
 
             return (
-              <div key={shortfall.sku} className="shortfall-card">
-                <div className="shortfall-card-header">
+              <article key={shortfall.sku} className="shortfall-card">
+                <header className="shortfall-card-header">
                   <div className="shortfall-card-info">
                     <span className="shortfall-card-sku">#{shortfall.sku}</span>
                     <span className="shortfall-card-name">{shortfall.productName}</span>
@@ -466,7 +466,7 @@ export default function StockShortfallDialog({
                     </span>
                     <span className="shortfall-deficit">-{shortfall.deficit}</span>
                   </div>
-                </div>
+                </header>
 
                 {/* Alternative locations */}
                 {shortfall.alternatives.length > 0 ? (
@@ -585,7 +585,7 @@ export default function StockShortfallDialog({
                     </Localized>
                   </label>
                 )}
-              </div>
+              </article>
             );
           })}
         </div>
@@ -596,7 +596,7 @@ export default function StockShortfallDialog({
           </div>
         )}
 
-        <div className="shortfall-footer">
+        <footer className="shortfall-footer">
           <Localized id="shortfall-warehouse-warning">
             <p className="shortfall-warning">
               ⚠ Warehouse fulfillment may incur delivery charges.
@@ -614,7 +614,7 @@ export default function StockShortfallDialog({
               </Button>
             </Localized>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   );
