@@ -991,6 +991,16 @@ step "docs orphans" "python3 .agents/skills/docs-auditor/scripts/check-orphans.p
 step "audit stamps" "python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py" python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
 step "nav paths" "python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py" python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py
 step "ci claims" "python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py" python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
+# Every other docs checker resolves a PATH. None grades a LINE NUMBER, so a
+# citation could point at the right file and the wrong hundred lines forever
+# while all of them stayed green -- measured 2026-10-19: 23 of 150 sampled live
+# citations were on the wrong line, the worst 333 lines out. check-cite-lines.py
+# closes that: it anchors on a backticked symbol and asks whether that symbol is
+# near the cited line. Green from day one after that pass repaired 40+ citations
+# in runbook.md, admin-guide.md and the architecture docs. It reports what it
+# CANNOT grade (citations naming no symbol) rather than counting them as passes.
+# Gate: scripts/gates.json -> "cite-lines".
+step "cite lines" "python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py" python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

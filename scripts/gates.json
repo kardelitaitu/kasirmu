@@ -1704,6 +1704,17 @@
         ]
       },
       "_note": "Wired 2026-10-02, after the same repair-then-wire order. The checker grades CI job and step names asserted in prose against the live workflows. All seven of its findings were inside docs/records/superseded/ and docs/records/audits/ - dated records describing the retired ci-pipeline doc - so those folders joined SKIP_DIR, mirroring ARCHIVE_PREFIXES in verify-doc-uniqueness.py. Scan scope measured before and after: 473 docs to 410, the 63 dated records excluded, 410 still graded. Its 80-line lookahead was also a bug worth naming: northflank-deploy carries its steps: 98 lines below its key, so the job fell out of the live set and a CORRECT runbook was reported as claiming a job no workflow defines."
+    },
+    {
+      "id": "cite-lines",
+      "label": "path:line citations resolve to the cited symbol",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "cite lines"
+        ]
+      },
+      "_note": "Wired 2026-10-19, after the repair-then-wire order every other docs gate here uses. The gap it closes: every other docs checker resolves a PATH, and none grades a LINE NUMBER, so a citation could name the right file and the wrong hundred lines indefinitely while all nine stayed green. Measured on 2026-10-19 before the repair: 23 of 150 sampled live citations were on the wrong line and the worst was 333 lines out, all inside docs/operations/runbook.md. The checker anchors on a BACKTICKED symbol on the doc line and asks whether that symbol is within +/-8 lines of N; a bare prose identifier is never an anchor, because a first version accepted them and reported a correct citation as drift (a prose `AppState` at :32 in a 1005-line file). Anchors are tried NEAREST-FIRST from the citation, not longest-first, after longest-first mis-anchored a `.filter(...)` citation onto a function name later in the same table cell. NO-ANCHOR citations are reported as ungraded, never as passes. Live scope only: docs/records/, docs/specs/_done/, docs/plans/ and todo-/plan-/done-/prd- files are dated records and are skipped, the same rule check-dead-refs.py applies to paths. A deliberately historical citation carries an inline `dead-ref: ok:` pragma."
     }
   ]
 }

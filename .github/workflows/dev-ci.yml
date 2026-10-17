@@ -1086,6 +1086,14 @@ jobs:
       # motivated this step were tracked, so a runner catches exactly what a dev does.
       - name: Audit record footers
         run: python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
+      # Every other docs checker resolves a PATH; none grades a LINE NUMBER. So a
+      # citation could name the right file and the wrong hundred lines while all of
+      # them stayed green — measured 2026-10-19: 23 of 150 sampled live citations were
+      # on the wrong line, the worst 333 lines out. This step anchors on a backticked
+      # symbol and asks whether it sits near the cited line, and reports the citations
+      # it cannot grade rather than counting them as passes. Gates.json: cite-lines.
+      - name: path:line citations
+        run: python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
