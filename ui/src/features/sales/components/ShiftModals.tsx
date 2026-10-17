@@ -186,7 +186,7 @@ export function CloseShiftConfirm({
               </Localized>
             </div>
 
-            <div className="pos-close-shift-actions">
+            <footer className="pos-close-shift-actions">
               <Localized id="cancel">
                 <button
                   type="button"
@@ -216,7 +216,7 @@ export function CloseShiftConfirm({
                   <span>{closingShift ? 'Closing…' : 'Close Shift'}</span>
                 </Localized>
               </button>
-            </div>
+            </footer>
           </div>
         </div>
   );
@@ -436,7 +436,7 @@ export function OpenShiftModal({
               </Localized>
             </div>
 
-            <div className="pos-close-shift-actions">
+            <footer className="pos-close-shift-actions">
               <Localized id="cancel">
                 <button
                   type="button"
@@ -463,7 +463,7 @@ export function OpenShiftModal({
                   <span>{openingShift ? 'Opening…' : 'Open Shift'}</span>
                 </Localized>
               </button>
-            </div>
+            </footer>
           </div>
         </div>
   );

@@ -84,7 +84,7 @@ export function OpenBillInput({
               onChange={(e) => setOpenBillName(e.target.value)}
               aria-label={l10n.getString('pos-open-bill-name-aria')}
             />
-            <div className="pos-hold-actions">
+            <footer className="pos-hold-actions">
               <button
                 type="button"
                 className="pos-hold-cancel-btn"
@@ -104,7 +104,7 @@ export function OpenBillInput({
               >
                 <span>{l10n.getString(openingBill ? 'pos-open-bill-saving' : 'pos-open-bill-save')}</span>
               </button>
-            </div>
+            </footer>
           </div>
         </div>
   );
@@ -149,7 +149,7 @@ export function OpenBillsPanel({
   return (
           <div className={`pos-hold-overlay${openBillsExit.exiting ? ' pos-hold-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('pos-open-bills-overlay-aria')}>
           <div ref={panelRef} className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
-            <div className="pos-held-list-header">
+            <header className="pos-held-list-header">
               <h3>{l10n.getString('pos-open-bills-title')}</h3>
               <button
                 type="button"
@@ -159,7 +159,7 @@ export function OpenBillsPanel({
               >
                 &times;
               </button>
-            </div>
+            </header>
             <div className="pos-held-list-body">
               {/*
                 R21 (owner, 2026-09-20): the EMPTY ARM of this list was deleted rather
