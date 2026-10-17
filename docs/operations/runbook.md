@@ -1146,30 +1146,37 @@ not before.
 
 **Which of those saves is wired today, measured at HEAD, because three are and two
 are not.** `set_sync_api_key` is called from command lanes both shells reach
-(`crates/kasirmu-bridge/src/sync.rs:76`, `apps/mobile-tauri/src/commands/sync.rs:92`), from
-the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
+(`crates/kasirmu-bridge/src/sync.rs:79`, `apps/mobile-tauri/src/commands/sync.rs:98`), from
+the sync daemon (`platform/sync/src/daemon.rs:403`), from terminal auth
 (`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
 (`apps/desktop-tauri/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
-pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
-`crates/kasirmu-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
-`set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:557`) and
-`set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
+pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:377`; `set_pg_sync_password` from
+`crates/kasirmu-bridge/src/sync.rs:223`. Those three keys have a walkable ladder.
+`set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:592`) and
+`set_lan_server_psk` (`platform/core/src/settings/typed.rs:684`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
 `crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and
 `crates/kasirmu-core/tests/integration/credential_storage_form.rs:258` already records one of them in
 those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
-is `platform/core/src/settings/typed.rs:560` and
-`platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
+is `platform/core/src/settings/typed.rs:595` and
+`platform/core/src/settings/typed.rs:687`, inside setters nobody invokes, while both
 keys are refused by the generic funnel as manager-owned. For those two rows this step
 is a shape to copy, not a lane to walk: there is no in-app re-save to perform, so
 rotate at whoever holds the value and let the lane that owns it write it. Re-run step 1
 after anything in this section — it is the only evidence either way.
 
+> **Line numbers re-derived 2026-10-19.** Every coordinate in the two paragraphs above
+> was stale — `set_sync_api_key` in `bridge/sync.rs` was cited at `:76` and is at `:79`,
+> the daemon at `:170` and is at `:403`, `set_pg_sync_password` at `:161` and is at `:223`,
+> `set_sync_terminal_secret` at `:248` and is at `:377`, and both typed setters were off by
+> 35–41 lines. Re-derive with `grep -n '\bfn <name>\b' <file>`; these move whenever the file is
+> edited above them, which is the general hazard this whole section describes.
+
 `smtp_config` is in step 1's list and is **not** written by any of those setters, so
 here is the chain instead of a sentence of prose to trust:
-`ui/src/features/settings/EmailReportSettings.tsx:163` (`setSettingScoped`) →
-`run_set_setting` in `crates/kasirmu-bridge/src/settings.rs:500` (batch door `:593`; tablet
-`apps/mobile-tauri/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
+`ui/src/features/settings/EmailReportSettings.tsx:17` (`setSettingScoped`) →
+`run_set_setting` in `crates/kasirmu-bridge/src/settings.rs:167` (tablet
+`apps/mobile-tauri/src/commands/settings.rs:423`) → `Store::merged_smtp_password_json`
 (`crates/kasirmu-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
 at `:207` of that file. Note what that chain does and does not seal: it replaces the
 `password` **field of a JSON blob**, and only when a password was supplied
