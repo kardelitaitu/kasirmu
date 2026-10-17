@@ -2196,7 +2196,7 @@ retryCurrencyLoad,
           </div>
         ) : (
           <>
-            <div className="payment-header">
+            <header className="payment-header">
               <Localized id="payment-title">
                 <h2 className="payment-title">Complete Sale</h2>
               </Localized>
@@ -2209,7 +2209,7 @@ retryCurrencyLoad,
                   &times;
                 </button>
               </Localized>
-            </div>
+            </header>
 
             {/* Two columns, and which one scrolls is load-bearing.
                 LEFT (1fr) is the tender/entry surface and the only scroller.
@@ -2430,7 +2430,7 @@ retryCurrencyLoad,
                   onRemove={() => notifyCustomerChange(null)}
                 />
 
-                <div className="payment-actions">
+                <footer className="payment-actions">
                   <Localized id="payment-cancel">
                     <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
                       Cancel
@@ -2455,7 +2455,7 @@ retryCurrencyLoad,
                       </Localized>
                     )}
                   </Button>
-                </div>
+                </footer>
               </div>
 
               <div className="payment-tender-col">
