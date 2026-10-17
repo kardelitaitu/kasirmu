@@ -124,6 +124,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](audits/2026-09-29-desktop-launch-integrity-label.md) | — |
 | general | [Documentation-Code Audit — 2026-10-08](audits/2026-10-08-docs-audit.md) | — |
 | general | [E2E admin navigation: the sidebar is the in-workspace path, and the feature gate is a second gate](audits/2026-10-16-admin-navigation-sidebar-vs-feature-gate.md) | — |
+| reporting | [Analytics crashed on open: a mock returned an object where the contract declares an array](audits/2026-10-16-analytics-voided-summary-shape.md) | — |
 | general | [The course chip spec was asserting a state the till never produces](audits/2026-10-16-course-chip-spec-stale-premise.md) | — |
 | quality | [Full E2E coverage pass: all 104 specs exercised](audits/2026-10-16-e2e-suite-full-coverage-pass.md) | — |
 | money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
