@@ -61,4 +61,35 @@ close most of this class — `CRITICAL_PATH_INVARIANTS.md` notes at its foot tha
 that "a future pass could assert each named test exists by name". This is that future pass, still
 unwritten. Recording it rather than implying the class is closed.
 
+## Follow-up, same day: the checker this record asked for now exists
+
+The paragraph above ended by naming the missing tool and declining to imply the class was closed.
+It has since been written: **`.agents/skills/docs-auditor/scripts/check-cite-lines.py`**, wired as
+`check.sh` step `cite lines`, `gates.json` id `cite-lines`, and `dev-ci.yml#static-gates` step
+`path:line citations`. It grades a citation by anchoring on a **backticked symbol** on the doc line
+and asking whether that symbol sits within ±8 lines of N.
+
+Repaired under it: **40+ citations** across `docs/operations/runbook.md`, `docs/guides/developer/admin-guide.md`,
+`ARCHITECTURE.md` and four `docs/architecture/` files. The live set now reports **0 DRIFTED and
+0 SYMBOL-GONE out of 136 graded citations**.
+
+Three design decisions came out of getting it wrong three times, and each is pinned by a self-test case:
+
+1. **Bare prose identifiers are never anchors.** The first version accepted them and reported a
+   *correct* citation as drift: `state.rs:279 (AppState::new)` matched a prose `AppState` at `:32` in a
+   1005-line file. A false OK is worse than no check.
+2. **Longest-token-first is the wrong order.** It anchored a `` `adjust.rs:249` | `.filter(...)` ``
+   cell onto `adjust_stock_at_location_with_reason`, defined at `:190`, and called a right citation
+   wrong. Anchors are now tried **nearest-first** from the citation.
+3. **A near hit on ANY anchor wins.** Breaking on the first symbol *present* anywhere in the file
+   reproduced the same error one layer down. The question is "is a named symbol near N", not "is the
+   closest-named one".
+
+**What the tool still cannot do, stated so its green is not over-read.** It reports **130 citations as
+NO-ANCHOR** — ungraded, never counted as passes — because they name no backticked symbol. Those include
+the `(path:line)` pair style where the symbol is on a neighbouring line, the deliberate historical
+citations, and every prose claim with no coordinate at all. The check is a **floor**, not a certificate.
+That limit is printed on success, not only on failure, so a reader cannot mistake the 0 for full coverage.
+
+
 > last audited 19-10-26 by docs-auditor
