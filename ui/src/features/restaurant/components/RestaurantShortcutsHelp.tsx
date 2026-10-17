@@ -42,12 +42,12 @@ export interface RestaurantShortcutsHelpProps {
  */
 export function RestaurantShortcutsHelp({ onClose }: RestaurantShortcutsHelpProps) {
   return (
-    <div
+    <section
       className="restaurant-shortcuts-help"
       data-testid="restaurant-shortcuts-help"
       aria-label="Keyboard shortcuts"
     >
-      <div className="restaurant-shortcuts-help-heading">
+      <header className="restaurant-shortcuts-help-heading">
         <Localized id="restaurant-shortcuts-help-title">
           <span>Keyboard shortcuts</span>
         </Localized>
@@ -60,7 +60,7 @@ export function RestaurantShortcutsHelp({ onClose }: RestaurantShortcutsHelpProp
         >
           ×
         </button>
-      </div>
+      </header>
       <ul className="restaurant-shortcuts-help-list">
         {RESTAURANT_SHORTCUTS.map((s) => (
           <li key={s.action} className="restaurant-shortcuts-help-row">
@@ -74,6 +74,6 @@ export function RestaurantShortcutsHelp({ onClose }: RestaurantShortcutsHelpProp
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }
