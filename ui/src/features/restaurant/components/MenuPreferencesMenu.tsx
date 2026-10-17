@@ -152,7 +152,7 @@ export function MenuPreferencesMenu({
           tabIndex={-1}
           aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
         >
-          <div className="restaurant-hamburger-section">
+          <section className="restaurant-hamburger-section">
             <span className="restaurant-hamburger-label">
               <Localized id="restaurant-sort-label"><span>Sort</span></Localized>
             </span>
@@ -181,11 +181,11 @@ export function MenuPreferencesMenu({
                 </button>
               ))}
             </div>
-          </div>
+          </section>
 
           <div className="restaurant-hamburger-divider" role="separator" />
 
-          <div className="restaurant-hamburger-section">
+          <section className="restaurant-hamburger-section">
             <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-size-label')}>
               <div className="restaurant-size-label-group">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" className="restaurant-pref-icon" aria-hidden="true">
@@ -266,11 +266,11 @@ export function MenuPreferencesMenu({
                 </button>
               </div>
             </div>
-          </div>
+          </section>
 
           <div className="restaurant-hamburger-divider" role="separator" />
 
-          <div className="restaurant-hamburger-section">
+          <section className="restaurant-hamburger-section">
             <button
               type="button"
               className="restaurant-hamburger-item"
@@ -311,7 +311,7 @@ export function MenuPreferencesMenu({
               </svg>
               <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
             </button>
-          </div>
+          </section>
         </aside>
       )}
     </div>
