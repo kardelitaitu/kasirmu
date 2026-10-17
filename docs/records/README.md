@@ -260,6 +260,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Verifying my own fix found a defect in it — 2026-10-18](audits/2026-10-18-verifying-my-own-fix.md) | — |
 | general | [A suspected defect that did not survive checking — 2026-10-18](audits/2026-10-18-withdrawn-anchor-claim.md) | — |
 | general | [A finding I withdrew, and the rule that decides it — 2026-10-18](audits/2026-10-18-withdrawn-dispatch-claim.md) | — |
+| release | [Line-number citation drift: measured, partly repaired, and still open — 2026-10-19](audits/2026-10-19-line-number-citation-residual.md) | — |
 | general | [49 of the 50 "modified" paths are phantoms, and one is real (round 289)](audits/49-of-50-modified-paths-are-phantoms.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
 | general | [The acceptance spec's clip rule, validated against a probe that lacked it (round 271)](audits/acceptance-clip-rule-validated.md) | — |
