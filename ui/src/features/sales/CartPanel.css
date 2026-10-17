@@ -34,7 +34,7 @@
 /* ── Resize handle (drags the cart width) ───────────── */
 
 .pos-resize-handle {
-  flex: 0 0 0.25rem;
+  flex: 0 0 0.5rem;
   cursor: col-resize;
   background: transparent;
   position: relative;
@@ -73,25 +73,36 @@
 }
 
 .pos-resize-handle:hover,
-.pos-resize-handle:focus-visible {
+.pos-resize-handle:focus-visible,
+.pos-resize-handle:active,
+body.is-resizing .pos-resize-handle {
   background: var(--color-accent-dim);
 }
 
-/* A thin accent line in the middle appears on hover for affordance. */
+/* Sleek capsule grip in the middle with responsive tactile affordance. */
 .pos-resize-handle::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0.125rem;
-  height: 2rem;
+  width: var(--space-1);
+  height: var(--space-10);
   border-radius: var(--radius-full);
-  background: var(--color-border);
+  background: var(--color-border-strong);
   transform: translate(-50%, -50%);
 }
 
-.pos-resize-handle:hover::after {
+.pos-resize-handle:hover::after,
+.pos-resize-handle:focus-visible::after {
   background: var(--color-accent);
+  height: var(--space-14);
+}
+
+.pos-resize-handle:active::after,
+body.is-resizing .pos-resize-handle::after {
+  background: var(--color-accent);
+  height: var(--space-16);
+  box-shadow: 0 0 10px var(--color-accent);
 }
 
 /* ── Right: Cart panel ──────────────────────────────── */
@@ -105,10 +116,13 @@
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
   margin: 8px 8px 8px 0;
   box-sizing: border-box;
   overflow: hidden;
   min-height: 0;
+  min-width: 360px;
+  max-width: calc(100% - 320px);
 }
 
 .pos-cart-header {
@@ -835,7 +849,7 @@
     transition: background-color var(--duration-150) var(--ease-out);
   }
   .pos-resize-handle::after {
-    transition: background-color var(--duration-150) var(--ease-out);
+    transition: background-color var(--duration-150) var(--ease-out), height var(--duration-200) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
   }
   .pos-cart-table-input {
     transition: border-color var(--duration-150) var(--ease-out);
