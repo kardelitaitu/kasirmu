@@ -941,7 +941,12 @@ export const CARD_PAYLOAD_VALIDATORS: Record<string, (v: unknown) => boolean> = 
   customers: isRecord,
   payments: Array.isArray,
   discounts: isRecord,
-  refunds: isRecord,
+  // ARRAY, not a record. The card reduces this payload (RefundsCard.tsx:35) and the
+  // API returns Promise<VoidedSummaryRow[]> (api/reports.ts:330), so an object
+  // container is a contract violation the guard must REJECT rather than admit. It
+  // said isRecord, which fitted the dev-mock's object shape instead of the declared
+  // type -- the guard was written to match the bug, so it could not catch it.
+  refunds: Array.isArray,
   'top-items': Array.isArray,
   category: Array.isArray,
   basket: (v) => isRecord(v) && Array.isArray(v['buckets']),

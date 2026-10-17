@@ -405,7 +405,21 @@ export const analyticsHandlers: Record<string, MockHandler> = {
       { label: 'FREESHIP', redeemed_count: 10 },
     ],
   }),
-  'get_voided_sales_summary_scoped': () => ({ void_count: 23, void_total_minor: 5400000 }),
+  // ONE ROW PER CURRENCY — the real command returns Vec<VoidedSummaryRow>
+  // (kasirmu-core/src/db/reports/sales_summary.rs:239, pinned by
+  // voided_sales_summary_groups_by_currency asserting rows.len() === 2) and the TS
+  // signature is Promise<VoidedSummaryRow[]> (api/reports.ts:330). This handler
+  // returned a bare OBJECT, which is not what either side declares.
+  //
+  // It was not cosmetic: RefundsCard calls rows.reduce(...) (RefundsCard.tsx:35), so
+  // launching Analytics crashed with 'rows.reduce is not a function' and the screen
+  // fell to its error boundary. Measured 2026-10-17 on the desktop project. Two
+  // currencies are seeded so the per-currency join in the card
+  // (rows.map(r => fmtIn(...)).join(' · ')) is actually exercised.
+  'get_voided_sales_summary_scoped': () => ([
+    { currency: 'IDR', void_count: 18, void_total_minor: 5400000 },
+    { currency: 'USD', void_count: 5, void_total_minor: 12500 },
+  ]),
   'get_basket_size_scoped': () => ({ sale_count: 406, avg_line_count: 3.2 }),
   // Per-day basket size for the trend card — a week of plausible averages.
   'get_basket_size_trend_scoped': () => {
