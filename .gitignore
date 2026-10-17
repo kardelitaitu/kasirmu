@@ -326,3 +326,18 @@ manager-journal.md
 /kasir.pre-migration.bak
 SENTINEL_STASH.txt
 /scratch/
+# 2026-10-17: two more scratch artifacts found in the tree, same treatment as the
+# block above -- kept on disk, out of `git status`, NOT committed.
+#
+#   /ui/_r.cmd  -- a three-line throwaway batch file that runs one vitest case and
+#                  greps the log. Captured command output, like /ser.txt above.
+#   *.tsx.bak   -- a pre-edit copy of ShiftManagementScreen.tsx. Verified redundant
+#                  before listing it: the current file is committed (b0fbea9b6), is 19
+#                  lines AHEAD of the backup, and the backup is tracked nowhere in
+#                  history (`git ls-files --error-unmatch` fails). So this rule hides a
+#                  superseded copy, not recoverable content.
+#
+# Scoped to *.tsx.bak rather than *.bak: the two genuine .bak paths above are named
+# explicitly and a blanket *.bak would silently start hiding future ones that matter.
+/ui/_r.cmd
+*.tsx.bak
