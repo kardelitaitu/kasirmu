@@ -506,7 +506,7 @@ impl Store<'_> {
     ///
     /// Filtered in SQL rather than by the caller so the exclusion cannot be lost by a
     /// future caller that reads the full list and forgets to filter. The retail screen
-    /// used to do exactly that in JS (`RetailPosScreen.tsx` filters `bill_type ===
+    /// used to do exactly that in JS (retail POS filters `bill_type ===
     /// 'hold'`), which is a UI convenience and not a boundary.
     ///
     /// NB: rows written before `bill_type` existed default to `'hold'`

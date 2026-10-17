@@ -1167,7 +1167,7 @@ fn every_held_cart_command_carries_the_workspace_gate() {
 // session could no longer enumerate open bills; the BY-ID pair stayed open, and
 // enumerating was never the requirement to reach them.
 //
-// The rule the UI already applies everywhere (PaymentModal.tsx:368 refuses the
+// The rule the UI already applies everywhere (the payment modal refuses the
 // open_bill tender off a restaurant terminal, RetailPosScreen filters open bills out of
 // its held-cart list) was therefore enforced on ONE layer and in THREE of five commands.
 // These two are the remainder.
@@ -1266,7 +1266,7 @@ async fn store_pos_cannot_read_or_delete_an_open_bill_by_id() {
 // shape this session kept finding elsewhere: enforcement at two doors, absent at the third.
 //
 // WHAT MADE IT INVISIBLE: the retail screen filters the rows itself
-// (`RetailPosScreen.tsx:1341`, `carts.filter((c) => c.bill_type === 'hold')`). A front-end
+// (the retail POS screen: `carts.filter((c) => c.bill_type === 'hold')`). A front-end
 // filter is not an authorization boundary — it is a UI convenience that any other caller
 // of the same command (a new screen, a script, a future shell) inherits none of.
 #[tokio::test]

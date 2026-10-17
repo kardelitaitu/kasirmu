@@ -186,7 +186,7 @@ pub async fn hold_cart_scoped(
 /// [`hold_cart_scoped`] refuses to create an open bill off a restaurant terminal, and
 /// [`list_open_bills_scoped`] refuses to list them. This one sat between them with
 /// neither, and the only thing hiding it was a front-end filter
-/// (`RetailPosScreen.tsx`: `carts.filter((c) => c.bill_type === 'hold')`) — a UI
+/// (retail POS: `carts.filter((c) => c.bill_type === 'hold')`) — a UI
 /// convenience, not an authorization boundary. Any other caller of this command
 /// inherited none of it.
 ///
