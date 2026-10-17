@@ -43,7 +43,7 @@ Everything else lives in `.github/workflows/attic/` as inert `.bak`. A push to `
 `dev-ci.yml` jobs (18): `changes`, `website`, `rust-fmt`, `cargo-check`, `cargo-clippy`, `rust-doc`, `fuzz-typecheck`, `coverage-floors`, `cargo-nextest`, `release-bridge-test` (push-only, desktop bridge tests in release profile), `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `go-gate`, `ipc-parity`, `release-readiness`, `northflank-deploy`.
 `northflank-deploy` needs 13 of them (`changes`, `website`, `rust-fmt`, `cargo-check`, `cargo-clippy`, `fuzz-typecheck`, `coverage-floors`, `cargo-nextest`, `ui-test`, `i18n`, `static-gates`, `go-gate`, `ipc-parity`), so it excludes `ci-docs-drift`, `release-readiness` and the push-only `release-bridge-test`. `release.yml` defines three of them, `android.yml` and `website.yml` one each — the four files together are the live set that `scripts/verify-agents-mirrors.py` polices, so re-derive any total there rather than restating one here.
 `rust-fmt` is `cargo fmt --all -- --check` on its own (~20s, no apt layer and no cargo cache); `cargo-check` is `cargo check --workspace --all-targets --all-features`. **Clippy runs in CI** as `cargo-clippy`, path-gated on Rust changes and running `cargo clippy --workspace --all-targets -- -D warnings`; `scripts/check.sh` and `scripts/release.sh` still cover the `--all-features` lane CI does not. This section said two workflows were live and that clippy was local-only until 2026-09-29 — both were true when written, and stopped being true on 2026-09-22, 2026-09-24 and 2026-09-25.
-`scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, per-workflow triggers, stated job totals, and the live workflow a "mirrors <workflow>" claim names — but never opens a job's `run:` lines. Canonical CI reference: `docs/operations/ci-pipeline.md`.
+`scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, per-workflow triggers, stated job totals, and the live workflow a "mirrors <workflow>" claim names — but never opens a job's `run:` lines. **Stated job totals are graded only in the four carriers listed in the script's `JOB_PROSE_FILES`** (`docs/operations/agent-lanes.md`, `.agents/skills/pr-repair/SKILL.md`, `.agents/skills/tdd/SKILL.md`, `docs/operations/ci-pipeline.md`) — a job total written anywhere else, **including this page**, is ungraded prose that can go stale silently. This sentence claimed the checker polices job totals without that qualifier until 2026-10-11, which told a reader a machine enforces what nothing does. Canonical CI reference: `docs/operations/ci-pipeline.md`.
 
 ## CSS has no linter — verify stylesheets with the walker suites
 
@@ -84,8 +84,12 @@ you cannot attribute.
 
 ## Writing a checker: two self-test forms, and say which you chose
 
-Seven of the eight `scripts/check-*.py` checkers expose `--self-test`; `check-replay-fork.py` keeps its
-cases in `scripts/test-replay-fork.py` instead. Both are correct — that one explains why at its
+Ten of the twelve `scripts/check-*.py` checkers expose `--self-test`; `check-replay-fork.py` keeps its
+cases in `scripts/test-replay-fork.py` instead, and `check-dead-controls.py` has no self-test at all.
+(Measured 2026-10-11 by running each: 12 `check-*.py` exist, and
+`python3 scripts/check-replay-fork.py --self-test` exits 2 with `unrecognized arguments`. This line
+said "seven of the eight" until then, which was wrong in both directions — the population and the
+count.) Both of the first two are correct — `check-replay-fork.py` explains why at its
 docstring (`:44-49`): it is the gate that would have caught the fork losing the colon rejection, so
 "a checker that cannot fail is worse than none" and it wanted the cases somewhere harder to overlook.
 

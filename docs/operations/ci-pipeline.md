@@ -268,7 +268,7 @@ where it went and what still covers it.
 
 ### `scripts/check.sh` (bash)
 
-Pre-push gate mirroring CI. **The numbered list below is a SUMMARY of the load-bearing legs, not the full step set:** the script makes **156** `step` invocations as of 2026-10-11 (re-derive: `grep -cE '(^|\s)step "' scripts/check.sh`), of which many are the `--self-test` twin of the leg above them. Read the script as the authority and this list as orientation — it named twenty-seven items until 2026-10-11 under the word "Comprehensive", which a reader could reasonably mistake for the whole gate. The legs below are the ones whose failure most often explains a red pre-push:
+Pre-push gate mirroring CI. **The numbered list below is a SUMMARY of the load-bearing legs, not the full step set:** the script makes **158** `step` invocations as of 2026-10-11 (re-derive: `grep -cE '(^|\s)step "' scripts/check.sh`), of which many are the `--self-test` twin of the leg above them. Read the script as the authority and this list as orientation — it named twenty-seven items until 2026-10-11 under the word "Comprehensive", which a reader could reasonably mistake for the whole gate. The legs below are the ones whose failure most often explains a red pre-push:
 1. `cargo fmt`
 2. `cargo clippy --workspace`
 3. No raw params (ADR #7)
@@ -318,7 +318,7 @@ Pre-push gate mirroring CI. **The numbered list below is a SUMMARY of the load-b
 2. Add the gate declaration to `scripts/check.sh` and/or `scripts/check-ui.mjs`
 3. Add the corresponding job to the appropriate workflow (`.github/workflows/*.yml`)
 4. Update this document (`docs/operations/ci-pipeline.md`) — the Job Matrix and Pre-Merge Validation Gates tables
-5. Update the job list in `docs/records/releases/checklist.md` — it is checked too, and omitting a live job is a finding. ⚠️ **This path read `docs/releases/checklist.md` until 2026-10-11**; the directory was moved to `docs/records/releases/` on 2026-10-02 by the docs restructure, so the instruction pointed at a file that no longer existed. The finding it describes was real — the checklist does carry a job list and is checked.
+5. Update the job list in `docs/records/releases/checklist.md` — it is checked too, and omitting a live job is a finding. ⚠️ **This path read `docs/releases/checklist.md` until 2026-10-11**; the directory was moved to `docs/records/releases/` on 2026-10-02 by the docs restructure, so the instruction pointed at a file that no longer existed. The finding it describes was real — the checklist does carry a job list — but **nothing mechanically grades that list today**: neither `scripts/verify-ci-docs-drift.py` nor `scripts/verify-agents-mirrors.py` carries a checklist job-list rule, so keeping it current is a human obligation.
 6. Run `python3 scripts/verify-ci-docs-drift.py` locally to verify
 
 ---
