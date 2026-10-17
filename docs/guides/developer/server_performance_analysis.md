@@ -2,7 +2,7 @@
 
 · Prior marker retained below, verbatim ·
 
-Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding, previously flagged) · Supersedes the 2026-09-29 marker below, kept verbatim. The prior stamp had already FLAGGED "OZ_DB_POOL_SIZE documented/claimed as 20 throughout but code default is 8 … left for the config owner"; this pass FIXED it rather than carrying the flag forward. Six present-tense claims of a 20-connection pool now state the code default (**8**, `apps/cloud-server/src/config.rs:226`), and the two RAM figures derived from 20 connections (~30 MB) are recomputed for 8 (~12 MB) with the scaling stated. The capacity/CPU snapshot figures the prior stamp called unverified are untouched. · Repaired against branch `0.0.41` at `134aaed1b`.
+Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding, previously flagged) · Supersedes the 2026-09-29 marker below, kept verbatim. The prior stamp had already FLAGGED "OZ_DB_POOL_SIZE documented/claimed as 20 throughout but code default is 8 … left for the config owner"; this pass FIXED it rather than carrying the flag forward. Six present-tense claims of a 20-connection pool now state the code default (**8**, `apps/cloud-server/src/config.rs:226`), and the two RAM figures derived from 20 connections (~30 MB) are recomputed for 8 (~12 MB) with the scaling stated. The capacity/CPU snapshot figures the prior stamp called unverified are untouched. · Repaired against branch `0.0.41` at `134aaed1b`. <!-- dead-ref: ok: verified 2026-10-19; audit-stamp narrative naming OZ_DB_POOL_SIZE's default 8, which config.rs:226 confirms; no symbol to anchor -->
 
 · Prior marker retained below, verbatim ·
 

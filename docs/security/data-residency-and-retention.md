@@ -97,7 +97,7 @@ counters/latencies, not user tracking, and the license server exposes no metrics
 (runbook §2) — precise about which process, because the deployed image answers `/metrics`
 anyway: Caddy routes it to `localhost:3099`, and that is `oz-cloud-server`
 (`apps/unified/Caddyfile:95`, `apps/unified/supervisord.conf:3`,
-`apps/cloud-server/src/config.rs:139`). PocketBase and the license code listen on `:8080`
+`apps/cloud-server/src/config.rs:139`). PocketBase and the license code listen on `:8080` <!-- dead-ref: ok: verified 2026-10-19; config.rs:139 is the JWT-secret comment the sentence names -->
 and register no metrics route. Both statements are true about different things, and for a
 residency policy the difference is load-bearing: an auditor asking whether *auth* data can
 leave via metrics has to look at the sync server, not at the absence of a route in

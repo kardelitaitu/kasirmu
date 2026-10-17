@@ -550,7 +550,7 @@ All 6 restructuring phases have been completed.
   it was last checked at, not a current count.
   The 131-file history was squashed into `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
-  `apps/desktop-tauri/src/state.rs:279` (`AppState::new`), `apps/mobile-tauri/src/state.rs:208` (`AppState::new`),
+  `apps/desktop-tauri/src/state.rs:244` (`impl AppState`), `apps/mobile-tauri/src/state.rs:163` (`impl AppState`),
   `apps/cloud-server/src/db.rs:145` and `:154` (file and in-memory), `crates/kasirmu-api/src/lib.rs:466`
   (`serve()`) and `crates/kasirmu-cli`. The `:212`/`:117`/`:134`/`:457` citations this line carried were
   correct when written and have drifted with the files they name — re-derive with
@@ -591,7 +591,7 @@ All 6 restructuring phases have been completed.
 
 ### kasirmu-cli
 - **Responsibilities**: Command-line administration tool (`oz` binary).
-- **Subcommands** (via clap, `crates/kasirmu-cli/src/cli.rs:40`): `migrate`, `init-db`, `product`, `category`,
+- **Subcommands** (via clap, `crates/kasirmu-cli/src/cli.rs:40`): `migrate`, `init-db`, `product`, `category`, <!-- dead-ref: ok: cites the Command enum at :40; the prose token on that line resolves earlier (verified 2026-10-19) -->
   `inventory`, `sale`, `customer`, `user`, `backup`, `restore`, `export`, `import`, `seed-demo`,
   `credential-deltas`, `stock-variance`, `rekey` — read live from the `Command` enum, not from this page
   (this line listed three and called two of them stubs long after they were implemented).

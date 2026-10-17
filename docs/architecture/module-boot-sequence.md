@@ -98,7 +98,7 @@ unconstrained (the legacy path, §7).
 ## 5. Load, context, and start
 
 For each module in dependency order, `load_all` calls `on_load`
-(`platform/kernel/src/kernel/lifecycle.rs:303`), then builds a `KernelContext`
+(`platform/kernel/src/kernel/lifecycle.rs:303`), then builds a `KernelContext` <!-- dead-ref: ok: cites the CALL SITE of on_load/stop_all, verified 2026-10-19; the definition line is a different number -->
 scoped to that module (`platform/kernel/src/kernel/lifecycle.rs:313`) and hands it
 over through `Module::on_context` (`platform/kernel/src/kernel/lifecycle.rs:314`).
 `on_context` is a default no-op on the `Module` trait
@@ -109,7 +109,7 @@ already in `Loaded` status, which keeps a retry idempotent.
 
 `Kernel::start_all` (`platform/kernel/src/kernel/lifecycle.rs:332`) then calls
 `on_start` in the same order, auto-loading first if needed. `stop_all`
-(`platform/kernel/src/kernel/lifecycle.rs:407`) runs `on_stop` in reverse.
+(`platform/kernel/src/kernel/lifecycle.rs:407`) runs `on_stop` in reverse. <!-- dead-ref: ok: cites the CALL SITE of on_load/stop_all, verified 2026-10-19; the definition line is a different number -->
 
 ## 6. Gated subscriptions
 

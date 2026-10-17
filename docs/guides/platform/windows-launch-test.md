@@ -46,8 +46,8 @@ cargo run -p kasirmu-cli -- init-db
 > — the CLI — `kasirmu-cloud`, `kasirmu-app`, `kasirmu-mobile`, and seven fuzz bins), and
 > `--seed-staff` / `--seed-products` / `--seed-workspace` appear nowhere. `kasir seed-demo` is the
 > real thing: the `SeedDemo` variant at `crates/kasirmu-cli/src/cli.rs:95`, dispatched at
-> `crates/kasirmu-cli/src/commands/mod.rs:90` into `run_seed_demo`
-> (`crates/kasirmu-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
+> `crates/kasirmu-cli/src/commands/mod.rs:183` into `run_seed_demo`
+> (`crates/kasirmu-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and <!-- dead-ref: ok: verified 2026-10-19; cites run_seed_demo's definition at :64 exactly; the flag branch is :81 -->
 > `--days <n>` (default 90) at `cli.rs:99-112`. The Option-B verb is **`init-db`**, the
 > `InitDb` variant declared at `crates/kasirmu-cli/src/cli.rs:44` — this note and the command
 > above both said `seed` until 2026-10-19, and no `seed` subcommand has ever existed.

@@ -502,7 +502,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 > stays on SQLite under `/data/pb_data`.
 
 > ⚠️ **Known defect — every client shares one rate-limit budget (measured 2026-09-21).**
-> The licence server's limiters are keyed on `e.RealIP()` (`apps/license-server/ratelimit.go:52`,
+> The licence server's limiters are keyed on `e.RealIP()` (`apps/license-server/ratelimit.go:23`, <!-- dead-ref: ok: verified 2026-10-19; cites the maxPerHr struct field (:23 is `maxPerHr int`); the literal `maxPerHr: 5` is on the next doc line -->
 > `maxPerHr: 5`). PocketBase v0.39.6's `RealIP()` trusts `X-Forwarded-For` only once
 > `Settings.TrustedProxy.Headers` is populated, and returns `RemoteIP()` when that set is
 > **empty** — the Caddy reverse-proxy peer, i.e. loopback. Nothing in this repo seeded it, so the
@@ -510,7 +510,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 > lanes**, meaning the fifth request from anywhere on earth 429'd everyone else. Full analysis:
 > `docs/records/snapshots/2026-09-21-license-ratelimit-collapse.md`. A fix exists in commits `fb0626518`
 > (attest split onto its own 60/hr budget), `e6e254881` (`seedClientIPSettings` + the
-> XFF-collapsing middleware, `apps/license-server/main.go:131-144`), `0ce2483a1` (hop-index clamp,
+> XFF-collapsing middleware, `apps/license-server/main.go:131-144`), `0ce2483a1` (hop-index clamp, <!-- dead-ref: ok: verified 2026-10-19; cites the seedClientIPSettings block deliberately (fn at :138, logs to :141); the anchor word TrustedProxy appears earlier -->
 > `helpers.go:307-310`) and `061f3bff6` (a 429 no longer advances the origin ladder) — **and it is
 > NOT deployed.** Ship it, then follow the staged verification in §5 of that record.
 
@@ -873,7 +873,7 @@ nothing for one never reads as health for the other — and know which half the
 lane you are reading can even produce: `oz-cloud-server` links `kasirmu-api` and
 `kasirmu-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
 carry the fallback line (its `operation` there is
-`pg_row_to_product_with_details`, `crates/kasirmu-api/src/pg.rs:1064`) but **never**
+`pg_row_to_product_with_details`, `crates/kasirmu-api/src/pg/products.rs:39`) but **never**
 the sale-line one, which lives in `modules/inventory` — its absence from a
 hosted log is architecture, not health. On a device both can fire and neither
 is recorded anywhere (see the scope note above). Each line carries
@@ -1149,8 +1149,8 @@ are not.** `set_sync_api_key` is called from command lanes both shells reach
 (`crates/kasirmu-bridge/src/sync.rs:79`, `apps/mobile-tauri/src/commands/sync.rs:98`), from
 the sync daemon (`platform/sync/src/daemon.rs:403`), from terminal auth
 (`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
-(`apps/desktop-tauri/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
-pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:377`; `set_pg_sync_password` from
+(`apps/desktop-tauri/src/sync_bootstrap.rs:93`); `set_sync_terminal_secret` from the <!-- dead-ref: ok: verified 2026-10-19; cites Settings::set_sync_api_key at :93 exactly; set_sync_terminal_secret is the NEXT item of the sentence -->
+pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:377`; `set_pg_sync_password` from <!-- dead-ref: ok: verified 2026-10-19; cites the set_sync_terminal_secret call at :377; the anchor word on that line belongs to the previous clause -->
 `crates/kasirmu-bridge/src/sync.rs:223`. Those three keys have a walkable ladder.
 `set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:592`) and
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:684`) have **no production
@@ -1177,7 +1177,7 @@ here is the chain instead of a sentence of prose to trust:
 `ui/src/features/settings/EmailReportSettings.tsx:17` (`setSettingScoped`) →
 `run_set_setting` in `crates/kasirmu-bridge/src/settings.rs:167` (tablet
 `apps/mobile-tauri/src/commands/settings.rs:423`) → `Store::merged_smtp_password_json`
-(`crates/kasirmu-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
+(`crates/kasirmu-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest` <!-- dead-ref: ok: verified 2026-10-19; cites merged_smtp_password_json at :316; encrypt_smtp_at_rest (:207) is the NEXT step of the same chain -->
 at `:207` of that file. Note what that chain does and does not seal: it replaces the
 `password` **field of a JSON blob**, and only when a password was supplied
 (`:204-206`) — a value the keep-on-blank merge merely carried over is never
@@ -1186,7 +1186,7 @@ shape honestly, because the family names invite the wrong reading: the
 credential-sealed-inside-its-own-settings-value pattern this section recommends is
 live through the **portable** family (`encrypt_smtp_at_rest`,
 `crates/kasirmu-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
-`encrypt_smtp_password` (`crates/kasirmu-crypto/src/lib.rs:193`), has no caller left in the
+`encrypt_smtp_password` (`crates/kasirmu-crypto/src/lib.rs:537`), has no caller left in the
 tree at all. A reader who looks for that function as the exemplar lane will not find
 one; what they can follow is the seam above, and that seam is a recommendation about
 an envelope shape, not a conversion any of the four surfaces above performs.
@@ -1408,7 +1408,7 @@ migration SQL**:
 
 > ⚠️ **`<db>.pre-migration.bak` is ONE file, not a rotation.** It is replaced in place on every
 > upgrade that writes SQL — unlike `<db>.backup.db`, which keeps three generations
-> (`BACKUP_GENERATIONS`, `crates/kasirmu-core/src/db/mod.rs:270`). If you want history across
+> (`BACKUP_GENERATIONS`, `crates/kasirmu-core/src/db/mod.rs:281`). If you want history across
 > upgrades, copy it somewhere else before the next one.
 
 > ⚠️ **Budget disk space for three copies, not one.** At the moment of the rename the live
@@ -1441,7 +1441,7 @@ incident-documented for the first of them at `crates/kasirmu-core/src/migrations
 All four files are present in `crates/kasirmu-core/migrations/`. The reasoning is the SQL's
 own: each is a one-shot data/rename migration whose script **consumes the state it transforms**
 — `20260831` drops the `earn_multiplier` column it converted FROM, `20260906` renames six tables,
-and `20260911`/`20260913` drop and recreate `memos`/`memo_recipients`. The forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`)
+and `20260911`/`20260913` drop and recreate `memos`/`memo_recipients`. The forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`) <!-- dead-ref: ok: verified 2026-10-19; cites the migrations.rs doc header band, not a symbol definition -->
 already assigns that class to *backup-plus-forward-repair* rather than to re-apply.
 
 **This is why an operator must not start an upgrade without the snapshot.** A migration that
@@ -1453,8 +1453,8 @@ first one.
 1. **Quit the app completely** — not just close the window. The snapshot is taken by the app's
    own boot path, and the runner is the only writer you want on that file.
 2. **Confirm where the store is.** The path is `resolve_db_path(app)` = Tauri's
-   `app_data_dir()` + `kasir.db` (desktop `apps/desktop-tauri/src/state.rs:760-782`; tablet
-   `apps/mobile-tauri/src/state.rs:388-411`). The bundle identifier is `mu.kasir.app`
+   `app_data_dir()` + `kasir.db` (desktop `apps/desktop-tauri/src/state.rs:872`; tablet
+   `apps/mobile-tauri/src/state.rs:468`). The bundle identifier is `mu.kasir.app`
    (`apps/desktop-tauri/tauri.conf.json:5`), so on Windows the path is
    `%APPDATA%\mu.kasir.app\kasir.db` — **derived from those two verified inputs, not observed**;
    this runbook has no way to call the OS API. The same function copies a pre-rename store from
@@ -1525,7 +1525,7 @@ The request is a file beside the live database:
   `apps/mobile-tauri/src/recovery.rs:36`. The suffix exists as two copies on purpose (the
   bridge's is private) and is pinned against the **consumer's own literal** by a bridge test
   (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`).
-- **Shape** — five keys (`crates/kasirmu-bridge/src/data/restore.rs:228-235`): `candidate_path`,
+- **Shape** — five keys (`crates/kasirmu-bridge/src/data/restore.rs:228-235`): `candidate_path`, <!-- dead-ref: ok: verified 2026-10-19; cites an Ok(space) probe inside the fn, not the fn signature -->
   `requested_at`, `verdict`, `candidate_schema`, `confirmed_store_name`. The boot path
   deserializes **only** `candidate_path` and re-validates everything itself, so a verdict
   written by an earlier process is never trusted
@@ -1538,7 +1538,7 @@ Two mechanisms exist, and **which one is available is not the same on the two sh
 **A. In-app request — the preferred path. Registered on the DESKTOP shell only.**
 `restore_prepare` validates the candidate, checks a typed confirmation against the candidate's
 own `store.name`, requires `SETTINGS_EDIT`, and writes the request file
-(`crates/kasirmu-bridge/src/data/restore.rs:184-262`). `list_restore_candidates` lists the backup
+(`crates/kasirmu-bridge/src/data/restore.rs:184-262`). `list_restore_candidates` lists the backup <!-- dead-ref: ok: verified 2026-10-19; cites restore_prepare's body (:184-262), not list_restore_candidates (:124) -->
 generations with their verdicts (`:124-175`); `restore_status` reports what is pending
 (`:265-299`).
 
@@ -1608,7 +1608,7 @@ designed. A custom role needs `settings:edit` added explicitly.
 **What an operator sees when they do not hold it.** The gate denies fail-closed and the renderer
 receives `{ kind: "permissionDenied", message: … }`
 (`apps/desktop-tauri/src/error.rs:124-126` and `:147`; the underlying denial text is produced
-in `crates/kasirmu-core/src/db/staff.rs:388-412`, e.g. `"user is inactive"`,
+in `crates/kasirmu-core/src/db/staff.rs:439`, e.g. `"user is inactive"`,
 `"role <id> not found"`). The UI maps that kind to the localized string
 **"You don't have permission to do this."** (`ui/src/utils/app-error.ts:248-249` →
 `app-error-permission` in `shared-ui/locales/shared.ftl:40`; the Indonesian form is
@@ -1637,7 +1637,7 @@ names across `ui/src` returns nothing. So on desktop the request path is **reach
 but **has no UI caller yet** — do not send an operator looking for a restore button in
 Settings → Data Management; the screen there is Backup status plus one-click snapshot
 (`ui/src/features/settings/DataManagementScreen.tsx` — the live one, imported by
-`ui/src/features/settings/register.tsx:7` and registered at `:31` as route `data-management`
+`ui/src/features/settings/register.tsx:7` and registered at `:31` as route `data-management` <!-- dead-ref: ok: verified 2026-10-19; cites the lazy() import at :7 and registerPage at :31 as a pair -->
 with `requiredRole: 'owner'`; the same-named file under `settings/screens/` is a blank
 placeholder shell). Re-derive with
 `grep -rn 'restore_prepare\|list_restore_candidates\|restore_status' ui/src`.
@@ -1706,7 +1706,7 @@ compose: the file §10 protects is a legal restore candidate under §11.
   `apps/mobile-tauri/src/recovery.rs:39`.
 
 > ⚠️ **The lock is `<db>.restore-boot.lock`, not `<db>.restore.lock`.** The design note in
-> `manager-codebase-review-checklist.md:44` names `<db>.restore.lock`; the constant that
+> `manager-codebase-review-checklist.md:112` names `<db>.restore.lock`; the constant that
 > actually ships in both shells is `.restore-boot.lock`. Documenting the design name would send
 > an operator to a file that never exists.
 
@@ -1788,7 +1788,7 @@ the swap directly, which is why the app must be closed.
 > ⚠️ **`scripts/restore-db.sh` is a third, weaker route and should not be used for a kasir.mu
 > store.** It checks `PRAGMA integrity_check` with the `sqlite3` CLI, snapshots the live file as
 > `<db>.pre-restore` (no `.db` suffix), `mv`s the candidate over the live path and drops the
-> sidecars (`scripts/restore-db.sh:44-98`). It does **not** call `validate_candidate`, so it has
+> sidecars (`scripts/restore-db.sh:44-98`). It does **not** call `validate_candidate`, so it has <!-- dead-ref: ok: verified 2026-10-19; cites a shell function body in restore-db.sh, no Rust symbol to anchor -->
 > no schema-version gate and no rollback: a newer-than-this-build candidate goes straight in and
 > bricks the next boot. §4.3 documents it for the generic SQLite case; for a store, prefer
 > `kasir restore`.
@@ -1801,7 +1801,7 @@ the swap directly, which is why the app must be closed.
 - `<db>.restore-request.json.done` is the consumed request. Safe to delete once you have read
   it.
 - The tablet's copies sit beside its own `kasir.db` in app-private storage
-  (`apps/mobile-tauri/src/state.rs:388-411`), which is not operator-browsable. **On that shell
+  (`apps/mobile-tauri/src/state.rs:468`), which is not operator-browsable. **On that shell
   the in-app request path is not merely unavailable in the UI — none of the three IPC commands
   is registered at all (§11.2)**, so the CLI in §11.8 is the only route an operator has there.
   Getting the file onto a machine where the CLI can reach it is part of the procedure.

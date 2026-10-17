@@ -26,7 +26,7 @@ without saying so below.
 opts in may oversell; a location that does not must be refused.
 
 > **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368`
-> for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`)
+> for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`) <!-- dead-ref: ok: deliberately quotes the STALE coordinate this note records; repairing it would erase the evidence (verified 2026-10-19) -->
 > for the raw UPDATE. Both were stale: the flag now lives in `foundation` (the inventory
 > model was extracted there), and `adjust_stock_tx` **no longer exists** — `get_stock` and
 > `adjust_stock_tx` were REMOVED on 2026-09-29 (`modules/inventory/src/repository.rs:147`)
@@ -164,7 +164,7 @@ items are never delivered back to it, since they are already local.
   > **Confirmed the hard way, 2026-10-07.** A manual pass checked every claim:
   > all **17** named tests still exist and all **11** cited line numbers still land
   > exactly on their `fn`, so §2–§4 are intact. §1 was NOT: it cited
-  > `modules/inventory/src/models.rs:368` and `Repository::adjust_stock_tx`
+  > `modules/inventory/src/models.rs:368` and `Repository::adjust_stock_tx` <!-- dead-ref: ok: deliberately quotes the STALE coordinate this note records; repairing it would erase the evidence (verified 2026-10-19) -->
   > (`repository.rs:130`), and both were stale — the flag moved to `foundation`, and
   > `adjust_stock_tx` was deleted on 2026-09-29. Repaired above. **This is exactly the
   > drift this note predicts**, and it took a hand pass to find: the failing citation

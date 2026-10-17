@@ -17,7 +17,7 @@ criteria). Tickets: `docs/records/superseded/phase4-implementation-tickets.md`.
 `modules/ownership.json` is the single source of the table→module map (14 modules, 31
 tables). `scripts/generate-ownership-map.mjs` renders it into
 `crates/kasirmu-core/src/db/ownership.rs` (`pub const TABLE_OWNERS` at
-`crates/kasirmu-core/src/db/ownership.rs:12`, `pub fn owner_of` at
+`crates/kasirmu-core/src/db/ownership.rs:49`, `pub fn owner_of` at
 `crates/kasirmu-core/src/db/ownership.rs:49`, fail-closed: an unknown table is `None`,
 not a default). A hand-edit of the generated file is caught by the required gate
 `ownership-map-parity` (`scripts/gates.json`), which runs `generate-ownership-map.mjs
@@ -71,7 +71,7 @@ baselined (`scripts/namespace-governance-baseline.json`) and grant-marked.
 
 A module manifest’s `capabilities` array uses the `namespace:action` vocabulary parsed
 by `Capability::parse` (`platform/kernel/src/capability.rs:29`). `CapabilityRegistry`
-(`platform/kernel/src/capability.rs:119`) `verify_all`
+(`platform/kernel/src/capability.rs:164`) `verify_all`
 (`platform/kernel/src/capability.rs:164`) returns `KernelError::MissingCapability` for the
 first module (in id order) with an ungranted requirement, and `Kernel::load_all` calls it
 **before** any `on_load` runs (`platform/kernel/src/kernel/lifecycle.rs:278`), so a
