@@ -261,10 +261,10 @@ gap in an existing gate**.
 
 The existing gate **names its cases by page** ("signup (signup.astro)") but never opens the page —
 so the final three links were asserted nowhere. And the failure is silent: `t()` falls back to
-the key itself (`src/i18n/labels.ts:19-21`), so a mis-wired page renders `signup.title` to a real
+the key itself (`website/src/i18n/labels.ts:19-21`), so a mis-wired page renders `signup.title` to a real
 visitor while every one of the 234 website tests stays green.
 
-**Fixed:** `c3e35ec15` — `src/__tests__/island-page-wiring.test.ts`, 13 tests over the six
+**Fixed:** `c3e35ec15` — `website/src/__tests__/island-page-wiring.test.ts`, 13 tests over the six
 `[locale]` islands that receive a `labels` prop. Both real failure modes were injected and
 confirmed to fail:
 

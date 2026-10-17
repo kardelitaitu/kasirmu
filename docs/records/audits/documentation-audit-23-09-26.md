@@ -259,7 +259,7 @@ removing it is a different decision than a typo repair, and it is right.
    told apart by a file scanner.~~ **Resolved 24-09-26 — `check-site-links.py` built,
    wired, green.** The route table is what `astro build` would serve: `i18n.locales`
    parsed from `astro.config.mjs` (unparseable = fatal, never a guess) × every
-   `src/pages/` file with `[locale]` expanded and Astro's default directory-format URLs ×
+   `website/src/pages/` file with `[locale]` expanded and Astro's default directory-format URLs ×
    content routes enumerated exactly as `[...slug].astro` emits them — so a link to a
    ghost slug is red *even though the catch-all pattern file exists*, the inverse of the
    file lens's failure — × `public/` files/directories and `public/_redirects` sources (a
@@ -284,7 +284,7 @@ removing it is a different decision than a typo repair, and it is right.
    local-steps item 26 + the SKILL behavior bullet; dead-refs' docstring and code comment
    now name the successor instead of the open item. Known limits stated in the
    docstring: heading fragments, `.astro` component hrefs, reference-style links and
-   external fetches are out of scope; `website/*.md` outside `src/content/` stays in
+   external fetches are out of scope; `website/*.md` outside `website/src/content/` stays in
    dead-refs' path-literal domain.
 
 ## Addendum (24-09-26): fragments are checked now
