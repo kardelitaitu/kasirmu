@@ -274,7 +274,7 @@ export default function PriceOverrideModal({
               aria-label={requiredLocalized(l10n, 'price-override-new-aria')}
             />
             {priceError && <div className="price-override-error" role="alert">{priceError}</div>}
-            <div className="price-override-actions">
+            <footer className="price-override-actions">
               <button type="button" className="price-override-cancel-btn" onClick={handleClose}>
                 {requiredLocalized(l10n, 'price-override-cancel')}
               </button>
@@ -286,7 +286,7 @@ export default function PriceOverrideModal({
               >
                 {requiredLocalized(l10n, 'price-override-next')}
               </button>
-            </div>
+            </footer>
           </div>
         )}
 
@@ -305,7 +305,7 @@ export default function PriceOverrideModal({
               disabled={loading}
             />
             {error && <div className="price-override-error" role="alert">{error}</div>}
-            <div className="price-override-actions">
+            <footer className="price-override-actions">
               <button type="button" className="price-override-cancel-btn" onClick={handleGoBack} disabled={loading}>
                 {requiredLocalized(l10n, 'price-override-back')}
               </button>
@@ -316,7 +316,7 @@ export default function PriceOverrideModal({
               >
                 {requiredLocalized(l10n, 'price-override-next')}
               </button>
-            </div>
+            </footer>
           </form>
         )}
 
@@ -335,11 +335,11 @@ export default function PriceOverrideModal({
             {renderPinPad()}
             {error && <div className="price-override-error" role="alert">{error}</div>}
             {loading && <div className="price-override-loading" role="status">{requiredLocalized(l10n, 'price-override-verifying')}</div>}
-            <div className="price-override-actions">
+            <footer className="price-override-actions">
               <button type="button" className="price-override-cancel-btn" onClick={handleGoBack} disabled={loading}>
                 {requiredLocalized(l10n, 'price-override-back')}
               </button>
-            </div>
+            </footer>
           </div>
         )}
       </div>

@@ -259,7 +259,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
           </div>
         ) : (
           <>
-            <div className="refund-header">
+            <header className="refund-header">
               <Localized id="refund-title">
                 <h2 className="refund-title">Process Refund</h2>
               </Localized>
@@ -274,7 +274,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                 &times;
               </button>
               </Localized>
-            </div>
+            </header>
 
             <div className="refund-sale-info">
               <Localized id="refund-sale-id" vars={{ id: sale.id.slice(0, 8) }}>
@@ -384,7 +384,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
               </span>
             </div>
 
-            <div className="refund-actions">
+            <footer className="refund-actions">
               <Localized id="refund-cancel">
                 <Button
                   variant="ghost"
@@ -404,7 +404,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                   Process Refund
                 </Button>
               </Localized>
-            </div>
+            </footer>
           </>
         )}
       </div>
