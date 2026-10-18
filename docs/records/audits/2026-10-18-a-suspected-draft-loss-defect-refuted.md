@@ -80,4 +80,4 @@ than ship a defensive change against a bug that was never there.
    dirty `PosScreen.tsx`. Re-check that file every round.
 3. The restaurant E2E surface is healthy at 27/27 sampled; do not re-run these as a habit.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

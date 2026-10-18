@@ -76,4 +76,4 @@ only by a record. Before this round, deleting that gate would have broken nothin
 | `eslint` / `tsc` | 0 / 0 |
 | Full UI suite | 12,670 passed, 0 failed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

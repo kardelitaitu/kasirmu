@@ -70,4 +70,4 @@ surface the 2026-10-12 record used.
 | Tree | `ui/src` clean but for another lane's file; scratch scripts deleted |
 | Vite | stopped after the pass |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

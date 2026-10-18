@@ -99,4 +99,4 @@ Still unexamined, and the better target for a next round: the ~28 other screens 
 correct everywhere it appears so far, but only by this one attribute, and unpinned in all
 but one place.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

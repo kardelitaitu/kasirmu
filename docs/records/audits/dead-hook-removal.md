@@ -68,4 +68,4 @@ Two of three exports here were masking. The cheap screen is one `grep` for the m
 name outside `__tests__`; the expensive part is that the remedy is NOT deletion — it is
 porting each named behaviour to the live code first, which is why rounds 107-110 existed.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

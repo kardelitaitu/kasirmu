@@ -65,4 +65,4 @@ different shape and was not swept. The KDS offline layer (`hooks/useKdsOffline.t
 both a cache and a queue in storage and was audited in round 90 for its bounds, not for
 store-scoping.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -115,4 +115,4 @@ Restored, and confirmed no `KILLTEST` marker remains in the source.
 - `heldCartsList` had exactly two writers (:1347, :1361) and neither ran on mount.
   Counting the writers of a piece of state — not the readers — is what exposed it.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

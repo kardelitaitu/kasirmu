@@ -80,4 +80,4 @@ zero result means anything.
   contract, in the retail grid.
 - `mockfactory-gap-list-as-coverage-map.md` (round 53) — why no drag test existed at all.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

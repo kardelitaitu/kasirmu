@@ -65,4 +65,4 @@ replaces is a latent order-dependence, and `--sequence.shuffle.tests` is how it 
 
 See also: `mock-implementation-leak.md` (round 92), `once-queue-survives-clear.md` (round 99).
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

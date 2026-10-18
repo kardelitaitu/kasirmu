@@ -68,4 +68,4 @@ why: the class is a locator target, not a status statement.
 | Full UI suite | 12,665 passed, 0 failed |
 | `tsc` | 0 |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

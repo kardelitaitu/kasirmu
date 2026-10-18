@@ -53,4 +53,4 @@ app.
 
 **A sweep whose failures cluster by position rather than by subject is measuring its own loop.**
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

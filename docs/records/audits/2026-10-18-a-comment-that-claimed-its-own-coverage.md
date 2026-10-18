@@ -95,4 +95,4 @@ looked exactly like a product failure.
 2. The remaining thin file from the same scan is `RestaurantShortcutsHelp.tsx` (3KB, 1
    reference) — likely presentational like `KdsMainContent`, but unverified.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -95,4 +95,4 @@ restaurant surface is green.
 the backend) still need the Docker stack, which this machine does not have. Everything reachable
 without it has now been run. That remains the honest boundary: **all UI e2e verified; API e2e not.**
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

@@ -107,4 +107,4 @@ For my own lane: the second lead from round 162 — grading the dither walk thro
 name — is still open and is the one with recurring evidence behind it, since every tripwire
 breach in that file has been a symptom of the hand-synced both-sides rule.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -70,4 +70,4 @@ and round 150 respectively), so their claims hold by construction rather than by
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,693 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

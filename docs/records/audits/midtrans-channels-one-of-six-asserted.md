@@ -126,4 +126,4 @@ three payment channels a merchant had disabled, on the payment surface of all pl
 session's files (`receiptLogic.ts`, `posDispatchRecord.test.ts`) are still uncommitted in the
 same directory - untouched, per the shared-index rules.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

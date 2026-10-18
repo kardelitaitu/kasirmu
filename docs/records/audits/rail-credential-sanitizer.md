@@ -90,4 +90,4 @@ function that actually performs the side effect.
 | Credential reaching the rail write | **none** |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -51,4 +51,4 @@ session's in-flight work. **One real file, not fifty.**
 | Spot-check of all three hashes | worktree = index = HEAD = `2989a22d` |
 | Files changed by this round | none |
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

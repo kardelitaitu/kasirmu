@@ -74,4 +74,4 @@ None of these changed the defect; all three would have hidden it if I had stoppe
 - Re-reading my own most recent commit was the highest-yield move available; the previous
   four rounds had each been spent on older code.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

@@ -142,4 +142,4 @@ recorded here rather than papered over with a soft guard.
 `remaining-workflows` + `reporting-workflows` + `retail-workflows`: **8 passed / 7 failed**,
 from a prior baseline where the navigation itself failed. The 7 are all Cause 2.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

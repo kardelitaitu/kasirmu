@@ -119,4 +119,4 @@ subsystem was not missing a guard — **one caller of it skipped the check**, an
 the busiest one. That is the round-297 shape exactly, one layer over: not a missing guard, a caller
 that does not consult it.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

@@ -94,4 +94,4 @@ degrading the instrument that found rounds 118-120's findings.
 | Store's own preset | not recorded in the mock at all |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

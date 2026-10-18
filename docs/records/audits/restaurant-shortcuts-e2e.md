@@ -52,4 +52,4 @@ helper rather than rediscovering the trap.
 | `PosScreen.tsx` | byte-identical to HEAD after the restore |
 | Full UI suite | 12,678 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -59,4 +59,4 @@ that would have passed.
 0 failed** (was 7 passed / 8 skipped / 1 failed). `tsc --noEmit` clean, `lint` 0 errors.
 Committed `221b1ef03`.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

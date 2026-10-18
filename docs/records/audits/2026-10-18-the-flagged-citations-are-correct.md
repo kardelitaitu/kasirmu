@@ -127,4 +127,4 @@ provenance separates them.
    bulk — the `RestaurantReceiptsScreen:1099` case proves it: `:213/:808/:975/:1015` is a
    declared LIST and all four are correct, yet one looks stale under any positional rule.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

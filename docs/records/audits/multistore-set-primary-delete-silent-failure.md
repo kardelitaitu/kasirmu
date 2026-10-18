@@ -81,4 +81,4 @@ confirms those fixes held.
 - `barcode-lookup-failure-was-silent.md` (48), `kds-item-status-failure-was-silent.md` (47)
   — the same "operator told nothing" family.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

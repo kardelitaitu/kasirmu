@@ -100,4 +100,4 @@ the compiler is what surfaced it. Removed.
   presence; `linesCrudeErased=0` counted whole lines). A probe that measures the wrong
   quantity is worse than no probe, because it reads as evidence.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

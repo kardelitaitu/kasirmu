@@ -87,4 +87,4 @@ the three "silent setters" prove nothing and the cause may be one of them after 
 That single control decides between the two readings, and it is the step rounds 198-201 each
 needed and one of them got.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

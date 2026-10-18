@@ -62,4 +62,4 @@ about.
 | `tsc` | 0 |
 | diff | 3 files, 3 insertions, 3 deletions — all comment lines |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

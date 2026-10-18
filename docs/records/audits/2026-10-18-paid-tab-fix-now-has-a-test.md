@@ -82,4 +82,4 @@ satisfied by unrelated later calls**, and both are cured the same way, by holdin
 subject's own write open so the window being asserted about is the only thing that can
 move within it.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

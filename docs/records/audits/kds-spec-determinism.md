@@ -91,4 +91,4 @@ summary rather than the count.
 | Round 141's new ticket | `#111` |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

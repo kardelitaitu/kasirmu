@@ -68,4 +68,4 @@ label — **the same pattern round 148 hit** on the settings toggles, and the sa
 | `eslint` | 0 |
 | Full UI suite | 12,670 passed, 0 failed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

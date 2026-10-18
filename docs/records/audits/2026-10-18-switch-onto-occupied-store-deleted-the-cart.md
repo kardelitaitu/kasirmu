@@ -93,4 +93,4 @@ The nearby unscoped-but-store-independent retail keys (`retail-cart-width`,
 `retail-tender-presets`, `retail-sound-enabled`) were checked and are correctly NOT scoped — they
 carry no store-specific data, so scoping them would be churn.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

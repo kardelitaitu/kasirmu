@@ -75,4 +75,4 @@ record that only lists defects would suggest this path was never examined.
 documented behaviour and the operator-visible contract is one toast; what matters is that
 "nothing" is reported honestly, which the new test pins.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

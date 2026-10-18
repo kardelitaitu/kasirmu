@@ -94,4 +94,4 @@ find `useAutoQr`; round 126 applied it to the rest of the same sentence and foun
 second, real gap. The claim was not even checked by the round that wrote the guard it
 cited, because it was phrased as justification rather than as an assertion.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -85,4 +85,4 @@ it. Switched to `getAllByText` (:1052 in the same file does the same). A harness
 error is not a defect; re-running with the sibling's own query kept the round
 honest without changing what is being verified.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

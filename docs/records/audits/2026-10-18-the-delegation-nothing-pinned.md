@@ -99,4 +99,4 @@ What is genuinely left is not another instance of either class. The two remainin
 the suite are other lanes in-flight edits, and the honest next move is either to let them
 land or to take a different question entirely -- the sweep has been answered.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

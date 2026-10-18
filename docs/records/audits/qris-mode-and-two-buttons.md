@@ -77,4 +77,4 @@ no code reads, with no alternative path carrying the same information.
 | `qris_auto` commands registered | desktop `lib.rs:1890-1891`, mobile `:1416-1417` |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

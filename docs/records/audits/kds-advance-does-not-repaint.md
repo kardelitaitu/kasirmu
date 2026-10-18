@@ -83,4 +83,4 @@ module handle the page does not expose. That is the next instrument, not more re
 | live repaint | none |
 | full UI suite | 12,665 passed, 0 failed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

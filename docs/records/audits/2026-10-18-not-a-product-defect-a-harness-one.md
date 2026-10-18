@@ -98,4 +98,4 @@ asked "why does the workspace clear?" instead of "is this path one a user takes?
 test names a SYMPTOM; whether it names the PRODUCT is a separate question, and it is cheaper to
 ask first.**
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

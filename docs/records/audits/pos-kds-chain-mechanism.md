@@ -75,4 +75,4 @@ discriminating, and the count `#101..#110` held constant through every attempt.
 | Sale leg | attempted, `SALE_DONE=false`, unverified |
 | Tree | clean but for another lane's file; scratch script deleted |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

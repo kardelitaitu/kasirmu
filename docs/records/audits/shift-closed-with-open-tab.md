@@ -100,4 +100,4 @@ unverified area in the objective, and it is an environment limit rather than a c
 `TableManagementScreen.tsx` also still carries the other session's `created_at`/`updated_at`
 hunk from round 292 and remains uncommitted for that reason — unchanged and still reported.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

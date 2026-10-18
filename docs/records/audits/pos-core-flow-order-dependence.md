@@ -63,4 +63,4 @@ remaining work starts from evidence.
   for s in 2 7 13 99; do npx vitest run --sequence.shuffle.tests --sequence.seed=$s \
       src/__tests__/PosScreenCoreFlow.test.tsx; done
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

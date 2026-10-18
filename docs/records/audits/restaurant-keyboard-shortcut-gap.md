@@ -55,4 +55,4 @@ the objective asks for careful work — a half-chosen key map would be worse tha
 | free function keys | none free; F1–F12 mostly retail's, F10 global |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -98,4 +98,4 @@ was too coarse to be a defect list, and is recorded that way rather than as six 
 - **Re-run the kill-test after refactoring a test.** Fixing the type errors rewrote every
   fixture; a refactored test is a new test until it has been seen to fail.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

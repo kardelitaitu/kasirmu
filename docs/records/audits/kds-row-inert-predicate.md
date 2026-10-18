@@ -83,4 +83,4 @@ kill-test re-run against the re-applied version before anything was committed.
 | Full suite | 12,663 passed, 0 failed |
 | `tsc` / `eslint` | 0 / 0 |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

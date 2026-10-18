@@ -85,4 +85,4 @@ kill-test left no residue.
 - **`usePosCartActions.ensureCart`** — its inner catch has a deliberate, documented fallback
   (:102-119); the outer catch reports. Both correct.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

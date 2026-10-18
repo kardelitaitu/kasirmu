@@ -86,4 +86,4 @@ was inviting the cashier to open a shift that was already open), `useMultiCurren
 This finding suggests the remaining `settleRead` consumers are worth auditing for a
 primary read left bare — recorded as a follow-up, not done this round.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

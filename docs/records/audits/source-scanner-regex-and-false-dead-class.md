@@ -133,4 +133,4 @@ The exemption was **kill-tested by removal**: `Dead classes: btn` returns immedi
 - The suite's own self-grading design did real work here: rejecting my unnecessary ledger
   entry is what taught me the difference between the two lists.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

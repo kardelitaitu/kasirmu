@@ -89,4 +89,4 @@ never worked: the audit and export paths (`AuditLogScreen.handleExport`,
 `handleSecurityExport`) and the `createProductVariant` / `createBundle` pair, none of which
 has had its backend read.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

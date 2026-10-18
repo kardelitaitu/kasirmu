@@ -107,4 +107,4 @@ here are:
    confident wrong answer. **Run the control before reporting any zero** — it cost one call here
    and caught a result I would otherwise have recorded as a clean sweep.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

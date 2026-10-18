@@ -81,4 +81,4 @@ this round cost three attempts to get right, which is why they are not claimed h
 - `hardware-load-failure-pinned-save-shut.md` (46) — the same file family; that round's
   guard opened on one path only.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

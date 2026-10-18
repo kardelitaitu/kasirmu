@@ -93,4 +93,4 @@ unexplored rather than merely unvisited:
    state from localStorage — the race refuted here is structural, and a screen whose autosave
    does not depend on the restored field would actually lose the value.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

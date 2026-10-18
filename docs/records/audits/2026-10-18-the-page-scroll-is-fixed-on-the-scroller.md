@@ -98,4 +98,4 @@ CSS restored byte-identical by sha256.
    theirs to land, and I should re-check the suite once it settles rather than report it as a
    standing failure.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

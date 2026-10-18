@@ -60,4 +60,4 @@ gating — have each been driven and measured, and both suites plus all UI gates
 
 That is the state to judge completion on, not a reason to keep generating probes.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

@@ -77,4 +77,4 @@ Recording the gap with the exact precondition is worth more than a hurried case.
 | `tsc` | 0 |
 | `PaymentModal.tsx` | restored; `scratch-kill.py` deleted; tree clean but for another lane's file |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -115,4 +115,4 @@ retry. It is kept as a regression guard.
   test that exercises F4 is exercising `handleHold`'s early return unless it
   overrides `lines`. Worth remembering when a hotkey test looks inert.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

@@ -78,4 +78,4 @@ produced the finding.
 - `add-table-double-submit-creates-two-tables.md` (60),
   `reserve-table-double-submit-two-open-bills.md` (61).
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

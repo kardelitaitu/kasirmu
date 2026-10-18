@@ -79,4 +79,4 @@ The thing that made `ExchangeRateScreen` different was the REMOUNT, not the swap
   # then, for each belt: remove that belt's `if (stale()) return;` lines only, re-run,
   # confirm exactly the one case above fails, and restore.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

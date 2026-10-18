@@ -108,4 +108,4 @@ finding 2 is the functional one.
 Together with `pos-workflows` and `e2e-pos-to-kds`: **18 passed / 0 failed**.
 `tsc --noEmit` clean, `lint` 0 errors. Committed `36dc98c1e`.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

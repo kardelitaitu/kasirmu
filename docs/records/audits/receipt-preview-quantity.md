@@ -93,4 +93,4 @@ not measured here.
 | Sample prices | self-contained `35000 / 16000 / 42000`, not the catalog's |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

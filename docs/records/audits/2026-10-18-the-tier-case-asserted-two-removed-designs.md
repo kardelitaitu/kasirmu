@@ -86,4 +86,4 @@ which I deliberately did not touch this round.
    should be checked against the current CSS, because a rename like f5772454c leaves the name
    behind as a false promise.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

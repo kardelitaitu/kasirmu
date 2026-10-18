@@ -81,4 +81,4 @@ by accident (bubbling); this round found one that was inert. A future sweep that
 count without the distinction will under-report the dead ones and over-report the harmless
 ones.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

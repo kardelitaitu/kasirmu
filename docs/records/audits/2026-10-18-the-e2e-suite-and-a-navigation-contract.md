@@ -96,4 +96,4 @@ correct rule for the tool-card path.
    ever satisfied it — worth noting that "the gate is green" was never verified here
    before this round.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

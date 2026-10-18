@@ -73,4 +73,4 @@ next sweep; this round fixed the one confirmed by test.
   mechanism, there on an overlay handler rather than a form.
 - `void-double-fire-refused-server-side.md` (59) — the triage rule: create vs set.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

@@ -81,4 +81,4 @@ handlers, never a real SQLite backend or the Tauri IPC. The split's *persistence
 | Split | parts sum to the total; remainder held as a tab (Open Bills 1) |
 | Tree | `ui/src` clean but for another lane's file; scratch script deleted; Vite stopped |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

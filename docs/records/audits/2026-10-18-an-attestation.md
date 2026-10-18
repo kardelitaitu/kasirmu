@@ -97,4 +97,4 @@ That is still the most valuable thing left to build, and this round confirmed th
 it is not a grep - it needs the module surface, which means an import, which is why the
 inline cases are hard.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

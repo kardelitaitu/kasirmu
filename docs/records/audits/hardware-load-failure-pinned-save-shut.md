@@ -92,4 +92,4 @@ flags (`ProductManagementScreen`, `CustomerManagementScreen`, `CategoryManagemen
 do not gate writes and have no failure path that leaves them stuck, so no further instances
 of this defect were found this round.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

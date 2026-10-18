@@ -99,4 +99,4 @@ were read inside a `[]`-dep keydown effect. Added to the dependency array (both 
   design that only works if the button is the sole entry point. Fixing them by sharing
   one function removes the class rather than the instance.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

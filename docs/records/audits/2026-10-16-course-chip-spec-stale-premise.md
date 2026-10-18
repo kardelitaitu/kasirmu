@@ -77,4 +77,4 @@ With its two neighbours (`restaurant-cart-line-badges`, `restaurant-course-firin
 **10 passed / 0 failed**. `tsc --noEmit` clean; `lint` 0 errors.
 Committed `57b3bc95e`.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

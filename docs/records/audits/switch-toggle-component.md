@@ -61,4 +61,4 @@ exists, is tested, and carries a docblock naming the exact defect the duplicates
 the next person touching any of them has somewhere to move to rather than a twelfth copy to
 maintain.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

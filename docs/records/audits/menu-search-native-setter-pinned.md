@@ -56,4 +56,4 @@ value lands in the field either way):
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,690 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

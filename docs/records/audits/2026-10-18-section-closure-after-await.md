@@ -103,4 +103,4 @@ defect class that has now been found twice. `handleAddSection` (`:1276`) was che
 round and is clean: it has no `await` before its `sections` read, which is precisely the
 condition the checker keys on.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

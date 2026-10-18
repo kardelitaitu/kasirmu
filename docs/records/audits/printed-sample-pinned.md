@@ -58,4 +58,4 @@ the rest is recorded here as deliberately not.
 | `tsc` / `eslint` | 0 / 0 |
 | Commit | `f5e1eddc0`, 2 files, +51 |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

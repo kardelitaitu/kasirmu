@@ -86,4 +86,4 @@ have moved any of them.
 | Full suite | 12,664 passed, 0 failed |
 | `tsc` / `eslint` | 0 / 0 |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -68,4 +68,4 @@ outcome. Re-reading the *reasons* would have confirmed all fourteen (they are we
 one of them was mine and wrong). Driving the *routes* is what separated the kiosk from its six
 neighbours, and the answer turned on one registry flag.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

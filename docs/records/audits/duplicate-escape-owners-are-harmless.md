@@ -84,4 +84,4 @@ removing that guard leaves them GREEN ...
 - Reading `requestClose` before treating 12 dialogs as broken is the whole round: the grep
   found the pattern, and the hook decided whether it mattered.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

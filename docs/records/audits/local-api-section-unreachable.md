@@ -78,4 +78,4 @@ The instrument that worked was not the grep. It was **reading the three registra
 the code would have to appear in**, and finding a plausible-looking file absent from all
 three while its backend, its API layer and its 66 localised strings are all present.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

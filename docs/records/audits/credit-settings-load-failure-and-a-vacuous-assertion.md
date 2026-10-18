@@ -96,4 +96,4 @@ Recorded as a judgement call, not left unexamined.
   a starting point.
 - Assert on the element a fix creates, not on text that is present either way.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

@@ -123,4 +123,4 @@ the real screen — the ref assignment, the render timing, the sidebar route —
 that would silently rot while the unit cases kept passing. The two guards' ordering is now also
 pinned by a test rather than only by reading, since draft 2 discovered it empirically.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

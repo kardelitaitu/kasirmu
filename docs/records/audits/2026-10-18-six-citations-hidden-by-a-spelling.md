@@ -84,4 +84,4 @@ and 185 each had to re-learn at a wider radius.
    `ff144486f`, re-verified this round.
 3. No Android device attached; the tablet lane stays blocked on hardware.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

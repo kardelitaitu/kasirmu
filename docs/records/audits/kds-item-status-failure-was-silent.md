@@ -96,4 +96,4 @@ paths where one reported and the other was mute. Two rounds have now turned up t
 shape in different features, which is the argument for the class-level sweeps rather than
 more file-by-file reading.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

@@ -64,4 +64,4 @@ Kill-test: removing the `beforeEach` reset fails the file inside the full suite
 (12628 passed / the file errors) while the same shape passes with it. Restored, the suite
 is green under both the default and the verbose reporter.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

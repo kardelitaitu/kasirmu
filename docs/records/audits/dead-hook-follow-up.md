@@ -74,4 +74,4 @@ An observable that belongs to THIS interval. Options, none attempted far enough 
 coverage is largely redundant with two production suites except the cleanup case above; its
 draft-persistence coverage (6 cases) was not examined this round.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

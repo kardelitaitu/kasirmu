@@ -79,4 +79,4 @@ while the other direction rotted.
   "this comment describes this save map"), but it is worth naming: it would not catch both
   being wrong together, which is what `deadSettingsKey.test.ts` covers from the reader side.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

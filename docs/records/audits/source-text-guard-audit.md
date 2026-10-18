@@ -48,4 +48,4 @@ single-spelling claim is exactly the shape round 170's was.
 | Tree | no source changed this round |
 | Full UI suite | 12,688 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

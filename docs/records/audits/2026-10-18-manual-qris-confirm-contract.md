@@ -96,4 +96,4 @@ hooks having a guard is a pattern, not a contract. The contract is in the commen
 at the call site and in the test that was already there — and it said, in as many
 words, that the callback fires more than once on purpose.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

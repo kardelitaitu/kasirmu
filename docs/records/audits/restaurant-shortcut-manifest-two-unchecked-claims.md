@@ -101,4 +101,4 @@ matcher that might no longer match anything — it still goes red.
   claims to validate. Claim 3 named the hook, so PosScreen was outside it by
   construction.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

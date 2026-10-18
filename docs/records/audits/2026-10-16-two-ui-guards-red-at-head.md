@@ -79,4 +79,4 @@ second**):
 3-line comment edit to its own historical note) before this round began. My commit names only
 my five files, so their work was not swept in — verified with `git show --stat`.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

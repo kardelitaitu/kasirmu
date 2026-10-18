@@ -114,4 +114,4 @@ it failed with `the cash path did not call a refused amount unreadable: expected
 
 Split suite 23 passed (was 22) · `PaymentModalSaleFlow` 69 passed · typecheck clean.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

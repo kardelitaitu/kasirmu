@@ -74,4 +74,4 @@ handler, guarded at the button with a backend that refuses duplicates, or an ide
   this triage.
 - `void-double-fire-refused-server-side.md` (59) — the create-vs-set rule.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

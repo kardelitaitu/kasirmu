@@ -93,4 +93,4 @@ that returns early looks identical, from the outside, to a handler that never ra
 instrumenting the handler distinguished them. Three probes that observed the DOM state could
 not tell the difference; the one probe that observed the code path could.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

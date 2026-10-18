@@ -71,4 +71,4 @@ to correct repeatedly. Two cases now pin it:
   `true` → `false` is what separates "the toggle worked and the footer is empty" from
   "the footer was empty anyway".
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

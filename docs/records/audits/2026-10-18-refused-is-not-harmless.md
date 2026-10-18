@@ -93,4 +93,4 @@ files. Two concrete next steps:
   `setSaving(true)` with no `PendingRef` in the same handler is the mechanical version of
   every lead this session has chased by hand, and it has not been run.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

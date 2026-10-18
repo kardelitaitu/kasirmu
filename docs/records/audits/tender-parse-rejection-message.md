@@ -80,4 +80,4 @@ surfaced something `vitest` accepted — here, scratch files that would have bee
   the dual write). Recording them took three lines each and stops the next reader re-running
   the same checks.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

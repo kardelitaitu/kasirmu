@@ -102,4 +102,4 @@ And the reason this round existed at all: I audited someone else's guard in 297,
 changes the same round they are made, because that is the round that still has the context to know
 what the refusal costs.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

@@ -93,4 +93,4 @@ this round, every lead was "does this backend refuse it?" answered one file at a
 rounds were lost to wrong answers from sampling. The allow-list of unique columns + unique
 indexes means the next sweep can be a cross-reference rather than a hunt.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

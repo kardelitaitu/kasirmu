@@ -105,4 +105,4 @@ the crate source shows the `Sync` bound. **A mechanism counts as measured only w
 and the numbers reproduce.** Three runs inside 0.6s, against a 2.2x inversion, is the part that
 makes this one stick.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

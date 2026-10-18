@@ -94,4 +94,4 @@ unique constraint? does the bridge refuse a replay?) before anyone touches the U
 `PromotionManagement` path was already measured and is protected only by the button's
 `loading` prop — correct, but pinned by exactly one test.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

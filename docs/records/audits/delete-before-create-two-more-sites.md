@@ -130,4 +130,4 @@ which frees a table and is called after the hold in both fixed handlers. A rejec
 the bill on the new table and the old table still occupied, which is recoverable; the ordering
 was checked here and is already the safe direction. No further work identified on this class.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

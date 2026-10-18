@@ -58,4 +58,4 @@ reported result rather than the exit code.
 | Full UI suite | 12,698 passed |
 | Remaining inline copies | 11, each with its own owner |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

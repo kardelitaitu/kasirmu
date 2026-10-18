@@ -112,4 +112,4 @@ Two things I would check next, in this order:
    file's own header names as the durable remedy for the hand-synced both-sides rule.
    Every tripwire breach so far has been a symptom of that structural weakness.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

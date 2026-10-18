@@ -83,4 +83,4 @@ Four `console`-only sites remain, re-read individually rather than assumed:
   cheaper than inventing a rule: `PaymentModal` had already written this one down for a
   different condition.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

@@ -62,4 +62,4 @@ structural redundancy that the filter already covers.
 | `tsc` / `eslint` | 0 / 0 |
 | `PaymentModal.tsx` | restored; `scratch-kill.py` deleted; tree clean but for another lane |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

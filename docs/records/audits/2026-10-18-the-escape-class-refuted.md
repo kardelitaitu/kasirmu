@@ -101,4 +101,4 @@ directly comparable, plus a clean-path case on Payments:
    correct but the behaviour is still arguably wrong** — worth a round if the panel is expected
    to be dismissable by keyboard.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

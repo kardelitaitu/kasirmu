@@ -67,4 +67,4 @@ by splitting the `Shift+` prefix before the comparison.
 | `tsc` / `eslint` (my files) | 0 / 0 |
 | Full UI suite | 12,678 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

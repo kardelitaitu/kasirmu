@@ -90,4 +90,4 @@ is not yet known.
    **When a cause is identified, the cheap next move is to grep for every spec that shares it** —
    I fixed two specs by hand and a batch then found eleven more.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

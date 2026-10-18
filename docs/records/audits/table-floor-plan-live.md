@@ -66,4 +66,4 @@ in the tree. Found by reading `git status` before committing rather than after, 
 | Full UI suite | 12,693 passed |
 | Stale probe | removed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

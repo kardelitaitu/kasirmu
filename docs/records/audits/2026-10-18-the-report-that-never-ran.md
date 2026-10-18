@@ -96,4 +96,4 @@ shown the difference — the list — was missing. A test that passes does not t
 which of its parts executed; asserting on the part you believe you added is the only
 way, and the kill test is what forced me to look.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

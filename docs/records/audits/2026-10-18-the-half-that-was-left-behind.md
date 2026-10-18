@@ -68,4 +68,4 @@ omitted export is not an error -- it is a silently unreachable path, and it has 
 two of them (createCashPayoutScoped, and these two invoice calls). That check is a script,
 not a round, and it is the most valuable thing left to build.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

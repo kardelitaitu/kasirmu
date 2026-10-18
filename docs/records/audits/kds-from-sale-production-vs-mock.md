@@ -81,4 +81,4 @@ The practical consequence is for anyone using the browser preview to test the ki
 | `cargo test -p kasirmu-bridge kds_tests` | **38 passed; 0 failed** (83.7s) — covers the three cited `create_kds_order_from_sale_scoped` tests at `kds_tests.rs:1247`, `:1278`, `:1369` |
 | Tree | no source changed this round |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

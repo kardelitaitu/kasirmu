@@ -108,4 +108,4 @@ unverified commit, which is how a small mistake becomes a large one.
 3. When editing a file that is dirty with another lane's content, the safety rule has to extend
    to the pathspec even when the edit itself is justified.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

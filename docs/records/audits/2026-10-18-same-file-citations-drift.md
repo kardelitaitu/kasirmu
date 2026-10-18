@@ -89,4 +89,4 @@ RestaurantReceiptsScreen whose comment says 'in this file' and names six line nu
 none of which was right. That comment is the whole argument for the guard: it was
 written carefully, with explicit evidence, and every piece of its evidence had rotted.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

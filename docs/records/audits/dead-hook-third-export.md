@@ -74,4 +74,4 @@ pattern is worth stating plainly:
 | `tsc` / `eslint` | 0 / 0 |
 | `PosScreen.tsx` | restored, verified clean; the probe script deleted |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

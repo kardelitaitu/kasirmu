@@ -82,4 +82,4 @@ elsewhere in this tree.**
    199 said run the control; this round is the first time the control caught a detector that
    could not have fired at all.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -97,4 +97,4 @@ Untouched surface still open: the retail held-cart RESUME path was the round-121
 subject; the retail held-cart BROWSE path (opening the list from a non-empty
 cart, and dismissing the reminder popup) has not been executed.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

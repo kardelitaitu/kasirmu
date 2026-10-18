@@ -108,4 +108,4 @@ these two handlers. `mirrorBeforeAwait.test.ts` is an existing static scanner fo
 pattern; the question worth answering next is whether there are other two-write sequences ordered
 the unsafe direction.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

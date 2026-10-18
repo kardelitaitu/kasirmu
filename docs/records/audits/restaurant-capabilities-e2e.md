@@ -75,4 +75,4 @@ The check that caught it is the one used every time a kill-test *passes*: read t
 line back and confirm the file says what the mutation claims. Restored, re-applied as a
 distinct replacement, and killed for real.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

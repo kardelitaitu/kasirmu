@@ -97,4 +97,4 @@ those failure files is now known to have been a real, fixable, in-scope guard. E
 one deserves the same treatment this round gave this file: read the failure, trace the named
 lines, and only then decide whose it is.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

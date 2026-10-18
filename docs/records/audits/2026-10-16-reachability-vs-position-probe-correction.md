@@ -77,4 +77,4 @@ reporting a non-zero, prove the thing is actually broken before calling it a def
 Both directions of the same discipline were needed here: the "7 offscreen" reading was a
 non-zero that had to be disproved, not acted on.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

@@ -50,4 +50,4 @@ The rule: **a mock whose value a case sets is a mock `beforeEach` must reset.**
 `mockClear()`/`clearAllMocks()` keep the implementation and any once-queue; `mockReset()`
 clears both, so a captured default must be re-installed after it.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

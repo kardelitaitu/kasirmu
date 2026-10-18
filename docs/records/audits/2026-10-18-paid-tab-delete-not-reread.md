@@ -95,4 +95,4 @@ not fail a completed checkout.
 The fix is live and unregressed. The assertion that would pin it is absent, so this
 record is a FIX WITHOUT A TEST — stated plainly rather than implied by a green suite.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

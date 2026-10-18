@@ -80,4 +80,4 @@ of running them. Second, both findings are in code I had already READ in previou
 rounds (`PosScreen.tsx` in 126, 130, 131, 133; `OfflineQueueScreen.tsx` this round) and
 read without noticing. Reading finds claims; running finds behaviour.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -93,4 +93,4 @@ setAvatarScoped, assignTableOrderScoped, listSyncConflictsScoped) are lower cons
 the same question applies to each: does the backend refuse, and does the UI report success
 either way?
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

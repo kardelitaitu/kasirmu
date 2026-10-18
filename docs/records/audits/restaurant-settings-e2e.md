@@ -64,4 +64,4 @@ naming it alone is what keeps another session's edits out of my history.
 | `planHeaderMatchesPinnedDefects` | passes in isolation — the full-suite failure is another lane's |
 | `tsc` | 0 |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

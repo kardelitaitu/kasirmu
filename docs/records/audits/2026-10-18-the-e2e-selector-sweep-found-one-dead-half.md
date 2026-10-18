@@ -78,4 +78,4 @@ and is worth remembering in both directions.
    selector). Both were caught by self-testing against a KNOWN-valid input. That is the habit
    that keeps paying.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -61,4 +61,4 @@ Three findings this session turned on it, in both directions:
 | `tsc` / `eslint` | 0 / 0 |
 | `RestaurantMenuEditorScreen.tsx` | restored; `scratch-kill.py` deleted |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

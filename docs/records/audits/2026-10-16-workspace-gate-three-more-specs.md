@@ -62,4 +62,4 @@ nine files, of which six target `settings` (registered `fullscreen: true`, so un
 `staff-trash` / `topbar-height` were run and pass. No further instances of this cause remain
 in the specs exercised so far.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

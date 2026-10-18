@@ -72,4 +72,4 @@ the store; this round proves the screen's route into it.
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,693 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

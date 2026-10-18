@@ -83,4 +83,4 @@ interaction-model problem — and the difference matters, because one is fixable
 fixture and the other is not. When a control is genuinely unreachable by the probe, that is a
 signal to change the probe, not to record the control as untestable.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

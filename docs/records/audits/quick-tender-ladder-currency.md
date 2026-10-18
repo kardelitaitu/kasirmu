@@ -86,4 +86,4 @@ When substituting a dollar amount into a commit subject on Windows, use a single
 POWERSHELL here-string, or spell the amount out. A double-quoted `-m` with `$` in it is a
 silent edit: the commit succeeds and the message loses the figure.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

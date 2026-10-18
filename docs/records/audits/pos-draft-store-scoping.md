@@ -68,4 +68,4 @@ Two keys on one screen. Other persisted state — `useKdsOffline`'s cache/queue/
 (already store-scoped via `scopedKey`, `OFF-07`) and the settings/table keys — was not
 re-audited here, and the storage-key pin ledger does not cover POS keys.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

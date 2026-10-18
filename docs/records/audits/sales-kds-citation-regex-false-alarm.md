@@ -61,4 +61,4 @@ the tell; so was the unchanged count.
 | Tree | unchanged; 4 files verified byte-identical to HEAD |
 | Source changed | none |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

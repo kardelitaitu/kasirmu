@@ -62,4 +62,4 @@ their own spellings rather than the helper. Neither is unscoped — both already
 so they are a consistency question rather than a leak, and worth a look before assuming they
 need touching.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

@@ -72,4 +72,4 @@ titles, and fields whose write boundary is unit-tested.
 row. The full UI suite has held at 12,716 passed across the last ten rounds without a single
 regression introduced by this session's changes.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

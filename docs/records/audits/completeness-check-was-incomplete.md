@@ -90,4 +90,4 @@ the remaining questions about the restaurant path are behavioural, not about enf
 coverage, and the full restaurant surface has been green at every layer — unit, integration and
 browser — since round 296.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

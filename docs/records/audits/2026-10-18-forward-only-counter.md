@@ -87,4 +87,4 @@ known instances are the e-Faktur status (fixed here) and fiscal document numbers
 rounds 148-149). Anything else that writes `value + 1` is the candidate set, and finding it is
 a grep for increments rather than another sweep of the re-entry list.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

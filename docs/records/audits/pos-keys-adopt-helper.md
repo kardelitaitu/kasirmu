@@ -59,4 +59,4 @@ that drops the wrong two lines passes typecheck and reads as intended.
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,688 passed |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

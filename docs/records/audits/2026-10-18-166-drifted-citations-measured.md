@@ -85,4 +85,4 @@ After the repair the checker reports **159 to review** (from 160) and no longer 
 3. Enforcement stays OFF until the count is small. The number to watch is the one the checker
    prints; a target under ~20 would make a gate meaningful without making it noise.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

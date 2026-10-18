@@ -111,4 +111,4 @@ Each was confirmed by reading the offending lines out of the COMMITTED blob
 neither of those files and changes no CSS. Recorded here so the next round does
 not re-derive it.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

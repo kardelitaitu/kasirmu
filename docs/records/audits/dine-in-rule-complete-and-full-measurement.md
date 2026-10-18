@@ -98,4 +98,4 @@ A rule that name-drops its own site count in the source, as the dine-in rule doe
 hint it is already well audited — which is why checking it produced a negative result rather than
 a fourth finding.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

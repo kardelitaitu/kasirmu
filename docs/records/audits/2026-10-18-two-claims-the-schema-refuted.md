@@ -84,4 +84,4 @@ not the create path at all: `MemosScreen` and `StockTransfersScreen` carry **no 
 state at all**, so their submits are unguarded in a different way, and neither was opened
 this round.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

@@ -143,4 +143,4 @@ is the property round 287 measured for the suite as a whole.
 daemon is not running on this machine, so `npm run e2e:ui` cannot produce a verdict here — it was
 started and killed rather than left to hang. Everything above is vitest-layer.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

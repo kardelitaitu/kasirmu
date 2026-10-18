@@ -80,4 +80,4 @@ The round-177 Escape-cascade defect remains the top reliability item. `PosScreen
 uncommitted content that is not mine. That blocker must be re-checked each round by the rule
 above, not assumed.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

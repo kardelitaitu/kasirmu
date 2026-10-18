@@ -76,4 +76,4 @@ Cheap, and the reason to run typecheck after every structural edit rather than a
    ordered by propagation — they need a shared predicate** (189). Round 190 adds the third:
    **an API added for a failed diagnosis must be proven inert and then deleted, not kept**.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

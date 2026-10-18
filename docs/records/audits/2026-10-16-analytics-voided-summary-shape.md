@@ -83,4 +83,4 @@ declared return type.
 `tsc --noEmit` clean, `lint` 0 errors, `npm run test` **817 files / 13,012 passing**.
 Committed `0dcbaacea`.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

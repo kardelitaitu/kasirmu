@@ -73,4 +73,4 @@ Restored byte-identically afterwards (`git diff --stat` empty). The case discrim
 stopping before the POS). `tsc --noEmit` clean, `lint` 0 errors.
 Committed `91c4925fd`.
 
-> last audited 16-10-26 by docs-auditor round-2
+> last audited 16-10-26 by docs-auditor

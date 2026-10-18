@@ -88,4 +88,4 @@ five phantom missing test files.
    role or symbol the file claims to use, checked against the file actual `role=` attributes,
    would catch it mechanically — worth doing if a third instance appears.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

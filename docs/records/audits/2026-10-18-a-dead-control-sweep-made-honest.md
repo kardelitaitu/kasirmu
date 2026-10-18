@@ -84,4 +84,4 @@ remaining 50 design-showcase hits need no action. The UI reliability lane is sti
 active goal; the next round should take a class that has no automated check rather than re-running
 a sweep that has reached zero.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

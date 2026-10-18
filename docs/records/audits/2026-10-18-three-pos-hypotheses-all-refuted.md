@@ -100,4 +100,4 @@ is the gap, because every class I have closed was found by static analysis:
    path over CDP for reading what the device really renders, which is the one evidence source
    that can contradict a green unit suite.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

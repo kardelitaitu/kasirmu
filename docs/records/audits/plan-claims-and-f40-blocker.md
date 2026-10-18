@@ -59,4 +59,4 @@ and got **69 candidates, of which 67 were false** — screens register lazily vi
 `registerPage`, exactly as `AGENTS.md` warns. The check that works is reading the specific
 registration lists a file would have to appear in.
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor

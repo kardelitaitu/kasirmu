@@ -90,4 +90,4 @@ check has been shown to go red on a known-bad input.**
 - `retail-optimistic-writes-not-rolled-back.md` (round 52) — the add path and the categories.
 - `mockfactory-gap-list-as-coverage-map.md` (round 53) — why no test could reach these.
 
-> last audited 11-10-26 by docs-auditor round-2
+> last audited 11-10-26 by docs-auditor

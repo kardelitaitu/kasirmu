@@ -87,4 +87,4 @@ and a reason to read a failure as a description of behaviour before reading it a
    others, the E2E gate is green for the first time this session and that is worth recording as
    the baseline.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

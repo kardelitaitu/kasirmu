@@ -89,4 +89,4 @@ drifted pointers, 132 a report that never ran), and all three were found by read
 the cited line instead of trusting the citation. The guard now enforces the subset
 where a citation cannot possibly be right; the rest still needs a person to look.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

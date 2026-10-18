@@ -78,4 +78,4 @@ fourth did.
    on all of them "would make this guard noise").
 3. The 197px scroll defect closed in round 172 stayed closed through this round gates.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

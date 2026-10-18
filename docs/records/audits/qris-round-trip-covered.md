@@ -84,4 +84,4 @@ version isolated the failing step in one run after two rounds of guessing. **The
 round adds is to stop the probe at the step being tested** — an assertion or action placed after it
 will be read as its result.
 
-> last audited 15-10-26 by docs-auditor round-2
+> last audited 15-10-26 by docs-auditor

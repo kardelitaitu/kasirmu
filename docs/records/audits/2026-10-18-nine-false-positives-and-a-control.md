@@ -86,4 +86,4 @@ control and (b) treated "validated instrument + suspicious hit" as a contradicti
    the pattern I did not skip the step — I found a target that matched. Skipping it would have
    meant reporting version 1 as a real finding.
 
-> last audited 18-10-26 by docs-auditor round-2
+> last audited 18-10-26 by docs-auditor

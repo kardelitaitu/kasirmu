@@ -72,4 +72,4 @@ No behaviour changed — the diff is comments only.
 | `tsc` / `eslint` | 0 / 0 |
 | other `M` files | 10 verified as line-ending artefacts, not content |
 
-> last audited 14-10-26 by docs-auditor round-2
+> last audited 14-10-26 by docs-auditor
