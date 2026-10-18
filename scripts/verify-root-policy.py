@@ -71,6 +71,19 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # (apps/mobile-tauri/build-android-frontend.bat). Moving it would invalidate that
     # doc and the invocation it teaches.
     "deploy-website.bat",
+    # START_TABLET_HMR.bat is the same class and the same shape of decision: a
+    # 151-byte Windows launcher whose entire body is
+    # `powershell -File "%~dp0scripts\android-dev-hmr.ps1"` plus a `pause`. It is
+    # root-resident BECAUSE it is double-clicked, and it resolves its target via
+    # %~dp0 so the script it launches stays under scripts/ where it belongs.
+    # Allowlisted 2026-10-19 after confirming three things: nothing tracked
+    # references it as a path (only two plan docs mention it, as an inventory
+    # item), the sibling launcher `deploy-website.bat` was allowed on identical
+    # reasoning, and it is not this gate's target class — the gate exists for
+    # scratch that regenerates (screenshots, *.db copies, pr_body.md), not for a
+    # human entry point. Its siblings android-dev-hmr.ps1 / rebuild-tablet-*.sh
+    # correctly live under scripts/ because they are invoked, not double-clicked.
+    "START_TABLET_HMR.bat",
 
 
     "todo-open-debt-program.md", "todo-review-type.md",
