@@ -864,10 +864,11 @@
   color: var(--color-accent);
 }
 
-.pos-cart-table-btn-text {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-}
+/* .pos-cart-table-btn-text was removed 2026-10-19: 82a0dc983 gave the table
+   selector the .pos-cart-table-pill wrapper and this inner label rule was left
+   behind with no element applying it (screenExtraction reported it unreachable
+   from PosScreen). The pill's own .pos-cart-table-select-btn rules below carry
+   the text styling that survives. */
 
 .pos-cart-table-pill .pos-cart-table-input {
   min-width: 3.5rem;
