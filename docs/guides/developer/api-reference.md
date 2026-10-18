@@ -592,8 +592,19 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`compute_cart_tax_scoped`** [D+T] — Compute cart tax for the store resolved from a session token. ADR #7.
 - **`delete_held_cart_scoped`** [D+T] — Delete a held cart in the store resolved from a session token. ADR #7.
 - **`get_active_cart_scoped`** [T] — Load a cart in the session scope. ADR #7.
-- **`get_cart_deduction_location`** [T] — Return the deduction location info for an active cart.
+- **`get_cart_deduction_location`** [T] — Return the deduction location info for an active cart. ⚠️ **Tablet only — calling this from the DESKTOP shell throws "command not found"**, because desktop registers only the scoped twin below. Call the `_scoped` variant from any code that can run on both shells.
 - **`get_cart_deduction_location_scoped`** [D+T] — Scoped variant of `get_cart_deduction_location` (ADR #7).
+
+> **The `[T]` marker alone understates this one, so the warning is stated here.** A command marked
+> tablet-only looks like a command with a smaller audience; `get_cart_deduction_location` is a
+> command whose ambient name is *unreachable* on desktop while its scoped twin is available on both.
+> `ui/src/features/sales/PosScreen.tsx:891-893` chooses between them with a truthiness test on
+> `sessionToken`, which `:157` defines as `rawToken || ''` — so an empty string takes the tablet
+> branch, the desktop invoke is rejected, and the bare `catch` at `:896` quietly renders the raw
+> location id. Found by `scripts/verify-ipc-parity.py` on 2026-10-19 and recorded in
+> `docs/records/audits/2026-10-19-ipc-door-missing-and-root-debris.md`; the UI fix is still open.
+> The general rule the markers cannot express: **a `[T]` command and its `[D+T]` scoped twin are not
+> interchangeable from shell-branching code** — reach for the scoped name.
 - **`get_held_cart_scoped`** [D+T] — Get a held cart from the store resolved from a session token. ADR #7.
 - **`hold_cart_scoped`** [D+T] — Hold a cart in the store resolved from a session token. ADR #7.
 - **`list_active_carts_scoped`** [T] — List active carts in the session scope. ADR #7.
