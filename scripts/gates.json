@@ -1220,7 +1220,14 @@
           "env docs"
         ]
       },
-      "_note": "Added in 0.0.39, then WIRED TO THE EXISTING CHECKER on 2026-09-20: scripts/check-env-docs.mjs was written before anyone looked in .agents/skills/docs-auditor/scripts/, where check-env-docs.py had covered this since 09-09-26 with a WIDER scope (32 variables here vs 15). That one also reads apps/unified/healthcheck.sh's shell vars, accepts PADDLE_/MIDTRANS_/LOGIN_/LICENSE_/OZPA_ prefixes, checks go-live-checklist.md and verification-*.md, and carries an `env-doc: ok:` pragma. The duplicate was deleted; the step name is unchanged so the runner mapping holds. Runner: python .agents/skills/docs-auditor/scripts/check-env-docs.py."
+      "_note": "Added in 0.0.39, then WIRED TO THE EXISTING CHECKER on 2026-09-20: scripts/check-env-docs.mjs was written before anyone looked in .agents/skills/docs-auditor/scripts/, where check-env-docs.py had covered this since 09-09-26 with a WIDER scope (32 variables here vs 15). That one also reads apps/unified/healthcheck.sh's shell vars, accepts PADDLE_/MIDTRANS_/LOGIN_/LICENSE_/OZPA_ prefixes, checks go-live-checklist.md and verification-*.md, and carries an `env-doc: ok:` pragma. The duplicate was deleted; the step name is unchanged so the runner mapping holds. Runner: python .agents/skills/docs-auditor/scripts/check-env-docs.py. WIRED INTO CI 2026-10-19 (static-gates): it had been wired into scripts/check.sh and marked status=required with NO ci block, so 'required' meant required of a developer running check.sh by hand. Measured before wiring: all six docs checkers lacking a ci block are stdlib-only and read the working tree, so none needed a toolchain the job lacks.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Docs env vars"
+        ]
+      }
     },
     {
       "id": "unified-routes",
@@ -1296,7 +1303,14 @@
           "adr status drift"
         ]
       },
-      "_note": "Added 2026-09-24 closing open item 2 of the 2026-09-23 documentation audit. The hand table in docs/decisions/README.md reconciled its status column against ADR frontmatter by hand three times (2026-08-09: 26 cells empty while every file stated a status; 2026-09-23: #55/#56/#58 trailing their re-audits), and that file's Conventions order the re-derivation with a script, never by hand. This is the script: the status WORD per the Conventions contract, frontmatter over header line, rows resolved by file path so the documented duplicate #43 checks each file against its own row, cross-reference table excluded (prose cells, not status words). Runner: python .agents/skills/docs-auditor/scripts/check-adr-status.py. NO ci block BY DESIGN, local-only like auditor-selftests. Green from day one (54 of 54 rows); its --self-test carries deliberately red synthetic drift and cannot-verify cases and runs in scripts/check-auditor-selftests.sh."
+      "_note": "Added 2026-09-24 closing open item 2 of the 2026-09-23 documentation audit. The hand table in docs/decisions/README.md reconciled its status column against ADR frontmatter by hand three times (2026-08-09: 26 cells empty while every file stated a status; 2026-09-23: #55/#56/#58 trailing their re-audits), and that file's Conventions order the re-derivation with a script, never by hand. This is the script: the status WORD per the Conventions contract, frontmatter over header line, rows resolved by file path so the documented duplicate #43 checks each file against its own row, cross-reference table excluded (prose cells, not status words). Runner: python .agents/skills/docs-auditor/scripts/check-adr-status.py. NO ci block BY DESIGN, local-only like auditor-selftests. Green from day one (54 of 54 rows); its --self-test carries deliberately red synthetic drift and cannot-verify cases and runs in scripts/check-auditor-selftests.sh. WIRED INTO CI 2026-10-19 (static-gates): it had been wired into scripts/check.sh and marked status=required with NO ci block, so 'required' meant required of a developer running check.sh by hand. Measured before wiring: all six docs checkers lacking a ci block are stdlib-only and read the working tree, so none needed a toolchain the job lacks.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Docs ADR status"
+        ]
+      }
     },
     {
       "id": "site-links",
@@ -1307,7 +1321,14 @@
           "site links"
         ]
       },
-      "_note": "Added 2026-09-24 closing open item 4 of the 2026-09-23 documentation audit. website/src/content docs link each other with Astro routes (../cloud-sync/, ../../pricing/, /en/docs/...) -- a filesystem scanner flagged ~90 of them as dead while every one resolved, and could not see a ghost slug either way. This is the site-aware checker: route table from astro.config i18n locales x src/pages ([locale] expanded, directory-format URLs) x content routes enumerated the way [...slug].astro emits them (a ghost slug is red even though the catch-all pattern exists) x public/ files and public/_redirects sources; per-collection base URLs (docs -> /{loc}/docs/{slug}/, legal -> its consuming page); fence/backtick-aware extraction so authoring-guide examples are not claims; #fragments graded against the target page's real heading ids since 2026-09-24 (github-slugger 2.0.0 port, verified on all 9,003 repo headings: duplicate-heading -1/-2 suffixes, explicit HTML ids; component-route fragments skipped as documented). Fail-loud contract: unparseable locales, a renamed docs catch-all, missing content, or an unenumerable dynamic segment exit 1 rather than reading green. Runner: python .agents/skills/docs-auditor/scripts/check-site-links.py. NO ci block BY DESIGN, local-only like adr-status. Green from day one (38 content docs, 0 findings); --self-test carries 27 red/green cases and runs in scripts/check-auditor-selftests.sh."
+      "_note": "Added 2026-09-24 closing open item 4 of the 2026-09-23 documentation audit. website/src/content docs link each other with Astro routes (../cloud-sync/, ../../pricing/, /en/docs/...) -- a filesystem scanner flagged ~90 of them as dead while every one resolved, and could not see a ghost slug either way. This is the site-aware checker: route table from astro.config i18n locales x src/pages ([locale] expanded, directory-format URLs) x content routes enumerated the way [...slug].astro emits them (a ghost slug is red even though the catch-all pattern exists) x public/ files and public/_redirects sources; per-collection base URLs (docs -> /{loc}/docs/{slug}/, legal -> its consuming page); fence/backtick-aware extraction so authoring-guide examples are not claims; #fragments graded against the target page's real heading ids since 2026-09-24 (github-slugger 2.0.0 port, verified on all 9,003 repo headings: duplicate-heading -1/-2 suffixes, explicit HTML ids; component-route fragments skipped as documented). Fail-loud contract: unparseable locales, a renamed docs catch-all, missing content, or an unenumerable dynamic segment exit 1 rather than reading green. Runner: python .agents/skills/docs-auditor/scripts/check-site-links.py. NO ci block BY DESIGN, local-only like adr-status. Green from day one (38 content docs, 0 findings); --self-test carries 27 red/green cases and runs in scripts/check-auditor-selftests.sh. WIRED INTO CI 2026-10-19 (static-gates): it had been wired into scripts/check.sh and marked status=required with NO ci block, so 'required' meant required of a developer running check.sh by hand. Measured before wiring: all six docs checkers lacking a ci block are stdlib-only and read the working tree, so none needed a toolchain the job lacks.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Docs site links"
+        ]
+      }
     },
     {
       "id": "dead-refs",
@@ -1666,7 +1687,14 @@
           "docs orphans"
         ]
       },
-      "_note": "Wired 2026-10-02. check-orphans.py shipped in the docs-auditor skill and was invoked by nothing — not check.sh, not CI, not the hook. It had been run manually once per round of the docs restructure, which is diligence, not enforcement: nothing would have failed if a document became unreachable. Green on the day it was wired (0 findings), so wiring it changes no current verdict and makes future unreachable-document drift fail a gate."
+      "_note": "Wired 2026-10-02. check-orphans.py shipped in the docs-auditor skill and was invoked by nothing — not check.sh, not CI, not the hook. It had been run manually once per round of the docs restructure, which is diligence, not enforcement: nothing would have failed if a document became unreachable. Green on the day it was wired (0 findings), so wiring it changes no current verdict and makes future unreachable-document drift fail a gate. WIRED INTO CI 2026-10-19 (static-gates): it had been wired into scripts/check.sh and marked status=required with NO ci block, so 'required' meant required of a developer running check.sh by hand. Measured before wiring: all six docs checkers lacking a ci block are stdlib-only and read the working tree, so none needed a toolchain the job lacks.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Docs orphans"
+        ]
+      }
     },
     {
       "id": "audit-stamps",
@@ -1692,7 +1720,14 @@
           "nav paths"
         ]
       },
-      "_note": "Wired 2026-10-02, after repairing the detector rather than before. The checker grades bolded '**Parent -> Child**' pairs in the bilingual customer docs against the UI nav model, and both of its findings were false: the 2026-09-30 customer rename sweep records '**Store -> Location**' in exactly the shape a nav instruction takes. It now treats a blockquote opening with a date as a change stamp and skips the rest of that block. Deliberately narrow - a three-way control pins that a quote NOT opening with a date is still graded - because skipping every blockquote would also skip a real nav instruction. Also fixed earlier the same day: the human-readable output crashed on Windows, where cp1252 cannot encode the arrow, so the checker could never show what it found."
+      "_note": "Wired 2026-10-02, after repairing the detector rather than before. The checker grades bolded '**Parent -> Child**' pairs in the bilingual customer docs against the UI nav model, and both of its findings were false: the 2026-09-30 customer rename sweep records '**Store -> Location**' in exactly the shape a nav instruction takes. It now treats a blockquote opening with a date as a change stamp and skips the rest of that block. Deliberately narrow - a three-way control pins that a quote NOT opening with a date is still graded - because skipping every blockquote would also skip a real nav instruction. Also fixed earlier the same day: the human-readable output crashed on Windows, where cp1252 cannot encode the arrow, so the checker could never show what it found. WIRED INTO CI 2026-10-19 (static-gates): it had been wired into scripts/check.sh and marked status=required with NO ci block, so 'required' meant required of a developer running check.sh by hand. Measured before wiring: all six docs checkers lacking a ci block are stdlib-only and read the working tree, so none needed a toolchain the job lacks.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Docs nav paths"
+        ]
+      }
     },
     {
       "id": "ci-claims",
@@ -1703,7 +1738,14 @@
           "ci claims"
         ]
       },
-      "_note": "Wired 2026-10-02, after the same repair-then-wire order. The checker grades CI job and step names asserted in prose against the live workflows. All seven of its findings were inside docs/records/superseded/ and docs/records/audits/ - dated records describing the retired ci-pipeline doc - so those folders joined SKIP_DIR, mirroring ARCHIVE_PREFIXES in verify-doc-uniqueness.py. Scan scope measured before and after: 473 docs to 410, the 63 dated records excluded, 410 still graded. Its 80-line lookahead was also a bug worth naming: northflank-deploy carries its steps: 98 lines below its key, so the job fell out of the live set and a CORRECT runbook was reported as claiming a job no workflow defines."
+      "_note": "Wired 2026-10-02, after the same repair-then-wire order. The checker grades CI job and step names asserted in prose against the live workflows. All seven of its findings were inside docs/records/superseded/ and docs/records/audits/ - dated records describing the retired ci-pipeline doc - so those folders joined SKIP_DIR, mirroring ARCHIVE_PREFIXES in verify-doc-uniqueness.py. Scan scope measured before and after: 473 docs to 410, the 63 dated records excluded, 410 still graded. Its 80-line lookahead was also a bug worth naming: northflank-deploy carries its steps: 98 lines below its key, so the job fell out of the live set and a CORRECT runbook was reported as claiming a job no workflow defines. WIRED INTO CI 2026-10-19 (static-gates): it had been wired into scripts/check.sh and marked status=required with NO ci block, so 'required' meant required of a developer running check.sh by hand. Measured before wiring: all six docs checkers lacking a ci block are stdlib-only and read the working tree, so none needed a toolchain the job lacks.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Docs CI claims"
+        ]
+      }
     },
     {
       "id": "cite-lines",
@@ -1714,7 +1756,14 @@
           "cite lines"
         ]
       },
-      "_note": "Wired 2026-10-19, after the repair-then-wire order every other docs gate here uses. The gap it closes: every other docs checker resolves a PATH, and none grades a LINE NUMBER, so a citation could name the right file and the wrong hundred lines indefinitely while all nine stayed green. Measured on 2026-10-19 before the repair: 23 of 150 sampled live citations were on the wrong line and the worst was 333 lines out, all inside docs/operations/runbook.md. The checker anchors on a BACKTICKED symbol on the doc line and asks whether that symbol is within +/-8 lines of N; a bare prose identifier is never an anchor, because a first version accepted them and reported a correct citation as drift (a prose `AppState` at :32 in a 1005-line file). Anchors are tried NEAREST-FIRST from the citation, not longest-first, after longest-first mis-anchored a `.filter(...)` citation onto a function name later in the same table cell. NO-ANCHOR citations are reported as ungraded, never as passes. Live scope only: docs/records/, docs/specs/_done/, docs/plans/ and todo-/plan-/done-/prd- files are dated records and are skipped, the same rule check-dead-refs.py applies to paths. A deliberately historical citation carries an inline `dead-ref: ok:` pragma."
+      "_note": "Wired 2026-10-19, after the repair-then-wire order every other docs gate here uses. The gap it closes: every other docs checker resolves a PATH, and none grades a LINE NUMBER, so a citation could name the right file and the wrong hundred lines indefinitely while all nine stayed green. Measured on 2026-10-19 before the repair: 23 of 150 sampled live citations were on the wrong line and the worst was 333 lines out, all inside docs/operations/runbook.md. The checker anchors on a BACKTICKED symbol on the doc line and asks whether that symbol is within +/-8 lines of N; a bare prose identifier is never an anchor, because a first version accepted them and reported a correct citation as drift (a prose `AppState` at :32 in a 1005-line file). Anchors are tried NEAREST-FIRST from the citation, not longest-first, after longest-first mis-anchored a `.filter(...)` citation onto a function name later in the same table cell. NO-ANCHOR citations are reported as ungraded, never as passes. Live scope only: docs/records/, docs/specs/_done/, docs/plans/ and todo-/plan-/done-/prd- files are dated records and are skipped, the same rule check-dead-refs.py applies to paths. A deliberately historical citation carries an inline `dead-ref: ok:` pragma.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "path:line citations"
+        ]
+      }
     },
     {
       "id": "doc-parity",
@@ -1725,7 +1774,14 @@
           "doc parity"
         ]
       },
-      "_note": "Wired 2026-10-19. website/src/content/docs/{en,id} are the same pages in two locales; a slug present in one and absent from the other is a 404 for half the audience. The checker already existed, worked, and was invoked by NOTHING -- no .githooks step, no check.sh step, no CI job, no website/package.json script -- while website/src/content/docs/{en,id}/docs-authoring.md instructed every contributor to run it after adding or renaming a page. That is the same 'a documented check nobody executes' class this registry already records for the script tests and the dead-refs gate, and the authoring guide pointing at an unenforced check is the specific combination worth closing. Negative control run before wiring: a probe page added under en/ with no id/ twin made the checker exit 1 naming en/zz-parity-probe.md, and it passed again once the probe was removed, so the green is earned. It fails on a missing counterpart and only WARNS on heading-count/`updated` divergence, which is deliberate translation variance rather than drift. Runs from the repo root: the script resolves its paths from __file__."
+      "_note": "Wired 2026-10-19. website/src/content/docs/{en,id} are the same pages in two locales; a slug present in one and absent from the other is a 404 for half the audience. The checker already existed, worked, and was invoked by NOTHING -- no .githooks step, no check.sh step, no CI job, no website/package.json script -- while website/src/content/docs/{en,id}/docs-authoring.md instructed every contributor to run it after adding or renaming a page. That is the same 'a documented check nobody executes' class this registry already records for the script tests and the dead-refs gate, and the authoring guide pointing at an unenforced check is the specific combination worth closing. Negative control run before wiring: a probe page added under en/ with no id/ twin made the checker exit 1 naming en/zz-parity-probe.md, and it passed again once the probe was removed, so the green is earned. It fails on a missing counterpart and only WARNS on heading-count/`updated` divergence, which is deliberate translation variance rather than drift. Runs from the repo root: the script resolves its paths from __file__.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Website locale parity"
+        ]
+      }
     }
   ]
 }

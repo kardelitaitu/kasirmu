@@ -1101,6 +1101,26 @@ jobs:
       # twin made it exit 1, and it passed again once removed. Gates.json: doc-parity.
       - name: Website locale parity
         run: python3 website/scripts/check-doc-parity.py
+      # Six docs-auditor checkers were wired into scripts/check.sh and recorded in
+      # gates.json with status "required", but ran in NO CI job -- so "required" meant
+      # "required of a developer who runs check.sh by hand", which is the same
+      # diligence-not-enforcement gap this file records for the script tests and the
+      # audit-record footers. All six are stdlib-only and read the working tree (the
+      # site-links checker parses website/astro.config.mjs, src/pages and public/, not a
+      # build), so they belong here where no toolchain install is needed. Verified
+      # 2026-10-19: each exits 0 on a clean tree and none imports a third-party module.
+      - name: Docs orphans
+        run: python3 .agents/skills/docs-auditor/scripts/check-orphans.py
+      - name: Docs site links
+        run: python3 .agents/skills/docs-auditor/scripts/check-site-links.py
+      - name: Docs nav paths
+        run: python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py
+      - name: Docs env vars
+        run: python3 .agents/skills/docs-auditor/scripts/check-env-docs.py
+      - name: Docs ADR status
+        run: python3 .agents/skills/docs-auditor/scripts/check-adr-status.py
+      - name: Docs CI claims
+        run: python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
