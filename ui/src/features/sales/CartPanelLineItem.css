@@ -192,14 +192,6 @@
   word-break: break-word;
 }
 
-.pos-cart-line-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
-  margin-top: 2px;
-  margin-bottom: 2px;
-}
 
 .pos-cart-line-price {
   font-size: var(--text-xs);

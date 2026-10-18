@@ -3249,6 +3249,18 @@ const EXTERNAL_CLASS_OPEN_QUESTIONS: { entry: string; value: string; question: s
 ];
 
 const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] = [
+  // REMOVED 2026-10-19: `RestaurantMenu: restaurant-card`. It was a correct mute
+  // for a real walk limitation -- MenuItemTile.tsx:211 composes the base in a local
+  // (`let cardClass = 'restaurant-card'`), so the extractor never sees the literal.
+  // It is gone because noise-ditherCompliance now requires `.restaurant-card::after`
+  // in ui/src/theme/components.css (the card carries --shadow-md at
+  // RestaurantMenu.css:898), and definedElsewhere() below indexes every sheet EXCEPT
+  // this entry's own -- so that shared entry makes the value resolve elsewhere and
+  // the violation this mute was paired with no longer fires. Keeping the member
+  // would mean keeping a mute for a finding that cannot occur; the assertion's own
+  // rule is that a healed value cannot stay. The dither requirement is the stronger
+  // of the two (a real paint defect vs. a walk limitation), so it won. If the
+  // overlay ever leaves components.css, this mute must come BACK.
   {
     entry: 'SettingsPage',
     value: 'settings-topology-container',
@@ -3258,11 +3270,6 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     entry: 'WorkspaceHome',
     value: 'workspace-card-ripple',
     reason: 'non-JSX: assigned imperatively at features/workspaces/WorkspaceHome.tsx:488, so it never enters the used set; removing its mute printed Dead classes and the value was restored',
-  },
-  {
-    entry: 'RestaurantMenu',
-    value: 'restaurant-card',
-    reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
   },
   {
     entry: 'KdsScreen',
