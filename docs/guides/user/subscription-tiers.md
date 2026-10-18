@@ -243,18 +243,29 @@ a category a tier does not include.
 prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active staff
 users with the owner excluded.
 
-\*\* Sales history cap — **enforced in the TABLET client only**
-(`apps/mobile-tauri/src/commands/history.rs:69`, and the paged variant at `:329`): the tier
-window is read from the
+\*\* Sales history cap — **enforced in BOTH clients**, and the mechanism is shared rather
+than duplicated per shell. `list_sales_scoped` in both shells
+(`apps/desktop-tauri/src/commands/history.rs:36`, `apps/mobile-tauri/src/commands/history.rs:298`)
+applies it: the tier window is read from the
 tenant subscription **after signature verification** and applied by
-`list_sales_with_history_cap(days)`, which returns the rows plus a `capped` flag instead
-of erroring — the blurred-preview-with-CTA behaviour this note asked for. **The desktop
-shell does not apply it**: `apps/desktop-tauri/src/commands/history.rs` contains no
-`list_sales_with_history_cap` and no `sales_history_days` read (zero hits, verified
-2026-10-19), so a Free user on the desktop app can still page past the 3-month window.
-This sentence claimed "both clients" until then; the desktop half was never wired, and
-wiring it is a code change rather than a doc one — recorded here rather than silently
-narrowed. Free users see
+`list_sales_with_history_cap_bounded(days, limit, offset)`, which returns the rows plus a
+`capped` flag instead of erroring — the blurred-preview-with-CTA behaviour this note asked for.
+The desktop shell delegates to `kasirmu_bridge::history::list_sales_scoped_bounded`
+(`crates/kasirmu-bridge/src/history.rs:77-104`), which loads the subscription, verifies the
+signature, resolves the tier **ledger-aware** (MSL-36: no clock-rollback path to the paid window)
+and calls the capped store method at `:104`; the tablet shell keeps its own body but calls the
+same `list_sales_with_history_cap_bounded` (`apps/mobile-tauri/src/commands/history.rs:329`).
+
+> **Corrected 2026-10-19, and the correction is the interesting part.** This note briefly said
+> the cap was "enforced in the TABLET client only" and that the desktop shell did not apply it.
+> That was wrong, and it was wrong in the way a real check is supposed to prevent: a grep for
+> `list_sales_with_history_cap` across `apps/desktop-tauri/src` returns **zero** hits because the
+> desktop command is a thin wrapper — it contains no cap logic *of its own* — so the absence of
+> the symbol was read as absence of the behaviour. The behaviour lives one layer down in the
+> shared bridge crate. **The lesson worth keeping: a zero-hit grep on a delegating shell proves
+> nothing about the capability; trace to where the work is done before calling it missing.**
+
+Free users see
 only the last 3 months; after 3+ months the owner naturally wants to compare months, which
 remains the primary Free → Plus trigger.
 
