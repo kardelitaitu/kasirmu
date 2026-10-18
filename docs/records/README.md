@@ -260,12 +260,15 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Verifying my own fix found a defect in it — 2026-10-18](audits/2026-10-18-verifying-my-own-fix.md) | — |
 | general | [A suspected defect that did not survive checking — 2026-10-18](audits/2026-10-18-withdrawn-anchor-claim.md) | — |
 | general | [A finding I withdrew, and the rule that decides it — 2026-10-18](audits/2026-10-18-withdrawn-dispatch-claim.md) | — |
+| general | [A test that tested the change, not the mechanism — 2026-10-19](audits/2026-10-19-a-test-that-tested-the-change.md) | — |
 | theming | [Four doc claims that were true of the document, not of the tool](audits/2026-10-19-branding-manifest-inert-and-checker-coverage.md) | — |
 | general | [Three red gates, and the one that was only ever red here — 2026-10-19](audits/2026-10-19-full-matrix-red-gates.md) | — |
 | general | [An IPC door the desktop does not have, reached by an empty-string fallback — 2026-10-19](audits/2026-10-19-ipc-door-missing-and-root-debris.md) | — |
 | general | [A five-year retention nobody implemented, and a TLS version nobody pinned — 2026-10-19](audits/2026-10-19-legal-retention-and-tls-claims.md) | — |
 | release | [Line-number citation drift: measured, partly repaired, and still open — 2026-10-19](audits/2026-10-19-line-number-citation-residual.md) | — |
+| topology | [Seventy NUL-filled files in node_modules, and the gate failures they faked — 2026-10-19](audits/2026-10-19-node-modules-nul-corruption.md) | — |
 | general | [Every required gate now has a runner it can actually reach — 2026-10-19](audits/2026-10-19-required-gates-without-runners.md) | — |
+| release | [A green citation gate that could not see two dead citations — 2026-10-19](audits/2026-10-19-ungraded-citations-and-a-guard-that-measured-the-wrong-process.md) | — |
 | general | [49 of the 50 "modified" paths are phantoms, and one is real (round 289)](audits/49-of-50-modified-paths-are-phantoms.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
 | general | [The acceptance spec's clip rule, validated against a probe that lacked it (round 271)](audits/acceptance-clip-rule-validated.md) | — |
