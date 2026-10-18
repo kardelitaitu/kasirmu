@@ -564,8 +564,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      // RE-ENTRY GUARD. The submit button is disabled while busy (:1331), but this
-      // handler is also the form's `onSubmit` (:644) — pressing Enter in a field submits
+      // RE-ENTRY GUARD. The submit button is disabled while busy (:1360), but this
+      // handler is also the form's `onSubmit` (:659) — pressing Enter in a field submits
       // it directly and never consults the button. Without this, two submits ran
       // `provisionDevice` twice, which CREATES the device, the location and the OWNER
       // ACCOUNT in one call (:592-608). This is the one-shot first-run operation, so a
@@ -697,6 +697,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   </li>
                 );
               })}
+              {/* Connectors ride between the items, not inside them: an <li> may
+                  not hold sibling content that belongs to no list item, and the
+                  line's state is derived from the PREVIOUS step being done.
+                  aria-hidden because "a line" is not a fact worth announcing —
+                  the "Step N of M" paragraph below already says it in words. */}
+              {STEPS.slice(0, -1).map((step, i) => (
+                <li key={`${step.id}-connector`} aria-hidden="true" className="provisioning-step-connector-item">
+                  <span className={`provisioning-step-connector${stepDone[i] ? ' is-complete' : ''}`} />
+                </li>
+              ))}
             </ol>
             <p className="provisioning-step-progress">
               <Localized
@@ -726,6 +736,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
         {/* Step 1: Mode Selection (ADR #56 §2.3) */}
         {activeStep === 0 && (
+        <div className="provisioning-step-enter" key="step-0">
         <section className="provisioning-mode-box" aria-labelledby="provision-mode-heading">
           <h2 id="provision-mode-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
             <Localized id="setup-provision-mode-section">Setup Mode</Localized>
@@ -763,6 +774,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </button>
           </div>
         </section>
+        </div>
         )}
 
         {/* Step 2: Account Linking (Shown only for Mode 2: Linked) */}
@@ -1107,7 +1119,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         )}
 
         {activeStep === 1 && (
-        <>
+        <div className="provisioning-step-enter" key="step-1">
         <fieldset className="provisioning-fieldset">
           <legend>
             <Localized id="setup-provision-store-type">
@@ -1180,11 +1192,11 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </Localized>
           </label>
         </div>
-        </>
+        </div>
         )}
 
         {activeStep === 2 && (
-        <>
+        <div className="provisioning-step-enter" key="step-2">
         <div className="provisioning-field">
           {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
           <label htmlFor="provision-location-name">
@@ -1273,7 +1285,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </p>
           )}
         </div>
-        </>
+        </div>
         )}
 
         {/* Above the button, in the same gap the user is already looking at.
