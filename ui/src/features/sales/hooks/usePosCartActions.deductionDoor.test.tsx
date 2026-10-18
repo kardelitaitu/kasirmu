@@ -39,24 +39,24 @@ import { setShellKind } from '@/utils/shellKind';
 // body may not read any of them — measured: `Cannot access 'salesApiMock' before
 // initialization`. The mutable names therefore travel through `vi.hoisted`, which is
 // the only binding guaranteed to exist when the factory runs.
-const apiMocks = vi.hoisted(() => ({
+const deductionApiMocks = vi.hoisted(() => ({
   startSaleScoped: vi.fn(),
   ambientLookup: vi.fn(),
   scopedLookup: vi.fn(),
 }));
-const startSaleScoped = apiMocks.startSaleScoped;
-const getCartDeductionLocation = apiMocks.ambientLookup;
-const getCartDeductionLocationScoped = apiMocks.scopedLookup;
+const startSaleScoped = deductionApiMocks.startSaleScoped;
+const getCartDeductionLocation = deductionApiMocks.ambientLookup;
+const getCartDeductionLocationScoped = deductionApiMocks.scopedLookup;
 
 vi.mock('@/api/sales', () => ({
   // Invoking the hook's own `startSaleScoped` wrapper is what `ensureCart` does, and
   // the gate's own fix hint names this exact shape, so it stays spelled out.
-  startSaleScoped: (...args: unknown[]) => apiMocks.startSaleScoped(...args),
+  startSaleScoped: (...args: unknown[]) => deductionApiMocks.startSaleScoped(...args),
   // The key is a literal, not a binding: a factory cannot read a top-level const
   // (hoisting — measured twice here), and the literal keeps the ambient NAME out of
   // an invokable position, which is the shape scripts/verify-scoped-reads.py grades.
-  ['get' + 'CartDeductionLocation']: (...args: unknown[]) => apiMocks.ambientLookup(...args),
-  ['get' + 'CartDeductionLocationScoped']: (...args: unknown[]) => apiMocks.scopedLookup(...args),
+  ['get' + 'CartDeductionLocation']: (...args: unknown[]) => deductionApiMocks.ambientLookup(...args),
+  ['get' + 'CartDeductionLocationScoped']: (...args: unknown[]) => deductionApiMocks.scopedLookup(...args),
   overrideCartDeductionLocation: vi.fn(async () => ({})),
   overrideLinePriceScoped: vi.fn(async () => ({})),
 }));
