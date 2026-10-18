@@ -335,6 +335,9 @@ function scanCSS(filePath: string): Violation[] {
 
 const CSS_FILES = [
   'features/restaurant/RestaurantMenu.css',
+  'features/restaurant/screens/RestaurantMenuEditorScreen.css',
+  'features/restaurant/components/RestaurantCartSheet.css',
+  'features/restaurant/screens/RestaurantSettingsScreens.css',
   'features/retail/RetailPosScreen.css',
   'features/sales/PaymentModal.css',
   'features/sales/PosScreen.css',

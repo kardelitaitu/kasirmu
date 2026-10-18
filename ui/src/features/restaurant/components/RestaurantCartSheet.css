@@ -104,14 +104,13 @@ body:has(.restaurant-cart-sheet-panel) {
   --memo-bottom-inset: calc(85dvh + var(--space-3));
 }
 
-/* ── Grabber handle ────────────────────────────────────────── */
+/* ── Grabber handle (decorative affordance) ────────────────── */
 .restaurant-cart-sheet-handle-wrap {
   display: flex;
   justify-content: center;
   align-items: center;
   padding-top: var(--space-2);
   padding-bottom: var(--space-1);
-  cursor: pointer;
   flex-shrink: 0;
 }
 

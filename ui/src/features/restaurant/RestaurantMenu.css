@@ -664,6 +664,19 @@
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
+  position: relative;
+}
+
+.restaurant-categories-area::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 1px;
+  width: var(--space-8);
+  background: linear-gradient(to right, transparent, var(--color-bg));
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* ── Category tabs ──────────────────────────────── */
@@ -1017,9 +1030,7 @@ body.is-resizing .restaurant-card * {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: calc(var(--space-2) + var(--card-size, 0) * 4px) var(--card-add-width) calc(var(--space-1_5) + var(--card-size, 0) * 4px) calc(var(--space-3_5) + var(--card-size, 0) * 2px);
-  padding-top: calc(var(--space-2_5) + var(--card-size, 0) * 4px);
-  padding-left: calc(var(--space-3_5) + var(--card-size, 0) * 2px);
+  padding: calc(var(--space-2_5) + var(--card-size, 0) * 4px) var(--card-add-width) calc(var(--space-1_5) + var(--card-size, 0) * 4px) calc(var(--space-3_5) + var(--card-size, 0) * 2px);
   transition: padding var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
