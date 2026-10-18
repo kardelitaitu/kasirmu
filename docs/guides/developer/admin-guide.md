@@ -40,7 +40,7 @@ Navigate to **Admin → Workspaces** to manage workspace types:
 3. Set **role** (owner, manager, cashier, kitchen)
 4. Assign a **PIN** (**4–8 digits**) for quick login. The minimum is 4, enforced twice:
    `ui/src/features/auth/CreatePinScreen.tsx:73` (`cleanPin.length < 4`) and again
-   server-side at `crates/kasirmu-core/src/db/provisioning.rs:702`
+   server-side at `crates/kasirmu-core/src/db/provisioning.rs:765`
    (`args.owner_pin.chars().count() < 4`). The maximum is 8, and it is not an
    error — `digitsOnly()` at `CreatePinScreen.tsx:65` does `.slice(0, 8)`, so a longer
    paste is silently truncated rather than rejected. "4-6" was wrong at the top end and
