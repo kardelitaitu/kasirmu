@@ -3317,7 +3317,12 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // flex-centred button whose height is padding + content, and `normal` (~1.2)
   // would grow it. No --leading-* step is 1, so deleting the declaration would be
   // a visual change rather than a token adoption; it is listed here instead.
-  ["1", "ui/src/features/sales/CartPanel.css", 1],
+  // 1 -> 2 on 2026-10-19: 82a0dc983c added the order-type dropdown trigger
+  // (`pos-cart-order-type-menu-trigger`, :853) as a second `line-height: 1` in this
+  // sheet, beside the pill at :1010. Both are single-line controls boxed to a fixed
+  // height, so the step is 1 by the same reason the other compact chips use it --
+  // a taller line box would make them grow with the font instead of the shell.
+  ["1", "ui/src/features/sales/CartPanel.css", 2],
   ["1.4", "ui/src/features/sales/CartPanel.css", 2],
   ["1", "ui/src/features/sales/CartPanelCourseBar.css", 2],
   ["1", "ui/src/features/sales/CartPanelFooterTotals.css", 1],
@@ -3325,7 +3330,12 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // (:163, :486) beside the original at :541. 1.3 is not a --leading-* step
   // (condensed 1.2 / tight 1.25 / snug 1.4 / normal 1.5 / relaxed 1.625), so
   // there is no token to adopt and the freeze is restated instead.
-  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 3],
+  // 3 -> 2 on 2026-10-19: 2bf97436c split the cart line into the order-details and
+  // controls flex containers and the third 1.3 site went with it. A PAID-DOWN
+  // deletion still has to name the step it became, which is what this line does:
+  // the two survivors (:534 modifier chip, :602 modifier price tag) are the
+  // remaining compact tags in the sheet.
+  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 2],
   ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
   ["1", "ui/src/features/sales/PaymentModal.css", 3],
   // The ["1.4", …, 1] row was REMOVED 2026-10-08, not moved: both of its sites

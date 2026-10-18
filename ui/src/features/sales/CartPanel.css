@@ -552,7 +552,23 @@
 }
 
 
-/* ── Order-type prompt row / dropdown ── */
+/* ── Order-type prompt row / dropdown ──
+ *
+ * `.pos-cart-order-type-slider` and `.pos-cart-order-type-indicator` are the
+ * 2026-10-15 segmented slider, left dormant when 82a0dc983c replaced the control
+ * with the `.pos-cart-order-type-btn` pills below -- the slider class is applied
+ * by no element today (verified: zero className references in ui/src).
+ *
+ * They used to read `var(--order-type-count, 3)` and `var(--order-type-index, 0)`.
+ * NOTHING ever defined or set either token: no custom property in any sheet, no
+ * inline style, no JS setter. So both fell back to their literals on every path,
+ * which is why the geometry still measures correctly -- but themeTokenCompliance
+ * treats a token declared nowhere as a hard failure (a sheet with no fallback
+ * renders NOTHING), and it was right: the pair was writing a runtime contract the
+ * runtime never honoured. The literals are now stated, so the sheet declares what
+ * it actually does. Wiring the slider back up means setting both properties from
+ * ORDER_TYPES in CartPanel.tsx, not only reintroducing the var() reads.
+ */
 .pos-cart-order-type-row {
   display: flex;
   padding: var(--space-1_5) var(--space-3);
@@ -565,7 +581,7 @@
   position: relative;
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(var(--order-type-count, 3), 1fr);
+  grid-template-columns: repeat(3, 1fr);
   align-items: center;
   padding: 3px;
   background: var(--color-bg-input);
@@ -580,7 +596,7 @@
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc((100% - 6px) / var(--order-type-count, 3));
+  width: calc((100% - 6px) / 3);
   border-radius: var(--radius-full);
   background: var(--color-accent);
   /* Shared elevation token, not a literal: themeTokenCompliance holds
@@ -590,7 +606,7 @@
      offset/blur it replaces; the inset hairline is dropped rather than adding a
      token to preserve a 1px highlight. */
   box-shadow: var(--shadow-md);
-  transform: translateX(calc(var(--order-type-index, 0) * 100%));
+  transform: translateX(0);
   /* Promote to its own composited layer for the slide (2026-10-15).
    *
    * WHY. The radius above is `var(--radius-full)` = 9999px, and CSS CLAMPS a
