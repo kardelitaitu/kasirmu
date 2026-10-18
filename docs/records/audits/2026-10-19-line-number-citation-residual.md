@@ -92,4 +92,33 @@ citations, and every prose claim with no coordinate at all. The check is a **flo
 That limit is printed on success, not only on failure, so a reader cannot mistake the 0 for full coverage.
 
 
+### Second follow-up: adjacent-line anchors (same day)
+
+The first wiring graded **136** citations and left **130** ungraded. Measuring *why* showed the cause was
+structural rather than random: **73 of the 98** no-anchor citations had their symbol on the line above or
+below — the ordinary prose shape, where the coordinate ends a line and the symbol starts the next one.
+
+The checker now consults the neighbouring lines, under one narrow condition: **only when the citation's own
+line carries no other backticked token.** That gate is not caution for its own sake — without it the
+neighbour recovers the *wrong* symbol, and two correct citations were flagged before it existed:
+`main.rs:630` ("the field is `db`") picked up `db_kind` from the line below, and `mobile/lib.rs:1331`
+picked up a fiscal command from the next line. A line that already names something is its own evidence.
+
+**Result: 137 → 176 graded citations (+28% coverage), still 0 DRIFTED / 0 SYMBOL-GONE, 93 ungraded.** The
+extension surfaced 22 findings that the first pass could not see; every one was checked against the code
+before being acted on, and the split was instructive — most were *correct* citations the heuristic
+mis-anchored (a range whose symbol sits outside it, a prose line naming a field whose value is defined
+elsewhere), and a handful were genuine: the tablet's data-command range started 11 lines early
+(`1090-1102` → `1101-1103`, the three `commands::data::*` entries) and one CLI dispatch citation pointed
+at `commands/mod.rs:90` instead of `:183`.
+
+The lesson matches the one already recorded above, one layer down: **an anchor heuristic that fires on a
+neighbourhood rather than on a line will always over-reach somewhere, and the over-reach must be gated by
+structure (does this line already name something?) rather than by confidence.** Each gate added here is
+pinned by a self-test case, and the suite is now 8 cases including one control asserting that a neighbour
+must NOT override an own-line symbol.
+
+**Still ungraded: 93.** These name no symbol even after looking at their neighbours — pure prose claims,
+and citations whose symbol appears only in a comment or a doc string. The check remains a floor.
+
 > last audited 19-10-26 by docs-auditor
