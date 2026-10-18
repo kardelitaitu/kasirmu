@@ -139,16 +139,16 @@ It fails when a counterpart is missing, and warns on heading-count or
 moves together whenever content changes — it is the page's freshness
 signal, so editing a page without bumping it is itself drift.
 
-> **This check is not enforced anywhere.** No `.githooks/pre-commit` step, no
-> `scripts/check.sh` step, no `scripts/gates.json` entry, no CI job, and no
-> `website/package.json` script invokes `website/scripts/check-doc-parity.py`
-> (verified 2026-10-19 with `git grep -n check-doc-parity -- .githooks
-> scripts/gates.json scripts/check.sh .github/workflows website/package.json`,
-> which returns nothing). It is green today — 20 page pairs — but only because
-> someone ran it by hand. Treat it as advisory: run it after adding, renaming,
-> or removing a page, and do not assume a passing pipeline checked it for you.
-> The path in the command above is relative to `website/`; from the repository
-> root the same command fails with `can't open file`, which is the one trap in
-> using it.
+> **This check IS enforced** — as of 2026-10-19. It runs in `scripts/check.sh`
+> (step `doc parity`), is registered in `scripts/gates.json` as `doc-parity`, and
+> runs in CI as `dev-ci.yml#static-gates` step `Website locale parity`. Before that
+> it was invoked by nothing, while this very page told contributors to run it —
+> recorded here because a guide that points at an unenforced check is how that gap
+> survives. The green is earned: a probe page added under `en/` with no `id/` twin
+> made the checker exit 1, and it passed again once the probe was removed.
+> It fails on a missing counterpart and only WARNS on heading-count or `updated`
+> divergence, which is legitimate translation variance rather than drift. Run it
+> after adding, renaming, or removing a page; the path in the command above is
+> relative to `website/`.
 
 > last audited 11-10-26 by docs-auditor

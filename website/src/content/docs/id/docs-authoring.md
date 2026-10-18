@@ -145,16 +145,16 @@ kali konten berubah — itulah sinyal kesegaran halaman, jadi mengedit
 halaman tanpa membarukannya adalah drift.
 
 >
-> **Pemeriksaan ini tidak ditegakkan di mana pun.** Tidak ada langkah di
-> `.githooks/pre-commit`, `scripts/check.sh`, entri `scripts/gates.json`, job CI,
-> maupun skrip `website/package.json` yang memanggil
-> `website/scripts/check-doc-parity.py` (diverifikasi 2026-10-19 dengan
-> `git grep -n check-doc-parity -- .githooks scripts/gates.json scripts/check.sh
-> .github/workflows website/package.json`, yang tidak menghasilkan apa pun).
-> Statusnya hijau hari ini — 20 pasangan halaman — tetapi hanya karena ada yang
-> menjalankannya manual. Perlakukan sebagai anjuran: jalankan setelah menambah,
-> mengganti nama, atau menghapus halaman, dan jangan berasumsi pipeline yang
-> lulus sudah memeriksanya. Jalur pada perintah di atas relatif terhadap
-> `website/`; dari akar repositori perintah yang sama gagal dengan
-> `can't open file`, dan itulah satu-satunya jebakan pemakaiannya.
-> last audited 11-10-26 by docs-auditor
+> **Pemeriksaan ini SUDAH ditegakkan** — sejak 2026-10-19. Ia berjalan di
+> `scripts/check.sh` (langkah `doc parity`), terdaftar di `scripts/gates.json`
+> sebagai `doc-parity`, dan berjalan di CI sebagai langkah
+> `dev-ci.yml#static-gates` bernama `Website locale parity`. Sebelumnya tidak ada
+> yang memanggilnya, padahal halaman ini sendiri menyuruh kontributor
+> menjalankannya — dicatat di sini karena panduan yang menunjuk pemeriksaan yang
+> tidak ditegakkan adalah cara celah itu bertahan. Status hijaunya terbukti:
+> halaman uji yang ditambahkan di `en/` tanpa pasangan `id/` membuat pemeriksa
+> keluar dengan kode 1, dan kembali lulus setelah halaman uji itu dihapus.
+> Skrip gagal bila pasangan hilang dan hanya MEMPERINGATKAN perbedaan jumlah
+> judul atau `updated`, karena itu variasi terjemahan yang wajar, bukan drift.
+> Jalankan setelah menambah, mengganti nama, atau menghapus halaman; jalur pada
+> perintah di atas relatif terhadap `website/`.

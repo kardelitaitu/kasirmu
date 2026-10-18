@@ -1715,6 +1715,17 @@
         ]
       },
       "_note": "Wired 2026-10-19, after the repair-then-wire order every other docs gate here uses. The gap it closes: every other docs checker resolves a PATH, and none grades a LINE NUMBER, so a citation could name the right file and the wrong hundred lines indefinitely while all nine stayed green. Measured on 2026-10-19 before the repair: 23 of 150 sampled live citations were on the wrong line and the worst was 333 lines out, all inside docs/operations/runbook.md. The checker anchors on a BACKTICKED symbol on the doc line and asks whether that symbol is within +/-8 lines of N; a bare prose identifier is never an anchor, because a first version accepted them and reported a correct citation as drift (a prose `AppState` at :32 in a 1005-line file). Anchors are tried NEAREST-FIRST from the citation, not longest-first, after longest-first mis-anchored a `.filter(...)` citation onto a function name later in the same table cell. NO-ANCHOR citations are reported as ungraded, never as passes. Live scope only: docs/records/, docs/specs/_done/, docs/plans/ and todo-/plan-/done-/prd- files are dated records and are skipped, the same rule check-dead-refs.py applies to paths. A deliberately historical citation carries an inline `dead-ref: ok:` pragma."
+    },
+    {
+      "id": "doc-parity",
+      "label": "website content: every en page has an id twin",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "doc parity"
+        ]
+      },
+      "_note": "Wired 2026-10-19. website/src/content/docs/{en,id} are the same pages in two locales; a slug present in one and absent from the other is a 404 for half the audience. The checker already existed, worked, and was invoked by NOTHING -- no .githooks step, no check.sh step, no CI job, no website/package.json script -- while website/src/content/docs/{en,id}/docs-authoring.md instructed every contributor to run it after adding or renaming a page. That is the same 'a documented check nobody executes' class this registry already records for the script tests and the dead-refs gate, and the authoring guide pointing at an unenforced check is the specific combination worth closing. Negative control run before wiring: a probe page added under en/ with no id/ twin made the checker exit 1 naming en/zz-parity-probe.md, and it passed again once the probe was removed, so the green is earned. It fails on a missing counterpart and only WARNS on heading-count/`updated` divergence, which is deliberate translation variance rather than drift. Runs from the repo root: the script resolves its paths from __file__."
     }
   ]
 }

@@ -1001,6 +1001,16 @@ step "ci claims" "python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
 # CANNOT grade (citations naming no symbol) rather than counting them as passes.
 # Gate: scripts/gates.json -> "cite-lines".
 step "cite lines" "python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py" python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py
+# website/src/content/docs/{en,id} are the same pages in two locales, and a page
+# added to one without the other is a hole in the site a reader falls into. The
+# authoring guide (website/src/content/docs/en/docs-authoring.md, Locale parity) told
+# contributors to run this checker and NOTHING invoked it -- not the hook, not CI, not
+# this script. That is the "documented check nobody executes" class this file already
+# records twice; wired here with a negative control run before the wiring (a probe page
+# added to en/ and no id/ twin made it exit 1, then passed again once removed, so the
+# green below is earned rather than vacuous). It runs from the repo root because it
+# resolves paths from __file__. Gate: scripts/gates.json -> "doc-parity".
+step "doc parity" "python3 website/scripts/check-doc-parity.py" python3 website/scripts/check-doc-parity.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

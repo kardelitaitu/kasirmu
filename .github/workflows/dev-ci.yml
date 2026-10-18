@@ -1094,6 +1094,13 @@ jobs:
       # it cannot grade rather than counting them as passes. Gates.json: cite-lines.
       - name: path:line citations
         run: python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py
+      # website/src/content/docs/{en,id} are the same pages in two locales, and a
+      # slug added to one without the other is a 404 for half the audience. The
+      # authoring guide already told contributors to run this and NOTHING invoked
+      # it. Negative control run before wiring: a probe page under en/ with no id/
+      # twin made it exit 1, and it passed again once removed. Gates.json: doc-parity.
+      - name: Website locale parity
+        run: python3 website/scripts/check-doc-parity.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
