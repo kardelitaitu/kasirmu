@@ -1789,6 +1789,24 @@
           "Website locale parity"
         ]
       }
+    },
+    {
+      "id": "gate-runners",
+      "label": "every required gate names a runner the tree can reach",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "gate runners"
+        ]
+      },
+      "_note": "Added 2026-10-19 after a hand sweep found eight non-conforming entries in this very file. `status: \"required\"` asserts a change must pass the gate; that is only true if a runner can reach it, and nothing checked. Three shapes of failure were live: six docs checkers marked required with only a check.sh step and no ci block (required of a developer running check.sh by hand -- diligence, not enforcement); rust-clippy declaring the runner `clippy` while scripts/check.sh:96 defines `clippy workspace`, so a name-matching sweep saw an unwired gate where one was wired; and rust-clippy's own note saying since 2026-10-07 that a live `cargo-clippy` job exists while the gate carried NO ci block, so the prose was right and the machine-readable record was empty. The checker also treats a BAD ci block as a finding rather than a non-contribution: the first version only added reachability and never removed it, so a gate whose check.sh step was fine but whose ci block named a nonexistent job still reported reachable -- the under-reporting the checker exists to prevent, one level up. Proven against five planted shapes before wiring (bad step name, no runner at all, ci block naming a ghost job, ci block naming a ghost workflow, runner naming no script), each caught and the tree green. Scope limit: it proves a gate NAMES a reachable runner, not that CI executes it.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Gate runner reachability"
+        ]
+      }
     }
   ]
 }

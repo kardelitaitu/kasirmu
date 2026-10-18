@@ -1011,6 +1011,17 @@ step "cite lines" "python3 .agents/skills/docs-auditor/scripts/check-cite-lines.
 # green below is earned rather than vacuous). It runs from the repo root because it
 # resolves paths from __file__. Gate: scripts/gates.json -> "doc-parity".
 step "doc parity" "python3 website/scripts/check-doc-parity.py" python3 website/scripts/check-doc-parity.py
+# `status: "required"` in gates.json is a claim that a change must pass this gate.
+# That is only true if something can reach it. Measured 2026-10-19 and this is what
+# the sweep found: six checkers were required with only a check.sh step (i.e.
+# required of a developer who remembers to run check.sh), rust-clippy named a step
+# that does not exist, and its own note had said for twelve days that a live CI job
+# existed while the gate carried no ci block. This checker asks the one question no
+# other consistency checker asks -- can this gate be RUN? -- and was proven against
+# five planted defect shapes before wiring (bad step name, no runner, ci block
+# naming a ghost job, ci block naming a ghost workflow, runner with no script).
+# Gates.json: gate-runners.
+step "gate runners" "python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py" python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

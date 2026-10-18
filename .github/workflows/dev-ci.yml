@@ -1121,6 +1121,12 @@ jobs:
         run: python3 .agents/skills/docs-auditor/scripts/check-adr-status.py
       - name: Docs CI claims
         run: python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
+      # `status: "required"` in gates.json is only true if a runner can reach the
+      # gate. This step is that question asked of the registry itself; it found
+      # eight non-conforming entries on 2026-10-19, including six checkers that
+      # were "required" but ran only when a developer remembered check.sh.
+      - name: Gate runner reachability
+        run: python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
