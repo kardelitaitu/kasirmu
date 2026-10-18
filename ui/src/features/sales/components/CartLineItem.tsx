@@ -176,252 +176,259 @@ export function CartLineItem({
         role="group"
         aria-label={l10n.getString('pos-cart-line-aria', { sku: String(line.sku), qty: String(line.qty), amount: formatMoney(line.unit_price) })}
       >
-        {/* 1 — Thumbnail */}
-        <span
-          className="pos-cart-line-thumb"
-          style={{ '--thumb-hue': thumbnail.hue } as CSSProperties}
-          aria-hidden="true"
-        >
-          {thumbnail.initial}
-        </span>
-
-        {/* 2 — Name + price */}
-        <div className="pos-cart-line-info">
-          <div className="pos-cart-line-name">
-            {line.name ?? line.sku}
+        {/* 1 — Left container: The Order (2 rows) */}
+        <div className="pos-cart-line-order pos-cart-line-info">
+          {/* Row 1: Item Identity & Badges */}
+          <div className="pos-cart-line-order-row1">
+            <span
+              className="pos-cart-line-thumb"
+              style={{ '--thumb-hue': thumbnail.hue } as CSSProperties}
+              aria-hidden="true"
+            >
+              {thumbnail.initial}
+            </span>
+            <div className="pos-cart-line-name">
+              {line.name ?? line.sku}
+            </div>
+            {line.dispatchedQty !== undefined && line.dispatchedQty >= line.qty && (
+              <span className="pos-cart-line-dispatched-badge" data-testid="cart-line-dispatched-badge">
+                <Localized id="pos-line-status-sent">
+                  <span>Sent</span>
+                </Localized>
+              </span>
+            )}
+            {line.dispatchedQty !== undefined && line.dispatchedQty < line.qty && (
+              <span className="pos-cart-line-draft-badge" data-testid="cart-line-draft-badge">
+                <Localized id="pos-line-status-new">
+                  <span>New</span>
+                </Localized>
+              </span>
+            )}
           </div>
-          {(line.dispatchedQty !== undefined || onUpdateNote || (onEditModifiers && (!line.modifiers || line.modifiers.length === 0)) || onAssignCourse) && (
-            <div className="pos-cart-line-actions">
-              {line.dispatchedQty !== undefined && line.dispatchedQty >= line.qty && (
-                <span className="pos-cart-line-dispatched-badge" data-testid="cart-line-dispatched-badge">
-                  <Localized id="pos-line-status-sent">
-                    <span>Sent</span>
-                  </Localized>
-                </span>
-              )}
-              {line.dispatchedQty !== undefined && line.dispatchedQty < line.qty && (
-                <span className="pos-cart-line-draft-badge" data-testid="cart-line-draft-badge">
-                  <Localized id="pos-line-status-new">
-                    <span>New</span>
-                  </Localized>
-                </span>
-              )}
-              {onUpdateNote && (
+
+          {/* Row 2: Price, Modifiers, Course, Notes */}
+          <div className="pos-cart-line-order-row2">
+            <div className="pos-cart-line-price">
+              <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
+            </div>
+
+            {onAssignCourse && (
+              <span className="pos-cart-line-course">
                 <button
                   type="button"
-                  className={`pos-cart-line-note-btn${line.note ? ' pos-cart-line-note-btn--active' : ''}`}
+                  className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}${line.coursingStatus === 'fired' ? ' pos-cart-course-chip--fired' : line.coursingStatus === 'hold' ? ' pos-cart-course-chip--hold' : ''}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    openNoteEditor();
+                    onCourseMenuLineChange?.(courseOpen ? null : line.id);
                   }}
-                  aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
-                  data-testid="cart-line-note-btn"
+                  aria-label={l10n.getString('retail-cart-course-aria', { name: line.name ?? line.sku })}
+                  aria-expanded={courseOpen}
+                  data-testid="cart-line-course-chip"
                 >
-                  <NoteIcon />
+                  {line.courseId ? (
+                    <>
+                      <span>{courseEmoji(line.courseId)} {courseLabel(line.courseId)}</span>
+                      {line.coursingStatus === 'fired' && (
+                        <span
+                          className="pos-cart-course-status-badge pos-cart-course-status-badge--fired"
+                          data-testid="cart-line-course-status-fired"
+                        >
+                          ✓
+                        </span>
+                      )}
+                      {line.coursingStatus === 'hold' && (
+                        <span
+                          className="pos-cart-course-status-badge pos-cart-course-status-badge--hold"
+                          data-testid="cart-line-course-status-hold"
+                        >
+                          ⏸
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    'Course'
+                  )}
                 </button>
-              )}
-              {onEditModifiers && (!line.modifiers || line.modifiers.length === 0) && (
-                <button
-                  type="button"
-                  className="pos-cart-line-modifier-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditModifiers(line);
-                  }}
-                  aria-label={l10n.getString('edit-modifiers') || 'Customize item'}
-                  data-testid="cart-line-add-modifier-btn"
-                >
-                  <SlidersIcon />
-                </button>
-              )}
-              {onAssignCourse && (
-                <span className="pos-cart-line-course">
-                  <button
-                    type="button"
-                    className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}${line.coursingStatus === 'fired' ? ' pos-cart-course-chip--fired' : line.coursingStatus === 'hold' ? ' pos-cart-course-chip--hold' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCourseMenuLineChange?.(courseOpen ? null : line.id);
-                    }}
-                    aria-label={l10n.getString('retail-cart-course-aria', { name: line.name ?? line.sku })}
-                    aria-expanded={courseOpen}
-                    data-testid="cart-line-course-chip"
+                {courseOpen && (
+                  <span
+                    className="pos-cart-course-dropdown"
+                    role="listbox"
+                    aria-label={l10n.getString('select-course-aria')}
+                    data-testid="cart-line-course-dropdown"
                   >
-                    {line.courseId ? (
-                      <>
-                        <span>{courseEmoji(line.courseId)} {courseLabel(line.courseId)}</span>
-                        {line.coursingStatus === 'fired' && (
-                          <span
-                            className="pos-cart-course-status-badge pos-cart-course-status-badge--fired"
-                            data-testid="cart-line-course-status-fired"
-                          >
-                            ✓
-                          </span>
-                        )}
-                        {line.coursingStatus === 'hold' && (
-                          <span
-                            className="pos-cart-course-status-badge pos-cart-course-status-badge--hold"
-                            data-testid="cart-line-course-status-hold"
-                          >
-                            ⏸
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      'Course'
-                    )}
-                  </button>
-                  {courseOpen && (
-                    <span
-                      className="pos-cart-course-dropdown"
-                      role="listbox"
-                      aria-label={l10n.getString('select-course-aria')}
-                      data-testid="cart-line-course-dropdown"
+                    <button
+                      type="button"
+                      className={`pos-cart-course-option${!line.courseId ? ' pos-cart-course-option--active' : ''}`}
+                      role="option"
+                      aria-selected={!line.courseId}
+                      data-testid="cart-line-course-option-none"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAssignCourse(line.id, '');
+                        onCourseMenuLineChange?.(null);
+                      }}
                     >
+                      <Localized id="retail-course-none">
+                        <span>None</span>
+                      </Localized>
+                    </button>
+                    {COURSES.map((c) => (
                       <button
+                        key={c.id}
                         type="button"
-                        className={`pos-cart-course-option${!line.courseId ? ' pos-cart-course-option--active' : ''}`}
+                        className={`pos-cart-course-option${line.courseId === c.id ? ' pos-cart-course-option--active' : ''}`}
                         role="option"
-                        aria-selected={!line.courseId}
-                        data-testid="cart-line-course-option-none"
+                        aria-selected={line.courseId === c.id}
+                        data-testid={`cart-line-course-option-${c.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onAssignCourse(line.id, '');
+                          onAssignCourse(line.id, c.id);
                           onCourseMenuLineChange?.(null);
                         }}
                       >
-                        <Localized id="retail-course-none">
-                          <span>None</span>
-                        </Localized>
+                        {c.emoji} {c.label}
                       </button>
-                      {COURSES.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={`pos-cart-course-option${line.courseId === c.id ? ' pos-cart-course-option--active' : ''}`}
-                          role="option"
-                          aria-selected={line.courseId === c.id}
-                          data-testid={`cart-line-course-option-${c.id}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAssignCourse(line.id, c.id);
-                            onCourseMenuLineChange?.(null);
-                          }}
-                        >
-                          {c.emoji} {c.label}
-                        </button>
-                      ))}
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-          )}
-          {((line.modifiers && line.modifiers.length > 0) || onOverride) ? (
-            <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
-              {line.modifiers?.map((m) => (
-                <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
-                  {m.modifierName}
-                  {m.priceMinor > 0 && (
-                    <span className="pos-cart-line-modifier-price">
-                      {' '}(+{formatMoney({ minor_units: m.priceMinor, currency: line.unit_price.currency })})
-                    </span>
-                  )}
-                </span>
-              ))}
-              {onEditModifiers && (line.modifiers?.length ?? 0) > 0 && (
-                <button
-                  type="button"
-                  className="pos-cart-line-edit-modifiers-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditModifiers(line);
-                  }}
-                  aria-label={l10n.getString('edit-modifiers') || 'Edit Modifiers'}
-                  data-testid="cart-line-edit-modifiers-btn"
-                >
-                  Edit
-                </button>
-              )}
-              {onOverride && (
-                <button
-                  type="button"
-                  className="pos-cart-line-modifier-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOverride(line);
-                  }}
-                  aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
-                  data-testid="cart-line-override-btn"
-                >
-                  <span aria-hidden="true">$</span>
-                </button>
-              )}
-            </div>
-          ) : null}
-          {line.note && (
-            <div
-              className="pos-cart-line-note-badge"
-              data-testid="cart-line-note"
-              onClick={(e) => {
-                e.stopPropagation();
-                openNoteEditor();
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
+
+            {onUpdateNote && (
+              <button
+                type="button"
+                className={`pos-cart-line-note-btn${line.note ? ' pos-cart-line-note-btn--active' : ''}`}
+                onClick={(e) => {
                   e.stopPropagation();
                   openNoteEditor();
-                }
-              }}
-              aria-label={line.note}
-            >
-              <span className="pos-cart-line-note-icon" aria-hidden="true">📝</span>
-              <span className="pos-cart-line-note-text">{line.note}</span>
-            </div>
-          )}
-          <div className="pos-cart-line-price">
-            <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
+                }}
+                aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
+                data-testid="cart-line-note-btn"
+              >
+                <NoteIcon />
+              </button>
+            )}
+
+            {onEditModifiers && (!line.modifiers || line.modifiers.length === 0) && (
+              <button
+                type="button"
+                className="pos-cart-line-modifier-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditModifiers(line);
+                }}
+                aria-label={l10n.getString('edit-modifiers') || 'Customize item'}
+                data-testid="cart-line-add-modifier-btn"
+              >
+                <SlidersIcon />
+              </button>
+            )}
+
+            {((line.modifiers && line.modifiers.length > 0) || onOverride) && (
+              <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
+                {line.modifiers?.map((m) => (
+                  <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
+                    {m.modifierName}
+                    {m.priceMinor > 0 && (
+                      <span className="pos-cart-line-modifier-price">
+                        {' '}(+{formatMoney({ minor_units: m.priceMinor, currency: line.unit_price.currency })})
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {onEditModifiers && (line.modifiers?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className="pos-cart-line-edit-modifiers-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditModifiers(line);
+                    }}
+                    aria-label={l10n.getString('edit-modifiers') || 'Edit Modifiers'}
+                    data-testid="cart-line-edit-modifiers-btn"
+                  >
+                    Edit
+                  </button>
+                )}
+                {onOverride && (
+                  <button
+                    type="button"
+                    className="pos-cart-line-modifier-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOverride(line);
+                    }}
+                    aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
+                    data-testid="cart-line-override-btn"
+                  >
+                    <span aria-hidden="true">$</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {line.note && (
+              <div
+                className="pos-cart-line-note-badge"
+                data-testid="cart-line-note"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNoteEditor();
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    openNoteEditor();
+                  }
+                }}
+                aria-label={line.note}
+              >
+                <span className="pos-cart-line-note-icon" aria-hidden="true">📝</span>
+                <span className="pos-cart-line-note-text">{line.note}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 3 — Qty controls */}
-        <div className="pos-cart-line-controls">
+        {/* 2 — Right container: Controls (-/+ and Close) */}
+        <div className="pos-cart-line-controls-wrap">
+          <div className="pos-cart-line-controls">
+            <button
+              type="button"
+              className="pos-cart-qty-btn"
+              onClick={() => onDecreaseQty(line)}
+              disabled={line.qty <= 1}
+              aria-label={l10n.getString('pos-cart-line-decrease-aria', { sku: String(line.sku) })}
+            >
+              <MinusIcon />
+            </button>
+            <span className="pos-cart-qty-value" aria-label={l10n.getString('pos-cart-line-qty-aria', { qty: String(line.qty) })}>
+              {line.qty}
+            </span>
+            <button
+              type="button"
+              className="pos-cart-qty-btn"
+              onClick={() => onIncreaseQty(line)}
+              aria-label={l10n.getString('pos-cart-line-increase-aria', { sku: String(line.sku) })}
+            >
+              <PlusIcon />
+            </button>
+          </div>
+
           <button
             type="button"
-            className="pos-cart-qty-btn"
-            onClick={() => onDecreaseQty(line)}
-            disabled={line.qty <= 1}
-            aria-label={l10n.getString('pos-cart-line-decrease-aria', { sku: String(line.sku) })}
+            className="pos-cart-line-remove"
+            onClick={handleRemove}
+            aria-label={l10n.getString('pos-cart-line-remove-aria', { sku: String(line.sku) })}
           >
-            <MinusIcon />
-          </button>
-          <span className="pos-cart-qty-value" aria-label={l10n.getString('pos-cart-line-qty-aria', { qty: String(line.qty) })}>
-            {line.qty}
-          </span>
-          <button
-            type="button"
-            className="pos-cart-qty-btn"
-            onClick={() => onIncreaseQty(line)}
-            aria-label={l10n.getString('pos-cart-line-increase-aria', { sku: String(line.sku) })}
-          >
-            <PlusIcon />
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
-
-        {/* 4 — Remove button */}
-        <button
-          type="button"
-          className="pos-cart-line-remove"
-          onClick={handleRemove}
-          aria-label={l10n.getString('pos-cart-line-remove-aria', { sku: String(line.sku) })}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
 
         {/* Category ribbon */}
         {line.category && (
