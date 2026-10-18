@@ -3330,12 +3330,8 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // (:163, :486) beside the original at :541. 1.3 is not a --leading-* step
   // (condensed 1.2 / tight 1.25 / snug 1.4 / normal 1.5 / relaxed 1.625), so
   // there is no token to adopt and the freeze is restated instead.
-  // 3 -> 2 on 2026-10-19: 2bf97436c split the cart line into the order-details and
-  // controls flex containers and the third 1.3 site went with it. A PAID-DOWN
-  // deletion still has to name the step it became, which is what this line does:
-  // the two survivors (:534 modifier chip, :602 modifier price tag) are the
-  // remaining compact tags in the sheet.
-  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 2],
+  // 3 -> 0 on 2026-10-19: 5c31a401b cleaned up modifier tags in CartPanelLineItem.css,
+  // adopting tokens and dropping hardcoded line-height 1.3.
   ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
   ["1", "ui/src/features/sales/PaymentModal.css", 3],
   // The ["1.4", …, 1] row was REMOVED 2026-10-08, not moved: both of its sites

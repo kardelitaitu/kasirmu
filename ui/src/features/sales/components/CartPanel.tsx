@@ -943,7 +943,10 @@ export function CartPanel({
 
             {/* 2. Table Pill: Icon button (opens table map) + Table input (DINE-IN only) */}
             {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && orderType === 'dine_in' && (
-              <div className="pos-cart-table-pill" data-testid="pos-cart-table-pill">
+              <div
+                className={`pos-cart-table-pill${tableNumber?.trim() ? ' pos-cart-table-pill--has-table' : ''}`}
+                data-testid="pos-cart-table-pill"
+              >
                 {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
                   <button
                     type="button"
@@ -954,9 +957,6 @@ export function CartPanel({
                     data-testid="pos-cart-open-tables-btn"
                   >
                     <TableChairIcon />
-                    {tableNumber?.trim() ? (
-                      <span className="pos-cart-table-btn-text">{bareTableNumber(tableNumber)}</span>
-                    ) : null}
                   </button>
                 )}
                 <input
