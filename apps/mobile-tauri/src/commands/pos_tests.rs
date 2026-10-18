@@ -350,7 +350,7 @@ fn add_line_scoped_preserves_course_and_modifiers() {
     let cart_id = seed_active_cart(&conn);
 
     let args = AddLineArgs {
-        cart_id: cart_id.clone(),
+        cart_id,
         sku: Sku::new("NASI-GORENG"),
         qty: 1,
         unit_price_minor: 3500000,
