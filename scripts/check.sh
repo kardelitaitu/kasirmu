@@ -222,6 +222,22 @@ step "test shadow copies self-test" "python3 scripts/verify-test-shadow-copies.p
 # for 4.5× faster re-runs after compilation. Also run doctests separately
 # because nextest does not execute them. Falls back to cargo test if nextest
 # is not installed.
+#
+# TMP/TEMP fallback: `kasirmu-bridge`'s test harness calls `unique_store_dir()`
+# (`crates/kasirmu-bridge/src/testing.rs:62-73`), which is `std::env::temp_dir()`
+# — i.e. whatever TMP/TEMP say — and seeds a real SQLite store there. Under a
+# restricted sandbox the spawned test BINARY is denied writes to the system temp
+# dir even when the calling shell can write to it, and every bridge test fails
+# with `creating data dir ...: Access is denied. (os error 5)` at testing.rs:536.
+# Measured 2026-10-19: 1516/1516 bridge tests pass when TMP points inside the
+# tree, and 0/1516 when it points at %TEMP% under that confinement. So default
+# TMP into the (gitignored) build dir when it is not already set to something
+# writable. This is a default, not an override: an explicit TMP always wins.
+if [ -z "${TMP:-}" ] || [ ! -w "${TMP:-/nonexistent}" ]; then
+    mkdir -p target/.tmp-check
+    export TMP="$PWD/target/.tmp-check"
+    export TEMP="$TMP"
+fi
 cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
     step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile" cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
