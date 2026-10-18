@@ -233,7 +233,16 @@ step "test shadow copies self-test" "python3 scripts/verify-test-shadow-copies.p
 # tree, and 0/1516 when it points at %TEMP% under that confinement. So default
 # TMP into the (gitignored) build dir when it is not already set to something
 # writable. This is a default, not an override: an explicit TMP always wins.
-if [ -z "${TMP:-}" ] || [ ! -w "${TMP:-/nonexistent}" ]; then
+# Two conditions, because one was not enough. `test -w` is evaluated by THIS shell,
+# and under Git Bash on Windows it answers yes for TMP=/tmp -- but the spawned test
+# binary resolves /tmp to C:\\Users\\<user>\\AppData\\Local\\Temp and is then denied
+# there. Measured 2026-10-19: with TMP=/tmp this guard did NOT fire, and step 31 died
+# with 93 `Access is denied (os error 5)` failures at testing.rs:536 while the shell
+# could write the same bytes. So also treat any temp dir OUTSIDE the checkout as
+# untrusted: a path inside the tree is the only place both the shell and the child
+# are known to be able to write.
+tmp_is_inside_tree() { case "${1:-}" in "$PWD"/*) return 0 ;; *) return 1 ;; esac; }
+if [ -z "${TMP:-}" ] || [ ! -w "${TMP:-/nonexistent}" ] || ! tmp_is_inside_tree "${TMP:-}"; then
     mkdir -p target/.tmp-check
     export TMP="$PWD/target/.tmp-check"
     export TEMP="$TMP"
