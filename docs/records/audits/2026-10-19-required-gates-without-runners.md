@@ -55,4 +55,30 @@ has been observed green on a runner. The evidence here is that each exits 0 loca
 tree and that the YAML parses with the steps present in the right job — a real but weaker claim
 than a green CI run, and the distinction is worth keeping.
 
+## Follow-up: the sweep is now a checker
+
+The paragraph above named the question as a candidate and it is now
+`.agents/skills/docs-auditor/scripts/check-gate-runners.py` — `check.sh` step `gate runners`,
+`gates.json` id `gate-runners`, and `dev-ci.yml#static-gates` step `Gate runner reachability`.
+It reports **103 required gates, 103 reachable, 0 non-conforming**.
+
+Two things were learned building it, both the same lesson as the citation checker one layer over:
+
+- **A checker's false positives are worse than its misses.** The first version required every
+  non-`check.sh` runner to be a FILE, so the genuinely-wired `e2e` gate — reachable through
+  `ui -> npm run check:all -> scripts/check-ui.mjs -> gate("E2E tests ...")` — was reported
+  unreachable. A gate that is properly wired must not be flagged, or the checker trains people to
+  ignore it. It now follows npm-script indirection into the node script's own `gate()` list.
+- **A bad `ci` block had to become a finding, not a non-contribution.** The first version only
+  *added* reachability and never removed it, so a gate whose `check.sh` step was fine but whose
+  `ci` block named a nonexistent job still reported reachable — under-reporting one level up from
+  the defect being checked for.
+
+Proven against **five planted shapes** before wiring: a reverted `rust-clippy` step name, a
+checker with no runner at all, a `ci` block naming a ghost job, a `ci` block naming a ghost
+workflow, and a runner naming no script. All five caught; the tree green.
+
+**Scope limit, stated in the checker's own note:** it proves a gate NAMES a reachable runner, not
+that CI executes it. None of the seven newly-wired CI steps has been observed green on a runner.
+
 > last audited 19-10-26 by docs-auditor
