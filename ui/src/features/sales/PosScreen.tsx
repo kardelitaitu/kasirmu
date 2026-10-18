@@ -513,7 +513,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
-  const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
+  const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
   // Defaults ON for restaurant POS and OFF elsewhere. The key is restaurant-only,
   // so a retail workspace must not gain an order-type prompt from an unset value.

@@ -131,7 +131,7 @@ export function CartLineItem({
     onSwipeRight: () => setRevealed(false),
   });
   // Compute once per render.
-  const thumbnail = lineThumbnail(String(line.sku));
+  const thumbnail = lineThumbnail(String(line.name ?? line.sku));
   // Only meaningful when the caller passed onAssignCourse; the chip renders
   // on that condition too, so a line without coursing never reaches here.
   const courseOpen = !!onAssignCourse && courseMenuLine === line.id;
