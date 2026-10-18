@@ -5,6 +5,7 @@ import type { usePosState } from '../usePosState';
 import { requiredLocalized } from '@/components';
 import { plainErrorMessage } from '@/utils/app-error';
 import { triggerInteraction } from '@/utils/interaction';
+import { isTabletShell } from '@/utils/shellKind';
 import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import type { Promotion } from '@/api/promotions';
 import {
@@ -123,9 +124,15 @@ export function usePosCartActions({
         // `?? locId` below is the degradation this code always intended, and it can only happen if
         // the name was never fetched. A cart that exists must be returned as existing.
         try {
-          const info = sessionToken
-            ? await getCartDeductionLocationScoped(sessionToken, newCartId)
-            : await getCartDeductionLocation(newCartId);
+          // The ambient name is TABLET-only; desktop registers only the scoped twin.
+          // `sessionToken` is an empty string when there is no session, so a bare
+          // truthiness test sent the desktop down the ambient branch and the invoke was
+          // rejected as an unknown command. Gate on the shell as well. Same defect and
+          // same fix as PosScreen.tsx:891 -- found by scripts/verify-ipc-parity.py.
+          const info =
+            sessionToken || !isTabletShell()
+              ? await getCartDeductionLocationScoped(sessionToken, newCartId)
+              : await getCartDeductionLocation(newCartId);
           setDeductionLocationName(info?.locationName ?? locId);
           if (info?.overriddenAt) setDeductionOverridden(true);
         } catch {

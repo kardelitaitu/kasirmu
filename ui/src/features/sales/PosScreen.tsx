@@ -888,9 +888,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           return;
         }
         try {
-          const info = sessionToken
-            ? await getCartDeductionLocationScoped(sessionToken, locId)
-            : await getCartDeductionLocation(locId);
+          // ADR #7: the ambient `get_cart_deduction_location` is registered by the
+          // TABLET shell only; desktop registers only the `_scoped` twin. `sessionToken`
+          // is `rawToken || ''` (:157), so a missing token is the EMPTY STRING, not
+          // null — a bare truthiness test therefore sent the desktop down the ambient
+          // branch whenever no workspace session existed, the invoke was rejected as an
+          // unknown command, and the `catch` below silently rendered the raw location id.
+          // Gate the fallback on the shell as well as the token. Found by
+          // scripts/verify-ipc-parity.py; see
+          // docs/records/audits/2026-10-19-ipc-door-missing-and-root-debris.md.
+          const info =
+            sessionToken || !isTabletShell()
+              ? await getCartDeductionLocationScoped(sessionToken, locId)
+              : await getCartDeductionLocation(locId);
           setDeductionLocationName(info?.locationName ?? locId);
           if (info?.overriddenAt) setDeductionOverridden(true);
         } catch {
