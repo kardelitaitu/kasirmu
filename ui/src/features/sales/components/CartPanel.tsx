@@ -455,8 +455,6 @@ export function CartPanel({
   // opening one line's menu closes the other's.
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
-  const orderTypeIndex = Math.max(0, ORDER_TYPES.findIndex((opt) => opt.id === orderType));
-
   /**
    * Whether this order can name a table at all. Only a dine-in order has one, so
    * the table badge is withheld for takeaway and delivery even when the field
@@ -487,6 +485,29 @@ export function CartPanel({
     onSwipeLeft: handleOrderTypeNext,
     onSwipeRight: handleOrderTypePrev,
   });
+
+  const [orderTypeMenuOpen, setOrderTypeMenuOpen] = useState(false);
+  const orderTypeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!orderTypeMenuOpen) return;
+    const handleMousedown = (e: MouseEvent) => {
+      if (orderTypeDropdownRef.current && !orderTypeDropdownRef.current.contains(e.target as Node)) {
+        setOrderTypeMenuOpen(false);
+      }
+    };
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOrderTypeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMousedown);
+    document.addEventListener('keydown', handleKeydown);
+    return () => {
+      document.removeEventListener('mousedown', handleMousedown);
+      document.removeEventListener('keydown', handleKeydown);
+    };
+  }, [orderTypeMenuOpen]);
 
   // Animation state for sliding out/in when hidden prop toggles
   const [cartExiting, setCartExiting] = useState(false);
@@ -828,100 +849,157 @@ export function CartPanel({
           </div>
         )}
 
-        {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
-        {/* Styling lives in CartPanel.css (.pos-cart-order-type-row); it used to
-            be an inline style block with hardcoded 6px values and no sheet behind it. */}
-        {/* The workspace arm that used to sit here was removed (P1/D2 of
-            todo-restaurant-pos-reliability.md): it made the setting inert on the
-            one workspace it exists for. `orderTypePromptEnabled` now defaults to
-            TRUE on restaurant-pos in PosScreen, so removing the override keeps
-            the control visible there while letting an explicit "off" take effect. */}
-        {orderTypePromptEnabled && setOrderType && (
-          <div className="pos-cart-order-type-row" {...orderTypeSwipe}>
-            <div
-              className="pos-cart-order-type-slider"
-              role="radiogroup"
-              aria-label={l10n.getString('restaurant-setting-order-type')}
-              tabIndex={-1}
-              style={{
-                '--order-type-index': orderTypeIndex,
-                '--order-type-count': ORDER_TYPES.length,
-              } as React.CSSProperties}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  handleOrderTypeNext();
-                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  handleOrderTypePrev();
-                } else if (e.key === 'Home') {
-                  e.preventDefault();
-                  const first = ORDER_TYPES[0];
-                  if (first) setOrderType(first.id);
-                } else if (e.key === 'End') {
-                  e.preventDefault();
-                  const last = ORDER_TYPES[ORDER_TYPES.length - 1];
-                  if (last) setOrderType(last.id);
-                }
-              }}
-            >
-              <span className="pos-cart-order-type-indicator" aria-hidden="true" />
-              {ORDER_TYPES.map((opt) => {
-                const active = orderType === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    role="radio"
-                    className={`pos-cart-order-type-btn${active ? ' pos-cart-order-type-btn--active' : ''}`}
-                    onClick={() => setOrderType(opt.id)}
-                    aria-checked={active}
-                    data-testid={`pos-order-type-${opt.id}`}
+        {/* ── Unified Single-Row Context Bar (Order Type Dropdown + Table Pill + Pax + Customer) ── */}
+        {((orderTypePromptEnabled && setOrderType) || (showTableNumberSetting || activeWorkspace === 'restaurant-pos') || (setCustomerName && customerNameEnabled !== false)) && (
+          <div
+            className={`pos-cart-context-row${orderTypePromptEnabled && setOrderType ? ' pos-cart-order-type-row' : ''}`}
+            {...(orderTypePromptEnabled && setOrderType ? orderTypeSwipe : {})}
+          >
+            {/* 1. Order Type Dropdown */}
+            {orderTypePromptEnabled && setOrderType && (
+              <div className="pos-cart-order-type-dropdown-wrap" ref={orderTypeDropdownRef}>
+                <button
+                  type="button"
+                  className={`pos-cart-order-type-dropdown-trigger${orderTypeMenuOpen ? ' pos-cart-order-type-dropdown-trigger--open' : ''}`}
+                  onClick={() => setOrderTypeMenuOpen((prev) => !prev)}
+                  aria-expanded={orderTypeMenuOpen}
+                  aria-haspopup="true"
+                  aria-label={l10n.getString('restaurant-setting-order-type')}
+                  data-testid="pos-cart-order-type-dropdown-trigger"
+                >
+                  <span className="pos-cart-order-type-icon">
+                    <OrderTypeIcon id={orderType} />
+                  </span>
+                  <span className="pos-cart-order-type-label">
+                    {l10n.getString(ORDER_TYPES.find((opt) => opt.id === orderType)?.labelKey ?? 'pos-order-type-dine-in')}
+                  </span>
+                  <svg
+                    className={`pos-cart-order-type-chevron${orderTypeMenuOpen ? ' pos-cart-order-type-chevron--open' : ''}`}
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
                   >
-                    <span className="pos-cart-order-type-icon">
-                      <OrderTypeIcon id={opt.id} />
-                    </span>
-                    <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
 
-        {/* ── Table number input & optional customer name ──
-            The `|| restaurant-pos` arm is INTENTIONAL, not a leftover: table
-            capture is part of what a restaurant POS is, so it does not depend on
-            a setting. `showTableNumberSetting` still governs the other
-            workspaces (retail), where it comes from the receipt toggle. The
-            restaurant-side settings toggle that used to write a competing
-            `restaurant.table_number` key was removed — see
-            RestaurantSettingsScreen.tsx's header. */}
-        {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && (
-          <div className="pos-cart-table-row">
-            <div className="pos-cart-table-field">
-              <label htmlFor="pos-table-number" className="pos-cart-table-label">
-                {l10n.getString('pos-cart-table-label')}
-              </label>
-              <input
-                id="pos-table-number"
-                type="text"
-                className="pos-cart-table-input"
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                aria-label={l10n.getString('pos-cart-table-aria')}
-                placeholder={l10n.getString('pos-cart-table-placeholder')}
-              />
-            </div>
-            {/* `!== false` (not truthiness) so an ABSENT prop shows the field:
-                retail passes nothing, and only RestaurantSettingsScreen's explicit
-                `restaurant.customer_name = false` hides it. Same idiom as
-                `courseFiringEnabled` above. */}
+                <div
+                  className={`pos-cart-order-type-menu${orderTypeMenuOpen ? ' pos-cart-order-type-menu--open' : ''}`}
+                  role="radiogroup"
+                  aria-label={l10n.getString('restaurant-setting-order-type')}
+                  tabIndex={-1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      handleOrderTypeNext();
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      handleOrderTypePrev();
+                    } else if (e.key === 'Home') {
+                      e.preventDefault();
+                      const first = ORDER_TYPES[0];
+                      if (first) setOrderType(first.id);
+                    } else if (e.key === 'End') {
+                      e.preventDefault();
+                      const last = ORDER_TYPES[ORDER_TYPES.length - 1];
+                      if (last) setOrderType(last.id);
+                    } else if (e.key === 'Escape') {
+                      setOrderTypeMenuOpen(false);
+                    }
+                  }}
+                >
+                  <span className="pos-cart-order-type-indicator" aria-hidden="true" />
+                  {ORDER_TYPES.map((opt) => {
+                    const active = orderType === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        className={`pos-cart-order-type-btn${active ? ' pos-cart-order-type-btn--active' : ''}`}
+                        onClick={() => {
+                          setOrderType(opt.id);
+                          setOrderTypeMenuOpen(false);
+                        }}
+                        aria-checked={active}
+                        data-testid={`pos-order-type-${opt.id}`}
+                      >
+                        <span className="pos-cart-order-type-icon">
+                          <OrderTypeIcon id={opt.id} />
+                        </span>
+                        <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Table Pill: Icon button (opens table map) + Table input (DINE-IN only) */}
+            {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && orderType === 'dine_in' && (
+              <div className="pos-cart-table-pill" data-testid="pos-cart-table-pill">
+                {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
+                  <button
+                    type="button"
+                    className={`pos-cart-table-select-btn${tableNumber?.trim() ? ' pos-cart-table-select-btn--selected' : ''}`}
+                    onClick={() => setShowTables(true)}
+                    title={requiredLocalized(l10n, 'tables-title')}
+                    aria-label={requiredLocalized(l10n, 'tables-title')}
+                    data-testid="pos-cart-open-tables-btn"
+                  >
+                    <TableChairIcon />
+                    {tableNumber?.trim() ? (
+                      <span className="pos-cart-table-btn-text">{bareTableNumber(tableNumber)}</span>
+                    ) : null}
+                  </button>
+                )}
+                <input
+                  id="pos-table-number"
+                  type="text"
+                  className="pos-cart-table-input"
+                  value={tableNumber}
+                  onChange={(e) => setTableNumber(e.target.value)}
+                  aria-label={l10n.getString('pos-cart-table-aria')}
+                  placeholder={l10n.getString('pos-cart-table-placeholder') || 'No.'}
+                />
+              </div>
+            )}
+
+            {/* 3. Guest Count / Pax (DINE-IN only) */}
+            {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
+              <div className="pos-cart-guest-pill" title={l10n.getString('pos-cart-guest-count-label') || 'Pax'}>
+                <span className="pos-cart-guest-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                <input
+                  id="pos-guest-count"
+                  type="number"
+                  min={1}
+                  max={99}
+                  className="pos-cart-guest-input"
+                  value={guestCount ?? ''}
+                  onChange={(e) => setGuestCount(e.target.value)}
+                  aria-label={l10n.getString('pos-cart-guest-count-label')}
+                  placeholder={l10n.getString('pos-cart-guest-placeholder') || 'Pax'}
+                  data-testid="pos-cart-guest-input"
+                />
+              </div>
+            )}
+
+            {/* 4. Customer Name (box only with placeholder name) */}
             {setCustomerName && customerNameEnabled !== false && (
               <div className="pos-cart-customer-field">
-                <label htmlFor="pos-customer-name" className="pos-cart-customer-label">
-                  {l10n.getString('pos-cart-customer-label') || 'Customer (opt)'}
-                </label>
                 <input
                   id="pos-customer-name"
                   type="text"
@@ -933,44 +1011,6 @@ export function CartPanel({
                   data-testid="pos-cart-customer-input"
                 />
               </div>
-            )}
-            {/* ⚠️ DINE-IN ONLY. products.ftl:105 defines pax as "party size and
-                number of SEATED GUESTS PER TABLE", so a takeaway or delivery order
-                has nothing to answer it with — yet the field was offered on every
-                order type, the same mistake the table DISPLAY had (547bf031d).
-                The setting gate below is unchanged: an unset key still SHOWS the
-                field for a dine-in order, which retail and the restaurant default
-                both rely on. */}
-            {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
-              <div className="pos-cart-guest-field">
-                <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
-                  {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
-                </label>
-                <input
-                  id="pos-guest-count"
-                  type="number"
-                  min={1}
-                  max={99}
-                  className="pos-cart-customer-input"
-                  value={guestCount ?? ''}
-                  onChange={(e) => setGuestCount(e.target.value)}
-                  aria-label={l10n.getString('pos-cart-guest-count-label')}
-                  placeholder={l10n.getString('pos-cart-guest-placeholder')}
-                  data-testid="pos-cart-guest-input"
-                />
-              </div>
-            )}
-            {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
-              <button
-                type="button"
-                className="pos-cart-table-select-btn"
-                onClick={() => setShowTables(true)}
-                title={requiredLocalized(l10n, 'tables-title')}
-                aria-label={requiredLocalized(l10n, 'tables-title')}
-                data-testid="pos-cart-open-tables-btn"
-              >
-                <TableChairIcon />
-              </button>
             )}
           </div>
         )}

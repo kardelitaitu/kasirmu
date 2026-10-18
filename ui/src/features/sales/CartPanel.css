@@ -528,7 +528,20 @@
   flex-shrink: 0;
 }
 
-/* ── Table-number & Customer-name row ─────────────────── */
+/* ── Unified Context Row (Order Type, Table, Pax, Customer) ── */
+
+.pos-cart-context-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  padding: var(--space-1_5) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  min-width: 0;
+  position: relative;
+}
+
+/* ── Table-number & Customer-name row (legacy / fallback) ─── */
 
 .pos-cart-table-row {
   display: flex;
@@ -539,7 +552,7 @@
 }
 
 
-/* ── Order-type prompt slider (Dine-in / Takeaway / Delivery) ── */
+/* ── Order-type prompt row / dropdown ── */
 .pos-cart-order-type-row {
   display: flex;
   padding: var(--space-1_5) var(--space-3);
@@ -694,8 +707,229 @@
   align-items: center;
 }
 
-/* Pax input beside the customer field. Was inline `width: 64px`; 4rem is the
-   token step this file already uses for the same size (see .pos-cart-table-input). */
+/* ── Order-type dropdown menu & trigger (Single-row context bar) ── */
+
+.pos-cart-order-type-dropdown-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.pos-cart-order-type-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-height: 2.125rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-fg-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-order-type-dropdown-trigger:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.pos-cart-order-type-dropdown-trigger:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  outline: none;
+}
+
+.pos-cart-order-type-dropdown-trigger--open {
+  border-color: var(--color-accent);
+  background: var(--color-bg-surface);
+}
+
+.pos-cart-order-type-chevron {
+  flex-shrink: 0;
+  color: var(--color-fg-tertiary);
+  transition: transform var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-order-type-chevron--open {
+  transform: rotate(180deg);
+}
+
+.pos-cart-order-type-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 140px;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.pos-cart-order-type-menu--open {
+  display: flex;
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-indicator {
+  display: none;
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: var(--space-1_5) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg-primary);
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-btn--active {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ── Table pill & Guest pill (Single-row context bar) ──────── */
+
+.pos-cart-table-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  overflow: hidden;
+  transition: border-color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-table-pill:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.pos-cart-table-pill .pos-cart-table-select-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 2.125rem;
+  padding: 0 var(--space-2);
+  border: none;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-table-pill .pos-cart-table-select-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-accent);
+}
+
+.pos-cart-table-pill .pos-cart-table-select-btn--selected {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.pos-cart-table-btn-text {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.pos-cart-table-pill .pos-cart-table-input {
+  width: 2.5rem;
+  min-height: 2.125rem;
+  padding: 0 var(--space-1_5);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-fg-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  box-shadow: none;
+  outline: none;
+}
+
+.pos-cart-guest-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  padding: 0 var(--space-1_5);
+  min-height: 2.125rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  transition: border-color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-guest-pill:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.pos-cart-guest-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-fg-tertiary);
+  flex-shrink: 0;
+}
+
+.pos-cart-guest-input {
+  width: 2.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-fg-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.pos-cart-guest-input::-webkit-outer-spin-button,
+.pos-cart-guest-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ── Fallback field wrappers & customer name input ─────────── */
+
 .pos-cart-table-field,
 .pos-cart-customer-field,
 .pos-cart-guest-field {
@@ -742,14 +976,14 @@
 
 .pos-cart-customer-input {
   width: 100%;
-  min-width: 4.5rem;
+  min-width: 4rem;
   min-height: 2.125rem;
-  padding: var(--space-1) var(--space-2_5);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-primary);
   color: var(--color-fg-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
 }
 
@@ -800,8 +1034,15 @@
 @media (pointer: coarse) {
   .pos-cart-table-input,
   .pos-cart-customer-input,
-  .pos-cart-table-select-btn {
-    min-height: 2.375rem;
+  .pos-cart-table-select-btn,
+  .pos-cart-order-type-dropdown-trigger,
+  .pos-cart-guest-input {
+    min-height: var(--touch-target-min);
+  }
+
+  .pos-cart-table-pill,
+  .pos-cart-guest-pill {
+    min-height: var(--touch-target-min);
   }
 }
 
