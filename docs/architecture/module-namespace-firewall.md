@@ -97,16 +97,25 @@ dependency), and `the_real_loyalty_grant_names_a_declared_dependency` pins the i
 `scripts/verify-core-size.py` enforces a ceiling on `crates/kasirmu-core` production lines
 (`scripts/core-size-baseline.json`). The required gate `core-size-ratchet`
 (`scripts/gates.json`) fails when core grows above the recorded ceiling without a
-deliberate `--emit-baseline` commit. Current ceiling: **38703 lines across 178 files**
-(re-raised 2026-10-14 by `341ba7227`; this line said 37176 until 2026-10-19).
+deliberate `--emit-baseline` commit. Current ceiling: **39068 lines across 178 files**
+(raised 2026-10-19; 38703 before that from `341ba7227` on 2026-10-14; 37176 before that).
 
-> **Measured 2026-10-19: this gate is RED at HEAD — again.** `python3 scripts/verify-core-size.py`
-> reports **measured 39068 vs ceiling 38703 (+365 lines)** and exits 1. The callout below was
-> written when the ceiling was 37176 and the gap was +1527; the deliberate re-emit it asked for
-> then **did happen** (38703), which is why the gap shrank. What has happened since is the same
-> drift a third time: committed growth merged without the ceiling edit. The mechanism is intact
-> — the gate runs and it catches this — and that is the point worth keeping. A ceiling that is
-> only ever moved after the fact is a changelog, not a ratchet.
+> **Measured 2026-10-19: the gate is GREEN, and how it got there is the part worth reading.**
+> It was RED at HEAD at 39068 vs a 38703 ceiling (+365), the third recurrence of the same
+> pattern — committed growth merged without the ceiling edit. The deliberate re-emit this
+> callout originally demanded **had happened** (37176 → 38703), so the mechanism works; what
+> recurs is that nobody re-emits *as part of* the change that grows core. This pass did the
+> analysis the file requires rather than just moving the number: **15 distinct files** carried
+> net production growth, the largest single contributor being `db/assignments.rs` at 97 lines
+> (27% of the delta) with the top three at 54% — so there is no misplaced module to extract,
+> the growth is incremental work across assignments, provisioning, products CRUD, profile,
+> sale deduction, CRL and tax assignments. Now 39068 vs 39068, headroom 0.
+>
+> **The standing caution, kept from the earlier reading:** a ceiling that is only ever moved
+> after the fact is a changelog, not a ratchet. Moving it is meant to be part of a change that
+> says why, in the same commit. Note also that `--emit-baseline` rewrites the baseline's
+> `description` to a one-line default, discarding the raise history — restore it from git and
+> re-append when you use it.
 
 That figure was re-emitted to the true measured count, not because core was allowed to drift, but
 because the ceiling had been left behind by committed work — the payment-gateway and cloud-export
