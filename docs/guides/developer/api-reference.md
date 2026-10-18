@@ -45,6 +45,13 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > `products_images`) plus 17 rows folded into existing ones. Each summary is that command
 > own `///` line copied from the source, and each [D]/[T]/[D+T] marker was read out of the
 > two `generate_handler!` lists rather than inferred.
+> dead-ref: ok: the two `lib.rs` line coordinates above are the 2026-09-14 snapshot and no
+> longer land on the `generate_handler!` registry. Re-derived 2026-10-19: the desktop registry
+> runs `apps/desktop-tauri/src/lib.rs:1362-1906` and the tablet one
+> `apps/mobile-tauri/src/lib.rs:1014-1496`. The counts in the paragraph also moved:
+> `python .agents/skills/docs-auditor/scripts/check-api-surface.py` prints
+> `registered   desktop=500 tablet=428 distinct=519` (was 453/322/478). The paragraph is kept
+> as written because it is a dated record, but its coordinates are historical, not live.
 >
 > The two sets overlapped completely **as at 08-09-26** — all 454 registered commands were
 > listed then; they are not now (25 registered commands have no row, count note below) — and the

@@ -264,6 +264,11 @@ def main() -> int:
     ap.add_argument("--file", help="grade one doc instead of the live set")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument(
+        "--list-no-anchor",
+        action="store_true",
+        help="list the citations no symbol anchors (read-only; they are NOT a pass)",
+    )
     args = ap.parse_args()
 
     root = repo_root()
@@ -336,6 +341,8 @@ def main() -> int:
             counts[row[4]] = counts.get(row[4], 0) + 1
             if row[4] in ("DRIFTED", "SYMBOL-GONE"):
                 findings.append(row)
+            if args.list_no_anchor and row[4] == "NO-ANCHOR":
+                findings.append(row)
 
     graded = counts["OK"] + counts["DRIFTED"] + counts["SYMBOL-GONE"]
     print("check-cite-lines: %d live doc(s), %d citation(s)"
@@ -352,9 +359,16 @@ def main() -> int:
         for rel, dl, target, n, verdict, hit, full in findings:
             if verdict == "DRIFTED":
                 print("  %s:%d  %s  %s -> actually :%d" % (rel, dl, full, target, hit))
+            elif verdict == "NO-ANCHOR":
+                print("  %s:%d  %s  no symbol on the doc line" % (rel, dl, full))
             else:
                 print("  %s:%d  %s  symbol absent from %s" % (rel, dl, full, target))
         print("")
+        if args.list_no_anchor:
+            # A listing is a query, not a verdict: NO-ANCHOR rows are not failures.
+            print("LISTED %d citation(s); NO-ANCHOR is a gap, not a pass."
+                  % len(findings))
+            return 0
         print("DRIFT: re-derive with grep -n '\\bfn <name>\\b' <file>, or add")
         print("`dead-ref: ok:` when the citation is deliberately historical.")
         return 1

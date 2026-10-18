@@ -64,6 +64,7 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 > rest-on-disk, and never verified by any code path** — the last of which is why C69 remains
 > an open product question rather than a settled defect. Pinned by
 > `gift_card_pin_is_never_serialized_or_debugged` in the same file.
+> dead-ref: ok: the `models.rs` coordinates above are HISTORICAL — they name the file as it stood before the 2026-09-29 PIN removal. `modules/loyalty/src/models.rs` is now a 13-line re-export stub (the types moved to `foundation/src/loyalty.rs` by ADR-61 / C26), so the cited range cannot resolve and must not be "fixed": re-pointing it would describe code that the paragraph below records as deliberately deleted.
 >
 > **RESOLVED 2026-09-29 (review C69). The PIN was REMOVED, not hashed or documented away.**
 > The three paragraphs above were right at every step and they converge on the answer: a
