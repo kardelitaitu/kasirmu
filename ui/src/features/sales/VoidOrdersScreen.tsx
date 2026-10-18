@@ -21,6 +21,14 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
 import './VoidOrdersScreen.css';
 
+/**
+ * Count ceiling for the void-orders list, matching `SALES_FETCH_LIMIT` in
+ * SalesHistoryScreen (500). A ceiling, not a page: this screen filters and
+ * sorts client-side, so an offset window would hide rows from its own search.
+ * Both the store (clamp 1..1000) and this constant keep one read bounded.
+ */
+const VOID_ORDERS_FETCH_LIMIT = 500;
+
 // ── Reason options ──────────────────────────────────────────────────
 
 const VOID_REASONS = [
@@ -110,8 +118,15 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       // ADR #7: with a workspace session, read through the session's store. This screen already
       // voided through voidSaleScoped, so before this the write and the read could resolve to
       // different stores -- the cashier acted as one workspace and saw another's order list.
+      // R3 bounded, matching SalesHistoryScreen. Omitting `limit` here sent
+      // `None` down to `list_sales_with_history_cap_bounded`, whose LIMIT is
+      // only appended when a limit is given (sales_crud.rs:308-314) -- so the
+      // session path read EVERY sale inside the tier window into memory, while
+      // the same store's history screen read at most 500. The store clamps to
+      // 1000, so this is a count ceiling, not a page: no offset, and the list
+      // still renders complete up to the ceiling.
       const { sales: items } = sessionToken
-        ? await listSalesScoped(sessionToken)
+        ? await listSalesScoped(sessionToken, VOID_ORDERS_FETCH_LIMIT)
         : await listSales();
       setSales(asArray<typeof items[number]>(items));
     } catch (err) {

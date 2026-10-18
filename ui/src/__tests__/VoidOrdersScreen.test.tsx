@@ -277,9 +277,30 @@ describe('VoidOrdersScreen', () => {
       mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
       await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
       await waitFor(() => {
-        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1');
+        expect(mockListSalesScoped).toHaveBeenCalled();
       });
+      expect(mockListSalesScoped.mock.calls[0]?.[0]).toBe('session-1');
       expect(mockListSales).not.toHaveBeenCalled();
+    });
+
+    // Unbounded by omission: `list_sales_with_history_cap_bounded` appends LIMIT only when a
+    // limit is given (sales_crud.rs:308-314), so calling the scoped command with no limit read
+    // every sale in the tier window while SalesHistoryScreen read at most 500 from the same
+    // store. Asserting the ARGUMENT, not just the call, is what makes the omission visible --
+    // a `toHaveBeenCalledWith('session-1')` assertion passed happily on the unbounded call.
+    it('passes a finite limit so the session read is bounded like the history screen', async () => {
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(mockListSalesScoped).toHaveBeenCalled();
+      });
+      const firstCall = mockListSalesScoped.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const [, limit, offset] = firstCall as unknown as [string, number?, number?];
+      expect(typeof limit).toBe('number');
+      expect(limit).toBe(500);
+      // A ceiling, not a page: no offset, or the screens own client-side filters would miss rows.
+      expect(offset).toBeUndefined();
     });
 
     it('loads sale detail through get_sale_scoped when opened with an initial id', async () => {
