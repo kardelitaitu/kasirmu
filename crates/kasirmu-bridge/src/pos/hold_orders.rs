@@ -308,7 +308,7 @@ fn refuse_cross_vertical_open_bill(
 /// # Terminal identity
 ///
 /// An `open_bill` is refused to every non-Restaurant-POS session — see
-/// [`refuse_cross_vertical_open_bill`].
+/// `refuse_cross_vertical_open_bill` (private to this module).
 pub async fn get_held_cart_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -339,7 +339,7 @@ pub async fn get_held_cart_scoped(
 /// # Terminal identity
 ///
 /// An `open_bill` is refused to every non-Restaurant-POS session, checked before the
-/// delete so a refusal is not destructive — see [`refuse_cross_vertical_open_bill`].
+/// delete so a refusal is not destructive — see `refuse_cross_vertical_open_bill`.
 pub async fn delete_held_cart_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
