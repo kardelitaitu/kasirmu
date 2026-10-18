@@ -514,6 +514,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
+  const [settingsRevision, setSettingsRevision] = useState(0);
   // Defaults ON for restaurant POS and OFF elsewhere. The key is restaurant-only,
   // so a retail workspace must not gain an order-type prompt from an unset value.
   // This default is what lets `CartPanel` drop its `|| restaurant-pos` override
@@ -1637,7 +1638,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         setCourseFiringEnabled(null);
       });
     return () => { courseFiringSeq.current += 1; };
-  }, [sessionToken]);
+  }, [sessionToken, settingsRevision]);
 
   // ── Restaurant cart-field gates (P1) ────────────────────────────
   // `restaurant.customer_name` / `restaurant.guest_count` gate the cart's two
@@ -1747,7 +1748,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .then((raw) => { if (!cancelled) setSoundChime(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setSoundChime(null); });
     return () => { cancelled = true; };
-  }, [sessionToken]);
+  }, [sessionToken, settingsRevision]);
 
   // The same rails the payment modal consults for `autoKick` (PaymentModal:131).
   // Needed here so the till can honour the cash presets the operator configures.
@@ -2079,7 +2080,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   //
   const handleRestaurantAddProduct = useCallback(
     (product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => {
-      const defaultCourse = meta?.courseId ?? inferCourseForProduct(product) ?? undefined;
+      const defaultCourse = courseFiringEnabled
+        ? (meta?.courseId ?? inferCourseForProduct(product) ?? undefined)
+        : undefined;
       const combinedMeta = defaultCourse || meta?.modifiers
         ? {
             ...(defaultCourse ? { courseId: defaultCourse } : {}),
@@ -2088,7 +2091,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         : undefined;
       handleAddProduct(product, combinedMeta);
     },
-    [handleAddProduct],
+    [handleAddProduct, courseFiringEnabled],
   );
 
   // ── Sub-screen: Table Management ─────────────────────────────
@@ -2198,8 +2201,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <LocalizedErrorBoundary onReset={() => setShowRestaurantSettings(false)}>
-            <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+          <LocalizedErrorBoundary onReset={() => { setShowRestaurantSettings(false); setSettingsRevision((r) => r + 1); }}>
+            <RestaurantSettingsScreen onBack={() => { setShowRestaurantSettings(false); setSettingsRevision((r) => r + 1); }} />
           </LocalizedErrorBoundary>
         </div>
       </div>
