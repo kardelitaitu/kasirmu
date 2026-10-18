@@ -337,8 +337,12 @@
 
 /* Core pattern classes get noise automatically.
    Feature-specific legacy selectors are grouped below. */
+/* First-run provisioning card (features/setup/ProvisioningFlow.css). It gained a
+   --shadow-sm/--shadow-lg lift so it no longer sits flat on the radial gradient,
+   which makes it an elevated surface by the rule this block exists for. */
 .card::after,
 .modal-panel::after,
+.provisioning-card::after,
 .staff-login-card::after,
 .workspace-card::after,
 .staff-mgmt-card::after,
@@ -617,6 +621,7 @@
   .provisioning-qr-wrapper::after,
   .card::after,
   .modal-panel::after,
+  .provisioning-card::after,
   .staff-login-card::after,
   .workspace-card::after,
   .staff-mgmt-card::after,
@@ -805,6 +810,7 @@
   .provisioning-qr-wrapper::after,
   .card::after,
   .modal-panel::after,
+  .provisioning-card::after,
   .staff-login-card::after,
   .workspace-card::after,
   .staff-mgmt-card::after,

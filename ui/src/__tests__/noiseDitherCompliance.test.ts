@@ -38,6 +38,8 @@ const KNOWN_NOISE_SELECTORS = [
   // Core pattern classes (always covered)
   '.card',
   '.modal-panel',
+  // First-run provisioning card — gained a shadow lift, so it takes the overlay.
+  '.provisioning-card',
   '.staff-login-card',
   '.workspace-card',
   '.staff-mgmt-card',
@@ -911,7 +913,12 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // lane had run this suite because the full matrix stops at the first earlier
     // failure. Population 124 -> 131 with the seven, so the ceiling rises by 7 and the
     // headroom below the floor is unchanged in absolute terms.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 131 selectors; measured 116 with 31 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(116);
+    // 2026-10-19: population 131 -> 132 and the door 116 -> 117 for ONE new entry,
+    // .provisioning-card, which earned its place the only way this list accepts one —
+    // by GAINING a shadow (--shadow-sm + --shadow-lg) and then being covered by the
+    // overlay, not by being exempted from it. The ceiling rises by 1, not by slack:
+    // anything beyond that is still a waiver getting wider.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 132 selectors; measured 117 with 31 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(117);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is

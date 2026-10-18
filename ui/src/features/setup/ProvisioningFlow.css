@@ -64,6 +64,64 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  /* The card sat flat on the radial gradient with only a 1px border separating
+   * the two, so on a washed-out display the edge all but vanished. A two-step
+   * shadow (the tokens' tight contact shadow plus a wider ambient one) lifts it
+   * without a second border or a colour the theme has to re-tune per surface. */
+  box-shadow: var(--shadow-sm), var(--shadow-lg);
+}
+
+/* ── Per-step entrance ──────────────────────────────────────────────
+ * Steps render one at a time and swap instantly today, which reads as a
+ * flicker on a 1366px tablet where the card is taller than the viewport: the
+ * content under the merchant's thumb changes with no cue that it changed.
+ *
+ * The animation lives on the STEP CONTAINER, not on the card. It deliberately
+ * does NOT block clicks after it finishes: the fill mode is `backwards`, so
+ * when it ends the element returns to its own (visible, untransformed) styles
+ * rather than holding an animation-owned value — an entrance that ends on
+ * `both`/`forwards` keeps overriding later transitions and is the classic
+ * cause of an input that animates perfectly and then ignores focus styling.
+ *
+ * Scoped to no-preference so the blanket reduced-motion kill at reset.css:206
+ * is not the only thing standing between a reduced-motion user and this. */
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-step-enter {
+    animation: provisioning-step-in var(--duration-300) var(--ease-out) backwards;
+  }
+}
+
+@keyframes provisioning-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Direction-awareness is the one thing the height-morphing steppers this flow
+ * was compared against do well, and it needs no measurement: going FORWARD the
+ * new step rises from below, going BACK it settles from above. Wired to the
+ * existing activeStep transition in the component; the data attribute carries
+ * the direction so the keyframes stay declarative. */
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-step-enter[data-direction='back'] {
+    animation-name: provisioning-step-in-back;
+  }
+}
+
+@keyframes provisioning-step-in-back {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Compact geometry on a SHORT viewport. Measured on the two viewports this flow
@@ -224,6 +282,40 @@
   list-style: none;
 }
 
+/* The connector between two markers.
+ *
+ * Purely a design layer over the list that already exists: it adds a <span>
+ * between items (rendered by the component when this list has a following
+ * sibling) and colours it by whether the step BEFORE it is done. Nothing in the
+ * flow's logic reads it, and a screen reader never announces it — `aria-hidden`
+ * on the span, because "here is a line" is not a fact worth reading aloud, and
+ * the "Step N of M" line directly below already states the progress in words.
+ *
+ * Width is fixed rather than flexed: the three labels are short, the rail is
+ * centred, and a flexed connector stretched to whatever space remained made the
+ * three steps drift apart on the 1024px tablet. Fixed keeps the group compact
+ * and identical at every width. */
+.provisioning-step-connector {
+  width: var(--space-6);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  transition: background-color var(--duration-300) var(--ease-out);
+}
+
+.provisioning-step-connector.is-complete {
+  background: var(--color-accent);
+}
+
+/* The connector's list item must not inherit the step's own flex sizing: it holds
+ * a line, not a label, and letting it take `.provisioning-step`'s gap would push
+ * the three names apart at exactly the widths the rail has room at. */
+.provisioning-step-connector-item {
+  display: flex;
+  align-items: center;
+  list-style: none;
+}
+
 .provisioning-step {
   display: flex;
   align-items: center;
@@ -257,9 +349,14 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* The active marker gets a soft halo instead of a heavier border. The border
+ * colour change alone disappeared on low-contrast displays; a 4px ring at low
+ * alpha reads as "you are here" without adding weight, and it costs no layout
+ * because a box-shadow paints outside the box. */
 .provisioning-step.is-current .provisioning-step-marker {
   border-color: var(--color-accent);
   color: var(--color-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
 
 .provisioning-step.is-done .provisioning-step-marker {
