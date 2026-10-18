@@ -209,7 +209,19 @@ export function CartLineItem({
           {/* Row 2: Price, Modifiers, Course, Notes */}
           <div className="pos-cart-line-order-row2">
             <div className="pos-cart-line-price">
-              <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
+              <span className="pos-cart-line-total">
+                {formatMoney({
+                  minor_units: line.unit_price.minor_units * line.qty,
+                  currency: line.unit_price.currency,
+                })}
+              </span>
+              {line.qty > 1 ? (
+                <span className="pos-cart-line-unit-rate">
+                  (<span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)})
+                </span>
+              ) : (
+                <span className="pos-cart-line-price-at" style={{ display: 'none' }}>@</span>
+              )}
             </div>
 
             {onAssignCourse && (

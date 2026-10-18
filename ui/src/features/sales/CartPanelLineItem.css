@@ -194,9 +194,23 @@
 
 
 .pos-cart-line-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--color-fg-secondary);
   white-space: nowrap;
+}
+
+.pos-cart-line-total {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.pos-cart-line-unit-rate {
+  font-size: var(--text-2xs);
+  color: var(--color-fg-muted);
 }
 
 .pos-cart-line-price-at {
@@ -308,30 +322,36 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
   padding: 0;
-  border: none;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
-  background: var(--color-danger-bg, rgba(239, 68, 68, 0.12));
+  background: var(--color-bg-surface);
   cursor: pointer;
-  color: var(--color-danger);
+  color: var(--color-fg-muted);
   transition:
     background var(--duration-100) var(--ease-out),
-    color var(--duration-100) var(--ease-out);
+    border-color var(--duration-100) var(--ease-out),
+    color var(--duration-100) var(--ease-out),
+    transform var(--duration-100) var(--ease-out);
 }
 
 .pos-cart-line-remove svg {
   display: block;
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .pos-cart-line-remove:hover {
-  color: var(--color-accent-fg);
-  background: var(--color-danger);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg, rgba(239, 68, 68, 0.12));
 }
 
 .pos-cart-line-remove:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--color-accent);
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
 }
 
 /* ── Revealed swipe-action (background delete button) ── */
@@ -523,7 +543,7 @@
   background: var(--color-bg-secondary);
   padding: 1px 6px;
   border-radius: var(--radius-sm, 4px);
-  line-height: 1.3;
+  line-height: var(--leading-normal);
 }
 
 .pos-cart-line-modifier-price {
@@ -591,7 +611,7 @@
   border-radius: var(--radius-sm, 4px);
   font-size: var(--text-xs, 0.75rem);
   color: var(--color-fg);
-  line-height: 1.3;
+  line-height: var(--leading-normal);
   word-break: break-word;
 }
 
