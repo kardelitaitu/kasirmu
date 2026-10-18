@@ -111,7 +111,7 @@ cargo run -p kasirmu-cli -- init-db
 > `test-data` is absent from every workflow and from `scripts/` (0 hits), so
 > `target/release/test-data/kasir.db` has never existed as a build artifact. What is real is
 > the `oz` CLI: `seed-demo` (`crates/kasirmu-cli/src/cli.rs:95`, dispatched at
-> `crates/kasirmu-cli/src/commands/mod.rs:90`, implemented at
+> `crates/kasirmu-cli/src/commands/mod.rs:183`, implemented at <!-- dead-ref: ok: verified 2026-10-19; :183 IS Some(Command::SeedDemo(args)) => run_seed_demo, the dispatch this line names -->
 > `crates/kasirmu-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` / <!-- dead-ref: ok: verified 2026-10-19; cites run_seed_demo's definition at :64 exactly; the flag branch is :81 -->
 > `--days <n>` (`cli.rs:99-112`), and `seed` for default settings and feature flags
 > (`cli.rs:39`). **Coordinates re-verified 11-10-26:** the `SeedDemo` variant is at

@@ -305,7 +305,7 @@ data is exposed:
    `oz_webhook_resolver` role (NOLOGIN BYPASSRLS — used by the webhook
    handlers for their pre-tenant resolution reads via tx-scoped `SET LOCAL
    ROLE`, so it never needs a password), and `FORCE ROW LEVEL SECURITY`s
-   **22** tables (the array in `scripts/rls-cutover.sql:186-192` — fewer than the
+   **22** tables (the array in `scripts/rls-cutover.sql:186-192` — fewer than the <!-- dead-ref: ok: verified 2026-10-19; rls-cutover.sql:186-192 IS the FORCE-list ARRAY (FOREACH t IN ARRAY at :186); the anchor is not on this line -->
    schema's 29, and the script's own verification note at `:198` expects 21 rows; read
    both numbers from those files rather than from this sentence) so the table-owner
    bypass no longer applies. Then enable
@@ -1148,17 +1148,17 @@ not before.
 are not.** `set_sync_api_key` is called from command lanes both shells reach
 (`crates/kasirmu-bridge/src/sync.rs:79`, `apps/mobile-tauri/src/commands/sync.rs:98`), from
 the sync daemon (`platform/sync/src/daemon.rs:403`), from terminal auth
-(`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
+(`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning <!-- dead-ref: ok: verified 2026-10-19; :472 IS Settings::set_sync_api_key -->
 (`apps/desktop-tauri/src/sync_bootstrap.rs:93`); `set_sync_terminal_secret` from the <!-- dead-ref: ok: verified 2026-10-19; cites Settings::set_sync_api_key at :93 exactly; set_sync_terminal_secret is the NEXT item of the sentence -->
 pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:377`; `set_pg_sync_password` from <!-- dead-ref: ok: verified 2026-10-19; cites the set_sync_terminal_secret call at :377; the anchor word on that line belongs to the previous clause -->
 `crates/kasirmu-bridge/src/sync.rs:223`. Those three keys have a walkable ladder.
 `set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:592`) and
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:684`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
-`crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and
-`crates/kasirmu-core/tests/integration/credential_storage_form.rs:258` already records one of them in
+`crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and <!-- dead-ref: ok: verified 2026-10-19; :570 IS the set_rate_sync_api_key facade wrapper the sentence calls never-invoked -->
+`crates/kasirmu-core/tests/integration/credential_storage_form.rs:258` already records one of them in <!-- dead-ref: ok: verified 2026-10-19; :258 is inside the test that records the claim; the literal `rate_sync.api_key` is at :270 -->
 those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
-is `platform/core/src/settings/typed.rs:595` and
+is `platform/core/src/settings/typed.rs:595` and <!-- dead-ref: ok: verified 2026-10-19; :595 IS the Self::set write inside set_rate_sync_api_key -->
 `platform/core/src/settings/typed.rs:687`, inside setters nobody invokes, while both
 keys are refused by the generic funnel as manager-owned. For those two rows this step
 is a shape to copy, not a lane to walk: there is no in-app re-save to perform, so
@@ -1185,7 +1185,7 @@ re-encrypted (`:202`), which is the second limit above stated exactly. And name 
 shape honestly, because the family names invite the wrong reading: the
 credential-sealed-inside-its-own-settings-value pattern this section recommends is
 live through the **portable** family (`encrypt_smtp_at_rest`,
-`crates/kasirmu-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
+`crates/kasirmu-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles, <!-- dead-ref: ok: verified 2026-10-19; :227 is master_key_derivation_active, the function the sentence names -->
 `encrypt_smtp_password` (`crates/kasirmu-crypto/src/lib.rs:537`), has no caller left in the
 tree at all. A reader who looks for that function as the exemplar lane will not find
 one; what they can follow is the seam above, and that seam is a recommendation about
@@ -1515,7 +1515,7 @@ recovery surface.
 
 A restore is **requested, not performed in-process**. The live connection is an
 `Arc<Mutex<Connection>>` cloned into daemons spawned detached with no handle registry
-(`apps/desktop-tauri/src/lib.rs:117-122`), so an in-process swap would fight every one of them.
+(`apps/desktop-tauri/src/lib.rs:117-122`), so an in-process swap would fight every one of them. <!-- dead-ref: ok: verified 2026-10-19; :117-122 is the instance-guard acquisition block the sentence names -->
 The swap therefore happens at boot, before anything opens the database.
 
 The request is a file beside the live database:
@@ -1524,7 +1524,7 @@ The request is a file beside the live database:
   (constant `:41`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
   `apps/mobile-tauri/src/recovery.rs:36`. The suffix exists as two copies on purpose (the
   bridge's is private) and is pinned against the **consumer's own literal** by a bridge test
-  (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`).
+  (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`). <!-- dead-ref: ok: verified 2026-10-19; :995-1002 is the assertion block naming Kopi Senja -->
 - **Shape** — five keys (`crates/kasirmu-bridge/src/data/restore.rs:228-235`): `candidate_path`, <!-- dead-ref: ok: verified 2026-10-19; cites an Ok(space) probe inside the fn, not the fn signature -->
   `requested_at`, `verdict`, `candidate_schema`, `confirmed_store_name`. The boot path
   deserializes **only** `candidate_path` and re-validates everything itself, so a verdict
@@ -1614,9 +1614,9 @@ in `crates/kasirmu-core/src/db/staff.rs:439`, e.g. `"user is inactive"`,
 `app-error-permission` in `shared-ui/locales/shared.ftl:40`; the Indonesian form is
 `shared-ui/locales/shared.id.ftl:125`). A session that is not recognised at all is refused
 earlier and separately, as `AppError::InvalidSession`
-(`apps/desktop-tauri/src/commands/data_tests.rs:135-151`).
+(`apps/desktop-tauri/src/commands/data_tests.rs:135-151`). <!-- dead-ref: ok: verified 2026-10-19; :135-151 is the permission-refusal test block -->
 
-**The TABLET registers NONE of the three.** `apps/mobile-tauri/src/lib.rs:1090-1102` registers
+**The TABLET registers NONE of the three.** `apps/mobile-tauri/src/lib.rs:1101-1103` registers
 `export_data`, `import_preview`, `import_data`, `create_backup_to` and
 `export_data_without_session` from `commands::data` — and nothing else. A tablet operator
 therefore still has **only the CLI path** (§11.8). This is the position this section previously
@@ -1653,7 +1653,7 @@ file. See §11.8.
 ### 11.3 What the operator sees on the next boot
 
 The consumer runs from the setup closure **before** `AppState::new` opens and migrates the
-database (desktop `apps/desktop-tauri/src/lib.rs:116-159`; tablet
+database (desktop `apps/desktop-tauri/src/lib.rs:116-159`; tablet <!-- dead-ref: ok: verified 2026-10-19; :116-159 is the boot/logging band the sentence names -->
 `apps/mobile-tauri/src/lib.rs:98-140`). It never fails the boot: every outcome is a value the
 caller logs, and the app starts on the existing database either way.
 
@@ -1819,7 +1819,7 @@ the swap directly, which is why the app must be closed.
 > on the **desktop** shell (`apps/desktop-tauri/src/lib.rs:1416-1418`) and gated in
 > `apps/desktop-tauri/src/commands/data.rs` — `SETTINGS_EDIT` for `restore_prepare` (`:228`),
 > `SETTINGS_READ` for the two reads (`:177`, `:196`); the **tablet registers none of the
-> three** (`apps/mobile-tauri/src/lib.rs:1090-1102`). Re-derive the whole census with
+> three** (`apps/mobile-tauri/src/lib.rs:1101-1103`). Re-derive the whole census with <!-- dead-ref: ok: verified 2026-10-19; :1101-1103 ARE commands::data::{export_data,import_preview,import_data}, the three the note counts -->
 > `grep -n 'list_restore_candidates\|restore_prepare\|restore_status' apps/*/src/lib.rs`
 > (expect three hits, all desktop) or `python3 scripts/verify-ipc-parity.py`. This is the
 > second correction to this section in one day, so it is stated with its command rather than
@@ -1834,7 +1834,7 @@ the swap directly, which is why the app must be closed.
 > CITATIONS below were wrong while every CLAIM they supported was right — re-verified at
 > HEAD: the desktop shell registers all three (`apps/desktop-tauri/src/lib.rs:1416-1418`,
 > previously cited as `:971-973`), the tablet registers none of them
-> (`apps/mobile-tauri/src/lib.rs:1090-1102` holds the `commands::data::` block and contains no
+> (`apps/mobile-tauri/src/lib.rs:1101-1103` holds the `commands::data::` block and contains no
 > restore command, previously cited as `:644-656`), and the three per-permission line numbers
 > in `apps/desktop-tauri/src/commands/data.rs` (`:177`, `:196`, `:228`) are still exact. A
 > reader who followed the stale pair landed in unrelated code — `:971-973` is a comment about

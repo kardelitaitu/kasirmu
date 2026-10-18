@@ -154,7 +154,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > desktop-section allowlist entry in `scripts/ipc-parity-allowlist.json`. One row's PROSE was
 > also stale, not just its marker: `get_active_market_profile_scoped` said "Desktop-only:
 > registered in `apps/desktop-tauri`, not in the tablet shell" while the tablet registers it
-> at `apps/mobile-tauri/src/lib.rs:1331`; the marker and the sentence are both corrected.
+> at `apps/mobile-tauri/src/lib.rs:1331`; the marker and the sentence are both corrected. <!-- dead-ref: ok: verified 2026-10-19; lib.rs:1331 IS get_active_market_profile_scoped, the symbol the sentence names; the neighbour anchor read `fiscal` from the line below -->
 > Section counts moved with the rows: `edc` 9→11, `fiscal` 5→7, `health` 9→12, and the new
 > `updater` section holds 3. Verified by an independent parser over both `generate_handler!`
 > lists that reproduced `493/413/511` exactly.
@@ -842,7 +842,7 @@ compiled cold-boot market profile.
 > are not IPC surface. A doc comment pointing at one of those as a command is how 7 rows
 > came to look like live API.
 > **Changed 2026-09-29:** `get_primary_location` is defined at
-> `apps/desktop-tauri/src/commands/locations.rs:100` and wired into no handler, so it is no
+> `apps/desktop-tauri/src/commands/locations.rs:100` and wired into no handler, so it is no <!-- dead-ref: ok: verified 2026-10-19; :100 IS the #[tauri::command] attribute on the unregistered fn the note describes -->
 > longer listed here as a command — see [Defined but in no handler](#defined-but-in-no-handler-3-names).
 > The section keeps the seven `_scoped` commands, all of which are registered in the
 > desktop handler.

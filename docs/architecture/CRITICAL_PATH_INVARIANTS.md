@@ -25,7 +25,7 @@ without saying so below.
 (`foundation/src/inventory.rs:380`) is a per-location policy flag. A location that
 opts in may oversell; a location that does not must be refused.
 
-> **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368`
+> **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368` <!-- dead-ref: ok: deliberately quotes the STALE coordinate this Repaired-note records; repairing it would erase the evidence (verified 2026-10-19) -->
 > for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`) <!-- dead-ref: ok: deliberately quotes the STALE coordinate this note records; repairing it would erase the evidence (verified 2026-10-19) -->
 > for the raw UPDATE. Both were stale: the flag now lives in `foundation` (the inventory
 > model was extracted there), and `adjust_stock_tx` **no longer exists** — `get_stock` and
