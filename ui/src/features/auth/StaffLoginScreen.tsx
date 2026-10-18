@@ -210,9 +210,16 @@ export default function StaffLoginScreen() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          setRecentCashiers(parsed.map(normalizeCashier).filter((c): c is RecentCashier => c !== null));
+          const list = parsed.map(normalizeCashier).filter((c): c is RecentCashier => c !== null);
+          if (list.length > 0) {
+            setRecentCashiers(list);
+            return;
+          }
         }
       }
+      // On provisioned terminals where localStorage was empty or cleared,
+      // fallback to the default 'owner' account so users are never stranded with an empty prompt.
+      setRecentCashiers([{ username: 'owner', displayName: 'Owner' }]);
     } catch { /* ignore */ }
   }, []);
 
@@ -388,6 +395,9 @@ export default function StaffLoginScreen() {
     const trimmed = username.trim();
     if (!trimmed) return;
 
+    // Explicitly blur input to dismiss Android software keyboard before PIN step
+    usernameInputRef.current?.blur();
+
     setUsernameChecking(true);
     clearError();
 
@@ -421,6 +431,10 @@ export default function StaffLoginScreen() {
 
   const handleSelectRecentCashier = useCallback(
     async (selectedUser: string) => {
+      // Dismiss any active virtual keyboard
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       setUsername(selectedUser);
       setUsernameChecking(true);
       clearError();
@@ -627,6 +641,9 @@ export default function StaffLoginScreen() {
           {step === 'username' && <StaffLoginLogo />}
           {step === 'pin' && (
             <div className="staff-login-pin-top">
+              <div className="staff-login-pin-user-badge">
+                <span className="staff-login-pin-user-label">{username}</span>
+              </div>
               {renderPinDots()}
             </div>
           )}
@@ -652,6 +669,7 @@ export default function StaffLoginScreen() {
                         onKeyDown={handleUsernameKeyDown}
                         autoComplete="off"
                         autoCorrect="off"
+                        autoCapitalize="none"
                         spellCheck={false}
                         data-1p-ignore="true"
                         aria-label={l10n.getString('username-aria')}

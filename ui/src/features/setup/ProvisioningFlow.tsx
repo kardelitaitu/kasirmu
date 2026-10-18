@@ -599,7 +599,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         const features = await getPresetFeatures(storeType)
           .then((r) => r.features)
           .catch(() => []);
-        const result = await provisionDevice({
+        await provisionDevice({
           terminal_id: terminalId,
           location_name: locationName.trim(),
           currency: PROVISION_CURRENCY,
@@ -620,7 +620,13 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           type: 'success',
           message: l10n.getString('setup-provision-success'),
         });
-        void result;
+        try {
+          const u = ownerUsername.trim();
+          if (u) {
+            const entry = { username: u, displayName: ownerName.trim() || u };
+            localStorage.setItem('kasirmu-recent-cashiers', JSON.stringify([entry]));
+          }
+        } catch { /* ignore */ }
         refreshSubscription();
         onProvisioned();
       } catch (err: unknown) {

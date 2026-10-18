@@ -248,6 +248,8 @@ describe('localStorage key registry', () => {
       .sort();
     expect(shared).toEqual([
       'current-username -> contexts/AuthContext.tsx, features/auth/SessionLockScreen.tsx',
+      'kasirmu-recent-cashiers -> contexts/AuthContext.tsx, features/auth/StaffLoginScreen.tsx, features/setup/ProvisioningFlow.tsx',
+      'oz-last-login -> contexts/AuthContext.tsx, features/auth/StaffLoginScreen.tsx',
     ]);
   });
 });
