@@ -231,6 +231,21 @@ const KNOWN_NOISE_SELECTORS = [
   // absolute-positioned selectors listed there give. Present HERE because the
   // coverage assertion's own fix states the two halves are a pair.
   '.pos-cart-order-type-indicator',
+  // Seven elevated surfaces that landed without the overlay in eb32a3b0f
+  // (style(restaurant): polish category pills, order context row and cart actions)
+  // and 5a020213c. Each is a --shadow-* card, pill or action button on the
+  // restaurant cart and menu, so each bands at the same order as the pills above —
+  // the overlay is GRANTED, which is why they appear in the components.css
+  // ::after block (main plus both media blocks) rather than on an exempt prefix.
+  // Found by running this suite, which no lane had reached: it had been red at
+  // HEAD for as long as those two commits have existed.
+  '.restaurant-category-pill',
+  '.restaurant-card',
+  '.pos-cart-panel',
+  '.pos-cart-open-bill-btn',
+  '.pos-cart-print-bill-btn',
+  '.pos-cart-split-bill-btn',
+  '.pos-cart-send-kitchen-btn',
   '.refund-modal',
   '.shortfall-modal',
   '.settings-footer-shortcut kbd',
@@ -881,7 +896,22 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // shadow walk found it, which is the walk doing its job; the population moved
     // 123 -> 124 with it, so the ceiling is +1 and the headroom below the floor is
     // unchanged in absolute terms.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 124 selectors; measured 109 with 24 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(109);
+    // Ceiling 109 -> 116, 2026-10-19. The +7 is the SAME sanctioned shape as the +1,
+    // +2, +1 and +1 above, applied to seven surfaces at once: .restaurant-category-pill,
+    // .restaurant-card, .pos-cart-panel, .pos-cart-open-bill-btn,
+    // .pos-cart-print-bill-btn, .pos-cart-split-bill-btn and .pos-cart-send-kitchen-btn
+    // each carry a --shadow-* value and each was given ::after entries in all THREE
+    // components.css lists in the SAME change that names them here, so all seven ARE
+    // dithered and this door's own rule is satisfied. None is a new waiver.
+    //
+    // Like the two cards above, none of them was ever a hardcoded literal -- eb32a3b0f
+    // and 5a020213c simply wrote the surfaces without the overlay, and the shadow walk
+    // found them. This is the walk doing exactly its job on the first run that reached
+    // it: the coverage assertion above had been RED at HEAD since those commits, and no
+    // lane had run this suite because the full matrix stops at the first earlier
+    // failure. Population 124 -> 131 with the seven, so the ceiling rises by 7 and the
+    // headroom below the floor is unchanged in absolute terms.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 131 selectors; measured 116 with 31 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(116);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is

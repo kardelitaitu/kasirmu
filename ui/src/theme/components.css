@@ -427,6 +427,18 @@
    Named here rather than exempted: 32px tall and as wide as a third of the cart,
    so it bands at the same order as .restaurant-size-btn above. */
 .pos-cart-order-type-indicator::after,
+/* 2026-10-19: seven elevated surfaces that eb32a3b0f and 5a020213c introduced
+   without the overlay. All are --shadow-* cards, pills or action buttons on the
+   restaurant cart and menu, so every one of them bands at the same order as the
+   pills above -- this is the GRANTED overlay, not a waiver, which is why they are
+   named here rather than added to an exempt prefix. */
+.restaurant-category-pill::after,
+.restaurant-card::after,
+.pos-cart-panel::after,
+.pos-cart-open-bill-btn::after,
+.pos-cart-print-bill-btn::after,
+.pos-cart-split-bill-btn::after,
+.pos-cart-send-kitchen-btn::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -652,6 +664,13 @@
   .restaurant-size-btn::after,
   /* Same parity for the cart order-type pill (also granted, not waived). */
   .pos-cart-order-type-indicator::after,
+  .restaurant-category-pill::after,
+  .restaurant-card::after,
+  .pos-cart-panel::after,
+  .pos-cart-open-bill-btn::after,
+  .pos-cart-print-bill-btn::after,
+  .pos-cart-split-bill-btn::after,
+  .pos-cart-send-kitchen-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -832,6 +851,13 @@
   .restaurant-size-btn::after,
   /* Same parity for the cart order-type pill (also granted, not waived). */
   .pos-cart-order-type-indicator::after,
+  .restaurant-category-pill::after,
+  .restaurant-card::after,
+  .pos-cart-panel::after,
+  .pos-cart-open-bill-btn::after,
+  .pos-cart-print-bill-btn::after,
+  .pos-cart-split-bill-btn::after,
+  .pos-cart-send-kitchen-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
