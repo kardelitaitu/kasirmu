@@ -1,13 +1,13 @@
 # kasir.mu — the POS that keeps selling when the internet doesn't
 
-<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 major, 1 minor) · Supersedes the 2026-10-08 stamp, kept verbatim below. Repaired this pass, all against the live tree rather than a prior stamp: (1) test counts, which move with every slice — **11,078** `#[test]`/`#[tokio::test]` attributes → **11,248** and **654** front-end test files → **749** (`git ls-files '*.rs'` regex count over all tracked `.rs`; `Get-ChildItem -Recurse ui/src -Filter *.test.*`), corrected in the Tests badge, both §Engineering-overview rows, §2 item 4, §4 and §9; (2) the code-size figures, which the page quotes from `stats.json` but presents as current — `stats.json` is a 2026-10-02 snapshot (`git ls-files` → 4,845 files / 1,341,980 lines today) and is not auto-regenerated, so both placements now say so and the ASCII art's "1.33M+" → "1.34M+"; (3) the "10,000+ bilingual localization entries" gloss on the `.ftl` row, which no script derives and which the 54-file corpus does not support — replaced with what the corpus is (bilingual en/id bundles). The ">508,000 lines of test code" figure is left as written and flagged as a dated estimate in both places it appears, since nothing in the tree computes it. Verified and left alone: every one of the 13 in-page links resolves; the §4 per-language table still sums exactly to 5,730 files / 1,250,487 lines; the tier table and the "2 months free" yearly figures match `docs/guides/user/subscription-tiers.md`; §6's phase statuses match `docs/guides/product/ROADMAP.md` (phases 1–7 completed, 8–20 Expected); the "phases 1–7 of the 20-phase roadmap" claim is correct. · Repaired against branch `0.0.41` at `ea89612c3`. -->
+<!-- Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (6 major, 2 minor) · Numbers re-derived 2026-10-19 against the tracked tree at branch 0.0.41; every stamp below kept verbatim. · MAJOR: (1) §4's per-language table, the Engineering-overview size row, the Code Size badge and §4's intro all quoted a superseded `stats.json` snapshot (1,505,939 / 6,781). Re-read the committed `stats.json` (`totalLines` 1,584,760, `totalFiles` 7,268, last written by `4a5713cf5`) and rewrote every row from it; the 13 rows now sum EXACTLY to 7,268 / 1,584,760. `scripts/stats.ps1` was re-run to confirm the shape and then `git checkout -- stats.json`, restoring the byte-identical committed blob, so no generated file is left modified. The old "1,516,791 lines / 5,133 tracked files" aside was a working-tree reading of a dirty shared checkout: `git ls-files | wc -l` is 5,422, so the aside now states only that. (2) Rust test attributes 11,283 -> 11,263 and bare `#[test]` 9,532 -> 9,535 (`git grep -hE '#[(test|tokio::test)]' -- '*.rs' | wc -l`). (3) Frontend test files 819 -> 821 (`git ls-files 'ui/src/**' | grep -E '\.test\.(ts|tsx)$' | wc -l`; zero `.spec.*`, the 104 Playwright specs live under `ui/e2e/`). (4) Test-code volume 545,209 -> 549,832 lines (285,329 + 241,430 + 14,243 + 19,216; all four commands run). (5) The "36.2% of the codebase" gloss: 549,832 is 34.7% of `stats.json`'s hand-written subset and 35.2% of all tracked lines, and 41.5% of the code that is NOT markdown/css/html — the page called a ~35% share 36%, so both placements now name 41.5% with its exact denominator. (6) §4's ASCII art said "1.51M+ lines" and §8 said "1.34M+", contradicting §4's own table; both now follow the table (1.58M+). · MINOR: §2's Test-code-volume line was SPLICED — it ended mid-command at `grep -E '^ui/src/.*\.test\.(ts|tsx)` and jumped straight to item 5, cutting off the first of its "four commands"; the truncation is removed and all four are restored. The same line's "re-derived 2026-10-15" attribution and §8's "dated estimate, not re-derived by any script" gloss now cite the 2026-10-19 measurement. · VERIFIED AND LEFT ALONE: every path the page cites resolves (17 checked, incl. `README-technical.md`, `docs/architecture/`, `crates/kasirmu-hal/src/drivers/mock.rs`, `ui/src/features/kds/`, `apps/mobile-tauri`); the Tests badge's "11,200+ rust" is satisfied by 11,263 (its "/ 740+ ui" was raised to "800+" to match the 821 the table now states); coverage 73.9% / 99.4% / 83.8% still match `scripts/coverage-floors.json` `_measured`; §6's phases 1-7 Completed / 8-20 Expected and the "phases 1-7 of the 20-phase roadmap" claim hold; §2's "Eight automated pre-commit gates" matches exactly the eight `# ──` headings of `.githooks/pre-commit` (27, 100, 143, 159, 177, 197, 240, 267); "CI pins 24, `dev-ci.yml:224`" still lands on `node-version: '24'`; Go 106 files matches `find apps/license-server -name '*.go' | wc -l`. · NOT re-measured (not machine-derivable): the tier table, the 1-core benchmark figures, the 20-phase dates, the prices. Ambiguous, unchanged: "14 modular business domains" (16 entries under `modules/`, 17 crates under `crates/`, no registry defines "domain"). | Stamps superseded by this one follow: Audit stamp 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 major, 1 minor) · Supersedes the 2026-10-08 stamp, kept verbatim below. Repaired this pass, all against the live tree rather than a prior stamp: (1) test counts, which move with every slice — **11,078** `#[test]`/`#[tokio::test]` attributes → **11,248** and **654** front-end test files → **749** (`git ls-files '*.rs'` regex count over all tracked `.rs`; `Get-ChildItem -Recurse ui/src -Filter *.test.*`), corrected in the Tests badge, both §Engineering-overview rows, §2 item 4, §4 and §9; (2) the code-size figures, which the page quotes from `stats.json` but presents as current — `stats.json` is a 2026-10-02 snapshot (`git ls-files` → 4,845 files / 1,341,980 lines today) and is not auto-regenerated, so both placements now say so and the ASCII art's "1.33M+" → "1.34M+"; (3) the "10,000+ bilingual localization entries" gloss on the `.ftl` row, which no script derives and which the 54-file corpus does not support — replaced with what the corpus is (bilingual en/id bundles). The ">508,000 lines of test code" figure is left as written and flagged as a dated estimate in both places it appears, since nothing in the tree computes it. Verified and left alone: every one of the 13 in-page links resolves; the §4 per-language table still sums exactly to 5,730 files / 1,250,487 lines; the tier table and the "2 months free" yearly figures match `docs/guides/user/subscription-tiers.md`; §6's phase statuses match `docs/guides/product/ROADMAP.md` (phases 1–7 completed, 8–20 Expected); the "phases 1–7 of the 20-phase roadmap" claim is correct. · Repaired against branch `0.0.41` at `ea89612c3`. -->
 
 <!-- Superseded audit stamp (2026-10-08, body kept verbatim). Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (4 findings) · First audit stamp this page has carried. Repaired against `stats.json` (the page's OWN cited source, which it contradicted): code size 1,334,821 lines / 5,954 files -> **1,250,487 / 5,730** (badge, §Engineering overview, §4 intro, §4 table and ASCII art), and the whole §4 per-language table regenerated so its rows sum EXACTLY to the stats totals (verified: 5,730 files / 1,250,487 lines). Test counts 9,026 / 623 -> **9,378 `#[test]`** (11,078 with `#[tokio::test]`) / **654** front-end test files, re-measured with `grep`. The "all 6 roadmap phases delivered" claim -> "phases 1–7 of the 20-phase roadmap delivered", matching `docs/guides/product/ROADMAP.md`. The ">508,000 lines of test code" figure is NOT re-derived here: no script computes it and `stats.json` carries no test-only breakdown, so it is left as written and flagged rather than replaced with a guess. · Repaired against branch `0.0.41` at `134aaed1b`. -->
 
-[![Code Size](https://img.shields.io/badge/code%20size-1%2C505.9k%20lines-blue?style=flat-square)](./stats.json)
+[![Code Size](https://img.shields.io/badge/code%20size-1%2C584.8k%20lines-blue?style=flat-square)](./stats.json)
 [![Server Cost](https://img.shields.io/badge/server%20cost-%3C1%25%20of%20revenue-success?style=flat-square)](#side-a-slashing-server-costs-to-under-1-of-gross-revenue-for-the-business)
 [![Rust Coverage](https://img.shields.io/badge/rust%20coverage-73.9%25-brightgreen?style=flat-square)](./scripts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-11%2C200%2B%20rust%20%7C%20740%2B%20ui-orange?style=flat-square)](./README-technical.md)
+[![Tests](https://img.shields.io/badge/tests-11%2C200%2B%20rust%20%7C%20800%2B%20ui-orange?style=flat-square)](./README-technical.md)
 [![Built with AI](https://img.shields.io/badge/development-solo%20dev%20%7C%2095%25%20AI%20written-purple?style=flat-square)](#4-engineering-scale--the-ai-native-development-model)
 
 > **Point-of-sale software that runs on the hardware you already own and needs no connection
@@ -47,13 +47,13 @@
 
 | Dimension | Specification | Reference |
 |---|---|---|
-| **Codebase size** | **1,505,939 lines of code** across **6,781 files** (regenerated 2026-10-15 with [`scripts/stats.ps1`](./scripts/stats.ps1); re-run it whenever the figure matters — `git ls-files | wc -l` → 5,133 tracked files, 1,516,791 lines including `.md`/lockfiles the generator excludes) | [`stats.json`](./stats.json) |
+| **Codebase size** | **1,584,760 lines of code** across **7,268 files** (`stats.json`, the generator's own output; re-run [`scripts/stats.ps1`](./scripts/stats.ps1) whenever the figure matters — `git ls-files | wc -l` → 5,422 tracked files) | [`stats.json`](./stats.json) |
 | **Core technology stack** | Native Rust backend + Tauri v2 native shell + React 18 / TypeScript frontend | [`README-technical.md`](./README-technical.md) |
 | **Local database** | SQLite (rusqlite WAL mode) on each terminal; zero server round-trips during checkout | [`docs/architecture/`](./docs/architecture/) |
 | **Cloud database** | PostgreSQL sync receiver with asynchronous outbox delta replication | [`crates/kasirmu-core/`](./crates/kasirmu-core/) |
 | **Test coverage** | **73.9% measured Rust workspace line coverage** (99.4% in `foundation`, 83.8% in `kasirmu-core`) | [`scripts/coverage-floors.json`](./scripts/coverage-floors.json) |
-| **Automated test suite** | **11,283 Rust `#[test]`/`#[tokio::test]` attributes** and **819 frontend test files** | [`README-technical.md`](./README-technical.md) |
-| **Test code volume** | **545,209 lines of test code** across Rust `*_tests.rs` / `tests/`, `ui/src/**/*.test.ts(x)`, `ui/e2e/` specs and `website/src/**/*.test.ts(x)` — **36.2%** of the codebase (re-derived 2026-10-15; the commands are in §4) | [`README-technical.md`](./README-technical.md) |
+| **Automated test suite** | **11,263 Rust `#[test]`/`#[tokio::test]` attributes** and **821 frontend test files** | [`README-technical.md`](./README-technical.md) |
+| **Test code volume** | **549,832 lines of test code** across Rust `*_tests.rs` / `tests/`, `ui/src/**/*.test.ts(x)`, `ui/e2e/` specs and `website/src/**/*.test.ts(x)` — **41.5%** of tracked `.rs`/`.ts(x)` lines (re-derived 2026-10-19; the commands are in §4) | [`README-technical.md`](./README-technical.md) |
 | **Development model** | **Solo developer — 95% of code authored and verified with AI** | [Section 4 below](#4-engineering-scale--the-ai-native-development-model) |
 | **Current release** | **v0.0.41** (phases 1–7 of the 20-phase roadmap delivered) | [Status below](#6-20-phase-strategic-platform-roadmap) |
 
@@ -164,9 +164,9 @@ A point-of-sale system sits directly between a merchant and their revenue. It ca
 3. **Transactional ACID guarantees:** Every inventory movement, refund, and shift closure executes within an explicit `rusqlite` database transaction. Write-ahead logging (WAL) prevents corruption even if power is cut mid-transaction.
 4. **Tested like mission-critical software:**
    - **73.9% measured Rust workspace line coverage** (reaching **99.4%** in `foundation` and **83.8%** in `kasirmu-core`).
-   - **11,283 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the tracked tree — **9,532** `#[test]` alone (re-measured 2026-10-11 over `git ls-files '*.rs'`; gitignored `scratch/` adds 98 more that are not shipped, which is why a bare recursive grep from a dev checkout reads higher).
-   - **819 frontend test files** in Vitest (`.test.*` under `ui/src`, of which 0 are `.spec.*`; re-derive with `ls ui/src/**/*.test.* | wc -l`). The 104 Playwright specs live under `ui/e2e/` and are not in that count.
-   - **545,209 lines of test code — 36.2%** of the codebase is automated suites, mocks and property checks. Re-derived 2026-10-15 (four commands, summed): `git ls-files '*.rs' | grep -E '(_tests\.rs$|/tests/)' | xargs cat | wc -l` → 284,737 · `git ls-files | grep -E '^ui/src/.*\.test\.(ts|tsx)
+   - **11,263 Rust unit and integration test functions** (`#[test]` / `#[tokio::test]`) across the tracked tree — **9,535** `#[test]` alone (re-measured 2026-10-19 with `git grep -hE '#\[(test|tokio::test)\]' -- '*.rs' | wc -l`, which reads the tracked tree only).
+   - **821 frontend test files** in Vitest (`.test.*` under `ui/src`, of which 0 are `.spec.*`; re-derive with `git ls-files 'ui/src/**' | grep -E '\.test\.(ts|tsx)$' | wc -l`). The 104 Playwright specs live under `ui/e2e/` and are not in that count.
+   - **549,832 lines of test code — 41.5%** of every tracked `.rs` / `.ts` / `.tsx` line; the rest of the codebase is not test code. Re-derived 2026-10-19 (four commands, summed): `git ls-files '*.rs' | grep -E '(_tests\.rs$|/tests/)' | xargs cat | wc -l` → 285,329 · `git ls-files 'ui/src/**' | grep -E '\.test\.(ts|tsx)$' | xargs cat | wc -l` → 241,430 · `git ls-files 'ui/e2e/**' | grep -E '\.spec\.' | xargs cat | wc -l` → 14,243 · `git ls-files 'website/src/**' | grep -E '\.test\.(ts|tsx)$' | xargs cat | wc -l` → 19,216.
 5. **Universal Hardware Abstraction Layer (HAL):** Vendor-independent driver traits for printers, scanners, cash drawers, scales, customer displays, and payment terminals—backed by mock implementations that allow 100% CI testing without physical hardware.
 6. **Deterministic offline conflict resolution:**
    - **Append-only financial ledgers:** Sales, refunds, and shifts are immutable transactional events minted with client-side UUID idempotency keys. They never overwrite or collide with other terminals.
@@ -211,8 +211,8 @@ The entire platform was architected, engineered, and maintained by a **solo deve
                                ▼
    ┌────────────────────────────────────────────────────────┐
    │         Autonomous AI Engineering Agents               │
-   │  • 1.51M+ lines of verified code                       │
-   │  • 11,283 automated Rust tests                        │
+   │  • 1.58M+ lines of verified code                       │
+   │  • 11,263 automated Rust tests                        │
    │  • Cross-platform desktop (Windows/Linux) & tablet     │
    │  • 14 modular business domains & HAL hardware drivers  │
    └────────────────────────────────────────────────────────┘
@@ -221,7 +221,7 @@ The entire platform was architected, engineered, and maintained by a **solo deve
 ### Solving the AI code quality challenge
 
 The primary failure mode of AI-generated code is accumulating untested technical debt. kasir.mu solved this by using AI primarily for **exhaustive verification and rigorous test generation**:
-- Over **545,000 lines of code** in the repository consist of test suites, mock drivers, and verification suites (36% of the entire codebase). *(This figure is not re-derived by any script in the tree — treat it as a dated estimate, unlike the test-attribute count below.)*
+- Over **549,000 lines of code** in the repository consist of test suites, mock drivers, and verification suites (41.5% of every tracked `.rs`/`.ts`/`.tsx` line, re-derived 2026-10-19 with the four commands in §2; no script in the tree computes it).
 - **Invariants enforced at the type system and database layer:**
   - `Money` is strictly modeled as an `i64` minor unit integer (zero floating-point currency representation).
   - All database writes are wrapped in explicit `rusqlite` transactions.
@@ -229,24 +229,24 @@ The primary failure mode of AI-generated code is accumulating untested technical
 
 ### Codebase metrics breakdown ([`stats.json`](./stats.json))
 
-The repository encompasses **1,505,939 lines of code** across **6,781 source files** (regenerated 2026-10-15 with `scripts/stats.ps1`; the previous is larger — see the note above the table):
+The repository encompasses **1,584,760 lines of code** across **7,268 source files** — the `stats.json` figures generated by `scripts/stats.ps1` (`totalLines` / `totalFiles`; re-run the script to confirm):
 
 | Language / Domain | Files | Lines | Primary Scope |
 |---|---:|---:|---|
-| **Rust** | 1,435 | 561,575 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
-| **TypeScript / TSX** | 1,769 | 447,114 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
-| **Markdown** | 675 | 173,302 | Comprehensive system architecture, ADRs, test strategies, user guides |
-| **HTML** | 1,210 | 102,619 | Prototypes, KDS layouts, web views, documentation templates |
-| **CSS** | 167 | 71,529 | Design system, tokenized responsive styling, print receipt layouts |
+| **Rust** | 1,435 | 562,497 | Domain logic, SQLite engine, HAL device drivers, security, cryptography, sync outbox |
+| **TypeScript / TSX** | 1,808 | 467,673 | React POS UI, state machines, Kitchen Display (KDS), tablet layouts, API clients |
+| **Markdown** | 1,103 | 227,788 | Comprehensive system architecture, ADRs, test strategies, user guides |
+| **HTML** | 1,213 | 102,691 | Prototypes, KDS layouts, web views, documentation templates |
+| **CSS** | 172 | 72,897 | Design system, tokenized responsive styling, print receipt layouts |
 | **Go** | 106 | 44,950 | Standalone licensing server (`apps/license-server`) |
-| **Python** | 257 | 44,108 | Verification gates, migration generators, drift checkers, E2E orchestration |
-| **JavaScript / MJS** | 896 | 21,403 | Tooling scripts, build pipelines, prototype engines |
-| **Fluent (`.ftl`)** | 54 | 13,739 | Bilingual localization bundles (English and Bahasa Indonesia) |
+| **Python** | 260 | 44,824 | Verification gates, migration generators, drift checkers, E2E orchestration |
+| **JavaScript / MJS** | 903 | 21,741 | Tooling scripts, build pipelines, prototype engines |
+| **Fluent (`.ftl`)** | 54 | 13,883 | Bilingual localization bundles (English and Bahasa Indonesia) |
 | **SQL** | 77 | 9,072 | Migration schemas (SQLite primary + generated PostgreSQL replica) |
-| **Shell** | 57 | 8,571 | CI/CD automation, build scripts, release tooling |
-| **PowerShell** | 27 | 4,927 | Windows setup, gate runners, packaging checks |
+| **Shell** | 59 | 8,754 | CI/CD automation, build scripts, release tooling |
+| **PowerShell** | 27 | 4,960 | Windows setup, gate runners, packaging checks |
 | **Astro** | 51 | 3,030 | Marketing website & documentation portal |
-| **Total** | **6,781** | **1,505,939** | Complete repository footprint |
+| **Total** | **7,268** | **1,584,760** | Complete repository footprint |
 
 ---
 
@@ -368,7 +368,7 @@ For full architecture deep-dives, verified commands, and CI gate reproduction, s
 - **Linear Scale from 10k to 1M Outlets:** Edge computing offloads checkout computation to local devices; 10k stores run on a single $26/mo VPS, scaling linearly to 100k+ and 1M stores via tenant-partitioned database sharding without architectural rewrites.
 - **The Distribution Flywheel:** Emerging market merchants don't resist digitization; they resist overhead. By running on existing hardware with zero platform GMV take-rate and an unexpiring Free tier, kasir.mu drives viral bottom-up merchant acquisition.
 - **The Defensibility Moat:** A native Rust engine, unified hardware abstraction layer, offline-first data synchronization, and enterprise-grade test verification cannot be replicated by wrapper apps or quick cloud clones.
-- **Unprecedented Capital Efficiency:** Built by a solo developer leveraging 95% AI execution, delivering a 1.34M+ LOC enterprise product at a tiny fraction of typical venture capital burn.
+- **Unprecedented Capital Efficiency:** Built by a solo developer leveraging 95% AI execution, delivering a 1.58M+ LOC enterprise product at a tiny fraction of typical venture capital burn.
 
 For comprehensive technical, financial, and market documentation, see:
 - Market Research: [`docs/guides/product/INDONESIA_POS_ECOSYSTEM_RESEARCH.md`](./docs/guides/product/INDONESIA_POS_ECOSYSTEM_RESEARCH.md)
@@ -383,7 +383,7 @@ For comprehensive technical, financial, and market documentation, see:
 ### For developers & contributors
 - **Explore verified architecture:** Inspect the engineering specification in [`README-technical.md`](./README-technical.md).
 - **Run locally:** Follow the quickstart instructions above or in [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md).
-- **Inspect automated tests:** Run `cargo test --workspace` (11,283 test functions) or Vitest (819 frontend test files).
+- **Inspect automated tests:** Run `cargo test --workspace` (11,263 test functions) or Vitest (821 frontend test files).
 
 ### For investors & commercial partners
 - **Schedule a Demonstration:** Contact **support@kasir.mu** to review live benchmarks, edge synchronization, and the visual node topology canvas.
@@ -405,4 +405,4 @@ See [LICENSE](./LICENSE) for formal terms and conditions.
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor
