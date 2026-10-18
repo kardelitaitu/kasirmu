@@ -343,6 +343,10 @@
 .card::after,
 .modal-panel::after,
 .provisioning-card::after,
+/* The chosen option on the setup card. Its selected state gained a shadow lift, so
+   the same rule that covers the card covers the card option that sits on it. */
+.provisioning-store-type.is-selected::after,
+.provisioning-mode-card.is-selected::after,
 .staff-login-card::after,
 .workspace-card::after,
 .staff-mgmt-card::after,
@@ -622,6 +626,8 @@
   .card::after,
   .modal-panel::after,
   .provisioning-card::after,
+  .provisioning-store-type.is-selected::after,
+  .provisioning-mode-card.is-selected::after,
   .staff-login-card::after,
   .workspace-card::after,
   .staff-mgmt-card::after,
@@ -811,6 +817,8 @@
   .card::after,
   .modal-panel::after,
   .provisioning-card::after,
+  .provisioning-store-type.is-selected::after,
+  .provisioning-mode-card.is-selected::after,
   .staff-login-card::after,
   .workspace-card::after,
   .staff-mgmt-card::after,
