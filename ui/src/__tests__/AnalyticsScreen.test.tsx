@@ -174,12 +174,23 @@ const mockGetInventoryTurnover = vi.fn(() => Promise.resolve({ units_sold: 500, 
 // off-range fixed date would be dropped (rendering an all-zero chart).
 const daysAfter = (iso: string, n: number) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-/** ISO Monday of the current local week — matches `weekStartKey` in the loader. */
+/**
+ * ISO Monday of the current week, matching `weekStartKey` in analytics-data.ts:728.
+ *
+ * It must use the SAME clock the loader uses. `weekStartKey` reads UTC parts
+ * (`getUTCDay`, `getUTCFullYear`, …) because the bucket axis is UTC-keyed, but this
+ * helper used to read LOCAL parts (`getDay`, `getFullYear`, …) while its comment
+ * claimed the two matched. They only agree when the host's local date equals its UTC
+ * date -- which stops being true for the hours a UTC+14 host is already on tomorrow.
+ * check-tz-invariance caught it in exactly one zone: TZ=Pacific/Kiritimati produced
+ * `Low: <local Monday> · 134 min` against a card rendering the UTC Monday, and the
+ * test failed while UTC, Jakarta, Honolulu and Los_Angeles all passed.
+ */
 const isoLocalMonday = () => {
-  const now = new Date();
-  const dow = (now.getDay() + 6) % 7;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
-  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+  const d = new Date();
+  const dow = (d.getUTCDay() + 6) % 7; // Monday-first, in UTC like the loader
+  d.setUTCDate(d.getUTCDate() - dow);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
 const mockGetInventoryTrend = vi.fn((startDate?: string, _endDate?: string, _token?: string) => Promise.resolve([
   { date: startDate ?? '2026-07-21', units_sold: 15 },
