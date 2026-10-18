@@ -433,13 +433,9 @@ pub fn provision_device(
     }
 }
 
-/// One seeded sample product: `(sku, name, price_minor, qty, category, kind)`.
-///
-/// Named rather than written inline because the six-field tuple trips
-/// `clippy::type_complexity` under `-D warnings`, which is how CI runs clippy.
-/// The alias is the fix the lint itself suggests, and it makes the call sites
-/// legible: a bare `(&str, &str, i64, i64, &str, Option<&str>)` tells a reader
-/// nothing about which `i64` is the price and which is the quantity.
+/// One seeded sample product: `(sku, name, price_minor, qty, category, notes)`.
+/// Named because the six-field tuple trips `clippy::type_complexity` under
+/// `-D warnings`, and the name says which `i64` is price and which is quantity.
 type SampleItem<'a> = (&'a str, &'a str, i64, i64, &'a str, Option<&'a str>);
 
 /// The transactional body, split out so the commit/rollback pairing above
