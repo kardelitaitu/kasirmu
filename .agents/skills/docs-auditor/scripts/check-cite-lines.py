@@ -21,9 +21,20 @@ WHAT IT GRADES, AND WHAT IT REFUSES TO GUESS
       NO-ANCHOR   the doc line names no symbol -> NOT GRADED, not a pass
 
     NO-ANCHOR is counted separately on purpose. Reporting it as clean would be
-    the exact failure this file exists to prevent: a green that cannot be made
+    the exact failure this file exists to prevent: a green that can not be made
     red. The summary prints the ungraded count so a reader can see the ceiling
     of the check.
+
+    ADJACENT-LINE ANCHORS (added 2026-10-19, after measuring that 73 of 98
+    NO-ANCHOR citations had their symbol on the line above or below): a prose
+    citation usually ends one line and names its symbol on the next. So when the
+    doc line carries NO OTHER backticked token, the neighbours are consulted. It
+    is deliberately narrow -- a line that already names something is its own
+    evidence, and borrowing a neighbour then recovers the WRONG symbol. That
+    exact failure was measured twice before the gate existed:
+    `main.rs:630` ("the field is `db`") picked up `db_kind` from the next line,
+    and `mobile/lib.rs:1331` picked up a fiscal command from the line below;
+    both citations were correct.
 
     A citation that is deliberately wrong — a "Repaired:" note quoting what a
     file USED to cite, a documented historical coordinate — must not be
@@ -187,7 +198,33 @@ def grade(root: pathlib.Path, doc: pathlib.Path, verbose=False):
                 results.append((rel, i + 1, target, n, "SUPPRESSED", "", full))
                 continue
             tlines = tp.read_text(encoding="utf-8", errors="replace").split("\n")
-            if not anchors_on(line, full):
+            own = anchors_on(line, full)
+            # A prose citation usually puts the symbol on the NEXT line — or the
+            # previous one when the coordinate ends the sentence and the symbol
+            # starts the continuation. Measured 2026-10-19: 73 of 98 previously
+            # NO-ANCHOR citations have a backticked symbol on an adjacent line,
+            # so refusing to look there left most of the corpus ungraded.
+            #
+            # The neighbour is only a FALLBACK: own-line anchors are tried first
+            # and win, so a line carrying its own symbol can never be re-pointed
+            # by something adjacent. Neighbour anchors carry a large distance
+            # penalty for the same reason.
+            nbrs = []
+            if i > 0:
+                nbrs.append((-1, lines[i - 1]))
+            if i + 1 < len(lines):
+                nbrs.append((1, lines[i + 1]))
+            # A neighbour anchor is used ONLY when the doc line carries no other
+            # backticked token at all. Without this gate the neighbour recovers
+            # the WRONG symbol: `apps/cloud-server/src/main.rs:630` ("the field
+            # is `db`") picked up `db_kind` from the next line and was reported
+            # SYMBOL-GONE, and `mobile/lib.rs:1331` picked up a fiscal command
+            # from the line below. Both citations were exactly right. A line that
+            # already names something is its own evidence; only a line that names
+            # nothing may borrow from a neighbour.
+            rest_of_line = full and line.replace(full, " ")
+            has_other_backtick = bool(BACKTICK.search(rest_of_line))
+            if not own and (has_other_backtick or not any(anchors_on(nb, full) for _, nb in nbrs)):
                 results.append((rel, i + 1, target, n, "NO-ANCHOR", "", full))
                 continue
             verdict, hit = "SYMBOL-GONE", 0
@@ -199,7 +236,12 @@ def grade(root: pathlib.Path, doc: pathlib.Path, verbose=False):
             # and a correct citation was reported as drift. The question is
             # "is ANY named symbol near line N", not "is the closest-named one".
             far = None
-            for sym, _dist in anchors_on(line, full):
+            search = list(own)
+            if not own:
+                for off, nb in nbrs:
+                    for sym, dist in anchors_on(nb, full):
+                        search.append((sym, dist + abs(off) * 100000))
+            for sym, _dist in search:
                 pat = re.compile(r"\b%s\b" % re.escape(sym))
                 where = [j + 1 for j, l in enumerate(tlines) if pat.search(l)]
                 if not where:
@@ -246,6 +288,7 @@ def main() -> int:
         if ok_line is None:
             print("SELF-TEST SKIPPED: no `pub mod NAME;` line to anchor on")
             return 2
+        okc = "crates/kasirmu-core/src/lib.rs:%d" % ok_line
         cases = [
             ("`crates/kasirmu-core/src/lib.rs:%d` `%s`" % (ok_line, ok_sym), "OK"),
             ("`crates/kasirmu-core/src/lib.rs:%d` `%s`" % (nline + 50, ok_sym), "DRIFTED"),
@@ -258,11 +301,19 @@ def main() -> int:
             # so a citation naming it on a long line graded "OK" against a line
             # that has nothing to do with it. Backticks only.
             ("`crates/kasirmu-core/src/lib.rs:%d` attestation" % (nline + 50), "NO-ANCHOR"),
+            # ADJACENT-LINE anchor, the prose shape: the coordinate ends one line
+            # and the symbol starts the next. Must grade OK, not NO-ANCHOR.
+            ("Replaying a refund (`%s`):\n`%s` is the module that owns it." % (okc, ok_sym), "OK"),
+            # ...but a neighbour must never OVERRIDE an own-line symbol: this
+            # line carries `ok_sym` for a wrong line, and a neighbour naming a
+            # symbol that happens to sit at that line must not rescue it.
+            ("`crates/kasirmu-core/src/lib.rs:%d` `%s`\n`%s`"
+             % (nline + 50, ok_sym, ok_sym), "DRIFTED"),
         ]
         bad = 0
         for line, want in cases:
             doc = root / "SELFTEST.md"
-            doc.write_text(line + "\n", encoding="utf-8")
+            doc.write_text(line + "\n", encoding="utf-8")  # `\n` in a case is a real line break
             try:
                 got = grade(root, doc)[0][4]
             finally:
