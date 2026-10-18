@@ -183,6 +183,7 @@ pub(super) fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
         line_count: sale.lines.len(),
         receipt_number: Some(sale.id.clone()),
         statutory_number: None,
+        stock_warnings: Vec::new(),
     }
 }
 
@@ -606,6 +607,7 @@ pub(super) fn run_complete_sale_scoped_store(
         line_count,
         receipt_number: Some(deduct.receipt_number),
         statutory_number,
+        stock_warnings: deduct.stock_warnings,
     };
     tracing::info!(
         sale_id = %result.sale_id,
@@ -697,6 +699,7 @@ pub async fn complete_sale_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings,
     } = settlement.result;
 
     // A replay wrote nothing, so it must publish nothing: the domain event
@@ -709,6 +712,7 @@ pub async fn complete_sale_scoped(
             line_count,
             receipt_number,
             statutory_number,
+            stock_warnings,
         });
     };
 
@@ -766,6 +770,7 @@ pub async fn complete_sale_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings,
     })
 }
 

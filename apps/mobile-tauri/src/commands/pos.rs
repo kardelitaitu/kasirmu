@@ -754,6 +754,7 @@ fn settle_shortfall_resolved(
                 line_count,
                 receipt_number: Some(deduct.receipt_number),
                 statutory_number: deduct.statutory_number,
+                stock_warnings: deduct.stock_warnings,
             },
             sale: Some(sale),
         }),
