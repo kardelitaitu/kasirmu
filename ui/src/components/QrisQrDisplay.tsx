@@ -67,8 +67,10 @@ export default function QrisQrDisplay({
   const [verifiedProvider, setVerifiedProvider] = useState<string | null>(null);
   const [listenerEnabled, setListenerEnabled] = useState<boolean | null>(null);
   const autoMode = pollSettled !== undefined;
-  // onExpired identity churns with parent renders; keep the latest in a
-  // ref so the countdown effect fires it exactly once at zero.
+  // onPaymentConfirmed / onExpired identity churns with parent renders; keep the latest in a
+  // ref so the effects fire with the latest callback without restarting their timers.
+  const onPaymentConfirmedRef = useRef(onPaymentConfirmed);
+  onPaymentConfirmedRef.current = onPaymentConfirmed;
   const onExpiredRef = useRef(onExpired);
   onExpiredRef.current = onExpired;
 
@@ -214,10 +216,10 @@ export default function QrisQrDisplay({
     if (status !== 'confirmed') return;
     triggerInteraction('pay');
     const timer = setTimeout(() => {
-      onPaymentConfirmed();
+      onPaymentConfirmedRef.current();
     }, 1200);
     return () => clearTimeout(timer);
-  }, [status, onPaymentConfirmed]);
+  }, [status]);
 
   // Layered exit to mirror the entry (added in this PR). Mirrors
   // the PosScreen cousin-modals pattern (commit 1408992): the
