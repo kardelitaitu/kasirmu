@@ -241,7 +241,7 @@ export function RestaurantPaymentsScreen({
   onSaved,
   onBack,
 }: RestaurantPaymentsScreenProps) {
-  const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
+  const { sessionToken, terminalId: contextTerminalId, resolvedStoreId } = useWorkspace();
   const effectiveTerminalId = propTerminalId || contextTerminalId || '';
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -387,9 +387,10 @@ export function RestaurantPaymentsScreen({
           setEdcTerminals(edcList.filter((t) => t.isActive));
         }
 
-        if (primary) {
-          setLocationId(primary.id);
-          const rawRails = await getLocalPaymentMethodsScoped(sessionToken, primary.id);
+        const targetLocationId = primary?.id || resolvedStoreId || null;
+        if (targetLocationId) {
+          setLocationId(targetLocationId);
+          const rawRails = await getLocalPaymentMethodsScoped(sessionToken, targetLocationId);
           if (cancelled) return;
 
           const mergedDrafts = mergeCoreRails(rawRails);
@@ -553,7 +554,7 @@ export function RestaurantPaymentsScreen({
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, l10n, addToast, reloadNonce]);
+  }, [sessionToken, resolvedStoreId, l10n, addToast, reloadNonce]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
@@ -744,7 +745,8 @@ export function RestaurantPaymentsScreen({
 
   // ── Save Handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    if (!sessionToken || !locationId) return;
+    const effectiveLocationId = locationId || resolvedStoreId || null;
+    if (!sessionToken || !effectiveLocationId) return;
     setSaving(true);
     try {
       const tasks: Promise<unknown>[] = [];
@@ -762,7 +764,7 @@ export function RestaurantPaymentsScreen({
         is_enabled: d.is_enabled,
         parameters: sanitizeRailParams(d.rail_code, d.parameters),
       }));
-      tasks.push(setLocalPaymentMethodsScoped(sessionToken, locationId, payload));
+      tasks.push(setLocalPaymentMethodsScoped(sessionToken, effectiveLocationId, payload));
 
       // 2. Save payment gateway credentials (encrypted at rest in payment_gateways)
       tasks.push(
@@ -821,6 +823,7 @@ export function RestaurantPaymentsScreen({
   }, [
     sessionToken,
     locationId,
+    resolvedStoreId,
     drafts,
     effectiveTerminalId,
     hw,
