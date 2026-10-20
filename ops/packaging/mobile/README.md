@@ -277,7 +277,8 @@ apps/mobile-tauri/         # Rust + Tauri configuration
 │   ├── state.rs            # App state
 │   └── error.rs            # Error types
 └── gen/                    # COMMITTED (see root .gitignore:182-191) — CI builds without the Tauri CLI
-    └── android/            # Gradle project, 57 tracked files (scaffold created by `cargo tauri android init`)
+    └── android/            # Gradle project, 50 tracked files (scaffold created by `cargo tauri android init`;
+                            #   57 today counts gen/ as a whole — schemas/ adds 7, re-measured 2026-10-19)
                             #   gen/apple/ does NOT exist: iOS has no scaffold in this tree
 
 ops/packaging/mobile/README.md  # This file
