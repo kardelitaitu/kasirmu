@@ -2073,7 +2073,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // `showStockInquiry`, `showReceipts`, ... eight of them). React's rules-of-hooks
   // require every hook to run in the same order on EVERY render, so on any sub-view
   // this hook was simply never registered — and `RestaurantMenu`'s `onAddProduct`
-  // (`:2410`, re-measured 2026-10-19; the hook sat at `:2160`-`:2195` when it was moved) resolved to `undefined` there. `npm run lint` caught it as
+  // (now :2410, re-measured 2026-10-19) resolved to `undefined` there. `npm run lint` caught it as
   // `react-hooks/rules-of-hooks` at 2161:38 once another lane's file landed; the
   // runtime consequence is the Menu Editor's add path being inert whenever a
   // sub-screen had been visited.
