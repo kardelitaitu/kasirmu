@@ -332,8 +332,8 @@ export function RestaurantPaymentsScreen({
 
   /**
    * F4: a gateway read failed, so the Midtrans/Stripe fields show EMPTY rather than
-   * the stored config. The drafts baseline is seeded on the success path at `:408`
-   * and, for every other outcome, in the `finally` at `:543` — both BEFORE the
+   * the stored config. The drafts baseline is seeded on the success path at `:409`
+   * and, for every other outcome, in the `finally` at `:545` — both BEFORE the
    * gateway reads at `:476` can be reached. So without this flag the screen looks
    * clean and saving writes the blanks over real credentials.
    *
@@ -474,7 +474,7 @@ export function RestaurantPaymentsScreen({
           //
           // F4: these two used to `.catch(() => null)` INDEPENDENTLY, which swallowed a
           // failed read. Combined with the `if (midtransGw)` / `if (stripeGw)` guards
-          // and the baseline seeded at `:408` on the success path (or `:543` in the
+          // and the baseline seeded at `:409` on the success path (or `:545` in the
           // load effect's `finally`) before this point, a failure left the
           // screen looking CLEAN while showing empty fields — so saving wrote the
           // blanks over the stored credentials. The flag is what makes that visible.
@@ -528,7 +528,7 @@ export function RestaurantPaymentsScreen({
         //
         // `originalsRef` starts as `{ drafts: [] }` (:320) and was only filled
         // inside the `if (targetLocationId)` gate (`:391`, re-measured 2026-10-19; it
-        // read `if (primary)` when this note was written) — actually at `:408`. When no
+        // read `if (primary)` when this note was written) — actually at `:409`. When no
         // location resolves, or the rail read at `:393` throws — the screen still RENDERS
         // rails, because `drafts` comes from the useState initializer (:251), but the
         // baseline stays empty. The `dirty` memo then returns false at `:560` on
