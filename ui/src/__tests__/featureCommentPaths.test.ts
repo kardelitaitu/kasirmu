@@ -204,11 +204,11 @@ function barePrefixed(source: string): string[] {
  *     `re` guard) — the token is treated as a claim about ANOTHER file, correctly;
  *   * the path pass resolves the FILE and stops there.
  *
- * So `CartPanel.tsx:864` was verified to name a file that exists, and the 864 was
+ * So `CartPanel.tsx:898` was verified to name a file that exists, and the number was
  * never checked by anything. Measured 2026-10-18 (round 184): scanning every
  * comment line under `features/` for a resolvable `name.ext:NN` token found **113**
  * such citations and **9** pointing at a line that is blank, punctuation-only, or
- * past EOF. Three of the nine were the SAME drifted target (CartPanel.tsx:864,
+ * past EOF. Three of the nine were the SAME drifted target (CartPanel.tsx:898,
  * an unrelated `}}` — see round 183 for the first), which is what a citation looks
  * like once the file it points into grows and nothing re-checks the number.
  *
@@ -504,7 +504,7 @@ function resolveCitedFile(fromFile: string, ref: string): string | null {
 
 
 /**
- * Repo-wide basename index, for BARE-filename citations (`CartPanel.tsx:864`).
+ * Repo-wide basename index, for BARE-filename citations (`CartPanel.tsx:898`).
  *
  * A citation may spell its target three ways, and only two resolve by path:
  *
