@@ -1315,51 +1315,59 @@ fn caps_report_the_ledger_tier_the_gate_enforces() {
     )
     .unwrap();
 
-    // Aligned clocks: both answers are Premium, so this fixture is not
-    // accidentally testing some other difference.
-    assert_eq!(caps(&conn).tier, "premium", "aligned clocks must agree");
+    if seeded_row_reaches_a_paid_tier() {
+        // Aligned clocks: both answers are Premium, so this fixture is not
+        // accidentally testing some other difference.
+        assert_eq!(caps(&conn).tier, "premium", "aligned clocks must agree");
 
-    // Roll the world forward 40 days of ledger time while the wall clock stays
-    // put: exactly the state a rolled-back install presents.
-    let rolled = ledger_now + chrono::Duration::days(40);
-    conn.execute(
-        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
-        rusqlite::params![rolled.to_rfc3339()],
-    )
-    .unwrap();
+        // Roll the world forward 40 days of ledger time while the wall clock stays
+        // put: exactly the state a rolled-back install presents.
+        let rolled = ledger_now + chrono::Duration::days(40);
+        conn.execute(
+            "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+            rusqlite::params![rolled.to_rfc3339()],
+        )
+        .unwrap();
 
-    let gate_tier = {
-        let store = Store::new(&conn);
-        store.resolve_tier_fail_closed().unwrap()
-    };
-    let dto = caps(&conn);
+        let gate_tier = {
+            let store = Store::new(&conn);
+            store.resolve_tier_fail_closed().unwrap()
+        };
+        let dto = caps(&conn);
 
-    assert_eq!(
-        gate_tier.tier_key(),
-        "free",
-        "past grace the enforcement gate downgrades to Free"
-    );
-    assert_eq!(
-        dto.tier,
-        gate_tier.tier_key(),
-        "the caps payload must report the tier the gate enforces, not the wall clock's"
-    );
+        assert_eq!(
+            gate_tier.tier_key(),
+            "free",
+            "past grace the enforcement gate downgrades to Free"
+        );
+        assert_eq!(
+            dto.tier,
+            gate_tier.tier_key(),
+            "the caps payload must report the tier the gate enforces, not the wall clock's"
+        );
 
-    // And the limits it publishes must follow that same tier, or the UI
-    // renders a cap the gate will refuse.
-    let free_max = QuotaDimension::Locations.limit_for(&kasirmu_core::SubscriptionTier::Free);
-    assert_eq!(
-        dto.max_locations, free_max,
-        "published caps follow the gate tier"
-    );
+        // And the limits it publishes must follow that same tier, or the UI
+        // renders a cap the gate will refuse.
+        let free_max = QuotaDimension::Locations.limit_for(&kasirmu_core::SubscriptionTier::Free);
+        assert_eq!(
+            dto.max_locations, free_max,
+            "published caps follow the gate tier"
+        );
 
-    // Sanity: the wall-clock reader really does disagree, so this test would
-    // notice if `caps` were switched back.
-    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
-    let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
-    assert_eq!(
-        wall.tier.tier_key(),
-        "premium",
-        "the wall-clock reader still grants Premium — the divergence this pins"
-    );
+        // Sanity: the wall-clock reader really does disagree, so this test would
+        // notice if `caps` were switched back.
+        let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+        let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
+        assert_eq!(
+            wall.tier.tier_key(),
+            "premium",
+            "the wall-clock reader still grants Premium — the divergence this pins"
+        );
+    } else {
+        // Release: an unverifiable row fails closed to Free under either clock,
+        // so the gate and caps agree on Free from the start.
+        assert_seeded_row(&conn, "premium");
+        let dto = caps(&conn);
+        assert_caps_fail_closed(&dto);
+    }
 }
