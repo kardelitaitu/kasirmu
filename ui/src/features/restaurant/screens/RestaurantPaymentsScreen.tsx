@@ -527,8 +527,9 @@ export function RestaurantPaymentsScreen({
         // F40: the baseline MUST be seeded before `loading` clears.
         //
         // `originalsRef` starts as `{ drafts: [] }` (:320) and was only filled
-        // inside `if (primary)` (:390) — actually at `:408`. When `primary` is falsy,
-        // or the rail read throws before reaching `:395` — the screen still RENDERS
+        // inside the `if (targetLocationId)` gate (`:391`, re-measured 2026-10-19; it
+        // read `if (primary)` when this note was written) — actually at `:408`. When no
+        // location resolves, or the rail read at `:393` throws — the screen still RENDERS
         // rails, because `drafts` comes from the useState initializer (:251), but the
         // baseline stays empty. The `dirty` memo then returns false at `:560` on
         // `length === 0` FOR EVER, so Save is permanently disabled and an

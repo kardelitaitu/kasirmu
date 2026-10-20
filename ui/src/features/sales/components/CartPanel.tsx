@@ -811,13 +811,15 @@ export function CartPanel({
                 //
                 // This handler cleared the lines, the table, the customer and the tab id
                 // — but not the promotions, which are NOT cosmetic: they ride to
-                // checkout as `promotionIds` (PosScreen.tsx:2210) and pre-select in the
-                // promotions modal (:2249). Starting a new tab after a discounted one
+                // checkout as `promotionIds` (PosScreen.tsx:2501, re-measured 2026-10-19;
+                // it was 2210 when this note was written) and pre-select in the
+                // promotions modal (PosScreen.tsx:2536-2543). Starting a new tab after a discounted one
                 // therefore applied that tab's discounts to the NEXT sale, with the cart
                 // empty and the banner gone so nothing on screen invited a second look.
                 //
                 // The sibling reset is the reference and always cleared them: the hold
-                // path in usePosHeldCarts (:302-307) calls `setAppliedPromotions([])`
+                // path in usePosHeldCarts.ts (:330, re-measured 2026-10-19; the note said
+                // `:302-307`, which never matched) calls `setAppliedPromotions([])`
                 // next to exactly these fields. New Tab is the same reset with one line
                 // missing, and it had no test at all, which is how the omission survived.
                 setAppliedPromotions([]);

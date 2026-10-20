@@ -908,7 +908,8 @@ export default function RestaurantMenuEditorScreen({
       if (categoryModal) {
         // ⚠️ THE CLAIM IS THE STOP, NOT THE `return`. Capture runs first, so this
         // handler sees the key BEFORE PosScreen — but the event then continues to
-        // PosScreen's own Escape cascade (`PosScreen.tsx:2000`), which closes the
+        // PosScreen's own Escape cascade (`PosScreen.tsx:2027`, re-measured 2026-10-19;
+        // the note said `:2000`), which closes the
         // whole editor. Returning without stopping means the layer below acts on a
         // key this layer already used. Measured 2026-10-17: the handler ran with
         // `onBack=true draft=true`, called `cancelDraft()`, and the editor STILL

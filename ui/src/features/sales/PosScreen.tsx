@@ -254,7 +254,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // Overwriting would destroy the abandoned cart; deleting the outgoing one
           // would destroy the cart the operator is LOOKING AT, which is worse. The POS
           // UNMOUNTS on a switch (`switchStore` clears `activeWorkspace`, and AppShell
-          // renders the POS only under its own workspace at :722/:755), so the in-memory
+          // renders the POS only under its own workspace at AppShell.tsx:745/:778, re-measured
+  // 2026-10-19; the old `:722/:755` pair was this file's own line numbers and matched nothing), so the in-memory
           // cart is already gone and this key holds its only copy.
           //
           // So the outgoing draft is PARKED under a dedicated key instead of dropped.
@@ -960,7 +961,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // If this was an open bill being paid, delete it from DB.
     //
     // ⚠️ THE FAILURE BRANCH MUST RE-READ, and the delete must be AWAITED before the
-    // refresh — the same rule the split handler above states at :1006-1037, and the
+    // refresh — the same rule the split handler above states at :1096-1251, and the
     // same reason its comment gives: `loadOpenBills()` on the success path alone left
     // the list showing stale data over a half-committed write.
     //
@@ -1000,7 +1001,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     //
     // ⚠️ This is the RELEASE half of the defect fixed on the claim side in
     // 206462b4d. The cart panel shows the Table number field for the restaurant
-    // POS on EVERY order type (CartPanel.tsx:735-743), so a cashier ringing up a
+    // POS on EVERY order type (CartPanel.tsx:855-856, re-measured 2026-10-19; the note
+  // said `:735-743`), so a cashier ringing up a
     // TAKEAWAY with a number left in that field reached here and freed a real
     // table: `releaseTableScoped` on whatever `match` the number resolved to.
     // Blocking the claim alone was therefore only half the fix — a takeaway could
@@ -1180,7 +1182,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // hold SUCCEEDED — the original tab still holds every line and a new tab now
           // holds the same remaining ones, which is the documented, hand-resolvable
           // duplicate the create-first order trades for not losing the tab. But
-          // `loadOpenBills()` sits on the success path (:995), so until now the list
+          // loadOpenBills() sits on the success path at :1167 (re-measured 2026-10-19; this
+          // note used to cite line 995), so until now the list
           // was never re-read and the screen kept showing ONE bill over data that held
           // TWO. The operator could not see, select, or settle the duplicate — the
           // "recoverable" mess was recoverable only by someone with database access.
@@ -1510,7 +1513,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // HALF-COMMITTED — and this is the branch where it matters most, because the
       // kitchen has ALREADY been told to cook (:1240-1243). If the hold succeeded and
       // only the delete of the previous tab failed, food is being prepared while
-      // `loadOpenBills()` on the success path (:1259) left the bill list showing the
+      // loadOpenBills() on the success path at :1503 (re-measured 2026-10-19; this note
+      // used to cite line 1259) left the bill list showing the
       // OLD tab. The operator would then reconcile a running order against a list that
       // cannot show both records.
       try {
@@ -2064,18 +2068,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // ⚠️ DECLARED ABOVE THE SUB-SCREEN EARLY RETURNS, NOT BELOW THEM.
   //
-  // This callback sat at :2161 in commit 4b7d5cf4c, i.e. after every sub-screen
+  // This callback sat at :2381 in commit 4b7d5cf4c, i.e. after every sub-screen
   // early return in this component (`showTables`, `showSalesHistory`,
   // `showStockInquiry`, `showReceipts`, ... eight of them). React's rules-of-hooks
   // require every hook to run in the same order on EVERY render, so on any sub-view
   // this hook was simply never registered — and `RestaurantMenu`'s `onAddProduct`
-  // (`:2224`) resolved to `undefined` there. `npm run lint` caught it as
+  // (`:2410`, re-measured 2026-10-19; the hook sat at `:2160`-`:2195` when it was moved) resolved to `undefined` there. `npm run lint` caught it as
   // `react-hooks/rules-of-hooks` at 2161:38 once another lane's file landed; the
   // runtime consequence is the Menu Editor's add path being inert whenever a
   // sub-screen had been visited.
   //
   // Its only dependency is `handleAddProduct`, destructured from `usePosCartActions`
-  // at :573 — long before any early return — so moving it up is safe and changes no
+  // at :687 — long before any early return — so moving it up is safe and changes no
   // behaviour on the sale view.
   //
   const handleRestaurantAddProduct = useCallback(
