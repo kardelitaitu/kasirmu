@@ -463,6 +463,9 @@ O(pages × all movements) inside one tick. *Fix:* cap pages per tick with a pers
 rebuild once after all pages (or make the rebuild incremental).
 
 **O-H19 · platform/sync — the SQLite daemon push is unbatched** —
+✅ **PAID 2026-10-21.** Both call sites route through
+`build_batches(&pending, MAX_BATCH_BYTES)` via a new `push_batches`; the 401 retry reuses the
+SAME split rather than re-reading the queue (re-reading could push items that arrived mid-tick).
 `platform/sync/src/daemon_tick.rs:267` ◦
 `transport.push_items(&pending)` POSTs the whole pending vector in one request, while
 `SyncEngine` batches at 64 KB — as the queue backs up, body size and the 30 s ceiling are
@@ -2583,3 +2586,80 @@ error — a difference that can only cause re-detection, never a lost write); a 
 logs one line per page instead of one per item; and `insert_conflict` / `list_conflicts` /
 `resolve_conflict` still do one checkout per row (no caller in tree). **No migration was needed or
 made.**
+
+---
+
+## §11AJ — O-M57/O-M58 moot, and the ledger gate had a false-positive that hid live entries (2026-10-21)
+
+**Two Mediums closed as MOOT, not fixed.** `O-M57` (syslog allocates per field) and `O-M58`
+(eventlog allocates a `Vec<u16>`) both targeted files that no longer exist:
+`crates/kasirmu-logging/src/syslog.rs` and `eventlog.rs` were **deleted** by `53dcb73a3`
+("refactor(logging): delete the unwired syslog/eventlog sinks (C29/D13)", 2026-09-29), along with
+the `libc` and `windows-sys` dependencies. `Cargo.toml:20-22` records the removal and notes the
+crate is "now pure safe Rust". There is no sink left to make non-blocking — closed by deletion.
+`O-H25` is the same shape and was closed in the same pass: its `modules/reporting/src/repository.rs`
+is gone, replaced by `{handlers,lib,lib_tests}.rs`, and `handlers.rs` carries none of the three
+defects the entry names. Closed as gone, not as repaired.
+
+**The gate grew a fourth check: an open entry whose graded citations all point at deleted files.**
+Three entries were found by hand in one pass, which is the signal that a machine should be
+looking. It grades the first two citations of each OPEN entry (a closed entry legitimately cites
+the file its fix created — O-H09 names `plan_cache.rs`), resolves a bare filename against the full
+path cited beside it, and fails with a re-anchor-or-mark-MOOT instruction.
+
+**And the new check was itself broken in a way worth recording.** Its first version passed a
+kill test it should have failed. The cause was not the check — it was `INLINE_CLOSE_RE`, the
+regex that decides which entries are already closed:
+
+    \b(PAID|RESOLVED|FIXED|DONE)\b   with re.IGNORECASE
+
+**O-H02's own fix description reads "chunk the image lookup into fixed-size batches."**
+Case-insensitively that is a `\bFIXED\b` match, so a **live** entry was silently classified as
+closed — and every downstream reading that trusted the marker treated it as done. That is a worse
+failure than the staleness the check exists to catch, because it hides work instead of merely
+mis-ranking it. The marker is now case-SENSITIVE (`PAID|RESOLVED|FIXED|DONE|MOOT`) and requires
+the colon for the lowercase `Fixed:` form that O-H03/O-H04/O-H08 actually used.
+
+**Re-run and confirmed:** restoring a deliberately non-existent path in O-H02 now fails the gate
+with `O-H02 -> crates/kasirmu-core/src/db/deleted_file_probe.rs`, and the real tree passes. The
+lesson is the same one §11AB recorded about citations: *a fix DESCRIPTION is not a fix RECORD*,
+and a regex that cannot tell them apart will quietly close work that is still open.
+
+---
+
+## §11AK — O-H19 resolved: the daemon pushes in batches, not one unbounded request (2026-10-21)
+
+One High finding resolved in the SQLite sync daemon.
+
+**The defect was a feedback loop, not just a slow path.** `transport.push_items(&pending)` POSTed
+the entire pending vector in one request while `SyncEngine` batched at 64 KB. As the queue backed
+up, body size and the 30 s transport ceiling were exceeded, the cycle failed, and the queue grew
+further — so the bigger the backlog, the less likely any of it would ever drain.
+
+**The fix reuses the batching facility that already existed.** `build_batches(&pending,
+MAX_BATCH_BYTES)` was already what `SyncEngine` used; the daemon now routes through it via a new
+`push_batches`, which pushes each batch in order, persists the stamped clock after every attempt,
+and applies that batch's outcomes before sending the next.
+
+**Three decisions worth recording, each made deliberately:**
+
+| decision | choice | reason |
+|---|---|---|
+| `pushed` count | `Σ results.len()` over batches that returned Ok | Never `batch.len()` or `pending.len()`: a short results vector must not over-report, and the existing "N outcome(s) for M item(s) left unacknowledged" path still catches it. |
+| partial failure | batches commit INDEPENDENTLY; the cycle still fails | Batch 3 of 7 failing leaves 1-2 synced and counted, 4-7 pending. All-or-nothing rollback cannot shrink a backlog — it would re-push acknowledged items forever. The cycle still sets `sync_error`, so backoff and operator visibility are unchanged. |
+| after the first failure | remaining batches are NOT attempted | A transport failure is expected to persist; retrying all 7 would burn the 30 s ceiling once per batch inside one tick. |
+
+The 401 retry reuses the **same** batch split rather than re-reading the queue, so it cannot push
+items that arrived mid-tick. `pushed` is added to on retry, not replaced — the old assignment
+would have dropped batches already committed before the 401. An empty queue still issues zero
+requests.
+
+**Tests (3), each pinning a decision above rather than just an end state:**
+`daemon_pushes_a_backlog_larger_than_one_batch_as_multiple_requests` (5 items × 40 KB padding;
+asserts the mock's push count equals `build_batches(..).len()` and that every item is seen exactly
+once), `daemon_keeps_acked_batches_when_a_later_batch_fails` (exactly 2 pushes, `last_pushed == 1`,
+all 5 rows present, 4 still pending), and `daemon_with_an_empty_queue_issues_no_push_request`.
+
+**One thing this did NOT fix, stated plainly:** `pg_daemon.rs:450` has the same unbatched call and
+was left alone because another lane owns that file. Recorded here so the next pass does not read
+O-H19's closure as covering the PG daemon too.
