@@ -104,7 +104,8 @@ function AuditLogScreenContent() {
   //   Security export    -> `audit:export` (apps/mobile-tauri/src/commands/audit.rs:203-208)
   //
   // The AUDITOR preset holds `audit:view` and NOT `audit:export`, and it is not a
-  // manager (rbac_presets.rs:285-305; `isManager` covers only owner/admin/manager).
+  // manager (the STAFF/AUDITOR preset table in rbac_presets.rs is not the gate here;
+  // `isManager` covers only owner/admin/manager).
   // So `isManager &&` hid Mark Reviewed from the role whose entire purpose is reviewing
   // the log — a working action made unreachable, the shape round 48 found on the
   // pengganti button.
@@ -112,7 +113,8 @@ function AuditLogScreenContent() {
   // The two exports were right in DIRECTION (the Auditor legitimately has no export) but
   // wrong in KIND: `isManager` overlaps `audit:export` for the built-in presets, yet
   // `CUSTOM` roles are "fully flexible — Admin selects every permission manually"
-  // (rbac_presets.rs:306-310), so the two can be made to disagree either way. The
+  // (the CUSTOM preset in rbac_presets.rs grants nothing and leaves every permission to
+  // the admin), so the two can be made to disagree either way. The
   // permission is authoritative wherever the session can answer.
   const canMarkReviewed = hasPermission('audit:view', isManager);
   const canExportAudit = hasPermission('audit:export', isManager);
