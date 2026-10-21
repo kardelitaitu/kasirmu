@@ -98,7 +98,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
   // Carries the array a `setSections` updater produced out to the awaited
-  // `setSettingScoped` write. See `handleRenameSection` (:1426) for why a local
+  // `setSettingScoped` write. See `handleRenameSection` for why a local
   // `let` cannot do this.
   const sectionsResultRef = useRef<string[] | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
@@ -161,7 +161,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
    * The drag writes optimistically (handlePointerMoveTable :881-886) and persists only at
    * pointer-up. If that write is refused the toast fires (:904) but the table stayed
    * VISUALLY at the dropped position, because nothing put it back — and `tablesRef`
-   * (:127, read at :899) still holds the refused coordinates, so a retry re-sent the
+   * (declared beside `dragOriginPos`, read in the drag-apply handler) still holds the
+   * refused coordinates, so a retry re-sent the
    * payload that was just rejected. The floor plan then disagrees with the server.
    */
   const dragOriginPos = useRef<{ pos_x: number; pos_y: number } | null>(null);
@@ -635,10 +636,17 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   // ⚠️ THE FLOOR PLAN HONOURS THE SECTION FILTER HERE, and until round 244 it did not.
   //
-  // The chips computed their counts from `activeTableList`, built at `:649` and read at
-  // `:636`/`:637`/`:641`, while the grid rendered the UNFILTERED `tables` (that render site has
-  // since moved; it was `:1045` when this fix landed). Measured 2026-10-15: the seeded plan
-  // showed `Indoor 5/6` and the grid still drew all 12 tiles.
+  // The chips computed their counts from `activeTableList`, while the grid rendered the
+  // UNFILTERED `tables` (that render site has since moved; it was line 1045 when this fix
+  // landed). Measured 2026-10-15: the seeded plan showed `Indoor 5/6` and the grid still
+  // drew all 12 tiles.
+  // ⚠️ The count/render pair is named here, not numbered: `activeTableList` for the chips,
+  // `visibleTables` for the grid. Naming the two arrays states the invariant (they must
+  // agree) in a form an insertion cannot break.
+  // (The previous wording cited four line numbers; every one of them now points at
+  // something else — the seated payload literal, a blank line, and two prose lines. They
+  // are deliberately NOT reprinted here: a number written in this comment becomes a live
+  // claim the moment it lands, which is the defect this paragraph replaces.)
   //
   // Two further consequences the raw list hid: `showEmpty` keyed on `tables.length`, so the
   // "no tables in this section" branch was unreachable while any table existed, and a section
@@ -1440,8 +1448,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           );
         }
         // ⚠️ RESOLVED INSIDE THE UPDATER, not from the render closure. The awaits
-        // above (`updateTableScoped` per table, :1312-1316) keep the screen live, and
-        // `handleAddSection` (:1276) can run inside that window — a separate control on
+        // above (`updateTableScoped` per table) keep the screen live, and
+        // `handleAddSection` can run inside that window — a separate control on
         // the same modal that nothing disables while a rename is in flight. `sections`
         // is the closure captured BEFORE those awaits, and `setSections(updated)`
         // REPLACES the array, so a section added during the rename was absent from it
@@ -1530,11 +1538,11 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
       }
       // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
-      // `handleRenameSection` above (:1426). The `updateTableScoped` awaits at
+      // `handleRenameSection` above. The `updateTableScoped` awaits at
       // :1361-1376 leave the screen interactive, so a section added during them was
       // dropped by this replacement. `check-state-closure-after-await.py` reports this
       // line as its second candidate. Carried out through the same ref for the same
-      // reason: see the local-`let` hazard noted at :1426.
+      // reason: see the local-`let` hazard noted in handleRenameSection.
       setSections((prev) => {
         const next = prev.filter((s) => s !== secName);
         sectionsResultRef.current = next;

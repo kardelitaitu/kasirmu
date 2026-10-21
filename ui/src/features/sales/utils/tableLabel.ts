@@ -6,7 +6,8 @@
  *   restaurant terminal is seeded with rows named 'Table 1', 'Table 2',
  *   'Table 12' (read from the tablet's store db, 2026-10-09), and
  *   `TableManagementScreen` hands `selected.name` straight to the cart
- *   (`TableManagementScreen.tsx:411`) — so `tableNumber` arrives already reading
+ *   (the `onSelectTable(selected.name)` call — anchored by name; the :411 this once
+ *   cited is a blank line now) — so `tableNumber` arrives already reading
  *   "Table 12".
  *
  *   Both places that render it ALSO add the word:
