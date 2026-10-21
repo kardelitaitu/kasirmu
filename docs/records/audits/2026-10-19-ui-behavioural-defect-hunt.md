@@ -320,6 +320,39 @@ let the render branch on it.** Four of those screens already had the correct pat
 or a sibling file, which is the useful signal: when a field's doc comment explains the unknown state, the
 field beside it usually needs the same treatment.
 
+## Round 42: hunting the named shape mechanically
+
+Round 41 named the defect family — *a failure collapsed into an empty or default value, rendered as a
+clean state* — so this round hunted it with a **scanner instead of intuition**: every `catch {` in
+`ui/src/features` whose body sets state to `[]` / `null` / `false` / `''` and sets no error, three
+lines below the catch. 288 catch blocks → **14 candidates**. Two read-only agents triaged them against
+the render path; **5 were confirmed and fixed, 9 were benign** (delete catches, values re-derived from
+another source, `poListFailed` already branched first).
+
+The five:
+
+- **An unread day printed as zero revenue.** `DailyTotalWidget` caught the export failure, set
+  `summary([])`, and rendered `formatMoney(0)` as the green primary KPI. The dashboard's most
+  load-bearing number, asserting "no sales today" from a refused `reports:export`. The site's own test
+  asserted the defect — `expect(screen.getByText(t => /^\$/.test(t)))` after a rejected read — so it was
+  rewritten to require the error and forbid the figure.
+- **A failed detail read read as "Order not found."** `VoidOrdersScreen` turned `detail = null` into an
+  authoritative non-existence claim; `detailError` now renders first.
+- **An unread recipe read as an empty BOM.** `RecipeEditorModal`'s outer catch only cleared the rows, so
+  the render said "No ingredients added yet" with a Total HPP of 0 for a dish that has a recipe.
+- **A failed instance read looked like an empty store.** Both `TerminalManagementScreen` instance reads
+  emptied `bindingInstances` and set no error, so the "— Select instance —" placeholder was identical to
+  a genuinely empty store and Bind stayed disabled with nothing explained. Also fixed the un-coerced
+  payload at the second site.
+
+### The scanner earned its keep
+
+It found all five within one pass and cost two tool calls. The contrast with the agent-led hunts is the
+useful part: those return a mix of real defects and confident nonsense that must be refuted by hand
+(~8 refuted so far), whereas `git grep` + a two-line body predicate produced a **14-item list with a
+50%+ hit rate** and no false positives to argue with. When the defect shape can be written as a regex,
+write it — reserve the agents for the judgement calls the regex cannot make (is this empty state TRUE?).
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
