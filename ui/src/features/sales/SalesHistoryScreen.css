@@ -602,6 +602,14 @@
   z-index: var(--z-modal);
 }
 
+/* The e-Faktur stamp dialog is opened from INSIDE the sale-detail dialog, so the
+   detail overlay is still mounted (and rendered after it in DOM order). Sharing
+   --z-modal made the PARENT paint over the CHILD: the stamp dialog opened but
+   could not be clicked. Nested dialogs get their own layer. */
+.sales-history-overlay:has(.sales-history-stamp-modal) {
+  z-index: var(--z-modal-nested);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .sales-history-overlay {
     animation: sales-history-overlay-in var(--duration-200) var(--ease-out);

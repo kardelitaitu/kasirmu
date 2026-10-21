@@ -411,6 +411,11 @@
   --z-sticky:    200;
   --z-overlay:   300;
   --z-modal:     400;
+  /* A dialog opened FROM another dialog must paint above its parent. Two
+     overlays sharing --z-modal fall back to DOM order, and the parent overlay
+     is usually rendered later — so the child ends up UNDER the parent and
+     cannot be clicked at all (SalesHistoryScreen's e-Faktur stamp dialog). */
+  --z-modal-nested: 450;
   --z-toast:     500;
   --z-tooltip:   600;
   --z-splash:    700;
