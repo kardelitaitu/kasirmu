@@ -16,6 +16,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { formatMoney } from '@/types/domain';
 import './BundleManagementScreen.css';
 import { asArray } from '@/utils/ipc-payload';
+import { l10nErrorMessage } from '@/utils/app-error';
 
 interface BundleItemForm {
   sku: string;
@@ -52,6 +53,8 @@ export default function BundleManagementScreen() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // A LIST read failure, kept apart from the genuine empty state (see `load`).
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -64,12 +67,18 @@ export default function BundleManagementScreen() {
     try {
       const result = await listBundles(sessionToken);
       setBundles(asArray<typeof result[number]>(result));
-    } catch {
-      // IPC unavailable.
+      setLoadError(null);
+    } catch (err) {
+      // NOT "IPC unavailable, carry on". Swallowing this rendered the empty state —
+      // "No bundles yet. / Add your first bundle" — over a read that never answered, so a
+      // manager with a full catalogue was invited to create their first bundle. The
+      // products screen beside this one has distinguished the two states all along.
+      setBundles([]);
+      setLoadError(l10nErrorMessage(err, l10n, 'bundles-error-load'));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -253,6 +262,13 @@ export default function BundleManagementScreen() {
             </table>
           </div>
         </div>
+      ) : loadError && bundles.length === 0 ? (
+        <Card shadow="sm">
+          <div className="bundle-mgmt-empty" role="alert">
+            <p>{loadError}</p>
+            <Button variant="secondary" onClick={() => { void load(); }}>Retry</Button>
+          </div>
+        </Card>
       ) : bundles.length === 0 ? (
         <Card shadow="sm">
           <div className="bundle-mgmt-empty">
