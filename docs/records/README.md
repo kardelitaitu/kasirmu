@@ -262,6 +262,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A finding I withdrew, and the rule that decides it — 2026-10-18](audits/2026-10-18-withdrawn-dispatch-claim.md) | — |
 | general | [A test that tested the change, not the mechanism — 2026-10-19](audits/2026-10-19-a-test-that-tested-the-change.md) | — |
 | theming | [Four doc claims that were true of the document, not of the tool](audits/2026-10-19-branding-manifest-inert-and-checker-coverage.md) | — |
+| release | [155 UI comments cite a Rust line number, and no gate checks them (2026-10-19)](audits/2026-10-19-cross-language-citation-gap.md) | — |
 | general | [Three red gates, and the one that was only ever red here — 2026-10-19](audits/2026-10-19-full-matrix-red-gates.md) | — |
 | general | [Round cap request: 512 rounds, not 256 (2026-10-19)](audits/2026-10-19-goal-round-cap-request.md) | — |
 | general | [An IPC door the desktop does not have, reached by an empty-string fallback — 2026-10-19](audits/2026-10-19-ipc-door-missing-and-root-debris.md) | — |
