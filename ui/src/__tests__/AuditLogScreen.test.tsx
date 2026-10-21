@@ -240,6 +240,24 @@ describe('AuditLogScreen', () => {
     );
   });
 
+  it('clears the old page when a reload fails, instead of showing it without an error', async () => {
+    // The error card and the empty state are gated on `entries.length === 0`. A failed
+    // reload that keeps the previous page renders those rows with NO error — a read that
+    // never answered presenting as a successful answer.
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Target')).toBeDefined());
+    // The table slices `target_id` to 8 chars.
+    expect(screen.getByText('sale-123')).toBeDefined();
+
+    // Every later read fails; Refresh drives load({ reset: true }).
+    mockListAuditLogScoped.mockRejectedValue(new Error('DB error'));
+    await userEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+
+    await waitFor(() => expect(screen.getByText('Failed to load audit log')).toBeDefined());
+    expect(screen.queryByText('sale-123')).toBeNull();
+  });
+
   it('renders table with audit entries', async () => {
     mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry(), makeEntry({ id: 'a-2', action: 'login' })]));
     await renderScreen();
