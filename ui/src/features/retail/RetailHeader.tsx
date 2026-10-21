@@ -11,6 +11,8 @@ interface RetailHeaderProps {
   // ── Full-variant props ──────────────
   storeSettings?: StoreSettingsDto;
   shiftLoading?: boolean;
+  /** The active-shift read THREW — distinct from "read fine, no shift open". */
+  shiftLoadFailed?: boolean;
   activeShift?: ShiftDto | null;
   displayName?: string;
   dateStr?: string;
@@ -32,6 +34,7 @@ export default function RetailHeader({
   variant = 'full',
   storeSettings,
   shiftLoading,
+  shiftLoadFailed,
   activeShift,
   displayName,
   dateStr,
@@ -90,6 +93,10 @@ export default function RetailHeader({
       <div className="retail-header-right">
         {shiftLoading ? (
           <span className="retail-shift-badge">{l10n.getString('loading')}</span>
+        ) : shiftLoadFailed ? (
+          <span className="retail-shift-badge retail-shift-badge--idle">
+            {l10n.getString('retail-shift-unknown')}
+          </span>
         ) : activeShift ? (
           <span className="retail-shift-badge">
             {l10n.getString('retail-shift-label')} &middot; {formatMoney({ minor_units: activeShift.totalSalesMinor, currency: storeSettings?.currency ?? 'IDR' })}

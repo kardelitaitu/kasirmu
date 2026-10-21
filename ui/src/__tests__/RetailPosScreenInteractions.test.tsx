@@ -95,7 +95,11 @@ vi.mock('@/api/products', async () => {
 vi.mock('@/api/shifts', async () => {
   const { createShiftsApiMock } = await import('@/__tests__/test-utils/mocks/api');
   return createShiftsApiMock({
-    getActiveShiftScoped: vi.fn(() => Promise.reject(new Error('no shift'))),
+    // Ok(None) is the bridge's "no shift open" (crates/kasirmu-bridge/src/
+    // shifts.rs:346); a REJECTION means the read failed. Modelling "no shift"
+    // as a rejection is what made a failed read render as "No shift" and made
+    // handlePay's open-shift guard fire for a read that never answered.
+    getActiveShiftScoped: vi.fn(() => Promise.resolve(null)),
   });
 });
 

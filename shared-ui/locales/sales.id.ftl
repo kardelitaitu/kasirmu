@@ -746,6 +746,7 @@ retail-load-error-retry-aria = Coba lagi memuat produk
 retail-store-name-fallback = TOKO
 retail-shift-label = Shift
 retail-no-shift = Tidak ada shift
+retail-shift-unknown = Shift tidak diketahui
 retail-search-placeholder = Cari produk…
 retail-search-clear-aria = Hapus pencarian
 retail-no-products = Tidak ada produk

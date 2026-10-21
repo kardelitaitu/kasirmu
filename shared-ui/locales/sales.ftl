@@ -826,6 +826,7 @@ retail-load-error-retry-aria = Retry loading products
 retail-store-name-fallback = TOKO
 retail-shift-label = Shift
 retail-no-shift = No shift
+retail-shift-unknown = Shift unknown
 retail-search-placeholder = Cari produk…
 retail-search-clear-aria = Clear search
 retail-no-products = No products

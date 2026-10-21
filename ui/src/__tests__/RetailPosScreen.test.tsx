@@ -43,7 +43,11 @@ vi.mock('@/api/products', async () => {
 vi.mock('@/api/shifts', async () => {
   const { createShiftsApiMock } = await import('@/__tests__/test-utils/mocks/api');
   return createShiftsApiMock({
-    getActiveShiftScoped: vi.fn(() => Promise.reject(new Error('no shift'))),
+    // The bridge returns Ok(None) when no shift is open (crates/kasirmu-bridge/
+    // src/shifts.rs:346), and ui/src/api/shifts.ts types it ShiftDto | null. A
+    // REJECTION therefore means the read failed, not "no shift" — modelling it
+    // as a rejection is what made a failed read render as "No shift".
+    getActiveShiftScoped: vi.fn(() => Promise.resolve(null)),
   });
 });
 
@@ -290,6 +294,19 @@ describe('RetailPosScreen — rendering', () => {
   it('displays "No shift" badge when no active shift', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
+  });
+
+  // A REJECTED active-shift read is not "no shift open" — the bridge answers
+  // Ok(None) for that. Collapsing the failure to null made the header assert
+  // "No shift" and made Pay tell the cashier to open a shift first, for a read
+  // that never answered at all.
+  it('says the shift is unknown when the read fails, not "No shift"', async () => {
+    const shifts = await import('@/api/shifts');
+    vi.mocked(shifts.getActiveShiftScoped).mockRejectedValueOnce(new Error('Server offline'));
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText(/Shift unknown/)).toBeInTheDocument());
+    expect(screen.queryByText(/^No shift$/)).toBeNull();
   });
 
   it('loads and displays products', async () => {

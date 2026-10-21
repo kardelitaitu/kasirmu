@@ -1033,6 +1033,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
+  // True when the active-shift read THREW. Distinct from "read successfully and
+  // found no shift", which is what `activeShift === null` used to mean on its own.
+  const [shiftLoadFailed, setShiftLoadFailed] = useState(false);
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [openingBalance, setOpeningBalance] = useState('');
@@ -1114,6 +1117,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     const seq = ++shiftSeq.current;
     const stale = () => shiftSeq.current !== seq;
     setActiveShift(null);
+    setShiftLoadFailed(false);
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
       .then((s) => {
@@ -1122,7 +1126,12 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       })
       .catch(() => {
         if (stale()) return;
+        // A FAILED shift read is not the same as "no shift open". Setting null
+        // made the header print "No shift" and made handlePay tell the cashier to
+        // open a shift first — for a read that never answered. Flag it so the
+        // header can say "unknown" instead of asserting an absence.
         setActiveShift(null);
+        setShiftLoadFailed(true);
       })
       .finally(() => {
         if (!stale()) setShiftLoading(false);
@@ -1970,6 +1979,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       <RetailHeader
         storeSettings={storeSettings}
         shiftLoading={shiftLoading}
+        shiftLoadFailed={shiftLoadFailed}
         activeShift={activeShift}
         displayName={session?.display_name ?? ''}
         dateStr={dateStr}
