@@ -5,17 +5,17 @@
 `name.tsx:NNN` only — so nothing grades them and every gate stays green while they rot.
 
 **Measured:** 316 `.rs:NNN` tokens across `ui/src` (94 in `features/`, the rest in `__tests__/`, `api/`,
-`dev-mock/`). Across eight read-only subagent batches this pass read **82 distinct targets** against the
-Rust source, covering all of `features/` except `dev-mock`, the whole `api/` layer, and the three
-densest test files.
+`dev-mock/`). Across nine read-only subagent batches this pass read **95 distinct targets** against the
+Rust source, covering all of `features/`, the whole `api/` layer, `dev-mock/` and the three densest
+test files — i.e. every `.rs` citation in `ui/src`.
 
 | verdict | count |
 |---|---|
-| CORRECT | 53 |
-| DRIFTED | 24 |
-| NOT_FOUND | 4 |
-| FALSE-CLAIM | 1 |
-| **repaired** | **29** |
+| CORRECT | 59 |
+| DRIFTED | 27 |
+| NOT_FOUND | 5 |
+| FALSE-CLAIM | 3 |
+| **repaired** | **39** |
 
 The one FALSE-CLAIM: `ui/src/api/branding.ts` cited `pick_logo_file_scoped` at
 `crates/kasirmu-bridge/src/branding.rs:271`, but that line is test-module glue
@@ -79,13 +79,31 @@ Two citations in this pass were **not repairable by renumbering** and were repla
 three license commands that are really registered at 1728/1737/1739, and the same wrong triple was
 duplicated into a test file — so both copies were rewritten to name the commands.
 
+## The dev-mock cluster, and two agent verdicts I had to overturn
+
+The final batch covered `ui/src/dev-mock/` — 13 citations, of which **6 correct, 3 drifted, 1 NOT_FOUND,
+2 FALSE-CLAIM**, 10 repaired. Two of the agent's verdicts were wrong and reading the source overturned
+both:
+
+- It marked `handlers/catalog.ts:192` and `:268` **CORRECT** for citing `products.rs:695` as the `notes`
+  field. Line 695 is `pub is_active: Option<bool>,`; `notes` is at **690**. Both cites named the right
+  file and the right struct and the wrong field — exactly the shape a "same file, same area" heuristic
+  waves through, and neither is a `notes` claim at all. The agent quoted `/// Updated active status.`
+  as its evidence and still returned CORRECT.
+- It split `system.ts:749` out as a FALSE-CLAIM "on the number, not the construct". That distinction
+  does not survive: `get_preset_features` **is** in `setup.rs`, so the construct is there and only the
+  number was stale. A FALSE-CLAIM has to mean the cited file does not hold the thing.
+
+The one genuine FALSE-CLAIM was `system.ts:286`: `apps/desktop-tauri/src/commands/audit.rs:453` for the
+CSV column order and BOM. That shell is 113 lines and re-exports only; `audit_csv` lives in
+`crates/kasirmu-bridge/src/audit.rs` and pushes the BOM at 433 and the header at 434.
+
 ## What is still open
 
-- **`ui/src/dev-mock/`** (8 cites) is the one cluster never audited; it is owned by the same lane as the
-  receivables work this session has been avoiding.
-- `ui/src/features/sales/PaymentModal.tsx` still holds two drifted cites the audit found
+- **`ui/src/features/sales/PaymentModal.tsx`** still holds two drifted cites the audit found
   (`pos/checkout.rs:424-428`, `sales_checkout.rs:549`). They were **not** committed: that file's working
   tree also carries another lane's uncommitted `pay_later` work, and a pathspec commit would sweep it in.
+- Every other `.rs` citation under `ui/src` has now been read against its Rust source at least once.
 
 ## Verification
 
