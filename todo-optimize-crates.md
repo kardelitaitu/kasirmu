@@ -3028,3 +3028,41 @@ command count that another lane must raise). **`lib.rs` is untouched.**
 (1), `kasirmu-cloud` (4), `kasirmu-mobile` (46 across 26 files). That is four local copies of the
 same helper, which is well past the threshold where a shared test-support crate was the right call.
 Recorded as the obvious follow-up rather than done speculatively at the end of a long session.
+
+---
+
+## §11AS — O-M34 partial: `kasirmu-test-support`, one home for the scratch-dir fix (2026-10-21)
+
+**Five copies of the same eleven lines became one crate, and the move was net-negative in lines.**
+
+The `C:\WINDOWS\TEMP` fix (§11AR and predecessors) had accumulated five near-identical helpers:
+`migrations::test_scratch_dir` in `kasirmu-core`, `scratch_root`/`scratch_dir`/`TempScratch` in
+`kasirmu-cloud`, `scratch_image_dir` in `kasirmu-api`, `test_scratch_root` in `mobile-tauri`, and
+`scratch_dir` in `platform/sync`. Each carried its own copy of the rationale and its own slightly
+different API — which is how a class fix becomes five classes.
+
+**`crates/kasirmu-test-support` now owns it.** `crates/*` is globbed by the workspace, so adding it
+needed no Cargo.toml edit. It offers three shapes, because the call sites genuinely wanted three:
+
+| need | call |
+|---|---|
+| a plain path, caller owns lifetime | `scratch_dir(prefix)` |
+| a path removed on drop | `ScratchDir::new(prefix)` |
+| a `tempfile::TempDir` in a working parent | `tempdir()` / `tempdir_with_prefix(p)` |
+
+The third exists because `tempfile` keeps its own auto-delete `Drop`, so `tempdir()` is a drop-in
+for the ~42 sites that only wanted the same behaviour in a directory that actually works — no
+hand-rolled guard, no behaviour change.
+
+**Its own tests pin the regression, not just the happy path:** `scratch_root_is_never_windows_temp`
+asserts the resolved root does not contain `windows\temp` (case-insensitively), so a future
+`temp_dir()` reintroduction in this crate fails loudly. Six tests, all green.
+
+**Migrations landed so far:** `kasirmu-cloud` (−86 lines, 398/398 green), `kasirmu-api` (−16 lines,
+345/345), `kasirmu-core` (−41 lines across 17 files, 3654/3654). `platform/sync` is deliberately
+NOT migrated yet — another lane has that crate open for O-M34, and a pathspec commit cannot
+separate concurrent edits to the same file.
+
+**The tally this session went 5 copies → 1.** The duplication was recorded in §11AR as the obvious
+follow-up; this is that follow-up, and the net line count went DOWN, which is the usual sign the
+abstraction was earned rather than imposed.
