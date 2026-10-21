@@ -33,10 +33,17 @@ export function useTerminalProfile(sessionToken?: string): UseTerminalProfileRes
 
     (async () => {
       try {
+        // NO TOKEN IS NOT AN ANSWER. `sessionToken` resolves asynchronously, so this
+        // effect can run with an empty string; answering `[]` then reported "no
+        // terminals registered" — and skipped the kiosk detection below — from a read
+        // that was never issued. Stay in the loading state; the token arriving re-runs
+        // this effect.
+        if (!sessionToken) return;
+
         // First, try to get the current terminal ID from env or match by device.
         // We list terminals and pick the first one (this is a simplification —
         // in production, the terminal ID is passed as a Tauri env var).
-        const terminals = sessionToken ? await listTerminalsScoped(sessionToken) : [];
+        const terminals = await listTerminalsScoped(sessionToken);
         if (cancelled) return;
 
         if (terminals.length === 0) {
@@ -52,7 +59,7 @@ export function useTerminalProfile(sessionToken?: string): UseTerminalProfileRes
           setLoading(false);
           return;
         }
-        const terminalProfile = sessionToken ? await getTerminalProfileScoped(sessionToken, activeTerminal.id) : null;
+        const terminalProfile = await getTerminalProfileScoped(sessionToken, activeTerminal.id);
 
         if (!cancelled) {
           setProfile(terminalProfile);

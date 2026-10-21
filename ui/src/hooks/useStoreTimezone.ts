@@ -86,6 +86,13 @@ export function useStoreTimezone(explicitToken?: string | null): string | null {
   const [storeTz, setStoreTz] = useState<string | null>(null);
 
   useEffect(() => {
+    // RESET ON TOKEN CHANGE. Every caller treats a non-null value as "the store's
+    // timezone, known" — the sales/history screens bucket a day's orders with it, and
+    // the file's own contract says `null` means "not known yet". Keeping the PREVIOUS
+    // store's zone while the new read is in flight (or after it fails) therefore claims
+    // the wrong day for every tile: a hot-swap from a +07:00 store to a +00:00 one
+    // buckets the new store's orders into the old store's window, presented as current.
+    setStoreTz(null);
     if (!sessionToken) return;
     let alive = true;
     let pending = IN_FLIGHT.get(sessionToken);
