@@ -27,18 +27,21 @@
  * decides whether the sale may settle.
  *
  * The feature/account gate is passed IN as `loyaltyOffered`, which is the shape
- * ./CardTenderPanel takes for its own gate (`terminalOffered` :42, `if
- * (!terminalOffered) return null` :64) and ./QrisTenderPanel for `qrisAllowed`:
+ * ./CardTenderPanel takes for its own gate (`terminalOffered`, refused by
+ * `if (!terminalOffered) return null`) and ./QrisTenderPanel for `qrisAllowed`:
  * the shell reads useFeatures() once for the whole modal and hands the verdict
  * down, so this file calls no hook - and, unlike the first cut of this panel,
  * it can refuse itself. That refusal is the point. The panel used to render
- * whenever it was mounted at all, leaving the shell's mount gate - today
- * PaymentModal.tsx:1629, `{loyaltyLicensed && loyaltyAccount && (` - as the ONLY
+ * whenever it was mounted at all, leaving the shell's mount gate - the
+ * `{loyaltyLicensed && loyaltyAccount && (` JSX guard in PaymentModal - as the ONLY
  * thing standing between an unlicensed tenant and a Points row, so a second
  * caller inherited no protection from it. `loyaltyLicensed` is the modal's
- * `isEnabled(FEATURES.LOYALTY_PROGRAM)` read, declared once at
- * PaymentModal.tsx:283 and shared by that gate, the loyalty fetch that now checks
- * it before calling the bridge, and the prop below. The modal keeps its own gate
+ * `isEnabled(FEATURES.LOYALTY_PROGRAM)` read, declared once and shared by that
+ * gate, the loyalty fetch that now checks it before calling the bridge, and the
+ * prop below. The modal keeps its own gate
+ * (Anchored by expression: every line number this paragraph carried into
+ * PaymentModal was stale — the JSX gate and the flag declaration had both moved
+ * a hundred and a half lines without anyone re-deriving them.)
  * (it also performs the narrowing that lets `points` arrive as a plain number).
  *
  * WHAT THAT DOES AND DOES NOT GUARANTEE, precisely. There is exactly ONE

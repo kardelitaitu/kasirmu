@@ -158,8 +158,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   /**
    * The dragged table's position BEFORE the drag began.
    *
-   * The drag writes optimistically (handlePointerMoveTable :881-886) and persists only at
-   * pointer-up. If that write is refused the toast fires (:904) but the table stayed
+   * The drag writes optimistically (inside `handlePointerMoveTable`) and persists only at
+   * pointer-up. If that write is refused the toast fires in the handler's `catch` — the
+   * `addToast` with a `type: 'error'`, not the success toast beside it — but the table stayed
    * VISUALLY at the dropped position, because nothing put it back — and `tablesRef`
    * (declared beside `dragOriginPos`, read in the drag-apply handler) still holds the
    * refused coordinates, so a retry re-sent the
@@ -493,7 +494,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     // RE-ENTRY GUARD. The Save button is disabled while saving (`state='processing'`),
-    // but this handler is also the form's `onSubmit` (:2453) — so pressing Enter in the
+    // but this handler is also the table form's `onSubmit` — so pressing Enter in the
     // name field submits it directly and never consults the button. Without this, a
     // double submit created TWO tables with the same name: `create_table`
     // (kasirmu-core/src/db/tables.rs:130) is a plain INSERT minting a fresh UUID, with no
@@ -929,10 +930,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const handleConfirmReservation = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      // RE-ENTRY GUARD. The Reserving button is disabled while saving (:2878), but this
-      // handler is also the form's `onSubmit` (:2801) — pressing Enter in the guest-name
+      // RE-ENTRY GUARD. The Reserving button is `disabled` while `reservingTable`, but this
+      // handler is also the reserve form's `onSubmit` — pressing Enter in the guest-name
       // field submits it directly and never consults the button. Without this, a double
-      // submit ran `holdCartScoped` (:861) TWICE, leaving two open bills against one table.
+      // submit ran `holdCartScoped` TWICE, leaving two open bills against one table.
+      // (All three numbers this note carried had drifted onto unrelated statements:
+      // a closing `</div>`, the modal backdrop, and a `parseInt` in another handler.)
       // Same shape and same reason as `handleSaveTableModal` above.
       if (reservingTable) return;
       if (!sessionToken) {

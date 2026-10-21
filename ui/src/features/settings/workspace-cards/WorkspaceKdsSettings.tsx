@@ -156,8 +156,12 @@ export function WorkspaceKdsSettings({
     // not report it, which is why the sweep's count understated the class -- the real total was
     // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
     // the `dirty` memo (its `useMemo` deps), and the touchedRef guard in the .then() is already
-    // built for re-entry. Anchored by the memo's own identifier rather than a line number: the
-    // number this note used to carry is now a comment inside the loadFailed block.
+    // built for re-entry. Anchored by identifier rather than by line number.
+    // ⚠️ The five reads live in the `Promise.all` argument list of this effect's load
+    // (`getSettingScoped(…)` calls that take the token) — NOT in the range this note used to
+    // cite, which held the `originalsLoadedForRef` assignment and the `dirty` useMemo and
+    // contains no `sessionToken` at all. The COUNT was right and the RANGE was wrong, which is
+    // the shape a line-check cannot see: the range resolved, inside the right file.
     // The suppression that used to sit here is GONE (2026-10-12) because it was
     // stale: it was written for the old deps array, and once that array listed
     // sessionToken and reloadNonce the rule had nothing left to report. A disable
