@@ -415,6 +415,9 @@ async fn apply_push_results(
     results: Vec<PushOutcome>,
 ) -> Option<String> {
     let db_clone = db.clone();
+    // Captured before `pending`/`results` move into the closure.
+    let pending_len = pending.len();
+    let results_len = results.len();
     let outcome = tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
         let store = Store::new(&conn);
@@ -474,6 +477,21 @@ async fn apply_push_results(
         }
     })
     .await;
+
+    // See `lib.rs apply_push_outcomes`: a short results vector leaves the
+    // trailing items queued (correct) but must be reported rather than
+    // absorbed into a successful cycle.
+    if results_len != pending_len {
+        tracing::warn!(
+            outcomes = results_len,
+            items = pending_len,
+            "sync daemon: outcome count mismatch — trailing items stay queued"
+        );
+        return Some(format!(
+            "push returned {results_len} outcome(s) for {pending_len} item(s): {} item(s) left unacknowledged",
+            pending_len.saturating_sub(results_len),
+        ));
+    }
 
     match outcome {
         Ok(()) => None,

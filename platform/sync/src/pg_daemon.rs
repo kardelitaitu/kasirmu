@@ -923,6 +923,18 @@ fn apply_push_outcomes(
             }
         }
     }
+
+    // Parity with `daemon::apply_push_results` and `lib.rs apply_push_outcomes`:
+    // a short results vector leaves the trailing items queued (correct — they
+    // must never inherit a neighbour's verdict) but must not pass unremarked,
+    // or the cycle reports success over an unacknowledged tail.
+    if results.len() != pending.len() {
+        tracing::warn!(
+            outcomes = results.len(),
+            items = pending.len(),
+            "pg sync daemon: outcome count mismatch — trailing items stay queued"
+        );
+    }
 }
 
 fn apply_pulled_page(

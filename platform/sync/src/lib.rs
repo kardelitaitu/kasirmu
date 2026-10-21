@@ -251,6 +251,27 @@ fn apply_push_outcomes(
             }
         }
     }
+
+    // `zip` stops at the shorter side. Trailing items keeping their previous
+    // state is CORRECT (see
+    // `apply_push_outcomes_truncated_results_leave_trailing_items_pending`),
+    // but it must not pass unremarked: the cycle would report success while a
+    // tail of the batch was never acknowledged. Reported after the loop so the
+    // items that DID get an outcome are still applied.
+    if results.len() != batch.len() {
+        tracing::warn!(
+            outcomes = results.len(),
+            items = batch.len(),
+            "sync engine: outcome count mismatch — trailing items stay queued"
+        );
+        return Err(SyncError::Transport(format!(
+            "push returned {} outcome(s) for {} item(s): {} item(s) left unacknowledged",
+            results.len(),
+            batch.len(),
+            batch.len().saturating_sub(results.len()),
+        )));
+    }
+
     Ok(())
 }
 

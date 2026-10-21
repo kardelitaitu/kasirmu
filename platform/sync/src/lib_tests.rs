@@ -1812,9 +1812,12 @@ fn apply_push_outcomes_conflict_uses_shared_resolver() {
     );
 }
 
-/// A batch longer than the results is not misaligned: `zip` stops at the
-/// shorter side, so a truncated server response leaves the trailing items
-/// PENDING rather than marking them from a neighbour's outcome.
+/// A truncated server response (fewer outcomes than items sent) must:
+/// 1. Apply the outcomes it has — item A gets the server's Accepted verdict.
+/// 2. Leave the trailing items PENDING — item B has no outcome and must NOT
+///    inherit A's verdict.
+/// 3. Return `Err` so the caller knows the batch was not fully acknowledged,
+///    rather than letting the cycle appear successful with a silent tail.
 #[test]
 fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     let conn = kasirmu_core::migrations::fresh_db();
@@ -1824,14 +1827,22 @@ fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     let b = store.enqueue_offline("sale.create", "{\"n\":2}").unwrap();
 
     let results = vec![transport::PushOutcome::Accepted];
-    apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results).unwrap();
+    // The truncated response is an error — the cycle must not appear successful.
+    let err = apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results)
+        .expect_err("a truncated response must be reported as an error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("1 item(s) left unacknowledged"),
+        "error message must name how many items were unacknowledged, got: {msg}"
+    );
 
     let all = store.list_all_offline().unwrap();
     // OfflineQueueStatus is Copy, so the closure returns it by value.
     let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status;
     assert_eq!(
         got(&a.id),
-        kasirmu_core::offline::OfflineQueueStatus::Synced
+        kasirmu_core::offline::OfflineQueueStatus::Synced,
+        "items that DID get a server outcome must still be applied"
     );
     assert_eq!(
         got(&b.id),
