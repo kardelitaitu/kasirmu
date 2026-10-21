@@ -5,16 +5,24 @@
 `name.tsx:NNN` only — so nothing grades them and every gate stays green while they rot.
 
 **Measured:** 316 `.rs:NNN` tokens across `ui/src` (94 in `features/`, the rest in `__tests__/`, `api/`,
-`dev-mock/`). This pass audited every citation in `sales/`, `tables/`, `retail/`, `settings/`,
-`kds/`, `warehouse/`, `inventory/`, `audit/`, `auth/`, `locations/`, `shifts/` and the two sales
-widget/model files — 26 distinct targets read against the Rust source.
+`dev-mock/`). Across eight read-only subagent batches this pass read **82 distinct targets** against the
+Rust source, covering all of `features/` except `dev-mock`, the whole `api/` layer, and the three
+densest test files.
 
 | verdict | count |
 |---|---|
-| CORRECT | 13 |
-| DRIFTED | 7 |
-| NOT_FOUND | 2 |
-| **repaired** | **11** |
+| CORRECT | 53 |
+| DRIFTED | 24 |
+| NOT_FOUND | 4 |
+| FALSE-CLAIM | 1 |
+| **repaired** | **29** |
+
+The one FALSE-CLAIM: `ui/src/api/branding.ts` cited `pick_logo_file_scoped` at
+`crates/kasirmu-bridge/src/branding.rs:271`, but that line is test-module glue
+(`#[path = "branding_tests.rs"]`). The function lives in
+`apps/desktop-tauri/src/commands/branding.rs` — a different crate. The claim was true, the file was
+not, which is a stronger failure than a stale number because a reader following it finds a real line
+about something else.
 
 ## What actually rots, and what does not
 
@@ -58,11 +66,23 @@ If the diff is not exactly the comment lines I meant to touch, the edit is wrong
 the procedure for any multi-line comment replacement, and it is the reason the final commits show
 `15 insertions, 14 deletions` rather than a block rewrite.
 
+## Which files rot most
+
+Not uniform. `ui/src/features/inventory/` was **6/6 CORRECT** and `ui/src/features/kds/` had a single
+line-numbered cite that was exact — both had already been re-pointed in earlier passes. The density is
+concentrated in `ui/src/api/` (**12 of 44 drifted**, led by `hardware.ts` and `settings.ts`) and in the
+`rbac_presets.rs` preset table, whose three numeric ranges in `AuditLogScreen` and its test had all slid
+into neighbouring presets once RECEIVABLES_* entries were added.
+
+Two citations in this pass were **not repairable by renumbering** and were replaced by names instead:
+`apps/desktop-tauri/src/lib.rs:1261,1267,1269` now resolves to `BUS.subscribe(...)` event wiring for
+three license commands that are really registered at 1728/1737/1739, and the same wrong triple was
+duplicated into a test file — so both copies were rewritten to name the commands.
+
 ## What is still open
 
-- **~68 feature-file `.rs` cites remain unaudited**, plus `ui/src/__tests__/` (the largest single cluster,
-  `writtenSettingHasReader.test.ts` with 17), `ui/src/api/` and `ui/src/dev-mock/`. The same four-batch
-  read-only subagent pattern applies.
+- **`ui/src/dev-mock/`** (8 cites) is the one cluster never audited; it is owned by the same lane as the
+  receivables work this session has been avoiding.
 - `ui/src/features/sales/PaymentModal.tsx` still holds two drifted cites the audit found
   (`pos/checkout.rs:424-428`, `sales_checkout.rs:549`). They were **not** committed: that file's working
   tree also carries another lane's uncommitted `pay_later` work, and a pathspec commit would sweep it in.
