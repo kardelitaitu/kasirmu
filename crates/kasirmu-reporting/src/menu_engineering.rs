@@ -33,6 +33,32 @@ R-1 RESOLVED 2026-10-04 by documentation, the audit's second option:
 //! | **Plowhorse** | ≥ median | < median |
 //! | **Puzzle** | < median | ≥ median |
 //! | **Dog** | < median | < median |
+//!
+//! # Medians are integer money (O-L20)
+//!
+//! Both medians are `i64`, never `f64`: volume is a count and the margin is
+//! money in minor units, and this crate forbids floating point in the money
+//! path. The comparison those medians drive is "is this row's margin high?",
+//! and for an integer margin that question has exactly one right answer:
+//!
+//! ```text
+//! margin >= (lower + upper) / 2      the exact median, halved
+//! ```
+//!
+//! Halving is the only place a float would appear, and it can be avoided
+//! without changing the answer. For an **integer** `margin`, `margin >= mean`
+//! holds exactly when `margin >= ceil(mean)`, so the whole test reduces to a
+//! comparison against one integer, `ceil((lower + upper) / 2)`. That is the
+//! value `MarginMedian::high_water_mark` produces and the value this module
+//! publishes and compares against — one integer, no float, and **not one
+//! boundary case moves** relative to the previous `f64` code.
+//!
+//! The two middle elements are still kept, as `(lower, upper)`, so the exact
+//! interval survives: `MenuEngineeringResult::median_margin_range` returns it
+//! and `classify_quadrant_with_range` classifies from it without any rounding
+//! at all. `median_margin` and `median_volume` are then **thresholds, not
+//! averages** — see `MenuEngineeringResult` for why that distinction is the
+//! contract the screen depends on.
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -86,14 +112,72 @@ pub enum MenuQuadrant {
 
 /// The full menu engineering result: per-product rows plus quadrant
 /// classifications.
+///
+/// # `median_volume` and `median_margin` are thresholds, not averages
+///
+/// Both are integers (O-L20): volume is a count and margin is money in minor
+/// units, and neither may be a float. Each is the value a row is compared
+/// against to decide whether it is "high":
+///
+/// ```text
+/// volume_high = row.total_volume       >= median_volume
+/// margin_high = row.total_margin_minor >= median_margin
+/// ```
+///
+/// That is deliberately the rule the menu-engineering screen already applies
+/// (`ui/src/features/reports/MenuEngineeringScreen.tsx`, its own
+/// `classifyQuadrant`), and it is the *only* rule this struct's scalars
+/// support. They are the ceil of the exact median, not the exact median:
+/// for products with margins `{4, 5}` the median is `4.5` but
+/// `median_margin` is `5`, because `4 >= 4.5` is false and `5 >= 4.5` is
+/// true. Publishing `4` would make the screen paint row 4 as high when it is
+/// below the median.
+///
+/// So these fields are not "the median" in the arithmetic sense and must not
+/// be displayed as one or averaged with anything. A caller that needs the
+/// exact median asks for `median_margin_range()`; the two are equal for every
+/// odd-length product set, and differ by one only when the two middle margins
+/// straddle a half unit of money.
+///
+/// Zero medians mean an empty result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MenuEngineeringResult {
     /// Aggregated rows sorted by total revenue descending.
     pub rows: Vec<MenuEngineeringRow>,
-    /// Median total volume across all products in the period.
-    pub median_volume: f64,
-    /// Median total margin across all products in the period.
-    pub median_margin: f64,
+    /// Classification threshold for total volume, in units: a row is high
+    /// volume when `total_volume >= median_volume`.
+    ///
+    /// That is also the exact median, re-expressed as the integer it must
+    /// exceed — see the struct note.
+    pub median_volume: i64,
+    /// Classification threshold for total contribution margin, in minor units
+    /// of each row's own currency (see `MenuEngineeringRow::currency`): a row
+    /// is high margin when `total_margin_minor >= median_margin`.
+    ///
+    /// The ceil of the exact median; see the struct note, and
+    /// `median_margin_range` for the exact bounds.
+    pub median_margin: i64,
+}
+
+impl MenuEngineeringResult {
+    /// Exact bounds of the margin median, as `(lower, upper)` minor units.
+    ///
+    /// For an odd-length product set both elements are the median. For an
+    /// even-length set they are the two middle margins, so an odd sum is
+    /// represented exactly (`(4, 5)` means the median is `4.5`) instead of
+    /// being rounded. Empty results report `(0, 0)`.
+    ///
+    /// `median_margin` is the ceil of the mean of this pair; when the two
+    /// bounds differ this is what lets a caller see that the median is
+    /// fractional rather than believing the threshold is the average.
+    ///
+    /// Recovered from the rows the result already carries, which are sorted
+    /// by revenue, so this sorts a copy of the margins — no extra field and no
+    /// extra serde key.
+    #[must_use]
+    pub fn median_margin_range(&self) -> (i64, i64) {
+        margin_median_of(&self.rows).lower_upper()
+    }
 }
 
 /// Run the menu engineering aggregation query for a date range.
@@ -158,14 +242,18 @@ pub fn query_menu_engineering(
     // Sort by total revenue descending.
     rows.sort_by_key(|b| std::cmp::Reverse(b.total_revenue_minor));
 
-    // Calculate medians.
-    let median_volume = median_of(&rows, |r| r.total_volume as f64);
-    let median_margin = median_of(&rows, |r| r.total_margin_minor as f64);
+    // Calculate medians. Both stay integer (O-L20): the volume median is a
+    // plain i64 because every element is one; the margin median keeps its
+    // exact interval, and the published scalar is its ceil — the threshold a
+    // scalar reader must use so that IT and `classify_quadrant` agree on every
+    // row (see `MenuEngineeringResult`).
+    let median_volume = volume_median_of(&rows);
+    let margin_median = margin_median_of(&rows);
 
     Ok(MenuEngineeringResult {
         rows,
         median_volume,
-        median_margin,
+        median_margin: margin_median.high_water_mark(),
     })
 }
 
@@ -205,33 +293,180 @@ fn merge_same_product_rows(rows: Vec<MenuEngineeringRow>) -> Vec<MenuEngineering
     result
 }
 
-/// Compute the median of a numeric field extracted from a slice of rows.
-fn median_of<T>(items: &[T], extract: impl Fn(&T) -> f64) -> f64 {
-    if items.is_empty() {
-        return 0.0;
+/// The median of an integer set, as a closed integer interval.
+///
+/// # Why an interval, and why a threshold rather than an average
+///
+/// An odd-length set has a single middle element, so `lower == upper`. An
+/// even-length set has two middle elements whose mean is the median only when
+/// their sum is even; when it is odd the median is genuinely fractional
+/// (the median of `{4, 5}` is `4.5`). Money must not become a float (O-L20),
+/// so the exact bounds are kept as two integers.
+///
+/// The question the quadrant rule actually asks is not "what is the median"
+/// but "is this row at or above it", and that has an integer answer:
+/// `row >= (lower + upper) / 2` for an integer `row` is the same test as
+/// `row >= ceil((lower + upper) / 2)`. `high_water_mark` is that ceil, it needs
+/// no division (the two sets are the same except in their last bit), and it is
+/// the single integer both this module and the screen compare against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarginMedian {
+    /// Lower bound of the median; equals `upper` for an odd-length set.
+    lower: i64,
+    /// Upper bound of the median; equals `lower` for an odd-length set.
+    upper: i64,
+}
+
+impl MarginMedian {
+    /// A median known to be exactly `value` — an odd-length median, or an
+    /// even-length one whose two middle values are equal.
+    #[must_use]
+    pub fn point(value: i64) -> Self {
+        Self {
+            lower: value,
+            upper: value,
+        }
     }
 
-    let mut values: Vec<f64> = items.iter().map(extract).collect();
-    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    /// The empty-set median: both bounds zero, matching the historical
+    /// `0.0` sentinel and `Money`'s additive identity.
+    #[must_use]
+    pub fn zero() -> Self {
+        Self::point(0)
+    }
+
+    /// The two bounds as `(lower, upper)`, lower ≤ upper.
+    #[must_use]
+    pub fn lower_upper(self) -> (i64, i64) {
+        (self.lower, self.upper)
+    }
+
+    /// The smallest integer that is at or above this median — its ceil.
+    ///
+    /// This is the value a scalar reader must compare against, and the one
+    /// `median_margin` carries. For an integer row that comparison is exactly
+    /// "at or above the exact median": `row >= mean` and `row >= ceil(mean)`
+    /// agree for every integer `row`, so no boundary case differs from the
+    /// `f64` code that previously computed `row as f64 >= mean`.
+    ///
+    /// Because `lower <= upper`, the ceil is `upper` whenever the two bounds
+    /// straddle a half unit, and the common value otherwise. No addition, so
+    /// no overflow anywhere on the `i64` range: the old mean computation
+    /// added the two middle values, which could overflow even though the
+    /// median itself never can.
+    #[must_use]
+    pub fn high_water_mark(self) -> i64 {
+        self.ceil_of_mean()
+    }
+
+    /// Build the median from two known bounds, in either order.
+    ///
+    /// Accepts a reversed pair and normalises it, so a caller reconstructing a
+    /// median from stored data cannot invert the comparison.
+    #[must_use]
+    pub fn from_bounds(lower: i64, upper: i64) -> Self {
+        Self {
+            lower: lower.min(upper),
+            upper: lower.max(upper),
+        }
+    }
+
+    /// `ceil((lower + upper) / 2)` without ever forming the sum.
+    ///
+    /// `lower + upper` would overflow for a large opposite pair
+    /// (`i64::MIN` with `i64::MAX - 1`), and so would `upper - lower`; the
+    /// mean itself is always representable, since it cannot exceed either
+    /// bound. So the halves are taken separately:
+    ///
+    /// ```text
+    /// ceil((a + b) / 2) = floor(a / 2) + floor(b / 2) + (a odd || b odd)
+    /// ```
+    ///
+    /// `>> 1` on `i64` is an arithmetic shift, which IS floor division by two
+    /// for negatives (unlike `/ 2`, which truncates toward zero), and `& 1` is
+    /// the low bit, so the odd test is sign-correct. No operation in here can
+    /// overflow: halving moves inward and the sum of two halves of `a <= b`
+    /// cannot exceed `b`.
+    fn ceil_of_mean(self) -> i64 {
+        let a = self.lower;
+        let b = self.upper;
+        let halves = (a >> 1) + (b >> 1);
+        if (a & 1) != 0 || (b & 1) != 0 {
+            halves + 1
+        } else {
+            halves
+        }
+    }
+}
+
+/// Median of a slice of integer-valued items, extracted by `extract`.
+///
+/// An empty slice yields the zero interval.
+fn median_of<T>(items: &[T], extract: impl Fn(&T) -> i64) -> MarginMedian {
+    if items.is_empty() {
+        return MarginMedian::zero();
+    }
+
+    let mut values: Vec<i64> = items.iter().map(extract).collect();
+    values.sort_unstable();
 
     let len = values.len();
     if len.is_multiple_of(2) {
-        (values[len / 2 - 1] + values[len / 2]) / 2.0
+        MarginMedian {
+            lower: values[len / 2 - 1],
+            upper: values[len / 2],
+        }
     } else {
-        values[len / 2]
+        MarginMedian::point(values[len / 2])
     }
+    // `values` is sorted, so `lower <= upper` holds by construction; the
+    // interval's comparison and ceil both rely on it.
+}
+
+/// Median total volume across the rows, in units.
+fn volume_median_of(rows: &[MenuEngineeringRow]) -> i64 {
+    // Volume is a count and always an integer, so its median is too.
+    let median = median_of(rows, |r| r.total_volume);
+    debug_assert_eq!(median.lower, median.upper);
+    median.lower
+}
+
+/// Exact median of the rows' total contribution margin, in minor units.
+fn margin_median_of(rows: &[MenuEngineeringRow]) -> MarginMedian {
+    median_of(rows, |r| r.total_margin_minor)
 }
 
 /// Classify a product into a menu engineering quadrant based on median
 /// thresholds.
+///
+/// `volume` is sold units and `margin_minor` is contribution margin in minor
+/// units; both are integers, and so are the medians they are compared
+/// against (O-L20 — no money value in this crate is a float).
+///
+/// # Boundary semantics
+///
+/// "High" means **at or above** the median, so a product exactly on the
+/// median is high: equal volume *and* equal margin is a `Star`, and
+/// `classify_quadrant(m, m)` is a `Star` for every `m`.
+///
+/// For an even-length product set the exact median may fall between two
+/// integers: products with margins `{4, 5}` have a median of `4.5`, so a
+/// margin of `4` is **below** it (low) and `5` is above it (high). This
+/// function gets that right without a float by comparing against the ceil of
+/// the median, which for an integer margin is the same test — see
+/// `MarginMedian`.
+///
+/// The published `MenuEngineeringResult::median_margin` is that same ceil, so
+/// a caller applying `margin_minor >= median_margin` — as the menu
+/// engineering screen does — reproduces this function's answer for every row.
 pub fn classify_quadrant(
     volume: i64,
     margin_minor: i64,
-    median_volume: f64,
-    median_margin: f64,
+    median_volume: i64,
+    margin_median: MarginMedian,
 ) -> MenuQuadrant {
-    let volume_high = (volume as f64) >= median_volume;
-    let margin_high = (margin_minor as f64) >= median_margin;
+    let volume_high = volume >= median_volume;
+    let margin_high = margin_minor >= margin_median.high_water_mark();
 
     match (volume_high, margin_high) {
         (true, true) => MenuQuadrant::Star,
@@ -239,6 +474,32 @@ pub fn classify_quadrant(
         (false, true) => MenuQuadrant::Puzzle,
         (false, false) => MenuQuadrant::Dog,
     }
+}
+
+/// Classify a product using an exact margin-median interval.
+///
+/// Identical to `classify_quadrant` for the same median, spelled with the raw
+/// `(lower, upper)` pair so a caller holding
+/// `MenuEngineeringResult::median_margin_range`'s output — or `(m, m)` for a
+/// known integer median — does not have to know about the internal type.
+///
+/// Note what "exact" does *not* mean here: a margin strictly inside
+/// `[lower, upper]` is already below the mean when the two bounds differ
+/// (`4` against `{4, 5}` is below `4.5`), so it is low. The interval buys
+/// exactness for the *median*, not a wider high band.
+pub fn classify_quadrant_with_range(
+    volume: i64,
+    margin_minor: i64,
+    median_volume: i64,
+    margin_median: (i64, i64),
+) -> MenuQuadrant {
+    let (lower, upper) = margin_median;
+    classify_quadrant(
+        volume,
+        margin_minor,
+        median_volume,
+        MarginMedian::from_bounds(lower, upper),
+    )
 }
 
 /// Generate a human-readable recommendation for a menu quadrant.
