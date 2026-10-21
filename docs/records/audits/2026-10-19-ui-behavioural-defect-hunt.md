@@ -788,6 +788,32 @@ the paint order on a real WebView2 build. The token ordering and the selector ar
 the visual result is inferred from the cascade rules, not observed. It should be verified on a device
 before this is called done.
 
+## Round 56: the same z-index inversion, found by scanning for its shape
+
+Round 55 fixed the stamp-over-detail inversion. This round scanned for other instances of the shape
+rather than waiting to trip over them, and found one — in the payment modal, where it is worse.
+
+**The defect.** `PaymentModal` opens a customer-search dialog from inside itself, and both are focus
+trapped (`useFocusTrap(panelRef, ...)` and `useFocusTrap(customerSearchPanelRef, showCustomerSearch, ...)`).
+The parent is `.payment-overlay` at `calc(var(--z-modal) + 10)` = **410**; the child is
+`.payment-customer-search-overlay` at plain `var(--z-modal)` = **400**. The child is mounted inside the
+parent, so it painted 10 layers BELOW the panel it covers: focus moved into an input the operator could
+not see, and the payment panel stayed on top.
+
+**The repo had already solved this exact problem once, and said so.** `RestaurantCartSheet.css:31-48`
+carries a five-line comment about `calc(var(--z-modal) + 1)` putting a panel above every modal in the
+app, with a measurement and an `elementFromPoint` result. The pattern was known, written down, and not
+applied here — because there was no test that would have caught the second occurrence. There is now: the
+contract test asserts the nesting rule for every nested overlay I found and that `--z-modal-nested`
+(450) clears the parent's `+ 10` layer specifically, not merely `--z-modal`.
+
+**What I checked and left alone.** Six hardcoded `z-index` values reach or exceed the nested layer
+(`RetailPosScreen.css` 2000/1000/900, `ReceivePoModal.css` 1050, `SessionLockScreen.css` 9999,
+`LicenseActivationScreen.css` 1000). These are not the same defect: they are absolute values for
+surfaces that are meant to sit above everything, and the ones I opened (`ReceivePoModal`) raise no
+toasts, so their being above `--z-toast` has no consequence. Converting them to tokens without that
+argument would be churn dressed as a fix.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
