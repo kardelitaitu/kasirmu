@@ -7,6 +7,18 @@ dashboard-low-stock-alerts = Peringatan Stok Menipis
 dashboard-no-data = Belum ada data
 dashboard-stock-ok = Semua level stok dalam kondisi baik.
 
+# Dashboard — Debt reminders (AR & AP)
+dashboard-debt-reminders = Pengingat Piutang & Hutang
+dashboard-debt-ok = Semua piutang dan hutang dalam kondisi baik.
+dashboard-debt-panel-ok = Lancar
+dashboard-receivables-title = Piutang Pelanggan (Kasbon)
+dashboard-payables-title = Hutang Pemasok (Beli Tempo)
+dashboard-overdue-count = { $count } lewat jatuh tempo
+dashboard-due-soon-count = { $count } segera jatuh tempo
+dashboard-outstanding = Belum lunas: { $amount }
+dashboard-view-customers = Kelola Pelanggan
+dashboard-view-vendor-bills = Kelola Tagihan
+
 # Dashboard — date range
 dashboard-filter-from = Dari
 dashboard-filter-to = Hingga

@@ -61,6 +61,18 @@ dashboard-low-stock-alerts = Low Stock Alerts
 dashboard-no-data = No data yet
 dashboard-stock-ok = All stock levels are healthy.
 
+# Dashboard — Debt reminders (AR & AP)
+dashboard-debt-reminders = Debt & Credit Reminders
+dashboard-debt-ok = All credit & bills are up to date.
+dashboard-debt-panel-ok = Up to date
+dashboard-receivables-title = Customer Receivables (Piutang)
+dashboard-payables-title = Vendor Bills (Hutang)
+dashboard-overdue-count = { $count } overdue
+dashboard-due-soon-count = { $count } due soon
+dashboard-outstanding = Outstanding: { $amount }
+dashboard-view-customers = View Customers
+dashboard-view-vendor-bills = View Vendor Bills
+
 # Dashboard — date range
 dashboard-filter-from = From
 dashboard-filter-to = To

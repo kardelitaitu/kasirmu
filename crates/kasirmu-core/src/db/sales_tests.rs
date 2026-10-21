@@ -1065,6 +1065,37 @@ fn export_eod_breakdown_reconciles_with_the_daily_summary() {
 }
 
 #[test]
+fn export_eod_receivable_collections_aggregates_today() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let rec_id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute_batch(&format!(
+        "INSERT INTO customers (id, name, created_at, updated_at)
+         VALUES ('cust-1', 'Alice', '{now}', '{now}');
+         INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor, paid_minor, currency, status, note, created_at, updated_at)
+         VALUES ('{rec_id}', 'default', 'cust-1', 'pos', 'INV-001', 10000, 10000, 'IDR', 'paid', '', '{now}', '{now}');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at, note)
+         VALUES ('pay-1', 'default', '{rec_id}', 6000, 'IDR', 'cash', '{now}', 'Payment 1'),
+                ('pay-2', 'default', '{rec_id}', 4000, 'IDR', 'bank_transfer', '{now}', 'Payment 2');"
+    ))
+    .unwrap();
+
+    let collections = s.export_eod_receivable_collections().unwrap();
+    assert_eq!(collections.len(), 2);
+    let cash = collections.iter().find(|c| c.method == "cash").unwrap();
+    assert_eq!(cash.total_minor, 6000);
+    assert_eq!(cash.collection_count, 1);
+    let transfer = collections
+        .iter()
+        .find(|c| c.method == "bank_transfer")
+        .unwrap();
+    assert_eq!(transfer.total_minor, 4000);
+    assert_eq!(transfer.collection_count, 1);
+}
+
+#[test]
 fn export_sales_by_hour_with_sales() {
     let conn = fresh();
     let s = store(&conn);

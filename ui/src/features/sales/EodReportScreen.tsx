@@ -23,6 +23,22 @@ import { useToast } from '@/components/Toast';
 import './EodReportScreen.css';
 
 /**
+ * Format human-readable payment method label, localized when available.
+ */
+export function formatPaymentMethodLabel(
+  method: string,
+  l10n?: { getString: (id: string) => string | null },
+): string {
+  if (method === 'piutang_collection') {
+    return l10n?.getString('eod-payment-piutang-collections') ?? 'Piutang Collections';
+  }
+  if (method === 'pay_later') {
+    return l10n?.getString('eod-payment-pay-later') ?? 'Pay Later (Piutang)';
+  }
+  return method.charAt(0).toUpperCase() + method.slice(1).replace(/_/g, ' ');
+}
+
+/**
  * The two Fluent keys that label a non-zero cash difference, ONE definition
  * each. They were spelled inline at both render sites below (was line 154 and
  * line 187 at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is
@@ -409,8 +425,14 @@ export default function EodReportScreen() {
       body += line('');
       for (const pmt of r.payment_breakdown) {
         const pct = r.total_revenue > 0 ? Math.round((pmt.total / r.total_revenue) * 100) : 0;
-        const label = pmt.method.charAt(0).toUpperCase() + pmt.method.slice(1);
+        const label = formatPaymentMethodLabel(pmt.method, l10n);
         body += line(`${label.padEnd(12)} ${String(pmt.count).padStart(3)} tx  ${money(pmt.total).padStart(12)}  ${String(pct).padStart(2)}%`);
+      }
+      if ((r.receivable_collections_total ?? 0) > 0) {
+        body += sep;
+        body += line('  PIUTANG COLLECTIONS');
+        const colLabel = l10n.getString('eod-payment-piutang-collections') ?? 'Piutang Collections';
+        body += line(`${colLabel.padEnd(12)} ${String(r.receivable_collections_count ?? 1).padStart(3)} tx  ${money(r.receivable_collections_total ?? 0).padStart(12)}`);
       }
       body += sep;
 
@@ -510,7 +532,10 @@ export default function EodReportScreen() {
 
       // Payment breakdown
       for (const pmt of r.payment_breakdown) {
-        rows.push([t('eod-csv-row-payment', { method: pmt.method }), money(pmt.total)]);
+        rows.push([t('eod-csv-row-payment', { method: formatPaymentMethodLabel(pmt.method, l10n) }), money(pmt.total)]);
+      }
+      if ((r.receivable_collections_total ?? 0) > 0) {
+        rows.push([t('eod-summary-piutang-collections'), money(r.receivable_collections_total ?? 0)]);
       }
 
       // Hourly breakdown
@@ -863,7 +888,7 @@ export default function EodReportScreen() {
                       <div key={pmt.method} className="eod-report-payment-row">
                         <div className="eod-report-payment-info">
                           <span className="eod-report-payment-method">
-                            {pmt.method.charAt(0).toUpperCase() + pmt.method.slice(1)}
+                            {formatPaymentMethodLabel(pmt.method, l10n)}
                           </span>
                           <Localized id="eod-payment-count" vars={{ count: pmt.count }}>
                             <span className="eod-report-payment-count">{pmt.count} transactions</span>
@@ -887,6 +912,23 @@ export default function EodReportScreen() {
                       </div>
                     );
                   })}
+                  {(report.receivable_collections_total ?? 0) > 0 && (
+                    <div className="eod-report-payment-row eod-report-payment-row--receivable">
+                      <div className="eod-report-payment-info">
+                        <span className="eod-report-payment-method">
+                          <Localized id="eod-payment-piutang-collections">
+                            <span>Piutang Collections</span>
+                          </Localized>
+                        </span>
+                        <Localized id="eod-payment-count" vars={{ count: report.receivable_collections_count ?? 0 }}>
+                          <span className="eod-report-payment-count">{report.receivable_collections_count ?? 0} transactions</span>
+                        </Localized>
+                      </div>
+                      <div className="eod-report-payment-amount">
+                        <span className="eod-report-payment-total">{money(report.receivable_collections_total ?? 0)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
@@ -976,6 +1018,14 @@ export default function EodReportScreen() {
                   </Localized>
                   <span className="eod-report-summary-value">{report.payment_breakdown.length}</span>
                 </div>
+                {(report.receivable_collections_total ?? 0) > 0 && (
+                  <div className="eod-report-summary-item">
+                    <Localized id="eod-summary-piutang-collections">
+                      <span className="eod-report-summary-label">Piutang Collections</span>
+                    </Localized>
+                    <span className="eod-report-summary-value">{money(report.receivable_collections_total ?? 0)}</span>
+                  </div>
+                )}
               </div>
             </Card>
           )}

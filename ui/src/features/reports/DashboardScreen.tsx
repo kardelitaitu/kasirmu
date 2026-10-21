@@ -35,6 +35,7 @@ import {
 } from '@/api/reports';
 import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
+import { DebtRemindersCard } from './DebtRemindersCard';
 import './DashboardScreen.css';
 
 echarts.use([
@@ -604,6 +605,9 @@ function DashboardScreenContent() {
           </ul>
         )}
       </Card>
+
+      {/* ── Debt & Credit Reminders ───────────────────── */}
+      <DebtRemindersCard sessionToken={sessionToken} currency={currency} />
     </div>
   );
 }

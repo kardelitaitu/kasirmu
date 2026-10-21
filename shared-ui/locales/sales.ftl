@@ -664,6 +664,9 @@ eod-summary-voided-sales = Voided Sales
 eod-summary-voided-value = Voided Value
 eod-summary-discounts = Sales with Discounts
 eod-summary-payment-methods = Payment Methods Used
+eod-summary-piutang-collections = Piutang Collections
+eod-payment-piutang-collections = Piutang Collections
+eod-payment-pay-later = Pay Later (Piutang)
 # CSV export labels. The export wrote these as raw English literals while the screen
 # beside it rendered the same facts through eod-summary-* keys; the row VALUES reuse
 # those keys, and only these four have no screen equivalent.

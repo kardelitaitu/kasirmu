@@ -196,7 +196,8 @@ pub use reports::{
     TopProductRow, WeeklyRevenueRow,
 };
 pub use sales::{
-    CartLineTaxInput, CartTaxResult, DailySummaryRow, HeldCartFull, HeldCartRow, SalesByHourRow,
+    CartLineTaxInput, CartTaxResult, DailySummaryRow, EodBreakdownRow, EodReceivableCollectionRow,
+    EodVoidRow, HeldCartFull, HeldCartRow, SalesByHourRow,
 };
 pub use shifts::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
 

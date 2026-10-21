@@ -694,6 +694,35 @@ fn close_shift_and_report_agree_on_cash_for_a_split_tender() {
     );
 }
 
+#[test]
+fn close_shift_includes_receivable_collections_cash_in_expected_cash() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    let shift = s.open_shift("user-1", None, 10000).unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let rec_id = uuid::Uuid::now_v7().to_string();
+    conn.execute_batch(&format!(
+        "INSERT INTO customers (id, name, created_at, updated_at)
+         VALUES ('cust-1', 'Alice', '{now}', '{now}');
+         INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor, paid_minor, currency, status, note, created_at, updated_at)
+         VALUES ('{rec_id}', 'default', 'cust-1', 'pos', 'INV-REC', 5000, 5000, 'USD', 'paid', '', '{now}', '{now}');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at, recorded_by, note)
+         VALUES ('pay-rec-1', 'default', '{rec_id}', 5000, 'USD', 'cash', '{now}', 'user-1', 'Kasbon payment');"
+    ))
+    .unwrap();
+
+    let closed = s.close_shift(&shift.id, 15000, None).unwrap();
+    assert_eq!(
+        closed.expected_cash_minor,
+        Some(15000),
+        "expected cash must include kasbon cash collected during shift"
+    );
+    assert_eq!(closed.cash_difference_minor, Some(0));
+}
+
 /// RED: a refund belongs to the shift of the person who PROCESSED it, not to
 /// the shift of whoever sold the original sale. `close_shift` joins refunds to
 /// sales on the SALE's `user_id` and ignores `refunds.processed_by`, so a refund

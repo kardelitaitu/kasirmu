@@ -129,6 +129,19 @@ pub struct EodVoidRow {
     pub void_total_minor: i64,
 }
 
+/// One receivable (piutang) collection aggregation for one store-local business day.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct EodReceivableCollectionRow {
+    /// Tender method used for the repayment ('cash', 'card', 'bank_transfer', etc.).
+    pub method: String,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// Number of receivable payments collected this way today.
+    pub collection_count: i64,
+    /// Sum of repayment amounts in minor units.
+    pub total_minor: i64,
+}
+
 /// Summary row for a held (parked) cart.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HeldCartRow {
@@ -430,6 +443,47 @@ impl Store<'_> {
             },
         )?;
         Ok(row)
+    }
+
+    /// Today's customer receivable (piutang) collection aggregation, bucketed by
+    /// settlement method and currency — the collections breakdown printed under an EOD header.
+    ///
+    /// Shares the SAME store-local day definition (REP-03) with [`Self::export_daily_summary`]
+    /// and [`Self::export_eod_breakdown`].
+    pub fn export_eod_receivable_collections(
+        &self,
+    ) -> Result<Vec<EodReceivableCollectionRow>, CoreError> {
+        let tz = self.tz_modifier();
+        let has_table: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='receivable_payments')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
+        if !has_table {
+            return Ok(Vec::new());
+        }
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT COALESCE(method, 'cash') AS method,
+                    currency,
+                    COUNT(*) AS collection_count,
+                    COALESCE(SUM(amount_minor), 0) AS total_minor
+             FROM receivable_payments
+             WHERE DATE(paid_at, '{tz}') = DATE('now', '{tz}')
+             GROUP BY method, currency
+             ORDER BY currency, total_minor DESC"
+        ))?;
+        let rows = stmt.query_map([], |row| {
+            Ok(EodReceivableCollectionRow {
+                method: row.get("method")?,
+                currency: row.get("currency")?,
+                collection_count: row.get("collection_count")?,
+                total_minor: row.get("total_minor")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
     }
 }
 

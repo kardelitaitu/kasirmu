@@ -916,6 +916,9 @@ export interface EodReport {
   discount_count: number;
   discount_total: number;
   hourly_breakdown: SalesByHourRow[];
+  receivable_collections_count?: number;
+  receivable_collections_total?: number;
+  receivable_breakdown?: PaymentBreakdown[];
 }
 
 /** Export the daily sales summary. */

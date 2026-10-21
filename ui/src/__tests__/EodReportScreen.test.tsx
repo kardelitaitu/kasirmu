@@ -245,6 +245,23 @@ describe('EodReportScreen', () => {
     });
   });
 
+  it('renders Piutang Collections in payment breakdown and today summary when present', async () => {
+    mockEodReportScoped.mockResolvedValue(
+      makeEodReport({
+        receivable_collections_count: 2,
+        receivable_collections_total: 100000,
+      }),
+    );
+    mockListShifts.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Piutang Collections').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('2 transactions')).toBeTruthy();
+      expect(screen.getAllByText('Rp 100.000').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it('clicks Refresh re-fetches data', async () => {
     mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
