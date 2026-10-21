@@ -455,7 +455,14 @@ limit/offset (or keyset on `created_at`) with a default page.
 `apps/desktop-tauri/src/commands/kds.rs:112-130` ✔. Fixed: indexed existing active tickets in `refresh_kds_queue_cache` to reuse cached line items and station routing for all unchanged orders, and passed `dirty_order_id` so that only the modified ticket is re-queried during item bumps. Reduced bridge round trips during order transitions and line bumps from $O(\text{active tickets})$ to $O(1)$. Verified with `kds_lan_live` test suite in `kasirmu-app`.
 
 **O-H17 · mobile — every checkout loads the subscription and verifies RSA under the global DB
-mutex** — `apps/mobile-tauri/src/commands/pos.rs:993-1006` ◦
+mutex** — `apps/mobile-tauri/src/commands/pos.rs:840-846` and
+`apps/mobile-tauri/src/commands/pos/checkout.rs:662-669` ◦ — **RE-ANCHORED 2026-10-21:** the cited
+`pos.rs:993-1006` no longer exists. The block now sits at TWO sites, both inside
+`state.db.lock().await`: the main checkout (`pos/checkout.rs:662-669`) and the shortfall-retry
+command (`pos.rs:840-846`). `verify_signature` is `crates/kasirmu-core/src/subscription.rs:274`,
+and it performs a real RSA verify except for the `BOOTSTRAP_FREE` sentinel short-circuit at `:291`.
+There is NO cache today: `SubscriptionLoader::load_verified_subscription`
+(`entitlements.rs:323-355`) loads and verifies on every call. Re-verified live.
 Each checkout (and shortfall retry) takes the process-wide DB mutex, loads
 `TenantSubscription::load`, and runs `verify_signature` (RSA-2048), then re-acquires the same
 mutex for settlement — heavy CPU under the global lock on the hottest path. *Fix:* cache the
