@@ -2310,3 +2310,42 @@ popularity tests and all 48 `complete_sale` tests green, including the two new o
 > environmental, not by my change: with `TEMP` pointed at a writable path the same test passes
 > (1 passed). It is the temp-dir failure already recorded at this journal's :1665 and :1972,
 > now with a reproduction.
+
+---
+
+## §11AD — the temp-dir "test failure" was a machine setting, not a defect (2026-10-21)
+
+While verifying O-H01, `concurrent_complete_sale_serialized_by_begin_immediate` failed
+deterministically with `Os { code: 5, PermissionDenied }` at its first line. It was NOT the
+popularity change, and proving that took three measurements rather than one assertion:
+
+| measurement | result |
+|---|---|
+| what the test actually does first | `create_dir_all` into `std::env::temp_dir()` — before any SQL |
+| can this user delete a subdir of that path? | creating it succeeds; **removing it is Access denied** |
+| same test with `TEMP` pointed at a writable dir | **1 passed** |
+
+**The root cause.** `TEMP`/`TMP` are set to `C:\WINDOWS\TEMP` at the MACHINE level
+(`HKLM\...\Session Manager\Environment`), while the USER-level value is the correct
+`C:\Users\<user>\AppData\Local\Temp`. A user can create inside `C:\WINDOWS\TEMP` but not
+remove, so any test that makes a scratch directory there can never clean up, and on a box where
+a stale directory already exists the create itself fails — reading as a test failure while being
+nothing of the sort.
+
+**The fix is structural, not per-test.** `migrations::test_scratch_dir(prefix)` resolves the
+workspace root by walking up for `Cargo.lock` + `target/` (from `CARGO_MANIFEST_DIR`, so it does
+not depend on the process CWD), and creates `target/test-scratch/<prefix>_<uuid>/`. `target/` is
+already gitignored at `.gitignore:2`, so nothing can be committed by accident, and the per-test
+UUID keeps parallel tests apart. **All 19 `std::env::temp_dir()` sites in `kasirmu-core`, across
+15 files, now route through it** — the class is closed, not the instance.
+
+**What it did NOT fix, stated plainly.** Two race tests —
+`sales_crud::a_transition_that_lost_the_race_reports_the_conflict` and
+`sales_lifecycle::void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale`
+— still fail intermittently at the default 32-way parallelism and pass at `--test-threads=4`
+(3,650 / 3,650) and in isolation. They stage an interleaving with a fixed
+`sleep(300 ms)` window and give up after 8 attempts ("could not stage the read-before-commit
+interleaving in 8 attempts"). That is a load-sensitive timing design that predates this work;
+my diff to both files is the single temp-dir line. **They are left as they are rather than
+quietly retried or widened**, because a race test that is loosened to pass under load stops
+staging the race it exists to catch.
