@@ -409,7 +409,17 @@ pub(super) async fn run_tick(
                 // makes a backed-up queue impossible to drain, and the failed
                 // cycle grows it further. The SAME split is handed to the 401
                 // retry below, so the retry path holds only a list of batches.
-                let batches = crate::build_batches(&pending, crate::MAX_BATCH_BYTES);
+                // O-M34: `build_batches` now charges a conservative per-item
+                // ESTIMATE, so it must be handed the budget left after the
+                // transport's own additions — the stamp's payload regrowth when
+                // this transport stamps, and the body's brackets/separators.
+                let budget = crate::MAX_BATCH_BYTES
+                    .saturating_sub(
+                        crate::transport_margin_per_item(transport.stamps_payloads())
+                            * pending.len(),
+                    )
+                    .saturating_sub(crate::TRANSPORT_MARGIN_BASE_BYTES);
+                let batches = crate::build_batches(&pending, budget);
 
                 // Phase 3: push + apply, batch by batch. `push_batches` applies
                 // each batch's outcomes before sending the next (SYNC-02: the

@@ -213,9 +213,27 @@ impl OfflineQueueItem {
 /// synced or failed. So this takes `&mut` and reorders the caller's own
 /// vector rather than returning a parallel sorted copy.
 pub fn order_for_push(items: &mut [OfflineQueueItem]) {
-    items.sort_by(|a, b| {
-        (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
-    });
+    // The comparison is `compare_for_push`, the ONE key, held directly below
+    // and reused by any caller that has to sort indexes rather than values.
+    <[OfflineQueueItem]>::sort_by(items, compare_for_push);
+}
+
+/// Compare two queue items by THE transmit key: `priority`, then
+/// `created_at`, then `id`. This is the ONE comparison — [`order_for_push`]
+/// sorts with it, and any caller that has to order indexes instead of values
+/// uses the same function rather than writing the tuple out again.
+///
+/// **Public for exactly that reason.** `platform/sync::build_batches` needs
+/// the transmit order of a backlog it must not copy, so it sorts an index
+/// vector with this comparison. Exposing one comparison keeps C49's "one
+/// definition" promise; a second copy of the key at a call site is the
+/// divergent-twin failure that rule exists to prevent.
+///
+/// Every caller sorts through this one function, so the tuple below is the
+/// only place the key exists.
+#[must_use]
+pub fn compare_for_push(a: &OfflineQueueItem, b: &OfflineQueueItem) -> std::cmp::Ordering {
+    (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
 }
 
 #[cfg(test)]

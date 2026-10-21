@@ -231,24 +231,86 @@ fn order_for_push_preserves_arrival_order_within_a_tier() {
     assert_eq!(order, vec!["first", "second", "third"]);
 }
 
-/// It reorders the CALLER'S vector in place. That is load-bearing, not a
-/// style choice: the push sends this exact vector and the per-item outcomes
-/// are matched back by index, so a parallel sorted copy would leave the caller
-/// holding the unsorted one and mis-attribute every outcome.
+// ── compare_for_push: the ONE transmit key (O-M34) ──────────────────
+
+/// `compare_for_push` must order exactly as `order_for_push` sorts — not
+/// merely "roughly". `build_batches` (platform-sync) sorts an INDEX vector with
+/// this comparison instead of copying its backlog, and the server matches
+/// per-item outcomes back by index, so a different key would reorder a push.
+///
+/// The fixture mixes all three tiers and two items sharing one millisecond, so
+/// both the tier key and the `id` tie-break are exercised: a comparison that
+/// copied only `priority` would pass the first assertion and fail the third.
 #[test]
-fn order_for_push_reorders_the_same_vector_in_place() {
-    let mut items = vec![
-        OfflineQueueItem::with_priority("bulk", "{}", SyncPriority::Low),
-        OfflineQueueItem::with_priority("money", "{}", SyncPriority::Critical),
+fn compare_for_push_is_the_key_order_for_push_sorts_with() {
+    const AT: &str = "2026-01-01T00:00:00.000Z";
+    let mk = |action: &str, prio: SyncPriority, at: &str| {
+        let mut item = OfflineQueueItem::with_priority(action, "{}", prio);
+        item.created_at = at.to_owned();
+        item
+    };
+    let base = vec![
+        mk("low-old", SyncPriority::Low, "2025-12-31T23:59:59.000Z"),
+        mk("crit-a", SyncPriority::Critical, AT),
+        mk("normal", SyncPriority::Normal, "2026-01-01T00:00:01.000Z"),
+        mk("crit-b", SyncPriority::Critical, AT),
+        mk(
+            "crit-first",
+            SyncPriority::Critical,
+            "2025-12-31T00:00:00.000Z",
+        ),
+        mk("low-new", SyncPriority::Low, "2026-02-01T00:00:00.000Z"),
     ];
-    let ptr_before = items.as_ptr();
-    let len_before = items.len();
 
-    order_for_push(&mut items);
+    for shift in 0..base.len() {
+        // The reference: the shared rule, sorting values in place.
+        let mut in_place = base.clone();
+        in_place.rotate_left(shift);
+        order_for_push(&mut in_place);
+        let expected: Vec<String> = in_place.iter().map(|i| i.id.clone()).collect();
 
-    assert_eq!(items.as_ptr(), ptr_before, "same allocation, reordered");
-    assert_eq!(items.len(), len_before, "nothing added or dropped");
-    assert_eq!(items[0].action, "money");
+        // The same input, ordered as indexes through the shared comparison.
+        let mut by_index = base.clone();
+        by_index.rotate_left(shift);
+        let mut order: Vec<usize> = (0..by_index.len()).collect();
+        order.sort_by(|&a, &b| compare_for_push(&by_index[a], &by_index[b]));
+        let lifted: Vec<String> = order.iter().map(|&i| by_index[i].id.clone()).collect();
+
+        assert_eq!(
+            lifted, expected,
+            "indexes ordered by compare_for_push must equal order_for_push (rotation {shift})"
+        );
+    }
+}
+
+/// The key is total and stable, in the three parts C49 named: tier first,
+/// arrival second, and `id` to break a same-millisecond tie. Each assertion
+/// names one part so a key that loses one fails at the line that says which.
+#[test]
+fn compare_for_push_orders_by_tier_then_arrival_then_id() {
+    const AT: &str = "2026-01-01T00:00:00.000Z";
+    let mut early = OfflineQueueItem::with_priority("early-critical", "{}", SyncPriority::Critical);
+    early.created_at = "2025-12-31T00:00:00.000Z".to_owned();
+    let mut late = OfflineQueueItem::with_priority("late-critical", "{}", SyncPriority::Critical);
+    late.created_at = AT.to_owned();
+    let normal = OfflineQueueItem::with_priority("normal", "{}", SyncPriority::Normal);
+    let low = OfflineQueueItem::with_priority("low", "{}", SyncPriority::Low);
+
+    // Tier beats everything: a Low item queued long ago still goes last.
+    assert_eq!(compare_for_push(&normal, &low), std::cmp::Ordering::Less);
+    assert_eq!(compare_for_push(&early, &normal), std::cmp::Ordering::Less);
+    // Within a tier, arrival leads.
+    assert_eq!(compare_for_push(&early, &late), std::cmp::Ordering::Less);
+    // Same tier AND same millisecond: only the id can decide, and it does.
+    let mut a = OfflineQueueItem::with_priority("twin", "{}", SyncPriority::Critical);
+    let mut b = a.clone();
+    a.created_at = AT.to_owned();
+    b.created_at = AT.to_owned();
+    a.id = "0190f5c0-0000-7000-8000-000000000000".to_owned();
+    b.id = "0190f5c0-0000-7000-8000-000000000001".to_owned();
+    assert_eq!(compare_for_push(&a, &b), std::cmp::Ordering::Less);
+    assert_eq!(compare_for_push(&b, &a), std::cmp::Ordering::Greater);
+    assert_eq!(compare_for_push(&a, &a), std::cmp::Ordering::Equal);
 }
 
 #[test]
