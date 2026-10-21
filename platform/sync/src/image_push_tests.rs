@@ -60,7 +60,7 @@ fn build_frames_matches_endpoint_contract() {
 #[tokio::test]
 async fn drain_once_noop_when_sync_disabled() {
     // Fresh DB: sync disabled → config None → drain is a no-op.
-    let tmp = std::env::temp_dir().join(format!("oz-ip-{}", uuid::Uuid::new_v4()));
+    let tmp = crate::test_helpers::scratch_dir("oz-ip");
     std::fs::create_dir_all(&tmp).unwrap();
     let sched = test_scheduler(&tmp);
     sched.drain_once().await; // must not panic
@@ -70,7 +70,7 @@ async fn drain_once_noop_when_sync_disabled() {
 #[tokio::test]
 async fn drain_once_noop_when_queue_empty() {
     // Enable sync + point at a dead URL. With an empty queue, no HTTP call.
-    let tmp = std::env::temp_dir().join(format!("oz-ip-{}", uuid::Uuid::new_v4()));
+    let tmp = crate::test_helpers::scratch_dir("oz-ip");
     std::fs::create_dir_all(&tmp).unwrap();
     let sched = test_scheduler(&tmp);
     {
@@ -129,7 +129,7 @@ async fn read_push_batch_returns_none_when_the_queue_table_is_unreadable() {
 async fn drain_once_enqueues_and_marks_failed_on_network_error() {
     // A dead port (127.0.0.1:1) makes the POST fail → all hashes marked
     // as failed attempts (queue retains them with bumped attempts).
-    let tmp = std::env::temp_dir().join(format!("oz-ip-{}", uuid::Uuid::new_v4()));
+    let tmp = crate::test_helpers::scratch_dir("oz-ip");
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     let sched = test_scheduler(&tmp);
 

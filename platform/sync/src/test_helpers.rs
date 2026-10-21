@@ -2,6 +2,45 @@
 //!
 //! These helpers are re-exported from the crate root under `#[cfg(test)]`
 //! so every test module can use them without duplication.
+//!
+//! ## Why [`scratch_dir`] exists
+//!
+//! `std::env::temp_dir()` resolves `TEMP`/`TMP`, and on this project's Windows
+//! machines the MACHINE-level value is `C:\WINDOWS\TEMP` — a directory an ordinary
+//! user may create inside but cannot delete from. A fixture there can never be
+//! cleaned up, and once a stale entry exists the create itself fails with
+//! `PermissionDenied`, which reads as a broken test rather than as a hostile
+//! environment. Measured 2026-10-21: three `image_push` tests failed that way.
+//!
+//! `target/` is already gitignored (`.gitignore:2`), so nothing created here can be
+//! committed, and the per-call UUID keeps parallel tests apart. The workspace root is
+//! found by walking up from `CARGO_MANIFEST_DIR` rather than from the process CWD,
+//! because tests run from the crate directory while `target/` lives at the root.
+
+use std::path::PathBuf;
+
+/// A fresh, uniquely-named scratch directory under the gitignored `target/` tree.
+///
+/// Use this instead of `std::env::temp_dir()` or `tempfile::tempdir()` for any
+/// fixture that needs a real path on disk. See the module docs for why.
+///
+/// # Panics
+///
+/// Panics if the directory cannot be created: a test that cannot obtain its scratch
+/// space has nothing further it can usefully do.
+pub fn scratch_dir(prefix: &str) -> PathBuf {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest
+        .ancestors()
+        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
+        .unwrap_or(manifest);
+    let dir = workspace
+        .join("target")
+        .join("test-scratch")
+        .join(format!("{prefix}-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("test scratch dir under target/ must be creatable");
+    dir
+}
 
 /// Spawn a mock server that returns HTTP 421 + `server_migrated` JSON on
 /// the push, pull, and snapshot endpoints (ADR #11).
