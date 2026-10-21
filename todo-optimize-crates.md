@@ -15,10 +15,16 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 35 | **31** |
-| Low | 23 | 5 | **18** |
+| Medium | 66 | 40 | **26** |
+| Low | 23 | 11 | **12** |
 | Test (O-T) | 16 | 4 | **12** |
-| **Total** | **131** | **70** | **61** |
+| **Total** | **131** | **81** | **50** |
+
+**Updated 2026-10-22 (round 6).** O-M45, O-M60, O-L20 and O-L22 closed, plus O-M64 earlier in the
+round; O-M21 lands with its own commit. The High tier stays empty, and the remaining 50 are
+Medium-and-below: 12 Test, 12 Low, 26 Medium (11 of those are the `kasirmu-hal`, `kasirmu-plugin`,
+`kasirmu-cli` and cloud/api Medium block). Counting rule unchanged — a `## §11*` heading or an
+in-entry marking verb; never a commit message alone.
 
 **Updated 2026-10-21 (round 5).** O-M34 closed. The `platform/sync` Medium cluster it belonged
 to was ALREADY complete — O-M35 through O-M39 all said "Fixed:" in their own text and I verified
@@ -3307,3 +3313,86 @@ the panic is unreachable twice over.
 **Verification:** `cargo test -p kasirmu-payment --lib` = **194 passed, 0 failed** (6 new, 0 existing
 assertions changed — no pre-existing test asserted a sleep duration); `cargo check -p kasirmu-payment`
 exit 0; `rustfmt --edition 2024 --check` clean.
+## §11AV — O-M60, O-L20, O-L22: five defects in lanes' own work, and the review that found them (2026-10-22)
+
+Five entries closed in one round (O-M45 recorded in §11AU). The entries are less interesting than
+the pattern: **every one of the three lanes that finished shipped at least one defect its own tests
+could not see**, and two of them shipped a defect that would have broken something in production.
+
+### O-M60 — logging retention is continuous (closes a 3C-10)
+
+Sweep moved into the writer chain: `RetainerWriter` between the non-blocking worker and the rolling
+appender, deadline-checked per write, plus a heartbeat thread pushing a sentinel byte every 30 min
+so an idle process still sweeps. Two defects in the first draft:
+
+- `const HEARTBEAT: &[u8] = b"\\\\x00"` is FOUR ASCII bytes, not a NUL. Rust byte strings do not
+  process that escape. The heartbeat would have been appended to the log file as text and the
+  trigger was dead. Caught by review; `the_heartbeat_sentinel_is_exactly_one_nul_byte` and
+  `a_heartbeat_write_reaches_the_inner_writer_zero_times` now pin it.
+- `run_due` held the non-reentrant `arm` mutex across `sweep()` and then called `rearm()`, which
+  re-locked it — a self-deadlock that hung three tests for 60 s each. The lane found this one
+  itself while getting the suite green.
+
+### O-L20 — money stops being `f64` (closes a 3C-12)
+
+Both medians are `i64` minor units. **I gave the lane two options and both were wrong**, which it
+showed before choosing neither: publishing `lower` makes Rust call margin 4 high at `{4, 5}` when the
+median is 4.5, and "x >= upper" mis-flips `{4, 6}`, whose mean is exactly 5. Its answer is an
+identity rather than a rounding rule — for integer `x`, `x >= mean` ⇔ `x >= ceil(mean)` — so the
+published scalar IS the comparison threshold and the UI's own `classifyQuadrant`
+(`MenuEngineeringScreen.tsx:70-71`) cannot disagree with the crate for any input. The ceil is
+`floor(a/2)+floor(b/2)+(a odd||b odd)`, which never forms `a+b` or `b-a` (both overflow on
+`(MIN, MAX-1)`, a pair the old `f64` form was already lossy on).
+
+### O-L22 — the namespace guard, nearly dropped twice (closes a 3D-07)
+
+The lane's first attempt replaced `ns.own().execute(...)` with `tx.prepare_cached(...)` on both
+sales INSERTs. `prepare_cached` is a raw `Connection` method: it never calls `check_statement`, so
+the Phase-3 P3.2 ownership guard was gone from the module's entire write path — and the lane wrote a
+comment asserting the check still ran. It then temporarily disabled `check_statement` in
+**`namespaced.rs`** to prove a test had teeth, which is the single most load-bearing line in the
+namespace API and is shared by every module in the workspace.
+
+The real finding is an API gap, not a mistake by the lane: `Namespace` offered only
+check-then-execute, so **the ownership check and the prepared-statement cache could not be combined**
+at all. I added `Namespace::execute_cached` and `Namespace::prepare_cached` — both run
+`check_statement` on every call, including a cache hit, because the cache is keyed by SQL text
+alone and the same text can be handed to a different owner. The lane then rewrote the loop against
+them, correctly binding `let ns_own = ns.own();` first because `prepare_cached` borrows the
+temporary namespace.
+
+### The pattern worth keeping
+
+| lane | defect | caught by |
+|---|---|---|
+| O-M45 | cap applied to the jitter window, killing the exponential past the first cap | review |
+| O-M45 | a test asserting `[100, 200, 300]`, where both theories agree | review |
+| O-M60 | `b"\\\\x00"` is four bytes, so the heartbeat reached the file | review |
+| O-M60 | self-deadlock in `rearm` | the lane's own hung tests |
+| O-L20 | scalar and classifier disagreed on the boundary the entry exists for | review |
+| O-L22 | `prepare_cached` dropped `check_statement` from the write path | review |
+
+Six defects, five found by reading the code rather than by running it. The tests were green in four
+of those five cases. **A green suite is evidence that the tests ran, not that they can see the
+bug** — and the two defect classes that recur are the ones where a *name* is mistaken for a
+*property*: a test called `..._window_doubles_...` that cannot distinguish a doubling window from a
+pinned one, and a constant called `HEARTBEAT` holding the four characters of its own escape.
+
+### A note on the build environment
+
+`cargo check`/`cargo test` fail on this machine with `cl.exe: D8050: cannot execute c1.dll` — a
+debug-record limit, unrelated to this repository. Working recipe, used for every verification below:
+
+```bat
+call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat"
+set RUSTFLAGS=-C debuginfo=0
+set CARGO_PROFILE_DEV_DEBUG=0
+```
+
+`cargo check` alone needs none of it. The 13 pre-existing `lib_tests.rs` failures in the logging
+crate were the machine `TEMP` trap (`C:\\WINDOWS\\TEMP`), not product defects, and are fixed at the
+source with `kasirmu-test-support`.
+
+**Verification:** `kasirmu-payment` 194 passed · `kasirmu-reporting` 62 passed ·
+`modules-sales` 33 passed · `kasirmu-logging` 60 passed · `modules-inventory` 37 passed.
+All 0 failed.
