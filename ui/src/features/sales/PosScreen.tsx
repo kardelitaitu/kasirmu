@@ -961,7 +961,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // If this was an open bill being paid, delete it from DB.
     //
     // ⚠️ THE FAILURE BRANCH MUST RE-READ, and the delete must be AWAITED before the
-    // refresh — the same rule the split handler above states at :1096-1251, and the
+    // refresh — the same rule the split handler above states in handleConfirmSplitBill, and the
     // same reason its comment gives: `loadOpenBills()` on the success path alone left
     // the list showing stale data over a half-committed write.
     //
@@ -1171,9 +1171,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         } catch {
           // REPORT AND STOP. This catch used to toast and fall through to the
           // `setShowPayment(true)` below, which is the exact shape the create-first comment
-          // above (:972-978) says the reordering was meant to end: the operator is taken to
-          // payment for the SPLIT portion while the ORIGINAL tab — still holding every line,
-          // because `setActiveOpenBillId(null)` (:1020) is on the success path only — remains
+          // above (the "create-first order trades for not losing the tab" block) says the
+          // reordering was meant to end: the operator is taken to payment for the SPLIT
+          // portion while the ORIGINAL tab — still holding every line, because the
+          // `setActiveOpenBillId(null)` in handlePaymentComplete runs on the success path
+          // only — remains
           // to be settled later. That is one set of lines charged twice.
           //
           // Returning keeps the cart intact and the split modal open, so the cashier can
@@ -2006,7 +2008,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   //   * `handleSendToKitchen` returns early on no session/lines/undelivered delta
   //     (`:1189-1198`);
   //   * `setShowSplitBillModal(true)` opens the split MODAL, not its confirm, so the
-  //     dine-in-only rule in `handleConfirmSplitBill` (`:964`) still applies;
+  //     dine-in-only rule in `handleConfirmSplitBill` still applies;
   //   * `setShowTables(true)` is the sidebar row's own action, already feature-gated.
   //
   // ⚠️ The three ranges above are the only thing making the 'self-guarding' claim
