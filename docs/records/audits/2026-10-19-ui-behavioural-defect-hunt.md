@@ -683,6 +683,38 @@ the suite back to 4/4. Nothing was committed.
 same float operation as the code under test, or the probe agrees with the bug. Use exact integer or
 string arithmetic for the expected side.
 
+## Round 53: two more axes measured clean, with numbers rather than impressions
+
+Round 52 withdrew a claim; this round measured two fresh axes and found both clean. I am recording the
+measurements because "I looked and found nothing" is only useful if the looking is auditable.
+
+**Axis 1 — localization coverage.** I wrote a key-set diff over `shared-ui/locales/*.ftl` and a
+reference scan over `ui/src`:
+
+| measure | result |
+|---|---|
+| English keys | 5,757 |
+| Indonesian keys | 5,812 |
+| English ids referenced from `ui/src` | 4,588 |
+| referenced ids missing from BOTH bundles | **7 — all in test files or test utils** |
+| keys present only in the Indonesian bundle | 55, **none referenced by production code** |
+
+The 55 orphans (`customers-title`, `pos-hold`, `orders-void`, …) are stale duplicates, not live keys.
+The one that *looked* live was a near-miss worth naming: `InventoryReportScreen.tsx:151` references
+`inv-report-title`, and the Indonesian bundle also carries an unreferenced `inventory-report-title`.
+Two different keys a letter apart; the referenced one exists in both. A grep for "inventory-report-title"
+that stopped at the first hit would have produced a false finding, which is how I nearly filed one.
+
+**Axis 2 — stale-response races.** I scanned every feature screen over 8 KB for `await` count versus the
+presence of a generation counter, `AbortController`, or `cancelled` flag: 25 screens had 3+ awaits and no
+such guard. Reading the top candidates cleared them all — `SalesHistoryScreen` (16 awaits, highest count)
+keeps filters client-side and keys `load` on `[sessionToken, l10n]`, so no two reads can overlap;
+`VariantManagementScreen`, `FeatureToggleScreen`, `KioskScreen` likewise. A guard is only needed where a
+dependency can change mid-flight, and none of these has one.
+
+Both axes are empty. Two focused subagents are running on listener/effect leaks and focus-trap boundaries,
+which are the remaining shapes I have not measured.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
