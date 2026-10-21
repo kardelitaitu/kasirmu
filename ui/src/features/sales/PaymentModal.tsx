@@ -10,6 +10,7 @@ import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, 
 import { openCashDrawerScoped } from '@/api/hardware';
 import { assignTableOrderScoped, listTablesScoped, createTableScoped } from '@/api/tables';
 import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
+import type { KdsOrder } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMoneyInput, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -813,6 +814,39 @@ retryCurrencyLoad,
   // charge can bind to the real sale id (the ledger's queued finalize_sale
   // then addresses a sale the device actually has), and EDC completes
   // 'captured' with the terminal's transaction fields.
+  // ── ONE KDS ORDER FETCH, TWO CALL SITES (2026-10-19) ──────────────────────
+  //
+  // The QR and terminal paths each used to call `createKdsOrderFromSaleScoped`
+  // directly and each had its OWN error story: one bare await inside the table-claim
+  // `try` (whose catch only speaks about the table), one with a local `.catch`. Both
+  // now go through this helper so the failure shape cannot drift again — the reported
+  // defect was exactly that drift: `orders is not iterable` reaching the console as
+  // "createKdsOrderFromSale failed" with no order in hand, and no toast at all on the
+  // path whose catch belonged to the table.
+  //
+  // Returns [] for ANY unusable answer (rejection, or a non-array payload), because
+  // every downstream consumer — `printKitchenChits`, `publishFiredCourses` — iterates.
+  // The caller decides how loud to be; this never throws.
+  const loadKdsOrders = useCallback(
+    async (
+      saleId: string,
+      { sessionToken: token, onError }: {
+        sessionToken: string | null | undefined;
+        onError: (e: unknown) => void;
+      },
+    ): Promise<KdsOrder[]> => {
+      if (!token) return [];
+      try {
+        const orders = await createKdsOrderFromSaleScoped(token, saleId);
+        return Array.isArray(orders) ? orders : [];
+      } catch (kdsErr) {
+        onError(kdsErr);
+        return [];
+      }
+    },
+    [],
+  );
+
   const printKitchenChits = useCallback(
     async (orders: Array<{ id: string }>) => {
       if (!autoPrintKitchen || !sessionToken) return;
@@ -1048,10 +1082,12 @@ retryCurrencyLoad,
         // 'createKdsOrderFromSale failed' with NO order in hand, so the kitchen was
         // never told and the toast named the wrong subsystem. Null-ish is treated as
         // 'no orders' — the chit loop and publishFiredCourses both iterate.
-        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId).catch((kdsErr: unknown) => {
-          console.error('createKdsOrderFromSale failed', kdsErr);
-          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
-          return [] as Awaited<ReturnType<typeof createKdsOrderFromSaleScoped>>;
+        const orders = await loadKdsOrders(saleResult.saleId, {
+          sessionToken,
+          onError: (kdsErr) => {
+            console.error('createKdsOrderFromSale failed', kdsErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+          },
         });
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
@@ -1145,7 +1181,7 @@ retryCurrencyLoad,
     // still take the dine-in branch and claim a table.
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, orderType, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits],
+     publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits, loadKdsOrders],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -1698,10 +1734,12 @@ retryCurrencyLoad,
         // 'createKdsOrderFromSale failed' with NO order in hand, so the kitchen was
         // never told and the toast named the wrong subsystem. Null-ish is treated as
         // 'no orders' — the chit loop and publishFiredCourses both iterate.
-        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId).catch((kdsErr: unknown) => {
-          console.error('createKdsOrderFromSale failed', kdsErr);
-          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
-          return [] as Awaited<ReturnType<typeof createKdsOrderFromSaleScoped>>;
+        const orders = await loadKdsOrders(saleResult.saleId, {
+          sessionToken,
+          onError: (kdsErr) => {
+            console.error('createKdsOrderFromSale failed', kdsErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+          },
         });
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
@@ -1778,7 +1816,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits, loadKdsOrders]);
 
   useEffect(() => {
     if (!done || receiptArgs) return;
