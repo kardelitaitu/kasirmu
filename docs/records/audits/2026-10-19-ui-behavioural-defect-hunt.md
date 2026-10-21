@@ -391,6 +391,46 @@ different *kind* of question — not "does this failure render as success", but 
 whether a screen's stated contract matches what it does, whether a test asserts the right thing, whether
 two modules disagree about an invariant.
 
+## Round 44: the tests that were not there
+
+Round 43 concluded the *defect* vein was worked out. This round asked a different question — **did the
+campaign's own fixes leave tests behind?** — and the answer was: not all of them.
+
+Method: for each fix, grep the test tree for the message or behaviour it introduced. Four of the
+campaign's fixes had **no assertion anywhere**:
+
+| fix (round) | pinned? |
+|---|---|
+| `DataManagementRestore` unknown-vs-empty | yes |
+| `TopologyRevisionBrowser` failed revision | yes |
+| `DailyTotalWidget` zero-revenue | yes (the apostrophe entity defeated the first grep) |
+| **`DebtRemindersCard` payables all-clear** | **no** |
+| **`TerminalManagementScreen` instance read** | **no** |
+| **`WarehouseConsole` picker failure** | **no — the screen had no behavioural test at all** |
+
+All three now have kill tests, each verified in both directions (fix removed → red, restored → green).
+
+The `WarehouseConsole` case is the notable one: a **751-line screen** whose only test references were
+static suites (`screenExtraction`, `popupBackgroundCompliance`, `warehouseShortcut*`) that check class
+names and shortcut parity. Nothing rendered it and clicked anything. Writing its first behavioural test
+took four attempts because the receive popup is reachable through two paths — an F1 keydown guarded on a
+typing state, and the FnBar button — and only the button works in a harness that does not mock the bar.
+
+### The lesson, stated once
+
+**A fix without a test is a fix that decays.** Every one of these was found by a read-back that a test
+would have done automatically. The campaign has now fixed ~50 defects and, as of this round, every
+behavioural fix that can be pinned carries a test that fails without it. That is the durable form of the
+work; the diffs are not.
+
+### What the coverage gap says about the remaining surface
+
+`WarehouseConsole` having zero behavioural tests is not unique — it is one of the largest, but the same
+grep finds several screens whose only coverage is static. That is a different kind of backlog from the
+defect hunts: **not "is this code wrong" but "would anyone notice if it broke".** It is measurable, it is
+finite, and unlike the defect scans it does not deplete — every screen that gains its first test makes
+the next regression visible instead of silent.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
