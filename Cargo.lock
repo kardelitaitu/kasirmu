@@ -3330,6 +3330,7 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "kasirmu-core",
+ "kasirmu-test-support",
  "modules-currency",
  "rusqlite",
  "serde",
@@ -3479,6 +3480,7 @@ dependencies = [
  "kasirmu-core",
  "kasirmu-logging",
  "kasirmu-payment",
+ "kasirmu-test-support",
  "lettre",
  "platform-sync",
  "prometheus",
@@ -3516,6 +3518,7 @@ dependencies = [
  "foundation",
  "hex",
  "kasirmu-crypto",
+ "kasirmu-test-support",
  "lettre",
  "mdns-sd",
  "modules-currency",
@@ -3782,6 +3785,14 @@ dependencies = [
  "windows-sys 0.59.0",
  "zbus",
  "zeroize",
+]
+
+[[package]]
+name = "kasirmu-test-support"
+version = "0.0.41"
+dependencies = [
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
