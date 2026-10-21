@@ -76,11 +76,31 @@ const CANNOT_REACH_PAPER: Record<string, string> = {
   'restaurant-toggle-decimals': 'the printer renders the canonical exponent, not a preference',
 };
 
+/**
+ * The body of `format_sales_receipt` — the ONE formatter these toggles govern.
+ *
+ * Scoped on 2026-10-21 because the unscoped read went red for a reason that did not
+ * falsify the copy: `160734e90` added `cashier_name` to `KasbonSettlementReceipt`,
+ * a DIFFERENT slip rendered by `format_kasbon_settlement_slip` (:898). The sale
+ * receipt the toggles control still has no staff line — measured, not assumed — but a
+ * whole-file grep cannot tell the two formatters apart, so it read the kasbon slip's
+ * new field as the sale receipt gaining one. A guard-the-guard test has to read the
+ * thing its claim is actually about.
+ */
+function salesReceiptBody(): string {
+  const src = read(PRINTER);
+  const start = src.indexOf('pub fn format_sales_receipt');
+  if (start === -1) return '';
+  // Next top-level formatter bounds the body; so does EOF.
+  const nextFn = src.indexOf('pub fn format_', start + 1);
+  return src.slice(start, nextFn === -1 ? undefined : nextFn);
+}
+
 describe('receipt toggle copy does not promise the paper (F22)', () => {
   it('the printer really has no staff line (guards the guard)', () => {
     // If this ever changes, the staff entry above must be revisited rather than
     // silently constraining copy that became accurate.
-    expect(/staff|cashier/i.test(read(PRINTER))).toBe(false);
+    expect(/staff|cashier/i.test(salesReceiptBody())).toBe(false);
   });
 
   it('every toggle description naming printing belongs to a printer field', () => {

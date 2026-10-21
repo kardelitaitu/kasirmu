@@ -2777,12 +2777,21 @@ describe('PaymentModal — local payment rails gating', () => {
       typeKey: 'store-pos',
     });
 
-    expect(await renderedTenders([rail(true)])).toEqual([
+    // The claim is that `open_bill` is ABSENT here, not that the list is frozen.
+    // `be153f8cf` added the accounts-receivable `pay_later` tender, which is
+    // retail-only by design (PaymentModal.tsx:391 gates it on `!isRestaurantPos`)
+    // and is therefore correctly offered on this terminal. The bare equality this
+    // replaces predates that feature and would need bumping for every future
+    // tender; the exclusion below states the contract the test is named for.
+    const tenders = await renderedTenders([rail(true)]);
+    expect(tenders).not.toContain('open_bill');
+    expect(tenders).toEqual([
       'cash',
       'card',
       'qris',
       'credit',
       'other',
+      'pay_later',
     ]);
   });
 
