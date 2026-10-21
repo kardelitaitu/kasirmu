@@ -1702,10 +1702,31 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // order and `printKdsChitScoped` prints the chit, with the latter having zero
   // callers anywhere under ui/src.
   //
-  // `null` means "never written", and the default is TRUE — matching the model's
-  // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen` (settingsModel), so an unset key
-  // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
-  // what the module's own default says a kitchen expects.
+  // ⚠️ THE DEFAULT DIVERGES FROM THE MODEL, ON PURPOSE (corrected 2026-10-19).
+  //
+  // This comment used to claim "the default is TRUE — matching the model's
+  // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen`". It does not: the model says
+  // `false`, and its `fallback` (restaurantSettingsModel.ts:61, :99) reproduces that
+  // `false`. So the two surfaces DISAGREE for an unset key today.
+  //
+  // Which direction is right, and why it is not simply a bug to fix:
+  //   · the POS fails OPEN (`!== false`) because the asymmetry is not symmetric — a
+  //     chit printed for an order that did not want one is noise the kitchen sees and
+  //     corrects; a chit that never prints is food nobody cooks, discovered only when
+  //     the table complains. Pinned by restaurantToggleFailDirection.test.ts:51-58.
+  //   · the settings SCREEN, given the same unset key, renders the toggle OFF, because
+  //     `loadRestaurantSettings` maps `raw === null` to `spec.fallback` = the model's
+  //     `false` (restaurantSettingsModel.ts:159).
+  //
+  // That is the guest-count defect (F1) in the opposite sign: a control whose OFF
+  // position describes a state the POS is not in. It was called "agreement" here for
+  // twenty rounds because the claim was never checked against the model.
+  //
+  // NOT FIXED IN THIS EDIT, deliberately: closing it means moving either the model
+  // default or the failure direction, and both are load-bearing elsewhere (the screen's
+  // toggle is a real operator control; the POS's `!== false` is pinned by a guard whose
+  // whole file documents why fail-open is the safe side). Recorded here so the next
+  // reader cannot mistake the divergence for oversight.
 
   // PINNED (round 84, 2026-10-13). Removing the success-path `if (stale()) return;`
   // below fails PosScreenCoreFlow.test.tsx -> 'ignores a slower order-type-prompt read
