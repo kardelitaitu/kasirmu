@@ -155,7 +155,9 @@ export function WorkspaceKdsSettings({
     // times (:79-:83) and its deps listed only the one-way latch originalsLoaded. eslint could
     // not report it, which is why the sweep's count understated the class -- the real total was
     // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
-    // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
+    // the `dirty` memo (its `useMemo` deps), and the touchedRef guard in the .then() is already
+    // built for re-entry. Anchored by the memo's own identifier rather than a line number: the
+    // ":67" this note used to carry is a comment inside the loadFailed block.
     // The suppression that used to sit here is GONE (2026-10-12) because it was
     // stale: it was written for the old deps array, and once that array listed
     // sessionToken and reloadNonce the rule had nothing left to report. A disable
@@ -207,7 +209,8 @@ export function WorkspaceKdsSettings({
     } finally {
       setSaving(false);
     }
-  // sessionToken is read at :125 by setSettingsScoped. `userId` was already listed and is a
+  // sessionToken is read by the `setSettingsScoped(sessionToken ?? null, …)` call in the save
+  // path. `userId` was already listed and is a
   // different value, so it never covered the token -- saving after a store switch wrote to the
   // previous store (or failed on the destroyed session) while the UI reported success. `userId` is
   // now gone from this array: nothing in the component read it, and its only "use" was this entry.

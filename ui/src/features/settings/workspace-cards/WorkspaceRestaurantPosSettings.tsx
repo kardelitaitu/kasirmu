@@ -62,7 +62,9 @@ export function WorkspaceRestaurantPosSettings({
   const touchedRef = useRef<Set<'courseFiring'>>(new Set());
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
   // The session the originals above were seeded for; replaces originalsLoaded as the fetch guard
-  // so a store switch re-seeds. originalsLoaded stays for the dirty memo at :52.
+  // so a store switch re-seeds. originalsLoaded stays for the `dirty` memo (its `useMemo`
+  // deps). Anchored by the memo's identifier: the ":52" this note carried is a comment
+  // inside the loadFailed block.
   const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
 
   // Original hardware snapshot for dirty tracking

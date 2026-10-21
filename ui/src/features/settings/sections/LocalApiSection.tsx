@@ -52,7 +52,8 @@ export default function LocalApiSection() {
   // True once the operator has edited the port field. The 2s poll below re-reads the
   // server port every tick, and that read must NOT overwrite an edit in progress:
   // otherwise the field reverts under the cursor mid-typing, and because `portDirty`
-  // (:185) compares the draft to `status.port`, the revert also clears the dirty state
+  // (the `portDirty` comparison against `status.port`) means the revert also clears the
+  // dirty state
   // and the Apply button DISAPPEARS while the edit is being made. The poll runs exactly
   // while the server is enabled-but-not-running, which is when someone is most likely to
   // be fixing the port.
