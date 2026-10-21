@@ -275,8 +275,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       //
       // The tablet shell registers NONE of the three commands this path needs:
       // activate_license, get_machine_id and get_hardware_fingerprint are desktop-only
-      // (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269 — the tablet's commands::license
-      // surface is get_license_status / check_license_status alone, and its activation
+      // (registered in apps/desktop-tauri/src/lib.rs as `commands::license::activate_license`,
+      // `get_machine_id` and `get_hardware_fingerprint` — the tablet’s commands::license
       // path is device pairing). Unguarded, a tablet submit is rejected as an unknown
       // command and the catch below reports a generic activation failure the operator
       // cannot act on: the C40 shape, on the licensing screen.

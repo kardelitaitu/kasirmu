@@ -161,7 +161,8 @@ export function useMultiCurrency({
   // (modules/currency/src/repository.rs:84-114) returns one row per pair ordered by
   // newest `effective_date` INCLUDING FUTURE-DATED rates; the CUR-04 read above
   // (`get_latest_exchange_rate`, :157-187, as-of the store business date computed in
-  // crates/kasirmu-bridge/src/currency.rs:351-360) is the only one that honours the date.
+  // `get_latest_exchange_rate_scoped` in crates/kasirmu-bridge/src/currency.rs) is the
+  // only one that honours the date.
   // So a failed read silently substituted a different — possibly future-dated — rate
   // for the one the sale was going to record, and rendered identically to a success.
   //

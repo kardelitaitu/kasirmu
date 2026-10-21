@@ -395,8 +395,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       // R3: bounded. `SALES_FETCH_LIMIT` is a count ceiling rather than a
       // page window — see the constant for why an offset would break the
       // filters above. The unscoped `listSales` fallback declares no bounds
-      // of its own (`history.rs:61`), so it is left exactly as it was; it
-      // is the no-session path.
+      // of its own (`list_sales_scoped` / `list_sales_scoped_bounded` in history.rs are
+      // the bounded pair), so it is left exactly as it was; it is the no-session path.
       const response = await (sessionToken
         ? listSalesScoped(sessionToken, SALES_FETCH_LIMIT)
         : listSales());

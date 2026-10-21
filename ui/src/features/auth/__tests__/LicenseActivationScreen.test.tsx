@@ -873,7 +873,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
   // ── C47: the tablet must not call commands it does not register ───────
   //
   // activate_license / get_machine_id / get_hardware_fingerprint are DESKTOP-registered
-  // only (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269). The tablet's commands::license
+  // only (registered in apps/desktop-tauri/src/lib.rs). The tablet's commands::license
   // surface is get_license_status / check_license_status alone — its activation path is
   // device pairing. Before this fix the key form was reachable on the tablet and a submit
   // hit three unknown commands, so the catch reported a generic activation failure the

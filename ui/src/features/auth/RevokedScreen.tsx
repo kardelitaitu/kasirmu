@@ -15,8 +15,8 @@
 //! merchant can retrieve their data even while fully locked out of selling.
 //!
 //! **Sequencing note (ADR §4a Q-A):** this screen MUST ship WITH §2.5's
-//! enforcement, never after. §2.5 is already enforced at
-//! `crates/kasirmu-bridge/src/auth.rs:645`. This screen closes the gap.
+//! enforcement, never after. §2.5 is already enforced in `create_session`
+//! (`crates/kasirmu-bridge/src/auth.rs`), which refuses a revoked tenant outright.
 
 import { useState } from 'react';
 import { useLocalization, Localized } from '@fluent/react';
