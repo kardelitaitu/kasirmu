@@ -106,11 +106,26 @@ pub fn compute_discount(
     // category-scoped. A scoped promotion whose category matches no line
     // yields a base of 0 — the promotion then applies nothing.
     let scope_id = promo.category_id.as_deref();
+
+    // O-M08: memoize SKU -> category lookups across lines and BuyXGetY passes
+    let mut category_cache: std::collections::HashMap<&str, Option<String>> =
+        std::collections::HashMap::with_capacity(sale.lines.len());
+    if scope_id.is_some() {
+        for line in &sale.lines {
+            if !category_cache.contains_key(line.sku.as_str()) {
+                category_cache.insert(line.sku.as_str(), category_of(&line.sku));
+            }
+        }
+    }
+
     let base = match scope_id {
         Some(scope_id) => {
             let mut base = 0_i64;
             for line in &sale.lines {
-                let in_scope = category_of(&line.sku).is_some_and(|c| c == scope_id);
+                let in_scope = category_cache
+                    .get(line.sku.as_str())
+                    .and_then(Option::as_deref)
+                    == Some(scope_id);
                 if !in_scope {
                     continue;
                 }
@@ -164,7 +179,12 @@ pub fn compute_discount(
             let mut reward_qty_in_cart = 0_i64;
             for line in &sale.lines {
                 let in_scope = match scope_id {
-                    Some(scope_id) => category_of(&line.sku).is_some_and(|c| c == scope_id),
+                    Some(scope_id) => {
+                        category_cache
+                            .get(line.sku.as_str())
+                            .and_then(Option::as_deref)
+                            == Some(scope_id)
+                    }
                     None => true,
                 };
                 if !in_scope {

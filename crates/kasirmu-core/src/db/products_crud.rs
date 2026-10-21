@@ -856,6 +856,45 @@ impl Store<'_> {
         Ok(result)
     }
 
+    /// Look up the category IDs for a batch of SKUs in batched queries (O-M08).
+    ///
+    /// Avoids executing full multi-table joins per SKU. Batches queries in chunks of 200
+    /// to stay comfortably below SQLite parameter limits. Also validates `price_minor` to
+    /// preserve DB error propagation on corrupted table rows.
+    pub fn get_products_category_batch(
+        &self,
+        skus: &[&str],
+    ) -> Result<std::collections::HashMap<String, Option<String>>, CoreError> {
+        if skus.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let mut result = std::collections::HashMap::with_capacity(skus.len());
+        for chunk in skus.chunks(200) {
+            let placeholders = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT sku, category_id, price_minor FROM products WHERE sku IN ({placeholders})"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let params = rusqlite::params_from_iter(chunk.iter().copied());
+            let mut rows = stmt.query(params)?;
+            while let Some(row) = rows.next()? {
+                let sku: String = row.get(0)?;
+                let cat: Option<String> = row.get(1)?;
+                let _price: i64 = row.get(2)?;
+                result.insert(sku, cat);
+            }
+        }
+        for sku in skus {
+            result.entry((*sku).to_string()).or_insert(None);
+        }
+        Ok(result)
+    }
+
     /// Delete a product by SKU.
     pub fn delete_product(&self, sku: &str) -> Result<(), CoreError> {
         let tx = self.conn.unchecked_transaction()?;

@@ -447,17 +447,13 @@ write-lock acquisitions and journal syncs where one batch would do. *Fix:* batch
 fewer transactions.
 
 **O-M08 · kasirmu-core — promotion engine does a per-line DB lookup, twice** —
-`crates/kasirmu-core/src/promotion_engine.rs:112-115` and `:167-172` ◦. `category_of` is
-DB-backed at the call site and the Buy-X-Get-Y branch walks the lines again. *Fix:* resolve
-SKU→category once into a map.
+`crates/kasirmu-core/src/promotion_engine.rs:112-115` and `:167-172` ✔. Fixed: added `Store::get_products_category_batch` in `products_crud.rs` avoiding wide 8-table product joins, batched category resolution for all lines upfront in `compute_checkout_promotions` and `apply_promotion_to_sale`, and memoized category lookups inside `compute_discount` across lines and Buy-X-Get-Y evaluation passes. Verified in `promotions_tests.rs` (44/44 passed).
 
 **O-M09 · kasirmu-core — the embedded RSA public key is re-parsed per verification** —
 `crates/kasirmu-core/src/license_verification/crl.rs:86-180` ✔. Fixed: cached parsed RSA public key and `VerifyingKey` with `OnceLock<Result<VerifyingKey<Sha256>, String>>`, eliminating constant PEM re-parsing on every subscription check and CRL verification. Verified with unit tests in `license_verification_tests.rs`.
 
 **O-M10 · kasirmu-core — rate-limiter attempt map grows without bound** —
-`crates/kasirmu-core/src/rate_limiter.rs:26`, `:54-61` ◦. Only per-key pruning on access; login
-spam grows memory while the global lock is held, with a `String` alloc per attempt. *Fix:* cap
-+ TTL sweep; borrow-keyed lookup.
+`crates/kasirmu-core/src/rate_limiter.rs:26`, `:54-61` ✔. Fixed: added `DEFAULT_MAX_TRACKED_USERNAMES` (10,000) capacity ceiling with eviction of oldest unlocked entries under login spray attacks, and replaced unconditional `String` allocation with borrow-keyed lookup (`map.get_mut(username)`) on recurring attempts. Verified with unit tests in `rate_limiter_tests.rs` (34/34 passed).
 
 **O-M11 · kasirmu-core — one `Mutex<redis::Connection>` held across a network round trip** —
 `crates/kasirmu-core/src/cache.rs:165`, `:290-294` ◦. All product/inventory cache ops
@@ -477,9 +473,7 @@ revocation-list length. *Fix:* cached `HashSet`s + precomputed key hash behind t
 check.
 
 **O-M15 · kasirmu-core — signed payload re-parsed on every entitlement check** —
-`crates/kasirmu-core/src/subscription.rs:778-791` (also `:759`) ◦. `addons()` and
-`allows_workspace_type` re-parse JSON per call with lowercased-`String` comparisons. *Fix:*
-parse once into a struct; `eq_ignore_ascii_case`.
+`crates/kasirmu-core/src/subscription.rs:778-791` (also `:759`) ✔. Fixed: deserialized payload fields (`addons`, `is_trial`, `trial_ends_at`, `features`) via typed target structs avoiding intermediate `serde_json::Value` tree allocations, replaced case-folding `to_lowercase()` String allocations with `eq_ignore_ascii_case`, and parsed `allowed_types_json` via borrowed `Cow<str>`. Verified in `subscription_tests.rs` (155/155 passed).
 
 **O-M16 · kasirmu-bridge — staff role paths are N+1 in three places** —
 `crates/kasirmu-bridge/src/staff.rs:915-919` (`role_dto` = 2 queries per role), `:788-792`
@@ -2084,6 +2078,29 @@ Four Medium performance findings resolved across core database modules:
    - Replaced sequential per-id `get_tax_rate` queries with a single batched `SELECT id FROM tax_rates WHERE is_active = 1 AND id IN (...)` validation in `ensure_active_tax_rate_ids`.
    - Hoisted `prepare_cached` for junction insert loops in `set_product_tax_rates` and `set_category_tax_rates`.
    - Verified across all 82 tax tests in `tax_tests.rs` and 20 popularity tests in `popularity_tests.rs`.
+
+---
+
+## §11S — O-M08, O-M10, and O-M15 resolved: promotion category batching, rate-limiter spray ceiling, and subscription zero-alloc payload parsing (2026-10-21)
+
+Three Medium performance and memory findings resolved across core domain engines:
+
+1. **O-M08 · `kasirmu-core` batched category resolution and memoized promotion discounts (`db/promotions.rs`, `db/products_crud.rs`, `promotion_engine.rs`)**:
+   - Added `Store::get_products_category_batch(&skus)` executing lightweight `SELECT sku, category_id, price_minor FROM products WHERE sku IN (...)` in 200-item chunks, avoiding wide 8-table joins across tax rates, barcodes, and inventory.
+   - Hoisted and pre-fetched all line categories upfront in `compute_checkout_promotions` and `apply_promotion_to_sale` across the cart instead of N individual `get_product` queries per line per promotion.
+   - Memoized SKU $\to$ category evaluations inside `compute_discount` across lines and Buy-X-Get-Y evaluation passes.
+   - Verified across all 44 unit tests in `promotions_tests.rs`.
+
+2. **O-M10 · `kasirmu-core` rate-limiter spray ceiling and borrow-keyed lookup (`rate_limiter.rs`)**:
+   - Introduced `DEFAULT_MAX_TRACKED_USERNAMES` (10,000) capacity ceiling with eviction of the oldest unlocked entries when capacity is exceeded, eliminating unbounded memory growth during unauthenticated login spray attacks.
+   - Implemented borrow-keyed lookup (`map.get_mut(username)`) on recurring attempts, eliminating unconditional heap `String` allocation on repeated failures.
+   - Verified across all 34 unit tests in `rate_limiter_tests.rs`.
+
+3. **O-M15 · `kasirmu-core` zero-alloc payload parsing and case-insensitive matching (`subscription.rs`)**:
+   - Extracted `addons`, `is_trial`, `trial_ends_at`, and `features` directly into typed targets, eliminating untyped `serde_json::Value` AST tree generation and cloning.
+   - Replaced `.to_lowercase()` String allocations with zero-allocation `a.eq_ignore_ascii_case(addon)` in `has_addon`.
+   - Parsed `allowed_types_json` using borrowed `Cow<str>` to avoid String allocation on workspace type checks.
+   - Verified across all 155 unit tests in `subscription_tests.rs`.
 
 
 

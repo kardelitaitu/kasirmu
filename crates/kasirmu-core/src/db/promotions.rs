@@ -285,18 +285,13 @@ impl Store<'_> {
         })?;
 
         // Category scope resolution: SKU -> product category. Only
-        // consulted when the promotion carries a category_id.
-        let mut categories = HashMap::new();
-        if promo.category_id.is_some() {
-            for line in &sale.lines {
-                if !categories.contains_key(&line.sku) {
-                    let cat = self
-                        .get_product(&line.sku)?
-                        .and_then(|p| p.product.category_id);
-                    categories.insert(line.sku.clone(), cat);
-                }
-            }
-        }
+        // consulted when the promotion carries a category_id (O-M08 batch lookup).
+        let categories = if promo.category_id.is_some() {
+            let skus: Vec<&str> = sale.lines.iter().map(|l| l.sku.as_str()).collect();
+            self.get_products_category_batch(&skus)?
+        } else {
+            HashMap::new()
+        };
         let category_of = |sku: &str| categories.get(sku).cloned().flatten();
         let discount_minor = crate::compute_discount(&promo, &sale, now, category_of)?;
 
@@ -408,6 +403,10 @@ impl Store<'_> {
     ) -> Result<Vec<PromotionApplication>, CoreError> {
         let mut applications = Vec::with_capacity(promotion_ids.len());
         let mut applied: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+        // O-M08: Pre-fetch all promotion definitions and determine if any category scoping applies:
+        let mut promos = Vec::with_capacity(promotion_ids.len());
+        let mut any_category_scoped = false;
         for promotion_id in promotion_ids {
             if !applied.insert(promotion_id.as_str()) {
                 return Err(CoreError::Validation {
@@ -421,21 +420,23 @@ impl Store<'_> {
                     entity: "promotion",
                     id: promotion_id.to_owned(),
                 })?;
-
-            // Category scope resolution: SKU -> product category. Only
-            // consulted when the promotion carries a category_id.
-            let mut categories = HashMap::new();
             if promo.category_id.is_some() {
-                for line in &sale.lines {
-                    if !categories.contains_key(&line.sku) {
-                        let cat = self
-                            .get_product(&line.sku)?
-                            .and_then(|p| p.product.category_id);
-                        categories.insert(line.sku.clone(), cat);
-                    }
-                }
+                any_category_scoped = true;
             }
-            let category_of = |sku: &str| categories.get(sku).cloned().flatten();
+            promos.push(promo);
+        }
+
+        // Category scope resolution: SKU -> product category. Pre-fetched once in a single
+        // batched query for the entire cart instead of re-querying inside the promotion loop (O-M08).
+        let categories = if any_category_scoped {
+            let skus: Vec<&str> = sale.lines.iter().map(|l| l.sku.as_str()).collect();
+            self.get_products_category_batch(&skus)?
+        } else {
+            HashMap::new()
+        };
+        let category_of = |sku: &str| categories.get(sku).cloned().flatten();
+
+        for promo in promos {
             let discount_minor = crate::compute_discount(&promo, sale, now, category_of)?;
 
             let remaining = sale
@@ -453,7 +454,7 @@ impl Store<'_> {
 
             applications.push(PromotionApplication {
                 id: uuid::Uuid::now_v7().to_string(),
-                promotion_id: promotion_id.to_owned(),
+                promotion_id: promo.id.clone(),
                 sale_id: sale.id.clone(),
                 discount_minor,
                 description: format!(

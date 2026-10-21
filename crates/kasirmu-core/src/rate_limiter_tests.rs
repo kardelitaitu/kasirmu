@@ -499,3 +499,28 @@ fn eviction_never_clears_a_live_lockout() {
         "alice's entry must still be tracked"
     );
 }
+
+// ── O-M10: capacity bound protects against login spray floods ────────
+
+#[test]
+fn max_tracked_capacity_evicts_oldest_non_locked_entry() {
+    let limiter = LoginRateLimiter::with_max_tracked(3, 3600, 3);
+    // User alice is locked out (3 attempts)
+    limiter.record_failure("alice").ok();
+    limiter.record_failure("alice").ok();
+    assert!(limiter.record_failure("alice").is_err());
+
+    // User bob has 1 attempt
+    limiter.record_failure("bob").ok();
+
+    // User charlie has 1 attempt -> now at max capacity (3)
+    limiter.record_failure("charlie").ok();
+    assert_eq!(limiter.tracked_usernames(), 3);
+
+    // User dave arrives -> exceeds capacity 3, should evict oldest non-locked (bob)
+    limiter.record_failure("dave").ok();
+    assert_eq!(limiter.tracked_usernames(), 3);
+
+    // Alice must still be locked out!
+    assert!(limiter.record_failure("alice").is_err());
+}
