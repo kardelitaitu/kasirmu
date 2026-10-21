@@ -1116,3 +1116,140 @@ fn all_category_means_and_window_ranked_products_parity() {
     assert_eq!(cat2.top_products[0].sku, "C2-A");
     assert_eq!(cat2.top_products[0].percentile, 1.0);
 }
+
+/// O-H01: the batched pass must be INDISTINGUISHABLE from N single-SKU passes.
+///
+/// The refactor moved `complete_sale` from one `recompute_popularity` call per
+/// sold line onto `recompute_popularity_batch`. That is only safe if the scores
+/// it writes are byte-identical to the ones the old path produced, so this test
+/// computes both ways and compares — including the three shapes that are easy to
+/// get wrong in a rewrite:
+///
+///   * a SKU with NO sales rows (the empty-vector case, which must score against
+///     the mean rather than being skipped),
+///   * a DUPLICATE SKU on two lines (the cart may hold the same product twice),
+///     and
+///   * a mix of categorised and uncategorised products, because the means lookup
+///     falls back from `get(cat)` to `get("")` and a batch that read the cache
+///     once must still apply that per SKU.
+#[test]
+fn recompute_popularity_batch_matches_single_sku_recompute() {
+    let conn = fresh();
+
+    // SEED THE MEANS CACHE, and give products a real category. Without this the
+    // test is VACUOUS: the first version passed even with the batch deliberately
+    // mangled to ignore per-category means, because no means existed and BOTH
+    // paths fell through to the same global fallback. A category whose means
+    // differ sharply from the global ones is what makes the per-SKU lookup
+    // observable, so the kill test can bite.
+    conn.execute(
+        "INSERT INTO categories (id, name) VALUES ('cat-1', 'Cat One')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, '2025-01-01T00:00:00.000Z')",
+        params![
+            "popularity.category_means",
+            "{\"cat-1\":{\"sales\":50.0,\"search\":40.0,\"edits\":30.0},\"\":{\"sales\":1.0,\"search\":1.0,\"edits\":1.0}}"
+        ],
+    )
+    .unwrap();
+
+    // Two categorised products, one uncategorised, one never sold.
+    seed_product(&conn, "SKU-A");
+    seed_product(&conn, "SKU-B");
+    seed_product(&conn, "SKU-C");
+    seed_product(&conn, "SKU-NEVER-SOLD");
+    // SKU-A and SKU-B sit in the sharply-different category; SKU-C stays NULL.
+    conn.execute(
+        "UPDATE products SET category_id = 'cat-1' WHERE sku IN ('SKU-A', 'SKU-B')",
+        [],
+    )
+    .unwrap();
+    for sku in ["SKU-A", "SKU-B"] {
+        conn.execute(
+            "INSERT INTO product_activity (id, sku, event_type) VALUES (?1, ?2, 'search')",
+            params![uuid::Uuid::now_v7().to_string(), sku],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO product_activity (id, sku, event_type) VALUES (?1, 'SKU-A', 'edit')",
+        params![uuid::Uuid::now_v7().to_string()],
+    )
+    .unwrap();
+
+    let sold = [
+        "SKU-A".to_string(),
+        "SKU-B".to_string(),
+        "SKU-A".to_string(), // duplicate line for the same product
+        "SKU-C".to_string(),
+        "SKU-NEVER-SOLD".to_string(),
+    ];
+
+    // Path 1 — the OLD shape: one call per line, duplicates included.
+    let store = Store::new(&conn);
+    for sku in &sold {
+        store.recompute_popularity(sku).unwrap();
+    }
+    let per_sku: Vec<(String, f64)> = sold
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|s| {
+            let v: f64 = conn
+                .query_row(
+                    "SELECT popularity_score FROM products WHERE sku = ?1",
+                    params![s],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            (s.to_string(), v)
+        })
+        .collect();
+
+    // Reset every score so path 2 starts from a clean slate rather than
+    // comparing path 1 with itself.
+    conn.execute("UPDATE products SET popularity_score = 0", [])
+        .unwrap();
+
+    // Path 2 — the NEW shape.
+    store.recompute_popularity_batch(&sold).unwrap();
+    let batched: Vec<(String, f64)> = per_sku
+        .iter()
+        .map(|(s, _)| {
+            let v: f64 = conn
+                .query_row(
+                    "SELECT popularity_score FROM products WHERE sku = ?1",
+                    params![s],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            (s.clone(), v)
+        })
+        .collect();
+
+    assert_eq!(
+        per_sku, batched,
+        "the batched pass must write exactly the scores the per-SKU path wrote",
+    );
+}
+
+/// O-H01: an empty line set is a no-op, not an error and not a full-catalog pass.
+#[test]
+fn recompute_popularity_batch_with_empty_input_is_a_noop() {
+    let conn = fresh();
+    seed_product(&conn, "SKU-Z");
+    let store = Store::new(&conn);
+    store.recompute_popularity_batch(&[]).unwrap();
+    let score: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'SKU-Z'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(score, 0.0, "an empty batch must not touch any row");
+}

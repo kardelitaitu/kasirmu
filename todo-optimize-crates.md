@@ -320,6 +320,8 @@ evidence of cleanliness. That pass is the first open item of round 3.
 ### High — likely to bite within months as data and users grow
 
 **O-H01 · kasirmu-core — popularity recomputed per sold line, six queries each** —
+✅ **PAID 2026-10-21.** `Store::recompute_popularity_batch` (`db/popularity.rs`), called once
+from `complete_sale` (`db/sales_lifecycle.rs:627-636`), replaces the per-line loop.
 `crates/kasirmu-core/src/db/sales_lifecycle.rs:602-606` ✔
 After every checkout, `complete_sale` walks the sale's lines and calls `recompute_popularity`
 per SKU; each call runs six separate queries (`popularity.rs:659-663` — `sale_day_counts`,
@@ -2263,14 +2265,48 @@ One High performance and network resilience finding resolved in bridge offline s
    - Retained auth refresh handling on 401 across batches and accumulated outcomes correctly.
    - Added unit test `sync_run_scoped_drains_large_backlog_in_bounded_batches` in `sync_tests.rs`.
 
+---
 
+## §11AC — O-H01 resolved: batched popularity recompute on the checkout path (2026-10-21)
 
+One High finding resolved in the product's hottest write path.
 
+**The cost, measured from the source rather than the entry.** `recompute_popularity` runs
+five queries — `sale_day_counts`, `sale_distinct_transactions`, two `activity_day_counts`,
+and `sku_means` — plus one UPDATE. `sku_means` is the expensive one: it resolves the
+product's category with its own query, then calls `category_means` → `all_category_means`,
+which **re-reads and re-parses the entire cached category-means JSON per SKU**.
+`complete_sale` called it once per sold LINE, so an N-line cart paid 6N round trips and N
+JSON parses after the money had already committed.
 
+**The fix keeps the per-SKU semantics and changes only the round-trip count.**
+`recompute_popularity_batch(&[String])` collapses duplicate SKUs (a cart can legitimately
+hold the same product on two lines — recomputing it twice is the waste this removes),
+runs four `IN (...)`-scoped grouped queries regardless of line count, reads the means cache
+**once**, applies the same `get(cat).or_else(get(""))` fallback per SKU, and writes every
+score in one `BEGIN IMMEDIATE` transaction with a cached prepared statement. Placeholders are
+built from the SKU count, never from SKU text.
 
+**The test worth recording is the one that did not work the first time.**
+`recompute_popularity_batch_matches_single_sku_recompute` computes every score both ways and
+asserts equality. The first version PASSED — and kept passing when I deliberately mangled the
+batch to ignore per-category means entirely. **It was vacuous**: no category means were seeded,
+so both paths fell through to the same global fallback and the mutation was invisible.
+Seeding a category whose means (50/40/30) differ sharply from the global (1/1/1), and moving
+two products into it, made the mutation bite — re-running it then failed with exactly the
+intended message. Without that second pass this fix would have shipped with a green test that
+could not have caught the one thing most likely to break.
 
+**One behaviour change, recorded rather than glossed:** the old loop warned once per failed
+SKU; the batch warns once per sale with the line count. The SKUs are still attributable from
+the error, and a failed recompute has never blocked the sale itself.
 
+**Verification.** `cargo test -p kasirmu-core` — 3,650 + 550 + 3 passed, 0 failed. The 41
+popularity tests and all 48 `complete_sale` tests green, including the two new ones.
 
-
-
-
+> **Machine note, not a code defect.** `concurrent_complete_sale_serialized_by_begin_immediate`
+> fails on THIS box with `PermissionDenied` at `sales_tests.rs:3569` — its `create_dir_all`
+> into `C:\WINDOWS\TEMP` is fine but the directory cannot be removed or reused. Proven
+> environmental, not by my change: with `TEMP` pointed at a writable path the same test passes
+> (1 passed). It is the temp-dir failure already recorded at this journal's :1665 and :1972,
+> now with a reproduction.
