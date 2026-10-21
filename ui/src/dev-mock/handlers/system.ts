@@ -283,7 +283,7 @@ type MockReviewCheckpoint = {
 };
 
 // The exact column order and header `export_audit_log_scoped` writes
-// (audit.rs:453), BOM included: the artifact is opened in spreadsheets, where
+// (`audit_csv` in crates/kasirmu-bridge/src/audit.rs), BOM included: the artifact is opened in spreadsheets, where
 // the BOM is what stops UTF-8 details text from mojibake-ing.
 const MOCK_AUDIT_CSV_COLUMNS = [
   'id',
@@ -617,7 +617,7 @@ export const systemHandlers: Record<string, MockHandler> = {
   }),
 
   // Field-for-field the Rust `PairingSessionStart`
-  // (kasirmu-core/src/desktop_link.rs:38): code, poll_token, expires_at, qr_url.
+// (struct `PairingSessionStart` in kasirmu-core/src/desktop_link.rs): code, poll_token, expires_at, qr_url.
   // This answered `base_url` + `qr_payload` instead — neither field exists on the
   // real struct, and the `qr_url` both screens read was therefore UNDEFINED.
   // Measured 2026-09-23: the pairing instructions rendered the raw Fluent pattern
@@ -744,10 +744,11 @@ export const systemHandlers: Record<string, MockHandler> = {
   'get_enabled_features': () => ({ features: ['sales', 'inventory', 'reporting', 'staff', 'settings'] }),
 
   // The preset→features fact has exactly ONE owner in core
-  // (`crates/kasirmu-core/src/features.rs:304-414`, read through `preset_feature_keys`
-  // at `:449`). This table is the mock's copy of it, and it is a copy because the browser
-  // preview cannot call Rust — the real `get_preset_features` (`kasirmu-bridge/src/setup.rs:225`)
-  // exists precisely so the UI never carries such a table itself. Keys are the kebab-case
+  // (`crates/kasirmu-core/src/features.rs`, the `FeatureRegistry` preset constructors,
+  // read through `preset_feature_keys`). This table is the mock's copy of it, and it is a
+  // copy because the browser preview cannot call Rust — the real `get_preset_features`
+  // (`crates/kasirmu-bridge/src/setup.rs`) exists precisely so the UI never carries such a
+  // table itself. Keys are the kebab-case
   // `feature_key` suffixes, sorted the way `preset_feature_keys` sorts them, so a preview
   // that provisions a terminal pushes the same feature set the backend would.
   //
@@ -758,9 +759,10 @@ export const systemHandlers: Record<string, MockHandler> = {
     const { preset } = (a ?? {}) as { preset?: string };
     const keys = MOCK_PRESET_FEATURE_KEYS[preset ?? ''];
     // An unknown slug is an ERROR here, exactly as `BridgeError::Invalid` answers it
-    // (`kasirmu-bridge/src/setup.rs:231`). The first-run FLOW degrades to `[]` and
-    // provisions anyway (ProvisioningFlow.tsx:282-284); a mock that returned `[]` for a
-    // typo would hide the difference between that degradation and a lost preset.
+    // (the `ok_or_else` in `get_preset_features`, kasirmu-bridge/src/setup.rs). The first-run
+    // FLOW degrades to `[]` and provisions anyway (ProvisioningFlow.tsx:282-284); a mock that
+    // returned `[]` for a typo would hide the difference between that degradation and a lost
+    // preset.
     if (!keys) throw new Error(`unknown store preset: ${preset ?? ''}`);
     return { features: [...keys] };
   },
@@ -780,7 +782,7 @@ export const systemHandlers: Record<string, MockHandler> = {
   // `rotate_encryption_key` command was deleted (it was an ungated write -- see
   // `ui/src/api/security.ts:31` and the three closed cases at
   // `ui/src/__tests__/api-security-contract.test.ts:38-44`), but this file still
-  // carried a handler for it, which the scoped-alias rule then copied onto
+// (its `generate_handler!` entry in apps/desktop-tauri/src/lib.rs). Answering the dead name is what kept
   // `rotate_encryption_key_scoped` -- the name the desktop actually registers
   // (`apps/desktop-tauri/src/lib.rs:1151`). Answering the dead name is what kept
   // the live one working in dev, so the handler moves here instead of being dropped:

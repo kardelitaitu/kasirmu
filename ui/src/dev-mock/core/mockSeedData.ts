@@ -44,7 +44,7 @@
 // roster row id, so it is the join between the two surfaces. `is_active`
 // is read by the roster (it decides whether the delete affordance appears)
 // AND by the login gate (an inactive account is refused, as kasirmu-bridge
-// auth.rs:403 does), so the seed states the same fact instead of a second
+// (the uniform refusal in kasirmu-bridge auth.rs does), so the seed states the same fact instead of a second
 // opinion: ONE dismissed identity carries `false` in both, which is what
 // makes the delete/trash flow reachable in a preview without turning a role
 // holder into the fixture. The five role holders all stay loggable.

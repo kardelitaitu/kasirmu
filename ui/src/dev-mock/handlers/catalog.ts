@@ -189,8 +189,8 @@ interface MockProductArgs extends Record<string, unknown> {
   isActive?: boolean;
   costMinor?: number;
   // `null` clears, a string sets, ABSENT keeps — matching `UpdateProductScopedArgs.notes`
-  // (`kasirmu-bridge/src/products.rs:695`). Optional rather than `string | null` because
-  // the absent case is a distinct PATCH meaning, not a third value.
+// `null` clears, a string sets, ABSENT keeps — matching `UpdateProductScopedArgs.notes`
+// (its `notes` field in `crates/kasirmu-bridge/src/products.rs`). Optional rather than `string | null` because
   notes?: string | null;
 }
 
@@ -265,8 +265,8 @@ function updateMockProduct(unwrapArgs: UnwrapArgs, args: unknown): { sku: string
   // `SAVE_DISABLED_AFTER=true`, `GROUP_BACK=0`, `NOTES=`.
   //
   // The core has always accepted it — `UpdateProductScopedArgs.notes` is
-  // `Option<Option<String>>` (kasirmu-bridge/src/products.rs:695) with the documented
-  // PATCH semantics: `null` clears, a string sets, ABSENT keeps. So the real till saves
+// The core has always accepted it — `UpdateProductScopedArgs.notes` is
+// `Option<Option<String>>` (the `notes` field in kasirmu-bridge/src/products.rs) with the documented
   // what this mock discarded, which is the worst kind of divergence.
   if (a.notes !== undefined) target.notes = a.notes;
   return { sku: String(target.sku) };

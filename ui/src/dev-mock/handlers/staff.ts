@@ -352,7 +352,7 @@ export const staffHandlers: Record<string, MockHandler> = {
     // An INACTIVE account fails exactly like a wrong PIN, and deliberately
     // with the same message: the real command refuses one with the uniform
     // "invalid username or PIN" so the client cannot learn that an account
-    // exists but is deactivated (kasirmu-bridge auth.rs:403). Omitting the
+    // exists but is deactivated (the uniform "invalid username or PIN" refusal in kasirmu-bridge auth.rs). Omitting the
     // check was invisible while the seed called every identity active; now
     // that the auditor is inactive (as the roster has always said), a mock
     // that admitted them would let the preview exercise a login the backend
