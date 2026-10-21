@@ -1346,6 +1346,24 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .map((l) => ({ ...l, qty: l.qty - (l.dispatchedQty ?? 0) }));
     if (deltaLines.length === 0) return;
 
+    // ⚠️ THE SEND IS NOT A NO-OP WHEN THE CHITS ARE OFF (2026-10-19).
+    //
+    // `handleDispatchKitchenDelta` does ONE thing: print the food/bar chits, and the
+    // whole body of that sits inside `if (autoPrintKitchen !== false)`. "Send to
+    // Kitchen" is the only route by which the kitchen learns about an order — the
+    // dispatch path creates no KDS order (grep: the only `createKdsOrderFromSaleScoped`
+    // callers are in PaymentModal, at checkout) — so with Auto-Print KOT switched off
+    // the button advanced every line's `dispatchedQty`, the Send control disappeared,
+    // and NOTHING had been sent. The kitchen was never told, and the screen said the
+    // opposite.
+    //
+    // Say so instead of pretending. The lines are still advanced: an operator who has
+    // turned printing off is expected to notify the kitchen by other means, and
+    // leaving progress behind would let the same items be "sent" again forever.
+    if (autoPrintKitchen === false) {
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-kitchen-print-failed'), type: 'warning' });
+    }
+
     setSendingToKitchen(true);
     try {
       await handleDispatchKitchenDelta(deltaLines);
@@ -1529,7 +1547,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     } finally {
       setSendingToKitchen(false);
     }
-  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n, deductionLocationIdRef]);
+  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n, deductionLocationIdRef, autoPrintKitchen]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
