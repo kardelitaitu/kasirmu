@@ -39,7 +39,15 @@ import { isTabletShell } from '@/utils/shellKind';
 
 /** Everything the restore tab renders. */
 export interface RestoreState {
-  candidates: RestoreCandidate[];
+  /**
+   * The same three states as `status` below, and for the same reason:
+   *   RestoreCandidate[] -> the read ANSWERED
+   *   undefined          -> the read never answered; it FAILED
+   * Collapsing the failure to `[]` rendered "No backup generations were found beside the
+   * database." — a flat claim about the disk — over a read that never came back. The
+   * status read in this same object already told the two apart.
+   */
+  candidates: RestoreCandidate[] | undefined;
   loading: boolean;
   /**
    * Three states, and the third is the one that matters — the same shape
@@ -153,7 +161,7 @@ export function useRestore({ sessionToken, open }: {
         ...prev,
         loading: false,
         candidates:
-          listResult.status === 'fulfilled' ? listResult.value.candidates : [],
+          listResult.status === 'fulfilled' ? listResult.value.candidates : undefined,
         // A rejected read leaves `status` undefined = never answered, which the
         // section renders as 'unknown' rather than 'nothing pending'.
         status: statusResult.status === 'fulfilled' ? statusResult.value : undefined,

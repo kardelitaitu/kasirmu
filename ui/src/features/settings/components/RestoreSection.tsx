@@ -134,6 +134,13 @@ export function RestoreSection({
             <Localized id="data-mgmt-restore-loading">
               <p className="data-mgmt-section-desc">Reading backup generations…</p>
             </Localized>
+          ) : candidates === undefined ? (
+            // UNKNOWN is not EMPTY. The list read never answered, so the flat "none were
+            // found" claim below would be a statement about the disk rather than about
+            // the read. The status read beside it already distinguishes the two.
+            <p className="data-mgmt-section-desc" role="alert">
+              Could not read the backup generations beside the database.
+            </p>
           ) : candidates.length === 0 ? (
             <Localized id="data-mgmt-restore-empty">
               <p className="data-mgmt-section-desc">
