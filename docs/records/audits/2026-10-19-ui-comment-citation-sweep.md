@@ -55,17 +55,32 @@ false positives on skeleton placeholders and found **neither** of these. Human-s
 Similarly, four "CORRECT" verdicts in this census are only correct because they were read — a
 `(weak)` row pointing one line above the statement it describes is not something a scanner can grade.
 
+## The last four, and the queue closing
+
+A later pass took the census from 4 to **0**. Three were live cites that were already CORRECT and were
+still anchored by symbol anyway (`InventoryAdjustmentScreen.tsx`, `TransactionLogScreen.tsx`,
+`RestaurantReceiptsScreen.tsx`) — a correct number is not a stable one. The fourth, `PaymentModal.tsx`,
+was the interesting one and is worth recording as a mistake I made:
+
+**I created a duplicate comment block by restoring a line I had reverted.** Earlier in the session I
+reverted my own cite edit in `PaymentModal.tsx` so it would not sweep up another lane's unrelated hunk.
+I then restored the original line, which left BOTH the original and the anchored twin in the file — a
+comment reading "not a replacement for the workspace check at :303" immediately followed by the same
+sentence saying "the workspace check above". The file still parsed, still typechecked, and the guard still
+went green; only reading the block showed it. The repair was to drop the restored line and keep the
+anchored one. **The lesson: a revert-and-restore on a shared file needs the same read-back as any other
+edit.** `PaymentModal.tsx` is left out of that commit — its working tree also holds the receivables
+lane's uncommitted `pay_later` work, so committing the file would have swept it in.
+
 ## What is still open
 
 - **155 UI comments cite `.rs` line numbers**, which the UI guard cannot reach at all — recorded in
   `docs/records/audits/2026-10-19-cross-language-citation-gap.md`. The rule there is to anchor Rust by
-  function name, and this session applied it where it touched a Rust cite.
-- **The 4 remaining entries are all CORRECT** (`InventoryAdjustmentScreen.tsx:196`,
-  `TransactionLogScreen.tsx:297`, `RestaurantReceiptsScreen.tsx:1483`, and `PaymentModal.tsx:146` — the
-  last awaiting another lane's edit to that file before its number can be dropped safely).
+  function name. A four-batch read-only audit of those was dispatched at the end of this pass; its
+  findings are not yet applied.
 
 ## Verification
 
 `node node_modules/vitest/vitest.mjs run src/__tests__/featureCommentPaths.test.ts` → 4/4 pass,
-census `25 total, 21 in range, 4 to review`. Every round also ran `tsc --noEmit` (0 in this session's
+census **`21 total, 21 in range, 0 to review`**. Every round also ran `tsc --noEmit` (0 in this session's
 files), `eslint` on each touched file (0 errors), and the affected screen suites.
