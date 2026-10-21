@@ -663,7 +663,9 @@ runtime — but they should not outrank live ones when a phase is funded.
 ### High — likely to bite within months
 
 **O-H23 · kasirmu-notification — the scheduled email report holds the process-wide DB mutex
-across ten aggregate queries** — `crates/kasirmu-notification/src/email_scheduler.rs:71-81` ✔
+across ten aggregate queries** — ✅ **PAID 2026-09-27, fixed in place (no separate commit)**
+(re-verified at HEAD 2026-10-21: `email_scheduler.rs:70` "Scope 2a" / `:93` "Scope 2b", lock released
+before render) — `crates/kasirmu-notification/src/email_scheduler.rs:71-81` ✔
 (3C-01) · **LIVE**, wired at `apps/desktop-tauri/src/lib.rs:400-403` ✔
 Scope 2 takes `db.lock().await` — the same `Arc<Mutex<Connection>>` every UI command, the sync
 daemon and the image-push daemon share — and holds it across
@@ -683,7 +685,8 @@ before rendering; bound the export by date bucket regardless.
 ```
 
 **O-H24 · kasirmu-payment — processor fallback advances on `Transient`, the double-charge
-class** — `crates/kasirmu-payment/src/registry.rs:100-114` ✔ (3A-06)
+class** — ✅ **PAID 2026-09-27 in `8c592c58f`** (re-verified at HEAD 2026-10-21) —
+`crates/kasirmu-payment/src/registry.rs:100-114` ✔ (3A-06)
 `execute_with_fallback` falls through to the next processor on any non-`Terminal` error, and
 `ErrorClass::Transient` is precisely the class where the request may have reached the gateway.
 The crate states this itself, in `resilience.rs:293-298` ✔: *"a `Transient` error is precisely the
@@ -958,9 +961,14 @@ risk.
   Medium entries a fix would be built on and 2 of the 12 Low. The remaining 21 carry ◦ and the
   audit pass's line references. Nothing in this section was written from recollection.
 - **No crate code has been changed.** Fixes are unfunded until entries are picked from this
-  journal. §5's axes and §6's rules still stand unchanged; O-H23/O-H24/O-H25 are candidates for
-  funding ahead of any axis work, because they are correctness and availability rather than
-  optimization.
+  journal. §5's axes and §6's rules still stand unchanged.
+  - **SUPERSEDED 2026-10-21 — this line used to name O-H23/O-H24/O-H25 as the funding
+    candidates. Two of the three are PAID and the third is not a live defect.** O-H23
+    (`email_scheduler.rs:70`/`:93` scope split) and O-H24 (`8c592c58f`, gateway-key gate) landed
+    2026-09-27. O-H25 was re-measured on 11-10-26 and its target file
+    (`modules/reporting/src/repository.rs`) no longer exists — the three named defects are not
+    present at HEAD (see the re-measurement note under the entry). §11E already recorded this
+    failure mode once; it recurred here and this note is the correction.
 
 ---
 
@@ -1026,7 +1034,9 @@ not arithmetically — O-H10's "~10 round trips per item", O-M22's "10⁶ compar
 Everything else in §7 and §8 is now re-read.
 
 **O-H26 · kasirmu-bridge — `blocking_lock()` on a tokio mutex: a guaranteed panic, not a parked
-worker** — `crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ · **LIVE** via `ctx.rs:371`
+worker** — ✅ **PAID 2026-09-27 in `581f32981`** (took `try_lock`, not `lock().await`;
+re-verified at HEAD 2026-10-21: `ctx.rs:434` is `match self.db.try_lock()`) —
+`crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ · **LIVE** via `ctx.rs:371`
 (`resolve_scope`) and `apps/desktop-tauri/src/state.rs:632`. Promoted from O-M20.
 Round 2 recorded this as parking a runtime worker. It is worse. `resolve_restaurant_pos_store` is
 a **sync `fn`** calling `self.db.blocking_lock()` where `self.db` is `Arc<tokio::sync::Mutex<…>>`
