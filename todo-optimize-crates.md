@@ -395,7 +395,9 @@ grow linearly with catalog size. *Fix:* keyset pagination; replace the correlate
 a grouped `LEFT JOIN`.
 
 **O-H13 · kasirmu-api — synchronous file I/O inside async handlers** —
-`crates/kasirmu-api/src/routes/images.rs:351` ◦
+✅ **PAID 2026-10-21.** All five blocking sites in `routes/images.rs` converted to `tokio::fs`
+(`:87` `store_image_atomic` is now `async fn`, its call site awaited at `:151`; reads at `:368`
+and `:458`). `crates/kasirmu-api/src/routes/images.rs:351` ◦
 `std::fs::read` in the image route (and `std::fs::write`/`rename` at `:93-94`, read again at
 `:441`) blocks a tokio worker; a slow volume stalls every other request on that worker thread.
 *Fix:* `tokio::fs` or `spawn_blocking`.
@@ -2354,3 +2356,39 @@ interleaving in 8 attempts"). That is a load-sensitive timing design that predat
 my diff to both files is the single temp-dir line. **They are left as they are rather than
 quietly retried or widened**, because a race test that is loosened to pass under load stops
 staging the race it exists to catch.
+
+---
+
+## §11AE — O-H13 resolved: image routes off the blocking filesystem (2026-10-21)
+
+One High finding resolved, plus the temp-dir class extended to a second crate.
+
+**The defect, and why this path rather than any other.** Five blocking calls in
+`crates/kasirmu-api/src/routes/images.rs` ran on the axum executor: `std::fs::write` and
+`std::fs::rename` in `store_image_atomic` (`:93-94`), a `remove_file` on the conflict arm, and
+`std::fs::read` at `:351` and `:441` serving stored images. `process_image` is an `async fn`, so
+every one of these parked a tokio worker for the duration of the syscall. The image path is where
+that compounds: it writes on every upload, and a contended volume stalls every request multiplexed
+onto the same worker — not just the image one.
+
+**The fix is a straight conversion — with one deliberate behaviour change.**
+`store_image_atomic` is now `async fn` and every call is `tokio::fs`, with the call site awaited.
+The rename-and-verify logic is untouched: a lost race still resolves to "duplicate" when the final
+path exists, and still errors when it does not. **`Path::exists()` became `try_exists().await`
+on purpose** — the blocking form swallows the error and reports `false`, which would turn a
+permission fault into a second write attempt against a path we cannot see. `try_exists` propagates
+it, so a real fault reaches the caller's existing `Err(_) => Rejected` arm instead of being
+silently retried. That is a small, deliberate strictness increase, recorded rather than slipped in.
+
+**A second instance of the temp-dir class, found because these tests ran.**
+`routes/images_tests.rs:19` built its fixture directory from `std::env::temp_dir()`, so on this
+machine **all twelve image tests failed** with `Os { code: 5, PermissionDenied }` at
+`create_dir_all` — before any of this work, and Reading as a broken image route. The crate now has
+its own `scratch_image_dir()` on the same pattern as `kasirmu-core`'s `test_scratch_dir`, writing
+to the gitignored `target/test-scratch/`. **17/17 image tests and 339/339 crate tests now pass,**
+and they pass for the right reason.
+
+**Tally for the session:** `kasirmu-core` 19 sites / 15 files, `kasirmu-api` 1 site / 1 file. The
+helper is duplicated across the two crates rather than promoted to a shared dev-dependency; two
+copies of eleven lines is cheaper than a new dev-dependency edge for this, but the third copy is
+the point at which that stops being true.

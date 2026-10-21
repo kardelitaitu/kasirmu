@@ -84,20 +84,37 @@ fn image_path(image_dir: &FsPath, hash16: &str) -> PathBuf {
 /// Atomically write `bytes` to `image_dir/{hash16}.webp` via temp+rename
 /// on the same volume. Returns `true` when the file already existed
 /// (duplicate upload).
-fn store_image_atomic(image_dir: &FsPath, hash16: &str, bytes: &[u8]) -> std::io::Result<bool> {
+///
+/// **Async on purpose (debt O-H13).** Every filesystem call here used to be the
+/// blocking `std::fs` form, called from `process_image`, which is an `async fn`
+/// driven by the axum runtime. A blocking write parks the worker thread for the
+/// whole disk I/O, so one slow or contended volume stalls every other request
+/// multiplexed onto that thread — and the image path is where that bites, because
+/// it writes on every upload. `tokio::fs` moves the syscall to the blocking pool.
+///
+/// `try_exists` rather than `exists`: the blocking `Path::exists` swallows the
+/// error and reports `false`, which would turn a permission fault into a second
+/// write attempt against a path we cannot actually see. `try_exists` propagates
+/// it, so a real fault still reaches the caller's `Err(_) => Rejected` arm
+/// instead of being quietly retried.
+async fn store_image_atomic(
+    image_dir: &FsPath,
+    hash16: &str,
+    bytes: &[u8],
+) -> std::io::Result<bool> {
     let final_path = image_path(image_dir, hash16);
-    if final_path.exists() {
+    if tokio::fs::try_exists(&final_path).await? {
         return Ok(true); // duplicate — content-addressed identity
     }
     let tmp_path = image_dir.join(format!(".{hash16}.{}.tmp", std::process::id()));
-    std::fs::write(&tmp_path, bytes)?;
-    match std::fs::rename(&tmp_path, &final_path) {
+    tokio::fs::write(&tmp_path, bytes).await?;
+    match tokio::fs::rename(&tmp_path, &final_path).await {
         Ok(()) => Ok(false),
         Err(_) => {
             // A concurrent writer may have won the rename — the file now
             // exists; treat as a duplicate (idempotent success).
-            let _ = std::fs::remove_file(&tmp_path);
-            if final_path.exists() {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            if tokio::fs::try_exists(&final_path).await? {
                 Ok(true)
             } else {
                 Err(std::io::Error::other("atomic rename failed"))
@@ -131,7 +148,7 @@ async fn process_image(state: &AppState, claims: &ApiTokenClaims, bytes: &[u8]) 
     }
     let hash16 = sha256_hex16(bytes);
     // Atomic write; `duplicate` = the file already existed.
-    let duplicate = match store_image_atomic(&state.image_dir, &hash16, bytes) {
+    let duplicate = match store_image_atomic(&state.image_dir, &hash16, bytes).await {
         Ok(d) => d,
         Err(_) => return ImageOutcome::Rejected,
     };
@@ -348,7 +365,8 @@ pub async fn get_image(
         }
     }
     let path = image_path(&state.image_dir, &hash16);
-    match std::fs::read(&path) {
+    // O-H13: async read, so serving a cached image does not park a worker thread.
+    match tokio::fs::read(&path).await {
         Ok(bytes) => {
             let mut response = bytes.into_response();
             let headers = response.headers_mut();
@@ -438,7 +456,8 @@ pub async fn get_image_pack(
             continue;
         }
         let path = image_path(&state.image_dir, h);
-        match std::fs::read(&path) {
+        // O-H13: async read, as above.
+        match tokio::fs::read(&path).await {
             Ok(bytes) => {
                 if out.len() + 4 + bytes.len() > PACK_MAX_BYTES {
                     break;

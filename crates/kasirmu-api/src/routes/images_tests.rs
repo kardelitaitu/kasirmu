@@ -14,10 +14,35 @@ use tower::ServiceExt;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Create a unique temp directory for image storage (no `tempfile` dep).
+/// A unique scratch directory for image storage, kept INSIDE the checkout.
+///
+/// Do not use `std::env::temp_dir()` here. It resolves `TEMP`/`TMP`, and on
+/// this project's Windows machines the MACHINE-level value is
+/// `C:\WINDOWS\TEMP` — creatable by an ordinary user but not deletable, so a
+/// fixture there can never be cleaned up and, once a stale directory exists,
+/// `create_dir_all` fails with `PermissionDenied` and every test in this file
+/// reads as broken. Measured 2026-10-21: all twelve image tests failed this way
+/// before the change, with the same `Os { code: 5 }` at this line.
+///
+/// `target/` is already gitignored (`.gitignore:2`), so nothing here can be
+/// committed, and the per-test UUID keeps parallel tests apart. Resolved from
+/// `CARGO_MANIFEST_DIR` rather than the CWD, because tests run from the crate
+/// root while `target/` lives at the workspace root.
+fn scratch_image_dir() -> std::path::PathBuf {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest
+        .ancestors()
+        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
+        .unwrap_or(manifest);
+    workspace
+        .join("target")
+        .join("test-scratch")
+        .join(format!("kasirmu-api-img-{}", uuid::Uuid::new_v4()))
+}
+
+/// Create a unique scratch directory for image storage (no `tempfile` dep).
 fn temp_image_dir() -> (AppState, std::path::PathBuf) {
-    let base = std::env::temp_dir();
-    let dir = base.join(format!("kasirmu-api-img-test-{}", uuid::Uuid::new_v4()));
+    let dir = scratch_image_dir();
     std::fs::create_dir_all(&dir).unwrap();
     let state = AppState {
         db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
@@ -94,12 +119,12 @@ fn is_webp_magic_rejects_non_webp() {
     assert!(!is_webp_magic(b"RIFF....XXXX"));
 }
 
-#[test]
-fn store_image_atomic_writes_file() {
+#[tokio::test]
+async fn store_image_atomic_writes_file() {
     let (_, dir) = temp_image_dir();
     let hash = "abcdef0123456789";
     let bytes = b"test image data";
-    let duplicate = store_image_atomic(&dir, hash, bytes).unwrap();
+    let duplicate = store_image_atomic(&dir, hash, bytes).await.unwrap();
     assert!(!duplicate);
     let path = dir.join(format!("{hash}.webp"));
     assert!(path.exists());
@@ -107,13 +132,13 @@ fn store_image_atomic_writes_file() {
     cleanup(&dir);
 }
 
-#[test]
-fn store_image_atomic_detects_duplicate() {
+#[tokio::test]
+async fn store_image_atomic_detects_duplicate() {
     let (_, dir) = temp_image_dir();
     let hash = "abcdef0123456789";
     let bytes = b"test image data";
-    store_image_atomic(&dir, hash, bytes).unwrap();
-    let duplicate = store_image_atomic(&dir, hash, bytes).unwrap();
+    store_image_atomic(&dir, hash, bytes).await.unwrap();
+    let duplicate = store_image_atomic(&dir, hash, bytes).await.unwrap();
     assert!(duplicate);
     cleanup(&dir);
 }
