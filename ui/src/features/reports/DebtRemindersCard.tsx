@@ -19,6 +19,9 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [payables, setPayables] = useState<PayableDto[]>([]);
   const [loading, setLoading] = useState(true);
+  // Per side: the two reads fail independently (see `loadDebts`).
+  const [recsFailed, setRecsFailed] = useState(false);
+  const [paysFailed, setPaysFailed] = useState(false);
 
   const loadDebts = useCallback(async () => {
     if (!sessionToken) return;
@@ -28,6 +31,13 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
         listReceivablesScoped(sessionToken),
         listPayablesScoped(sessionToken),
       ]);
+      // A REJECTED ARM IS NOT "NOTHING OWED". `allSettled` was chosen so one read could
+      // fail without taking the other down — but the failure was then dropped on the
+      // floor, leaving the array at its `[]` initial value. The card turns "no overdue
+      // rows" into the affirmative badge "Up to date", so one failed receivables read
+      // told the merchant their debtors were settled. Track the failures and say so.
+      setRecsFailed(recsResult.status === 'rejected');
+      setPaysFailed(paysResult.status === 'rejected');
       if (recsResult.status === 'fulfilled') {
         setReceivables(recsResult.value ?? []);
       }
@@ -192,11 +202,17 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
                 </Localized>
               </span>
             )}
-            {recOverdue.length === 0 && recDueSoon.length === 0 && (
+            {recsFailed ? (
+              // "Up to date" is an affirmative claim about the merchant's debtors. It was
+              // reachable from a receivables read that never answered.
+              <span className="dashboard-debt-badge dashboard-debt-badge--warning" role="alert">
+                Could not load receivables
+              </span>
+            ) : recOverdue.length === 0 && recDueSoon.length === 0 ? (
               <span className="dashboard-debt-badge dashboard-debt-badge--ok">
                 <Localized id="dashboard-debt-panel-ok">Up to date</Localized>
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="dashboard-debt-actions">
@@ -252,11 +268,15 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
                 </Localized>
               </span>
             )}
-            {payOverdue.length === 0 && payDueSoon.length === 0 && (
+            {paysFailed ? (
+              <span className="dashboard-debt-badge dashboard-debt-badge--warning" role="alert">
+                Could not load payables
+              </span>
+            ) : payOverdue.length === 0 && payDueSoon.length === 0 ? (
               <span className="dashboard-debt-badge dashboard-debt-badge--ok">
                 <Localized id="dashboard-debt-panel-ok">Up to date</Localized>
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="dashboard-debt-actions">
