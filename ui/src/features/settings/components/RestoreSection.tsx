@@ -14,8 +14,9 @@
  *
  * 2. THE BACKUP'S STORE NAME IS NEVER SHOWN, SUGGESTED OR PRE-FILLED. The
  *    operator must type it, and the bridge refuses to echo it back precisely so
- *    that it is a real confirmation (crates/kasirmu-bridge/src/data/restore.rs
- *    :209-210). The field starts empty and the dialog says why it is not shown.
+ *    that it is a real confirmation (crates/kasirmu-bridge/src/data/restore.rs,
+ *    the "deliberately NOT echoed back" note in `restore_prepare`). The field
+ *    starts empty and the dialog says why it is not shown.
  *    Do not add a hint, a default, or an autocomplete.
  */
 import { Localized, useLocalization } from '@fluent/react';

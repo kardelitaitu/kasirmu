@@ -287,7 +287,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   // requires `sales:process` (the `require_session_permission(…, permissions::SALES_PROCESS)`
   // call in kasirmu-bridge/src/history.rs) — the permission the
   // STAFF preset holds and its description says it exists for ("Checkout-operations
-  // role — processes sales… No management access", rbac_presets.rs:162-166). Gating it
+  // role — processes sales… No management access", the STAFF preset in
+  // platform/core/src/rbac_presets.rs). Gating it
   // on `isManager` hid a working action from exactly the people allowed to use it.
   //
   // The VOID action above is the opposite case and keeps `isManager`: voiding requires
@@ -746,7 +747,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       // ERR-10: the raw backend message used to go straight into this state and
       // was then rendered inside the stamp modal, so a failed stamp showed the
       // operator backend text instead of a mapped, localized sentence. The
-      // void path twelve lines up (:349) already used l10nErrorMessage; this
+      // void path (`handleConfirmVoid`) already used l10nErrorMessage; this
       // arm and the pengganti toast below were the two that missed the sweep.
       setStampError(l10nErrorMessage(err, l10n, 'sales-history-stamp-error'));
     } finally {
@@ -873,9 +874,10 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     setRefundsUnknown(!data.ok);
     setRefunds(data.ok ? data.value : []);
     // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
-    // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
-    // change -- this array just omitted it. With [] the callback kept the mount-time token, and
-    // because :467 lists loadRefunds in its own deps, the refund list for an opened sale was
+    // effect above already lists [sessionToken, l10n] in its own deps, so the token was
+    // understood to change -- this array just omitted it. With [] the callback kept the
+    // mount-time token, and because `handleRefunded` lists loadRefunds in its own deps,
+    // the refund list for an opened sale was
     // fetched against whatever session was active when the screen mounted.
   }, [sessionToken]);
 

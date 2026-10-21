@@ -427,8 +427,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     // `sessionToken` and `section`. A cashier who switched store and then had any
     // other terminal save a tab got the PREVIOUS store's floor plan written over
     // the one on screen, silently, on the screen they seat people from. The sibling
-    // effect at :204 already lists loadTables for exactly this reason; this one was
-    // the outlier. Same for `section`: the reload used the section it mounted with.
+    // section effect below already lists its loader for exactly this reason; this
+    // one was the outlier. Same for `section`: the reload used the section it
+    // mounted with.
     //
     // Re-subscribing is the point, not a cost: the listeners are cheap, and the
     // cleanup above unregisters the previous generation before the next registers.
@@ -789,7 +790,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       // The writes are sequential (hold → delete → release → status), so this catch
       // can fire AFTER the destination bill already exists: the hold succeeded and
       // only the delete/release/status step failed. `loadTables()` sat on the success
-      // path only (:702), so the floor plan kept rendering the PRE-move state — the
+      // path only, so the floor plan kept rendering the PRE-move state — the
       // operator was told "move failed" while looking at a plan that no longer
       // described the data, with the dialog still open over it. Retrying against that
       // stale plan is what turns one duplicate bill into two.
@@ -1185,9 +1186,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         await updateTableScoped(sessionToken, currentTable);
       } catch (err) {
         // PUT THE TABLE BACK. The move was written optimistically on every pointermove
-        // (:881-886) and only persisted here, so a refused write left the table VISUALLY at
-        // the dropped position with the server holding the old one — and `tablesRef`
-        // (:127) still carrying the refused coordinates, so a retry re-sent the payload
+        // (`handlePointerMoveTable`) and only persisted here, so a refused write left the
+        // table VISUALLY at the dropped position with the server holding the old one —
+        // and `tablesRef` still carrying the refused coordinates, so a retry re-sent the payload
         // that was just rejected. Restoring both lists and the ref makes the floor plan
         // describe reality again and makes a retry send the ORIGINAL position.
         const origin = dragOriginPos.current;
