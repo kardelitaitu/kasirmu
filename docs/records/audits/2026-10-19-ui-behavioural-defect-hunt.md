@@ -628,6 +628,30 @@ open-shift guard (line 894-896). Both mocks now resolve `null`, and that explana
 **The honest lesson**: a test that fails when you fix a bug is not always a regression — sometimes it is
 the bug's alibi. Read the contract at both ends before deciding which side is wrong.
 
+## Round 51: the fifth sweep, and a dimension that is genuinely empty
+
+This round hunted the same family across a dimension the earlier rounds had not walked — **swallowed
+`catch` blocks in hooks and event wiring** — and found nothing worth fixing. Recording that honestly is
+the point, because the yield is now the finding.
+
+What the sweep examined, and why each was cleared:
+
+| target | verdict |
+|---|---|
+| `StockCountsScreen` | correct — `error` branch tested BEFORE the empty branch (:127 vs :134) |
+| `features/offline/OfflineQueueScreen` | correct, and unusually so: a comment at :182 explains why `.catch(() => [])` was replaced, and :205-215 argues `null` = UNKNOWN for the quarantine list |
+| `useBackupStatus` | correct at the strongest level: `undefined` (never answered) is kept distinct from `null` (answered "never backed up"), with the reasoning at :100-124 |
+| `RestaurantMenu` (3 catches) | correct — the :328 comment explains that a failed read must leave the persistence gate SHUT or the next edit writes `[]` over the server's 86'd list |
+| `TableManagementScreen` (3 catches) | correct — Tauri `listen()` registration; swallowing is the right call |
+| `useEdcTenderPhase` | degraded by design — a failed terminal-list read falls back to the default alias, and a failed pre-flight already exits with `terminalFailed` |
+| `RetailPosScreen` track-serial batch | correct — the catch releases the pending guard so a later cart change re-fetches |
+
+That is four consecutive files where the author had already reasoned to the same conclusion this
+campaign keeps reaching, often with the exact distinction I would have drawn (`undefined` vs `null`,
+answered-empty vs never-answered). **The family is exhausted in `ui/src`.** Five rounds of it produced
+24 fixes; a sixth would be manufacturing work, and round 44 already established that manufacturing work
+for a nonexistent backlog is worse than saying the backlog is empty.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
