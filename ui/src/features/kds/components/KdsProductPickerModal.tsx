@@ -255,8 +255,8 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
    *
    * DELTA, not an absolute value, for the same reason as the POS cart's `changeQty`:
    * the stepper buttons computed `entry.qty ± 1` from the row as it last rendered, and
-   * `updateQtyEntry` OVERWRITES rather than accumulates (`{ ...e, qty: clamped }`,
-   * :136). So two taps inside one React batch both closed over that snapshot and both
+   * `updateQtyEntry` OVERWRITES rather than accumulates (`{ ...e, qty: clamped }` inside
+   * its `picked.map`). So two taps inside one React batch both closed over that snapshot and both
    * wrote the same number — the cook pressed `+` twice on a touch panel and the quantity
    * went up once.
    *
