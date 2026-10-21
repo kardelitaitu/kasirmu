@@ -837,13 +837,27 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         .await?;
 
     // §B read-only lock: a lapsed grace window rejects new sales.
-    {
+    //
+    // Only the LOAD is under the lock — it needs the connection. The two
+    // checks below are pure CPU: `verify_signature` parses no key (the embedded
+    // key is cached in a `OnceLock`) and takes no lock, and
+    // `enforce_pos_writable` reads only fields already in memory. Running them
+    // outside the guard releases the process-wide DB mutex ~197 us (release
+    // build) sooner on the hottest path. They still verify the EXACT row read
+    // under the lock — the value is moved out, not re-read — and keep their
+    // original order: signature first, writability second.
+    //
+    // Behavioural difference, stated plainly: a revocation (or a grace-window
+    // expiry) landing in the microseconds between the read and the check no
+    // longer pre-empts THIS checkout. The next command sees it. Zero change to
+    // what is accepted from a given row.
+    let sub = {
         let db = state.db.lock().await;
-        let sub = kasirmu_core::TenantSubscription::load(&db, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        sub.enforce_pos_writable()?;
-    }
+        kasirmu_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+    sub.enforce_pos_writable()?;
 
     // ── COR-7: replay guard + settlement under ONE lock ─────────────
     // This is the path the guard matters most on: the command rebuilds its
