@@ -652,6 +652,37 @@ answered-empty vs never-answered). **The family is exhausted in `ui/src`.** Five
 24 fixes; a sixth would be manufacturing work, and round 44 already established that manufacturing work
 for a nonexistent backlog is worse than saying the backlog is empty.
 
+## Round 52: a money-precision claim I made, measured, and withdrew
+
+Round 51 closed the failure-visibility family, so this round changed axis to **money precision** — a
+genuinely different risk. It produced no fix, and the reason is worth recording in detail because the
+mistake was mine and it was subtle.
+
+**What I thought I had found.** `KasbonSettlementModal` converted the typed repayment amount with
+`Math.round(parseFloat(s) * 10 ** exp)`. I probed it and got:
+
+```
+1.005   raw=100.49999999999998579   rounded=100
+```
+
+That looked like a one-unit loss for a cashier who typed `1.005`. I wrote a string-splitting parser,
+wired it in, and added a kill test at IDR's exponent 0 where `100.5` would round DOWN to 100.
+
+**Why it was wrong.** My probe compared `parseFloat(s) * 100` against `Math.round(Number(s) * 100)` —
+and that "expected" side performs the *same* float multiplication, so it could not detect the very
+drift I was testing for. Once the kill test ran against the real component, the float path produced
+**101**, not 100: `100.5` at exponent 0 has no fraction to lose. And at exponent 2 the cases I had
+listed (`1.005`, `2.675`, `8.615`, `1.015`) all agree with exact arithmetic, because `Math.round`
+absorbs the sub-midpoint error by design. `1.005` rounding to 100 is *correct* rounding of the value
+that was actually typed into a double — not a bug to fix.
+
+I reverted both the parser and the test with `git checkout --`, confirmed `git diff --stat` empty and
+the suite back to 4/4. Nothing was committed.
+
+**The transferable rule**: when probing float behaviour, the reference implementation must not use the
+same float operation as the code under test, or the probe agrees with the bug. Use exact integer or
+string arithmetic for the expected side.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
