@@ -520,8 +520,13 @@ export default function KdsScreen({ onBack }: KdsScreenProps = {}) {
       <KdsNoticeBanners
         error={error}
         onRetryError={() => {
+          // Only clear the banner if the retry can actually run. `fetchOrders` returns
+          // immediately without a session token (:159), so clearing first left the cook
+          // with a dismissed error, no data read and no way to learn why — the banner
+          // was the only signal.
+          if (!sessionToken) return;
           clearError();
-          fetchOrders();
+          void fetchOrders();
         }}
         onDismissError={clearError}
         storageUnavailable={storageUnavailable}
