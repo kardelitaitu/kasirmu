@@ -100,6 +100,11 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
   const [viewMode, setViewMode] = useState<ViewMode>(initialSaleId ? 'detail' : 'list');
   const [activeSaleId, setActiveSaleId] = useState<string | null>(initialSaleId ?? null);
   const [detail, setDetail] = useState<SaleDetail | null>(null);
+  // The DETAIL read's own failure. `detail === null` alone cannot tell "this sale does
+  // not exist" from "we could not read it", and the render turns null into the
+  // authoritative sentence "Order not found." — a claim about the database made from a
+  // read that never answered.
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Void flow
@@ -154,9 +159,15 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
         const sale = sessionToken
           ? await getSaleScoped(sessionToken, activeSaleId)
           : await getSale(activeSaleId);
-        if (!cancelled) setDetail(sale);
-      } catch {
-        if (!cancelled) setDetail(null);
+        if (!cancelled) {
+          setDetail(sale);
+          setDetailError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDetail(null);
+          setDetailError(l10nErrorMessage(err, l10n, 'void-orders-error-load'));
+        }
       } finally {
         if (!cancelled) setDetailLoading(false);
       }
@@ -597,6 +608,14 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
             </table>
           </Card>
         </div>
+      ) : detailError ? (
+        // NOT "Order not found." — the read never answered, so the sale may well exist.
+        <Card shadow="sm">
+          <div className="void-orders-error" role="alert">
+            <p>{detailError}</p>
+            <Button variant="secondary" onClick={backToList}>Go back</Button>
+          </div>
+        </Card>
       ) : !detail ? (
         <Card shadow="sm">
           <div className="void-orders-error">
