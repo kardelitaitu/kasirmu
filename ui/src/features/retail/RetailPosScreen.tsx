@@ -978,10 +978,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // lands last and applies the PREVIOUS store's settings.
   //
   // THE CONSEQUENCE IS MONEY, at three sites. `storeSettings.currency` is passed to
-  // minorUnitExponent() when parsing the OPENING drawer balance (:930), the CLOSING
-  // balance (:948) and the manual discount (:1032). The exponent is 0 for IDR and 2
-  // for USD, so a stale currency misreads those amounts by a factor of 100. That is
-  // the failure mode the MONEY-02 / MONEY-05 notes at :902 protect against -- they
+  // `parseMoneyInput` when parsing the OPENING drawer balance (`openingBalance` in
+  // handleOpenShift), the CLOSING balance (`closingBalance` in handleConfirmCloseShift)
+  // and the manual discount (`discountRpInput`) — all three found by IDENTIFIER, not by
+  // line number. ⚠️ They were cited as numbers :930 / :948 / :1032, then as :1140 /
+  // :1158 / :1242, and every rewrite moved the very lines it was citing: this comment
+  // sits ABOVE all three sites, so each added line shifted them. A number that the act
+  // of writing invalidates is not an anchor. The three symbols are unique in this file.
+  // The cause of the original drift: the SKU/barcode block was inserted above the money
+  // handlers and pushed them down ~210 lines. `minorUnitExponent` is no longer called
+  // here at all — `parseMoneyInput` replaced it, so the name survives only in this
+  // comment, which is why nobody re-derived the numbers.
+  // The exponent is 0 for IDR and 2 for USD, so a stale currency misreads those amounts
+  // by a factor of 100. That is the failure mode the MONEY-02 / MONEY-05 notes protect
+  // against (search "MONEY-02"; cited here as ":902", which is the stock guard) -- they
   // fixed the hardcoded x100 and left the currency itself able to go stale.
   //
   // PINNED, and the two attempts to pin it are worth reading before touching this.

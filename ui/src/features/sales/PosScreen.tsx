@@ -1043,7 +1043,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
     // F21: the order-sent chime. Placed here, at the end of a COMPLETED checkout —
-    // the same seat the retail POS uses (`RetailPosScreen.tsx:1576`) — so it cannot
+    // the same seat the retail POS uses (`RetailPosScreen.tsx:1881`, in the PaymentModal
+  // `onComplete`; re-measured 2026-10-19, the note said `:1576`) — so it cannot
     // fire for a sale that failed. `null` means never written, which the setting's own
     // default (true) says should chime.
     if (soundChime !== false) playSuccess();
@@ -1182,7 +1183,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // hold SUCCEEDED — the original tab still holds every line and a new tab now
           // holds the same remaining ones, which is the documented, hand-resolvable
           // duplicate the create-first order trades for not losing the tab. But
-          // loadOpenBills() sits on the success path at :1167 (re-measured 2026-10-19; this
+          // loadOpenBills() sits on the success path at :1169 (re-measured 2026-10-19; this
           // note used to cite line 995), so until now the list
           // was never re-read and the screen kept showing ONE bill over data that held
           // TWO. The operator could not see, select, or settle the duplicate — the
@@ -1455,7 +1456,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         // received, and the kitchen ticket would disagree with the saved bill.
         //
         // ⚠️ THIRD DEFECT, FOUND BY VERIFYING THIS FIX IN SHIPPED FORM: the payload
-        // maps `lines` — the closure captured BEFORE the dispatch await at :1337 — so
+        // maps `lines` — the closure captured BEFORE the dispatch await, inside
+  // handleDispatchKitchenDelta at :1262 — so
         // it carried the PRE-send `dispatchedQty`. Live state was corrected above and
         // the saved record was not:
         //
@@ -1531,7 +1533,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // HALF-COMMITTED — and this is the branch where it matters most, because the
       // kitchen has ALREADY been told to cook (:1240-1243). If the hold succeeded and
       // only the delete of the previous tab failed, food is being prepared while
-      // loadOpenBills() on the success path at :1503 (re-measured 2026-10-19; this note
+      // loadOpenBills() on the success path at :1525 (re-measured 2026-10-19; this note
       // used to cite line 1259) left the bill list showing the
       // OLD tab. The operator would then reconcile a running order against a list that
       // cannot show both records.
