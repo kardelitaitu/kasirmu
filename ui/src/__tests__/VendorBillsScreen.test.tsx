@@ -126,7 +126,9 @@ describe('VendorBillsScreen', () => {
   });
 
   it('writes off debt when Write Off button is clicked and confirmed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // The confirmation is a ConfirmDialog, not window.confirm, so this drives the
+    // real two-step flow and asserts that clicking the row button alone writes
+    // nothing off — the destructive call needs the dialog's confirm.
 
     await renderWithFluent(
       <ToastProvider>
@@ -139,6 +141,11 @@ describe('VendorBillsScreen', () => {
     const writeOffBtns = screen.getAllByRole('button', { name: /Write Off/i });
     expect(writeOffBtns[0]).toBeDefined();
     fireEvent.click(writeOffBtns[0]!);
+
+    expect(payablesApi.writeOffPayableScoped).not.toHaveBeenCalled();
+
+    const confirmBtn = await screen.findByTestId('confirm-dialog-confirm');
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(payablesApi.writeOffPayableScoped).toHaveBeenCalledWith('tok-test', 'pay-1');

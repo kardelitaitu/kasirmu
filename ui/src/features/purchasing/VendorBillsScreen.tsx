@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized, EmptyState } from '@/components';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -15,6 +16,7 @@ import {
   type PayableDto,
 } from '@/api/payables';
 import { listSuppliers, type SupplierDto } from '@/api/purchasing';
+import { l10nErrorMessage } from '@/utils/app-error';
 import './VendorBillsScreen.css';
 
 function formatMinor(minor: number, currency: string): string {
@@ -45,6 +47,11 @@ export default function VendorBillsScreen() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentNote, setPaymentNote] = useState('');
   const [payingLoading, setPayingLoading] = useState(false);
+  // Write-off confirmation. This was a window.confirm, which a native blocking
+  // dialog cannot be styled, localised beyond the two button labels, or driven
+  // by a test; ConfirmDialog is the house replacement.
+  const [writeOffTarget, setWriteOffTarget] = useState<PayableDto | null>(null);
+  const [writeOffLoading, setWriteOffLoading] = useState(false);
 
   // Manual Add Bill Modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -146,27 +153,28 @@ export default function VendorBillsScreen() {
       setPayingPayable(null);
       await loadData();
     } catch (err) {
-      addToast({ message: err instanceof Error ? err.message : String(err), type: 'error' });
+      addToast({ message: l10nErrorMessage(err, l10nRef.current, 'vendor-bills-error-pay-failed'), type: 'error' });
     } finally {
       setPayingLoading(false);
     }
   }, [payingPayable, paymentAmountInput, paymentMethod, paymentNote, sessionToken, addToast, loadData]);
 
-  // Write off debt
-  const handleWriteOff = useCallback(async (p: PayableDto) => {
-    const confirmed = window.confirm(
-      requiredLocalized(l10nRef.current, 'vendor-bills-writeoff-confirm'),
-    );
-    if (!confirmed) return;
-
+  // Write off debt. The operator confirms in a ConfirmDialog (state below),
+  // and this handler runs only on that dialog's onConfirm.
+  const handleWriteOffConfirmed = useCallback(async () => {
+    if (!writeOffTarget) return;
+    setWriteOffLoading(true);
     try {
-      await writeOffPayableScoped(sessionToken, p.id);
+      await writeOffPayableScoped(sessionToken, writeOffTarget.id);
       addToast({ message: requiredLocalized(l10nRef.current, 'vendor-bills-writeoff-success'), type: 'success' });
+      setWriteOffTarget(null);
       await loadData();
     } catch (err) {
-      addToast({ message: err instanceof Error ? err.message : String(err), type: 'error' });
+      addToast({ message: l10nErrorMessage(err, l10nRef.current, 'vendor-bills-error-writeoff-failed'), type: 'error' });
+    } finally {
+      setWriteOffLoading(false);
     }
-  }, [sessionToken, addToast, loadData]);
+  }, [writeOffTarget, sessionToken, addToast, loadData]);
 
   // Add Manual Bill
   const handleCreateBill = useCallback(async () => {
@@ -198,7 +206,7 @@ export default function VendorBillsScreen() {
       setNewNote('');
       await loadData();
     } catch (err) {
-      addToast({ message: err instanceof Error ? err.message : String(err), type: 'error' });
+      addToast({ message: l10nErrorMessage(err, l10nRef.current, 'vendor-bills-error-create-failed'), type: 'error' });
     } finally {
       setAddLoading(false);
     }
@@ -330,7 +338,7 @@ export default function VendorBillsScreen() {
                           <button
                             type="button"
                             className="vendor-bill-action-btn vendor-bill-action-btn--writeoff"
-                            onClick={() => handleWriteOff(p)}
+                            onClick={() => setWriteOffTarget(p)}
                           >
                             <Localized id="vendor-bill-action-writeoff">
                               <span>Write Off</span>
@@ -549,6 +557,16 @@ export default function VendorBillsScreen() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={writeOffTarget !== null}
+        onCancel={() => setWriteOffTarget(null)}
+        onConfirm={handleWriteOffConfirmed}
+        variant="danger"
+        loading={writeOffLoading}
+        title={requiredLocalized(l10nRef.current, 'vendor-bills-title-writeoff')}
+        message={requiredLocalized(l10nRef.current, 'vendor-bills-writeoff-confirm')}
+      />
     </div>
   );
 }

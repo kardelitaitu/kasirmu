@@ -120,7 +120,11 @@ describe('KasbonSettlementModal', () => {
   });
 
   it('calls writeOffReceivableScoped when Write Off is clicked and confirmed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // This used to mock window.confirm and click once. The confirmation is now a
+    // ConfirmDialog, so the test drives the real two-step flow: the row button
+    // only OPENS the dialog, and the write-off fires from the dialog's confirm.
+    // That is stronger than the old assertion — it proves the destructive call
+    // cannot happen without the operator confirming.
 
     const wrapped = withFluent(
       <ToastProvider>
@@ -137,6 +141,12 @@ describe('KasbonSettlementModal', () => {
     const writeOffBtns = screen.getAllByRole('button', { name: /Write Off/i });
     expect(writeOffBtns[0]).toBeDefined();
     fireEvent.click(writeOffBtns[0]!);
+
+    // Opening the dialog must not write anything off on its own.
+    expect(receivablesApi.writeOffReceivableScoped).not.toHaveBeenCalled();
+
+    const confirmBtn = await screen.findByTestId('confirm-dialog-confirm');
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(receivablesApi.writeOffReceivableScoped).toHaveBeenCalledWith('mock-token', 'rec-1');

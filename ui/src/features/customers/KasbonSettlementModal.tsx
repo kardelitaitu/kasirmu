@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { formatMoney, minorUnitExponent, type Money } from '@/types/domain';
@@ -39,6 +40,8 @@ export default function KasbonSettlementModal({
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentNote, setPaymentNote] = useState('');
   const [printReceipt, setPrintReceipt] = useState(true);
+  /** The row awaiting write-off confirmation; null closes the dialog. */
+  const [confirmTarget, setConfirmTarget] = useState<Receivable | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [writingOffId, setWritingOffId] = useState<string | null>(null);
 
@@ -155,19 +158,13 @@ export default function KasbonSettlementModal({
     }
   };
 
-  const handleWriteOff = async (r: Receivable) => {
-    const confirmed = window.confirm(
-      l10n.getString(
-        'kasbon-modal-writeoff-confirm',
-        null,
-        'Are you sure you want to write off this debt? This cannot be undone.',
-      ),
-    );
-    if (!confirmed) return;
-
-    setWritingOffId(r.id);
+  // Confirmed through ConfirmDialog (state below) rather than window.confirm,
+  // which renders OS chrome the design system cannot style or localise fully.
+  const handleWriteOffConfirmed = async () => {
+    if (!confirmTarget) return;
+    setWritingOffId(confirmTarget.id);
     try {
-      await writeOffReceivableScoped(sessionToken, r.id);
+      await writeOffReceivableScoped(sessionToken, confirmTarget.id);
       addToast({
         message: l10n.getString('kasbon-toast-writeoff-success', null, 'Receivable written off successfully'),
         type: 'info',
@@ -181,6 +178,7 @@ export default function KasbonSettlementModal({
       });
     } finally {
       setWritingOffId(null);
+      setConfirmTarget(null);
     }
   };
 
@@ -332,7 +330,7 @@ export default function KasbonSettlementModal({
                                 type="button"
                                 className="kasbon-btn-writeoff"
                                 disabled={writingOffId === r.id}
-                                onClick={() => void handleWriteOff(r)}
+                                onClick={() => setConfirmTarget(r)}
                               >
                                 <Localized id="kasbon-modal-action-writeoff">
                                   <span>Write Off</span>
@@ -444,6 +442,20 @@ export default function KasbonSettlementModal({
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        onCancel={() => setConfirmTarget(null)}
+        onConfirm={() => void handleWriteOffConfirmed()}
+        variant="danger"
+        loading={writingOffId !== null}
+        title={l10n.getString('kasbon-modal-writeoff-title', null, 'Write off debt?')}
+        message={l10n.getString(
+          'kasbon-modal-writeoff-confirm',
+          null,
+          'Are you sure you want to write off this debt? This cannot be undone.',
+        )}
+      />
     </div>
   );
 }

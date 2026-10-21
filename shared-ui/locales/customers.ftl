@@ -87,6 +87,7 @@ kasbon-modal-col-actions = Actions
 kasbon-modal-action-pay = Pay
 kasbon-modal-action-writeoff = Write Off
 kasbon-modal-writeoff-confirm = Are you sure you want to write off this debt? This cannot be undone.
+kasbon-modal-writeoff-title = Write off debt?
 kasbon-modal-payment-title = Record Repayment
 kasbon-modal-payment-amount = Amount
 kasbon-modal-payment-method = Payment Method

@@ -82,6 +82,7 @@ kasbon-modal-col-actions = Aksi
 kasbon-modal-action-pay = Bayar
 kasbon-modal-action-writeoff = Hapus Buku
 kasbon-modal-writeoff-confirm = Yakin ingin menghapus buku piutang ini? Tindakan ini tidak dapat dibatalkan.
+kasbon-modal-writeoff-title = Hapus buku piutang?
 kasbon-modal-payment-title = Catat Pembayaran Piutang
 kasbon-modal-payment-amount = Jumlah Pembayaran
 kasbon-modal-payment-method = Metode Pembayaran
