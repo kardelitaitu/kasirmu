@@ -662,6 +662,10 @@ cycle** — `apps/mobile-tauri/src/image_download.rs:231-236` ◦. 10k images = 
 syscalls per cycle. *Fix:* `read_dir` once into a `HashSet` and diff.
 
 **O-M34 · platform/sync — one full JSON serialisation of the backlog per item, plus two copies** —
+✅ **PAID 2026-10-21.** `estimate_item_bytes` replaces the per-item `to_vec`, and the pre-sort
+backlog clone is gone (indexes are sorted with the shared `compare_for_push`, now `pub`). The
+estimate multiplies payload by **6** — the `\u00XX` control-character worst case — not the 2x I
+suggested; 2x would still have under-counted 4480 control chars (27,107 actual vs 8,960).
 `platform/sync/src/lib.rs:157-177` ◦. Corrected in §9: the round-2 wording said "~3 full JSON
 serialisations", which overstates it. What the loop does is clone the backlog for sort (`:157`),
 `serde_json::to_vec(item)` **once** per item to measure size (`:166`), then clone each item into
@@ -3066,3 +3070,52 @@ separate concurrent edits to the same file.
 **The tally this session went 5 copies → 1.** The duplication was recorded in §11AR as the obvious
 follow-up; this is that follow-up, and the net line count went DOWN, which is the usual sign the
 abstraction was earned rather than imposed.
+
+---
+
+## §11AT — O-M34 resolved: the JSON estimate needs 6x, not 2x (2026-10-21)
+
+One Medium finding resolved, and the interesting part is a bound I got wrong.
+
+**The defect.** `build_batches` serialised every item with `serde_json::to_vec` purely to measure
+it, and cloned the whole backlog to sort. Both are gone: `estimate_item_bytes` is a byte scan with
+no allocation, and the order is now a permutation of INDEXES sorted with the shared
+`compare_for_push` (made `pub` for exactly this, so the C49 key still has one definition).
+
+**The bound, and why my first answer was wrong.** I told the lane that a payload can at worst
+double under JSON escaping, so `payload * 2` would be a safe upper bound. That is true only for
+`"` and `\`. **Every other control character becomes a six-byte `\u00XX` escape**, so the real
+worst case is 6x. Measured independently by me, with the final constant in place:
+
+| payload | serialised | estimate | margin |
+|---|---|---|---|
+| 4480 control chars | **27,107** | 27,918 | +811 |
+| 4096 quotes | 8,419 | 25,614 | +17,195 |
+| 4096 backslashes | 8,419 | 25,614 | +17,195 |
+| 4096 ASCII | 4,323 | 25,614 | +21,291 |
+| 4096 UTF-8 bytes | 4,323 | 25,614 | +21,291 |
+
+A 2x bound would have estimated 8,960 against 27,107 actual — a **silent 3x overrun of the 64 KB
+transport ceiling** on any payload carrying control characters. The lane found this by writing the
+never-under test I asked for and watching it fail on its own first draft; my 2x suggestion was in
+the message that asked for that test. Both of us were wrong before the test existed, which is the
+argument for the test.
+
+**The cost, stated plainly:** the estimate is very pessimistic for ordinary text — a 4096-byte
+ASCII payload estimates 25,614, so a 64 KB budget carries roughly a third of the payload it used
+to. That is the price of a bound no payload can beat, and it is the correct direction against a
+body limit. `serde_json` does not escape non-ASCII, so real text is never near 6x; the constant is
+deliberately not tuned per-character because a per-byte scan that is *always* an upper bound is
+worth more than the bytes it wastes.
+
+**A design that had to be abandoned.** The first ordering attempt lifted `order_for_push` onto a
+slice of `None` placeholders and sorted that, so the caller could sort indexes without a backlog
+copy. It cannot work: every slot is `None`, every comparison returns `Equal`, and the permutation
+stays the identity — the batches came out in ARRIVAL order, which the existing
+`build_batches_sorts_by_priority` caught. Sorting indexes directly is the same saving with no such
+trap. The `pub` comparator now carries that story in its doc so the next lane does not retry it.
+
+**Verification:** `cargo test -p platform-sync --lib` = **494 passed, 0 failed**;
+`cargo test -p kasirmu-core --lib` = **3654 passed, 0 failed** (required because `offline.rs` is
+workspace-wide). The never-under test covers empty, small, quotes, backslashes, control characters,
+a long action, a long `last_error` and UTF-8.
