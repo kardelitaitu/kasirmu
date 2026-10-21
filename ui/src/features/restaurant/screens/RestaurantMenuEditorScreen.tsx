@@ -303,6 +303,12 @@ export default function RestaurantMenuEditorScreen({
   const currency = currencyCtx?.currency || 'IDR';
 
   const loadSeqRef = useRef(0);
+  // `allSettled` correctly keeps the last-known items when a read fails, but
+  // nothing recorded that the load FAILED — so on a first load the grid fell
+  // through to "No items in this category yet." with a "New Item" call to
+  // action, and the rail counts read 0. A manager on a busy service read that
+  // as "my menu was wiped". Flag it so the empty state is not a claim.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // Load menu products and categories
   const reloadData = useCallback(async () => {
@@ -311,6 +317,7 @@ export default function RestaurantMenuEditorScreen({
       return;
     }
     const seq = ++loadSeqRef.current;
+    setLoadFailed(false);
     try {
       const [prodsRes, catsRes] = await Promise.allSettled([
         listProductsScoped(sessionToken),
@@ -321,6 +328,7 @@ export default function RestaurantMenuEditorScreen({
       if (prodsRes.status === 'fulfilled') {
         setItems(asArray<ProductDto>(prodsRes.value));
       } else {
+        setLoadFailed(true);
         addToast({
           message: l10nErrorMessage(prodsRes.reason, l10n, 'restaurant-menu-editor-error-load'),
           type: 'error',
@@ -331,6 +339,7 @@ export default function RestaurantMenuEditorScreen({
         const fetchedCats = asArray<CategoryDto>(catsRes.value);
         setCategories(fetchedCats);
       } else {
+        setLoadFailed(true);
         addToast({
           message: l10nErrorMessage(catsRes.reason, l10n, 'restaurant-menu-editor-error-load'),
           type: 'error',
@@ -1680,7 +1689,17 @@ export default function RestaurantMenuEditorScreen({
                 )}
 
                 {/* ── Item Cards List ── */}
-                {processedItems.length === 0 && !draft ? (
+                {processedItems.length === 0 && loadFailed && !draft ? (
+                  // The list is empty because the read failed, not because the
+                  // category is empty. Say so, and never offer "New Item" here.
+                  <div className="restaurant-menu-editor-empty-state">
+                    <p className="restaurant-menu-editor-empty" role="alert">
+                      <Localized id="restaurant-menu-editor-load-failed">
+                        <span>Menu could not be loaded.</span>
+                      </Localized>
+                    </p>
+                  </div>
+                ) : processedItems.length === 0 && !draft ? (
                   <div className="restaurant-menu-editor-empty-state">
                     {searchQuery ? (
                       <>

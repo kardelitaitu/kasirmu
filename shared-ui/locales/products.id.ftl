@@ -38,6 +38,7 @@ restaurant-menu-editor-category-deleted-moved = Kategori dihapus; { $count } ite
 restaurant-menu-editor-save-success = Menu diperbarui
 restaurant-menu-editor-delete-success = Item dihapus
 restaurant-menu-editor-error-load = Gagal memuat menu
+restaurant-menu-editor-load-failed = Menu tidak dapat dimuat.
 restaurant-menu-editor-error-save = Gagal menyimpan menu
 restaurant-menu-editor-error-delete = Gagal menghapus
 restaurant-menu-editor-search-placeholder = Cari menu berdasarkan nama, SKU, atau catatan…

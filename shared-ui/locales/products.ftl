@@ -41,6 +41,7 @@ restaurant-menu-editor-category-deleted-moved = Category deleted; { $count } ite
 restaurant-menu-editor-save-success = Menu updated
 restaurant-menu-editor-delete-success = Item deleted
 restaurant-menu-editor-error-load = Failed to load the menu
+restaurant-menu-editor-load-failed = Menu could not be loaded.
 restaurant-menu-editor-error-save = Failed to save the menu
 restaurant-menu-editor-error-delete = Failed to delete
 restaurant-menu-editor-search-placeholder = Search dishes by name, SKU, or notes…

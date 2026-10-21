@@ -86,6 +86,23 @@ describe('RestaurantMenuEditorScreen', () => {
     vi.mocked(productsApi.deleteCategoryScoped).mockResolvedValue({ affected_products: 1 });
   });
 
+  // A rejected listProductsScoped used to be reported only by an auto-dismissing
+  // toast. `allSettled` correctly kept the previous items, but on a FIRST load
+  // there were none, so the grid fell through to "No items in this category
+  // yet." with a "New Item" call to action — a failed read presented as a fact
+  // about the menu.
+  it('reports a failed menu read instead of claiming the category is empty', async () => {
+    vi.mocked(productsApi.listProductsScoped).mockRejectedValue(new Error('Server offline'));
+
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText(l10nOf('restaurant-menu-editor-load-failed'))).toBeInTheDocument();
+    });
+    // The empty-category claim must not be made on behalf of a failed read.
+    expect(screen.queryByText(l10nOf('restaurant-menu-editor-empty'))).toBeNull();
+  });
+
   it('renders categories and items successfully', async () => {
     await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
