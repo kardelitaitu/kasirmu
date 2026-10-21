@@ -504,6 +504,55 @@ describe('DashboardScreen', () => {
     });
   });
 
+  // A refresh that FAILS must not leave the previous period's figures on screen
+  // as though they described the newly selected range. The catch sets `error`
+  // and the alert does render, but `dailyRevenue`/`topProducts`/`lowStock` are
+  // never cleared and `hasLoaded` stays true — so the KPI row keeps showing the
+  // OLD revenue and "All stock levels are healthy." directly beneath a banner
+  // saying the load failed. Seen 2026-10-19: the range picker stays usable after
+  // first load, so this path is reachable by any user who edits the dates while
+  // the backend is down.
+  it('does not keep the previous range\'s figures visible when a refresh fails', async () => {
+    mockGetDailyRevenue.mockResolvedValue([
+      {
+        date: '2026-07-10', total_minor: 250000, currency: 'USD', sale_count: 5,
+        cogs_minor: 100000, gross_profit_minor: 150000, gross_margin_percent: 60,
+        refund_minor: 0, net_revenue_minor: 250000,
+      },
+    ]);
+    mockGetTopProducts.mockResolvedValue([buildTopProductRow({ name: 'Old Latte' })]);
+    mockGetLowStockAlerts.mockResolvedValue([buildLowStockAlert({ name: 'Old Beans' })]);
+    mockGetCategoryBreakdown.mockResolvedValue([]);
+    mockGetHourlyHeatmap.mockResolvedValue([]);
+    mockGetWeeklyRevenue.mockResolvedValue([]);
+    mockGetMonthlyRevenue.mockResolvedValue([]);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Old Latte')).toBeTruthy());
+    // The healthy-stock line is only rendered when the alert list is EMPTY,
+    // so with one alert present it must be absent here.
+    expect(screen.queryByText('All stock levels are healthy.')).toBeNull();
+
+    // Now the backend goes down and the user applies a different range.
+    mockGetDailyRevenue.mockRejectedValue(new Error('Server offline'));
+    mockGetTopProducts.mockRejectedValue(new Error('Server offline'));
+    mockGetLowStockAlerts.mockRejectedValue(new Error('Server offline'));
+    fireEvent.change(screen.getByLabelText('dashboard-filter-from'), {
+      target: { value: '2026-01-05' },
+    });
+    fireEvent.click(screen.getByLabelText('dashboard-btn-apply'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeTruthy(),
+    );
+
+    // The stale figures must be gone, not merely accompanied by an error.
+    expect(screen.queryByText('Old Latte')).toBeNull();
+    expect(screen.queryByText(/\$2,500\.00/)).toBeNull();
+    // And the empty-state claims must not be made on behalf of a failed read.
+    expect(screen.queryByText('All stock levels are healthy.')).toBeNull();
+  });
+
   it('resets report caches when kasirmu:trimMemory event is dispatched', async () => {
     resolveAllWithDefaults();
     renderScreen();

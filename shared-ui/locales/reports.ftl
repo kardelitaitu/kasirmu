@@ -60,6 +60,7 @@ dashboard-top-product = Top Product
 dashboard-low-stock-alerts = Low Stock Alerts
 dashboard-no-data = No data yet
 dashboard-stock-ok = All stock levels are healthy.
+dashboard-stock-unknown = Stock levels could not be loaded.
 
 # Dashboard — Debt reminders (AR & AP)
 dashboard-debt-reminders = Debt & Credit Reminders

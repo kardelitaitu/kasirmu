@@ -6,6 +6,7 @@ dashboard-top-product = Produk Terlaris
 dashboard-low-stock-alerts = Peringatan Stok Menipis
 dashboard-no-data = Belum ada data
 dashboard-stock-ok = Semua level stok dalam kondisi baik.
+dashboard-stock-unknown = Level stok tidak dapat dimuat.
 
 # Dashboard — Debt reminders (AR & AP)
 dashboard-debt-reminders = Pengingat Piutang & Hutang
