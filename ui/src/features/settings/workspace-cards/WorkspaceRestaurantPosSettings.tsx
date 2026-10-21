@@ -138,9 +138,17 @@ export function WorkspaceRestaurantPosSettings({
       setOriginalsLoaded(true);
     });
     return () => { cancelled = true; };
-    return () => { cancelled = true; };
-    // sessionToken is read at :68 from useWorkspace() at :32. The save path at :125 already lists
-    // it, so the omission here is an inconsistency rather than a design decision.
+    // ⚠️ ONE cleanup, not two. This line used to be duplicated verbatim — the first
+    // `return` made the second unreachable, and nothing in a lint rule or test could see
+    // it because both bodies were identical (removed 2026-10-19).
+    //
+    // The cites here were also wrong: this note said "sessionToken is read at :68 from
+    // useWorkspace() at :32, and the save path at :125 already lists it". Measured:
+    // `sessionToken` is destructured from `useWorkspace()` at the top of the component,
+    // and the save path that uses it is the `setSettingsScoped(sessionToken ?? null, …)`
+    // call — anchored by those two expressions instead of numbers, because all three
+    // numbers pointed at unrelated lines (a hardware-snapshot comment, a `raw === 'true'`
+    // assignment, and nothing at all).
   }, [settings.receipt, originalsLoaded, sessionToken, reloadNonce]);
 
   // ── Save ─────────────────────────────────────────────────────

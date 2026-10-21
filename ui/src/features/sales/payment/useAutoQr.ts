@@ -103,7 +103,7 @@ export function useAutoQr({
   const [autoQr, setAutoQr] = useState<AutoQrState | null>(null);
   const autoIssueSeq = useRef(0);
   // Re-entry guard for the REISSUE only, mirroring the `holdingRef` shape
-  // RetailPosScreen.tsx:1426 and usePosHeldCarts already use.
+  // `openingBillRef` in RetailPosScreen.tsx and `holdingRef` in usePosHeldCarts already use.
   //
   // `handleAutoReissue` incremented `autoIssueSeq` and then awaited the charge
   // with nothing in between, so a double-tap on the expired panel's 'Generate a

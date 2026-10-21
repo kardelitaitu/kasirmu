@@ -981,17 +981,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // `parseMoneyInput` when parsing the OPENING drawer balance (`openingBalance` in
   // handleOpenShift), the CLOSING balance (`closingBalance` in handleConfirmCloseShift)
   // and the manual discount (`discountRpInput`) — all three found by IDENTIFIER, not by
-  // line number. ⚠️ They were cited as numbers :930 / :948 / :1032, then as :1140 /
-  // :1158 / :1242, and every rewrite moved the very lines it was citing: this comment
+  // line number. ⚠️ They were cited first as lines 930 / 948 / 1032, then as 1140 /
+  // 1158 / 1242, and every rewrite moved the very lines it was citing: this comment
   // sits ABOVE all three sites, so each added line shifted them. A number that the act
   // of writing invalidates is not an anchor. The three symbols are unique in this file.
+  // (Those figures are spelled "line N" and NOT ":N" on purpose — a bare colon-number
+  // in a comment IS a live citation to the guard that polices this file, which is how
+  // this note acquired three of its own.)
   // The cause of the original drift: the SKU/barcode block was inserted above the money
   // handlers and pushed them down ~210 lines. `minorUnitExponent` is no longer called
   // here at all — `parseMoneyInput` replaced it, so the name survives only in this
   // comment, which is why nobody re-derived the numbers.
   // The exponent is 0 for IDR and 2 for USD, so a stale currency misreads those amounts
   // by a factor of 100. That is the failure mode the MONEY-02 / MONEY-05 notes protect
-  // against (search "MONEY-02"; cited here as ":902", which is the stock guard) -- they
+  // against (search "MONEY-02"; the old cite pointed at the stock guard) -- they
   // fixed the hardcoded x100 and left the currency itself able to go stale.
   //
   // PINNED, and the two attempts to pin it are worth reading before touching this.
@@ -1384,7 +1387,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // so keystrokes do not refetch, which is correct -- but the token was left out entirely, so
     // opening the customer modal after a hot-swap listed customers with a destroyed session and
     // surfaced the "customers failed" toast. Adding it re-fetches only when the modal is open,
-    // since the early return at :1050 still short-circuits the closed case.
+    // since the effect's OWN opening guard (`if (!showCustomerSearch) … return;`) still
+  // short-circuits the closed case.
   }, [showCustomerSearch, addToast, sessionToken]); // l10n via ref — fetch only when modal opens
 
   // Filter cached customers locally on keystroke — avoids redundant API calls
@@ -1520,7 +1524,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       }
       await deleteHeldCartScoped(sessionToken, cartId);
       setHeldCartId(null);
-      // DROP THE ROW, the same write `handleDeleteHeldCart` makes (:1553).
+      // DROP THE ROW, the same write `handleDeleteHeldCart` makes.
       //
       // The delete above is the commit, and it is the ONLY thing that made this
       // path correct — the round-118 case pins that a rejected delete reports a
@@ -1537,9 +1541,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       //     (`onClickHeldCarts` at :2143; the note said ":2107", now `onRequestClear`) —
       //     no refetch — so the held carts list showed a cart that no
       //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
-      //     `if (!full) return;` (:1474; the note said ":1464", a `} finally {`): no modal
-      //     change, no toast, nothing. A
-      //     dead control with no way for the cashier to learn why.
+      //     `if (!full) return;` in the held-cart resume read: no modal change, no toast,
+      //     nothing. A dead control with no way for the cashier to learn why.
+      //     (Anchored by the guard expression, not a line — every number this sentence
+      //     has ever carried is now something else, and reprinting one would just create
+      //     the next stale cite.)
       //
       // Filtering by id, not by index or by clearing the list: the resumed cart is
       // one row among possibly several, and the others must survive.
@@ -1608,7 +1614,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         const first = held[0];
         if (first) setHeldCartId(first.id);
         // Also seed the list, not just the id. `heldCartsList` drives the reminder
-        // popup's held-cart row (:1817) — the only affordance that tells a cashier
+        // popup's held-cart row (`onClickHeldCarts`) — the only affordance that tells a cashier
         // "there are carts on hold". Setting `heldCartId` alone left the popup
         // claiming there were none until a resume happened to fill the list, so a
         // reloaded till hid the holds it had just fetched.
