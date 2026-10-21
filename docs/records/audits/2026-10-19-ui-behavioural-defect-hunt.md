@@ -594,6 +594,40 @@ banner. With that, both tests fail on the reverted code and pass on the fixed co
 one diagnostic print.** The lesson is not "try harder" — it is that a green kill test is evidence of
 nothing until you have seen it fail, and printing state beats hypothesising about it.
 
+## Round 50: a tri-state the type system already knew about
+
+**The defect.** `RetailPosScreen` read the active shift with
+`getActiveShiftScoped(...).then(...).catch(() => setActiveShift(null))`. The catch collapsed a FAILED
+read into the same value a successful "no shift open" read produces. Two consequences:
+
+1. `RetailHeader` printed **"No shift"** — an assertion of absence made from a read that never answered.
+2. `handlePay` guards on `!activeShift` and told the cashier **"open a shift first"** — for the same
+   non-answer. On a till, that is the moment the queue stops.
+
+The fix adds `shiftLoadFailed` as a separate boolean and lets the header say "Shift unknown".
+
+**What made this one worth the round: the tests were lying in the other direction.** Adding the flag
+broke a passing test named *"displays "No shift" badge when no active shift"*, whose mock was:
+
+```ts
+getActiveShiftScoped: vi.fn(() => Promise.reject(new Error('no shift')))
+```
+
+That mock had been teaching every test in the suite the wrong contract. I checked the real one instead
+of adjusting my code to the mock:
+
+- `crates/kasirmu-bridge/src/shifts.rs:346` — `Result<Option<ShiftDto>, BridgeError>`, answering
+  `Ok(None)` when nothing is open.
+- `ui/src/api/shifts.ts:48` — `Promise<ShiftDto | null>`.
+
+So a rejection was never "no shift"; it was a failure, and the suite had been pinning the defect in
+place. A second suite (`RetailPosScreenInteractions`) carried the same mock, and its own comment
+recorded the damage: an F1 reachability test was abandoned because `handlePay` early-returned on the
+open-shift guard (line 894-896). Both mocks now resolve `null`, and that explanation no longer applies.
+
+**The honest lesson**: a test that fails when you fix a bug is not always a regression — sometimes it is
+the bug's alibi. Read the contract at both ends before deciding which side is wrong.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
