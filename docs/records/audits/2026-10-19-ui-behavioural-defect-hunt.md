@@ -291,6 +291,35 @@ candidates. **Four were verified and fixed; three were refuted on reading.**
 - **"The terminal rollback restores a stale snapshot."** Reported, then read: the closure snapshot is the
   list as of the click, which is what a rollback of that click should restore.
 
+## Round 41: six fixes, and one shape that keeps recurring
+
+All six came from the previous round's candidate lists, each verified before touching code:
+
+- **The restore tab claimed no backups exist when the list read never answered.** Its own
+  `RestoreState.status` field documents the rule in a doc comment — "RestoreStatus -> the read ANSWERED /
+  undefined -> it never answered; it FAILED … only the first may be rendered as a clean state" — and the
+  `candidates` field right above it violated exactly that. Made nullable, with an unknown branch, and a
+  kill test that fails without it.
+- **A category with no products was invisible in every chip bar.** `useProducts` fetched
+  `categoryMeta`, exported it, and derived `categories` from the product list alone — so a category the
+  merchant had just created could not be selected anywhere.
+- **A locally chosen grid view reverted to text on every reload.** `raw['retail_view_mode'] === 'grid' ?
+  'grid' : 'text'` collapsed *absent* into *'text'*, then wrote that default over the localStorage copy
+  that held the user's actual choice.
+- **The Settings Revert baseline could latch the fallback currency.** `initialized` closes the snapshot
+  on the first pass, so a currency read landing later could not repair it.
+- Plus the two hook fixes from the first half of the round (store timezone on store switch, missing token
+  read as "no terminals").
+
+**The shape that keeps recurring is worth naming.** Of the ~45 defects fixed this campaign, the largest
+single family is *a failure collapsed into an empty or default value* — `[]`, `null`, `'text'`,
+`false` — rendered as a clean state. It has now appeared in restore candidates, retail view mode, stock
+count catalogue, warehouse pickers, terminal status, bundle list, customers search and store timezone.
+The fix is always the same and it is always cheap: **carry a third value that means "did not answer", and
+let the render branch on it.** Four of those screens already had the correct pattern in a sibling field
+or a sibling file, which is the useful signal: when a field's doc comment explains the unknown state, the
+field beside it usually needs the same treatment.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
