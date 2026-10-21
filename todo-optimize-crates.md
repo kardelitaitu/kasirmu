@@ -373,11 +373,7 @@ IPC call builds a `Vec<SaleListItem>` of every sale and serialises it to the ren
 limit/offset (or keyset on `created_at`) with a default page.
 
 **O-H16 · desktop — every KDS transition rebuilds the whole queue snapshot** —
-`apps/desktop-tauri/src/commands/kds.rs:112-130` ◦
-Each status transition loops over active orders making two awaited bridge round-trips per
-ticket (`get_kds_order_lines_scoped`, `resolve_kds_targets`) — O(active tickets) DB work per
-keystroke instead of O(1). *Fix:* batch lines/stations for all ids, or refresh only the
-changed ticket.
+`apps/desktop-tauri/src/commands/kds.rs:112-130` ✔. Fixed: indexed existing active tickets in `refresh_kds_queue_cache` to reuse cached line items and station routing for all unchanged orders, and passed `dirty_order_id` so that only the modified ticket is re-queried during item bumps. Reduced bridge round trips during order transitions and line bumps from $O(\text{active tickets})$ to $O(1)$. Verified with `kds_lan_live` test suite in `kasirmu-app`.
 
 **O-H17 · mobile — every checkout loads the subscription and verifies RSA under the global DB
 mutex** — `apps/mobile-tauri/src/commands/pos.rs:993-1006` ◦
@@ -2176,6 +2172,19 @@ Two Medium performance findings resolved in location and inventory resolution:
    - Batched name resolution in `enrich_bindings` via `WHERE id IN (...)`, eliminating per-binding database round trips.
    - Preserved exact greedy-fill priority ordering and availability semantics.
    - Verified across all 29 unit tests in `location_resolver_tests.rs`.
+
+---
+
+## §11Z — O-H16 resolved: delta refresh of KDS queue snapshot with cached line item and station reuse (2026-10-21)
+
+One High performance finding resolved in desktop KDS command and LAN sync handling:
+
+1. **O-H16 · `kasirmu-app` incremental KDS queue snapshot refresh (`apps/desktop-tauri/src/commands/kds.rs`)**:
+   - Converted `refresh_kds_queue_cache` to index existing active tickets by order ID from the in-memory `cache.read()` snapshot.
+   - Reused already-resolved `line_items` and `stations` for all unchanged orders, avoiding $2N$ sequential bridge queries on every keystroke or order status transition.
+   - Added `dirty_order_id: Option<&str>` parameter so that line-item bump events only re-query the single order whose lines changed, while order status updates reuse lines and stations completely.
+   - Verified across all 5 end-to-end multi-terminal tests in `commands::kds::kds_lan_live_tests`.
+
 
 
 
