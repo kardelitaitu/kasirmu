@@ -1,7 +1,7 @@
 // Vite React Refresh: force full remount on HMR to prevent stale
 // CurrencyContext mismatch.
 /// @refresh reset
-import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
 import { getDefaultCurrency, getDefaultCurrencyScoped, setDefaultCurrency as setDefaultCurrencyApi } from '@/api/currency';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -99,8 +99,20 @@ export function CurrencyProvider({ children, fallback = 'USD' }: CurrencyProvide
   // cleanup does for itself.
   useEffect(() => () => { refreshSeq.current += 1; }, []);
 
+  // MEMOISED. Without it every provider render mints a new context object, and a
+  // consumer that legitimately depends on the context itself — PosScreen's
+  // store-currency effect does, because its guard is `!currencyCtx.loading` —
+  // re-runs on every unrelated render of this subtree. That effect calls
+  // `getStoreSettingsScoped`, so the cost was a store-settings IPC round-trip per
+  // render for the whole boot window. The four members are all stable (a string, a
+  // boolean and two useCallback identities), so this changes nothing else.
+  const value = useMemo(
+    () => ({ currency, setCurrency, refresh, loading }),
+    [currency, setCurrency, refresh, loading],
+  );
+
   return (
-    <CurrencyContext.Provider value={{ currency, setCurrency, refresh, loading }}>
+    <CurrencyContext.Provider value={value}>
       {children}
     </CurrencyContext.Provider>
   );
