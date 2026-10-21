@@ -1481,6 +1481,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         // local `let` still passed. The ref is therefore a defence against the deferred
         // case that the test suite cannot reproduce, not a behaviour it proves; say so
         // rather than implying the test covers it.
+        // CLEAR BEFORE, never reuse. The ref is assigned only by the updater that
+        // actually ran, so a DEFERRED updater leaves the PREVIOUS call's array in place —
+        // and `?? []` does not catch that, because a stale array is not null. Without the
+        // reset, a deferred rename persists the earlier rename's list and a deferred
+        // delete persists whatever the last rename wrote.
+        sectionsResultRef.current = null;
         setSections((prev) => {
           const next = prev.map((s) => (s === oldName ? trimmed : s));
           sectionsResultRef.current = next;
@@ -1547,6 +1553,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       // dropped by this replacement. `check-state-closure-after-await.py` reports this
       // line as its second candidate. Carried out through the same ref for the same
       // reason: see the local-`let` hazard noted in handleRenameSection.
+      sectionsResultRef.current = null;
       setSections((prev) => {
         const next = prev.filter((s) => s !== secName);
         sectionsResultRef.current = next;

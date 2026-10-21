@@ -58,8 +58,12 @@ export function WorkspaceRestaurantPosSettings({
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<Record<string, unknown>>({ tableManagement, courseFiring });
   // Keys the user has edited while the courseFiring load is in flight —
-  // the load must never silently revert them (draft-overwrite race).
-  const touchedRef = useRef<Set<'courseFiring'>>(new Set());
+  // the load must never silently revert them (draft-overwrite race). BOTH keys are
+  // tracked: `tableManagement` is seeded eagerly from `settings.receipt` before the
+  // courseFiring read settles, so an operator who flips Table Layout during that read
+  // would otherwise have the toggle reverted AND written into originalsRef as clean,
+  // leaving Save permanently disabled with the switch visibly ON.
+  const touchedRef = useRef<Set<'courseFiring' | 'tableManagement'>>(new Set());
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
   // The session the originals above were seeded for; replaces originalsLoaded as the fetch guard
   // so a store switch re-seeds. originalsLoaded stays for the `dirty` memo (its `useMemo`
@@ -126,7 +130,17 @@ export function WorkspaceRestaurantPosSettings({
       // `null` = never written, so the default applies. That is a real answer.
       const loaded = raw === 'true';
       if (!touchedRef.current.has('courseFiring')) setCourseFiring(loaded);
-      originalsRef.current = { tableManagement: settings.receipt.showTableNumber, courseFiring: loaded };
+      // `tableManagement` is seeded from `settings.receipt` BEFORE this read even starts,
+      // so writing that value here as the ORIGINAL declares "unchanged" for a toggle the
+      // operator may have flipped in the meantime. That left the switch visibly ON while
+      // `dirty` read false — Save disabled, the edit silently pending. Keep whatever the
+      // operator touched; only seed the original for a toggle they never moved.
+      originalsRef.current = {
+        tableManagement: touchedRef.current.has('tableManagement')
+          ? originalsRef.current['tableManagement']
+          : settings.receipt.showTableNumber,
+        courseFiring: loaded,
+      };
       settle();
       setLoadFailed(false);
       setOriginalsLoaded(true);
@@ -254,7 +268,10 @@ export function WorkspaceRestaurantPosSettings({
                   role="switch"
                   checked={tableManagement}
                   aria-checked={tableManagement}
-                  onChange={(e) => setTableManagement(e.target.checked)}
+                  onChange={(e) => {
+                  touchedRef.current.add('tableManagement');
+                  setTableManagement(e.target.checked);
+                }}
                 />
                 <span className="settings-toggle-slider" />
               </span>
