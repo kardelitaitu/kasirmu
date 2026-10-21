@@ -216,6 +216,35 @@ That is now the fourth finding of this shape — *"X does not refresh/clear Y"* 
 read what X actually calls. The rule I keep re-deriving: **read the callee before believing a claim about
 what a call does not do.**
 
+## Round 39: four more, one refused — and two `useState`/`useRef` twins
+
+- **A login/logout reset that skipped its own documented path.** The note on
+  `handleSetActiveInstance` says the reset effect "routes through handleSetActiveInstance and clears
+  it". It did not — the reset called the raw `setActiveInstance`, so `lastWorkspace` survived a logout and
+  the picker highlighted the previous account's card. **Two comments in this campaign have now described
+  clearing that the code never performed** (this one and the receipts `hwInitializedRef`). A comment
+  asserting a clear is worth checking exactly like a comment asserting a fetch.
+- **The branch-location inspector could re-send a saved payload.** `persist` cleared the *state*
+  (`setDraft(null)`) but not the **render-mirrored ref** (`draftRef.current`), and `onChange` is the only
+  thing that rebuilds the draft — so the next blur re-entered the loop with the just-saved snapshot and
+  repeated the whole mutation. `queuedRef` is now reset with it.
+- **The activation form forgot a network failure.** `success === false` set a persistent `errorMsg`; a
+  *thrown* activation only raised a toast (auto-dismissing), so an unreachable licence server left the
+  form looking like a submit that merely re-enabled its button. Both now persist.
+- **Device pairing started twice per tap.** The button's onClick fetched while `pairingLoading` was still
+  `false` (the state update had not rendered), so the effect that owns the fetch fired again. Worse on
+  failure: the click-time copy set `pairingError` and the effect's copy cleared it, hiding the error and
+  minting a second live pairing code.
+- **The customers search claimed a negative it never learned.** `runSearch`'s catch emptied the rows but
+  not `searchTotal`, so a failed search rendered "No customers match your search." and could print
+  "Showing 0 of 120 customers" from a total the failed read never touched.
+
+### Refused
+
+- **"The PIN lockout ref is never reset."** It is reset to 0 on both lockout paths — the immediate branch
+  and the timer callback. The agent looked at the assignment inside the error handler and did not read
+  the unlock effect 13 lines below.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
