@@ -2313,7 +2313,7 @@ popularity tests and all 48 `complete_sale` tests green, including the two new o
 
 ---
 
-## §11AD — the temp-dir "test failure" was a machine setting, not a defect (2026-10-21)
+## §11AD — O-H01 verification, part 2: the temp-dir "test failure" was a machine setting (2026-10-21)
 
 While verifying O-H01, `concurrent_complete_sale_serialized_by_begin_immediate` failed
 deterministically with `Os { code: 5, PermissionDenied }` at its first line. It was NOT the
