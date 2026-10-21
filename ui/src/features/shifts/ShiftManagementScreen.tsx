@@ -159,9 +159,9 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
         setReportUnknown(false);
       } else {
         // A refusal is an expected outcome, not a malfunction:
-        // crates/kasirmu-core/src/db/shifts.rs:382-392 answers NotFound when the
-        // shift row is gone, and the bridge passes that through
-        // (crates/kasirmu-bridge/src/shifts.rs:462-483). It is still not an
+        // `Store::get_shift_report` in crates/kasirmu-core/src/db/shifts.rs answers NotFound when
+        // the shift row is gone, and the bridge passes that through
+        // (`get_shift_report_scoped` in crates/kasirmu-bridge/src/shifts.rs). It is still not an
         // answer about the drawer, so it becomes `unknown` rather than `null`.
         setShiftReport(null);
         setReportUnknown(true);

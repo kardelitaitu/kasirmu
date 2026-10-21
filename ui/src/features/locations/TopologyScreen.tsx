@@ -172,10 +172,10 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   }, []);
   // Determine save permission client-side, on the SAME key the write commands
   // authorize with: `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE)
-  // — every topology mutation gate checks it (`kasirmu-bridge` topology
-  // commands.rs:45 capability probe, :79 authorize_topology_write, :255
-  // pin_topology_revision, :479 apply path). This block used to test
-  // `staff:update`, a key the Manager preset carries (rbac_presets.rs:75) and
+  // — every topology mutation gate checks it: `can_save_topology` (the
+  // capability probe), `authorize_topology_write`, and the pin/apply paths, all in
+  // apps/desktop-tauri/src/commands/topology/commands.rs. This block used to test
+  // `staff:update`, a key the Manager preset carries and
   // the topology commands do NOT accept — so a manager got an enabled Apply
   // the kernel always refused (the reachable path: `#/settings/topology` is
   // gated by role, `settings/register.tsx:10` requiredRole 'manager', and
@@ -183,7 +183,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   //
   // `hasGrantedPermission` mirrors the backend matcher (exact / `*` /
   // `<domain>:*`), which is what keeps Owner — whose preset grants only
-  // `["*"]` (rbac_presets.rs:46) — enabled. A raw
+  // the `["*"]` wildcard in rbac_presets.rs — enabled. A raw
   // `perms.includes('topology:write')` would lock Owner out of their own
   // screen, which is why the helper is mandatory here.
   //
