@@ -165,6 +165,34 @@ to look at what the DOM actually contains.
 
 Both landed with kill tests verified in both directions (fix removed → red, restored → green).
 
+## Round 37, second pass: four more from fresh areas
+
+The verified candidates were exhausted, so three new hunts went into areas not yet covered (sales payment
++ cart, restaurant screens, locations + setup). Twelve candidates came back; **four were verified and
+fixed**, and two were rejected on reading.
+
+- **A receipts Retry that could not clear its own guard.** The banner's comment says "its guard has to be
+  cleared too" — and the line was simply missing: `hw.reload()` re-read the profile, but the seeding
+  effect still returned early on the one-shot ref, so `hw.loadFailed` cleared while the printer fields
+  kept failure-era values and Save stayed disabled **for the rest of the session**. The clearest case yet
+  of a comment describing an intent the code never carried out.
+- **A stale online count printed over an error.** `TerminalStatusPanel` gates its *list* on `error` but
+  not its *header*, so a failed 30 s poll printed "N / M online" from the last good read directly above
+  the line saying the read failed.
+- **Every Compare click ran the comparison twice.** `openCompare` fetched, and the re-derive effect
+  watching the same two pieces of state fetched again.
+- Verified and fixed earlier in the round: the shifts stacked-card and the stock-count catalogue alert.
+
+### Rejected on reading
+
+- **"A 100% discount can settle a zero-amount sale."** The guard really is object-truthiness
+  (`if (!total)`), which a zero `Money` object never fails — but the claim needs the cart to reach total
+  0, and a cart cannot: the discount input's Apply button is disabled above 100 *and* below 1, and
+  `discounted` returns `subtotal` unchanged when `discountPercent <= 0`. With at least one line the
+  total is always ≥ 1. Nothing to fix.
+- **The "Pay Later over-limit warning can never fire"** chain required a zero-total cart for the same
+  reason, plus an unproven double-charge path through the open-bill modal.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
