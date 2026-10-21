@@ -226,6 +226,20 @@ const { sessionToken: rawToken } = useWorkspace();
     }
   }, [dataset, columnOrder, selectedCols, startDate, endDate, dsDef, sessionToken, page]);
 
+  // PAGING RE-RUNS THE REPORT. `page` is in `runReport`'s dependencies and it builds the
+  // request's `offset`, but nothing called it when the page changed — Next/Prev only ran
+  // `setPage`. The pager therefore read "Page 2" over page 1's rows (and Prev showed
+  // page 1 while the offset still pointed at row 1000). Guarded on `result` so changing
+  // the page before any run does nothing, and on the previous page so the first run is
+  // not repeated.
+  const lastPagedRef = useRef(page);
+  useEffect(() => {
+    if (lastPagedRef.current === page) return;
+    lastPagedRef.current = page;
+    if (!result) return;
+    void runReport();
+  }, [page, result, runReport]);
+
   const exportCsv = useCallback(() => {
     if (!result || result.rows.length === 0) return;
     const csv = buildCsv(result.columns, result.rows);
