@@ -152,19 +152,29 @@ const { sessionToken: rawToken } = useWorkspace();
   const [result, setResult] = useState<MenuEngineeringResult | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
+  // A GENERATION GUARD, like SalesReportScreen's. The date re-seed effect above flips the
+  // window from local `isoDaysAgo(30)` to `isoDaysAgo(30, storeTz)` as soon as the store
+  // timezone resolves, so on mount TWO fetches are in flight with DIFFERENT windows — and
+  // without a guard the LAST one to resolve wins, which may be the stale local-time one.
+  // The table would then show a window the date picker does not name.
+  const fetchSeqRef = useRef(0);
+
   const fetchData = useCallback(() => {
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
 
     getMenuEngineering(startDate, endDate, sessionToken)
       .then((res) => {
+        if (seq !== fetchSeqRef.current) return;
         setResult(res);
       })
       .catch((e) => {
+        if (seq !== fetchSeqRef.current) return;
         setError(e.message ?? String(e));
       })
       .finally(() => {
-        setLoading(false);
+        if (seq === fetchSeqRef.current) setLoading(false);
       });
   }, [startDate, endDate, sessionToken]);
 
