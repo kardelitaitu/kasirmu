@@ -15,10 +15,16 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 34 | **32** |
+| Medium | 66 | 35 | **31** |
 | Low | 23 | 5 | **18** |
 | Test (O-T) | 16 | 4 | **12** |
-| **Total** | **131** | **69** | **62** |
+| **Total** | **131** | **70** | **61** |
+
+**Updated 2026-10-21 (round 5).** O-M34 closed. The `platform/sync` Medium cluster it belonged
+to was ALREADY complete — O-M35 through O-M39 all said "Fixed:" in their own text and I verified
+three of them against symbols in the tree (`DEFAULT_MAX_OUTBOX_BATCH_ITEMS`, `get_last_synced_at`,
+`DEFAULT_CRL_POLL_INTERVAL_SECS`). The ledger was accurate; my earlier reading of that block as
+"five stale entries" was wrong, and the recount script agrees with the doc.
 
 **THE HIGH TIER IS EMPTY as of 2026-10-21.** All 26 High findings are closed: 21 fixed, 3 verified
 already paid by other lanes, 2 moot because their target files were deleted.
