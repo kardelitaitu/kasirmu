@@ -101,10 +101,10 @@ export function CloseShiftConfirm({
               // not required, so the keystroke that should insert a newline committed
               // the action instead. Same guard the POS hotkey handler uses
               // (PosScreen/RetailPosScreen via isEditableTarget).
-              // AND `!closingShift` — the guard the CONFIRM button below carries. That
-              // button starts at :204 and the guard is `closingShift ||` at :209
-              // (:192-193, which this note used to cite, is the CANCEL button's markup —
-              // re-measured 2026-10-19). `closingShift` is set the moment the hook starts
+              // AND `!closingShift` — the guard the CONFIRM button below carries, as
+              // `closingShift || …` inside its `disabled`. (Anchored by that expression: the
+              // line numbers this note has carried all pointed elsewhere, most recently at the
+              // CANCEL button's markup.) `closingShift` is set the moment the hook starts
               // its write and cleared only in its `finally`, so without this a cashier who
               // pressed Enter while the dialog read "Closing…" issued a SECOND
               // `closeShiftScoped` while the first was still in flight. Closing a shift is

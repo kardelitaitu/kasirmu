@@ -521,7 +521,8 @@ export default function EodReportScreen() {
       // same filter below, with a comment saying so. The CSV omitted it, which made
       // the one export a restaurant hands its accountant the only surface that did
       // not reconcile the drawer. The data was already in scope: the parent derives
-      // `todayClosed` for print at :429, and this reuses closedShiftsOnStoreDay so
+      // `todayClosed` for print (the parent's `closedShiftsOnStoreDay` derivation), and this
+      // reuses the same call so
       // the CSV cannot reconcile a different set of drawers than the sheet.
       const closed = closedShiftsOnStoreDay(shiftsRef.current, storeTz);
       if (closed.length > 0) {

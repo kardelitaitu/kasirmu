@@ -1019,7 +1019,8 @@ retryCurrencyLoad,
 
       try {
         // ⚠️ DINE-IN ONLY. The cart panel renders the Table number field for the
-        // restaurant POS on EVERY order type (CartPanel.tsx:735-743 — table capture
+        // restaurant POS on EVERY order type (the `showTableNumberSetting || activeWorkspace ===
+  // 'restaurant-pos'` gate on CartPanel's context row — table capture
         // "does not depend on a setting"), so ringing up a TAKEAWAY with a number
         // left in that field used to claim a real table for the sale: measured live
         // as `assign_table_order_scoped { tableId: 'table-01', … }`, after which
@@ -1395,7 +1396,7 @@ retryCurrencyLoad,
         const trimmedName = customerName.trim();
         // ⚠️ DINE-IN ONLY, the same guard the table CLAIM (206462b4d) and RELEASE
         // (035d1d01b) had to gain. The cart panel renders the Table field for the
-        // restaurant POS on every order type (CartPanel.tsx:735-743), so a stray
+        // restaurant POS on every order type (the same context-row gate as above), so a stray
         // number there reached this path and was written into the saved cart_data
         // AND the tab's label. Measured: a takeaway tab persisted
         // `{"discountPercent":0,"tableNumber":"T99","orderType":"takeaway"}` — a

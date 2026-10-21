@@ -1186,8 +1186,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // hold SUCCEEDED — the original tab still holds every line and a new tab now
           // holds the same remaining ones, which is the documented, hand-resolvable
           // duplicate the create-first order trades for not losing the tab. But
-          // loadOpenBills() sits on the success path at :1169 (re-measured 2026-10-19; this
-          // note used to cite line 995), so until now the list
+          // loadOpenBills() sits on the success path (the bare `loadOpenBills();` call just
+          // above this comment), so until the branch below re-read it the list
           // was never re-read and the screen kept showing ONE bill over data that held
           // TWO. The operator could not see, select, or settle the duplicate — the
           // "recoverable" mess was recoverable only by someone with database access.
@@ -1534,7 +1534,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       });
     } catch (err) {
       // HALF-COMMITTED — and this is the branch where it matters most, because the
-      // kitchen has ALREADY been told to cook (:1240-1243). If the hold succeeded and
+      // kitchen has ALREADY been told to cook (the chit/KDS calls in
+      // handleDispatchKitchenDelta). If the hold succeeded and
       // only the delete of the previous tab failed, food is being prepared while
       // loadOpenBills() on the success path (this note
       // used to cite line 1259) left the bill list showing the

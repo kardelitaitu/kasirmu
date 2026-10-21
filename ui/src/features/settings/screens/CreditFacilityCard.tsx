@@ -31,7 +31,8 @@
  *   time. `is_credit_enabled` is still called only by the getter that returns
  *   it, and `get_credit_max_limit` likewise, so a ceiling set here is
  *   **advisory**: the charge modal offers the `credit` tender unconditionally
- *   (gated only on a customer name, PaymentModal.tsx:1066) and will complete a
+ *   (gated only on `method === 'credit' && customerName.trim()` in PaymentModal) and
+ *   will complete a
  *   credit sale that exceeds this number.
  *
  *   That is a deliberate stop, not an oversight. Enforcing the limit changes
