@@ -411,7 +411,13 @@ proportionally longer. *Fix:* resolve all SKUs in one `WHERE sku = ANY($2)` befo
 loop.
 
 **O-H12 · kasirmu-api — the products endpoint is unbounded with a correlated subquery per
-row** — `crates/kasirmu-api/src/pg/products.rs:312` ◦ — **RE-ANCHORED 2026-10-21:**
+row** — ✅ **PAID 2026-10-21, both halves.** `list_products_page` does keyset paging on
+`(name, sku)` with `DEFAULT_PRODUCT_PAGE_LIMIT = 100` / `MAX_PRODUCT_PAGE_LIMIT = 500`, and the
+reply ALWAYS carries `has_more` + `next_after` (derived by fetching one row PAST the page, not
+by `len == limit`). The correlated subquery is replaced by
+`LEFT JOIN LATERAL (...) ON TRUE` — a grouped join was deliberately rejected because it has no
+`item_id` predicate and would aggregate the whole table per page on a catalogue walk.
+`crates/kasirmu-api/src/pg/products.rs:312` ◦ — **RE-ANCHORED 2026-10-21:**
 `pg.rs:1332-1345` no longer exists after the `pg/` split; `list_products` is now
 `pg/products.rs:312` and still takes no limit/bound parameter, and the file's own comment at
 `:181` says so in as many words ("`list_products` has no LIMIT"). Re-verified live.
@@ -2756,3 +2762,55 @@ properties that make it correct — placeholders exactly `$1..$N` with no gaps a
 
 **Statement count is not directly measured** either: the crate has no counting seam and adding one
 needs a driver change. O(chunks) is pinned as a pure function of the chunk constant instead.
+
+---
+
+## §11AN — O-H12 resolved: keyset product paging, and a lateral aggregate that beats my own suggestion (2026-10-21)
+
+One High finding resolved, both halves, and a design decision that was better than the one I specified.
+
+**Half 1 — the bound.** `GET /api/v1/products` had no LIMIT. It now calls `list_products_page`
+with keyset paging on `(name, sku)` and `DEFAULT_PRODUCT_PAGE_LIMIT = 100` /
+`MAX_PRODUCT_PAGE_LIMIT = 500` (a request above the ceiling is CLAMPED, not rejected). Two
+details make it honest rather than merely bounded:
+
+- **`has_more` is derived by fetching one row PAST the page**, not by `products.len() == limit`.
+  The naive form reports "more" on a catalogue of exactly N x limit products, sending clients on a
+  phantom round trip.
+- **The reply ALWAYS states `has_more` and `next_after`**, including the complete case. A bounded
+  response is never mistakable for a complete one — which is what the task meant by "do not
+  silently truncate".
+
+Keyset rather than OFFSET because the catalogue changes while a client walks it. The cursor is the
+SKU, but the SQL compares the full `(name, sku)` tuple resolved in-transaction, so no delimiter
+token exists to be corrupted by a SKU that contains it.
+
+**Half 2 — the subquery, and where I was wrong.** I suggested a grouped `LEFT JOIN`. The agent did
+`LEFT JOIN LATERAL (SELECT true AS ss_has_rows, SUM(ss.qty) FROM stock_summary WHERE item_id =
+p.id) ON TRUE` instead, and the reason is sound: a grouped join has **no `item_id` predicate**, so
+PostgreSQL may aggregate `stock_summary` for the entire table before serving page 1 — a catalogue
+walk would then cost N x a full scan, i.e. **worse than the correlated subquery it replaces**. The
+lateral keeps the subquery's per-row index lookup and removes only the re-execution penalty. My
+suggestion would have been a regression, and it was refused with the reasoning stated.
+
+Row multiplication is impossible either way: `stock_summary` is `PRIMARY KEY (item_id, location_id)`
+(migrations `20260813_init.pg.sql:2808-2815`), so a bare join returns one row per LOCATION; the
+lateral's aggregate collapses to exactly one row per outer row. `inventory` is
+`PRIMARY KEY (product_id)` (`:2782-2789`), so its join was already safe. `COALESCE(sk.ss_qty,
+i.qty)` preserves the fallback exactly — an aggregate over zero rows emits one all-NULL row, so a
+product with no summary survives and still reports `inventory.qty`. Which qty wins is decided in
+one pure `product_stock_qty`, testable without a database.
+
+**The guard was kill-tested, and my first attempt at it was invalid.**
+`product_select_has_no_correlated_stock_subquery` asserts four properties on the projection text.
+My first mutation only wrapped the COALESCE argument and left `sk.ss_qty` intact — the test passed
+because the projection was still correct. Restoring the EXACT old subquery text made it fail with
+"the per-row SUM(stock_summary.qty) subquery is back". **The test is real; my probe was wrong**, and
+the distinction matters because a guard that only looks right is how a revert ships unnoticed.
+
+**Not verified: execution.** No PostgreSQL on this machine, so the new SQL has never been sent to a
+server. Three integration tests are written and gated behind the existing `pg-tests` ignore pattern;
+they report `ignored`, not pass. The pure tests that DID run: `several_stock_summary_rows_fold_
+into_one_total`, `no_stock_summary_rows_falls_back_to_the_inventory_aggregate`,
+`product_select_has_no_correlated_stock_subquery`, `stock_aggregate_is_scoped_to_the_current_row`,
+plus two route-contract tests. `cargo test -p kasirmu-api --lib` = **345 passed, 0 failed, 14 ignored**.
