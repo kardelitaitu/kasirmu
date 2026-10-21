@@ -4,6 +4,14 @@ last audited 25-07-26 by RSA-Agent (modules-sales slice A: repository deep read)
 crate: modules-sales | status: SAFE | lint: CLEAN
 findings: MSL-1 FIXED — get_sale now fails closed on an unrecognized stored status (SalesError::validation; the previous unwrap_or(Pending) turned a corrupted status into an editable pending sale): a corrupted status string becomes an editable pending sale that can be transitioned and re-processed; contrast foundation's fail-closed from_stored_str (returns None). Proposed: return SalesError::validation on unrecognized status (use foundation SaleStatus::from_stored_str). Also note the write/read asymmetry: status stored via serde_json to_string then trim_quotes, read via re-quote — works but obscures intent. Otherwise clean: all SQL parameterized, currency parse fails closed, legacy-row column defaults documented, update_sale_status bumps version, lines ordered by position, tx-scoped inserts
 next: none | perf: prepared statements per call
+O-L22 HALF DONE: the write path no longer round-trips the status through
+serde_json::to_string + trim_matches('"') — create_sale_tx and update_sale_status
+both store SaleStatus::as_stored_str(), and repository_tests proves byte equality
+with the retired serde path for every variant. The SECOND clause (INSERT re-prepared
+per line) is NOT fixed and must stay open: NamespacedStore/Namespace exposes no
+check-then-prepare_cached API, so caching these INSERTs would route them through
+raw Connection::prepare_cached and skip the P3.2 check_statement ownership guard
+on the write path. Caching is deferred to a Namespace method that checks first.
 MSL-1 is CLOSED: get_sale fails closed on an unrecognised stored status via
 SaleStatus::from_stored_str(&status_str).ok_or_else(..) at repository.rs:83, verified
 2026-10-04. The residual row.get(..).unwrap_or(..) calls on the money and
@@ -177,9 +185,23 @@ impl<'a> SalesRepository<'a> {
 
     /// Insert a new sale and its line items inside a transaction.
     pub fn create_sale_tx(&self, tx: &Transaction, sale: &Sale) -> Result<(), SalesError> {
-        let status_str = serde_json::to_string(&sale.status)?
-            .trim_matches('"')
-            .to_string();
+        // O-L22 (first clause only): the stored status is the enum's own
+        // canonical spelling. The previous path round-tripped through
+        // `serde_json::to_string` and then stripped the JSON quotes
+        // (`"pending"` -> `pending`); `as_stored_str()` yields the same bytes
+        // without an allocation or a serialization error, and
+        // `repository_tests::stored_status_string_matches_pre_ol22_serde_path`
+        // proves the two are identical for every variant.
+        //
+        // O-L22's second clause: the INSERTs run from the connection's
+        // prepared-statement cache, but through `Namespace`, never raw
+        // `tx.prepare_cached`. Raw `Connection::prepare_cached` knows nothing
+        // about namespaces -- it would drop `check_statement` and with it the
+        // P3.2 ownership guard (that version was written, caught and reverted).
+        // `Namespace::prepare_cached`/`execute_cached` run the check on EVERY
+        // call, including on a cache hit, so the cache saves the compile and
+        // never the guard.
+        let status_str = sale.status.as_stored_str();
         // A transaction is a property of the connection, so a store built over
         // the passed `tx` writes inside the caller's transaction while still
         // running the namespace check.
@@ -188,7 +210,7 @@ impl<'a> SalesRepository<'a> {
             OWNER,
             Grants::from_manifest_json(OWNER, MANIFEST),
         );
-        ns.own().execute(
+        ns.own().execute_cached(
             "INSERT INTO sales (id, status, total_minor, line_count, currency, payment_method, tendered_minor, user_id, created_at, updated_at, discount_percent, discount_label, subtotal_minor, tax_total_minor, customer_id, version, base_currency, base_total_minor, tender_rate_millionths, tip_minor, service_charge_minor)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
             params![
@@ -216,27 +238,34 @@ impl<'a> SalesRepository<'a> {
             ],
         )?;
 
+        // O-L22: checked once here (cached path), executed per line below -- this
+        // is the statement that used to be compiled again for every line.
+        //
+        // The namespace handle is bound to a local first: `ns.own()` returns a
+        // temporary and `prepare_cached` borrows from it, so inlining the call
+        // would free the handle while the statement still borrows it (E0716).
+        let ns_own = ns.own();
+        let mut insert_line = ns_own.prepare_cached(
+            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, line_position, tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json, currency)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        )?;
         for line in &sale.lines {
-            ns.own().execute(
-                "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, line_position, tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json, currency)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-                params![
-                    line.id,
-                    line.sale_id,
-                    line.sku,
-                    line.qty,
-                    line.unit_price.minor_units,
-                    line.line_total.minor_units,
-                    line.line_position,
-                    line.tax_amount.minor_units,
-                    line.tax_rate_id,
-                    line.tax_breakdown_json,
-                    line.serial_number,
-                    line.course,
-                    line.modifiers_json,
-                    line.unit_price.currency.to_string(),
-                ],
-            )?;
+            insert_line.execute(params![
+                line.id,
+                line.sale_id,
+                line.sku,
+                line.qty,
+                line.unit_price.minor_units,
+                line.line_total.minor_units,
+                line.line_position,
+                line.tax_amount.minor_units,
+                line.tax_rate_id,
+                line.tax_breakdown_json,
+                line.serial_number,
+                line.course,
+                line.modifiers_json,
+                line.unit_price.currency.to_string(),
+            ])?;
         }
 
         Ok(())
@@ -245,9 +274,9 @@ impl<'a> SalesRepository<'a> {
     /// Update sale status.
     pub fn update_sale_status(&self, id: &str, status: SaleStatus) -> Result<(), SalesError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let status_str = serde_json::to_string(&status)?
-            .trim_matches('"')
-            .to_string();
+        // O-L22: same canonical spelling as the insert path (was a serde_json
+        // round trip and a quote strip).
+        let status_str = status.as_stored_str();
         self.ns.own().execute(
             "UPDATE sales SET status = ?1, updated_at = ?2, version = version + 1 WHERE id = ?3",
             params![status_str, now, id],
