@@ -775,7 +775,12 @@ design doc already rules the behaviour out. *Fix:* fall through only on `Termina
 ```
 
 **O-H25 · modules-reporting — daily report hard-codes USD, sums across currencies, and cannot
-use an index** — `modules/reporting/src/repository.rs:31-54` ✔ (3D-05) · **latent**, zero
+use an index** — ❌ **MOOT 2026-10-21.** The cited `modules/reporting/src/repository.rs` no
+longer exists — the module's `src/` is now `{handlers,lib,lib_tests}.rs`, and `handlers.rs`
+(31 lines) carries no `strftime`/`DATE(` call, no `SUM(total_minor)` and no currency
+aggregation. The three named defects are not present at HEAD in any file: the module was
+reimplemented rather than fixed. Closed as gone, not as repaired.
+`modules/reporting/src/repository.rs:31-54` ✔ (3D-05) · **latent**, zero
 non-test callers
 Three defects in one query. `strftime('%Y-%m-%d', created_at) = ?1` wraps the column in a
 function, so any index on `created_at` is unusable and each report is a full scan growing with

@@ -96,7 +96,13 @@ def is_closing_subject(subject: str) -> bool:
 # Convention (b) appeared later and is what O-H03/O-H04/O-H08 used. A checker that
 # only knew (a) would flag those three as gaps forever, and one that only knew (b)
 # would miss a commit whose section was never written. Both are read here.
-INLINE_CLOSE_RE = re.compile(r"\b(PAID|RESOLVED|FIXED|DONE)\b|\bFixed:", re.IGNORECASE)
+# A bare \b word is NOT evidence: O-H02's own text says "chunk the image lookup into
+# fixed-size batches", and that matched \bFIXED\b and marked a live entry closed. The
+# markers that actually appear in this journal are either uppercase (PAID, MOOT,
+# RESOLVED, FIXED, DONE) or the literal "Fixed:" form that O-H03/O-H04/O-H08 used.
+# Matching them CASE-SENSITIVELY, and requiring the colon for the lowercase form, is
+# what keeps a fix DESCRIPTION from reading as a fix RECORD.
+INLINE_CLOSE_RE = re.compile(r"\b(PAID|RESOLVED|FIXED|DONE|MOOT)\b|[Ff]ixed:")
 
 
 def entries_marked_inline(text: str) -> set[str]:
@@ -111,6 +117,57 @@ def entries_marked_inline(text: str) -> set[str]:
         if INLINE_CLOSE_RE.search(body):
             out.add(m.group(1))
     return out
+
+
+FILE_REF_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:rs|ts|tsx|sql|go|ftl))(?::[0-9][0-9-]*)?"+"`")
+
+
+def entries_with_dead_file_refs(text: str) -> list[tuple[str, list[str]]]:
+    """Entries whose FIRST citation names a file that no longer exists.
+
+    This class is why the gate was extended: three entries were caught by hand on
+    2026-10-21 pointing at files deleted weeks earlier (O-M57/O-M58 at syslog.rs and
+    eventlog.rs, O-H25 at modules/reporting/src/repository.rs). A dead path is not a
+    style nit -- it means the entry can no longer be acted on as written, and a
+    reader who trusts it wastes the pass.
+
+    Only the first TWO citations are graded, and only entries NOT already marked
+    closed: a resolved entry legitimately cites the file its fix created (O-H09
+    names plan_cache.rs, O-H11 names pg/sales.rs), and a long entry often cites many
+    files of which some are historical. The first citation of an OPEN entry is the
+    one a worker would open first.
+    """
+    closed = entries_marked_inline(text)
+    for heading, _body in sections(text):
+        closed |= set(ID_RE.findall(heading))
+
+    bad: list[tuple[str, list[str]]] = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"^\*\*?(O-[HMLT]\d+)", line)
+        if not m:
+            continue
+        entry = m.group(1)
+        if entry in closed:
+            continue
+        chunk = "\n".join(lines[i:i + 4])
+        refs = FILE_REF_RE.findall(chunk)[:2]
+        if not refs:
+            continue
+        # Only flag when EVERY graded ref is missing: one surviving path means the
+        # entry is still anchored somewhere a reader can reach.
+        # A bare filename is relative to the full path cited beside it.
+        dirs = [str((REPO / r).parent.relative_to(REPO)) for r in refs if "/" in r]
+        missing = []
+        for r in refs:
+            if (REPO / r).exists():
+                continue
+            if "/" not in r and any((REPO / d / r).exists() for d in dirs):
+                continue
+            missing.append(r)
+        if missing and len(missing) == len(refs):
+            bad.append((entry, missing))
+    return bad
 
 
 def main() -> int:
@@ -155,7 +212,17 @@ def main() -> int:
         if len(re.sub(r"[-\s]", "", body)) < 40
     ]
 
+    # Check 4: an open entry whose graded citations all point at deleted files.
+    dead_refs = entries_with_dead_file_refs(text)
+
     ok = True
+
+    if dead_refs:
+        ok = False
+        print("FAIL: " + str(len(dead_refs)) + " open entr(y/ies) cite file(s) that no longer exist:")
+        for entry, refs in sorted(dead_refs):
+            print("  " + entry + " -> " + ", ".join(refs))
+        print("  -> re-anchor to the current path, or mark the entry MOOT if the target was deleted.")
 
     if missing:
         ok = False
