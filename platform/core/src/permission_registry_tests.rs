@@ -29,6 +29,8 @@ fn is_expected_sensitive(key: &str) -> bool {
                 // AP write-off forgives a vendor debt (money destruction),
                 // so it is never wildcard-eligible — mirrors giftcards:issue.
                 | permissions::PAYABLES_WRITEOFF
+                // AR write-off forgives an uncollectible customer debt (money destruction).
+                | permissions::RECEIVABLES_WRITEOFF
                 | permissions::OPERATOR_IMPERSONATE
     )
 }

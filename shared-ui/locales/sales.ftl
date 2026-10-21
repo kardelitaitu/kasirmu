@@ -221,6 +221,16 @@ payment-toast-invoice-failed = Failed to issue tax invoice
 # (which arrives in English and cannot be localized here) is logged, not shown.
 payment-toast-finalize-failed = The sale could not be finalised — check the sale history and settle it manually
 payment-toast-void-failed = The pending sale could NOT be voided — it is still open and must be cleared manually
+payment-toast-receivable-failed = Payment succeeded, but the receivable entry could not be created — record it manually
+payment-pay-later-select-customer = Select Customer for Kasbon
+payment-pay-later-customer-desc = Kasbon records a receivable against an identified customer account.
+payment-pay-later-open-search = Select Customer
+payment-pay-later-loading = Loading kasbon balance...
+payment-pay-later-outstanding = Current Kasbon Debt
+payment-pay-later-invoices = Open Bills
+payment-pay-later-overdue = Has Overdue Kasbon
+payment-pay-later-projected = New Total Debt
+payment-pay-later-limit-warning = Warning: Total kasbon exceeds customer credit limit.
 payment-customer-placeholder = e.g. John Doe
 payment-loyalty-points-aria = Points
 payment-search-customers-aria = Search customers

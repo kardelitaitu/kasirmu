@@ -472,6 +472,14 @@ pub const ALL: &[Migration] = &[
         id: "20261020_product_type_check.sql",
         sql: include_str!("../migrations/20261020_product_type_check.sql"),
     },
+    // Accounts Receivable (Piutang / Jual Tempo / Kasbon) — Phase 3 of
+    // payment-methods-plan.md (§1.5 & §2c). Adds `receivables` and
+    // `receivable_payments` tables, mirroring the payables schema, plus
+    // `credit_limit_minor` on `customers`.
+    Migration {
+        id: "20261021_receivables.sql",
+        sql: include_str!("../migrations/20261021_receivables.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

@@ -290,6 +290,16 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 1, &["SALES_PROCESS"]),
     ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    (
+        "receivables",
+        7,
+        &[
+            "RECEIVABLES_COLLECT",
+            "RECEIVABLES_CREATE",
+            "RECEIVABLES_VIEW",
+            "RECEIVABLES_WRITEOFF",
+        ],
+    ),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     // 4 -> 5 in d635b58f0 "feat(regional): register get_active_market_profile_scoped
     // Tauri command" -- the command the subject names, gated on the existing pair.
@@ -520,6 +530,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 2, &["SALES_PROCESS"]),
     ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 2, &["SETTINGS_EDIT"]),
+    ("receivables", 0, &[]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     // 2 -> 3 by the same d635b58f0 as the desktop row.
     ("regional", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
@@ -1064,6 +1075,10 @@ fn permission_value(name: &str) -> &'static str {
         "PROMOTIONS_EDIT" => p::PROMOTIONS_EDIT,
         "PURCHASING_MANAGE" => p::PURCHASING_MANAGE,
         "PURCHASING_VIEW" => p::PURCHASING_VIEW,
+        "RECEIVABLES_COLLECT" => p::RECEIVABLES_COLLECT,
+        "RECEIVABLES_CREATE" => p::RECEIVABLES_CREATE,
+        "RECEIVABLES_VIEW" => p::RECEIVABLES_VIEW,
+        "RECEIVABLES_WRITEOFF" => p::RECEIVABLES_WRITEOFF,
         "REPORTS_EXPORT" => p::REPORTS_EXPORT,
         "REPORTS_SCHEDULE" => p::REPORTS_SCHEDULE,
         "REPORTS_VIEW" => p::REPORTS_VIEW,

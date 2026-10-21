@@ -825,12 +825,13 @@ fn init_sql_creates_complete_schema_surface() {
     // the per-terminal first-run record (ADR #56 §2.1). Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
+    // 20261021_receivables.sql adds receivables and receivable_payments (+2).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        127,
+        129,
         "table surface drifted"
     );
     assert_eq!(
@@ -917,7 +918,10 @@ fn init_sql_creates_complete_schema_surface() {
         // entirely. It mirrors idx_inv_shifts_active_per_user_location, which
         // has guarded inventory_shifts the same way since the init schema. That
         // file ships no table and no trigger, so the other two pins stand.
-        189,
+        // 20261021_receivables.sql adds 5: tenant+status, customer, partial
+        // due-date on receivables, and payments-by-receivable, payments-by-tenant
+        // on receivable_payments (+5).
+        194,
         "index surface drifted"
     );
     assert_eq!(
@@ -1112,7 +1116,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        127,
+        129,
         "table surface must be unchanged after upgrade"
     );
 }

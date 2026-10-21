@@ -156,6 +156,12 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             // assignment scope (Organization Memo stays owner/admin, gated
             // by the memo surface on top of this key).
             permissions::MEMO_WRITE,
+            // AR (Phase 3 of payment-methods-plan.md §2c): Manager can view,
+            // create, collect, and write off customer receivables.
+            permissions::RECEIVABLES_VIEW,
+            permissions::RECEIVABLES_CREATE,
+            permissions::RECEIVABLES_COLLECT,
+            permissions::RECEIVABLES_WRITEOFF,
         ],
     },
     RolePreset {
@@ -185,6 +191,11 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::WORKSPACES_SWITCH,
             permissions::KDS_VIEW,
             permissions::KDS_UPDATE,
+            // AR (Phase 3 of payment-methods-plan.md §2c): Staff collects
+            // customer debt repayments and views balances, but cannot create
+            // or write off debts.
+            permissions::RECEIVABLES_VIEW,
+            permissions::RECEIVABLES_COLLECT,
         ],
     },
     RolePreset {
@@ -280,6 +291,12 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::MEMO_STOP,
             permissions::OPERATOR_IMPERSONATE,
             permissions::TOPOLOGY_WRITE,
+            // AR (Phase 3 of payment-methods-plan.md §2c): Admin has the full
+            // receivables family.
+            permissions::RECEIVABLES_VIEW,
+            permissions::RECEIVABLES_CREATE,
+            permissions::RECEIVABLES_COLLECT,
+            permissions::RECEIVABLES_WRITEOFF,
         ],
     },
     RolePreset {
@@ -301,6 +318,8 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             // AP read-only visibility for audit (payment-methods-plan §2c:
             // payables is Owner-only except view, which the Auditor holds).
             permissions::PAYABLES_VIEW,
+            // AR read-only visibility for audit.
+            permissions::RECEIVABLES_VIEW,
         ],
     },
     RolePreset {
@@ -411,5 +430,9 @@ pub const ALL_ENFORCED: &[&str] = &[
     permissions::PAYABLES_CREATE,
     permissions::PAYABLES_SETTLE,
     permissions::PAYABLES_WRITEOFF,
+    permissions::RECEIVABLES_VIEW,
+    permissions::RECEIVABLES_CREATE,
+    permissions::RECEIVABLES_COLLECT,
+    permissions::RECEIVABLES_WRITEOFF,
     permissions::OPERATOR_IMPERSONATE,
 ];

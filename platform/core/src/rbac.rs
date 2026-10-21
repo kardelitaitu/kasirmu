@@ -667,6 +667,20 @@ pub mod permissions {
     /// Owner-only.
     pub const PAYABLES_WRITEOFF: &str = "payables:writeoff";
 
+    // ── Receivables (Piutang / Jual Tempo — AR) ───────────────────────
+    /// View customer receivables, kasbon aging, and payment history. Phase 3
+    /// (AR) of `docs/plans/payment-methods-plan.md`.
+    pub const RECEIVABLES_VIEW: &str = "receivables:view";
+
+    /// Extend customer credit / pay later tender at the register.
+    pub const RECEIVABLES_CREATE: &str = "receivables:create";
+
+    /// Record a customer debt repayment / collection.
+    pub const RECEIVABLES_COLLECT: &str = "receivables:collect";
+
+    /// Forgive an uncollectible customer debt without payment (money destruction — audited).
+    pub const RECEIVABLES_WRITEOFF: &str = "receivables:writeoff";
+
     // ── operator ──
     /// Act as another user within the operator's authorized tenant scope for
     /// support. `operator:` names the capability class (support impersonation),

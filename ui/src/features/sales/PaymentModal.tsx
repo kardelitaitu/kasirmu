@@ -42,11 +42,13 @@ import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
 import SplitTenderRows from './payment/SplitTenderRows';
 import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
+import PayLaterTenderPanel from './payment/PayLaterTenderPanel';
 import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
 import { distributeEvenly } from './payment/splitDistribution';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage, rejectionText } from '@/utils/app-error';
+import { getCustomerReceivablesSummaryScoped, createReceivableScoped, type CustomerReceivablesSummary } from '@/api/receivables';
 import './PaymentModal.css';
 
 import type { GatewayStatus, PaymentMethod } from '@/api/types/payment';
@@ -143,7 +145,7 @@ export default function PaymentModal({
   // switch the rail off and the tender kept being offered. A toggle that silently does
   // nothing is worse than no toggle: it reads as a live control.
   //
-  // This is a SECOND gate, not a replacement for the workspace check at :303. The two
+  // This is a SECOND gate, not a replacement for the workspace check above. The two
   // answer different questions: `isRestaurantPos` is a CAPABILITY (the backend refuses
   // `bill_type: 'open_bill'` outside restaurant-pos, so offering it would submit a bill
   // that fails), while the rail flag is a MERCHANT PREFERENCE. Both must hold.
@@ -172,6 +174,9 @@ export default function PaymentModal({
   // toggle stop lying. Same helper, same shape as `open_bill` and `credit` above.
   const cashOffered = !coreRailWithheld(paymentRails, 'cash');
   const cardOffered = !coreRailWithheld(paymentRails, 'card');
+  const payLaterOffered = !coreRailWithheld(paymentRails, 'pay_later');
+  const [customerReceivablesSummary, setCustomerReceivablesSummary] = useState<CustomerReceivablesSummary | null>(null);
+  const [loadingReceivablesSummary, setLoadingReceivablesSummary] = useState(false);
   const [creditSettings, setCreditSettings] = useState<CreditSettingsDto | null>(null);
   /**
    * True when `getCreditSettingsScoped` REJECTED (as opposed to not having run yet).
@@ -382,6 +387,37 @@ export default function PaymentModal({
   }, [isRestaurantPos, openBillOffered, method]);
 
   useEffect(() => {
+    // Pay Later is retail-only (store-pos) and gated by pay_later rail.
+    if ((isRestaurantPos || !payLaterOffered) && method === 'pay_later') setMethod('cash');
+  }, [isRestaurantPos, payLaterOffered, method]);
+
+  useEffect(() => {
+    if (!open || !sessionToken || method !== 'pay_later' || !selectedCustomer) {
+      setCustomerReceivablesSummary(null);
+      setLoadingReceivablesSummary(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingReceivablesSummary(true);
+    getCustomerReceivablesSummaryScoped(sessionToken, selectedCustomer.id)
+      .then((summary) => {
+        if (!cancelled) {
+          setCustomerReceivablesSummary(summary);
+          setLoadingReceivablesSummary(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('Failed to load customer receivables summary', err);
+          setLoadingReceivablesSummary(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, sessionToken, method, selectedCustomer]);
+
+  useEffect(() => {
     if (!sessionToken || !open) return;
     let cancelled = false;
     getCreditSettingsScoped(sessionToken)
@@ -434,12 +470,12 @@ export default function PaymentModal({
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
-  // moved verbatim to ./payment/useMultiCurrency (slice W5-a). It receives
-  // six values and writes none of the shell atoms; the totals that convert
+  // moved verbatim to ./payment/useMultiCurrency (slice W5-a). It returns
+  // thirteen values and writes none of the shell atoms; the totals that convert
   // through it stay here because their other inputs (loyalty, promo preview,
   // the displayed cart, the tendered string) are not currency data.
-  // cartCurrency / convertToChargeCurrency were declared far below, at :508
-  // and :529 — nothing above this call read them, so their first read is
+  // Both are returned by useMultiCurrency below and were declared far below the call
+  // site before the W5-a slice; nothing above it read them, so their first read is
   // still the promoted/unpromoted total memos further down.
   const {
     currencies,
@@ -1313,11 +1349,12 @@ retryCurrencyLoad,
   const canComplete = useMemo(() => {
     // CUR-02: settling in a charge currency records `tender_rate_millionths`
     // against the sale. With the rate read failed we do not know that number,
-    // and the backend does not refuse the write (crates/kasirmu-bridge/src/pos/checkout.rs:424-428
-    // assigns the three CUR-02 fields straight from the args). So the sale would be
-    // recorded with no rate at all while the total silently carried the charge
-    // currency's label. Refuse here instead: the operator retries or picks the
-    // store's own currency.
+    // and the backend does not refuse the write (both `complete_sale*` paths in
+    // crates/kasirmu-bridge/src/pos/checkout.rs assign the three CUR-02 fields straight
+    // from the args, `sale.base_currency` / `base_total_minor` / `tender_rate_millionths`).
+    // So the sale would be recorded with no rate at all while the total silently carried
+    // the charge currency’s label. Refuse here instead: the operator retries or picks
+    // the store’s own currency.
     if (rateUnknown) return false;
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
@@ -1339,6 +1376,11 @@ retryCurrencyLoad,
       if (creditSettings && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor) {
         return false;
       }
+      return true;
+    }
+    if (method === 'pay_later') {
+      if (isRestaurantPos || !payLaterOffered) return false;
+      if (!selectedCustomer) return false;
       return true;
     }
     // F23 (closed 2026-10-14): a switch-off core rail cannot be tendered even
@@ -1371,7 +1413,7 @@ retryCurrencyLoad,
     // bill on a table number. THIRD occurrence of this exact trap in this area
     // (see PosScreen's release guard and PaymentModal's claim guard), which is why
     // the class sweep asserts the rule positively rather than trusting each site.
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered, isRestaurantPos, payLaterOffered, selectedCustomer]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
@@ -1614,6 +1656,24 @@ retryCurrencyLoad,
           : await getSale(saleResult.saleId);
 
         setCompletedSaleId(saleResult.saleId);
+
+        if (sessionToken && method === 'pay_later' && selectedCustomer) {
+          try {
+            await createReceivableScoped(sessionToken, {
+              customerId: selectedCustomer.id,
+              saleId: saleResult.saleId,
+              amount: total,
+              source: 'pos',
+              reference: completedSale?.displayCode ?? `SALE-${saleResult.saleId}`,
+            });
+          } catch (receivableErr) {
+            console.error('createReceivableScoped failed', saleResult.saleId, receivableErr);
+            addToast({
+              message: requiredLocalized(l10nRef.current, 'payment-toast-receivable-failed'),
+              type: 'warning',
+            });
+          }
+        }
         const receiptData = buildCompletedSaleReceipt({
           saleId: saleResult.saleId,
           saleTotal: saleResult.total,
@@ -2088,8 +2148,8 @@ retryCurrencyLoad,
           // it kept `method.toUpperCase()` after that path was lowercased, so a cash
           // retry sent 'CASH' where the first send was 'cash'. The backend normalises
           // only `payment_splits`; the scalar `sales.payment_method` is written
-          // verbatim (sales_checkout.rs:549), so the two spellings both reached the
-          // column. Derived from `storedMethod` so they cannot drift again.
+          // verbatim from `kind.wire_method(...)` against the args, so the two spellings
+          // both reached the column. Derived from `storedMethod` so they cannot drift again.
           paymentMethod={storedMethod}
           tenderedMinor={method === 'cash' && !splitMode ? tenderedMinorInCartCurrency : null}
           paymentSplits={paymentSplitsFromState() ?? null}
@@ -2510,6 +2570,8 @@ retryCurrencyLoad,
                       </Localized>
                     ) : method === 'credit' ? (
                       <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
+                    ) : method === 'pay_later' ? (
+                      <Localized id="payment-method-pay-later"><span>Pay Later / Kasbon</span></Localized>
                     ) : (
                       <Localized id="payment-complete">
                         <span>Complete Sale</span>
@@ -2635,6 +2697,28 @@ retryCurrencyLoad,
                             </label>
                           </>
                         )}
+                        {!isRestaurantPos && payLaterOffered && (
+                          <>
+                            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                            <label
+                              className={`payment-method-label payment-method-label--pay_later${method === 'pay_later' ? ' payment-method-label--active' : ''}`}
+                              htmlFor="payment-method-pay-later"
+                              data-testid="quick-pay-button"
+                            >
+                              <input
+                                id="payment-method-pay-later"
+                                type="radio"
+                                name="payment-method"
+                                value="pay_later"
+                                checked={method === 'pay_later'}
+                                onChange={() => setMethod('pay_later')}
+                              />
+                              <span className="payment-method-name">
+                                <Localized id="payment-method-pay-later"><span>Pay Later / Kasbon</span></Localized>
+                              </span>
+                            </label>
+                          </>
+                        )}
                       </div>
                     </fieldset>
 
@@ -2717,6 +2801,17 @@ retryCurrencyLoad,
                     autoQrPending={autoQr !== null}
                     onQrPay={handleQrPay}
                     onDynamicQrPay={handleDynamicQrPay}
+                  />
+                )}
+
+                {method === 'pay_later' && (
+                  <PayLaterTenderPanel
+                    customer={selectedCustomer}
+                    onOpenCustomerSearch={() => setShowCustomerSearch(true)}
+                    summary={customerReceivablesSummary}
+                    loadingSummary={loadingReceivablesSummary}
+                    currentTotal={total}
+                    creditLimitMinor={creditSettings?.maxLimitMinor ?? 0}
                   />
                 )}
               </>

@@ -25,6 +25,7 @@ import { usePagedList } from '@/hooks/usePagedList';
 import { formatMoney } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import KasbonSettlementModal from './KasbonSettlementModal';
 import './CustomerManagementScreen.css';
 
 // ── Form state ──────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ export default function CustomerManagementScreen() {
   } = usePagedList(customers);
   // CUST-05: read-only history modal state.
   const [historyTarget, setHistoryTarget] = useState<CustomerDto | null>(null);
+  const [kasbonTarget, setKasbonTarget] = useState<CustomerDto | null>(null);
   const [history, setHistory] = useState<CustomerHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(false);
@@ -615,6 +617,15 @@ export default function CustomerManagementScreen() {
                     {customer.notes || '\u2014'}
                   </td>
                   <td className="customer-mgmt-cell-actions">
+                    <Localized id="customer-mgmt-kasbon-aria" attrs={{ 'aria-label': true }} vars={{ name: customer.name }}>
+                      <button
+                        type="button"
+                        className="customer-mgmt-action-btn"
+                        onClick={() => setKasbonTarget(customer)}
+                      >
+                        <Localized id="customer-mgmt-kasbon"><span>Kasbon</span></Localized>
+                      </button>
+                    </Localized>
                     <Localized id="customer-mgmt-history-aria" attrs={{ 'aria-label': true }} vars={{ name: customer.name }}>
                       <button
                         type="button"
@@ -903,6 +914,15 @@ export default function CustomerManagementScreen() {
             </div>
           </div>
         </div>
+      )}
+
+      {kasbonTarget && (
+        <KasbonSettlementModal
+          customer={kasbonTarget}
+          sessionToken={sessionToken}
+          onClose={() => setKasbonTarget(null)}
+          numLocale={numLocale}
+        />
       )}
     </div>
   );

@@ -626,6 +626,31 @@ pub const REGISTRY: &[PermissionEntry] = &[
         sensitive: true,
         description: "Forgive a vendor debt without payment (money destruction — audited).",
     },
+    // ── receivables (Phase 3 AR / Piutang — docs/plans/payment-methods-plan.md) ──
+    PermissionEntry {
+        key: "receivables:view",
+        family: "receivables",
+        sensitive: false,
+        description: "View customer receivables, kasbon aging, and payment history.",
+    },
+    PermissionEntry {
+        key: "receivables:create",
+        family: "receivables",
+        sensitive: false,
+        description: "Extend customer credit / pay later tender at the register.",
+    },
+    PermissionEntry {
+        key: "receivables:collect",
+        family: "receivables",
+        sensitive: false,
+        description: "Record a customer debt repayment / collection.",
+    },
+    PermissionEntry {
+        key: "receivables:writeoff",
+        family: "receivables",
+        sensitive: true,
+        description: "Forgive an uncollectible customer debt without payment (money destruction — audited).",
+    },
     PermissionEntry {
         key: "operator:impersonate",
         family: "operator",

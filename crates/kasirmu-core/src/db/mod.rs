@@ -143,6 +143,8 @@ pub mod quota_gate;
 /// missing L167 axis).
 pub mod receipt_code;
 pub mod receipt_formats;
+/// Accounts Receivable (Piutang / Kasbon) repository — create/collect/age customer debts.
+pub mod receivables;
 /// Recipe / modifier CRUD.
 pub mod recipes;
 /// Restore-candidate validation and the atomic restore swap (C8, slice S2).

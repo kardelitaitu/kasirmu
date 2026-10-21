@@ -998,6 +998,14 @@ RLS_EXEMPT = {
         "no PG write path yet; desktop-local AP ledger (Hutang) — "
         "cover when payables cloud sync lands"
     ),
+    "receivable_payments": (
+        "no PG write path yet; local AR settlement history — "
+        "cover when receivables cloud sync lands"
+    ),
+    "receivables": (
+        "no PG write path yet; local AR ledger (Piutang) — "
+        "cover when receivables cloud sync lands"
+    ),
     "snapshot_versions": (
         "no PG write path audited; cover when snapshot sync reaches PG"
     ),
