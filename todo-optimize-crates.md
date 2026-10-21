@@ -6,6 +6,38 @@ mass; §10 is the instrument round — first measurements in the todo (crate gra
 test-sleep floor). No code touched, no axis chosen.
 **Date:** 2026-09-25 · **Branch:** `0.0.40` · **Recorded against:** `c7767e73e` (§8). §1–§7 recorded against HEAD at their own time of measurement.
 
+### Status snapshot — re-measured 2026-10-21
+
+**131 entries are defined. 28 were closed by a `## §11*` journal heading. A further SIX were
+found already paid and are now marked ✅ PAID inside their own entry — they had been ranked as
+open work in every downstream reading this journal supplies.**
+
+| Tier | Defined | Closed by §11 heading | Marked ✅ PAID in-entry | Still open |
+|---|---|---|---|---|
+| High | 26 | 3 | 6 | **17** |
+| Medium | 66 | 19 | 0 | **47** |
+| Low | 23 | 4 | 0 | **19** |
+| Test (O-T) | 16 | 2 | 0 | **14** |
+| **Total** | **131** | **28** | **6** | **97** |
+
+(Counted by script over the entry headers, not by eye — a first pass of this very table said
+"Medium 47 defined / 21 closed", which is wrong in both columns and is exactly the census-rot
+this journal keeps warning about. The numbers above reproduce.)
+
+The six in-entry marks are **O-H03, O-H04, O-H08** (verified 2026-10-21 by naming the symbol each
+fix introduced and confirming it exists at HEAD) and **O-H23, O-H24, O-H26** (verified the same
+way — see the entries themselves for the exact function, line and commit).
+
+**Why this table exists.** §11E already recorded the failure mode once: *"This is the fourth time
+today that work recommended from a dated plan doc turned out already paid."* It then happened again
+— O-H23/O-H24/O-H26 were paid on 2026-09-27, before this journal was told, and the §9 funding list
+kept ranking all three at the head of the queue until this pass corrected it. **A reader who needs
+the live list should trust this table, not the ranking in §9, which is history.**
+
+**How to add to it.** Never tick an entry because a commit message claims a fix. Name the symbol
+the fix introduced, `git grep` for it, and cite the line — that is the check that caught the
+three "Fixed:" entries this journal had left ranked as open work.
+
 ---
 
 ## 0. Scope — "our crates", stated so the fence cannot drift later
