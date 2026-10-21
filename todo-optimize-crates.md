@@ -456,12 +456,10 @@ category** — `crates/kasirmu-core/src/db/popularity.rs:517-563` ✔. Fixed: re
 serialise behind a single blocking Redis call. *Fix:* pooled/multiplexed client.
 
 **O-M12 · kasirmu-core — location resolver: global mutex per lookup, map never evicted** —
-`crates/kasirmu-core/src/location_resolver.rs:48-49`, `:56-58` ◦. Locked per cart-open and per
-`add_line`; entries only cleared wholesale. *Fix:* evicting/sharded cache.
+`crates/kasirmu-core/src/location_resolver.rs:48-49`, `:56-58` ✔. Fixed: converted `LOCATION_CACHE` from `Mutex` to `RwLock` to enable non-blocking concurrent reads across threads, and added a capacity ceiling of 1,024 entries (`MAX_CACHED_LOCATIONS`) with TTL eviction on insert. Verified in `location_resolver_tests.rs`.
 
 **O-M13 · kasirmu-core — per-location stock and name queries** —
-`crates/kasirmu-core/src/location_resolver.rs:509-521` (also `:275-289`) ◦. O(locations)
-queries per shortfall panel. *Fix:* one `IN`-clause query plus a name join.
+`crates/kasirmu-core/src/location_resolver.rs:509-521` (also `:275-289`) ✔. Fixed: replaced $2N$ sequential queries in `resolve_location_chain_for_sku` with a single joined query against `stock_summary` and `inventory_locations` over `WHERE id IN (...)`, and batched name lookups in `enrich_bindings`. Verified in `location_resolver_tests.rs`.
 
 **O-M14 · kasirmu-core — CRL re-deserialised and linearly scanned on every gate call** —
 `crates/kasirmu-core/src/license_verification.rs:659-668`, `:682-685` ✔. Fixed: introduced pre-indexed `ParsedCrlSets` storing `revoked_tenants`, `revoked_devices`, cleartext `revoked_keys`, and precomputed `revoked_key_hashes` in `HashSet<String>`s with an in-memory `PARSED_CRL_CACHE` (`RwLock<Option<(String, Arc<ParsedCrlSets>)>>`). Replaced repeated JSON deserialization on every gate check with $O(1)$ set lookups. Verified in `license_verification_tests.rs` and `subscription_tests.rs`.
@@ -2161,6 +2159,24 @@ One Medium performance and memory finding resolved in offline queue drain paths:
    - Replaced unbounded full-table materialization in `platform/sync` daemons (`daemon.rs`, `pg_daemon.rs`), `kasirmu-bridge` (`sync_pending_offline_scoped`), `kasirmu-core` (`sync_client`), and mobile commands with bounded 100-item batch fetches (`DEFAULT_MAX_OUTBOX_BATCH_ITEMS`).
    - Eliminated potential Android/daemon OOM crashes during large backlog reconnections and ensured immediate Critical item priority transmission.
    - Verified across 119 tests in `kasirmu-core`, 105 tests in `platform-sync`, and 10 tests in `kasirmu-bridge`.
+
+---
+
+## §11Y — O-M12 and O-M13 resolved: concurrent location resolution cache and batched shortfall queries (2026-10-21)
+
+Two Medium performance findings resolved in location and inventory resolution:
+
+1. **O-M12 · `kasirmu-core` concurrent location resolution cache with capacity ceiling (`location_resolver.rs`)**:
+   - Replaced `Mutex` with `RwLock` for `LOCATION_CACHE`, unlocking non-blocking concurrent reads during cart updates and checkouts across worker threads.
+   - Introduced a capacity ceiling of 1,024 entries (`MAX_CACHED_LOCATIONS`) with expired TTL pruning upon cache insertion to eliminate unbounded memory growth.
+   - Verified in `location_resolver_tests.rs`.
+
+2. **O-M13 · `kasirmu-core` batched shortfall inventory and location queries (`location_resolver.rs`)**:
+   - Replaced $2N$ sequential queries per candidate location in `resolve_location_chain_for_sku` with a single joined query against `stock_summary` and `inventory_locations` over `WHERE s.location_id IN (...) AND s.qty > 0`.
+   - Batched name resolution in `enrich_bindings` via `WHERE id IN (...)`, eliminating per-binding database round trips.
+   - Preserved exact greedy-fill priority ordering and availability semantics.
+   - Verified across all 29 unit tests in `location_resolver_tests.rs`.
+
 
 
 
