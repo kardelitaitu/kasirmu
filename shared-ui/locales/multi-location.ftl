@@ -69,6 +69,7 @@ topology-rev-browser-title = Deploy History
 topology-rev-browser-close = Close deploy history
 topology-rev-browser-loading = Loading history…
 topology-rev-browser-loading-one = Loading 1 revision…
+topology-rev-browser-error-detail = Could not load this revision
 topology-rev-browser-empty = Nothing has been applied to this branch yet.
 topology-rev-browser-no-note = No note
 topology-rev-browser-counts = { $nodes } nodes · { $wires } wires

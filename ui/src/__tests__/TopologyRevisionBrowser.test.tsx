@@ -170,6 +170,45 @@ describe('TopologyRevisionBrowser', () => {
     expect(prunedRow?.querySelector('.topology-rev-browser-pruned')).not.toBeNull();
   });
 
+  it('reports a failed revision read instead of spinning on "Loading revision…" forever', async () => {
+    // A rejected loadTopologyRevision used to be an unhandled rejection: the detail
+    // pane keys on \`!graph\`, which cannot tell a failure from a read still in flight,
+    // so it showed the spinner permanently — no error, no retry.
+    await deploy([node('a', 'Alpha')], 'a deploy', BRANCH);
+
+    // Intercept the ONE command this pane uses, delegating everything else to the mock.
+    const core = await import('@tauri-apps/api/core');
+    const realInvoke = core.invoke as unknown as (cmd: string, args?: unknown) => Promise<unknown>;
+    const spy = vi.spyOn(core, 'invoke').mockImplementation(((
+      cmd: string,
+      args?: unknown,
+    ) => (cmd === 'load_topology_revision'
+      ? Promise.reject(new Error('store db busy'))
+      : realInvoke(cmd, args))) as typeof core.invoke);
+
+    try {
+      renderBrowser({ branchId: BRANCH });
+      const row = await waitFor(() => {
+        const r = document.querySelector('.topology-rev-browser-row-main');
+        expect(r).not.toBeNull();
+        return r as HTMLElement;
+      });
+      fireEvent.click(row);
+
+      // The failure is REPORTED...
+      await waitFor(() => {
+        const err = document.querySelector('.topology-rev-browser-detail, .topology-rev-browser-error');
+        expect(document.body.textContent).toContain('topology-rev-browser-error-detail');
+        expect(err).not.toBeNull();
+      });
+      // ...and the endless spinner is gone.
+      expect(screen.queryByText('Loading revision…')).toBeNull();
+      expect(screen.queryByText('topology-rev-browser-loading-one')).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('says "same configuration as now" rather than showing an empty diff', async () => {
     const graph = [node('a', 'Alpha')];
     await deploy(graph, 'unchanged since', BRANCH);
