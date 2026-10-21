@@ -84,6 +84,24 @@ describe('DebtRemindersCard', () => {
     });
   });
 
+  it('does NOT claim "Up to date" when a debt read failed', async () => {
+    // `allSettled` exists so one failure cannot take the other down — but the failure
+    // used to be dropped, leaving the array at [] and the card showing the affirmative
+    // all-clear badge. A merchant with overdue invoices was told their debtors settled.
+    mockListReceivablesScoped.mockRejectedValue(new Error('ipc down'));
+    mockListPayablesScoped.mockResolvedValue([]);
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load receivables/i)).toBeTruthy();
+    });
+    // The receivables panel must not claim the all-clear. (The PAYABLES panel legitimately
+    // still shows it — that read answered.) Scope the assertion to the receivables block.
+    const recBlock = screen.getByText('Customer Receivables (Piutang)').closest('.dashboard-debt-panel');
+    expect(recBlock?.textContent).not.toContain('Up to date');
+  });
+
   it('renders overdue and due-soon customer receivables with outstanding amount', async () => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
