@@ -516,7 +516,7 @@ fn csv_export_creates_files() {
         .export_analytics_bundle(ExportConfig::default(), "t1", "S1")
         .unwrap();
 
-    let tmp = crate::migrations::test_scratch_dir("oz-pos-test-csv");
+    let tmp = kasirmu_test_support::scratch_dir("oz-pos-test-csv");
     let files = write_analytics_bundle_csv(&bundle, tmp.to_str().unwrap()).unwrap();
 
     // Should have created at least metadata.json + daily_revenue.csv + top_products.csv + heatmap + categories
@@ -536,7 +536,7 @@ fn csv_export_empty_bundle_writes_metadata_only() {
         .export_analytics_bundle(ExportConfig::default(), "", "")
         .unwrap();
 
-    let tmp = crate::migrations::test_scratch_dir("oz-pos-test-csv-empty");
+    let tmp = kasirmu_test_support::scratch_dir("oz-pos-test-csv-empty");
     let files = write_analytics_bundle_csv(&bundle, tmp.to_str().unwrap()).unwrap();
 
     // Only metadata.json should be written (bundle is empty)

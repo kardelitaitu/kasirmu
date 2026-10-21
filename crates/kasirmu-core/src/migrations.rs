@@ -763,48 +763,6 @@ pub fn fresh_db() -> rusqlite::Connection {
         .expect("foreign_keys on a fresh test DB cannot fail");
     fresh
 }
-
-/// A unique scratch directory for a test that needs a FILE-backed database.
-///
-/// Use this instead of [`std::env::temp_dir`]. That function reads `TEMP`/`TMP`,
-/// and on this project's Windows machines the MACHINE-level value is
-/// `C:\WINDOWS\TEMP` — a directory an ordinary user can create inside but cannot
-/// delete from. A test whose fixture lives there can therefore never clean up,
-/// and on a box where the stale directory already exists `create_dir_all` fails
-/// with `PermissionDenied`, which reads as a test failure while being nothing of
-/// the sort. Measured 2026-10-21: `concurrent_complete_sale_serialized_by_begin_immediate`
-/// failed deterministically for exactly this reason and passed with `TEMP`
-/// repointed, proving the code was never at fault.
-///
-/// The remedy is to keep scratch files inside the checkout. `target/` is already
-/// gitignored (`.gitignore:2`), so nothing here can be committed by accident, and
-/// the directory is per-run and per-test so parallel tests cannot collide.
-///
-/// Resolved from `CARGO_MANIFEST_DIR` rather than the process CWD, because tests
-/// run from the crate root while `target/` lives at the workspace root.
-///
-/// # Panics
-///
-/// Panics if the directory cannot be created; a test that cannot get its scratch
-/// space has nothing further it can usefully do.
-#[doc(hidden)]
-pub fn test_scratch_dir(prefix: &str) -> std::path::PathBuf {
-    // CARGO_MANIFEST_DIR is <workspace>/crates/kasirmu-core; target/ is two
-    // levels up. Walking up rather than hardcoding keeps this correct if the
-    // crate is ever moved.
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace = manifest
-        .ancestors()
-        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
-        .unwrap_or(manifest);
-    let dir = workspace
-        .join("target")
-        .join("test-scratch")
-        .join(format!("{prefix}_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).expect("test scratch dir under target/ must be creatable");
-    dir
-}
-
 #[cfg(test)]
 #[path = "migrations_tests.rs"]
 mod tests;

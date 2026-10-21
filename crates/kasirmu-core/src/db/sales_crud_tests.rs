@@ -98,7 +98,7 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
     // pre-fix unconditional UPDATE returns `Ok` on the first attempt, which
     // panics immediately rather than retrying.
     for _attempt in 0..8 {
-        let dir = crate::migrations::test_scratch_dir("oz_sale_race");
+        let dir = kasirmu_test_support::scratch_dir("oz_sale_race");
         let conn = fresh_file(&dir);
         let sale_id = seed_pending_sale(&conn);
         let db_path = dir.join("kasir.db");
@@ -186,7 +186,7 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
 /// no-overwrite property for the committed case.
 #[test]
 fn a_committed_competing_transition_is_not_overwritten() {
-    let dir = crate::migrations::test_scratch_dir("oz_sale_cas");
+    let dir = kasirmu_test_support::scratch_dir("oz_sale_cas");
     let conn = fresh_file(&dir);
     let sale_id = seed_pending_sale(&conn);
 

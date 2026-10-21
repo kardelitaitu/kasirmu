@@ -341,7 +341,7 @@ fn payout_ids_globally_unique() {
 fn payout_refused_when_shift_closes_between_read_and_write() {
     // A file DB, because two connections must see the same rows (an
     // in-memory DB is private per connection).
-    let dir = crate::migrations::test_scratch_dir("oz_payout_race");
+    let dir = kasirmu_test_support::scratch_dir("oz_payout_race");
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("test.db");
 

@@ -985,7 +985,7 @@ fn open_shift_failed_open_leaves_no_row() {
 /// and then refuses.
 #[test]
 fn open_shift_race_cannot_create_a_second_open_shift() {
-    let dir = crate::migrations::test_scratch_dir("oz_shift_race");
+    let dir = kasirmu_test_support::scratch_dir("oz_shift_race");
     let db_path = dir.join("kasir.db");
     {
         let conn = fresh_file(&dir);

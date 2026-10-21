@@ -26,7 +26,7 @@ fn backup_creates_valid_copy() {
     // Insert a row so the copy has content.
     s.set_setting("audit.key", "value").unwrap();
 
-    let dir = crate::migrations::test_scratch_dir("oz_backup");
+    let dir = kasirmu_test_support::scratch_dir("oz_backup");
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("backup.sqlite");
 

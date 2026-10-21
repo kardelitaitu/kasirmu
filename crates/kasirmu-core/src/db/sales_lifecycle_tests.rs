@@ -522,7 +522,7 @@ fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
 /// voided. Needs a real second connection, hence the file-backed DB.
 #[test]
 fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale() {
-    let dir = crate::migrations::test_scratch_dir("oz_void_race");
+    let dir = kasirmu_test_support::scratch_dir("oz_void_race");
     let db_path = dir.join("kasir.db");
     let sale_id = {
         let conn = fresh_file(&dir);
