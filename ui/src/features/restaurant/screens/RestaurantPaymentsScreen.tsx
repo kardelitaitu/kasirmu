@@ -332,13 +332,18 @@ export function RestaurantPaymentsScreen({
 
   /**
    * F4: a gateway read failed, so the Midtrans/Stripe fields show EMPTY rather than
-   * the stored config. The drafts baseline is seeded on the success path at `:409`
-   * and, for every other outcome, in the `finally` at `:545` — both BEFORE the
-   * gateway reads at `:476` can be reached. So without this flag the screen looks
-   * clean and saving writes the blanks over real credentials.
+   * the stored config. The drafts baseline is seeded on the success path by the
+   * `originalsRef.current.drafts = fullDrafts.map(…)` assignment, and for every other
+   * outcome in the `finally` by the `draftsRef.current.map(…)` one — both BEFORE the
+   * `getPaymentGatewayConfigScoped` reads can be reached. So without this flag the screen
+   * looks clean and saving writes the blanks over real credentials.
    *
-   * ⚠️ The citation here used to read `:377`, which is `listEdcTerminalsScoped` — an
-   * unrelated call in the same `Promise.all`. `:377` never seeded anything.
+   * ⚠️ Anchored on those four expressions, not on line numbers. The numbers this note
+   * carried were of two different kinds and both failed: one pointed at the seeding
+   * STATEMENT, the others at the rationale SENTENCES around the other two sites, so even
+   * when the numbers were current they encoded the claim instead of showing where it
+   * executes. The retired citation named `listEdcTerminalsScoped`, an unrelated call in
+   * the same `Promise.all`, and never seeded anything.
    *
    * Gating Save on a flag is only safe with a way to CLEAR it — round 8 of the F4
    * campaign shipped four Save-gates and no recovery path, disabling Save for the

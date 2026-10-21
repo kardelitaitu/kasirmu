@@ -207,10 +207,9 @@ export function usePosHeldCarts({
   // each reaches `holdCartScoped`, creating TWO open bills for one sale.
   //
   // MEASURED before this ref existed: two presses in one round-trip produced two
-  // holdCartScoped calls ('expected 2 to be 1'). RetailPosScreen's own hold note
-  // (:1425) cites this hook as already using 'the same guard shape' it uses — it did
-  // not, which is how the gap stayed invisible on the restaurant side while the
-  // retail side was protected.
+  // holdCartScoped calls ('expected 2 to be 1'). RetailPosScreen's own hold note cites
+  // this hook as already using 'the same guard shape' it uses — it did not, which is how
+  // the gap stayed invisible on the restaurant side while the retail side was protected.
   const openingBillRef = useRef(false);
 
   useEffect(() => {

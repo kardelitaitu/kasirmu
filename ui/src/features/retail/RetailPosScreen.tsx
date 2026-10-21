@@ -1433,7 +1433,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [heldCartsList, setHeldCartsList] = useState<HeldCartRow[]>([]);
 
   //
-  // Re-entry guard for handleHold. The Hold/Resume button (RetailFnBar.tsx:69) is only
+  // Re-entry guard for handleHold. The Hold/Resume button (RetailFnBar, its `disabled`
+  // expression `!heldCartId && linesLength === 0`) is only
   // `disabled` on an EMPTY cart, and React does not re-render between two clicks that land
   // inside one await — so a double-click, or F4 twice before the first settles, issued TWO
   // holdCartScoped writes for one sale and left the cashier with a duplicate tab to find
@@ -1509,8 +1510,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       }
       // typeof, not truthiness. This is the only field below that reached
       // setDiscount unchecked, and it is the one the main POS already guards:
-      // `if (typeof data.discountPercent === 'number')` at
-      // features/sales/hooks/usePosHeldCarts.ts:209. A truthiness test also
+      // `if (typeof data.discountPercent === 'number')` in
+      // features/sales/hooks/usePosHeldCarts.ts (anchored by that expression). A truthiness test also
       // passes a STRING, and setDiscount does `Math.round(percent)` --
       // Math.round('abc') is NaN, and Math.max(0, Math.min(100, NaN)) is
       // still NaN because every comparison against NaN is false.
@@ -1533,13 +1534,13 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       // `heldCartsList`, so the local list kept offering a record the server no
       // longer holds, with two reachable consequences:
       //
-      //  1. The reminder popup counts `heldCartsList.length` (`heldCartCount` at :2139 —
+      //  1. The reminder popup counts `heldCartsList.length` (the `heldCartCount` prop —
       //     re-measured 2026-10-19; this note said ":2103", now `panelActions={{`) — the one
       //     affordance that tells a cashier 'there are carts on hold'. After
       //     resuming the last one it still claimed one, and every resume left the
       //     count inflated by one for the rest of the shift.
       //  2. That popup's row opens the modal with a bare `setShowHeldCartsList(true)`
-      //     (`onClickHeldCarts` at :2143; the note said ":2107", now `onRequestClear`) —
+      //     (`onClickHeldCarts`; the note once said ":2107", which is `onRequestClear`) —
       //     no refetch — so the held carts list showed a cart that no
       //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
       //     `if (!full) return;` in the held-cart resume read: no modal change, no toast,

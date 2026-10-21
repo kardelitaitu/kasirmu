@@ -96,8 +96,8 @@ export function coreRailWithheld(
 /**
  * The cash quick-tender DENOMINATIONS the operator picked, in MAJOR units.
  *
- * `RestaurantPaymentsScreen.tsx:1114` writes these as
- * `updateRailParams('cash', { presets: next })` from a chip row whose values are STRINGS —
+ * `RestaurantPaymentsScreen` writes these as `updateRailParams('cash', { presets: next })`
+ * (that call, anchored by expression) from a chip row whose values are STRINGS —
  * `'exact'`, `'1000'`, `'2000'`, … — and nothing read them back for the rail's whole life
  * (rounds 120-121). This is the read side.
  *

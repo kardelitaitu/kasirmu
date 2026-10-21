@@ -15,7 +15,8 @@ export interface SplitBillModalProps {
   /**
    * The order's type. The header names the table, and a table only identifies a
    * DINE-IN order — the Table field renders on restaurant POS unconditionally
-   * (CartPanel.tsx:898), so a takeaway with a stray number announced a table on
+   * (the context-row gate in CartPanel: `showTableNumberSetting || activeWorkspace ===
+   * 'restaurant-pos'`), so a takeaway with a stray number announced a table on
    * the split dialog. Optional with a dine-in default so existing renders are
    * unchanged.
    */
@@ -26,8 +27,9 @@ export interface SplitBillModalProps {
    * the selection intact so the cashier can retry or cancel.
    *
    * This exists because resolving with nothing was ambiguous: the parent's
-   * balance-the-remaining-tab failure path `return`s (PosScreen.tsx:1006, the
-   * round-65 fix that stopped a double charge), and a plain `return` resolves
+   * balance-the-remaining-tab failure path `return`s (the `return false;` in
+   * `handleConfirmSplitBill`, the round-65 fix that stopped a double charge), and a
+   * plain `return` resolves
    * the promise. The modal's `finally` then closed it, so the recovery the
    * parent promised — "keeps the cart intact and the split modal open" —
    * never happened. The toast flashed and the dialog vanished.
