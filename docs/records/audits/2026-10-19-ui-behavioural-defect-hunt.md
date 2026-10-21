@@ -856,3 +856,74 @@ Nothing to fix. The axis is recorded as measured so a later pass does not repeat
 `KasbonSettlementModal.css` with hardcoded colours, undefined tokens, uncited sheets and an
 unlocalised toast. `git diff 0966258bc..HEAD --name-only` shows none of those paths in this session's
 commits.
+
+## Round 58: the debt ledger was ranking six already-paid entries, and the theme gate had gone red unnoticed
+
+This round did not hunt a defect class. It started from the last 50 commits and asked what the
+journal and the gates say about the tree's current state — and found both of them wrong in the
+same direction: **work that was finished was still being handed out as work to do.**
+
+**Finding 1 — six entries in `todo-optimize-crates.md` were paid and still ranked as open.**
+`§11E` had already recorded this exact failure once (*"This is the fourth time today that work
+recommended from a dated plan doc turned out already paid"*), and it recurred. Three entries —
+**O-H23, O-H24, O-H26** — were fixed on 2026-09-27 by other lanes. Three more — **O-H03, O-H04,
+O-H08** — literally say *"Fixed:"* in their own text and were nonetheless counted as open by every
+tier census, including the one in §9's funding list, which named O-H23/O-H24/O-H25 as the head of
+the queue.
+
+The check that settled it is the one worth carrying: **name the symbol the fix introduced, then
+`git grep` for it.** "A commit message says fixed" is not evidence; a function that exists at HEAD
+is. That method confirmed `mark_offline_synced_batch` (`db/offline.rs:298`),
+`shared_sync_http_client()` (`sync_client.rs:430`), `get_products_track_serial_batch`
+(`db/products_crud.rs:830`), the `try_lock` at `ctx.rs:434`, and the 2a/2b lock split at
+`email_scheduler.rs:70`/`:93`.
+
+**The same method refuted one.** O-H01's entry reads as though it were addressed, but
+`sales_lifecycle.rs:628` is still `for line in &sale.lines { self.recompute_popularity(...) }` —
+one call per line, exactly the shape O-H01 describes. It stays open. A blanket "the Highs look
+fixed" pass would have closed it wrongly.
+
+All six now carry a ✅ PAID marker inside the entry, and the file opens with a measured table
+(131 defined / 28 closed by §11 heading / 6 marked in-entry / 97 open) so a reader does not have
+to re-derive any of it.
+
+**Finding 2 — the theme-token gate had been red since `160734e90`, and the last round's record
+attributed it to a different commit.** `themeTokenCompliance.test.ts` was failing 6 of its 53
+cases with **71 hardcoded-value violations**, a baseline that the file declares as **0** ("All CSS
+files now use design tokens"), plus **14 references to tokens that exist nowhere**
+(`--color-surface`, `--color-scrim`, `--color-primary-light`, `--color-primary-subtle`,
+`--color-info-fg`, `--color-surface-alt`, `--color-surface-hover`).
+
+The undefined ones are the serious half. A `var(--color-surface, #ffffff)` with no definition does
+not fall back to a token — it renders the literal, or renders **nothing at all** where no comma
+fallback was given. Three sheets were carrying a private, invented token vocabulary that no theme
+block defines, and jsdom could not see it.
+
+Fixed by mapping every invented name onto the real token rather than adding fallbacks:
+`--color-surface`→`--color-bg-surface`, `--color-scrim`→`--color-bg-overlay`,
+`--color-surface-hover`→`--color-bg-hover`, `--color-surface-alt`→`--color-bg-secondary`,
+`--color-primary-light`/`--color-primary-subtle`→`--color-primary-soft`,
+`--color-info-fg`→`--color-fg` — and by replacing 71 raw values with the existing scale
+(`--space-*`, `--text-*`, `--radius-*`, `--shadow-*`, `--leading-*`, `--color-*`).
+
+**Two things I checked that the gate does not.** First, that every one of the 60 tokens the three
+sheets now use is actually **defined** — the gate grades some of this, but a token defined only in
+`:root` and used in a themed sheet is a different question. All 60 resolve. Second, that the
+colour tokens survive every theme: `--color-primary-soft` and `--color-danger-border` are absent
+from the `[data-theme='dark']` block, which looks like a defect and is not — `:root` declares
+both, and the cascade supplies them. Verified rather than assumed, because declaring a token
+"missing" from a theme block it inherits is the easy false positive here.
+
+**Finding 3 — a kill-test mutation was left live in the working tree.**
+`sync_client.rs` carried `if false && outcomes.len() != pending.len()` — the O-H21 guard,
+disabled — while HEAD held the correct `if outcomes.len() != ...`. The paired test file had also
+been edited but never committed, so the fix's test was orphaned from the fix. Both are now
+reconciled: the source restored to HEAD, the test committed, and `cargo test -p kasirmu-core
+apply_sync_outcomes` green at 6/6.
+
+**The transferable lesson:** the failure mode this round had in common across all three findings is
+**trusting a label instead of a measurement** — a plan entry's presence read as open work, a
+record's attribution of a red gate taken at face value, a guard's text read as live code. Each was
+cheap to disprove and none had been disproved, because reading is faster than checking and the
+documents looked authoritative.
+
