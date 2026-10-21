@@ -447,10 +447,7 @@ A 1,000-item drain is 1,000 fsyncs with the DB lock held throughout, and
 one transaction (or `UPDATE … WHERE id IN (…)`), and assert/report the length mismatch.
 
 **O-H22 · platform/core — the process-wide store-DB mutex is held across migrations** —
-`platform/core/src/database/manager.rs:73-87` ◦
-`store_dbs.lock()` is taken across file creation, pragma setup and a full migration run, so a
-first touch of one store serialises every other store's connection lookup behind disk I/O.
-*Fix:* lock only the map lookup/insert; run `open_or_create_connection` outside the guard.
+`platform/core/src/database/manager.rs:73-87` ✔. Fixed: scoped global `store_dbs` mutex to map lookup and insert, running `open_or_create_connection` and migrations outside the global lock, and serialized same-store initialization via per-store init locks. Verified with concurrent opening tests in `manager_tests.rs`.
 
 ### Medium — likely to bite within years
 
@@ -2223,15 +2220,18 @@ Two Medium performance findings resolved in location and inventory resolution:
 
 ---
 
-## §11Z — O-H16 resolved: delta refresh of KDS queue snapshot with cached line item and station reuse (2026-10-21)
+---
 
-One High performance finding resolved in desktop KDS command and LAN sync handling:
+## §11AA — O-H22 resolved: per-store initialization locks and unblocking global store-DB cache during migrations (2026-10-21)
 
-1. **O-H16 · `kasirmu-app` incremental KDS queue snapshot refresh (`apps/desktop-tauri/src/commands/kds.rs`)**:
-   - Converted `refresh_kds_queue_cache` to index existing active tickets by order ID from the in-memory `cache.read()` snapshot.
-   - Reused already-resolved `line_items` and `stations` for all unchanged orders, avoiding $2N$ sequential bridge queries on every keystroke or order status transition.
-   - Added `dirty_order_id: Option<&str>` parameter so that line-item bump events only re-query the single order whose lines changed, while order status updates reuse lines and stations completely.
-   - Verified across all 5 end-to-end multi-terminal tests in `commands::kds::kds_lan_live_tests`.
+One High concurrency and availability finding resolved in platform core database manager:
+
+1. **O-H22 · `platform-core` per-store initialization locks and unblocked store DB cache (`platform/core/src/database/manager.rs`)**:
+   - Replaced holding the global `store_dbs` mutex across file creation, pragma setup, and migrations with fine-grained per-store initialization locks (`init_locks`).
+   - The global `store_dbs` mutex is now held only for nanosecond-level hashmap lookup and insertion, allowing concurrent queries and connection lookups across already-opened stores to proceed without blocking behind disk I/O or full migration runs.
+   - Synchronized `create_store_db` and `delete_store_db` with `init_locks` to eliminate initialization/deletion races on the same store.
+   - Added concurrency tests `concurrent_open_store_same_id_returns_identical_connection` and `concurrent_open_store_different_ids_all_succeed` in `manager_tests.rs`.
+
 
 
 
