@@ -190,8 +190,8 @@ export function WorkspaceKdsSettings({
         // 1-5 column stepper (fcfddf79). The read path (L90) and the control
         // (L269/L270) were converted; this write-back was not. setSettingsScoped takes
         // Record<string, string> and the Rust command deserializes
-        // HashMap<String, String> (commands/settings.rs:1054), so a bare number here
-        // failed serde for the WHOLE batch -- every KDS setting save errored, not just
+  // HashMap<String, String> (the `entries` parameter of `set_settings_scoped`), so a
+  // bare number here failed serde for the WHOLE batch -- every KDS setting save errored,
         // the density one, because all five keys go in a single call.
         'kds.density': String(draft.density),
       });

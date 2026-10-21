@@ -176,8 +176,8 @@ function SettingsPageContent() {
   // clear the floor), so staff, auditors — and anyone with an
   // unrecognized role — get the locked card instead of the shell. The gate
   // normalizes first: the session carries the backend's DISPLAY role name
-  // (capitalized, e.g. 'Owner', 'Manager' — kasirmu-bridge/src/auth.rs:485),
-  // while roleAtLeast's table is keyed lowercase, so an unnormalized 'Owner'
+  // (capitalized, e.g. 'Owner', 'Manager' — the `role_name: role.name` the
+  // backend assigns in `staff_login`), while roleAtLeast's table is keyed lowercase, so
   // scores 0 and locks a real owner out (reproduced in the browser).
   const canAccessSettings = roleAtLeast(normalizeRole(session?.role_name ?? null), 'manager');
   const { sessionToken } = useWorkspace();
