@@ -12,13 +12,23 @@ test-sleep floor). No code touched, no axis chosen.
 found already paid and are now marked ✅ PAID inside their own entry — they had been ranked as
 open work in every downstream reading this journal supplies.**
 
-| Tier | Defined | Closed by §11 heading | Marked ✅ PAID in-entry | Still open |
-|---|---|---|---|---|
-| High | 26 | 3 | 6 | **17** |
-| Medium | 66 | 19 | 0 | **47** |
-| Low | 23 | 4 | 0 | **19** |
-| Test (O-T) | 16 | 2 | 0 | **14** |
-| **Total** | **131** | **28** | **6** | **97** |
+| Tier | Defined | Marked closed (heading or in-entry) | Still open |
+|---|---|---|---|
+| High | 26 | 18 | **8** |
+| Medium | 66 | 32 | **34** |
+| Low | 23 | 5 | **18** |
+| Test (O-T) | 16 | 4 | **12** |
+| **Total** | **131** | **59** | **72** |
+
+**Updated 2026-10-21 (later the same day).** The earlier form of this table split "closed by a
+heading" from "marked PAID in-entry" and read 97 open. That split was itself misleading: the two
+conventions are equivalent evidence, and separating them made the total look worse than the tree.
+One column now, recounted by script.
+
+**Of the 8 open Highs, two are stale readings rather than live debt:** O-H25's target file no
+longer exists (re-measured 11-10-26, noted under the entry), and O-H02/O-H12 describe the same
+products-listing shape. The genuinely live remainder is O-H14, O-H17, O-H18, O-H19 and O-H20 —
+mobile N+1s plus the `platform/sync` round-trip cluster.
 
 (Counted by script over the entry headers, not by eye — a first pass of this very table said
 "Medium 47 defined / 21 closed", which is wrong in both columns and is exactly the census-rot
