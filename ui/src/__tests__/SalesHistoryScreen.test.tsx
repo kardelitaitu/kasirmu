@@ -879,12 +879,12 @@ describe('ADR #7: reads are session-scoped when a workspace token exists', () =>
     it('lets STAFF create a pengganti but not void — the two actions need different permissions', async () => {
       // The two role-gated actions on this screen are NOT the same gate:
       //
-      //   void      -> `sales:void`     (kasirmu-bridge/src/pos/void.rs:56)
-      //   pengganti -> `sales:process`  (kasirmu-bridge/src/history.rs:309)
+      //   void      -> `sales:void`     (kasirmu-bridge/src/void.rs, `void_sale_scoped`)
+      //   pengganti -> `sales:process`  (kasirmu-bridge/src/history.rs, `create_faktur_pengganti_scoped`)
       //
       // The STAFF preset holds `sales:process` and NOT `sales:void`, and its own
       // description says so: "Checkout-operations role — processes sales… No management
-      // access" (rbac_presets.rs:162-166). Both were gated on `isManager`, so Staff were
+      // access" (the STAFF preset in rbac_presets.rs). Both were gated on `isManager`, so Staff were
       // shown a working pengganti action HIDDEN from them — a capability removed from the
       // people the backend authorises, which is the mirror image of the usual
       // enabled-button-that-errors bug.

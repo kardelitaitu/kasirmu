@@ -828,7 +828,7 @@ describe('AuditLogScreen', () => {
   //
   // All three were gated on `isManager`, which excludes the AUDITOR preset — the one
   // role whose whole purpose is reviewing this log, and the one holding `audit:view`
-  // without `audit:export` (rbac_presets.rs:285-305). So Mark Reviewed was hidden from
+  // without `audit:export` (the AUDITOR preset in rbac_presets.rs). So Mark Reviewed was hidden from
   // its intended user. This is the direction round 48 found on the pengganti button:
   // not an enabled control that errors, but a working action made unreachable.
 
@@ -851,9 +851,9 @@ describe('AuditLogScreen', () => {
 
   it('lets a non-manager CUSTOM role export when the grant is explicit', async () => {
     // The mirror case, and the reason the gate cannot be the role: `CUSTOM` is
-    // "fully flexible — Admin selects every permission manually" (rbac_presets.rs:306-310),
+    // "fully flexible — Admin selects every permission manually" (the CUSTOM preset in
+    // rbac_presets.rs grants nothing and leaves every permission to the admin),
     // so `audit:export` can be held by someone `isManager` excludes.
-    mockAuth.isManager = false;
     mockAuth.permissions = ['audit:export'];
     mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
     await renderScreen();

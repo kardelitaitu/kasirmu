@@ -11,9 +11,9 @@
  */
 // ── A setting the app WRITES and never reads (F26) ────────────────────
 //
-// `store.preset` is written once at provisioning (`provisioning.rs:825`) and read by
-// nothing in production — the only reads are in `*_tests.rs` files and the key's own
-// declaration. Measured on the connected tablet 2026-10-09: it holds `'restaurant'`
+// `store.preset` is written once at provisioning (`write_provisioning_settings` in
+// provisioning.rs) and read by nothing in production — the only reads are in `*_tests.rs` files
+// and the key's own declaration. Measured on the connected tablet 2026-10-09: it holds `'restaurant'`
 // alongside TEN explicit `feature.*` rows, and it is the FEATURES the app reads
 // (`features.rs:289`). The preset is a label recording how the device was provisioned;
 // nothing derives behaviour from it.
@@ -125,7 +125,7 @@ const READ_THROUGH_A_WRAPPER: Record<string, string> = {
     'rate_sync.rs:253 calls the wrapper at kasirmu-core/src/settings.rs:599; the daemon '
     + 're-reads it every cycle and clamps it to 5..1440 minutes',
   RATE_SYNC_BASE_CURRENCY:
-    'rate_sync.rs:287 calls the wrapper at kasirmu-core/src/settings.rs:609',
+    'rate_sync.rs:287 calls the wrapper at kasirmu-core/src/settings.rs:613',
 };
 
 /**
@@ -182,7 +182,7 @@ const WRITTEN_NOT_READ: Array<{
     name: 'store.preset',
     needles: ['STORE_PRESET', 'store.preset'],
     writer: 'crates/kasirmu-core/src/db/provisioning.rs',
-    why: 'provisioning.rs:825 writes it; the app reads feature.* instead',
+    why: 'write_provisioning_settings writes it; the app reads feature.* instead',
   },
 ];
 
@@ -205,14 +205,14 @@ const WRITTEN_NOT_READ: Array<{
 const ACCESSOR_WITHOUT_CONSUMER: Record<string, string> = {
   // NOTE: CURRENCY_THOUSANDS_SEPARATOR was the entry that OPENED this map in
   // round 93 and it is gone as of round 99 — correctly. The receipt printer
-  // gained grouping (`receipt.rs` ThousandSeparator, `format_money:355`) and
-  // `apps/mobile-tauri/src/commands/hardware.rs:339-350` populates it by READING
+  // gained grouping (`receipt.rs` ThousandSeparator, `format_money`) and
+  // the `grouping` block in `apps/mobile-tauri/src/commands/hardware.rs` populates it by READING
   // the key, so the sweep finds a real reader and the entry is no longer true.
   // Removing it is the whole point of the map: an entry is a recorded debt, and
   // paying a debt means deleting the entry, not keeping it green.
 
   CURRENCY_THOUSANDS_SEPARATOR:
-    'get/set exist (typed.rs:657/662); the printer\'s `format_money` (receipt.rs:251-275) '
+    'get/set exist (typed.rs:657/662); the printer\'s `format_money` (receipt.rs) '
     + 'applies show_currency and decimal_separator and has NO grouping step, and no UI writes it '
     + '— D6 records this as the one open printer row',
   // ⚠️ The two sync families below were found by the ACCESSOR FIX, not by grep.
@@ -244,7 +244,8 @@ const DECLARED_AHEAD_OF_IMPLEMENTATION: Record<string, string> = {
   MEDIA_MAX_PIXELS: 'media pipeline is PLANNED stubs (media.rs:1-12)',
   AUTH_TOKEN:
     'on the shared credential DENY LIST, so having no reader is the design — the test '
-    + 'asserts the refusal instead (apps/mobile-tauri/src/commands/settings_tests.rs:458-483)',
+    + 'asserts the refusal instead (settings_tests.rs, `sync_auth_token_is_refused_on_read_'
+    + 'and_never_replicated`)',
 };
 
 /**
