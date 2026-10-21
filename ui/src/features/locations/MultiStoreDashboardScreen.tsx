@@ -44,7 +44,8 @@ export default function MultiStoreDashboardScreen() {
    * Both handlers used to end in `catch { // silently fail }`, so a refused action was a
    * click that did nothing with no explanation. The `error` state above cannot carry this:
    * it replaces the whole dashboard (:229), which is wrong for one failed row action. This
-   * is the same inline `role="alert"` the prefix editor already uses (:491-495).
+   * is the same inline `role="alert"` the prefix editor already uses (the
+   * `multi-store-prefix-error` span).
    */
   const [actionError, setActionError] = useState<string | null>(null);
   /** Location whose read-only details modal is open (View details). */

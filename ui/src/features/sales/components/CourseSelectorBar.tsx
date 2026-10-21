@@ -51,8 +51,8 @@ export function CourseSelectorBar({
   // A FIREABLE line is one on hold that BELONGS TO A COURSE.
   //
   // `fireCourse` needs both (`courseId === courseId && coursingStatus === 'hold'`,
-  // :24-26), so a hold with no course is not fireable by any per-course button.
-  // Fire All used to be gated on `coursingStatus === 'hold'` alone (:40-41), which
+  // in `fireableCount` below), so a hold with no course is not fireable by any per-course
+  // button. Fire All used to be gated on `coursingStatus === 'hold'` alone, which
   // made it strictly BROADER: a course-less hold would raise a "Fire All" control
   // that no per-course button could match, and that would fire a line the operator
   // was never shown.

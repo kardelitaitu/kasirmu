@@ -1383,7 +1383,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       .catch(() => { if (cancelled) return; addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-customers-failed'), type: 'error' }); setCustomerSearchResults([]); })
       .finally(() => { if (cancelled) return; setLoadingCustomers(false); });
     return () => { cancelled = true; };
-    // sessionToken is read at :1053. The trailing comment deliberately routes l10n through a ref
+    // sessionToken is read by the `listCustomersScoped(sessionToken)` call above. The trailing
+  // comment deliberately routes l10n through a ref
     // so keystrokes do not refetch, which is correct -- but the token was left out entirely, so
     // opening the customer modal after a hot-swap listed customers with a destroyed session and
     // surfaced the "customers failed" toast. Adding it re-fetches only when the modal is open,

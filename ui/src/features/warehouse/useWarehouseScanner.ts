@@ -77,7 +77,8 @@ export function useWarehouseScanner({
     return () => {
       cancelled = true;
       if (startedRef.current) {
-        // Silent by intent, same as sales/useBarcodeScanner.ts:73 — this is
+        // Silent by intent, same as the `stopScannerScoped(…).catch(() => {})` in
+        // sales/useBarcodeScanner.ts — this is
         // cleanup on unmount and the scanner may already be stopped. The sales
         // twin also guards on `&& sessionToken`; this copy does not, so on a
         // session loss it issues the stop with a dead token, the call rejects,
