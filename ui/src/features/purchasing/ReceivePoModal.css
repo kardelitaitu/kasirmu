@@ -35,6 +35,14 @@
   }
 }
 
+/* Reduced motion: the fade-in is decorative, so drop it entirely rather than
+   shorten it. The modal still appears — only the entrance animation goes. */
+@media (prefers-reduced-motion: reduce) {
+  .receive-po-modal {
+    animation: none;
+  }
+}
+
 .receive-po-header {
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--color-border);

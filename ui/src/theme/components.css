@@ -599,6 +599,16 @@
   .provisioning-subtab.active::after,
   .license-pairing-qr-wrapper::after,
   .provisioning-qr-wrapper::after,
+  /* Purchasing/Kasbon elevated surfaces. These always carried a literal
+     box-shadow; the 2026-10-21 token pass rewrote them to var(--shadow-*),
+     which is what made the guard see them for the first time. Named here
+     rather than given a .noise-dither class because each is a plain in-flow
+     box that anchors the overlay with position:relative in its own sheet. */
+  .kasbon-modal::after,
+  .receive-po-modal::after,
+  .vendor-bill-stat-card::after,
+  .vendor-bills-table-container::after,
+  .vendor-bills-modal::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -623,6 +633,16 @@
   .provisioning-subtab.active::after,
   .license-pairing-qr-wrapper::after,
   .provisioning-qr-wrapper::after,
+  /* Purchasing/Kasbon elevated surfaces. These always carried a literal
+     box-shadow; the 2026-10-21 token pass rewrote them to var(--shadow-*),
+     which is what made the guard see them for the first time. Named here
+     rather than given a .noise-dither class because each is a plain in-flow
+     box that anchors the overlay with position:relative in its own sheet. */
+  .kasbon-modal::after,
+  .receive-po-modal::after,
+  .vendor-bill-stat-card::after,
+  .vendor-bills-table-container::after,
+  .vendor-bills-modal::after,
   .card::after,
   .modal-panel::after,
   .provisioning-card::after,
@@ -814,6 +834,16 @@
   .provisioning-subtab.active::after,
   .license-pairing-qr-wrapper::after,
   .provisioning-qr-wrapper::after,
+  /* Purchasing/Kasbon elevated surfaces. These always carried a literal
+     box-shadow; the 2026-10-21 token pass rewrote them to var(--shadow-*),
+     which is what made the guard see them for the first time. Named here
+     rather than given a .noise-dither class because each is a plain in-flow
+     box that anchors the overlay with position:relative in its own sheet. */
+  .kasbon-modal::after,
+  .receive-po-modal::after,
+  .vendor-bill-stat-card::after,
+  .vendor-bills-table-container::after,
+  .vendor-bills-modal::after,
   .card::after,
   .modal-panel::after,
   .provisioning-card::after,

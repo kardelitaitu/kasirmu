@@ -154,6 +154,16 @@ const KNOWN_NOISE_SELECTORS = [
   '.provisioning-subtab.active',
   '.license-pairing-qr-wrapper',
   '.provisioning-qr-wrapper',
+  // Purchasing/Kasbon elevated surfaces (2026-10-21). Each always carried a
+  // literal box-shadow; the design-token pass rewrote them to var(--shadow-*),
+  // which is what made the shadow walk see them. Wired to ::after in
+  // components.css main list + both @media parity blocks, anchoring via
+  // position:relative in their own feature sheets.
+  '.kasbon-modal',
+  '.receive-po-modal',
+  '.vendor-bill-stat-card',
+  '.vendor-bills-table-container',
+  '.vendor-bills-modal',
   '.store-switcher-dropdown',
   '.create-pin-card',
   '.custom-context-menu',
@@ -922,7 +932,21 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // .provisioning-mode-card.is-selected). Each earned its place the only way this
     // list accepts one — by GAINING a shadow and then being COVERED by the overlay,
     // not by being exempted from it. The ceiling rises by exactly the number added.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 133 selectors; measured 119 with 31 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(119);
+    // Ceiling 119 -> 124, 2026-10-21. The +5 is the SAME sanctioned shape, applied to
+    // five purchasing/kasbon surfaces at once: .kasbon-modal, .receive-po-modal,
+    // .vendor-bill-stat-card, .vendor-bills-table-container and .vendor-bills-modal.
+    // Each was given ::after entries in all THREE components.css lists in the SAME
+    // change that names them here, so all five ARE dithered and this door's own rule
+    // is satisfied. None is a new waiver.
+    //
+    // The mechanism is worth recording because it is NOT the usual one: these five were
+    // never plain, they carried a LITERAL box-shadow (rgba/hardcoded) that the shadow
+    // walk could not see. The 2026-10-21 design-token pass rewrote them to
+    // var(--shadow-xl) / var(--shadow-sm), which is what made them visible — so the walk
+    // did not find five under-covered surfaces, it found five surfaces whose coverage
+    // had been invisible. Population 157 -> 162 with the five; ceiling rises by exactly
+    // 5 and the headroom below the floor is unchanged in absolute terms.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 162 selectors; measured 124 with 31 of headroom below the floor and 0 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(124);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is
