@@ -220,10 +220,10 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
     } finally {
       setLoading(false);
     }
-    // sessionToken is read five times in this body (:178, :179, :180, :188, :203 — re-measured
-    // 2026-10-19; the note said ":126-:141", which is FTL doc-comment text) and was not a
-    // dependency, so the `useEffect(() => { load(); }, [load])` (now :234) never re-ran for a
-    // new session.
+    // sessionToken is read five times in this body — the four scoped reads in the
+    // `Promise.all` arg list plus `getSyncPlanScoped` below — and was not a dependency, so
+    // the `useEffect(() => { load(); }, [load])` that follows never re-ran for a new
+    // session.
   }, [l10n, sessionToken]);
 
   // P7-3: Pull-to-refresh gesture (defined after load so it's hoist-safe)

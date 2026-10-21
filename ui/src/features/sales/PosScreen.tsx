@@ -1065,7 +1065,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
     // ⚠️ DINE-IN ONLY — the NINTH site of this rule. Same derivation as the saved-tab
     // builders, but the consequence is on PAPER: completedSale.ts puts this value in
-    // the printed args (:232) and derives the receipt NUMBER from it (:212), so a
+    // the printed args (`tableNumber` on the returned object) and derives the receipt
+    // NUMBER from it (`CHECK-${tableNumber}`), so a
     // takeaway with a stray number in the Table field printed a check naming a table
     // it does not have. The button gate in CartActionBar now agrees with this.
     const billTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
@@ -1632,9 +1633,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // settings-fetch failure.
   //
   // Guarded, like CurrencyContext, SettingsContext, BrandContext and ShiftBar
-  // before it (the whole class is written up in SettingsContext:207). This one
+  // before it (the whole class is written up in SettingsContext’s guard-register header). This one
   // is not cosmetic: CartPanel gates the course controls on
-  // `courseFiringEnabled !== false` (:631, :669), so a stale read carrying the
+  // `courseFiringEnabled !== false`, so a stale read carrying the
   // PREVIOUS store's setting forward would hide course firing on a store that has
   // it enabled -- a POS capability disappearing across a store switch.
   //
@@ -1645,7 +1646,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   //
   // The first attempt at this pin was worth documenting because it LOOKED pinned and was
   // not: it asserted on the bar's "Fire All" text, which CourseSelectorBar renders only
-  // when a line carries `coursingStatus === 'hold'` (:41). A barcode-scanned line has no
+  // while some course still has a fireable line. A barcode-scanned line has no
   // course, so the text was absent whether or not the bar mounted -- an assertion that
   // could not fail. The observable is the CONTAINER `div.pos-cart-course-bar`, which
   // mounts on exactly this guard's condition (CartPanel.tsx:961); asserting on it is the
@@ -2004,11 +2005,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Restaurant keyboard shortcuts (round 159) ───────────────────────────
   //
   // Restaurant-ONLY, gated on `activeWorkspace` like every other restaurant branch here
-  // (`:458`, `:472`, `:681`). The retail till shares this component, so its handler
-  // object is empty and none of these keys exist there.
+  // (each `activeWorkspace === 'restaurant-pos'` early return). The retail till shares
+  // this component, so its handler object is empty and none of these keys exist
+  // there.
   //
   // Each action routes through an EXISTING self-guarding handler:
-  //   * `handlePrintBill` returns early on no lines/total/session (`:914-918`);
+  //   * `handlePrintBill` returns early on no lines, no total or no session;
   //   * `handleSendToKitchen` returns early on no session/lines/undelivered delta
   //     (`:1189-1198`);
   //   * `setShowSplitBillModal(true)` opens the split MODAL, not its confirm, so the

@@ -899,8 +899,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
    * guard exists to enforce on a SKU that is nearly out.
    */
   const handleIncreaseQty = useCallback((line: { sku: string; id: LineId; qty: number }) => {
-    // The row as the cart ACTUALLY holds it. `linesRef` is assigned on every render
-    // (:145), so it always carries the committed state rather than a render snapshot.
+    // The row as the cart ACTUALLY holds it. `linesRef` is assigned on every render,
+    // so it always carries the committed state rather than a render snapshot.
     const current = linesRef.current.find((l) => l.id === line.id) ?? line;
     const product = products.find((p) => p.sku === line.sku);
     if (product?.stock_qty != null) {
@@ -914,7 +914,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
     // The DELTA form, so the increment resolves against whatever the cart holds when
     // React flushes it — not the `qty` this row rendered with. Reading `current.qty`
-    // (:905) fixes the stock GUARD; passing a delta fixes the WRITE, and only the write
+    // fixes the stock GUARD; passing a delta fixes the WRITE, and only the write
     // being a delta makes two batched taps accumulate to two increments.
     changeQty(line.id, 1);
   }, [products, changeQty, addToast, l10n]);
@@ -1540,12 +1540,12 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       // longer holds, with two reachable consequences:
       //
       //  1. The reminder popup counts `heldCartsList.length` (the `heldCartCount` prop —
-      //     re-measured 2026-10-19; this note said ":2103", now `panelActions={{`) — the one
+      //     on <RetailCart> below) — the one
       //     affordance that tells a cashier 'there are carts on hold'. After
       //     resuming the last one it still claimed one, and every resume left the
       //     count inflated by one for the rest of the shift.
       //  2. That popup's row opens the modal with a bare `setShowHeldCartsList(true)`
-      //     (`onClickHeldCarts`; the note once said ":2107", which is `onRequestClear`) —
+      //     (`onClickHeldCarts` below) —
       //     no refetch — so the held carts list showed a cart that no
       //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
       //     `if (!full) return;` in the held-cart resume read: no modal change, no toast,
@@ -1760,11 +1760,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // `if (showTables)` and `if (showStockInquiry)` below, each a `return (<LocalizedError
   // Boundary>…)`; the payment modal is the fourth, `<PaymentModal>`. `isAnyOverlayOpen`
   // covers the local DIALOGS but none of these, and
-  // ⚠️ These were cited as :1864 / :1675 / :1684 / :1626 and NONE of them were sub-views:
-  // re-measured 2026-10-19, those are PaymentModal's lineItems map, and
-  // `settlingIdsInFlight.add`/`.delete` in handleSettleCredit. Four numbers, four misses —
-  // which is what a block of cites above a ~200-line insertion looks like after it lands.
-  // Anchored by FLAG NAME now, so the next insertion cannot rot them the same way.
+  // ⚠️ These were cited as :1864 / :1675 / :1684 / :1626 and NONE of them were
+  // sub-views: those were PaymentModal’s lineItems map and the
+  // `settlingIdsInFlight.add`/`.delete` in handleSettleCredit. Four numbers, four
+  // misses — what a block of cites above a ~200-line insertion looks like after it
+  // lands.
   // although their flags sat in the dependency array below the handler never READ
   // them — so the retail function keys stayed live while a replacement screen owned
   // the view. F1 (Pay) opened the payment dialog for a cart the cashier could not
@@ -1840,9 +1840,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         // update/clear the tab it was resumed from. With an EMPTY cart there is
         // nothing to hold and nothing to update, so F4 can only mean "show me the
         // held carts". Sending that to `handleResume` auto-resumed a lone hold
-        // (handleResume :1343-1345) with no modal, no confirmation and no toast —
-        // browsing silently became a committing action. `handleResume` is therefore
-        // gated on there being something to resume INTO.
+        // with no modal, no confirmation and no toast — browsing silently became
+        // a committing action. `handleResume` is therefore gated on there being
+        // something to resume INTO.
         case 'F4': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length === 0) showHeldCartList(); else if (heldCartId) handleResume(); else handleHold(); break;
         case 'F5': if (e.cancelable) e.preventDefault(); skuInputRef.current?.focus(); break;
         case 'F6': if (typing) break; if (e.cancelable) e.preventDefault(); goToSubView(setShowSalesHistory); break;
