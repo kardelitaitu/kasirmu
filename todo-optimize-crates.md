@@ -474,7 +474,7 @@ queries per shortfall panel. *Fix:* one `IN`-clause query plus a name join.
 **O-M16 · kasirmu-bridge — staff role paths are N+1 in three places** —
 `crates/kasirmu-bridge/src/staff.rs:915-919` (`role_dto` = 2 queries per role), `:788-792`
 (owner gate loads and scans the whole user table to count), `:606-610` (linear role scan per
-user) ◦. *Fix:* grouped count queries and one id→name map.
+user) ✔. Fixed: added `Store::all_role_counts_map` in `crates/kasirmu-core/src/db/roles.rs` computing references and holders for all roles in 5 total queries for `list_roles_scoped`, added `Store::count_active_owners` in `crates/kasirmu-core/src/db/staff.rs` eliminating full table materialization in `enforce_role_assignment_policy`, and pre-indexed `role_map` in `list_staff_scoped` replacing linear $O(\text{users} \times \text{roles})$ scanning with $O(1)$ lookups via `to_staff_dto_with_role_name`. Verified across all staff and roles tests in `kasirmu-core` and `kasirmu-bridge`.
 
 **O-M17 · kasirmu-bridge — tax settings read is one query per category** —
 `crates/kasirmu-bridge/src/tax.rs:443-450` ✔. Fixed: added `Store::get_category_tax_rates_batch(&category_ids)` in `crates/kasirmu-core/src/db/tax/assignments.rs`, replacing $N$ sequential per-category database queries with a single batched join in `run_list_category_tax_rates`. Verified in `tax_tests.rs` and `tax.rs` tests.
@@ -2139,6 +2139,19 @@ One Medium performance finding resolved in inventory and stock movement compacti
    - Grouped item movement archiving into transactions of 50 items (`ARCHIVE_BATCH_SIZE`) instead of individual per-item write transactions, reducing disk fsyncs and lock acquisition cycles by up to 50x.
    - Hoisted `prepare_cached` for archive insertion, rollup creation, and movement deletion queries across each transaction batch.
    - Verified across all 10 unit tests in `products_tests.rs` (`archive_movements_*`).
+
+---
+
+## §11W — O-M16 resolved: batched role counts, active owner query, and roster role indexing (2026-10-21)
+
+One Medium performance and scalability finding resolved across staff and role management:
+
+1. **O-M16 · `kasirmu-bridge` batched role counts, count_active_owners, and staff role lookup (`staff.rs`, `db/roles.rs`, `db/staff.rs`)**:
+   - Added `Store::all_role_counts_map` in `crates/kasirmu-core/src/db/roles.rs`, querying references and holder counts for all roles in 5 total queries instead of $5N$ sequential queries during `list_roles_scoped`.
+   - Added `Store::count_active_owners` in `crates/kasirmu-core/src/db/staff.rs`, eliminating full `users` table loading into memory in `enforce_role_assignment_policy`.
+   - Pre-indexed `role_map` in `list_staff_scoped` via `to_staff_dto_with_role_name`, reducing linear scanning of roles per user from $O(\text{users} \times \text{roles})$ to $O(1)$.
+   - Verified across 49 roles tests and 98 staff tests in `kasirmu-core`, and 132 tests in `kasirmu-bridge`.
+
 
 
 

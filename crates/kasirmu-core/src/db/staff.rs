@@ -250,6 +250,16 @@ impl Store<'_> {
         Ok(count)
     }
 
+    /// Count active owner users for last-owner protection.
+    pub fn count_active_owners(&self) -> Result<i64, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role_id = ?1",
+            params![crate::builtin_roles::OWNER],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     /// Enforce the subscription tier's staff-user limit before creating a
     /// new staff member (C1.1 — §9 pre-launch item 1: prevents revenue
     /// leakage from unlimited Free/Plus team accounts).
