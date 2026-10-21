@@ -1101,11 +1101,19 @@ export default function RestaurantReceiptsScreen({
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    // Same guard as the five other token-dependent callbacks in this file (`:195`,
-    // `:213`, `:808`, `:975`, `:1015`). This one pushed its FIRST task with
-    // `sessionToken ?? ''` and only guarded the later ones with `if (sessionToken && …)`,
-    // so an empty
-    // token fired a bogus `set_receipt_settings_scoped('')` before the guarded tasks skipped.
+    // Same guard the other token-dependent callbacks in this file already carry: the
+    // `if (!sessionToken) return;` opening `handleTestPrint`, `handleTestDrawer` and
+    // `handleTestKitchenChit`, and the one in the load effect. This one pushed its FIRST
+    // task with `sessionToken ?? ''` and only guarded the later ones with
+    // `if (sessionToken && …)`, so an empty token fired a bogus
+    // `set_receipt_settings_scoped('')` before the guarded tasks skipped.
+    //
+    // ⚠️ Anchored by callback NAME, and the set is now stated correctly. The previous
+    // wording claimed FIVE others and listed five line numbers; measured 2026-10-19, two of
+    // those numbers landed on a dependency-array tail and a `finally` block, and one named
+    // a callback that never reads `sessionToken` at all (`refreshBluetoothDevices` — its
+    // primary-location work is guarded in the load effect instead). A line-check passed all
+    // five. The list above is what the file actually contains.
     //
     // Not reachable through the UI today — the mock always supplies a token, and the Save
     // button is disabled until an edit makes the screen dirty — so this is a consistency fix
