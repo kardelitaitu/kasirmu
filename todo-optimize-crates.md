@@ -423,7 +423,17 @@ and `:458`). `crates/kasirmu-api/src/routes/images.rs:351` ◦
 *Fix:* `tokio::fs` or `spawn_blocking`.
 
 **O-H14 · mobile — product list is an N+1 over tax rates with an unbounded payload** —
-`apps/mobile-tauri/src/commands/products.rs:129-165` ◦
+**HALF PAID 2026-10-21** — the N+1 is gone; the unbounded payload is NOT.
+`apps/mobile-tauri/src/commands/products.rs:129-165` ◦ — **SPLIT 2026-10-21 after re-reading at
+HEAD.** `map_products_to_dtos` (`:146`) now does ONE `get_product_tax_rates_batch(&skus)` and
+says so in as many words ("PROD-12/O-H14: batch-load tax rates for all products in one query,
+replacing the N+1 per-product lookup"). The only surviving per-product call is
+`map_pwd_to_dto` (`:225`), which maps a SINGLE product and is correctly one lookup. **So the
+N+1 half of this entry is closed and the sentence below is stale for it.** What remains is the
+second half: `list_products` (`:107`), `list_products_scoped` (`:401`) and
+`list_warehouse_products_scoped` (`:420`) still call unpaged core listers
+(`list_products` / `list_warehouse_products` in `db/products_crud.rs:47` / `:108`), so the IPC
+payload is still linear in catalog size. Read the rest of this entry as the payload half only.
 `map_products_to_dtos` calls `get_product_tax_rates` per product, and its callers
 (`list_products`, `list_products_scoped`, `list_warehouse_products_scoped`) load the whole
 catalog with no LIMIT — N+1 queries plus one IPC payload linear in catalog size. *Fix:* one
