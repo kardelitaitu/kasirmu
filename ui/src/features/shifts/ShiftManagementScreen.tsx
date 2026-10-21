@@ -132,6 +132,14 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
         // nothing, and a read that failed. Only the flag keeps them apart, and
         // the no-active banner below is gated on it so a transient failure can
         // never invite the cashier to open a shift that is already open.
+        //
+        // DROP THE OLD FIGURES. The active-shift card (gated on `activeShift`) and the
+        // unknown card (gated on `activeShiftUnknown`) are INDEPENDENT, so setting the
+        // flag alone stacked a stale "Active Shift" card — opening balance, sales, cash —
+        // above a "Failed to load shifts" card. Those numbers read as current exactly when
+        // the screen has just admitted it cannot read them. The list branch above clears
+        // its own value for the same reason; this branch did not.
+        setActiveShift(null);
         setActiveShiftUnknown(true);
       }
     } catch {

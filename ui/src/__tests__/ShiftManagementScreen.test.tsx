@@ -541,6 +541,29 @@ describe('ShiftManagementScreen', () => {
     return user;
   }
 
+  it('does not stack a stale active-shift card under the failure card', async () => {
+    // The active-shift card is gated on \`activeShift\` and the unknown card on
+    // \`activeShiftUnknown\` — independent gates. Setting only the flag after a failed read
+    // left the PREVIOUS shift's opening balance, sales and cash on screen above a
+    // "Failed to load shifts" card, reading as current at the moment the screen admits it
+    // cannot read them.
+    //
+    // A SUCCESSFUL payout awaits load() (:317), which re-issues the active-shift read.
+    // Making only that second read fail reproduces the stacked cards.
+    const user = await renderWithActiveShiftAndOpenPayout();
+
+    // Every read from here on fails — including the one the payout's load() issues.
+    mockGetActiveShift.mockRejectedValue(new Error('store busy'));
+    await user.type(screen.getByLabelText('Payout amount'), '20000');
+    await user.click(screen.getByRole('button', { name: 'Record Payout' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load shifts/)).toBeInTheDocument();
+    });
+    // The stale figures are gone rather than stacked under the error.
+    expect(screen.queryByText('Active Shift')).toBeNull();
+  });
+
   it('does not show an empty report when the read failed', async () => {
     mockListShifts.mockResolvedValue(closedShifts);
     mockGetActiveShift.mockResolvedValue(null);
