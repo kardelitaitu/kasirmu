@@ -352,11 +352,7 @@ Fixed: introduced static pooled `shared_sync_http_client()` via `OnceLock<reqwes
 transaction** — `crates/kasirmu-bridge/src/data.rs:505-666` ✔. Fixed: pre-fetched `HashSet` of existing SKUs/categories/sales/customers/users via single index queries, hoisted RFC-3339 timestamp `now`, and eliminated `val.clone()` via owned payload iteration in both `gate_import_product_batch`/`gate_import_user_batch` and `import_data`. Verified with `data_tests.rs` (79/79 passed).
 
 **O-H07 · kasirmu-bridge — the whole offline queue goes up in one HTTP call** —
-`crates/kasirmu-bridge/src/sync.rs:580` ✔
-`list_pending_offline()` is unbounded and its result is handed to a single push; a terminal
-offline for a week builds an unbounded `Vec` and an unbounded request body against a 30 s
-transport ceiling. *Fix:* push in fixed-size batches (e.g. 500) with a cursor, looping until
-the queue drains.
+`crates/kasirmu-bridge/src/sync.rs:580` ✔. Fixed: looped push in bounded batches of up to `DEFAULT_MAX_OUTBOX_BATCH_ITEMS` (100) using `Store::list_pending_offline_for_push_bounded` until queue drains, handling auth-token refresh across batches. Verified with unit test `sync_run_scoped_drains_large_backlog_in_bounded_batches` in `sync_tests.rs`.
 
 **O-H08 · kasirmu-bridge — the "batch" track-serial lookup runs a full join per SKU** —
 `crates/kasirmu-bridge/src/products.rs:201-222` ✔. ✅ **PAID** (re-verified at HEAD 2026-10-21:
@@ -2222,15 +2218,16 @@ Two Medium performance findings resolved in location and inventory resolution:
 
 ---
 
-## §11AA — O-H22 resolved: per-store initialization locks and unblocking global store-DB cache during migrations (2026-10-21)
+## §11AB — O-H07 resolved: bounded batch draining for offline queue sync (2026-10-21)
 
-One High concurrency and availability finding resolved in platform core database manager:
+One High performance and network resilience finding resolved in bridge offline sync:
 
-1. **O-H22 · `platform-core` per-store initialization locks and unblocked store DB cache (`platform/core/src/database/manager.rs`)**:
-   - Replaced holding the global `store_dbs` mutex across file creation, pragma setup, and migrations with fine-grained per-store initialization locks (`init_locks`).
-   - The global `store_dbs` mutex is now held only for nanosecond-level hashmap lookup and insertion, allowing concurrent queries and connection lookups across already-opened stores to proceed without blocking behind disk I/O or full migration runs.
-   - Synchronized `create_store_db` and `delete_store_db` with `init_locks` to eliminate initialization/deletion races on the same store.
-   - Added concurrency tests `concurrent_open_store_same_id_returns_identical_connection` and `concurrent_open_store_different_ids_all_succeed` in `manager_tests.rs`.
+1. **O-H07 · `kasirmu-bridge` bounded batch offline queue push (`crates/kasirmu-bridge/src/sync.rs`)**:
+   - Replaced unbounded `store.list_pending_offline()` and single HTTP upload with a batching loop fetching up to `DEFAULT_MAX_OUTBOX_BATCH_ITEMS` (100) items via `store.list_pending_offline_for_push_bounded`.
+   - Prevents memory spikes and HTTP 30-second transport ceiling timeouts on merchants reconnecting after multi-day offline operations with large backlogs.
+   - Retained auth refresh handling on 401 across batches and accumulated outcomes correctly.
+   - Added unit test `sync_run_scoped_drains_large_backlog_in_bounded_batches` in `sync_tests.rs`.
+
 
 
 

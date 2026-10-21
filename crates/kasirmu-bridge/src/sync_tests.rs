@@ -107,6 +107,94 @@ async fn sync_run_scoped_pushes_critical_before_an_earlier_low_item() {
     );
 }
 
+/// O-H07: `sync_run_scoped` must drain large offline backlogs in bounded batches
+/// (up to `DEFAULT_MAX_OUTBOX_BATCH_ITEMS` = 100 items per request) rather than
+/// materializing and pushing an unbounded request body in a single HTTP request.
+#[tokio::test]
+async fn sync_run_scoped_drains_large_backlog_in_bounded_batches() {
+    use kasirmu_core::offline::SyncPriority;
+    use kasirmu_core::permissions;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let mut total_received = 0;
+        let mut batch_sizes = Vec::new();
+
+        while total_received < 105 {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                break;
+            };
+            let mut buffer = vec![0_u8; 128 * 1024];
+            let read = socket.read(&mut buffer).await.unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let body_start = request.find("\r\n\r\n").expect("complete HTTP request") + 4;
+            let body = &request[body_start..];
+            let items: Vec<kasirmu_core::offline::OfflineQueueItem> =
+                serde_json::from_str(body).expect("valid json item array");
+            let count = items.len();
+            batch_sizes.push(count);
+            total_received += count;
+
+            let results: Vec<_> = (0..count).map(|_| r#"{"outcome":"accepted"}"#).collect();
+            let resp_body = format!(r#"{{"results":[{}]}}"#, results.join(","));
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                resp_body.len(),
+                resp_body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+        batch_sizes
+    });
+
+    let bridge = crate::testing::TestBridge::new();
+    let token = bridge.token_granting(permissions::SYNC_MANAGE).await;
+    let store_id = "store-batch-drain";
+
+    {
+        let conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = conn.lock().unwrap();
+        update_sync_settings_data(
+            &db,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url.clone()),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        let store = Store::new(&db);
+        for i in 0..105 {
+            store
+                .enqueue_offline_priority(
+                    &format!("item_{i}"),
+                    r#"{"val":1}"#,
+                    SyncPriority::Normal,
+                )
+                .unwrap();
+        }
+    }
+
+    let ctx = bridge.ctx();
+    let result = sync_run_scoped(&ctx, &token)
+        .await
+        .expect("batch drain must succeed");
+    assert_eq!(
+        result.synced, 105,
+        "all 105 items across batches must be synced"
+    );
+
+    let batch_sizes = server.await.expect("fake server must finish");
+    assert_eq!(
+        batch_sizes,
+        vec![100, 5],
+        "O-H07: items must be sent in bounded chunks of max 100 rather than one single unbounded 105-item payload"
+    );
+}
+
 #[test]
 fn sync_settings_serialize() {
     let s = SyncSettingsDto {
