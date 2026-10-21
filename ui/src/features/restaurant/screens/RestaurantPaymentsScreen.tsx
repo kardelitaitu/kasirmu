@@ -327,6 +327,12 @@ export function RestaurantPaymentsScreen({
   // whole load on every keystroke and toggle. These refs carry the current values
   // into that effect without making it reactive to them.
   const draftsRef = useRef<DraftRail[]>([]);
+  const loadedDraftsRef = useRef<DraftRail[] | null>(null);
+  // The list the load actually received, published from the success path so the
+  // `finally` can seed the baseline from it. `draftsRef` above is mirrored during
+  // RENDER, so on the first load it still holds the `useState` initializer — the
+  // default rails, not the server's — and seeding that made an untouched screen read
+  // dirty. `null` means "no successful load yet".
   const defaultEdcTerminalIdRef = useRef('');
   const hwInitializedRef = useRef(false);
 
@@ -411,6 +417,7 @@ export function RestaurantPaymentsScreen({
           }
 
           setDrafts(fullDrafts);
+          loadedDraftsRef.current = fullDrafts;
           originalsRef.current.drafts = fullDrafts.map((d) => ({ ...d }));
 
           // Hydrate card configurations from merged parameters
@@ -552,7 +559,14 @@ export function RestaurantPaymentsScreen({
         // rendered values and the baseline must be the same list.
         if (!cancelled) {
           if (originalsRef.current.drafts.length === 0) {
-            originalsRef.current.drafts = draftsRef.current.map((d) => ({ ...d }));
+            // Seed from the list the load RECEIVED when there is one. `draftsRef` is
+            // mirrored during render, so on the first load it still holds the `useState`
+            // initializer — the default rails, not the server's — and seeding that made an
+            // untouched screen read dirty, so Back popped the unsaved-changes dialog and
+            // Discard could throw away work against a baseline that never existed.
+            const seed = loadedDraftsRef.current ?? draftsRef.current;
+            draftsRef.current = seed;
+            originalsRef.current.drafts = seed.map((d) => ({ ...d }));
             originalsRef.current.defaultEdcTerminalId = defaultEdcTerminalIdRef.current;
             setDirtyVersion((v) => v + 1);
           }
