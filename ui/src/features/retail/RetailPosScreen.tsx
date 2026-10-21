@@ -1528,14 +1528,17 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       // `heldCartsList`, so the local list kept offering a record the server no
       // longer holds, with two reachable consequences:
       //
-      //  1. The reminder popup counts `heldCartsList.length` (:2103) — the one
+      //  1. The reminder popup counts `heldCartsList.length` (`heldCartCount` at :2139 —
+      //     re-measured 2026-10-19; this note said ":2103", now `panelActions={{`) — the one
       //     affordance that tells a cashier 'there are carts on hold'. After
       //     resuming the last one it still claimed one, and every resume left the
       //     count inflated by one for the rest of the shift.
       //  2. That popup's row opens the modal with a bare `setShowHeldCartsList(true)`
-      //     (:2107) — no refetch — so the held carts list showed a cart that no
+      //     (`onClickHeldCarts` at :2143; the note said ":2107", now `onRequestClear`) —
+      //     no refetch — so the held carts list showed a cart that no
       //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
-      //     `if (!full) return;` (:1464): no modal change, no toast, nothing. A
+      //     `if (!full) return;` (:1474; the note said ":1464", a `} finally {`): no modal
+      //     change, no toast, nothing. A
       //     dead control with no way for the cashier to learn why.
       //
       // Filtering by id, not by index or by clearing the list: the resumed cart is
@@ -1740,9 +1743,15 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     showShortcuts, showCreditList, showClearConfirm, showOpenShift, showCloseShift,
     closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, deleteHeldTarget]);
 
-  // A SUB-VIEW is an early return that REPLACES this screen (:1864 Sales History,
-  // :1675 Table Management, :1684 Stock Inquiry; the payment modal is the fourth
-  // at :1626). `isAnyOverlayOpen` covers the local DIALOGS but none of these, and
+  // A SUB-VIEW is an early return that REPLACES this screen: `if (showSalesHistory)`,
+  // `if (showTables)` and `if (showStockInquiry)` below, each a `return (<LocalizedError
+  // Boundary>…)`; the payment modal is the fourth, `<PaymentModal>`. `isAnyOverlayOpen`
+  // covers the local DIALOGS but none of these, and
+  // ⚠️ These were cited as :1864 / :1675 / :1684 / :1626 and NONE of them were sub-views:
+  // re-measured 2026-10-19, those are PaymentModal's lineItems map, and
+  // `settlingIdsInFlight.add`/`.delete` in handleSettleCredit. Four numbers, four misses —
+  // which is what a block of cites above a ~200-line insertion looks like after it lands.
+  // Anchored by FLAG NAME now, so the next insertion cannot rot them the same way.
   // although their flags sat in the dependency array below the handler never READ
   // them — so the retail function keys stayed live while a replacement screen owned
   // the view. F1 (Pay) opened the payment dialog for a cart the cashier could not
