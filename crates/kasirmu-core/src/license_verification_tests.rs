@@ -947,3 +947,52 @@ fn test_verify_signature_with_crl_denies_revoked_tenant() {
         "verify_signature_with_crl must reject a tenant in CRL"
     );
 }
+
+#[test]
+fn test_parsed_crl_sets_fast_membership_and_cache_coherence() {
+    use crate::license_verification::ParsedCrlSets;
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-10-21T00:00:00Z".into(),
+        entries: vec![CrlEntry {
+            key: "OZ-EXP-999".into(),
+            key_hash: {
+                use sha2::Digest;
+                let mut hasher = Sha256::new();
+                hasher.update(b"OZ-EXP-999");
+                hex::encode(hasher.finalize())
+            },
+            tenant_id: Some("tenant-999".into()),
+            revoked_at: "2026-10-21T00:00:00Z".into(),
+            reason: Some("fraud".into()),
+        }],
+        revoked_tenants: vec!["tenant-999".into()],
+        revoked_devices: vec!["terminal-pos-99".into()],
+    };
+
+    let sets = ParsedCrlSets::from(&crl);
+    assert!(sets.is_revoked(Some("OZ-EXP-999"), None, None));
+    assert!(sets.is_revoked(None, Some("tenant-999"), None));
+    assert!(sets.is_revoked(None, None, Some("terminal-pos-99")));
+    assert!(!sets.is_revoked(Some("OZ-VALID"), Some("tenant-clean"), Some("pos-01")));
+
+    apply_crl_to_cache(&conn, &crl, None, None, None).unwrap();
+
+    // Verify fast path in is_revoked_in_cached_crl hits memory cache
+    assert!(is_revoked_in_cached_crl(&conn, Some("OZ-EXP-999"), None, None).unwrap());
+    assert!(is_revoked_in_cached_crl(&conn, None, Some("tenant-999"), None).unwrap());
+    assert!(is_revoked_in_cached_crl(&conn, None, None, Some("terminal-pos-99")).unwrap());
+    assert!(
+        !is_revoked_in_cached_crl(
+            &conn,
+            Some("OZ-VALID"),
+            Some("tenant-clean"),
+            Some("pos-01")
+        )
+        .unwrap()
+    );
+}

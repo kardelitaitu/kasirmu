@@ -468,9 +468,7 @@ serialise behind a single blocking Redis call. *Fix:* pooled/multiplexed client.
 queries per shortfall panel. *Fix:* one `IN`-clause query plus a name join.
 
 **O-M14 · kasirmu-core — CRL re-deserialised and linearly scanned on every gate call** —
-`crates/kasirmu-core/src/license_verification.rs:659-668`, `:682-685` ◦. Cost grows with
-revocation-list length. *Fix:* cached `HashSet`s + precomputed key hash behind the signature
-check.
+`crates/kasirmu-core/src/license_verification.rs:659-668`, `:682-685` ✔. Fixed: introduced pre-indexed `ParsedCrlSets` storing `revoked_tenants`, `revoked_devices`, cleartext `revoked_keys`, and precomputed `revoked_key_hashes` in `HashSet<String>`s with an in-memory `PARSED_CRL_CACHE` (`RwLock<Option<(String, Arc<ParsedCrlSets>)>>`). Replaced repeated JSON deserialization on every gate check with $O(1)$ set lookups. Verified in `license_verification_tests.rs` and `subscription_tests.rs`.
 
 **O-M15 · kasirmu-core — signed payload re-parsed on every entitlement check** —
 `crates/kasirmu-core/src/subscription.rs:778-791` (also `:759`) ✔. Fixed: deserialized payload fields (`addons`, `is_trial`, `trial_ends_at`, `features`) via typed target structs avoiding intermediate `serde_json::Value` tree allocations, replaced case-folding `to_lowercase()` String allocations with `eq_ignore_ascii_case`, and parsed `allowed_types_json` via borrowed `Cow<str>`. Verified in `subscription_tests.rs` (155/155 passed).
@@ -2120,6 +2118,19 @@ Three Medium performance findings resolved across bridge operational handlers:
    - Added `Store::get_user_display_names_batch(&user_ids)` to query only staff IDs actually present in the report aggregation.
    - Replaced loading and deserializing all global user rows in `get_staff_analytics_scoped` with the targeted batch query.
    - Verified in `analytics.rs` and `staff.rs`.
+
+---
+
+## §11U — O-M14 resolved: pre-indexed CRL sets and in-memory revocation cache (2026-10-21)
+
+One Medium performance and scalability finding resolved in license verification:
+
+1. **O-M14 · `kasirmu-core` pre-indexed CRL sets and in-memory cache (`license_verification/crl.rs`, `license_verification.rs`)**:
+   - Introduced `ParsedCrlSets` storing `revoked_tenants`, `revoked_devices`, cleartext `revoked_keys`, and precomputed `revoked_key_hashes` in pre-indexed `HashSet<String>`s.
+   - Added in-memory `PARSED_CRL_CACHE` (`RwLock<Option<(String, Arc<ParsedCrlSets>)>>`) to avoid repeated JSON deserialization and linear scans during entitlement and subscription verification calls.
+   - Replaced linear $O(N)$ scanning with $O(1)$ set lookups in `is_revoked_in_cached_crl` and `apply_crl_to_cache`.
+   - Verified across 34 tests in `license_verification_tests.rs` and 155 tests in `subscription_tests.rs`.
+
 
 
 
