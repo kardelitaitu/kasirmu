@@ -266,6 +266,31 @@ That is the pattern worth naming for this lane: **class-3 claims about `catch` b
 check and the easiest to get wrong.** Two of three such findings this round were refuted by reading the
 six lines under the `catch`.
 
+## Round 40, second pass: four more from three fresh lanes, two refuted
+
+Three new hunts (reports/analytics, products/catalog, terminals/settings components) returned ten
+candidates. **Four were verified and fixed; three were refuted on reading.**
+
+- **A bundle list that failed claimed an empty catalogue.** `load` swallowed the rejection, so a manager
+  with a full catalogue was shown "No bundles yet. / Add your first bundle". Its own sibling
+  `ProductManagementScreen` had drawn the empty/failed distinction all along.
+- **The custom report's pager never fetched.** `page` is in `runReport`'s dependency list and builds the
+  request's `offset`, but Next/Prev only called `setPage` — so the label read "Page 2" over page 1's rows.
+  A paging effect now re-runs the report.
+- **Menu engineering let a stale window win.** The date re-seed effect flips the window as soon as the
+  store timezone resolves, so two mount fetches run with different windows and the last to resolve won.
+  Added the generation guard its sibling `SalesReportScreen` already uses.
+
+### Refuted
+
+- **"`retail-col-hide-inactive` exists in no Fluent bundle."** Both the key and its nine siblings are in
+  `shared-ui/locales/sales.ftl`. The search was scoped to `ui/`, which cannot see the shared bundle.
+- **"The terminal override switch collapses three states into two."** `isOverridden = ov !== undefined`
+  is exactly right: `enabled` is a plain `boolean`, so an explicit `false` override IS distinguishable
+  from an absent row, and `ov ?? false` is the correct checkbox default.
+- **"The terminal rollback restores a stale snapshot."** Reported, then read: the closure snapshot is the
+  list as of the click, which is what a rollback of that click should restore.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
