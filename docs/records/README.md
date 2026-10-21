@@ -263,6 +263,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A test that tested the change, not the mechanism — 2026-10-19](audits/2026-10-19-a-test-that-tested-the-change.md) | — |
 | theming | [Four doc claims that were true of the document, not of the tool](audits/2026-10-19-branding-manifest-inert-and-checker-coverage.md) | — |
 | general | [Three red gates, and the one that was only ever red here — 2026-10-19](audits/2026-10-19-full-matrix-red-gates.md) | — |
+| general | [Round cap request: 512 rounds, not 256 (2026-10-19)](audits/2026-10-19-goal-round-cap-request.md) | — |
 | general | [An IPC door the desktop does not have, reached by an empty-string fallback — 2026-10-19](audits/2026-10-19-ipc-door-missing-and-root-debris.md) | — |
 | general | [A five-year retention nobody implemented, and a TLS version nobody pinned — 2026-10-19](audits/2026-10-19-legal-retention-and-tls-claims.md) | — |
 | release | [Line-number citation drift: measured, partly repaired, and still open — 2026-10-19](audits/2026-10-19-line-number-citation-residual.md) | — |
