@@ -376,14 +376,19 @@ GUC — one 500-item push ≈ 5,000 round trips. *Fix:* hoist one connection/tra
 the batch and read/write vectors with `IN (…)` statements.
 
 **O-H11 · kasirmu-api — one product SELECT per sale line inside the sale transaction** —
-`crates/kasirmu-api/src/pg.rs:1712-1727` ◦
+`crates/kasirmu-api/src/pg/sales.rs:117` ◦ — **RE-ANCHORED 2026-10-21:** the cited
+`pg.rs:1712-1727` no longer exists; `pg.rs` was split into a `pg/` directory and the query,
+verbatim the one described below, is now at `pg/sales.rs:117`. Re-verified live.
 Every sale line issues its own `SELECT … FROM products WHERE tenant_id = $1 AND sku = $2`, so a
 30-line receipt costs 30 round trips and holds the pooled connection and row locks
 proportionally longer. *Fix:* resolve all SKUs in one `WHERE sku = ANY($2)` before the insert
 loop.
 
 **O-H12 · kasirmu-api — the products endpoint is unbounded with a correlated subquery per
-row** — `crates/kasirmu-api/src/pg.rs:1332-1345` ◦
+row** — `crates/kasirmu-api/src/pg/products.rs:312` ◦ — **RE-ANCHORED 2026-10-21:**
+`pg.rs:1332-1345` no longer exists after the `pg/` split; `list_products` is now
+`pg/products.rs:312` and still takes no limit/bound parameter, and the file's own comment at
+`:181` says so in as many words ("`list_products` has no LIMIT"). Re-verified live.
 `GET /api/v1/products` has no LIMIT/OFFSET and `PRODUCT_SELECT` (`pg.rs:1038`) adds a
 correlated `SELECT SUM(ss.qty) FROM stock_summary` per row — response body and query cost both
 grow linearly with catalog size. *Fix:* keyset pagination; replace the correlated subquery with
