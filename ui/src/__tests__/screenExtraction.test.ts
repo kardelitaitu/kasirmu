@@ -1453,6 +1453,14 @@ const SCREENS: ScreenEntry[] = [
       // todo-refactor-kds-agents-merged.md:115 firing on a live extraction,
       // measured here as 1 failed | 211 passed before the line was added.
       'sales/components/PaymentModalCustomerBadge.tsx',
+      // payment-pay-later-* left PaymentModal.tsx for its own panel component
+      // afterwards, the same shape as the line above and the same guard clause
+      // (todo-refactor-kds-agents-merged.md:115): the markup moved, so the
+      // extraction list must name the receiving file in the same change-set.
+      // PayLaterTenderPanel.tsx imports no sheet of its own — PaymentModal.tsx
+      // imports ../PaymentModal.css once for the whole surface — so without this
+      // line the guard calls all 19 payment-pay-later-* rules dead.
+      'sales/payment/PayLaterTenderPanel.tsx',
     ],
   },
   // PaymentModal WAS deliberately NOT registered, and this note is what
@@ -1570,6 +1578,12 @@ const SCREENS: ScreenEntry[] = [
     // `card`/`card-body` belong to the global Card component stylesheet;
     // `dashboard-kpi-delta--` modifiers are built via template literal.
     externalClasses: ['card', 'card-body'],
+    // dashboard-debt-* markup left DashboardScreen.tsx for DebtRemindersCard.tsx,
+    // which DashboardScreen.tsx:632 mounts. The card imports no sheet of its own —
+    // it renders inside DashboardScreen.css's surface — so without this line the
+    // guard calls all 14 dashboard-debt-* rules dead. Same shape as PaymentModal's
+    // payment-customer-* and payment-pay-later-* entries above.
+    additionalTsx: ['reports/DebtRemindersCard.tsx'],
     dynamicClassPrefixes: [ 'dashboard-kpi-delta--down'], // dashboard-kpi-delta--up struck 2026-09-15 · DSH · 0 rules (DashboardScreen.css defines only --down at :212) and 0 composition sites; the three sites at DashboardScreen.tsx:494/:509/:516 append --down only, so an up-delta renders unstyled rather than excused. Graded by the prefix arm at the foot of this file.
   },
   {
