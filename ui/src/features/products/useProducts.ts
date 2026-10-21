@@ -221,8 +221,15 @@ export function useProducts(sessionToken?: string): UseProductsResult {
   const categories = useMemo(() => {
     if (!products) return [];
     const cats = new Set(products.map((p) => p.category));
+    // UNION with the ANSWERED category read. Deriving from products alone meant a
+    // category the merchant had created but not yet assigned a product to was invisible
+    // in every chip bar — the screen reported a catalogue shape the backend had already
+    // contradicted. `categoryMeta` was fetched and exported but never consulted here.
+    for (const meta of categoryMeta) {
+      if (meta.name) cats.add(meta.name);
+    }
     return Array.from(cats).sort();
-  }, [products]);
+  }, [products, categoryMeta]);
 
   return {
     products: products ?? [],
