@@ -220,8 +220,10 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
     } finally {
       setLoading(false);
     }
-    // sessionToken is read five times in this body (:126-:141) and was not a dependency, so
-    // :157's `useEffect(() => { load(); }, [load])` never re-ran for a new session.
+    // sessionToken is read five times in this body (:178, :179, :180, :188, :203 — re-measured
+    // 2026-10-19; the note said ":126-:141", which is FTL doc-comment text) and was not a
+    // dependency, so the `useEffect(() => { load(); }, [load])` (now :234) never re-ran for a
+    // new session.
   }, [l10n, sessionToken]);
 
   // P7-3: Pull-to-refresh gesture (defined after load so it's hoist-safe)
@@ -274,12 +276,14 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
       pollGenRef.current += 1; // invalidate any in-flight poll
       if (timer) clearTimeout(timer);
     };
-    // sessionToken is read at :170, :171 and :179. With [] this polled on a fixed 10s cadence
+    // sessionToken is read in this poll body (:178, :179, :180, :188, :203 — re-measured
+    // 2026-10-19; the note cited ":170, :171 and :179", and :170/:171 are component state, not
+    // reads). With [] this polled on a fixed 10s cadence
     // with the mount-time token forever: after a cashier hot-swap (FastPINOverlay, and
     // swapSessionToken destroys the old token at WorkspaceContext.tsx:273) every request failed
     // with a dead session, pollFailuresRef reached 3, and the screen showed a permanent
     // "stale queue" notice over a queue that was fine. Re-running is safe by construction --
-    // the cleanup bumps the generation and clears the timer, which is what :173/:189 guard on.
+    // the cleanup bumps the generation and clears the timer, which is what :250/:261 guard on.
   }, [sessionToken]);
 
   // ── Sync all ──────────────────────────────────────────────────
