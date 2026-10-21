@@ -6,7 +6,6 @@ import { NoPurchaseOrdersIcon } from '@/components/EmptyStateIllustrations';
 import {
   listPurchaseOrdersScoped,
   updatePoStatusScoped,
-  receivePurchaseOrderScoped,
   type PurchaseOrderDto,
 } from '@/api/purchasing';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -16,6 +15,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
 import PurchaseOrderForm from './PurchaseOrderForm';
+import ReceivePoModal from './ReceivePoModal';
 import './PurchaseOrdersScreen.css';
 import { asArray } from '@/utils/ipc-payload';
 
@@ -43,6 +43,7 @@ export default function PurchaseOrdersScreen() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [receivingPo, setReceivingPo] = useState<PurchaseOrderDto | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -74,18 +75,6 @@ export default function PurchaseOrdersScreen() {
       await load();
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'po-error-update'), type: 'error' });
-    } finally {
-      setActionLoading(null);
-    }
-  }, [load, addToast, sessionToken]);
-
-  const handleReceive = useCallback(async (id: string) => {
-    setActionLoading(id);
-    try {
-      await receivePurchaseOrderScoped(sessionToken, id);
-      await load();
-    } catch {
-      addToast({ message: requiredLocalized(l10nRef.current, 'po-error-receive'), type: 'error' });
     } finally {
       setActionLoading(null);
     }
@@ -248,7 +237,7 @@ export default function PurchaseOrdersScreen() {
                           type="button"
                           className="po-action-btn po-action-btn--primary"
                           disabled={actionLoading === po.id}
-                          onClick={() => handleReceive(po.id)}
+                          onClick={() => setReceivingPo(po)}
                         >
                           Receive
                         </button>
@@ -276,6 +265,15 @@ export default function PurchaseOrdersScreen() {
 
       {showForm && (
         <PurchaseOrderForm editingId={editingId} onClose={closeForm} onSaved={onSaved} />
+      )}
+
+      {receivingPo && (
+        <ReceivePoModal
+          po={receivingPo}
+          sessionToken={sessionToken}
+          onClose={() => setReceivingPo(null)}
+          onReceived={load}
+        />
       )}
     </div>
   );

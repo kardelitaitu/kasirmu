@@ -174,5 +174,79 @@ export const crmHandlers: Record<string, MockHandler> = {
       writtenOffAt: new Date().toISOString(),
     };
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // PAYABLES (Hutang / Beli Tempo)
+  // ═══════════════════════════════════════════════════════════════
+
+  'list_payables_scoped': () => [],
+  'create_payable_scoped': (args) => {
+    const payload = ((args as Record<string, unknown>)?.['args'] ?? args) as Record<string, unknown> | undefined;
+    const amount = (payload?.['amount'] as { minor_units: number; currency: string }) ?? { minor_units: 5000000, currency: 'IDR' };
+    return {
+      id: 'pay-mock-1',
+      tenant_id: 'default',
+      supplier_id: (payload?.['supplierId'] as string) ?? 'supplier-1',
+      po_id: (payload?.['poId'] as string) ?? null,
+      source: (payload?.['source'] as string) ?? 'manual',
+      reference: (payload?.['reference'] as string) ?? 'INV-MOCK-001',
+      amount,
+      paid: { minor_units: 0, currency: amount.currency },
+      balance: amount,
+      due_date: (payload?.['dueDate'] as string) ?? null,
+      status: 'open',
+      is_overdue: false,
+      note: (payload?.['note'] as string) ?? '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      settled_at: null,
+      written_off_at: null,
+    };
+  },
+  'record_payable_payment_scoped': (args) => {
+    const payload = ((args as Record<string, unknown>)?.['args'] ?? args) as Record<string, unknown> | undefined;
+    const amount = (payload?.['amount'] as { minor_units: number; currency: string }) ?? { minor_units: 5000000, currency: 'IDR' };
+    return {
+      id: (payload?.['payableId'] as string) ?? 'pay-mock-1',
+      tenant_id: 'default',
+      supplier_id: 'supplier-1',
+      po_id: null,
+      source: 'manual',
+      reference: 'INV-MOCK-001',
+      amount,
+      paid: amount,
+      balance: { minor_units: 0, currency: amount.currency },
+      due_date: null,
+      status: 'paid',
+      is_overdue: false,
+      note: (payload?.['note'] as string) ?? '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      settled_at: new Date().toISOString(),
+      written_off_at: null,
+    };
+  },
+  'write_off_payable_scoped': (args) => {
+    const { payableId } = (args ?? {}) as { payableId?: string };
+    return {
+      id: payableId ?? 'pay-mock-1',
+      tenant_id: 'default',
+      supplier_id: 'supplier-1',
+      po_id: null,
+      source: 'manual',
+      reference: 'INV-MOCK-001',
+      amount: { minor_units: 5000000, currency: 'IDR' },
+      paid: { minor_units: 0, currency: 'IDR' },
+      balance: { minor_units: 5000000, currency: 'IDR' },
+      due_date: null,
+      status: 'written_off',
+      is_overdue: false,
+      note: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      settled_at: null,
+      written_off_at: new Date().toISOString(),
+    };
+  },
 };
 export { MOCK_CUSTOMERS };

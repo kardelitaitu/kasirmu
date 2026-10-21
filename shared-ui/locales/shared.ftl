@@ -329,6 +329,7 @@ nav-tables = Tables
 nav-promotions = Promotions
 nav-suppliers = Suppliers
 nav-purchase-orders = Purchase Orders
+nav-vendor-bills = Vendor Bills
 nav-stock-transfers = Stock Transfers
 nav-stock-counts = Stock Counts
 nav-custom-report = Custom Report

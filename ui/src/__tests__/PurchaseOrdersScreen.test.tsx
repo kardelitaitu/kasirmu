@@ -265,6 +265,7 @@ describe('PurchaseOrdersScreen', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
+    await user.click(screen.getByRole('button', { name: /Confirm Receipt/i }));
 
     await waitFor(() => {
       expect(mockReceivePO).toHaveBeenCalledWith('tok-test', 'po-3');

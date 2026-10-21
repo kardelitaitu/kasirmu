@@ -304,6 +304,7 @@ nav-promotions = Promosi
 nav-tooltip-preview = Pratinjau Tooltip
 nav-suppliers = Pemasok
 nav-purchase-orders = Pesanan Pembelian
+nav-vendor-bills = Tagihan Pemasok
 nav-stock-transfers = Transfer Stok
 nav-stock-counts = Stok Opname
 nav-stock = Stok
