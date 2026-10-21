@@ -39,9 +39,17 @@ const { sessionToken: rawToken } = useWorkspace();
 
   useEffect(() => {
     setLoading(true);
+    // The error was never cleared, so ONE failed read stuck a red banner on the
+    // report for the rest of the session -- even after a later read succeeded.
+    setError(null);
     getLowStockAlerts(threshold, sessionToken)
       .then(setItems)
-      .catch((e) => setError(e.message ?? String(e)))
+      .catch((e) => {
+        setError(e.message ?? String(e));
+        // Clear the rows too: they describe the PREVIOUS threshold, so keeping
+        // them beside an error attributes old numbers to the new filter.
+        setItems([]);
+      })
       .finally(() => setLoading(false));
   }, [threshold, sessionToken]);
 
@@ -189,7 +197,7 @@ const { sessionToken: rawToken } = useWorkspace();
               <Localized id="inv-report-current-stock">Stock</Localized>
             </span>
           </div>
-          {items.length === 0 ? (
+          {items.length === 0 && error ? null : items.length === 0 ? (
             <div className="inventory-report-empty">
               <Localized id="inv-report-no-results">
                 <p>No results found</p>

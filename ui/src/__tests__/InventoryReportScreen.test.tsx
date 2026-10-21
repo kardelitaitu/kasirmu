@@ -133,6 +133,52 @@ describe('InventoryReportScreen', () => {
     });
   });
 
+  // The error banner and the empty state used to render TOGETHER: the catch set
+  // `error` but left `items` at [], so a failed read printed "No results found"
+  // right under the banner — one element saying it broke, another saying the
+  // answer is zero. And nothing ever cleared `error`, so the banner outlived a
+  // later successful read.
+  it('does not claim "No results found" when the read failed', async () => {
+    mockGetLowStockAlerts.mockRejectedValue(new Error('Network error'));
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('Network error')).toBeTruthy();
+    });
+    expect(screen.queryByText('No results found')).toBeNull();
+  });
+
+  // `error` was never cleared, so one failed read stuck the banner on the report
+  // for the rest of the mount — even after the threshold changed and the next
+  // read succeeded. Drive a REAL re-read through the threshold input; a fresh
+  // mount would reset the state and prove nothing.
+  it('clears the error once a later read succeeds', async () => {
+    // The describe-level beforeEach installs a never-resolving default, so the
+    // once/rejected pair below has to REPLACE that implementation, not queue
+    // behind it -- otherwise the first read never settles at all.
+    mockGetLowStockAlerts.mockReset();
+    mockGetLowStockAlerts.mockRejectedValueOnce(new Error('Network error'));
+    mockGetLowStockAlerts.mockResolvedValue([]);
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('Network error')).toBeTruthy();
+    });
+
+    fireEvent.change(document.getElementById('threshold-input') as HTMLInputElement, {
+      target: { value: '5' },
+    });
+
+    // The re-read must SETTLE before the assertion below is meaningful — a bare
+    // waitFor here once passed before the first read had even resolved.
+    await waitFor(() => {
+      expect(mockGetLowStockAlerts).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      // The re-read happened and succeeded, so the banner must be gone.
+      expect(mockGetLowStockAlerts).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('.inventory-report-error')).toBeNull();
+    });
+  });
+
   // ── Empty state ────────────────────────────────────────────────────
   it('shows "No results found" when no items', async () => {
     mockGetLowStockAlerts.mockResolvedValue([]);
