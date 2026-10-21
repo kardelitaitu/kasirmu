@@ -68,6 +68,23 @@ export function useFocusTrap(
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Only the INNERMOST trap may answer. Two traps are legitimately active
+        // at once on this app: a dialog opened from inside another dialog (the
+        // e-Faktur stamp overlay over the sale-detail overlay in
+        // SalesHistoryScreen) keeps its parent mounted and trapped. Every active
+        // trap attaches its own document listener, so without this guard ONE
+        // Escape dismissed BOTH overlays and threw the cashier back to the list.
+        // Measured: 2 dialogs open, Escape, 0 dialogs left.
+        //
+        // The check is containment of the focused element, which is exactly the
+        // condition under which this trap is the one the operator is looking at.
+        // When focus is NOT inside (an overlay click or a programmatic focus
+        // elsewhere) the Tab branch below already recovers it; here, ignoring
+        // the key lets the trap that does contain focus answer instead.
+        const focused = document.activeElement as HTMLElement | null;
+        if (focused && panelRef.current && !panelRef.current.contains(focused)) {
+          return;
+        }
         onEscapeRef.current();
         return;
       }

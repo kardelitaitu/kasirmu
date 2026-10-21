@@ -930,6 +930,37 @@ describe('ADR #7: reads are session-scoped when a workspace token exists', () =>
   // Asserting the screen survives as well as the overlay leaving is the half that
   // discriminates: the bug this class produces is a dismissal that ALSO navigates away
   // (see `restaurant-tables-toolbar.spec.ts`).
+  // One Escape must dismiss ONE overlay. Both traps are active while the stamp
+  // dialog sits over the sale-detail dialog, and each attaches its own document
+  // keydown listener, so an unguarded handler closed BOTH — the cashier pressed
+  // Escape once and lost the detail view behind it too (measured: 2 dialogs
+  // open, Escape, 0 dialogs left).
+  it('closes only the innermost overlay on a single Escape', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListStaff.mockResolvedValue([]);
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => expect(screen.getAllByText('View').length).toBeGreaterThan(0));
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument());
+    await user.click(screen.getByText('Input e-Faktur NSFP'));
+    expect(screen.getByText('Input e-Faktur NSFP (DJP Coretax)')).toBeInTheDocument();
+    expect(container.querySelectorAll('[role="dialog"]').length).toBe(2);
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The stamp overlay goes…
+    await waitFor(() => {
+      expect(screen.queryByText('Input e-Faktur NSFP (DJP Coretax)')).toBeNull();
+    });
+    // …and the DETAIL overlay it was opened from is still there.
+    expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument();
+    expect(container.querySelectorAll('[role="dialog"]').length).toBe(1);
+  });
+
   it('closes the e-Faktur STAMP overlay on Escape without leaving the screen', async () => {
     const user = userEvent.setup();
     mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
