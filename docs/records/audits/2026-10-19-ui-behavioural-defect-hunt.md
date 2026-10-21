@@ -755,6 +755,39 @@ track the selection" to "the wrong row is committed" without exercising a case w
 I kept the passing test — it is a genuine regression guard for the Enter path, which had no coverage —
 and recorded it as a test, not a fix.
 
+## Round 55: the same nesting bug, in the layer the round-54 fix did not reach
+
+Round 54 fixed Escape being answered by every active trap. The stamp dialog had a SECOND problem
+underneath it, and fixing the first made it worth looking at the rest of the nesting:
+
+**The child dialog painted UNDER its parent.** `SalesHistoryScreen` opens the e-Faktur stamp dialog
+from a button inside the sale-detail dialog. The detail overlay stays mounted, both overlays are
+`position: fixed; inset: 0; z-index: var(--z-modal)` (400), and the detail overlay is rendered AFTER
+the stamp overlay (:1724 vs :1628). Equal z-index + later DOM position means the PARENT wins — the
+stamp dialog opened completely hidden behind the detail overlay, unclickable.
+
+I measured the DOM order rather than assuming it:
+
+```
+overlay count= 2
+  [0] label=Stamp e-Faktur NSFP  stamp=true   detail=false
+  [1] label=Sale detail          stamp=false  detail=true
+```
+
+The overlay at index 0 is the child and it is first, so it loses the cascade.
+
+**Why this needed a stylesheet test, not a render test.** jsdom computes no layout: `getComputedStyle`
+returned an empty string for `z-index` on both overlays, so a rendered assertion cannot see the bug at
+all. This is exactly the case where a passing component test proves nothing about the visible result.
+The guard is therefore a contract test over the source: a `--z-modal-nested` token strictly between
+`--z-modal` and `--z-toast`, and the stamp overlay naming it. Verified to fail when the rule is
+pointed back at `--z-modal`.
+
+**One thing I am not claiming.** `:has()` is a modern selector and I did not run a browser to confirm
+the paint order on a real WebView2 build. The token ordering and the selector are pinned by the test;
+the visual result is inferred from the cascade rules, not observed. It should be verified on a device
+before this is called done.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
