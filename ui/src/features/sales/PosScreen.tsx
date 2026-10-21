@@ -1204,7 +1204,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           //
           // The duplicate being VISIBLE has a resume to stand on now: the case named
           // 're-reads the open bills when a paid tab fails to delete' resumes a real
-          // tab, which is what sets `activeOpenBillId` (usePosHeldCarts.ts:418) and
+          // tab, which is what sets `activeOpenBillId` (the `setActiveOpenBillId(id)` call in
+  // `usePosHeldCarts`'s `handleResumeOpenBill`) and
           // therefore what makes this branch reachable at all. The previous wording —
           // 'no case in the file resumes one' — measured true when written and is
           // false now.
@@ -1402,7 +1403,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // ⚠️ KEYED BY `id`, NOT `sku`.
       //
       // One SKU can occupy TWO lines: `addProduct` merges only lines agreeing on
-      // course, coursing status, note AND modifiers (usePosState.ts:94-102), so the
+      // course, coursing status, note AND modifiers (the `prev.find` comparator inside
+  // `usePosState`'s `addProduct`), so the
       // same dish as a main and as a dessert is two lines sharing one SKU. A SKU-keyed
       // map collapses them and applies one line's sent quantity to the OTHER —
       // measured: A (qty 2, dispatched 0) in the delta, B (qty 1, dispatched 1) not,
@@ -2681,7 +2683,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
       {/* ── Item Modifier Modal (in-cart customization editing) ────── */}
       {/* Crash isolation (F9), the same surface wrapped in RestaurantMenu
-          (RestaurantMenu.tsx:684) and for the same reason: this is where an existing
+          (the `LocalizedErrorBoundary` with `resetKeys={[customizingProduct.sku]}` in
+      RestaurantMenu.tsx) and for the same reason: this is where an existing
           cart line's options and PRICE are edited, so a throw must cost the dialog,
           not the sale. `resetKeys` keys on the line so editing a different line
           clears a caught error. */}

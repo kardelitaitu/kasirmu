@@ -284,7 +284,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const { session, isManager, hasPermission } = useAuth();
 
   // The pengganti action is NOT manager-only. `create_faktur_pengganti_scoped`
-  // requires `sales:process` (kasirmu-bridge/src/history.rs:309) — the permission the
+  // requires `sales:process` (the `require_session_permission(…, permissions::SALES_PROCESS)`
+  // call in kasirmu-bridge/src/history.rs) — the permission the
   // STAFF preset holds and its description says it exists for ("Checkout-operations
   // role — processes sales… No management access", rbac_presets.rs:162-166). Gating it
   // on `isManager` hid a working action from exactly the people allowed to use it.

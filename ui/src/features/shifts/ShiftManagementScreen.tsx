@@ -106,7 +106,8 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
         // The LIST read goes through settleRead like its sibling below. As a bare await it
         // could reject the whole Promise.all, which aborted this try block BEFORE
         // `active.ok` was ever evaluated -- so `activeShiftUnknown` stayed false and the
-        // screen fell through to the no-active banner at :485, whose only affordance is
+        // screen fell through to the no-active banner below (the `shift-mgmt-no-active`
+        // card), whose only affordance is
         // Open Shift. That is the exact wrong action the guard above exists to prevent:
         // opening a second shift against one the database still holds open. A failed list
         // read says nothing about the drawer, so it must not be read as a claim about it.
@@ -313,12 +314,18 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
       payoutPendingRef.current = false;
       setSaving(false);
     }
-    // sessionToken is read at :182 by createCashPayoutScoped -- this moves cash out of a shift,
-    // so it is the most consequential of the remaining sites. With the token missing, a payout
-    // submitted after a cashier hot-swap presented the destroyed session: the write failed and
-    // surfaced as a generic retryable error, so the operator would press Save again on a form
-    // that could not succeed until the screen remounted. :186 also awaits load(), which now
-    // refreshes against the same session as the write.
+    // sessionToken is read by the `createCashPayoutScoped` call in this handler -- this moves
+    // cash out of a shift, so it is the most consequential of the remaining sites. With the
+    // token missing, a payout submitted after a cashier hot-swap presented the destroyed
+    // session: the write failed and surfaced as a generic retryable error, so the operator
+    // would press Save again on a form that could not succeed until the screen remounted.
+    // The `await load()` after it now refreshes against the same session as the write.
+    // (Anchored by expression: the numbers this note carried pointed at comments.)
+    //
+    // ⚠️ The sibling cites in this file are Rust paths at specific lines, and they were NOT
+    // re-measured in this pass — they name `crates/kasirmu-core/src/db/shifts.rs`,
+    // `kasirmu-bridge/src/shifts.rs`, `db/cash_payouts.rs` and `cash_payout.rs`, which a
+    // line-guard cannot check across the language boundary. They need a Rust-side audit.
   }, [activeShift, payoutAmount, payoutReason, currency, load, l10n, sessionToken]);
 
   // ── Format time/date helpers ───────────────────────────────────────

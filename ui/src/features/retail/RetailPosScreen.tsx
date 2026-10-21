@@ -632,11 +632,13 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         });
       }
     } catch (err) {
-      // ROLL THE OPTIMISTIC EDIT BACK. The product was replaced at :591 and the editor
-      // closed at :596 before the write was attempted, so a refusal left the grid showing
-      // the operator's new values while the server kept the old ones — until the next
-      // reload, long after the toast had gone. `prev` is captured at :590 for exactly this
-      // and was never used; same defect as the add path one function down.
+      // ROLL THE OPTIMISTIC EDIT BACK. The product was replaced by the
+      // `setProducts(prevList.map(… updatedProduct …))` call above, and the editor closed by
+      // the `setEditingProduct(null)` beside it, before the write was attempted — so a
+      // refusal left the grid showing the operator's new values while the server kept the
+      // old ones, until the next reload, long after the toast had gone. `prev` was captured
+      // for exactly this and was never used; same defect as the add path one function down.
+      // (Anchored by those two expressions: the numbers this note carried were all stale.)
       if (prev) {
         setProducts((prevList) =>
           prevList.map((p) => (p.sku === prev.sku ? prev : p)),
@@ -713,7 +715,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       });
     } catch (err) {
       // ROLL THE OPTIMISTIC ROW BACK. The row was inserted at the top of this callback
-      // (:687) before the create was attempted, so a refusal would otherwise leave the
+      // (`setProducts((prev) => [newProd, ...prev])`) before the create was attempted, so a
+      // refusal would otherwise leave the
       // operator looking at a product they believe is saved — and it vanishes on the next
       // reload. That is the same class the ADR #36 comment above describes fixing
       // ("previously the product only lived in local React state and vanished on reload"),
