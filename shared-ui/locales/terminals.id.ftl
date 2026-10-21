@@ -82,6 +82,7 @@ terminal-binding-bind = Ikat Terminal
 terminal-binding-clear = Hapus Pengikatan
 # Failure copy for the three binding mutations (see terminals.ftl).
 terminal-error-binding-load = Gagal memuat pengikatan terminal.
+terminal-error-instances-load = Gagal memuat instance workspace toko ini.
 terminal-error-binding-save = Gagal menyimpan pengikatan terminal.
 terminal-error-binding-clear = Gagal menghapus pengikatan terminal.
 

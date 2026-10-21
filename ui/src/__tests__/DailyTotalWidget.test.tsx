@@ -104,13 +104,17 @@ describe('DailyTotalWidget', () => {
     });
   });
 
-  it('handles API error gracefully', async () => {
+  it('says the figures could not be loaded instead of printing a zero total', async () => {
+    // This test used to assert that a currency figure RENDERED after a rejected read —
+    // i.e. it pinned the defect. The widget shows a money KPI, so an unanswered read
+    // printed "… 0" as the day's revenue. An unread day is not a zero day.
     mockExportDailySummary.mockRejectedValue(new Error('API error'));
     renderWithFluentSync(<DailyTotalWidget />, salesFtl);
 
     await waitFor(() => {
-      expect(screen.getByText((t) => /^\$/.test(t))).toBeTruthy();
+      expect(screen.getByRole('alert')).toHaveTextContent(/Could not load/i);
     });
+    expect(screen.queryByText((t) => /^\$/.test(t))).toBeNull();
   });
 
   it('sets aria-label on the widget', async () => {

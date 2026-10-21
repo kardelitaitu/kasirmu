@@ -85,6 +85,7 @@ terminal-binding-bind = Bind Terminal
 terminal-binding-clear = Clear Binding
 # Failure copy for the three binding mutations, shown in the binding panel.
 terminal-error-binding-load = Failed to load the terminal binding.
+terminal-error-instances-load = Failed to load this store's workspace instances.
 terminal-error-binding-save = Failed to save the terminal binding.
 terminal-error-binding-clear = Failed to clear the terminal binding.
 

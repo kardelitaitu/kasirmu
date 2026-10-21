@@ -205,6 +205,10 @@ export default function TerminalManagementScreen() {
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [bindingSaving, setBindingSaving] = useState(false);
   const [bindingError, setBindingError] = useState<string | null>(null);
+  // The INSTANCE list's own read. `bindingError` covers the binding read; without this
+  // the instance read's failure was invisible, so an unanswered list looked exactly like
+  // a store with no instances.
+  const [instancesError, setInstancesError] = useState<string | null>(null);
 
   // ── Load data ──────────────────────────────────────────────────
 
@@ -306,7 +310,15 @@ export default function TerminalManagementScreen() {
                 if (binding.boundInstanceId) setSelectedInstanceId(binding.boundInstanceId);
               }
             } catch {
-              if (!cancelled) setBindingInstances([]);
+              // An UNANSWERED instance read is not an empty store. Without this the
+              // "— Select instance —" placeholder is byte-identical to a store that
+              // genuinely has no instances, Bind stays disabled, and `bindingError`
+              // stays null so no alert renders — the outer catch reports, this inner one
+              // swallowed the only failure the operator needed to know about.
+              if (!cancelled) {
+                setBindingInstances([]);
+                setInstancesError(l10n.getString('terminal-error-instances-load'));
+              }
             }
           }
         }
@@ -333,13 +345,19 @@ export default function TerminalManagementScreen() {
           ? await listWorkspacesForStoreScoped(sessionToken, selectedStoreId)
           : [];
         if (!cancelled) {
-          setBindingInstances(instances);
+          // Coerce like the sibling read above: an absent payload must not reach the map.
+          const list = asArray(instances);
+          setBindingInstances(list);
           setSelectedInstanceId((prev) =>
-            instances.some((i) => i.instance_id === prev) ? prev : '',
+            list.some((i) => i.instance_id === prev) ? prev : '',
           );
+          setInstancesError(null);
         }
       } catch {
-        if (!cancelled) setBindingInstances([]);
+        if (!cancelled) {
+          setBindingInstances([]);
+          setInstancesError(l10n.getString('terminal-error-instances-load'));
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -995,6 +1013,11 @@ export default function TerminalManagementScreen() {
             {bindingError && (
               <div className="terminal-mgmt-error" role="alert">
                 <span>{bindingError}</span>
+              </div>
+            )}
+            {instancesError && (
+              <div className="terminal-mgmt-error" role="alert">
+                <span>{instancesError}</span>
               </div>
             )}
           </div>
