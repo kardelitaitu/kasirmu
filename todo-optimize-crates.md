@@ -907,12 +907,19 @@ full-frame passes** — `crates/kasirmu-media/src/crop.rs:169-211` ◦ (3C-06). 
 40 MP cap before the solid-colour guard fires. *Fix:* walk `as_raw()` rows, bail out early.
 
 **O-M57 · kasirmu-logging — syslog layer allocates per field and blocks per record** —
+❌ **MOOT 2026-10-21.** The target no longer exists: `crates/kasirmu-logging/src/syslog.rs` was
+DELETED by `53dcb73a3` ("refactor(logging): delete the unwired syslog/eventlog sinks (C29/D13)",
+2026-09-29), together with the `libc` dependency. `Cargo.toml:20-22` records the removal and
+notes the crate "is now pure safe Rust". There is no syslog layer left to make non-blocking —
+closed by deletion, not by fixing.
 `crates/kasirmu-logging/src/syslog.rs:119-141`, `visitor.rs:27-49` ◦ (3C-07). One `CString` and
 one blocking `libc::syslog()` per record on the emitting thread. *Fix:* `non_blocking`, `write!`
 into a reused buffer.
 
 **Re-measured 11-10-26:** `crates/kasirmu-logging/src/syslog.rs` and `eventlog.rs` NO LONGER EXIST — the crate's own README (audited 2026-10-11) records that the syslog/eventlog FFI modules were REMOVED, leaving `{error,lib,visitor}.rs`. The finding is retired with the code it described. (It also makes the ledger's O-M57-era claim that a syslog layer installs on deployments a dated reading — see the same-named item in `.agents/reviews/crate-review-ledger-24-09-26.md`.) 
 **O-M58 · kasirmu-logging — eventlog layer allocates a `Vec<u16>` and blocks per record** —
+❌ **MOOT 2026-10-21.** Same deletion as O-M57: `eventlog.rs` and the `windows-sys` dependency
+gone in `53dcb73a3` (C29/D13). No Event Log sink remains.
 `crates/kasirmu-logging/src/eventlog.rs:108-115` ◦ (3C-08). *Fix:* thread-local scratch buffer,
 worker thread.
 
