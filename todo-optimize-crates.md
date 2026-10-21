@@ -376,6 +376,9 @@ GUC — one 500-item push ≈ 5,000 round trips. *Fix:* hoist one connection/tra
 the batch and read/write vectors with `IN (…)` statements.
 
 **O-H11 · kasirmu-api — one product SELECT per sale line inside the sale transaction** —
+✅ **PAID 2026-10-21.** One `WHERE tenant_id = $1 AND sku = ANY($2::text[])` at
+`pg/sales.rs:146-147` resolves the whole receipt before the loop, which now does a
+`HashMap` lookup instead of a `query_opt`.
 `crates/kasirmu-api/src/pg/sales.rs:117` ◦ — **RE-ANCHORED 2026-10-21:** the cited
 `pg.rs:1712-1727` no longer exists; `pg.rs` was split into a `pg/` directory and the query,
 verbatim the one described below, is now at `pg/sales.rs:117`. Re-verified live.
@@ -2392,3 +2395,40 @@ and they pass for the right reason.
 helper is duplicated across the two crates rather than promoted to a shared dev-dependency; two
 copies of eleven lines is cheaper than a new dev-dependency edge for this, but the third copy is
 the point at which that stops being true.
+
+---
+
+## §11AF — O-H11 resolved: one product query per sale, not one per line (2026-10-21)
+
+One High finding resolved in the Postgres sale-creation path.
+
+**The cost.** `create_sale` (`crates/kasirmu-api/src/pg/sales.rs`) issued
+`SELECT cost_minor, id, name, category_id FROM products WHERE tenant_id = $1 AND sku = $2`
+**inside the line loop, inside the open transaction**. A 30-line receipt cost 30 round trips
+while holding a pooled connection and the header row's locks for the whole of it — the lock-hold
+time grew with the receipt, which is what made this a High rather than a tidy-up.
+
+**The fix.** One `sku = ANY($2::text[])` before the loop builds a
+`HashMap<String, (Option<i64>, Option<String>, Option<String>, Option<String>)>`; the loop body
+becomes a map lookup.
+
+**What actually needed care was three edge semantics, not the SQL.**
+
+| case | old behaviour | preserved as |
+|---|---|---|
+| sku has no product row | `query_opt` -> `None` -> `unwrap_or_default()` -> all-None; the line is still WRITTEN with NULLs | absent key -> same `Default` -> identical tuple, never skipped, never an error |
+| `cost_minor` is 0 or negative | `Some(r.get::<i64>(0)).filter(|&v| v > 0)` -> `None` | the verbatim filter expression, moved into the map builder; identity columns still frozen |
+| the same sku on two lines | two queries, same row each time | `UNIQUE (tenant_id, sku)` yields one row per key, so both occurrences get the identical tuple |
+
+The empty-line case issues **no query at all** — an empty `ANY('{}')` binds a NULL element on the
+wire, which is not the same as matching nothing. Tenant scoping is unchanged: `tenant_id = $1`
+stays an explicit predicate beside the untouched `set_config('oz.tenant_id')` prologue, so the
+batch can only ever see this tenant's products.
+
+**Verification, stated exactly.** `cargo check -p kasirmu-api` clean; `cargo test -p kasirmu-api
+--lib` **339 passed / 0 failed / 11 ignored**, run twice; `rustfmt --check` clean. The new test
+`pg::tests::pg_create_sale_batches_product_lookup` is **registered but did NOT execute** — it is
+gated `#[cfg_attr(not(feature = "pg-tests"), ignore)]`, and this machine has no Postgres (TCP
+15432 and 5432 both refused, Docker daemon absent). It needs
+`cargo test -p kasirmu-api --features pg-tests` against a live PG, which CI has. Recorded as
+unrun rather than counted as passing.

@@ -11,6 +11,8 @@
 //! Invariant: every statement runs inside one transaction that has already
 //! set `oz.tenant_id` LOCAL, exactly like the rest of the `pg` module.
 
+use std::collections::HashMap;
+
 use deadpool_postgres::Pool;
 
 use kasirmu_core::{Currency, Money, Sale, SaleLine, SaleStatus};
@@ -18,10 +20,20 @@ use kasirmu_core::{Currency, Money, Sale, SaleLine, SaleStatus};
 use super::PgError;
 use super::helpers::{currency_str, now_rfc3339};
 
+/// The four product columns a sale line freezes at write time:
+/// `(cost_minor, product_id, product_name, category_id)`.
+///
+/// All four are `Option` because a line whose sku has no product row is still
+/// written, with all four NULL — the pre-existing behaviour of the per-line
+/// lookup, which the batched lookup keeps byte-for-byte.
+type FrozenProduct = (Option<i64>, Option<String>, Option<String>, Option<String>);
+
 /// Persist a sale header + lines in one transaction, mirroring the SQLite
 /// `Store::create_sale` (including the same negative-value rejections and
 /// the frozen `cost_minor` snapshot on each line). The per-line cost freeze
-/// looks the product up within `tenant_id` (SKUs are unique per tenant).
+/// looks the product up within `tenant_id` (SKUs are unique per tenant) —
+/// ALL of a sale's skus in a single `sku = ANY($2)` query, never one query
+/// per line (debt O-H11).
 pub async fn create_sale(pool: &Pool, tenant_id: &str, sale: &Sale) -> Result<(), PgError> {
     for line in &sale.lines {
         if line.qty < 0 {
@@ -107,28 +119,62 @@ pub async fn create_sale(pool: &Pool, tenant_id: &str, sale: &Sale) -> Result<()
     .await
     .map_err(|e| PgError::Db(e.to_string()))?;
 
-    for line in &sale.lines {
-        let line_cur = currency_str(&line.unit_price.currency)?;
-        // Freeze the product cost at write time (ADR #36 reporting) and
-        // the product identity (REP-05): renaming a product, moving it
-        // between categories, or reusing a deleted sku must never
-        // relabel historical revenue in the email reports.
-        let (cost_minor, product_id, product_name, category_id): (Option<i64>, Option<String>, Option<String>, Option<String>) = tx
-            .query_opt(
-                "SELECT cost_minor, id, name, category_id FROM products WHERE tenant_id = $1 AND sku = $2",
-                &[&tenant_id, &line.sku],
+    // O-H11: resolve EVERY line's product in ONE round trip, before the loop.
+    // The loop below used to issue one `SELECT … FROM products WHERE tenant_id =
+    // $1 AND sku = $2` per line INSIDE this transaction, so a 30-line receipt
+    // made 30 round trips while holding the pooled connection and the header
+    // row's locks. One `sku = ANY($2)` covers the whole receipt; the loop then
+    // does a HashMap lookup.
+    //
+    // Cost/identity are frozen because: ADR #36 reporting wants the cost at
+    // write time, and REP-05 wants the product identity — renaming a product,
+    // moving it between categories, or reusing a deleted sku must never relabel
+    // historical revenue in the email reports.
+    //
+    // Empty-line sales issue no query at all: an empty `ANY('{}')` binds a NULL
+    // element on the wire (the driver has no element type to encode), which is
+    // not the same thing as matching nothing.
+    //
+    // Tenant scoping is unchanged: `tenant_id = $1` is still an explicit
+    // predicate beside the RLS GUC set above, so the batch can only ever see
+    // this tenant's products however many SKUs it names.
+    let mut products: HashMap<String, FrozenProduct> = HashMap::new();
+    if !sale.lines.is_empty() {
+        let skus: Vec<String> = sale.lines.iter().map(|l| l.sku.clone()).collect();
+        let rows = tx
+            .query(
+                "SELECT sku, cost_minor, id, name, category_id FROM products \
+                  WHERE tenant_id = $1 AND sku = ANY($2::text[])",
+                &[&tenant_id, &skus],
             )
             .await
-            .map_err(|e| PgError::Db(e.to_string()))?
-            .map(|r| {
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        for r in rows {
+            // A duplicate sku cannot arrive twice: UNIQUE (tenant_id, sku) makes
+            // the batch return at most one row per key, exactly as the old
+            // per-line `query_opt` did.
+            products.insert(
+                r.get::<_, String>(0),
                 (
-                    Some(r.get::<_, i64>(0)).filter(|&v| v > 0),
-                    r.get::<_, Option<String>>(1),
+                    Some(r.get::<_, i64>(1)).filter(|&v| v > 0),
                     r.get::<_, Option<String>>(2),
                     r.get::<_, Option<String>>(3),
-                )
-            })
-            .unwrap_or_default();
+                    r.get::<_, Option<String>>(4),
+                ),
+            );
+        }
+    }
+
+    for line in &sale.lines {
+        let line_cur = currency_str(&line.unit_price.currency)?;
+        // The same values the per-line `query_opt(...).map(..).unwrap_or_default()`
+        // produced: a sku with no product row was `None` there and is absent from
+        // the map here, so `cloned` yields the IDENTICAL all-None tuple — the line
+        // is still written (with NULL cost/id/name/category), never skipped and
+        // never an error. A sku listed twice gets the same tuple on both lines,
+        // exactly as the old repeated query did.
+        let (cost_minor, product_id, product_name, category_id): FrozenProduct =
+            products.get(&line.sku).cloned().unwrap_or_default();
         tx.execute(
             // tenant_id is written explicitly (not via column default) so
             // every line row lands in the caller's tenant — the header's

@@ -2057,6 +2057,248 @@ async fn pg_integration_memo_sync_and_active_read() {
     ddl.release().await;
 }
 
+/// O-H11: `create_sale` resolves EVERY line's product in ONE query, and the
+/// batched lookup writes exactly what the old per-line `query_opt` wrote.
+///
+/// The pre-fix loop issued `SELECT … FROM products WHERE tenant_id = $1 AND
+/// sku = $2` once per line inside the sale transaction — a 30-line receipt
+/// cost 30 round trips while holding the pooled connection. The fix resolves
+/// the whole receipt with `sku = ANY($2)` and looks the answers up in memory,
+/// so the risk this test pins is semantic drift at the three edges:
+///
+/// 1. a NORMAL line — cost and product identity frozen as before;
+/// 2. a line whose sku has NO product row — the old `query_opt` returned
+///    `None`, `unwrap_or_default()` turned it into an all-None tuple, and the
+///    line was still WRITTEN with NULL cost/id/name/category. A map miss must
+///    produce that same tuple, not a skipped line and not an error;
+/// 3. a ZERO-cost product — `Some(cost).filter(|&v| v > 0)` turned 0 into
+///    `None` on the one-row read, and must still do so when the rows arrive
+///    in a batch.
+///
+/// All three (plus a repeated sku, which the old loop queried twice) ride on
+/// ONE sale, so a single batched query has to get every case right at once.
+///
+/// Reads the frozen columns straight from `sale_lines`: `get_sale` does not
+/// project them (REP-05 freezes them for the reporting path), so the
+/// assertion goes to the table, not the DTO.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
+#[tokio::test]
+async fn pg_create_sale_batches_product_lookup() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    // Throwaway DB: this writes a sale header + its lines, the same
+    // `sales`/`sale_lines` rows the concurrent-transition test locks; on the
+    // shared base DB a lock-ordering collision with a parallel test process
+    // surfaces as a spurious `Db("db error")` abort.
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sale_batch").await else {
+        eprintln!("PG sale-batch test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
+        return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
+    };
+
+    let tenant = unique_id("pg-batch");
+    let currency: Currency = "USD".parse().unwrap();
+    let sku_cost = unique_id("PG-BATCH-COST");
+    let sku_zero = unique_id("PG-BATCH-ZERO");
+    let sku_missing = unique_id("PG-BATCH-MISSING");
+    let category_id = unique_id("pg-batch-cat");
+
+    // A category so the frozen `category_id` is a real value rather than a
+    // NULL that would prove nothing.
+    {
+        let client = pool.get().await.unwrap();
+        client
+            .execute(
+                "INSERT INTO categories (id, name) VALUES ($1, $2)",
+                &[&category_id, &unique_id("Batch Cat")],
+            )
+            .await
+            .expect("category insert");
+    }
+
+    // Two products: one with a real cost, one whose cost_minor stays 0 (the
+    // filter-to-None case). `create_product` writes cost_minor = 0, so the
+    // non-zero one is set explicitly.
+    let mut product_id_cost = String::new();
+    let mut product_id_zero = String::new();
+    for (sku, name, stock) in [
+        (&sku_cost, "Batch Cost", 10_i64),
+        (&sku_zero, "Batch Zero", 5_i64),
+    ] {
+        let created = create_product(
+            &pool,
+            &tenant,
+            sku,
+            name,
+            Money {
+                minor_units: 350,
+                currency,
+            },
+            Some(&category_id),
+            None,
+            stock,
+        )
+        .await
+        .expect("create_product");
+        if sku == &sku_cost {
+            product_id_cost = created.product.id.clone();
+        } else {
+            product_id_zero = created.product.id.clone();
+        }
+    }
+    {
+        let client = pool.get().await.unwrap();
+        client
+            .execute(
+                "UPDATE products SET cost_minor = $1 WHERE tenant_id = $2 AND sku = $3",
+                &[&1_200_i64, &tenant, &sku_cost],
+            )
+            .await
+            .expect("cost update");
+    }
+
+    // ONE sale exercising all three edges at once, in one batched query.
+    let mut sale = Sale::from_cart(&kasirmu_core::Cart::new(currency)).expect("from_cart");
+    let specs: [(&str, i64, i64); 4] = [
+        (&sku_cost, 2, 700),    // (a) normal line with cost
+        (&sku_missing, 1, 350), // (b) no product row → all-None
+        (&sku_zero, 1, 350),    // (c) cost_minor = 0 → filtered to None
+        (&sku_cost, 1, 350),    // duplicate sku: same answer both times
+    ];
+    let mut sale_lines = Vec::new();
+    for (i, (sku, qty, unit)) in specs.iter().enumerate() {
+        sale_lines.push(SaleLine {
+            id: unique_id("pg-batch-line"),
+            sale_id: sale.id.clone(),
+            sku: (*sku).to_string(),
+            qty: *qty,
+            unit_price: Money {
+                minor_units: *unit,
+                currency,
+            },
+            line_total: Money {
+                minor_units: qty * unit,
+                currency,
+            },
+            line_position: i as i64 + 1,
+            tax_amount: Money::zero(currency),
+            tax_rate_id: None,
+            tax_breakdown_json: None,
+            serial_number: None,
+            course: None,
+            modifiers_json: None,
+        });
+    }
+    sale.line_count = specs.len() as i64;
+    sale.subtotal = Money {
+        minor_units: 1_750,
+        currency,
+    };
+    sale.total = Money {
+        minor_units: 1_750,
+        currency,
+    };
+    sale.lines = sale_lines;
+
+    create_sale(&pool, &tenant, &sale)
+        .await
+        .expect("create_sale must succeed with a sku that has no product row");
+
+    // Read the frozen columns back per line position.
+    type Frozen = (Option<i64>, Option<String>, Option<String>, Option<String>);
+    let read_frozen = |position: i64| {
+        let id = sale.id.clone();
+        let pool = pool.clone();
+        async move {
+            let client = pool.get().await.unwrap();
+            let row = client
+                .query_one(
+                    "SELECT sku, cost_minor, product_id, product_name, category_id \
+                       FROM sale_lines WHERE sale_id = $1 AND line_position = $2",
+                    &[&id, &position],
+                )
+                .await
+                .expect("sale_lines row must exist");
+            let frozen: Frozen = (
+                row.get::<_, Option<i64>>(1),
+                row.get::<_, Option<String>>(2),
+                row.get::<_, Option<String>>(3),
+                row.get::<_, Option<String>>(4),
+            );
+            (row.get::<_, String>(0), frozen)
+        }
+    };
+
+    // (a) normal line: cost + identity frozen from the product row.
+    let (sku, frozen) = read_frozen(1).await;
+    assert_eq!(sku, sku_cost);
+    assert_eq!(
+        frozen,
+        (
+            Some(1_200),
+            Some(product_id_cost.clone()),
+            Some("Batch Cost".to_string()),
+            Some(category_id.clone()),
+        ),
+        "a normal line must freeze cost_minor and the product identity"
+    );
+
+    // (b) no product row: all-None, line still written (never skipped).
+    let (sku, frozen) = read_frozen(2).await;
+    assert_eq!(sku, sku_missing);
+    assert_eq!(
+        frozen,
+        (None, None, None, None),
+        "a sku with no product row must write the same all-None tuple the per-line query_opt + unwrap_or_default produced"
+    );
+
+    // (c) cost_minor = 0: identity frozen, cost filtered to None.
+    let (sku, frozen) = read_frozen(3).await;
+    assert_eq!(sku, sku_zero);
+    assert_eq!(
+        frozen,
+        (
+            None,
+            Some(product_id_zero.clone()),
+            Some("Batch Zero".to_string()),
+            Some(category_id.clone()),
+        ),
+        "cost_minor = 0 must be filtered to None exactly as `.filter(|&v| v > 0)` did; identity is unaffected"
+    );
+
+    // Repeated sku: the map answers the second line identically (the old
+    // loop queried a second time and got the same row).
+    let (_, first) = read_frozen(1).await;
+    let (sku, frozen_dup) = read_frozen(4).await;
+    assert_eq!(sku, sku_cost);
+    assert_eq!(
+        frozen_dup, first,
+        "a duplicate sku must get the same frozen tuple on every line"
+    );
+
+    // The header committed in the same transaction as its lines.
+    let fetched = get_sale(&pool, &tenant, &sale.id)
+        .await
+        .expect("get_sale")
+        .expect("sale must exist");
+    assert_eq!(fetched.lines.len(), specs.len());
+
+    // Cleanup: drop the throwaway database.
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+    ddl.release().await;
+}
 // ── E1-9: rounding_mode boundary (pure validation, no database) ──
 
 #[test]
