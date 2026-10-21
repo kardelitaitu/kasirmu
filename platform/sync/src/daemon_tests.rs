@@ -2691,3 +2691,342 @@ fn crl_poll_ttl_caching_and_staleness_detection() {
         "must poll CRL when timestamp is corrupted/unparseable"
     );
 }
+
+// ── O-H19: the push phase is batched at MAX_BATCH_BYTES ───────────
+//
+// `run_tick` used to POST the entire pending vector in one request. The
+// requests below are padded past the batch budget so the backlog has to travel
+// as several requests; each mock counts pushes AND their sizes, so "it was
+// batched" is an observable fact rather than an inference from a green run.
+
+/// A payload whose serialised queue item exceeds `bytes` on its own, so
+/// `build_batches` cannot fit two of them in one 64 KB batch.
+fn padded_payload(seq: usize, bytes: usize) -> String {
+    format!(r#"{{"seq":{seq},"pad":"{}"}}"#, "x".repeat(bytes))
+}
+
+/// Spawn a mock sync server that records the size of every push request and
+/// accepts every item.
+///
+/// Returns `(url, push_sizes, observed)` where `push_sizes` grows by one entry
+/// per `POST /api/sync/push` (the number of items in that request) and
+/// `observed` is every item the server saw, in arrival order.
+async fn spawn_batch_counting_mock_sync_server() -> (
+    String,
+    Arc<std::sync::atomic::AtomicUsize>,
+    Arc<std::sync::atomic::AtomicUsize>,
+    Arc<tokio::sync::Mutex<Vec<Vec<kasirmu_core::offline::OfflineQueueItem>>>>,
+) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let pushes = Arc::new(AtomicUsize::new(0));
+    let items_seen = Arc::new(AtomicUsize::new(0));
+    let batches: Arc<tokio::sync::Mutex<Vec<Vec<kasirmu_core::offline::OfflineQueueItem>>>> =
+        Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+    type BatchState = (
+        Arc<AtomicUsize>,
+        Arc<AtomicUsize>,
+        Arc<tokio::sync::Mutex<Vec<Vec<kasirmu_core::offline::OfflineQueueItem>>>>,
+    );
+
+    async fn handle_push(
+        axum::extract::State((pushes, items_seen, batches)): axum::extract::State<BatchState>,
+        Json(items): Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    ) -> Json<PushResponse> {
+        pushes.fetch_add(1, Ordering::SeqCst);
+        items_seen.fetch_add(items.len(), Ordering::SeqCst);
+        let results = vec![PushOutcome::Accepted; items.len()];
+        batches.lock().await.push(items);
+        Json(PushResponse { results })
+    }
+
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state((pushes.clone(), items_seen.clone(), batches.clone()));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    (
+        format!("http://localhost:{port}"),
+        pushes,
+        items_seen,
+        batches,
+    )
+}
+
+/// A backlog larger than one batch must travel as MULTIPLE requests, and every
+/// item must be accounted for exactly once.
+///
+/// RED before O-H19: the daemon called `transport.push_items(&pending)` once
+/// with the whole vector, so `pushes` was 1 however large the backlog — the
+/// request whose body this test's 5 items form would have been 5x the 64 KB
+/// budget in production, and a queue that backs up past the transport's 30 s
+/// ceiling can never drain. Asserting the push COUNT (not merely that all items
+/// synced) is what distinguishes batching from a lucky all-accepted run: an
+/// unbatched push also marks everything synced.
+#[tokio::test]
+async fn daemon_pushes_a_backlog_larger_than_one_batch_as_multiple_requests() {
+    use std::sync::atomic::Ordering;
+
+    use kasirmu_core::offline::SyncPriority;
+
+    // 40 KB of padding per item: one item fits a 64 KB batch, two do not.
+    const PAD: usize = 40 * 1024;
+    const ITEMS: usize = 5;
+
+    let (server_url, pushes, items_seen, batches) = spawn_batch_counting_mock_sync_server().await;
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        for seq in 0..ITEMS {
+            store
+                .enqueue_offline_priority(
+                    "complete_sale",
+                    &padded_payload(seq, PAD),
+                    SyncPriority::Critical,
+                )
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+
+    // Sanity: the fixture must really exceed one batch, or the assertion below
+    // could pass on a single request for the wrong reason.
+    let pending = tokio::task::spawn_blocking({
+        let db = db.clone();
+        move || {
+            let conn = db.blocking_lock();
+            Store::new(&conn).list_pending_offline().unwrap()
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(pending.len(), ITEMS);
+    let planned = crate::build_batches(&pending, crate::MAX_BATCH_BYTES);
+    assert!(
+        planned.len() > 1,
+        "fixture must need more than one batch; build_batches produced {}",
+        planned.len()
+    );
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let push_count = pushes.load(Ordering::SeqCst);
+    assert_eq!(
+        push_count,
+        planned.len(),
+        "a {ITEMS}-item backlog must be sent as {} requests for its size, not {push_count}",
+        planned.len()
+    );
+    assert!(
+        push_count > 1,
+        "the point of this test is MORE than one request; got {push_count}"
+    );
+
+    // Accounting: every item seen exactly once, every item synced, nothing lost.
+    let observed = batches.lock().await.clone();
+    assert_eq!(
+        observed.iter().map(Vec::len).sum::<usize>(),
+        ITEMS,
+        "the server must see every queued item"
+    );
+    assert_eq!(
+        items_seen.load(Ordering::SeqCst),
+        ITEMS,
+        "no item may be pushed twice"
+    );
+    let mut ids: Vec<&str> = observed.iter().flatten().map(|i| i.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), ITEMS, "duplicate item ids in the pushed batches");
+
+    let (pushed, pending_after) = {
+        let s = status.read().await;
+        (s.last_pushed, s.last_error.clone())
+    };
+    assert_eq!(
+        pushed, ITEMS,
+        "last_pushed must count every acknowledged item exactly once"
+    );
+    assert!(
+        pending_after.is_none(),
+        "no error expected: {pending_after:?}"
+    );
+
+    let remaining = tokio::task::spawn_blocking({
+        let db = db.clone();
+        move || {
+            let conn = db.blocking_lock();
+            Store::new(&conn).pending_offline_count().unwrap()
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(remaining, 0, "the whole backlog must be marked synced");
+}
+
+/// Partial failure: when a LATER batch fails, the batches already accepted are
+/// still recorded as synced and counted, and the cycle reports the failure.
+///
+/// This is the deliberate choice the batching work had to make. Rolling the
+/// whole cycle back on one batch failure would re-push items the server has
+/// already accepted — forever, for a queue that keeps failing late — so batches
+/// commit independently, exactly as [`crate::SyncEngine::run_sync_cycle`] does.
+/// The cycle still fails (the error reaches daemon status), so the operator-visible
+/// contract for a failed push is unchanged.
+#[tokio::test]
+async fn daemon_keeps_acked_batches_when_a_later_batch_fails() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use kasirmu_core::offline::SyncPriority;
+
+    const PAD: usize = 40 * 1024;
+    const ITEMS: usize = 5;
+
+    // This server accepts the FIRST push and 500s every one after it.
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let pushes = Arc::new(AtomicUsize::new(0));
+    let state = pushes.clone();
+
+    async fn handle_push(
+        State(pushes): State<Arc<AtomicUsize>>,
+        Json(items): Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    ) -> impl IntoResponse {
+        if pushes.fetch_add(1, Ordering::SeqCst) == 0 {
+            Json(PushResponse {
+                results: vec![PushOutcome::Accepted; items.len()],
+            })
+            .into_response()
+        } else {
+            (StatusCode::INTERNAL_SERVER_ERROR, "boom").into_response()
+        }
+    }
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state(state);
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let url = format!("http://localhost:{port}");
+
+    let db = setup_db();
+    let db_setup = db.clone();
+    let url_setup = url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url_setup).unwrap();
+        for seq in 0..ITEMS {
+            store
+                .enqueue_offline_priority(
+                    "complete_sale",
+                    &padded_payload(seq, PAD),
+                    SyncPriority::Critical,
+                )
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let push_count = pushes.load(Ordering::SeqCst);
+    assert_eq!(
+        push_count, 2,
+        "the push phase must stop at the first failed batch; got {push_count} requests"
+    );
+
+    let (pushed, error) = {
+        let s = status.read().await;
+        (s.last_pushed, s.last_error.clone())
+    };
+    assert_eq!(
+        pushed, 1,
+        "the batch the server accepted must stay counted after a later batch failed"
+    );
+    assert!(error.is_some(), "a failed batch must still fail the cycle");
+
+    let (pending, synced) = tokio::task::spawn_blocking({
+        let db = db.clone();
+        move || {
+            let conn = db.blocking_lock();
+            let store = Store::new(&conn);
+            (
+                store.pending_offline_count().unwrap(),
+                store.list_all_offline().unwrap().len(),
+            )
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(synced, ITEMS, "no queue row may be dropped");
+    assert_eq!(
+        pending,
+        (ITEMS - 1) as i64,
+        "exactly the acknowledged batch leaves the queue; the rest stay pending"
+    );
+}
+
+/// An empty pending queue must issue ZERO push requests. The batching split
+/// must not introduce a request for a batch that does not exist.
+#[tokio::test]
+async fn daemon_with_an_empty_queue_issues_no_push_request() {
+    use std::sync::atomic::Ordering;
+
+    let (server_url, pushes, _items_seen, _batches) = spawn_batch_counting_mock_sync_server().await;
+    let db = setup_db();
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    assert_eq!(
+        pushes.load(Ordering::SeqCst),
+        0,
+        "an empty queue must not produce a push request"
+    );
+    assert_eq!(status.read().await.last_pushed, 0);
+}
