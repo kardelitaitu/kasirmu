@@ -496,7 +496,7 @@ fn the_schema_refuses_a_kind_that_bypasses_core_validation() {
 fn concurrent_claims_never_issue_the_same_number() {
     use rusqlite::{Connection, Transaction, TransactionBehavior};
 
-    let dir = std::env::temp_dir().join(format!("oz_fiscal_race_{}", uuid::Uuid::now_v7()));
+    let dir = crate::migrations::test_scratch_dir("oz_fiscal_race");
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("test.db");
 

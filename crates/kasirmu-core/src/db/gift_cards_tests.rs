@@ -763,7 +763,7 @@ fn unfreeze_gift_card_refuses_an_active_card() {
 /// status and timestamp survive exactly as B wrote them.
 #[test]
 fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
-    let dir = std::env::temp_dir().join(format!("oz_gc_freeze_race_{}", uuid::Uuid::now_v7()));
+    let dir = crate::migrations::test_scratch_dir("oz_gc_freeze_race");
     let db_path = dir.join("kasir.db");
     {
         let conn = fresh_file(&dir);
@@ -830,7 +830,7 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 /// it A's UPDATE matches zero rows and the unfreeze is refused.
 #[test]
 fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
-    let dir = std::env::temp_dir().join(format!("oz_gc_unfreeze_race_{}", uuid::Uuid::now_v7()));
+    let dir = crate::migrations::test_scratch_dir("oz_gc_unfreeze_race");
     let db_path = dir.join("kasir.db");
     {
         let conn = fresh_file(&dir);

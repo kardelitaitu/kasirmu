@@ -80,7 +80,7 @@ fn backup_creates_snapshot_file() {
     // Windows — a stale or still-open file made the backup fail with
     // os error 32 ("file being used by another process"). A fresh UUID
     // name means a given run can never hit another run's leftover file.
-    let tmp = std::env::temp_dir().join(format!("oz-test-backup-{}.db", uuid::Uuid::now_v7()));
+    let tmp = crate::migrations::test_scratch_dir("oz-test-backup").join("test.db");
 
     s.backup(tmp.to_str().unwrap()).unwrap();
 

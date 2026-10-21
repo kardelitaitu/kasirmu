@@ -3565,7 +3565,7 @@ fn void_pending_sale_with_recipe_restores_ingredient_stock() {
 #[test]
 fn concurrent_complete_sale_serialized_by_begin_immediate() {
     // Use a file-based DB so two connections can access it concurrently.
-    let dir = std::env::temp_dir().join(format!("oz_concurrent_{}", uuid::Uuid::now_v7()));
+    let dir = crate::migrations::test_scratch_dir("oz_concurrent");
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("test.db");
 

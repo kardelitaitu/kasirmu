@@ -33,8 +33,7 @@ struct Scratch(std::path::PathBuf);
 
 impl Scratch {
     fn new(label: &str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("oz_recovery_{label}_{}", uuid::Uuid::now_v7()));
+        let dir = crate::migrations::test_scratch_dir(&format!("oz_recovery_{label}"));
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)
     }

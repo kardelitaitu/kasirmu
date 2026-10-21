@@ -282,7 +282,7 @@ fn update_kds_status_race_cannot_overwrite_a_competing_transition() {
         true
     }
 
-    let dir = std::env::temp_dir().join(format!("oz_kds_race_{}", uuid::Uuid::now_v7()));
+    let dir = crate::migrations::test_scratch_dir("oz_kds_race");
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("kasir.db");
     let order_id = {

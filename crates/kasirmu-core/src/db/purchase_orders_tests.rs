@@ -1066,7 +1066,7 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
         true
     }
 
-    let dir = std::env::temp_dir().join(format!("oz_po_race_{}", uuid::Uuid::now_v7()));
+    let dir = crate::migrations::test_scratch_dir("oz_po_race");
     let db_path = dir.join("kasir.db");
     let po_id = {
         let conn = fresh_file(&dir);
