@@ -329,4 +329,24 @@ describe('PurchaseOrdersScreen', () => {
       expect(screen.queryByRole('dialog', { name: /po-form/i })).not.toBeInTheDocument();
     });
   });
+
+  // A rejected listPurchaseOrdersScoped used to be reported only by an
+  // auto-dismissing toast, so the render fell through to the empty state and
+  // claimed "No purchase orders yet." — or, with a status chip selected,
+  // "No purchase orders with status X", an assertion about what the backend
+  // answered when it answered nothing at all.
+  it('reports a failed purchase-order read instead of claiming the list is empty', async () => {
+    mockListPOs.mockRejectedValue(new Error('Server offline'));
+    renderWithFluentSync(<ToastProvider><PurchaseOrdersScreen /></ToastProvider>, purchasingFtl, sharedFtl);
+
+    // The toast and the banner both carry this string; the banner is the one
+    // that persists, so assert on it by role rather than by bare text.
+    await waitFor(() => {
+      expect(document.querySelector('.po-load-error')).toHaveTextContent(
+        /failed to load purchase orders/i,
+      );
+    });
+    expect(screen.queryByText(/no purchase orders yet/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
 });
