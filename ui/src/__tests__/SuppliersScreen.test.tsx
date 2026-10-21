@@ -319,6 +319,25 @@ describe('SuppliersScreen', () => {
     expect(screen.getByText('Notes')).toBeInTheDocument();
   });
 
+  // A rejected list_suppliers_scoped used to be reported by stuffing
+  // `suppliers` with [] and printing nothing, so the empty-state card below
+  // said "No suppliers yet." with a "Add your first supplier" call to action —
+  // a transport or permission failure presented as an authoritative answer
+  // about the store's supplier registry.
+  it('reports a failed supplier read instead of claiming the registry is empty', async () => {
+    mockListSuppliers.mockRejectedValue(new Error('Server offline'));
+    renderWithFluentSync(<SuppliersScreen />, purchasingFtl, sharedFtl, supplierFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText(/suppliers could not be loaded/i)).toBeInTheDocument();
+    });
+    // The empty-state claim must not be made on behalf of a failed read.
+    expect(screen.queryByText(/no suppliers yet/i)).toBeNull();
+    expect(screen.queryByText(/add your first supplier/i)).toBeNull();
+    // And the failure must be recoverable without leaving the screen.
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('disables save button when code or name is empty', async () => {
     mockListSuppliers.mockResolvedValue([]);
     renderWithFluentSync(<SuppliersScreen />, purchasingFtl, sharedFtl, supplierFtl);

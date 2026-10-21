@@ -92,6 +92,7 @@ po-error-receive = Failed to receive purchase order
 
 suppliers-no-results = No suppliers match your search.
 suppliers-clear-search = Clear search
+suppliers-error-load = Suppliers could not be loaded.
 suppliers-no-data = No suppliers yet.
 suppliers-add-first = Add your first supplier
 

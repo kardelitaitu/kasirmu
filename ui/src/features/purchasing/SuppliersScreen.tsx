@@ -55,19 +55,29 @@ export default function SuppliersScreen() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Separate from `error`, which belongs to the create/edit form. A failed
+  // LIST read used to be reported by stuffing `suppliers` with [] and saying
+  // nothing, so the empty-state card below ("No suppliers yet." + "Add your
+  // first supplier") read as an authoritative answer — a permission or
+  // transport failure told the operator their supplier registry was empty and
+  // invited them to re-create suppliers that already existed.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // asArray: the render filters `suppliers` (see utils/ipc-payload).
       const data = await listSuppliers(sessionToken);
       setSuppliers(asArray<typeof data[number]>(data));
-    } catch {
-      setSuppliers([]);
+    } catch (err) {
+      // Keep whatever was already loaded: a refresh that fails should not
+      // silently delete the rows the operator was reading.
+      setLoadError(l10nErrorMessage(err, l10n, 'suppliers-error-load'));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -210,6 +220,15 @@ export default function SuppliersScreen() {
         </Localized>
       </div>
 
+      {loadError && (
+        <div className="suppliers-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="suppliers-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="suppliers-loading-skeleton" aria-hidden="true">
           {/* Header skeleton: title + button */}
@@ -249,7 +268,7 @@ export default function SuppliersScreen() {
             </table>
           </div>
         </div>
-      ) : suppliers.length === 0 ? (
+      ) : suppliers.length === 0 && loadError ? null : suppliers.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"

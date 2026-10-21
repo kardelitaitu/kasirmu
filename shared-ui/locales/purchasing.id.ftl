@@ -85,6 +85,7 @@ po-error-receive = Gagal menerima pesanan pembelian
 
 suppliers-no-results = Tidak ada pemasok yang cocok dengan pencarian Anda.
 suppliers-clear-search = Hapus pencarian
+suppliers-error-load = Pemasok tidak dapat dimuat.
 suppliers-no-data = Belum ada pemasok.
 suppliers-add-first = Tambah pemasok pertama
 
