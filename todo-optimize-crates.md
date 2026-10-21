@@ -427,9 +427,7 @@ first touch of one store serialises every other store's connection lookup behind
 point** — `crates/kasirmu-core/src/db/popularity.rs:415-434` ✔. Fixed: introduced `all_category_means` helper reading and parsing the `CATEGORY_MEANS` JSON blob once before the points loop into a `HashMap<String, (f64, f64, f64)>`, replacing sequential database reads and JSON parsing per point with constant-time in-memory lookups. Verified in `popularity_tests.rs`.
 
 **O-M03 · kasirmu-core — pending-queue listers are unbounded** —
-`crates/kasirmu-core/src/db/offline.rs:572-589` ◦. The store-side twin of O-H07/O-H21: the
-table that grows fastest during degradation is loaded in one go at reconnect. *Fix:*
-limit/cursor paging in the drain loop.
+`crates/kasirmu-core/src/db/offline.rs:572-589` ✔. Fixed: added `Store::list_pending_offline_for_push_bounded` and `Store::list_pending_offline_for_tenant_for_push_bounded` executing `ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?1` directly in SQLite. Replaced whole-table loading and post-hoc truncation in `platform/sync` daemon loops (`daemon.rs`, `pg_daemon.rs`), `kasirmu-bridge` offline sync, and mobile sync commands, ensuring bounded memory consumption and instant priority ordering during large offline backlog drains. Verified in `offline_tests.rs` and `daemon_tests.rs`.
 
 **O-M04 · kasirmu-core — offline idempotency probe substring-scans every payload** —
 `crates/kasirmu-core/src/db/offline.rs:561-567` ◦. `instr(payload, …)` over all pending rows,
@@ -2151,6 +2149,19 @@ One Medium performance and scalability finding resolved across staff and role ma
    - Added `Store::count_active_owners` in `crates/kasirmu-core/src/db/staff.rs`, eliminating full `users` table loading into memory in `enforce_role_assignment_policy`.
    - Pre-indexed `role_map` in `list_staff_scoped` via `to_staff_dto_with_role_name`, reducing linear scanning of roles per user from $O(\text{users} \times \text{roles})$ to $O(1)$.
    - Verified across 49 roles tests and 98 staff tests in `kasirmu-core`, and 132 tests in `kasirmu-bridge`.
+
+---
+
+## §11X — O-M03 resolved: bounded offline queue queries and push ordering (2026-10-21)
+
+One Medium performance and memory finding resolved in offline queue drain paths:
+
+1. **O-M03 · `kasirmu-core` bounded offline queue push queries (`db/offline.rs`, `sync_client.rs`, `platform/sync`)**:
+   - Introduced `Store::list_pending_offline_for_push_bounded` and `Store::list_pending_offline_for_tenant_for_push_bounded` executing `ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?1` directly in SQLite.
+   - Replaced unbounded full-table materialization in `platform/sync` daemons (`daemon.rs`, `pg_daemon.rs`), `kasirmu-bridge` (`sync_pending_offline_scoped`), `kasirmu-core` (`sync_client`), and mobile commands with bounded 100-item batch fetches (`DEFAULT_MAX_OUTBOX_BATCH_ITEMS`).
+   - Eliminated potential Android/daemon OOM crashes during large backlog reconnections and ensured immediate Critical item priority transmission.
+   - Verified across 119 tests in `kasirmu-core`, 105 tests in `platform-sync`, and 10 tests in `kasirmu-bridge`.
+
 
 
 

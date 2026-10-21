@@ -22,7 +22,6 @@ use tokio::sync::{Mutex, Notify, RwLock, watch};
 
 use kasirmu_core::db::Store;
 use kasirmu_core::events::SettingsUpdated;
-use kasirmu_core::offline::order_for_push;
 use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::SyncConfig;
 
@@ -319,17 +318,11 @@ pub(crate) fn read_config_and_pending(
 > {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
-    let mut pending = store.list_pending_offline().map_err(|e| {
-        format!("could not read the offline queue; refusing to report an empty push list: {e}")
-    })?;
-    // C49: the ONE ordering rule, shared by every push path. `list_pending_offline`
-    // orders by `created_at ASC` alone, so without this a Critical item queued
-    // behind a bulk one waits a full cycle and the priority column means nothing.
-    // Applied at the READ point so the same vector is pushed and applied by index.
-    order_for_push(&mut pending);
-    if pending.len() > DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
-        pending.truncate(DEFAULT_MAX_OUTBOX_BATCH_ITEMS);
-    }
+    let pending = store
+        .list_pending_offline_for_push_bounded(DEFAULT_MAX_OUTBOX_BATCH_ITEMS)
+        .map_err(|e| {
+            format!("could not read the offline queue; refusing to report an empty push list: {e}")
+        })?;
     Ok((config, pending))
 }
 

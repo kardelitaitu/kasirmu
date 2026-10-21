@@ -164,6 +164,25 @@ impl Store<'_> {
         rows.map(|r| Ok(r?)).collect()
     }
 
+    /// List pending (unsynced) offline queue items bounded for sync push,
+    /// ordered by priority ASC, created_at ASC, and id ASC (ADR #59 / O-M03).
+    pub fn list_pending_offline_for_push_bounded(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<OfflineQueueItem>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+             FROM offline_queue WHERE status = 'pending' ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], Self::row_to_offline_queue_item)?;
+        let mut items = Vec::with_capacity(limit);
+        for row in rows {
+            items.push(row?);
+        }
+        crate::offline::order_for_push(&mut items);
+        Ok(items)
+    }
+
     /// List all offline queue items.
     pub fn list_all_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
@@ -213,6 +232,29 @@ impl Store<'_> {
             Self::row_to_offline_queue_item,
         )?;
         rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// List pending offline items scoped to a tenant bounded for sync push,
+    /// ordered by priority ASC, created_at ASC, and id ASC (ADR #59 / O-M03).
+    pub fn list_pending_offline_for_tenant_for_push_bounded(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Result<Vec<OfflineQueueItem>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+             FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(
+            params![tenant_id, limit as i64],
+            Self::row_to_offline_queue_item,
+        )?;
+        let mut items = Vec::with_capacity(limit);
+        for row in rows {
+            items.push(row?);
+        }
+        crate::offline::order_for_push(&mut items);
+        Ok(items)
     }
 
     /// Mark an offline queue item as synced.

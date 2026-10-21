@@ -239,7 +239,8 @@ pub fn mark_all_failed(
 /// prefer the split read/HTTP/write pattern using `send_items_to_server`
 /// (async) + `apply_sync_outcomes`.
 pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptResult, CoreError> {
-    let pending = store.list_pending_offline()?;
+    let pending = store
+        .list_pending_offline_for_push_bounded(crate::offline::DEFAULT_MAX_OUTBOX_BATCH_ITEMS)?;
     if pending.is_empty() {
         return Ok(SyncAttemptResult {
             synced: 0,

@@ -356,7 +356,9 @@ pub async fn retry_offline_sync_scoped(
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let db = &*db_guard;
         let store = Store::new(&db);
-        let pending = store.list_pending_offline()?;
+        let pending = store.list_pending_offline_for_push_bounded(
+            kasirmu_core::offline::DEFAULT_MAX_OUTBOX_BATCH_ITEMS,
+        )?;
         let config = SyncConfig::from_settings(&store)?;
         (pending, config)
     };

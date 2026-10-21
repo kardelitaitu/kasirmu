@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default maximum number of pending outbox items to push in a single sync batch (ADR #59 / O-M03).
+pub const DEFAULT_MAX_OUTBOX_BATCH_ITEMS: usize = 100;
+
 /// Sync priority tier for offline queue items (P-2 spec §Priority tiers).
 ///
 /// Lower numeric values indicate higher priority. Items are sorted by
