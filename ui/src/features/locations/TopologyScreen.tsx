@@ -425,8 +425,11 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
     const otherId = stores.find((s) => s.id !== selectedBranchId)?.id ?? null;
     setCompareOtherBranchId(otherId);
     setCompareOpen(true);
-    if (otherId !== null) void loadCompare(otherId);
-  }, [stores, selectedBranchId, loadCompare]);
+    // NO FETCH HERE. The re-derive effect below watches exactly these two pieces of
+    // state and issues the read; calling loadCompare here as well made every Compare
+    // click run the comparison TWICE for the same inputs. Setting the state is the
+    // whole job of this handler.
+  }, [stores, selectedBranchId]);
 
   const closeCompare = useCallback(() => {
     setCompareOpen(false);
