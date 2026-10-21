@@ -54,8 +54,6 @@ mod redis_backend;
 mod shutdown;
 mod sync_api;
 mod sync_store;
-#[cfg(test)]
-mod test_scratch;
 mod webhooks;
 
 use std::sync::Arc;

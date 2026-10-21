@@ -48,7 +48,7 @@ fn gc_removes_files_when_present() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = kasirmu_core::Store::new(&conn);
 
-    let tmp = crate::test_scratch::scratch_dir("oz-gc");
+    let tmp = kasirmu_test_support::scratch_dir("oz-gc");
     std::fs::create_dir_all(&tmp).unwrap();
 
     // Write a file that will be GC'd.
