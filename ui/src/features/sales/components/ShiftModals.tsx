@@ -101,20 +101,15 @@ export function CloseShiftConfirm({
               // not required, so the keystroke that should insert a newline committed
               // the action instead. Same guard the POS hotkey handler uses
               // (PosScreen/RetailPosScreen via isEditableTarget).
-              // AND `!closingShift` — the guard the Confirm button two dozen lines below
-              // carries (:192-193) and this one did not. `closingShift` is set the moment the
-              // hook starts its write and cleared only in its `finally`, so without this a
-              // cashier who pressed Enter while the dialog read "Closing…" issued a SECOND
-              // `closeShiftScoped` while the first was still in flight. Closing a shift is a
-              // money event, and the button's `disabled` cannot cover it: a keydown on the
-              // overlay never consults the button's state.
-              // AND `!closingShift` — the guard the Confirm button two dozen lines below
-              // carries (:192-193) and this one did not. `closingShift` is set the moment the
-              // hook starts its write and cleared only in its `finally`, so without this a
-              // cashier who pressed Enter while the dialog read "Closing…" issued a SECOND
-              // `closeShiftScoped` while the first was still in flight. Closing a shift is a
-              // money event, and the button's `disabled` cannot cover it: a keydown on the
-              // overlay never consults the button's state.
+              // AND `!closingShift` — the guard the CONFIRM button below carries. That
+              // button starts at :204 and the guard is `closingShift ||` at :209
+              // (:192-193, which this note used to cite, is the CANCEL button's markup —
+              // re-measured 2026-10-19). `closingShift` is set the moment the hook starts
+              // its write and cleared only in its `finally`, so without this a cashier who
+              // pressed Enter while the dialog read "Closing…" issued a SECOND
+              // `closeShiftScoped` while the first was still in flight. Closing a shift is
+              // a money event, and the button's `disabled` cannot cover it: a keydown on
+              // the overlay never consults the button's state.
               if (e.key === 'Enter' && !isEditableTarget(e.target) && !closingShift) {
                 handleConfirmCloseShift();
               }

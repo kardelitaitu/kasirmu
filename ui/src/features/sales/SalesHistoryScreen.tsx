@@ -461,11 +461,13 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } finally {
       setVoiding(false);
     }
-    // sessionToken is read at :266 and was missing. `session` was in the array but is never
+    // sessionToken is read at :454 and was missing (the note said ":266", which is the tail of
+    // a doc comment — re-measured 2026-10-19). `session` was in the array but is never
     // read in this body -- eslint only reported the missing token until the token was added,
     // because the rule surfaces one problem per hook, so the unnecessary dep was latent behind
-    // it. `session` comes from useAuth() at :163 (staff identity) and is a different value from
-    // useWorkspace()'s sessionToken at :164; listing one never covered the other. A void is an
+    // it. `session` comes from useAuth() at :284 (staff identity; cited ":163", a </td>) and is
+    // a different value from useWorkspace()'s sessionToken at :298 (cited ":164", the createdAt
+    // cell); listing one never covered the other. A void is an
     // audit-trail event: a stale token either fails the permission check outright or, if the old
     // session were still live, attributes the void to the previous cashier.
   }, [voidTarget, voidReason, load, l10n, invalidateCache, sessionToken]);
