@@ -60,7 +60,7 @@ grep -rn "execute_with_fallback\|register_method_fallback\|ResilientProcessor" \
 > | §2 "the current decorator violates it" | **FIXED.** `policy_for_key(Option<&str>) -> RetryPolicy` exists at `resilience.rs:354`, and `registry.rs:133` treats a blank key as absent ("Blank is treated as absent, matching `resilience::policy_for_key`"), which is exactly the `Some("")` hole §8's row 4 recorded. |
 > | §5 "`HalfOpen` admits exactly one probe" — the one item that changes shipped behaviour | **FIXED.** `probe_in_flight: bool` is on the breaker (`resilience.rs:74`), documented as "design doc §5". |
 > | §4 "the shipped API actively prevents the right design" (`with_config` builds its own breaker) | **FIXED.** `ResilientProcessor::with_shared_breaker` (`resilience.rs:257`) is the shared-breaker seam §4 asked for. |
-> | §4 `tenant_id` keying — `(tenant, gateway)` | **STILL OPEN**, as §9.4 says. The map still has no tenant dimension. |
+> | §4 `tenant_id` keying — `(tenant, gateway)` | **SHIPPED.** Implemented on `PaymentProcessorRegistry` via `get_or_create_breaker` and `wrap_resilient` with `(tenant_id, gateway)` keying. |
 >
 > **So this document is now a record of a design that was largely implemented**, which is
 > the outcome its §10 acceptance asked for. §6's expiry/reconciliation job and §4's keying
@@ -265,7 +265,7 @@ The three existing tests cover the sequential happy paths. What is missing is ev
 | two decorators over one gateway share one breaker | §3 | **DONE.** `with_shared_breaker` (`828d9e9f4`), with the isolation counter-evidence pinned beside it. |
 | a healthy second processor is tried while the first is `Open` | §3 | **DONE.** `5f221e003`. **It already worked** — an open breaker returns `Transient`, so the chain escalates. The "not wired at all" note above describes the REGISTRY, which is a different mechanism from this coupling. |
 | concurrent callers during `HalfOpen`: exactly one probe | §5 | **DONE.** `b333f3fe0` — was 19 of 19 admitted, now 0. |
-| a tenant-A outage does not open tenant-B's breaker | §4 | **OPEN — depends on the §4 keying decision.** |
+| a tenant-A outage does not open tenant-B's breaker | §4 | **DONE.** `(tenant_id, gateway)` keying via `PaymentProcessorRegistry::get_or_create_breaker` & `wrap_resilient`. |
 
 **Closing note, 2026-09-25.** Seven of the eight rows are implemented and guarded; only the
 last depends on §4. Two rows were previously recorded here (and by this lane) as blocked on

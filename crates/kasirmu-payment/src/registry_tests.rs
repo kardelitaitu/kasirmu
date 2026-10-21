@@ -391,3 +391,67 @@ async fn blank_key_is_treated_as_keyless_and_does_not_advance_the_chain() {
         "a whitespace-only key must be treated as keyless"
     );
 }
+
+/// A tenant-A outage on a shared gateway does NOT open tenant-B's breaker (§4).
+///
+/// Multi-tenant isolation: when tenant-A exhausts retries and trips the circuit
+/// breaker on a shared gateway (e.g. invalid credentials or quota exhaustion),
+/// tenant-B using the same gateway maintains an independent circuit breaker and
+/// can successfully process payments.
+#[tokio::test]
+async fn tenant_a_outage_does_not_open_tenant_b_breaker() {
+    let reg = PaymentProcessorRegistry::new();
+
+    let cfg = crate::resilience::ResilientProcessorConfig {
+        max_retries: 0,
+        failure_threshold: 1,
+        cooldown_duration: Duration::from_secs(60),
+        ..Default::default()
+    };
+
+    let mock_a = Arc::new(
+        MockPaymentProcessor::builder()
+            .simulate_timeout(true)
+            .build(),
+    );
+    let mock_b = Arc::new(MockPaymentProcessor::new());
+
+    let proc_a = reg
+        .wrap_resilient(
+            "tenant-alpha",
+            "midtrans",
+            mock_a.clone(),
+            Some(cfg.clone()),
+        )
+        .await;
+    let proc_b = reg
+        .wrap_resilient("tenant-beta", "midtrans", mock_b.clone(), Some(cfg.clone()))
+        .await;
+
+    let currency = "USD".parse().unwrap();
+    let req = crate::PaymentRequest {
+        amount: foundation::Money::from_major(25, currency).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: Some("test-key".into()),
+    };
+
+    // Tenant A experiences 1 failure, tripping its circuit breaker (threshold = 1)
+    let res1 = proc_a.authorize(&req).await;
+    assert!(matches!(res1, Err(crate::PaymentError::Timeout(_))));
+
+    // Tenant A's breaker is now OPEN and fails fast with Network error
+    let res2 = proc_a.authorize(&req).await;
+    assert!(
+        matches!(res2, Err(crate::PaymentError::Network(ref msg)) if msg.contains("open")),
+        "tenant A should fail fast due to open breaker: {res2:?}"
+    );
+
+    // Tenant B on the same gateway is ISOLATED: its breaker is CLOSED and succeeds
+    let res_b = proc_b.authorize(&req).await;
+    assert!(
+        res_b.is_ok(),
+        "tenant B must succeed despite tenant A's tripped breaker: {res_b:?}"
+    );
+    assert_eq!(mock_b.authorize_calls(), 1);
+}
