@@ -124,8 +124,13 @@ export default function StockTransfersScreen() {
       ]);
       // Only an ANSWER is written. A throw writes nothing, so the dropdowns
       // stay UNKNOWN and the notices below can say so out loud.
-      if (prodRead.ok) setProducts(prodRead.value);
-      if (termRead.ok) setTerminals(termRead.value);
+      // An UNANSWERED read must be recorded as unknown on EVERY reload, not only the
+      // first. Writing only on success left the previous array in place after a later
+      // failure, and the notices below test `=== null` — so once a first load succeeded
+      // that guard could never be true again and a failed reload silently kept offering a
+      // stale catalogue with nothing on screen to say so.
+      setProducts(prodRead.ok ? prodRead.value : null);
+      setTerminals(termRead.ok ? termRead.value : null);
       if (dataRead.ok) {
         setTransfers(asArray<typeof dataRead.value[number]>(dataRead.value));
       } else {
@@ -161,12 +166,22 @@ export default function StockTransfersScreen() {
     const stale = () => detailSeq.current !== seq;
     setDetailId(id);
     setDetailLoading(true);
+    // DROP THE PREVIOUS TRANSFER BEFORE READING THE NEXT ONE. `detail` outlives
+    // `detailId`, so without this the overlay keeps rendering A's number, A's lines and
+    // A's Receive button under a heading opened for B — and because `openReceiveModal`
+    // pre-fills the received quantities from `detail.lines`, the operator can receive
+    // A's lines against A while believing they are on B. A failed or null read is worse
+    // than a slow one: it leaves that stale body up permanently, with the only signal an
+    // error card behind the overlay.
+    setDetail(null);
     try {
       const data = await getStockTransfer(sessionToken, id);
       if (stale()) return;
       if (data) setDetail(data);
     } catch {
       if (stale()) return;
+      // Already null (cleared above); say so rather than leaving a spinner over nothing.
+      setDetail(null);
       setError(l10n.getString('stock-transfers-error-load'));
     } finally {
       // A superseded read must not clear the CURRENT read's spinner either.

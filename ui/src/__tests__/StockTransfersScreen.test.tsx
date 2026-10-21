@@ -303,6 +303,33 @@ describe('StockTransfersScreen', () => {
     expect(screen.getByTestId('stock-transfer-detail-destination')).toHaveTextContent('Store B');
   });
 
+  it('does not leave the previous transfer on screen when the next detail read fails', async () => {
+    const user = userEvent.setup();
+    mockListTransfers.mockResolvedValue(sampleTransfers);
+    // A answers by default; the SECOND read (B) rejects. The mount path may issue its
+    // own read, so the rejection is armed only after A's detail is on screen.
+    mockGetTransfer.mockResolvedValue(sampleDetail);
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+    await waitFor(() => expect(screen.getByText('ST-001')).toBeInTheDocument());
+
+    await user.click(screen.getByText('ST-001'));
+    // `sampleDetail` is ST-001, whose destination is "Storefront".
+    await waitFor(() =>
+      expect(screen.getByTestId('stock-transfer-detail-destination')).toHaveTextContent('Storefront'),
+    );
+
+    // B's read fails. `detail` used to survive, so A's number, A's lines and A's Receive
+    // button stayed under a heading opened for B — and openReceiveModal prefills from
+    // `detail.lines`, so the operator could receive A's lines thinking they were on B.
+    mockGetTransfer.mockRejectedValue(new Error('store busy'));
+    await user.click(screen.getByText('ST-002'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('stock-transfer-detail-destination')).toBeNull();
+    });
+  });
+
   // ── Detail modal ─────────────────────────────────────────────
   it('opens detail modal when transfer number link is clicked', async () => {
     const user = userEvent.setup();
