@@ -86,17 +86,26 @@ function PromotionManagementScreenContent() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const { addToast } = useToast();
+  // A rejected read was reported only by an auto-dismissing toast, so the render
+  // fell through to the empty state and claimed there are no promotions running,
+  // which reads as "nothing is discounted right now" on a screen that decides
+  // what customers are charged.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const deleteExit = useExitAnimation(!!deleteTarget, () => setDeleteTarget(null));
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // asArray: the render maps/filters `promotions` (see utils/ipc-payload).
       const items = await listPromotions(sessionToken);
       setPromotions(asArray<typeof items[number]>(items));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'promotions-error-load'), type: 'error' });
+      // Keep the promotions already on screen: a failed refresh must not delete
+      // the list the operator was reading.
+      setLoadError(requiredLocalized(l10n, 'promotions-error-load'));
     } finally {
       setLoading(false);
     }
@@ -189,6 +198,15 @@ function PromotionManagementScreenContent() {
         </Localized>
       </div>
 
+      {loadError && (
+        <div className="promo-mgmt-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="promo-mgmt-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="promo-mgmt-loading-skeleton" aria-hidden="true">
           <div className="promo-mgmt-header">
@@ -222,7 +240,7 @@ function PromotionManagementScreenContent() {
             </table>
           </div>
         </div>
-      ) : promotions.length === 0 ? (
+      ) : promotions.length === 0 && loadError ? null : promotions.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"

@@ -63,6 +63,21 @@ describe('PromotionManagementScreen', () => {
     mockDeletePromotion.mockReset();
   });
 
+  // A rejected listPromotions used to be reported only by an auto-dismissing
+  // toast, so the render fell through to the empty state and claimed there are
+  // no promotions — which reads as "nothing is discounted right now" on the
+  // screen that decides what customers are charged.
+  it('reports a failed promotion read instead of claiming there are none', async () => {
+    mockListPromotions.mockRejectedValue(new Error('Server offline'));
+    renderScreen();
+
+    await waitFor(() => {
+      expect(document.querySelector('.promo-mgmt-load-error')).toBeTruthy();
+    });
+    expect(screen.queryByText(/no promotions/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('renders the title', async () => {
     mockListPromotions.mockResolvedValue([makePromo()]);
     renderScreen();
