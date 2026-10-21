@@ -511,6 +511,32 @@ previous-period read. Sequential effects mean the counter advances in a safe ord
 the probe rather than report a defect that does not exist. That is the fourth time this campaign a
 plausible-looking shape survived contact with a probe, and it is why the probe comes before the fix.
 
+## Round 47: three more of the same family, and a scratch file I had to own
+
+Round 46 established the family; round 47 cleared the rest of the subagent's findings from it. All
+three are the identical shape — a failed read rendered as a positive claim — in three different
+screens, which is why they are worth a round rather than a footnote.
+
+**Purchase orders** (`PurchaseOrdersScreen.tsx`). The catch did nothing but `addToast`. The render
+then fell to `filtered.length === 0` and claimed **"No purchase orders yet."** — or, with a status
+chip selected, **"No purchase orders with status pending"**, which is not an empty-state message at
+all but an assertion about what the backend answered. A `loadError` + Retry now sits above the table
+and the empty states are suppressed while it is set.
+
+**Restaurant menu editor** (`RestaurantMenuEditorScreen.tsx`). This one is the most instructive about
+partial correctness: `Promise.allSettled` is used *deliberately* so a failed category read does not
+blank the items, and that part is right. But nothing recorded that the load had failed, so on a FIRST
+load there were no previous items to keep — the grid printed "No items in this category yet." beside a
+"New Item" call to action, and the rail counts read 0. Correct partial handling of one failure and a
+false full statement about another.
+
+**A scratch file I left behind.** `git status` opened the round with `.killblock.txt` untracked. That
+was mine: the round-46 kill test wrote a code block to disk to restore it, and the `Remove-Item` in
+that same chained command ran in the `ui/` working directory while the file had been written at the
+repo root. I verified the file's content before deleting it (it did hold the `setDailyRevenue([])`
+block and nothing else) rather than trusting the name. Untracked count is 0 again, and it is a reminder
+that a cleanup chained into a command with a different `workdir` cleans nothing.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
