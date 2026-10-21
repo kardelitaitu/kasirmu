@@ -186,6 +186,17 @@ function AuditLogScreenContent() {
         }
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
+        // CLEAR THE PAGE, then report. The error card and the empty state are both gated
+        // on `entries.length === 0`, so keeping the previous page made a failed reload
+        // render the OLD rows under the NEW filter with no error anywhere — a read that
+        // never answered presented as "filter applied, these N entries match". Only a
+        // reset (a new filter, a new search, a Retry) clears the list, so nothing the
+        // operator can page back to is lost.
+        if (reset) {
+          setEntries([]);
+          setTotal(0);
+          setHasMore(false);
+        }
         setError(l10nErrorMessage(err, l10n, 'audit-log-error-load'));
       } finally {
         if (seq === loadSeqRef.current) setLoading(false);
