@@ -58,9 +58,14 @@ export default function GiftCardsScreen() {
   const [topUpAmount, setTopUpAmount] = useState('');
   const [topUpError, setTopUpError] = useState('');
   const { addToast } = useToast();
+  // A rejected read used to be reported only by an auto-dismissing toast, so the
+  // render fell through to the empty state and claimed there are no gift cards,
+  // on a screen whose whole purpose is showing balances the store owes customers.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const filter: GiftCardFilter = {};
       if (search.trim()) filter.search = search.trim();
@@ -69,6 +74,9 @@ export default function GiftCardsScreen() {
       setCards(asArray<typeof result[number]>(result));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'gift-cards-error-load'), type: 'error' });
+      // Keep the cards already on screen: a failed refresh must not delete the
+      // balances the operator was reading.
+      setLoadError(requiredLocalized(l10n, 'gift-cards-error-load'));
     } finally {
       setLoading(false);
     }
@@ -146,6 +154,15 @@ export default function GiftCardsScreen() {
         </select>
       </div>
 
+      {loadError && (
+        <div className="gift-cards-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="gift-cards-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="gift-cards-loading-skeleton" aria-hidden="true">
           <div className="gift-cards-header">
@@ -174,7 +191,7 @@ export default function GiftCardsScreen() {
             ))}
           </div>
         </div>
-      ) : cards.length === 0 ? (
+      ) : cards.length === 0 && loadError ? null : cards.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"

@@ -149,6 +149,21 @@ describe('GiftCardsScreen', () => {
     expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
   });
 
+  // A rejected listGiftCards used to be reported only by an auto-dismissing
+  // toast, so the render fell through to the empty state and claimed there are
+  // no gift cards — on the screen that shows the balances the store owes
+  // customers, the one place an all-clear is actively dangerous.
+  it('reports a failed gift-card read instead of claiming there are none', async () => {
+    mockListGiftCards.mockRejectedValue(new Error('Server offline'));
+    renderWithFluentSync(<ToastProvider><GiftCardsScreen /></ToastProvider>, giftCardsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(document.querySelector('.gift-cards-load-error')).toBeTruthy();
+    }, FAST_WAIT);
+    expect(screen.queryByText(/no gift cards found/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
   it('shows empty state when no cards exist', async () => {
     mockListGiftCards.mockResolvedValue([]);
     renderWithFluentSync(<ToastProvider><GiftCardsScreen /></ToastProvider>, giftCardsFtl, sharedFtl);
