@@ -245,6 +245,27 @@ what a call does not do.**
   and the timer callback. The agent looked at the assignment inside the error handler and did not read
   the unlock effect 13 lines below.
 
+## Round 40: three from the hooks lane, two refused
+
+- **The store timezone survived a store switch.** `useStoreTimezone` kept `storeTz` while the next read
+  was in flight (and after it failed), so a hot-swap from a +07:00 store to a +00:00 one bucketed the new
+  store's orders into the old store's day — presented as current. The file's own contract already says
+  `null` means "not known yet"; the effect just never reset to it.
+- **A missing session token read as "no terminals registered".** `useTerminalProfile` answered `[]`
+  without issuing any IPC when the token had not resolved yet, which also skipped the kiosk detection.
+  It now stays in the loading state and lets the token arriving re-run the effect.
+
+### Refused — both class-3 claims, both wrong
+
+- **"A failed sync probe keeps the pill green."** The `catch` sets `'disconnected'` and nulls the
+  latency, and `nextDelay` initialises to `RETRY_INTERVAL_MS`, so the fast retry is armed too. The agent
+  quoted the assignment it expected instead of the one that is there.
+- **"`useSyncConnection` retries only once a minute after a failure."** Same misread, same lines.
+
+That is the pattern worth naming for this lane: **class-3 claims about `catch` blocks are the cheapest to
+check and the easiest to get wrong.** Two of three such findings this round were refuted by reading the
+six lines under the `catch`.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
