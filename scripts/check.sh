@@ -161,6 +161,15 @@ step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" pyth
 # SAFETY at all. This makes the justification mechanical instead of a
 # reviewer's-eye exercise. Gate: scripts/gates.json -> "unsafe-safety".
 step "unsafe safety comments" "python3 scripts/verify-unsafe-safety.py --self-test" python3 scripts/verify-unsafe-safety.py --self-test
+# The debt journal (todo-optimize-crates.md) is the source of truth for what is still open,
+# and five entries were caught ranked as open work after they were already fixed -- O-H23,
+# O-H24 and O-H26 by other lanes on 2026-09-27, O-H03/O-H04/O-H08 which said "Fixed:" in their
+# own text, and O-H22 whose commit touched the journal without adding a section. A SIXTH
+# failure was found while writing this gate: 49a304b97 deleted §11Z's body outright, so the
+# file recorded O-H16 as open while its code had shipped. Manual discipline has missed six;
+# this makes the cross-check mechanical. Reads git log against the journal, so it is cheap.
+# Gate: scripts/gates.json -> "debt-ledger".
+step "debt ledger" "python3 scripts/check-debt-ledger.py" python3 scripts/check-debt-ledger.py
 step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" python3 scripts/verify-unsafe-safety.py
 # Round 201 of the restaurant-POS work found `setLines(updatedLines)` replacing state from a
 # pre-await render closure, so a line added mid-send was dropped with no message. The checker

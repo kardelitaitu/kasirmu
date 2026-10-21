@@ -2216,6 +2216,41 @@ Two Medium performance findings resolved in location and inventory resolution:
 
 ---
 
+## §11Z — O-H16 resolved: delta refresh of KDS queue snapshot with cached line item and station reuse (2026-10-21)
+
+> **RESTORED 2026-10-21.** This section's body was deleted by `49a304b97` (another lane's
+> O-H22 commit), which replaced it with a bare `---`. The CODE was never affected —
+> `dirty_order_id` is still at `apps/desktop-tauri/src/commands/kds.rs:104` — but the record
+> was gone, which is worse than it sounds: a future reader would have re-derived O-H16 as
+> open work from its entry, exactly the rot this journal keeps documenting. Text restored
+> verbatim from `a53ee8092`, the commit that earned it.
+
+One High performance finding resolved in desktop KDS command and LAN sync handling:
+
+1. **O-H16 · `kasirmu-app` incremental KDS queue snapshot refresh (`apps/desktop-tauri/src/commands/kds.rs`)**:
+   - Converted `refresh_kds_queue_cache` to index existing active tickets by order ID from the in-memory `cache.read()` snapshot.
+   - Reused already-resolved `line_items` and `stations` for all unchanged orders, avoiding $2N$ sequential bridge queries on every keystroke or order status transition.
+   - Added `dirty_order_id: Option<&str>` parameter so that line-item bump events only re-query the single order whose lines changed, while order status updates reuse lines and stations completely.
+   - Verified across all 5 end-to-end multi-terminal tests in `commands::kds::kds_lan_live_tests`.
+
+---
+
+## §11AA — O-H22 resolved: per-store initialization locks during store DB migrations (2026-10-21)
+
+> **WRITTEN RETROSPECTIVELY 2026-10-21.** `49a304b97` landed the fix and touched this file,
+> but added no §11 section and no PAID marker, so every census read O-H22 as open work.
+> Re-verified at HEAD before writing this: `StoreDatabaseManager.init_locks` is
+> `Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>` (`platform/core/src/database/manager.rs:47`),
+> the per-store guard is taken at `:97-108`, and released entries are reaped at `:138-140`.
+
+One High finding resolved in `platform/core`'s store database manager:
+
+1. **O-H22 · `platform-core` per-store init locks (`platform/core/src/database/manager.rs`)**:
+   - Replaced the process-wide store-DB mutex held across migrations with a per-store lock map, so two stores opening concurrently no longer serialize behind each other's migration chain.
+   - The outer map is held only long enough to resolve the inner `Arc<Mutex<()>>` for one store; the actual migration work happens under that store's own lock.
+   - Entries whose `Arc::strong_count` drops back to 2 are removed, so the map does not grow without bound as stores are opened and closed over a long-running process.
+   - Verified in `platform/core/src/database/manager_tests.rs`.
+
 ---
 
 ## §11AB — O-H07 resolved: bounded batch draining for offline queue sync (2026-10-21)
