@@ -456,6 +456,9 @@ mutex for settlement — heavy CPU under the global lock on the hottest path. *F
 verified subscription keyed by row version; settle under one acquisition.
 
 **O-H18 · platform/sync — full stock-summary rebuild per backlog page** —
+✅ **PAID 2026-10-21 (hoist only; the page cap is NOT done).** The rebuild is gone from
+`apply_pulled_page` and happens once after the pull loop, OR-folding "did ANY page carry a
+movement" so an earlier movement page is not lost when the last page has none.
 `platform/sync/src/pg_daemon.rs:388-389`, `:844` ◦
 The PG pull loop pages with no page cap, and any page containing a `stock.movement` triggers
 `rebuild_stock_summary()` over the entire delta ledger — a large backlog costs
@@ -473,6 +476,11 @@ exceeded, the cycle fails, and the queue grows further. *Fix:* route through
 `build_batches(&pending, MAX_BATCH_BYTES)`.
 
 **O-H20 · platform/sync — PG transport does one network round trip per item** —
+✅ **PAID 2026-10-21.** One multi-row `INSERT` per 1,000-row chunk inside the SAME
+transaction (5,000 items = 5 statements). Along the way this closed a pre-existing DEFECT at
+HEAD: the per-item statement emitted `($1,$2,$3,'pending',$4..$7)` with seven binds, so
+`retry_count` received the `last_error` value and `origin_terminal_id` was never bound —
+PostgreSQL rejects it with "there is no parameter $8". Dead code, no live test ever ran it.
 `platform/sync/src/pg_transport.rs:308-336` ◦
 Per item, an `INSERT INTO offline_queue …` inside a single transaction — a 5,000-item drain is
 5,000 sequential round trips holding the transaction (and its locks) open for minutes. *Fix:*
@@ -2663,3 +2671,75 @@ all 5 rows present, 4 still pending), and `daemon_with_an_empty_queue_issues_no_
 **One thing this did NOT fix, stated plainly:** `pg_daemon.rs:450` has the same unbatched call and
 was left alone because another lane owns that file. Recorded here so the next pass does not read
 O-H19's closure as covering the PG daemon too.
+
+---
+
+## §11AL — O-H18 resolved: one stock-summary rebuild per tick, not per page (2026-10-21)
+
+One High finding resolved — the hoist only, and the page cap is explicitly NOT done.
+
+**The defect was multiplicative.** The PG pull loop pages with no cap, and ANY page carrying a
+`stock.movement` called `rebuild_stock_summary()` over the entire delta ledger. A backlog of P
+pages therefore cost O(P x all movements) inside one tick.
+
+**The fix.** The rebuild is removed from `apply_pulled_page`, which now returns
+`Option<(String, bool)>` — the anchor plus "this page carried a stock movement", a fact it already
+computed and discarded. `run_tick` OR-folds that bool into `tick_carried_movements` across the
+loop, so **an earlier page's movement is not lost when the last page has none** — the subtle
+data bug a naive "hoist to the end" would have introduced. One rebuild follows the loop, via a new
+`rebuild_tick_summary`. It runs even when `sync_error` is set (partial correctness: movements
+applied before the error are still summarized), and on rebuild failure it restores the durable
+anchor to the tick's captured value so the next tick retries — with a restore failure reported
+through a new `TickRebuild` enum rather than swallowed.
+
+**What is pinned, and what is NOT — stated because the distinction matters.**
+
+| property | pinned? | how |
+|---|---|---|
+| the page seam no longer rebuilds | **yes** | `apply_pulled_page_does_not_rebuild_the_summary_at_the_page_seam` asserts the page leaves `stock_summary` STALE while `get_stock_from_ledger()` advances. Restoring the per-page call makes that read `Some(57)` against `Some(50)`. |
+| a movement on an EARLY page survives a trailing movement-free page | **yes** | `multi_page_tick_flag_survives_a_trailing_page_without_a_movement` drives 3 pages and asserts the tick-end total (50+5+6+7+1). A "last page wins" hoist fails it. |
+| "exactly once per tick" as a COUNT | **no** | `Store::rebuild_stock_summary` is a concrete method on a struct borrowed from a `rusqlite::Connection` — no trait, no field, no seam to count through. An `updated_at`-stamp proxy was tried and **did not discriminate** (a rebuild re-derives identical quantities), so it was removed rather than left passing for the wrong reason. |
+
+**Left undone on purpose:** the per-tick page cap. It needs a persisted mid-tick cursor — a
+migration or a new contract on `sync_pull_state.cursor` — which is a schema change the O-H19/O-H20
+lane was editing. The hoist removes the multiplicative factor; one rebuild per tick still costs
+O(all movements), which is inherent because the summary is a whole-ledger aggregate.
+
+---
+
+## §11AM — O-H20 resolved, and along the way a pre-existing INSERT defect at HEAD (2026-10-21)
+
+One High finding resolved, plus a data-correctness defect that was live in the shipped statement.
+
+**The fix.** `push_items` now issues one multi-row `INSERT` per 1,000-row chunk — 7 binds/row x
+1,000 = 7,000 parameters, ~1/9 of PostgreSQL's 65,535 cap, enforced by a `const _` assertion at
+compile time. All chunks stay inside the SAME transaction with the same `SET LOCAL oz.tenant_id`
+and one `commit()`. A 5,000-item drain is 5 statements instead of 5,000. `ON CONFLICT (id) DO
+NOTHING` is preserved verbatim; the tenant gate still runs per item before admission.
+
+**The defect found on the way, which is the more important half.** HEAD's per-item statement was
+
+    ($1, $2, $3, 'pending', $4, $5, $6, $7)     with SEVEN bind parameters
+
+so `retry_count` received the `last_error` value, `origin_terminal_id` was never bound at all, and
+PostgreSQL rejects the statement outright ("there is no parameter $8"). **No test had ever run it
+against a live server** — the only live test is `#[ignore]` behind the `pg-tests` feature — so the
+top-level push path was dead code that would have failed on first contact with production.
+Batching would have reproduced the same gap with different offsets.
+
+**Structure over assertion, because this class recurred three times in one session.** Columns are a
+`PushColumn` enum whose `ALL` list holds each column exactly once; the row count derives from
+`BINDS_PER_ROW` (emitted binds, 7) and never from a column count; exactly ONE place advances the
+placeholder number and only when a placeholder is actually emitted; and `pg_insert_sql` asserts
+`next_bind - 1 == rows * BINDS_PER_ROW == bind_count` with a non-debug `assert_eq!`, so the
+builder and `pg_insert_params` cannot drift apart in release either.
+
+**Not verified: execution.** This machine has no PostgreSQL (15432 and 5432 both refuse, no
+service, Docker daemon down), so the statement was never sent. The unit tests instead pin the
+properties that make it correct — placeholders exactly `$1..$N` with no gaps and in order,
+`N == params.len()`, slot 4 a literal and the other seven bound in every tuple, and
+`retry_count` bound at position 5. The `#[ignore]` live test
+`push_items_batches_across_chunk_boundaries` runs it for real wherever `pg-tests` runs.
+
+**Statement count is not directly measured** either: the crate has no counting seam and adding one
+needs a driver change. O(chunks) is pinned as a pure function of the chunk constant instead.
