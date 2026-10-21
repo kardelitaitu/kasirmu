@@ -893,9 +893,31 @@ enumerations, each returning the same list, of which only element 0 is kept. *Fi
 `discover_all()` above the loop.
 
 **O-M45 · kasirmu-payment — backoff has no jitter and `max_retries` is uncapped** —
-`crates/kasirmu-payment/src/resilience.rs:337-341` ◦ (3A-11). Every terminal in a fleet retries
-on the same beat, and `1 << (attempt - 1)` with a `u32` config overflow-panics in debug past 64.
-*Fix:* clamp at construction, add jitter.
+`crates/kasirmu-payment/src/resilience.rs:337-341` ◦ (3A-11) · **PAID 2026-10-22.** Every terminal in a
+fleet retried on the same beat, and `1 << (attempt - 1)` with a `u32` config overflow-panics in debug
+past 64. Fixed in `resilience.rs`: **full-jitter** backoff (the source draws uniformly from
+`[0, initial * 2^(n-1)]` and the draw is clamped to `max_backoff_ms` on the way out) plus
+`MAX_RETRIES = 8` clamped at BOTH boundaries — `ResilientProcessorConfig::new` and the new
+`retry_budget()` read by the retry loop, because the field is public and a struct literal bypasses the
+constructor. `JitterFn` is injectable (`with_jitter`) so tests assert exact sleeps under
+`start_paused` instead of tolerating a range.
+
+**A defect I wrote into the first draft, and how the test that should have caught it did not.**
+The draft capped the WINDOW before drawing (`min(max, initial * 2^n)` passed to the source) and the
+test asserted `bounds == vec![100, 200, 300]` calling that "the window must double per attempt and stop
+at max_backoff_ms". 300 is exactly what BOTH theories predict at attempt 3 — `min(400, 300)` and a
+frozen window — so the assertion passed under the broken and the correct code alike, and the doubling
+was in fact dead past the first cap. Caught in review, not by the suite. The replacement,
+`jitter_window_grows_past_the_cap_while_the_sleep_is_capped`, hands the source `|b| b` so the bounds
+vector exposes which side the cap is on: correct reads `[100, 200, 400]`, the broken draft reads
+`[100, 200, 300]`. It was proven to fail on the re-injected bug before being kept. **The lesson is the
+one this journal keeps relearning:** a test that names a property is not a test that pins it, and a
+vector where both hypotheses agree distinguishes nothing.
+
+**The shift and the multiply are two traps, not one.** `:1172` says "roughly attempt 58, not 64" — true
+of `initial * 2^n` (100 * 2^57 fits `u64`, 100 * 2^58 does not), but `1u64 << 64` traps on its own at
+attempt 65 regardless of the multiply. `MAX_RETRIES` keeps `attempt <= 8`, and both sites also
+`saturating_mul`/`.min(63)` so the panic is unreachable twice over rather than once.
 
 **O-M46 · kasirmu-local-api — the audit sink writes through the handlers' DB mutex, one
 unbounded task per event** — `crates/kasirmu-local-api/src/lib.rs:528-571` ✔ (3B-01). Every
