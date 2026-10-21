@@ -407,18 +407,18 @@
 }
 
 .dashboard-debt-badge--danger {
-  background: var(--color-danger-subtle, rgba(239, 68, 68, 0.15));
-  color: var(--color-danger, #ef4444);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
 .dashboard-debt-badge--warning {
-  background: var(--color-warning-subtle, rgba(245, 158, 11, 0.15));
-  color: var(--color-warning, #f59e0b);
+  background: var(--color-warning-subtle));
+  color: var(--color-warning);
 }
 
 .dashboard-debt-badge--ok {
-  background: var(--color-success-subtle, rgba(16, 185, 129, 0.15));
-  color: var(--color-success, #10b981);
+  background: var(--color-success-subtle);
+  color: var(--color-success);
 }
 
 .dashboard-debt-btn {

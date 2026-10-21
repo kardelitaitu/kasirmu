@@ -1,7 +1,7 @@
 .kasbon-modal-overlay {
   position: fixed;
   inset: 0;
-  background: var(--color-scrim, rgba(0, 0, 0, 0.45));
+  background: var(--color-bg-overlay));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,7 +79,7 @@
   font-size: var(--text-xl);
   color: var(--color-fg-secondary);
   cursor: pointer;
-  line-height: 1;
+  line-height: var(--leading-condensed);
   padding: var(--space-1);
 }
 
@@ -158,28 +158,28 @@
 }
 
 .kasbon-status--open {
-  background: var(--color-warning-subtle, #fef3c7);
-  color: var(--color-warning-fg, #92400e);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning-fg);
 }
 
 .kasbon-status--partial {
-  background: var(--color-info-subtle, #e0f2fe);
-  color: var(--color-info-fg, #0369a1);
+  background: var(--color-info-subtle);
+  color: var(--color-fg);
 }
 
 .kasbon-status--paid {
-  background: var(--color-success-subtle, #dcfce7);
-  color: var(--color-success-fg, #15803d);
+  background: var(--color-success-subtle);
+  color: var(--color-success-fg);
 }
 
 .kasbon-status--written_off {
-  background: var(--color-danger-subtle, #fee2e2);
-  color: var(--color-danger-fg, #b91c1c);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger-fg);
   text-decoration: line-through;
 }
 
 .kasbon-row--overdue td {
-  background: rgba(239, 68, 68, 0.05);
+  background: var(--color-danger-subtle);
 }
 
 .kasbon-row-btns {
