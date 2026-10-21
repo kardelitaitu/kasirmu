@@ -8,6 +8,7 @@ import KasbonSettlementModal from '@/features/customers/KasbonSettlementModal';
 import type { CustomerDto } from '@/api/customers';
 import type { Receivable } from '@/api/receivables';
 import * as receivablesApi from '@/api/receivables';
+import * as hardwareApi from '@/api/hardware';
 
 const dummyCustomer: CustomerDto = {
   id: 'cust-123',
@@ -139,6 +140,39 @@ describe('KasbonSettlementModal', () => {
 
     await waitFor(() => {
       expect(receivablesApi.writeOffReceivableScoped).toHaveBeenCalledWith('mock-token', 'rec-1');
+    });
+  });
+
+  it('calls printKasbonSettlementSlipScoped when print checkbox is enabled on submit', async () => {
+    const printSpy = vi.spyOn(hardwareApi, 'printKasbonSettlementSlipScoped').mockResolvedValue({ printed: true });
+    const wrapped = withFluent(
+      <ToastProvider>
+        <KasbonSettlementModal
+          customer={dummyCustomer}
+          sessionToken="mock-token"
+          onClose={vi.fn()}
+        />
+      </ToastProvider>,
+      customersFtl,
+    );
+    await renderInAct(wrapped);
+
+    const payBtns = screen.getAllByRole('button', { name: /Pay/i });
+    fireEvent.click(payBtns[0]!);
+
+    expect(screen.getByLabelText(/Print Receipt/i)).toBeChecked();
+
+    const submitBtn = screen.getByRole('button', { name: /Confirm Payment/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(printSpy).toHaveBeenCalledWith(
+        'mock-token',
+        expect.objectContaining({
+          customerName: 'Ibu Siti',
+          paymentMethod: 'cash',
+        }),
+      );
     });
   });
 });

@@ -8,13 +8,23 @@ import type { PayableDto } from '@/api/payables';
 
 const mockListReceivablesScoped = vi.fn();
 const mockListPayablesScoped = vi.fn();
+const mockGetArAgingReportScoped = vi.fn();
+const mockGetApAgingReportScoped = vi.fn();
+const mockDownloadCsv = vi.fn();
 
 vi.mock('@/api/receivables', () => ({
   listReceivablesScoped: (...args: unknown[]) => mockListReceivablesScoped(...args),
+  getArAgingReportScoped: (...args: unknown[]) => mockGetArAgingReportScoped(...args),
 }));
 
 vi.mock('@/api/payables', () => ({
   listPayablesScoped: (...args: unknown[]) => mockListPayablesScoped(...args),
+  getApAgingReportScoped: (...args: unknown[]) => mockGetApAgingReportScoped(...args),
+}));
+
+vi.mock('@/features/reports/csv', () => ({
+  buildCsv: vi.fn((headers, rows) => JSON.stringify({ headers, rows })),
+  downloadCsv: (...args: unknown[]) => mockDownloadCsv(...args),
 }));
 
 vi.mock('@/components/Card', () => ({
@@ -36,6 +46,8 @@ dashboard-due-soon-count = { $count } due soon
 dashboard-outstanding = Outstanding: { $amount }
 dashboard-view-customers = View Customers
 dashboard-view-vendor-bills = View Vendor Bills
+dashboard-export-ar-aging = Export AR Aging
+dashboard-export-ap-aging = Export AP Aging
 `;
 
 const resource = new FluentResource(ftlContent);
@@ -55,6 +67,9 @@ describe('DebtRemindersCard', () => {
   beforeEach(() => {
     mockListReceivablesScoped.mockReset();
     mockListPayablesScoped.mockReset();
+    mockGetArAgingReportScoped.mockReset();
+    mockGetApAgingReportScoped.mockReset();
+    mockDownloadCsv.mockReset();
   });
 
   it('renders all healthy state when receivables and payables have no overdue or due soon', async () => {
@@ -140,5 +155,93 @@ describe('DebtRemindersCard', () => {
     const btn = screen.getByText('View Customers');
     fireEvent.click(btn);
     expect(window.location.hash).toBe('#customers');
+  });
+
+  it('exports AR aging report when Export AR Aging clicked', async () => {
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockResolvedValue([]);
+    mockGetArAgingReportScoped.mockResolvedValue({
+      asOfDate: '2026-10-21',
+      summary: {
+        currentMinor: 100000,
+        days3160Minor: 50000,
+        days6190Minor: 0,
+        daysOver90Minor: 0,
+        totalOutstandingMinor: 150000,
+      },
+      customers: [
+        {
+          customerId: 'cust-1',
+          customerName: 'Budi Santoso',
+          customerPhone: '08123456789',
+          currentMinor: 100000,
+          days3160Minor: 50000,
+          days6190Minor: 0,
+          daysOver90Minor: 0,
+          totalMinor: 150000,
+          openCount: 2,
+        },
+      ],
+    });
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByText('Export AR Aging')).toBeTruthy();
+    });
+
+    const btn = screen.getByText('Export AR Aging');
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(mockGetArAgingReportScoped).toHaveBeenCalledWith('test-token');
+      expect(mockDownloadCsv).toHaveBeenCalledWith(
+        expect.any(String),
+        'ar-aging-report-2026-10-21.csv',
+      );
+    });
+  });
+
+  it('exports AP aging report when Export AP Aging clicked', async () => {
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockResolvedValue([]);
+    mockGetApAgingReportScoped.mockResolvedValue({
+      asOfDate: '2026-10-21',
+      summary: {
+        currentMinor: 200000,
+        days3160Minor: 0,
+        days6190Minor: 0,
+        daysOver90Minor: 0,
+        totalOutstandingMinor: 200000,
+      },
+      vendors: [
+        {
+          vendorName: 'CV Sumber Makmur',
+          currentMinor: 200000,
+          days3160Minor: 0,
+          days6190Minor: 0,
+          daysOver90Minor: 0,
+          totalMinor: 200000,
+          openCount: 1,
+        },
+      ],
+    });
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByText('Export AP Aging')).toBeTruthy();
+    });
+
+    const btn = screen.getByText('Export AP Aging');
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(mockGetApAgingReportScoped).toHaveBeenCalledWith('test-token');
+      expect(mockDownloadCsv).toHaveBeenCalledWith(
+        expect.any(String),
+        'ap-aging-report-2026-10-21.csv',
+      );
+    });
   });
 });

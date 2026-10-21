@@ -20,7 +20,10 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::error::CoreError;
 use crate::money::Currency;
-use crate::receivable::{NewReceivable, Receivable, ReceivablePayment, ReceivableStatus};
+use crate::receivable::{
+    CustomerAgingRow, NewReceivable, Receivable, ReceivableAgingBucket, ReceivableAgingReport,
+    ReceivablePayment, ReceivableStatus,
+};
 use crate::{Money, Store};
 
 /// Current UTC time in the schema's canonical ISO-8601 millisecond form.
@@ -469,6 +472,81 @@ impl Store<'_> {
             paid_at: row.get("paid_at")?,
             recorded_by: row.get("recorded_by")?,
             note: row.get("note")?,
+        })
+    }
+
+    /// Calculate accounts receivable aging report as of `as_of_date` (defaults to current UTC date `YYYY-MM-DD`).
+    /// Buckets receivables by days elapsed since creation (0-30, 31-60, 61-90, 90+ days)
+    /// across all open/partial receivables, aggregated per customer.
+    pub fn get_ar_aging_report(
+        &self,
+        tenant_id: &str,
+        as_of_date: Option<&str>,
+    ) -> Result<ReceivableAgingReport, CoreError> {
+        let date_str = match as_of_date {
+            Some(d) if !d.trim().is_empty() => d.trim().to_string(),
+            _ => chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        };
+
+        let currency =
+            crate::Settings::get_default_currency(self.conn)?.unwrap_or_else(|| "IDR".to_string());
+
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                COALESCE(c.id, r.customer_id),
+                COALESCE(c.name, 'Unknown Customer'),
+                c.phone,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(r.created_at)) AS INTEGER) <= 30 THEN r.amount_minor - r.paid_minor ELSE 0 END), 0) AS current_minor,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(r.created_at)) AS INTEGER) > 30 AND CAST(julianday(?2) - julianday(DATE(r.created_at)) AS INTEGER) <= 60 THEN r.amount_minor - r.paid_minor ELSE 0 END), 0) AS days_31_60_minor,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(r.created_at)) AS INTEGER) > 60 AND CAST(julianday(?2) - julianday(DATE(r.created_at)) AS INTEGER) <= 90 THEN r.amount_minor - r.paid_minor ELSE 0 END), 0) AS days_61_90_minor,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(r.created_at)) AS INTEGER) > 90 THEN r.amount_minor - r.paid_minor ELSE 0 END), 0) AS days_over_90_minor,
+                COALESCE(SUM(r.amount_minor - r.paid_minor), 0) AS total_minor,
+                COUNT(r.id) AS open_count
+             FROM receivables r
+             LEFT JOIN customers c ON r.customer_id = c.id
+             WHERE r.tenant_id = ?1 AND r.status IN ('open', 'partial')
+             GROUP BY COALESCE(c.id, r.customer_id), c.name, c.phone
+             ORDER BY total_minor DESC",
+        )?;
+
+        let rows = stmt.query_map(params![tenant_id, date_str], |row| {
+            Ok(CustomerAgingRow {
+                customer_id: row.get(0)?,
+                customer_name: row.get(1)?,
+                customer_phone: row.get(2)?,
+                current_minor: row.get(3)?,
+                days_31_60_minor: row.get(4)?,
+                days_61_90_minor: row.get(5)?,
+                days_over_90_minor: row.get(6)?,
+                total_minor: row.get(7)?,
+                open_count: row.get(8)?,
+            })
+        })?;
+
+        let mut customers = Vec::new();
+        let mut summary = ReceivableAgingBucket {
+            current_minor: 0,
+            days_31_60_minor: 0,
+            days_61_90_minor: 0,
+            days_over_90_minor: 0,
+            total_outstanding_minor: 0,
+        };
+
+        for row in rows {
+            let c = row?;
+            summary.current_minor += c.current_minor;
+            summary.days_31_60_minor += c.days_31_60_minor;
+            summary.days_61_90_minor += c.days_61_90_minor;
+            summary.days_over_90_minor += c.days_over_90_minor;
+            summary.total_outstanding_minor += c.total_minor;
+            customers.push(c);
+        }
+
+        Ok(ReceivableAgingReport {
+            as_of_date: date_str,
+            currency,
+            summary,
+            customers,
         })
     }
 }

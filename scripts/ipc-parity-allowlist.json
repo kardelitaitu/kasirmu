@@ -33,6 +33,7 @@
     "delete_terminal_profile_scoped",
     "delete_topology_template",
     "edc_terminal_status",
+    "get_ap_aging_report_scoped",
     "get_backup_status",
     "get_backup_status_scoped",
     "get_device_binding_scoped",

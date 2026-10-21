@@ -58,6 +58,12 @@ export interface CompletedSaleReceiptInput {
   statutoryNumber?: string | null | undefined;
   /** Customer or business name for B2B statutory invoice header. */
   customerName?: string | null | undefined;
+  /** Customer Phone number for receipt/contact. */
+  customerPhone?: string | null | undefined;
+  /** Due date for credit / pay_later transaction. */
+  dueDate?: string | null | undefined;
+  /** Total outstanding debt balance after this sale. */
+  outstandingBalance?: { minorUnits: number; currency: string } | null | undefined;
   /** Customer Tax ID (e.g. NPWP, VAT ID) for B2B statutory invoice header. */
   customerTaxId?: string | null | undefined;
 }
@@ -106,6 +112,9 @@ export function buildCompletedSaleReceipt({
   isInvoice: isInvoiceProp,
   statutoryNumber: statutoryNumberProp,
   customerName,
+  customerPhone,
+  dueDate,
+  outstandingBalance,
   customerTaxId,
 }: CompletedSaleReceiptInput): PrintSalesReceiptArgs {
   const isInvoice = isInvoiceProp ?? Boolean(statutoryNumberProp ?? completedSale?.statutoryNumber);
@@ -185,6 +194,9 @@ export function buildCompletedSaleReceipt({
     ...(isInvoice ? { isInvoice: true, documentKind: 'invoice' as const } : {}),
     ...(statutoryNumber ? { statutoryNumber } : {}),
     ...(customerName ? { customerName } : {}),
+    ...(customerPhone ? { customerPhone } : {}),
+    ...(dueDate ? { dueDate } : {}),
+    ...(outstandingBalance ? { outstandingBalance } : {}),
     ...(customerTaxId ? { customerTaxId } : {}),
   };
 }

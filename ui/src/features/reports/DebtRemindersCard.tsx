@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Localized } from '@fluent/react';
 import { Card } from '@/components/Card';
-import { listReceivablesScoped, type Receivable } from '@/api/receivables';
-import { listPayablesScoped, type PayableDto } from '@/api/payables';
+import { listReceivablesScoped, getArAgingReportScoped, type Receivable } from '@/api/receivables';
+import { listPayablesScoped, getApAgingReportScoped, type PayableDto } from '@/api/payables';
 import { formatMoney } from '@/types/domain';
+import { buildCsv, downloadCsv } from './csv';
 
 interface DebtRemindersCardProps {
   sessionToken: string;
@@ -71,6 +72,83 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
 
   const fmt = (minor: number) => formatMoney({ minor_units: minor, currency });
 
+  const handleExportArAging = async () => {
+    try {
+      const report = await getArAgingReportScoped(sessionToken);
+      const headers = [
+        'Customer Name',
+        'Phone',
+        'Current (0-30 days)',
+        '31-60 days',
+        '61-90 days',
+        '> 90 days',
+        'Total Outstanding',
+        'Open Receivables Count',
+      ];
+      const rows = report.customers.map((c) => [
+        c.customerName,
+        c.customerPhone ?? '',
+        fmt(c.currentMinor),
+        fmt(c.days3160Minor),
+        fmt(c.days6190Minor),
+        fmt(c.daysOver90Minor),
+        fmt(c.totalMinor),
+        String(c.openCount),
+      ]);
+      rows.push([
+        'TOTAL',
+        '',
+        fmt(report.summary.currentMinor),
+        fmt(report.summary.days3160Minor),
+        fmt(report.summary.days6190Minor),
+        fmt(report.summary.daysOver90Minor),
+        fmt(report.summary.totalOutstandingMinor),
+        String(report.customers.reduce((sum, c) => sum + c.openCount, 0)),
+      ]);
+      const csv = buildCsv(headers, rows);
+      downloadCsv(csv, `ar-aging-report-${report.asOfDate}.csv`);
+    } catch (err) {
+      console.error('Failed to export AR aging report', err);
+    }
+  };
+
+  const handleExportApAging = async () => {
+    try {
+      const report = await getApAgingReportScoped(sessionToken);
+      const headers = [
+        'Vendor / Supplier Name',
+        'Current (0-30 days)',
+        '31-60 days',
+        '61-90 days',
+        '> 90 days',
+        'Total Outstanding',
+        'Open Bills Count',
+      ];
+      const rows = report.vendors.map((v) => [
+        v.vendorName,
+        fmt(v.currentMinor),
+        fmt(v.days3160Minor),
+        fmt(v.days6190Minor),
+        fmt(v.daysOver90Minor),
+        fmt(v.totalMinor),
+        String(v.openCount),
+      ]);
+      rows.push([
+        'TOTAL',
+        fmt(report.summary.currentMinor),
+        fmt(report.summary.days3160Minor),
+        fmt(report.summary.days6190Minor),
+        fmt(report.summary.daysOver90Minor),
+        fmt(report.summary.totalOutstandingMinor),
+        String(report.vendors.reduce((sum, v) => sum + v.openCount, 0)),
+      ]);
+      const csv = buildCsv(headers, rows);
+      downloadCsv(csv, `ap-aging-report-${report.asOfDate}.csv`);
+    } catch (err) {
+      console.error('Failed to export AP aging report', err);
+    }
+  };
+
   return (
     <Card shadow="sm" className="dashboard-section" data-testid="dashboard-debt-reminders">
       <div className="dashboard-debt-header">
@@ -121,17 +199,28 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
             )}
           </div>
 
-          <button
-            type="button"
-            className="dashboard-debt-btn"
-            onClick={() => {
-              window.location.hash = '#customers';
-            }}
-          >
-            <Localized id="dashboard-view-customers">
-              <span>View Customers</span>
-            </Localized>
-          </button>
+          <div className="dashboard-debt-actions">
+            <button
+              type="button"
+              className="dashboard-debt-btn"
+              onClick={() => {
+                window.location.hash = '#customers';
+              }}
+            >
+              <Localized id="dashboard-view-customers">
+                <span>View Customers</span>
+              </Localized>
+            </button>
+            <button
+              type="button"
+              className="dashboard-debt-btn dashboard-debt-btn--secondary"
+              onClick={handleExportArAging}
+            >
+              <Localized id="dashboard-export-ar-aging">
+                <span>Export AR Aging</span>
+              </Localized>
+            </button>
+          </div>
         </div>
 
         {/* ── Vendor Bills (Hutang) ─────────────────────────── */}
@@ -170,17 +259,28 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
             )}
           </div>
 
-          <button
-            type="button"
-            className="dashboard-debt-btn"
-            onClick={() => {
-              window.location.hash = '#vendor-bills';
-            }}
-          >
-            <Localized id="dashboard-view-vendor-bills">
-              <span>View Vendor Bills</span>
-            </Localized>
-          </button>
+          <div className="dashboard-debt-actions">
+            <button
+              type="button"
+              className="dashboard-debt-btn"
+              onClick={() => {
+                window.location.hash = '#vendor-bills';
+              }}
+            >
+              <Localized id="dashboard-view-vendor-bills">
+                <span>View Vendor Bills</span>
+              </Localized>
+            </button>
+            <button
+              type="button"
+              className="dashboard-debt-btn dashboard-debt-btn--secondary"
+              onClick={handleExportApAging}
+            >
+              <Localized id="dashboard-export-ap-aging">
+                <span>Export AP Aging</span>
+              </Localized>
+            </button>
+          </div>
         </div>
       </div>
     </Card>

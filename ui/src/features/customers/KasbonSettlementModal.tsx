@@ -10,6 +10,7 @@ import {
   writeOffReceivableScoped,
   type Receivable,
 } from '@/api/receivables';
+import { printKasbonSettlementSlipScoped } from '@/api/hardware';
 import type { CustomerDto } from '@/api/customers';
 import './KasbonSettlementModal.css';
 
@@ -37,6 +38,7 @@ export default function KasbonSettlementModal({
   const [paymentAmountMajor, setPaymentAmountMajor] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentNote, setPaymentNote] = useState('');
+  const [printReceipt, setPrintReceipt] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [writingOffId, setWritingOffId] = useState<string | null>(null);
 
@@ -73,6 +75,7 @@ export default function KasbonSettlementModal({
     setPaymentAmountMajor(String(majorVal));
     setPaymentMethod('cash');
     setPaymentNote('');
+    setPrintReceipt(true);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
@@ -102,6 +105,43 @@ export default function KasbonSettlementModal({
         message: l10n.getString('kasbon-toast-payment-success', null, 'Repayment recorded successfully'),
         type: 'success',
       });
+
+      if (printReceipt) {
+        try {
+          await printKasbonSettlementSlipScoped(sessionToken, {
+            date: new Date().toLocaleString(numLocale),
+            settlementNumber: `PAY-${Date.now().toString().slice(-6)}`,
+            customerName: customer.name,
+            customerPhone: customer.phone,
+            receivableReference: payingTarget.reference || payingTarget.id,
+            paymentMethod,
+            previousBalance: {
+              minorUnits: payingTarget.balance.minor_units,
+              currency: payingTarget.amount.currency,
+            },
+            amountPaid: {
+              minorUnits,
+              currency: payingTarget.amount.currency,
+            },
+            remainingBalance: {
+              minorUnits: Math.max(0, payingTarget.balance.minor_units - minorUnits),
+              currency: payingTarget.amount.currency,
+            },
+            note: paymentNote.trim() || undefined,
+          });
+          addToast({
+            message: l10n.getString('kasbon-toast-print-success', null, 'Settlement receipt printed successfully'),
+            type: 'success',
+          });
+        } catch (printErr) {
+          console.warn('printKasbonSettlementSlipScoped failed (non-blocking)', printErr);
+          addToast({
+            message: l10n.getString('kasbon-toast-print-failed', null, 'Could not print receipt (check printer connection)'),
+            type: 'warning',
+          });
+        }
+      }
+
       setPayingTarget(null);
       await loadReceivables();
     } catch (err) {
@@ -366,6 +406,20 @@ export default function KasbonSettlementModal({
                     onChange={(e) => setPaymentNote(e.target.value)}
                     placeholder="Optional note"
                   />
+                </div>
+
+                <div className="kasbon-form-field kasbon-checkbox-field">
+                  {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- accessible text via Localized span at runtime */}
+                  <label className="kasbon-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={printReceipt}
+                      onChange={(e) => setPrintReceipt(e.target.checked)}
+                    />
+                    <Localized id="kasbon-modal-print-receipt">
+                      <span>Print Receipt</span>
+                    </Localized>
+                  </label>
                 </div>
 
                 <div className="kasbon-pay-actions">

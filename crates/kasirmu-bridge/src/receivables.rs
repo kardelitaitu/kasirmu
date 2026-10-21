@@ -346,6 +346,20 @@ pub async fn write_off_receivable_scoped(
     ))
 }
 
+/// Generate the accounts receivable aging report. Requires `receivables:view`.
+pub async fn get_ar_aging_report_scoped(
+    ctx: &BridgeCtx<'_>,
+    as_of_date: Option<String>,
+    session_token: &str,
+) -> Result<kasirmu_core::receivable::ReceivableAgingReport, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::RECEIVABLES_VIEW)
+        .await?;
+    let conn = ctx.lock_global().await;
+    let store = Store::new(&conn);
+    Ok(store.get_ar_aging_report(DEFAULT_TENANT_ID, as_of_date.as_deref())?)
+}
+
 #[cfg(test)]
 #[path = "receivables_tests.rs"]
 mod tests;

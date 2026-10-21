@@ -107,3 +107,37 @@ export const writeOffReceivableScoped = (
   receivableId: string,
 ): Promise<Receivable> =>
   loggedInvoke<Receivable>('write_off_receivable_scoped', { sessionToken, receivableId });
+
+export interface ReceivableAgingBucket {
+  currentMinor: number;
+  days3160Minor: number;
+  days6190Minor: number;
+  daysOver90Minor: number;
+  totalOutstandingMinor: number;
+}
+
+export interface CustomerAgingRow {
+  customerId: string;
+  customerName: string;
+  customerPhone?: string | null;
+  currentMinor: number;
+  days3160Minor: number;
+  days6190Minor: number;
+  daysOver90Minor: number;
+  totalMinor: number;
+  openCount: number;
+}
+
+export interface ReceivableAgingReport {
+  asOfDate: string;
+  currency: string;
+  summary: ReceivableAgingBucket;
+  customers: CustomerAgingRow[];
+}
+
+/** Get Accounts Receivable Aging Report. */
+export const getArAgingReportScoped = (
+  sessionToken: string,
+  asOfDate?: string,
+): Promise<ReceivableAgingReport> =>
+  loggedInvoke<ReceivableAgingReport>('get_ar_aging_report_scoped', { sessionToken, asOfDate });

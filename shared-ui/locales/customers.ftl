@@ -96,3 +96,6 @@ kasbon-toast-payment-success = Repayment recorded successfully
 kasbon-toast-payment-failed = Failed to record repayment
 kasbon-toast-writeoff-success = Receivable written off successfully
 kasbon-toast-writeoff-failed = Failed to write off receivable
+kasbon-modal-print-receipt = Print Receipt
+kasbon-toast-print-success = Settlement receipt printed successfully
+kasbon-toast-print-failed = Could not print receipt (check printer connection)

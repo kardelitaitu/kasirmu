@@ -174,6 +174,18 @@ export const crmHandlers: Record<string, MockHandler> = {
       writtenOffAt: new Date().toISOString(),
     };
   },
+  'get_ar_aging_report_scoped': () => ({
+    asOfDate: new Date().toISOString().slice(0, 10),
+    currency: 'IDR',
+    summary: {
+      currentMinor: 0,
+      days3160Minor: 0,
+      days6190Minor: 0,
+      daysOver90Minor: 0,
+      totalOutstandingMinor: 0,
+    },
+    customers: [],
+  }),
 
   // ═══════════════════════════════════════════════════════════════
   // PAYABLES (Hutang / Beli Tempo)
@@ -248,5 +260,17 @@ export const crmHandlers: Record<string, MockHandler> = {
       written_off_at: new Date().toISOString(),
     };
   },
+  'get_ap_aging_report_scoped': () => ({
+    asOfDate: new Date().toISOString().slice(0, 10),
+    currency: 'IDR',
+    summary: {
+      currentMinor: 0,
+      days3160Minor: 0,
+      days6190Minor: 0,
+      daysOver90Minor: 0,
+      totalOutstandingMinor: 0,
+    },
+    vendors: [],
+  }),
 };
 export { MOCK_CUSTOMERS };

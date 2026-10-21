@@ -1714,6 +1714,13 @@ retryCurrencyLoad,
           tableNumber,
           marketProfile: activeMarketProfile,
           customerName: selectedCustomer?.name ?? (method === 'credit' && customerName.trim() ? customerName.trim() : undefined),
+          customerPhone: selectedCustomer?.phone ?? undefined,
+          outstandingBalance: method === 'pay_later' && selectedCustomer
+            ? {
+                minorUnits: (customerReceivablesSummary?.outstandingTotal.minor_units ?? 0) + total.minor_units,
+                currency: cartCurrency,
+              }
+            : undefined,
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);

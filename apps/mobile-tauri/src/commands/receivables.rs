@@ -110,3 +110,16 @@ pub async fn write_off_receivable_scoped(
         .await
         .map_err(Into::into)
 }
+
+/// Generate the accounts receivable aging report. Requires `receivables:view`.
+#[tauri::command]
+pub async fn get_ar_aging_report_scoped(
+    as_of_date: Option<String>,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::receivable::ReceivableAgingReport, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::receivables::get_ar_aging_report_scoped(&ctx, as_of_date, &session_token)
+        .await
+        .map_err(Into::into)
+}

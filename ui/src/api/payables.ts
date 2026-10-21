@@ -7,6 +7,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { loggedInvoke } from '@/utils/logged-invoke';
 
 export interface MoneyDto {
   minor_units: number;
@@ -107,3 +108,36 @@ export async function writeOffPayableScoped(
     payableId,
   });
 }
+
+export interface PayableAgingBucket {
+  currentMinor: number;
+  days3160Minor: number;
+  days6190Minor: number;
+  daysOver90Minor: number;
+  totalOutstandingMinor: number;
+}
+
+export interface VendorAgingRow {
+  vendorId: string;
+  vendorName: string;
+  currentMinor: number;
+  days3160Minor: number;
+  days6190Minor: number;
+  daysOver90Minor: number;
+  totalMinor: number;
+  openCount: number;
+}
+
+export interface PayableAgingReport {
+  asOfDate: string;
+  currency: string;
+  summary: PayableAgingBucket;
+  vendors: VendorAgingRow[];
+}
+
+/** Get Accounts Payable Aging Report. */
+export const getApAgingReportScoped = (
+  sessionToken: string,
+  asOfDate?: string,
+): Promise<PayableAgingReport> =>
+  loggedInvoke<PayableAgingReport>('get_ap_aging_report_scoped', { sessionToken, asOfDate });

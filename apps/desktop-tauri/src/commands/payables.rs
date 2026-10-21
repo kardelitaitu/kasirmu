@@ -110,3 +110,16 @@ pub async fn write_off_payable_scoped(
         .await
         .map_err(Into::into)
 }
+
+/// Generate the accounts payable aging report. Requires `payables:view`.
+#[tauri::command]
+pub async fn get_ap_aging_report_scoped(
+    as_of_date: Option<String>,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::payable::PayableAgingReport, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::payables::get_ap_aging_report_scoped(&ctx, as_of_date, &session_token)
+        .await
+        .map_err(Into::into)
+}

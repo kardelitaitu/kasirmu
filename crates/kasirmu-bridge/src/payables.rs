@@ -275,6 +275,20 @@ pub async fn write_off_payable_scoped(
     ))
 }
 
+/// Generate the accounts payable aging report. Requires `payables:view`.
+pub async fn get_ap_aging_report_scoped(
+    ctx: &BridgeCtx<'_>,
+    as_of_date: Option<String>,
+    session_token: &str,
+) -> Result<kasirmu_core::payable::PayableAgingReport, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PAYABLES_VIEW)
+        .await?;
+    let conn = ctx.lock_global().await;
+    let store = Store::new(&conn);
+    Ok(store.get_ap_aging_report(DEFAULT_TENANT_ID, as_of_date.as_deref())?)
+}
+
 #[cfg(test)]
 #[path = "payables_tests.rs"]
 mod tests;

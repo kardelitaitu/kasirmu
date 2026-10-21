@@ -91,6 +91,9 @@ kasbon-toast-payment-success = Pembayaran piutang berhasil dicatat
 kasbon-toast-payment-failed = Gagal mencatat pembayaran piutang
 kasbon-toast-writeoff-success = Piutang berhasil dihapus buku
 kasbon-toast-writeoff-failed = Gagal menghapus buku piutang
+kasbon-modal-print-receipt = Cetak Struk
+kasbon-toast-print-success = Struk bukti pembayaran berhasil dicetak
+kasbon-toast-print-failed = Gagal mencetak struk (periksa sambungan printer)
 
 # ── Customer Management (remaining) ──
 customer-mgmt-title = Pelanggan

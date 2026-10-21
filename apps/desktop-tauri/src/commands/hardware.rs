@@ -21,8 +21,8 @@ use crate::state::AppState;
 
 pub use kasirmu_bridge::hardware::{
     DisplayShowArgs, LineItemDto, MoneyDto, OpenCashDrawerArgs, OpenCashDrawerResult, PaymentDto,
-    PrintEdcSettlementArgs, PrintReceiptArgs, PrintReceiptResult, PrintSalesReceiptArgs,
-    PrintSalesReceiptResult, ScannerInfo,
+    PrintEdcSettlementArgs, PrintKasbonSettlementArgs, PrintReceiptArgs, PrintReceiptResult,
+    PrintSalesReceiptArgs, PrintSalesReceiptResult, ScannerInfo,
 };
 
 /// Print an EDC settlement slip on the default receipt printer (scoped).
@@ -34,6 +34,19 @@ pub async fn print_edc_settlement_slip_scoped(
 ) -> Result<PrintSalesReceiptResult, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::hardware::print_edc_settlement_slip_scoped(&ctx, args, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Print a Kasbon (receivable) settlement slip on the default receipt printer (scoped).
+#[tauri::command]
+pub async fn print_kasbon_settlement_slip_scoped(
+    session_token: String,
+    args: PrintKasbonSettlementArgs,
+    state: State<'_, AppState>,
+) -> Result<PrintSalesReceiptResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::hardware::print_kasbon_settlement_slip_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }

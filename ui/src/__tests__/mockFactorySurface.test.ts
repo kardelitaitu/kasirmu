@@ -312,7 +312,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   '@/api/hardware <- createHardwareApiMock': [
     'ScannerError', 'discoverHardwareScoped', 'displayClearScoped',
     'displayShowScoped', 'listDisplaysScoped', 'listScannersScoped',
-    'openCashDrawerScoped', 'printEdcSettlementSlipScoped', 'printReceiptScoped',
+    'openCashDrawerScoped', 'printEdcSettlementSlipScoped', 'printKasbonSettlementSlipScoped', 'printReceiptScoped',
     'printSalesReceiptScoped', 'readScaleWeight', 'readScaleWeightScoped',
     'startScannerScoped', 'stopScannerScoped',
   ],
@@ -425,6 +425,7 @@ describe('mock factory surface conforms to the module it replaces', () => {
       '@/api/hardware <- createHardwareApiMock': [
         'discoverHardwareScoped', 'displayClearScoped', 'displayShowScoped',
         'listDisplaysScoped', 'listScannersScoped', 'openCashDrawerScoped',
+        'printKasbonSettlementSlipScoped',
         'printReceiptScoped', 'readScaleWeightScoped', 'startScannerScoped',
         'stopScannerScoped',
       ],

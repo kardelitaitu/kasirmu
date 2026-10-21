@@ -180,6 +180,8 @@ custom-report-page-of = Halaman { $page }
 # Export
 dashboard-export-csv = CSV
 dashboard-export-csv-aria = Ekspor data dasbor sebagai CSV
+dashboard-export-ar-aging = Ekspor Umur Piutang
+dashboard-export-ap-aging = Ekspor Umur Hutang
 dashboard-category-clear-aria = Hapus pilihan kategori
 dashboard-back = Kembali
 dashboard-back-aria = Kembali ke beranda

@@ -194,6 +194,8 @@ custom-report-page-of = Page { $page }
 # Export
 dashboard-export-csv = CSV
 dashboard-export-csv-aria = Export dashboard data as CSV
+dashboard-export-ar-aging = Export AR Aging
+dashboard-export-ap-aging = Export AP Aging
 dashboard-category-clear-aria = Clear category selection
 dashboard-back = Back
 dashboard-back-aria = Back to home

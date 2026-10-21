@@ -191,6 +191,60 @@ pub struct NewReceivable {
     pub note: String,
 }
 
+/// An aging bucket breakdown for accounts receivable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceivableAgingBucket {
+    /// 0 - 30 days outstanding.
+    pub current_minor: i64,
+    /// 31 - 60 days outstanding.
+    pub days_31_60_minor: i64,
+    /// 61 - 90 days outstanding.
+    pub days_61_90_minor: i64,
+    /// More than 90 days outstanding.
+    pub days_over_90_minor: i64,
+    /// Total outstanding debt across all buckets.
+    pub total_outstanding_minor: i64,
+}
+
+/// A per-customer AR aging summary row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerAgingRow {
+    /// Unique customer identifier.
+    pub customer_id: String,
+    /// Customer display name.
+    pub customer_name: String,
+    /// Optional customer contact phone number.
+    pub customer_phone: Option<String>,
+    /// 0 - 30 days outstanding in minor units.
+    pub current_minor: i64,
+    /// 31 - 60 days outstanding in minor units.
+    pub days_31_60_minor: i64,
+    /// 61 - 90 days outstanding in minor units.
+    pub days_61_90_minor: i64,
+    /// More than 90 days outstanding in minor units.
+    pub days_over_90_minor: i64,
+    /// Total balance outstanding for this customer in minor units.
+    pub total_minor: i64,
+    /// Count of open/partial receivables for this customer.
+    pub open_count: u32,
+}
+
+/// Complete AR Aging report response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceivableAgingReport {
+    /// Effective cut-off date (`YYYY-MM-DD`).
+    pub as_of_date: String,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// Aggregate aging totals across all customers.
+    pub summary: ReceivableAgingBucket,
+    /// Per-customer breakdown rows.
+    pub customers: Vec<CustomerAgingRow>,
+}
+
 #[cfg(test)]
 #[path = "receivable_tests.rs"]
 mod tests;

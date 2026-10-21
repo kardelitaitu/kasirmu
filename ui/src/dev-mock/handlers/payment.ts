@@ -313,6 +313,7 @@ export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHan
     message: 'settlement successful',
   }),
   'print_edc_settlement_slip_scoped': () => ({ printed: true }),
+  'print_kasbon_settlement_slip_scoped': () => ({ printed: true }),
 
   // Local payment methods (regional slice 6) — same parity rule.
   'get_local_payment_methods_scoped': (args) => getMockLocalPaymentMethods(unwrapArgs, args),

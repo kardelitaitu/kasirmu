@@ -222,3 +222,44 @@ fn overdue_sweep() {
     assert_eq!(overdue.len(), 1);
     assert_eq!(overdue[0].amount.minor_units, 10_000);
 }
+
+#[test]
+fn ar_aging_report_buckets() {
+    let conn = fresh();
+    seed_customer(&conn, "cust-1");
+    seed_customer(&conn, "cust-2");
+    let s = store(&conn);
+
+    let _r1 = s.create_receivable(&nr("cust-1", 100_000, None)).unwrap();
+    let r2 = s.create_receivable(&nr("cust-1", 200_000, None)).unwrap();
+    let r3 = s.create_receivable(&nr("cust-2", 300_000, None)).unwrap();
+    let r4 = s.create_receivable(&nr("cust-2", 400_000, None)).unwrap();
+
+    // Backdate r2 (36 days), r3 (77 days), r4 (123 days) from 2026-10-21
+    conn.execute(
+        "UPDATE receivables SET created_at = '2026-09-15 00:00:00' WHERE id = ?1",
+        params![r2.id],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE receivables SET created_at = '2026-08-05 00:00:00' WHERE id = ?1",
+        params![r3.id],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE receivables SET created_at = '2026-06-20 00:00:00' WHERE id = ?1",
+        params![r4.id],
+    )
+    .unwrap();
+
+    let report = s
+        .get_ar_aging_report("default", Some("2026-10-21"))
+        .unwrap();
+    assert_eq!(report.as_of_date, "2026-10-21");
+    assert_eq!(report.summary.current_minor, 100_000);
+    assert_eq!(report.summary.days_31_60_minor, 200_000);
+    assert_eq!(report.summary.days_61_90_minor, 300_000);
+    assert_eq!(report.summary.days_over_90_minor, 400_000);
+    assert_eq!(report.summary.total_outstanding_minor, 1_000_000);
+    assert_eq!(report.customers.len(), 2);
+}
