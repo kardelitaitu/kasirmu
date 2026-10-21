@@ -29,6 +29,45 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+/// A per-instance scratch directory for a TEST store database, inside the
+/// gitignored `target/` tree.
+///
+/// Why not `std::env::temp_dir()`: that resolves `TEMP`/`TMP`, and on this
+/// project's Windows machines the MACHINE-level value is `C:\WINDOWS\TEMP` — a
+/// directory an ordinary user may create inside but cannot delete from. The two
+/// `AppState` test constructors below are the shared fixture every mobile test
+/// goes through, so a failure here took out **144 tests at once** with
+/// `Access is denied (os error 5)` while the code under test was fine. Measured
+/// 2026-10-21.
+///
+/// `target/` is already gitignored (`.gitignore:2`), so nothing created here can
+/// be committed, and the per-call UUID keeps parallel tests apart. The workspace
+/// root is found by walking up from `CARGO_MANIFEST_DIR` rather than from the
+/// process CWD, because tests run from the crate directory while `target/` lives
+/// at the workspace root.
+#[cfg(test)]
+fn test_scratch_store_dir() -> PathBuf {
+    test_scratch_root().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7()))
+}
+
+/// The shared `target/test-scratch` root, created if absent.
+///
+/// `pub(crate)` because the crate's test modules create their own fixtures too
+/// (42 `temp_scratch()` sites across 21 files all inherited the same
+/// `C:\WINDOWS\TEMP` problem). Exposing ONE root is what stops a fourth copy of
+/// this eleven-line function appearing.
+#[cfg(test)]
+pub(crate) fn test_scratch_root() -> PathBuf {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest
+        .ancestors()
+        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
+        .unwrap_or(manifest);
+    let root = workspace.join("target").join("test-scratch");
+    std::fs::create_dir_all(&root).expect("test scratch root under target/ must be creatable");
+    root
+}
+
 use kasirmu_security::mask::mask_token;
 use rusqlite::Connection;
 use tauri::AppHandle;
@@ -615,7 +654,7 @@ impl AppState {
             // tests that write users into a store db (session-user replication)
             // must not collide with rows from earlier runs under different ids.
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
+                test_scratch_store_dir(),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
@@ -647,7 +686,7 @@ impl AppState {
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
+                test_scratch_store_dir(),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),

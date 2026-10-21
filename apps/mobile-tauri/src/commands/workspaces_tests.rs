@@ -9,6 +9,16 @@ use kasirmu_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 /// Seed the GLOBAL identity DB with an owner and a limited user whose
 /// role has no workspace-type grants (so it sees no instances — the
 /// retired cashier role behaved the same way; 0048 sweep).
@@ -45,7 +55,7 @@ fn make_profile(id: &str, name: &str) -> LocationProfile {
 fn picker_state() -> (AppState, tempfile::TempDir) {
     let conn = migrations::fresh_db();
     seed_global_users(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
 
@@ -381,7 +391,7 @@ fn binding_state() -> (
         .update_terminal_binding(&terminal.id, "store-a", "ws-a-1", &sig)
         .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     let conn = state.db_manager.open_store("store-a").unwrap();
@@ -589,7 +599,7 @@ fn bindable_device() -> (
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     {
         let store_conn = db_manager.open_store("store-a").unwrap();

@@ -3,6 +3,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::commands::picker_ticket;
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 // ── StaffMemberDto ──────────────────────────────────────────────────
 
 #[test]
@@ -333,7 +343,7 @@ fn scoped_state_with_token(
     role_id: &str,
     store_id: &str,
 ) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

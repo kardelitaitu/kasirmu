@@ -33,6 +33,16 @@ use tauri::Manager as _;
 
 use super::*;
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 /// Seed the GLOBAL identity DB: default roles, an owner, and a cashier on
 /// `role-staff`.
 fn seed_identity(conn: &rusqlite::Connection) {
@@ -57,7 +67,7 @@ fn tables_app(
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
-    let temp = tempfile::tempdir().unwrap();
+    let temp = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);

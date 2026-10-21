@@ -8,6 +8,16 @@ use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager;
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 fn seed_owner(conn: &rusqlite::Connection) {
     let store = Store::new(conn);
     store.seed_default_roles().unwrap();
@@ -20,7 +30,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
 }
 
 fn flow_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     let path = temp_dir.keep();
     state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);

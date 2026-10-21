@@ -3,6 +3,16 @@ use kasirmu_core::SyncPriority;
 use kasirmu_core::migrations;
 use rusqlite::Connection;
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 fn fresh_conn() -> Connection {
     migrations::fresh_db()
 }
@@ -922,7 +932,7 @@ async fn scoped_user_preferences_rejects_invalid_token() {
 #[tokio::test]
 async fn scoped_user_preferences_roundtrip_targets_session_store_and_user() {
     let conn = kasirmu_core::migrations::fresh_db();
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -1799,7 +1809,7 @@ fn owner_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
 }
 
 fn store_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

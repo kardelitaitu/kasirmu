@@ -91,7 +91,8 @@ fn lru_default_budget_is_256mb() {
 /// branch's correctness rests on reading, not on this test.
 #[test]
 fn seed_lru_ranks_a_file_by_its_real_mtime_and_keeps_it() {
-    let tmp = std::env::temp_dir().join(format!("oz-imgseed-{}", uuid::Uuid::new_v4()));
+    let tmp =
+        crate::state::test_scratch_root().join(format!("oz-imgseed-{}", uuid::Uuid::new_v4()));
     let img_dir = tmp.join("images");
     // Fresh dir every run: a panic above skips the cleanup below, and reusing a
     // pid-derived name let a previous failed run's leftovers decide the result.
@@ -184,7 +185,7 @@ fn seed_product(conn: &rusqlite::Connection, product_id: &str) {
 #[tokio::test]
 async fn run_cycle_noop_when_sync_disabled() {
     let db = tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db());
-    let tmp = std::env::temp_dir().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
+    let tmp = crate::state::test_scratch_root().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     let mut mgr = ImageDownloadManager::new();
     // Sync disabled in fresh DB → config None → no-op.
@@ -197,7 +198,7 @@ async fn run_cycle_downloads_missing_images_from_dead_server() {
     // A dead server (127.0.0.1:1) means the GETs fail → hashes stay
     // missing; nothing panics and the cache dir is untouched.
     let db = tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db());
-    let tmp = std::env::temp_dir().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
+    let tmp = crate::state::test_scratch_root().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     {
         let guard = db.lock().await;
@@ -225,7 +226,7 @@ async fn run_cycle_downloads_missing_images_from_dead_server() {
 #[tokio::test]
 async fn run_cycle_seeds_lru_from_existing_cache() {
     let db = tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db());
-    let tmp = std::env::temp_dir().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
+    let tmp = crate::state::test_scratch_root().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     // Pre-existing cached file.
     std::fs::write(tmp.join("images").join("cccccccccccccccc.webp"), b"data").unwrap();

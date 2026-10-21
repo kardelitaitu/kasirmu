@@ -20,9 +20,13 @@ use tempfile::TempDir;
 
 /// A scratch directory removed when the guard drops.
 fn scratch(label: &str) -> TempDir {
+    // `tempdir_in`, not `tempdir`: the latter resolves TEMP, whose MACHINE-level
+    // value here is C:\WINDOWS\TEMP — creatable but not deletable for an ordinary
+    // user, so ten recovery tests failed with "create scratch dir: PermissionDenied"
+    // while the recovery logic was fine. Same auto-delete TempDir, working parent.
     tempfile::Builder::new()
         .prefix(&format!("kasirmu_tablet_restore_{label}_"))
-        .tempdir()
+        .tempdir_in(crate::state::test_scratch_root())
         .expect("create scratch dir")
 }
 

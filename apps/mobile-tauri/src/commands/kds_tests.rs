@@ -4,6 +4,16 @@ use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 // ── Harness (mirrors analytics_tests.rs) ─────────────────────────────
 
 fn seed_owner(conn: &rusqlite::Connection) {
@@ -21,7 +31,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
 fn kds_state() -> (AppState, tempfile::TempDir) {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     seed_restaurant_sale(&state);
@@ -265,7 +275,7 @@ async fn role_without_permissions_cannot_update_kds_status() {
             ('user-none', 'none', 'hash', 'None', 'role-none', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
 

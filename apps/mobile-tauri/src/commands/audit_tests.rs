@@ -2,6 +2,16 @@ use super::*;
 
 use crate::commands::testing::{assert_refused_by_the_tier_gate, seeded_row_reaches_a_paid_tier};
 
+/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
+///
+/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
+/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
+/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
+/// same auto-delete `TempDir`, only in a parent that actually works.
+fn temp_scratch() -> tempfile::TempDir {
+    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
+}
+
 #[test]
 fn audit_entry_dto_debug() {
     let dto = AuditEntryDto {
@@ -167,7 +177,7 @@ fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
 /// An app whose `tok` session is the owner, with a real store DB behind it.
 fn app_for(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
     let conn = seeded_conn(tier_key);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = temp_scratch();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
