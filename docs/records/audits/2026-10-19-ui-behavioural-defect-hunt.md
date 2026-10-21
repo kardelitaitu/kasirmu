@@ -537,6 +537,34 @@ repo root. I verified the file's content before deleting it (it did hold the `se
 block and nothing else) rather than trusting the name. Untracked count is 0 again, and it is a reminder
 that a cleanup chained into a command with a different `workdir` cleans nothing.
 
+## Round 48: the subagents stalled, so I scanned by signature instead
+
+The three hunts launched in round 47 were still `running` when round 48 opened, having produced
+nothing. I interrupted all three and changed method: instead of asking an agent to read screens and
+hope, I scanned for the family's **signature** directly — screens that call `addToast` on a load
+failure but never set a persistent error state — then read only the hits.
+
+That took three commands and produced two real defects out of nine candidates.
+
+**Gift cards** (`GiftCardsScreen.tsx`). The catch toasted `gift-cards-error-load` and nothing else, so
+`cards.length === 0` rendered "No gift cards found" — on the one screen whose entire job is showing the
+balances the store owes customers. An all-clear there is actively dangerous: a cashier reads it and
+tells a customer their card has no balance.
+
+**Promotions** (`PromotionManagementScreen.tsx`). Identical shape: the toast was the only signal, and
+the empty state claimed there are no promotions — which reads as "nothing is discounted right now" on
+the screen that decides what customers are charged.
+
+Both now carry a `loadError` with a Retry, and both suppress the empty state while it is set. The scan
+also cleared seven other candidates on inspection (CategoryManagement, EodReport, ExchangeRate,
+Loyalty, Memos, SalesHistory, SecurityTrail all already have a persistent error path).
+
+**Two method notes, honestly.** I interrupted subagents that had run for over a round without output —
+waiting on them costs more than the scan that replaced them. And I fumbled the `edit` tool three times
+by trying to embed comment text containing backticks and dashes inside a TypeScript template literal;
+the fix is to pass plain quoted strings, which is what AGENTS.md already implies by not encouraging the
+other way.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
