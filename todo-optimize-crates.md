@@ -304,10 +304,14 @@ linearly with the catalog until `SQLITE_MAX_VARIABLE_NUMBER` turns a normal page
 hard error. *Fix:* paginate the list APIs and chunk the image lookup into fixed-size batches.
 
 **O-H03 · kasirmu-core — offline-queue drain pays one fsync per item** —
-`crates/kasirmu-core/src/sync_client.rs:86-105` ✔. Fixed: `apply_sync_outcomes` wraps all outcome transitions into a single transaction in autocommit mode, reducing N disk fsyncs during queue drain to 1. Added `Store::mark_offline_synced_batch`. Verified with unit tests in `offline_tests.rs` and `sync_client_tests.rs`.
+`crates/kasirmu-core/src/sync_client.rs:86-105` ✔. ✅ **PAID** (re-verified at HEAD 2026-10-21:
+`Store::mark_offline_synced_batch` exists at `db/offline.rs:298` with a test at `offline_tests.rs:302`).
+Fixed: `apply_sync_outcomes` wraps all outcome transitions into a single transaction in autocommit mode, reducing N disk fsyncs during queue drain to 1. Added `Store::mark_offline_synced_batch`. Verified with unit tests in `offline_tests.rs` and `sync_client_tests.rs`.
 
 **O-H04 · kasirmu-core — a fresh `reqwest::Client` per sync HTTP call** —
-`crates/kasirmu-core/src/sync_client.rs:400-420` ✔. Fixed: introduced static pooled `shared_sync_http_client()` via `OnceLock<reqwest::Client>` across `send_items_to_server`, `ack_memo_on_server`, `push_memos_to_server`, `fetch_active_memos_from_server`, `qris_charge_on_server`, and `qris_status_from_server`, retaining keep-alive and connection pool reuse across sync cycles and polls.
+`crates/kasirmu-core/src/sync_client.rs:400-420` ✔. ✅ **PAID** (re-verified at HEAD 2026-10-21:
+`shared_sync_http_client()` at `sync_client.rs:430`, called from `:449` and `:610`).
+Fixed: introduced static pooled `shared_sync_http_client()` via `OnceLock<reqwest::Client>` across `send_items_to_server`, `ack_memo_on_server`, `push_memos_to_server`, `fetch_active_memos_from_server`, `qris_charge_on_server`, and `qris_status_from_server`, retaining keep-alive and connection pool reuse across sync cycles and polls.
 
 **O-H05 · kasirmu-bridge — staff screen costs 2N+2 queries and the whole roster** —
 `crates/kasirmu-bridge/src/staff.rs:342-369` ✔. Fixed: added batched accessors `Store::list_user_profiles_map`, `Store::list_assignments_map`, and `Store::list_staff_codes_map`, replacing 3N queries across users with 3 single indexed queries and constant-time in-memory map joins. Verified with `staff_tests.rs` (132/132 passed).
@@ -323,7 +327,9 @@ transport ceiling. *Fix:* push in fixed-size batches (e.g. 500) with a cursor, l
 the queue drains.
 
 **O-H08 · kasirmu-bridge — the "batch" track-serial lookup runs a full join per SKU** —
-`crates/kasirmu-bridge/src/products.rs:201-222` ✔. Fixed: added `Store::get_product_track_serial` and `Store::get_products_track_serial_batch` in `products_crud.rs` executing direct `SELECT sku, track_serial FROM products WHERE sku IN (...)` without wide 8-table joins, and updated `run_get_product_track_serial_batch` and `get_product_track_serial` in `kasirmu-bridge`. Verified in `products_tests.rs`.
+`crates/kasirmu-bridge/src/products.rs:201-222` ✔. ✅ **PAID** (re-verified at HEAD 2026-10-21:
+`Store::get_products_track_serial_batch` at `db/products_crud.rs:830`).
+Fixed: added `Store::get_product_track_serial` and `Store::get_products_track_serial_batch` in `products_crud.rs` executing direct `SELECT sku, track_serial FROM products WHERE sku IN (...)` without wide 8-table joins, and updated `run_get_product_track_serial_batch` and `get_product_track_serial` in `kasirmu-bridge`. Verified in `products_tests.rs`.
 
 **O-H09 · cloud-server — plan middleware queries the DB on every sync request** —
 `apps/cloud-server/src/sync_api.rs:236-242` ◦
