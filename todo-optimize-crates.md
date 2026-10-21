@@ -442,9 +442,7 @@ per sale, on the checkout path. *Fix:* indexed `sale_id` column and equality pro
 category** — `crates/kasirmu-core/src/db/popularity.rs:517-563` ✔. Fixed: replaced whole-catalog materialization with SQL `ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY popularity_score DESC, sku ASC)` filtered by `rn <= ?1`, using the already-computed `cat.product_count` for percentile calculations. Verified in `popularity_tests.rs`.
 
 **O-M07 · kasirmu-core — stock-movement archive commits a transaction per group** —
-`crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:93-94` ◦. Hundreds of
-write-lock acquisitions and journal syncs where one batch would do. *Fix:* batch groups into
-fewer transactions.
+`crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:93-94` ✔. Fixed: batched item groups into transactions of 50 items (`ARCHIVE_BATCH_SIZE`) and hoisted `prepare_cached` statement preparation across the batch for archive inserts, rollup creations, and live deletions. Verified across all archive tests in `products_tests.rs`.
 
 **O-M08 · kasirmu-core — promotion engine does a per-line DB lookup, twice** —
 `crates/kasirmu-core/src/promotion_engine.rs:112-115` and `:167-172` ✔. Fixed: added `Store::get_products_category_batch` in `products_crud.rs` avoiding wide 8-table product joins, batched category resolution for all lines upfront in `compute_checkout_promotions` and `apply_promotion_to_sale`, and memoized category lookups inside `compute_discount` across lines and Buy-X-Get-Y evaluation passes. Verified in `promotions_tests.rs` (44/44 passed).
@@ -2130,6 +2128,18 @@ One Medium performance and scalability finding resolved in license verification:
    - Added in-memory `PARSED_CRL_CACHE` (`RwLock<Option<(String, Arc<ParsedCrlSets>)>>`) to avoid repeated JSON deserialization and linear scans during entitlement and subscription verification calls.
    - Replaced linear $O(N)$ scanning with $O(1)$ set lookups in `is_revoked_in_cached_crl` and `apply_crl_to_cache`.
    - Verified across 34 tests in `license_verification_tests.rs` and 155 tests in `subscription_tests.rs`.
+
+---
+
+## §11V — O-M07 resolved: batched transactions for stock movement archiving (2026-10-21)
+
+One Medium performance finding resolved in inventory and stock movement compaction:
+
+1. **O-M07 · `kasirmu-core` batched transaction execution and prepared statement caching (`db/products_stock_adjust/movements.rs`)**:
+   - Grouped item movement archiving into transactions of 50 items (`ARCHIVE_BATCH_SIZE`) instead of individual per-item write transactions, reducing disk fsyncs and lock acquisition cycles by up to 50x.
+   - Hoisted `prepare_cached` for archive insertion, rollup creation, and movement deletion queries across each transaction batch.
+   - Verified across all 10 unit tests in `products_tests.rs` (`archive_movements_*`).
+
 
 
 

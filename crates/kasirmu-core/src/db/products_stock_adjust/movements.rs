@@ -115,65 +115,74 @@ impl Store<'_> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut groups_archived = 0usize;
 
-        for item_id in &item_ids {
+        const ARCHIVE_BATCH_SIZE: usize = 50;
+        for chunk in item_ids.chunks(ARCHIVE_BATCH_SIZE) {
             let tx = self.conn.unchecked_transaction()?;
 
-            // 1. Copy old rows to archive (skip previous rollup rows). Post
-            //    ADR-18 §2b + migration 080 stock_movements_archive gained
-            //    a `location_id` column (NOT NULL DEFAULT canonical UUID);
-            //    post ADR-18 §9c + migration 085 it also gained a nullable
-            //    `inventory_transaction_id` FK column. The select-list below
-            //    must enumerate ALL 10 columns in the same order as the
-            //    CREATE TABLE from migration 072 + ALTERs from 080/085,
-            //    otherwise SQLite rejects with "X columns but Y values
-            //    were supplied" and the archive transaction rolls back.
-            tx.execute(
-                "INSERT INTO stock_movements_archive
-                 SELECT id, item_id, delta, reason,
-                        source_terminal_id, source_user_id,
-                        store_id, created_at,
-                        location_id, inventory_transaction_id
-                 FROM stock_movements
-                 WHERE item_id = ?1
-                   AND created_at < ?2
-                   AND reason != 'archive-rollup'",
-                params![item_id, cutoff_str],
-            )?;
+            {
+                let mut insert_archive = tx.prepare_cached(
+                    "INSERT INTO stock_movements_archive
+                     SELECT id, item_id, delta, reason,
+                            source_terminal_id, source_user_id,
+                            store_id, created_at,
+                            location_id, inventory_transaction_id
+                     FROM stock_movements
+                     WHERE item_id = ?1
+                       AND created_at < ?2
+                       AND reason != 'archive-rollup'",
+                )?;
 
-            // 2. Insert a rollup row consolidating all archived deltas.
-            //    Post migration 080 location_id is NOT NULL DEFAULT canonical
-            //    UUID on stock_movements, so we anchor the rollup to the
-            //    canonical default explicitly (the COALESCE would otherwise
-            //    surface a NULL on pre-080 stock_movements rows). Post
-            //    migration 085 inventory_transaction_id is NULLABLE; the
-            //    rollup row has no original inventory_transaction session
-            //    because it consolidates multiple sessions — NULL is correct.
-            let rollup_id = uuid::Uuid::now_v7().to_string();
-            tx.execute(
-                "INSERT INTO stock_movements
-                     (id, item_id, delta, reason, store_id, created_at,
-                      location_id, inventory_transaction_id)
-                 SELECT ?1, ?2, COALESCE(SUM(delta), 0), 'archive-rollup',
-                        '', ?3,
-                        '01926b3a-0000-7000-8000-000000000001', NULL
-                 FROM stock_movements
-                 WHERE item_id = ?2
-                   AND created_at < ?4
-                   AND reason != 'archive-rollup'",
-                params![rollup_id, item_id, now, cutoff_str],
-            )?;
+                let mut insert_rollup = tx.prepare_cached(
+                    "INSERT INTO stock_movements
+                         (id, item_id, delta, reason, store_id, created_at,
+                          location_id, inventory_transaction_id)
+                     SELECT ?1, ?2, COALESCE(SUM(delta), 0), 'archive-rollup',
+                            '', ?3,
+                            '01926b3a-0000-7000-8000-000000000001', NULL
+                     FROM stock_movements
+                     WHERE item_id = ?2
+                       AND created_at < ?4
+                       AND reason != 'archive-rollup'",
+                )?;
 
-            // 3. Delete old rows from the live table.
-            tx.execute(
-                "DELETE FROM stock_movements
-                 WHERE item_id = ?1
-                   AND created_at < ?2
-                   AND reason != 'archive-rollup'",
-                params![item_id, cutoff_str],
-            )?;
+                let mut delete_movements = tx.prepare_cached(
+                    "DELETE FROM stock_movements
+                     WHERE item_id = ?1
+                       AND created_at < ?2
+                       AND reason != 'archive-rollup'",
+                )?;
+
+                for item_id in chunk {
+                    // 1. Copy old rows to archive (skip previous rollup rows). Post
+                    //    ADR-18 §2b + migration 080 stock_movements_archive gained
+                    //    a `location_id` column (NOT NULL DEFAULT canonical UUID);
+                    //    post ADR-18 §9c + migration 085 it also gained a nullable
+                    //    `inventory_transaction_id` FK column. The select-list below
+                    //    must enumerate ALL 10 columns in the same order as the
+                    //    CREATE TABLE from migration 072 + ALTERs from 080/085,
+                    //    otherwise SQLite rejects with "X columns but Y values
+                    //    were supplied" and the archive transaction rolls back.
+                    insert_archive.execute(params![item_id, cutoff_str])?;
+
+                    // 2. Insert a rollup row consolidating all archived deltas.
+                    //    Post migration 080 location_id is NOT NULL DEFAULT canonical
+                    //    UUID on stock_movements, so we anchor the rollup to the
+                    //    canonical default explicitly (the COALESCE would otherwise
+                    //    surface a NULL on pre-080 stock_movements rows). Post
+                    //    migration 085 inventory_transaction_id is NULLABLE; the
+                    //    rollup row has no original inventory_transaction session
+                    //    because it consolidates multiple sessions — NULL is correct.
+                    let rollup_id = uuid::Uuid::now_v7().to_string();
+                    insert_rollup.execute(params![rollup_id, item_id, now, cutoff_str])?;
+
+                    // 3. Delete old rows from the live table.
+                    delete_movements.execute(params![item_id, cutoff_str])?;
+
+                    groups_archived += 1;
+                }
+            }
 
             tx.commit()?;
-            groups_archived += 1;
         }
 
         // Run incremental vacuum once after all groups to reclaim disk space.
