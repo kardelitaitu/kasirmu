@@ -814,6 +814,37 @@ surfaces that are meant to sit above everything, and the ones I opened (`Receive
 toasts, so their being above `--z-toast` has no consequence. Converting them to tokens without that
 argument would be churn dressed as a fix.
 
+## Round 57: a duplicate-id scanner, and the four hits it produced that were not bugs
+
+I scanned every non-test `.tsx` for the same DOM `id` appearing twice in one file — a real
+accessibility class, because a duplicate id makes `htmlFor`, `aria-labelledby` and `getElementById`
+resolve to whichever node the browser finds first.
+
+The first two scan attempts were wrong and worth recording, because the error is the kind that produces
+a false report:
+
+| attempt | hits | why it was wrong |
+|---|---|---|
+| `\sid="…"` | 20 files | matched `<Localized id="…">`, which is a Fluent message key, not a DOM id |
+| exclude lines containing `<Localized` | 4 files | the tag is often on the line BEFORE the id (multi-line JSX props) |
+
+The third pass correctly narrowed to 4 files, and **all four were false positives** once opened:
+
+- `RestaurantReceiptsScreen.tsx:2800/2818` — two `<input id="resto-hw-printer-path">` behind MUTUALLY
+  EXCLUSIVE conditions (`printerConnection === 'bluetooth'` vs `'network' | 'serial' | 'usb'`), so only
+  one exists at a time. The shared `htmlFor` resolves correctly to whichever is rendered.
+- `RetailSubViews.tsx:27/52/78` — three separately-exported sub-view components, each with the same
+  skip-link target; only one is mounted at a time.
+- `OverQuotaCard.tsx:231/383` and `FastPINOverlay.tsx:454/485` — `<Localized id=` again, missed by the
+  line-based exclusion.
+
+**The general lesson**: "the same id appears twice in this file" is only a defect when the two nodes can
+be in the DOM simultaneously, and a static grep cannot see that. Every one of the four needed its
+enclosing condition read. That is also why I am not shipping a scanner-based guard here — it would have
+to encode those three exclusion rules and would still flag the two legitimate cases.
+
+Nothing to fix. The axis is recorded as measured so a later pass does not repeat the false positives.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
