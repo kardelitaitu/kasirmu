@@ -565,6 +565,35 @@ by trying to embed comment text containing backticks and dashes inside a TypeScr
 the fix is to pass plain quoted strings, which is what AGENTS.md already implies by not encouraging the
 other way.
 
+## Round 49: a green test that proved nothing, and the two defects behind it
+
+**The defects.** `InventoryReportScreen` had two, both in a twelve-line path:
+
+1. `setError` fired on a rejected read and **nothing ever cleared it**, so one failed read pinned a
+   red banner to the report for the rest of the mount — including after the threshold changed and the
+   next read succeeded.
+2. The catch left `items` at its old value, and the render branch tests `items.length === 0` — so a
+   failed read printed **"No results found"** directly beneath the error banner. One element said it
+   broke; the next said the answer is zero.
+
+**The test that lied.** I wrote a kill test for #1 that **passed with the fix reverted**. Then I wrote
+a second one; it passed too. That is the one failure mode this campaign exists to avoid, and the honest
+record is the chain of wrong guesses it took to find it:
+
+- Guess 1: the label query matched the wrong node. Switched to `getElementById`. Still green.
+- Guess 2: `queryByText` was flaky. Switched to asserting on the banner element. Still green.
+- Guess 3: the describe-level `beforeEach` installs a **never-resolving** default, so
+  `mockRejectedValueOnce` queued behind an implementation that never settles. Added `mockReset()`.
+  Still green.
+- Actual cause, found by printing state instead of guessing: the first read had not resolved yet when
+  `waitFor` ran, so the assertion was evaluating an empty DOM and passing vacuously. The debug line
+  showed the truth in one shot — `calls=2 banner=true body=...Network error...No results found`.
+
+The fix was to await the *settle* (poll for `toHaveBeenCalledTimes(2)`) before asserting on the
+banner. With that, both tests fail on the reverted code and pass on the fixed code. **Three guesses,
+one diagnostic print.** The lesson is not "try harder" — it is that a green kill test is evidence of
+nothing until you have seen it fail, and printing state beats hypothesising about it.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
