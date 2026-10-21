@@ -112,14 +112,41 @@ worst kind for this screen: the operator's next move is to go looking for stock 
 see. Both loaders now set a `…Failed` flag on catch and the dialogs render
 `warehouse-receive-load-failed` with `role="alert"` instead. The key is in both bundles.
 
-### The test I did not ship
+### The test I did not ship, and then did
 
-The audit-log fix has no regression test. I wrote one, and could not make it stable — the mount path
-issues more than one `listAuditLogScoped` call under this harness, so both the "first load succeeds" and
-"second load fails" halves raced the mock. Rather than leave a flaky test in the suite or claim coverage
-it does not have, I deleted it and restored the file to HEAD. The fix is covered by the existing 43 audit
-tests passing; the *new* behaviour is not pinned by a test, and that is a gap worth naming rather than
-papering over.
+The audit-log fix shipped without a regression test. I wrote one, could not make it stable, deleted it and
+said so rather than claim coverage I did not have.
+
+The next round found the test. Two mistakes were behind the failure, both mine:
+
+1. I drove the reload through the **search box**, whose 250 ms debounce never settles under this harness
+   ("the current testing environment is not configured to support act(...)"). The reload was simply not
+   firing, and I read that as the fix not working.
+2. I asserted on `sale-1234`, the fixture's `target_id` — but the table renders
+   `entry.target_id.slice(0, 8)`, i.e. `sale-123`. The row was there the whole time.
+
+Driving the reload through **Refresh** instead (which calls `load({ reset: true })` directly, no debounce)
+made it work first time. And the test earns its place — I checked:
+
+    with the fix     → 44/44 pass
+    fix removed      → the test FAILS (no error card, stale rows still rendered)
+    fix restored     → 44/44 pass
+
+That is a real kill test. The lesson is the one this record keeps relearning: **"the test will not pass"
+is a hypothesis about the harness, not a finding about the code** — and the cheapest way to settle it is
+to look at what the DOM actually contains.
+
+## Round 36: two more in stock transfers, and a kill test earned
+
+- **The previous transfer stayed on screen when the next read failed.** `openDetail` sets `detailId`
+  before the await but never cleared `detail`, and the overlay renders `detail` — so the body stayed
+  A's number, A's lines and A's Receive button under a heading opened for B. Because
+  `openReceiveModal` pre-fills quantities from `detail.lines`, the operator could receive A's lines
+  believing they were on B. The file's own comment already named this hazard for the *slow* case; the
+  *failed* case was the one nothing handled. `setDetail(null)` now runs before every read.
+- **The "unknown" notices were unreachable after the first success.** `if (prodRead.ok) setProducts(...)`
+  wrote only on success, so a later failure left the old array and the `=== null` guard could never fire
+  again — a failed reload silently kept offering a stale catalogue. Both now write `null` on `!ok`.
 
 ## Verification
 
