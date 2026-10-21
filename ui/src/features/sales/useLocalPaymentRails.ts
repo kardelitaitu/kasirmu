@@ -86,7 +86,7 @@ export function coreRailWithheld(
  * bag or the key says nothing.
  *
  * `parameters` is a free-form JSON string the settings screen writes through
- * `updateRailParams` (`RestaurantPaymentsScreen.tsx:1006`, `:1057`), so every read has
+ * `updateRailParams` (`RestaurantPaymentsScreen.tsx:605`, called at `:1102`/`:1124`), so every read has
  * to tolerate: no rail row, no `parameters`, unparseable JSON, and a missing key.
  * Each of those means "the operator never expressed a preference" and must return the
  * caller's `fallback` — not `false`. Defaulting a preference to `false` would silently

@@ -517,6 +517,18 @@
   align-items: center;
 }
 
+/* Piutang (credit) collections are a receivable settlement, not a tender the
+   cashier took at the drawer — so the row is separated from the tender rows
+   above it rather than blending in. The class was written in the markup
+   (EodReportScreen.tsx:916) long before any rule existed for it, which is what
+   the screenExtraction guard reported. */
+.eod-report-payment-row--receivable {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-border);
+}
+
 .eod-report-payment-info {
   display: flex;
   flex-direction: column;

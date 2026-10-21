@@ -133,6 +133,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The actions column holds the Pay/Write-off buttons. It was written in the
+   markup (:288 header, :319 cell) with no rule behind it, so the column sized
+   to its content and the buttons wrapped on a narrow modal. */
+.kasbon-actions-col {
+  text-align: right !important;
+  white-space: nowrap;
+  width: 1%;
+}
+
 .kasbon-col-balance {
   font-weight: var(--font-weight-bold);
   color: var(--color-accent);

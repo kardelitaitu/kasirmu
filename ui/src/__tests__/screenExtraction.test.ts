@@ -435,6 +435,20 @@ const SCREENS: ScreenEntry[] = [
     // R3: cites the shared pager block — see the ProductManagementScreen note.
     parentCss: ['../theme/components.css'],
   },
+  {
+    // Mounted by CustomerManagementScreen; the sheet is imported there too.
+    name: 'KasbonSettlementModal',
+    tsx: 'customers/KasbonSettlementModal.tsx',
+    css: ['customers/KasbonSettlementModal.css'],
+    // The status class is built inline at :315 from r.status, and each of the
+    // four variants owns a rule in the sheet (:160-:179).
+    dynamicClassPrefixes: [
+      'kasbon-status--open',
+      'kasbon-status--partial',
+      'kasbon-status--paid',
+      'kasbon-status--written_off',
+    ],
+  },
 
   // ── Inventory ─────────────────────────────────────────
   {
@@ -1726,12 +1740,54 @@ const SCREENS: ScreenEntry[] = [
     name: 'PurchaseOrdersScreen',
     tsx: 'purchasing/PurchaseOrdersScreen.tsx',
     css: ['purchasing/PurchaseOrdersScreen.css'],
+    // This screen mounts ReceivePoModal, whose markup and rules are that
+    // component's own work (ReceivePoModal.css, registered as its own entry
+    // below) — a cross-component reference, not a rule this sheet owes.
+    externalClasses: [
+      'receive-po-backdrop', 'receive-po-modal', 'receive-po-header',
+      'receive-po-title', 'receive-po-close-btn', 'receive-po-body',
+      'receive-po-summary', 'receive-po-summary-row', 'receive-po-summary-label',
+      'receive-po-summary-value', 'receive-po-summary-value--amount',
+      'receive-po-terms-group', 'receive-po-terms-label',
+      'receive-po-terms-options', 'receive-po-term-card',
+      'receive-po-term-card--selected', 'receive-po-term-title',
+      'receive-po-term-desc', 'receive-po-on-account-fields',
+      'receive-po-field', 'receive-po-field-label', 'receive-po-input',
+      'receive-po-error', 'receive-po-footer',
+    ],
     dynamicClassPrefixes: [ 'po-status--draft', 'po-status--pending', 'po-status--approved', 'po-status--received', 'po-status--cancelled'],
   },
   {
     name: 'PurchaseOrderForm',
     tsx: 'purchasing/PurchaseOrderForm.tsx',
     css: ['purchasing/PurchaseOrderForm.css'],
+  },
+  // The three entries below close the "uncited sheet" arm rather than joining
+  // BASELINE_UNCITED, which is shrink-only and must not take a new sheet. Each
+  // sheet was already live and imported by a reachable component; what they
+  // lacked was an entry naming them, so no check in this file ever read them.
+  {
+    name: 'ReceivePoModal',
+    tsx: 'purchasing/ReceivePoModal.tsx',
+    css: ['purchasing/ReceivePoModal.css'],
+  },
+  {
+    name: 'VendorBillsScreen',
+    tsx: 'purchasing/VendorBillsScreen.tsx',
+    css: ['purchasing/VendorBillsScreen.css'],
+    // The pay/write-off dialogs reuse the ReceivePoModal input surface. The
+    // used-but-not-defined case resolves against own css UNION parentCss (it
+    // does not read externalClasses), so the sheet is cited as a parent — the
+    // same device the shared-pager and components.css cites use.
+    parentCss: ['purchasing/ReceivePoModal.css'],
+    // The status modifier is built inline at :297 from p.status; the four
+    // variants each own a rule in the sheet (:143-:162).
+    dynamicClassPrefixes: [
+      'vendor-bill-status-badge--open',
+      'vendor-bill-status-badge--partial',
+      'vendor-bill-status-badge--paid',
+      'vendor-bill-status-badge--written_off',
+    ],
   },
 
   // ── Restaurant ─────────────────────────────────────────
