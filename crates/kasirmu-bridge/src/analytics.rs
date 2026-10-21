@@ -61,16 +61,17 @@ pub async fn get_staff_analytics_scoped(
     ctx.require_session_permission(&session, permissions::ANALYTICS_VIEW)
         .await?;
 
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let rows = store.staff_analytics_summary(&from, &to)?;
-    drop(db);
+    let rows = {
+        let conn = ctx
+            .db_manager
+            .open_store(&session.store_id)
+            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        store.staff_analytics_summary(&from, &to)?
+    };
 
     // O-M19: Resolve staff display names for ONLY the user IDs present in the summary
     // instead of loading the full global user table into memory.
