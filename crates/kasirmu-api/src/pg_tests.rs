@@ -2450,3 +2450,344 @@ fn throwaway_test_pool_never_returns_none_silently() {
         );
     }
 }
+
+// -- O-H12: the product read is bounded, and the stock fold is single-row -----
+
+/// **O-H12 half 2 (the join).** A product stocked at SEVERAL locations must
+/// come back as ONE product row whose stock_qty is the SUM across those
+/// locations.
+///
+/// This is the test the ADR-18 composite key makes necessary: stock_summary is
+/// keyed (item_id, location_id), so three locations are three rows. A bare
+/// LEFT JOIN stock_summary would return the product three times, each with one
+/// location's qty; the lateral aggregate in PRODUCT_SELECT folds them.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
+#[tokio::test]
+async fn pg_list_products_folds_several_stock_rows_into_one_product() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_products_fold").await
+    else {
+        eprintln!("PG product-fold test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
+        return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
+    };
+
+    let tenant = unique_id("pg-fold");
+    let sku = unique_id("PG-FOLD-SKU");
+    let currency: Currency = "USD".parse().unwrap();
+
+    // initial_stock 5 writes inventory.qty = 5 AND one stock_summary row at the
+    // canonical location with qty 5.
+    create_product(
+        &pool,
+        &tenant,
+        &sku,
+        "PG Folded",
+        Money {
+            minor_units: 100,
+            currency,
+        },
+        None,
+        None,
+        5,
+    )
+    .await
+    .expect("create_product");
+
+    // Two MORE locations for the same product (4 and 6), so stock_summary holds
+    // three rows for ONE product. Written inside the tenant-scoped transaction,
+    // exactly as the REST layer would.
+    {
+        let mut client = pool.get().await.expect("connection");
+        let tx = client.transaction().await.expect("transaction");
+        tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant])
+            .await
+            .expect("tenant GUC");
+        let product_id: String = tx
+            .query_one(
+                "SELECT id FROM products WHERE tenant_id = $1 AND sku = $2",
+                &[&tenant, &sku],
+            )
+            .await
+            .expect("product id")
+            .get(0);
+        let extra = [
+            ("01926b3a-0000-7000-8000-0000000000a1", 4i64),
+            ("01926b3a-0000-7000-8000-0000000000a2", 6i64),
+        ];
+        for (location, qty) in extra {
+            tx.execute(
+                "INSERT INTO inventory_locations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+                &[&location, &format!("fold-{location}")],
+            )
+            .await
+            .expect("location");
+            tx.execute(
+                "INSERT INTO stock_summary (item_id, location_id, qty, updated_at) VALUES ($1, $2, $3, $4) \
+                 ON CONFLICT (item_id, location_id) DO UPDATE SET qty = excluded.qty",
+                &[&product_id, &location, &qty, &"2026-01-01T00:00:00.000Z"],
+            )
+            .await
+            .expect("stock_summary row");
+        }
+        tx.commit().await.expect("commit");
+    }
+
+    // The product must appear exactly ONCE, totalling 5 + 4 + 6 = 15 - and the
+    // legacy aggregate (5) must NOT win: a location row exists.
+    let listed = list_products(&pool, &tenant).await.expect("list_products");
+    let matching: Vec<_> = listed
+        .iter()
+        .filter(|p| p.product.sku.as_str() == sku)
+        .collect();
+    assert_eq!(
+        matching.len(),
+        1,
+        "three stock_summary rows must NOT multiply the product into three rows"
+    );
+    assert_eq!(
+        matching[0].stock_qty,
+        Some(15),
+        "stock_qty must be the SUM across locations, not one location's qty and not inventory.qty"
+    );
+
+    // The keyset page must fold identically.
+    let page = list_products_page(&pool, &tenant, Some(10), None)
+        .await
+        .expect("list_products_page");
+    let paged: Vec<_> = page
+        .products
+        .iter()
+        .filter(|p| p.product.sku.as_str() == sku)
+        .collect();
+    assert_eq!(paged.len(), 1, "the paged read must fold identically");
+    assert_eq!(paged[0].stock_qty, Some(15));
+
+    // Drop the throwaway database: the pooled connections must go first, or
+    // the DROP contends with this test's own live sessions.
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+}
+
+/// **O-H12 half 2 (the join), the empty case.** A product with NO
+/// stock_summary row must still be RETURNED, and must still fall back to the
+/// legacy inventory.qty.
+///
+/// The lateral aggregate emits its single all-NULL row even when the inner
+/// FROM matches nothing, so the outer LEFT JOIN cannot drop the product. A
+/// grouped LEFT JOIN written as an INNER JOIN - the easy mistake - would.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
+#[tokio::test]
+async fn pg_list_products_returns_a_product_with_no_stock_summary_row() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_products_nostock").await
+    else {
+        eprintln!("PG no-stock test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
+        return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
+    };
+
+    let tenant = unique_id("pg-nostock");
+    let sku = unique_id("PG-NOSTOCK-SKU");
+    let currency: Currency = "USD".parse().unwrap();
+
+    // initial_stock 0 writes NO stock_summary and NO inventory row.
+    create_product(
+        &pool,
+        &tenant,
+        &sku,
+        "PG No Stock",
+        Money {
+            minor_units: 100,
+            currency,
+        },
+        None,
+        None,
+        0,
+    )
+    .await
+    .expect("create_product");
+
+    let listed = list_products(&pool, &tenant).await.expect("list_products");
+    let row = listed
+        .iter()
+        .find(|p| p.product.sku.as_str() == sku)
+        .unwrap_or_else(|| {
+            panic!(
+                "a product with no stock_summary row must still be listed; got {} rows",
+                listed.len()
+            )
+        });
+    assert_eq!(
+        row.stock_qty, None,
+        "no stock_summary row and no inventory row -> unknown stock (null), exactly as before"
+    );
+
+    // The legacy fallback must still answer when ONLY inventory exists.
+    {
+        let mut client = pool.get().await.expect("connection");
+        let tx = client.transaction().await.expect("transaction");
+        tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant])
+            .await
+            .expect("tenant GUC");
+        let product_id: String = tx
+            .query_one(
+                "SELECT id FROM products WHERE tenant_id = $1 AND sku = $2",
+                &[&tenant, &sku],
+            )
+            .await
+            .expect("product id")
+            .get(0);
+        tx.execute(
+            "INSERT INTO inventory (product_id, qty, updated_at) VALUES ($1, $2, $3)",
+            &[&product_id, &7i64, &"2026-01-01T00:00:00.000Z"],
+        )
+        .await
+        .expect("inventory row");
+        tx.commit().await.expect("commit");
+    }
+
+    let listed = list_products(&pool, &tenant).await.expect("list_products");
+    let row = listed
+        .iter()
+        .find(|p| p.product.sku.as_str() == sku)
+        .expect("still listed");
+    assert_eq!(
+        row.stock_qty,
+        Some(7),
+        "with no stock_summary row, COALESCE must fall back to inventory.qty"
+    );
+
+    // Drop the throwaway database: the pooled connections must go first, or
+    // the DROP contends with this test's own live sessions.
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+}
+
+/// **O-H12 half 1 (the bound).** A catalogue larger than the page size comes
+/// back in pages that are disjoint, exhaustive, and explicitly signalled.
+///
+/// Asserts the three properties a silent truncation would violate: the walk
+/// covers every product exactly once, has_more is false only on the last page
+/// (the one-row over-fetch must not lie), and next_after is present iff
+/// has_more is true.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
+#[tokio::test]
+async fn pg_list_products_pages_are_disjoint_and_exhaustive() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_products_pages").await
+    else {
+        eprintln!("PG paging test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
+        return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
+    };
+
+    let tenant = unique_id("pg-pages");
+    let currency: Currency = "USD".parse().unwrap();
+    // Five products that all share ONE name, so the (name, sku) tiebreak is
+    // what makes the page boundary deterministic; page size 2 gives 2 + 2 + 1.
+    for i in 0..5 {
+        create_product(
+            &pool,
+            &tenant,
+            &format!("PG-PAGE-{i:02}"),
+            "PG Same Name",
+            Money {
+                minor_units: 100,
+                currency,
+            },
+            None,
+            None,
+            0,
+        )
+        .await
+        .expect("create_product");
+    }
+
+    let mut seen: Vec<String> = Vec::new();
+    let mut after: Option<String> = None;
+    let mut pages = 0usize;
+    loop {
+        let page = list_products_page(&pool, &tenant, Some(2), after.as_deref())
+            .await
+            .expect("list_products_page");
+        pages += 1;
+        assert!(
+            page.products.len() <= 2,
+            "the server exceeded the requested page size: {}",
+            page.products.len()
+        );
+        assert_eq!(
+            page.next_after.is_some(),
+            page.has_more,
+            "next_after must be present iff has_more (a client follows one, not the other)"
+        );
+        seen.extend(
+            page.products
+                .iter()
+                .map(|p| p.product.sku.as_str().to_owned()),
+        );
+        match page.next_after {
+            Some(cursor) => after = Some(cursor),
+            None => {
+                assert!(!page.has_more, "the last page must report has_more = false");
+                break;
+            }
+        }
+        assert!(pages < 20, "the walk did not terminate");
+    }
+
+    assert_eq!(pages, 3, "5 products at 2 per page is 2 + 2 + 1");
+    let mut sorted = seen.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(
+        sorted.len(),
+        seen.len(),
+        "a product was served twice: {seen:?}"
+    );
+    assert_eq!(seen.len(), 5, "a product was skipped: {seen:?}");
+
+    // An over-large limit is CLAMPED, not honoured and not rejected.
+    let capped = list_products_page(&pool, &tenant, Some(usize::MAX), None)
+        .await
+        .expect("clamped page");
+    assert_eq!(
+        capped.products.len(),
+        5,
+        "the cap must bound the read, never reject it"
+    );
+    assert!(!capped.has_more);
+
+    // Drop the throwaway database: the pooled connections must go first, or
+    // the DROP contends with this test's own live sessions.
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+}

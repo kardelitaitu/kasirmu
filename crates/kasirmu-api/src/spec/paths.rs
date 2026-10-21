@@ -66,19 +66,16 @@ pub(super) fn build_base_paths() -> Value {
         "/api/v1/products": {
             "get": {
                 "tags": ["Products"],
-                "summary": "List all products",
-                "description": "Returns all products ordered by name, including category name and stock quantity, wrapped in a `ListProductsResponse` envelope (`products` + `missing_hashes`). Requires JWT auth. The pagination query parameters are reserved for a future release and currently ignored.",
+                "summary": "List products (keyset-paged)",
+                "description": "Returns ONE PAGE of the tenant's products, ordered by `(name, sku)`, including category name and stock quantity, wrapped in a `ListProductsResponse` envelope (`products` + `missing_hashes` + `has_more` + `next_after`). Requires JWT auth. Keyset paging, not OFFSET: pass the previous response's `next_after` as `after` and stop when `has_more` is `false`. `limit` defaults to 100 and is clamped to 200, so the response is always bounded; `has_more` states whether the catalogue continues, so a bounded reply is never mistaken for a complete one. The local (SQLite) API answers the whole catalogue in one page with `has_more: false`.",
                 "operationId": "listProducts",
                 "security": [{ "bearerAuth": [] }],
                 "parameters": [
                     { "$ref": "#/components/parameters/PaginationLimit" },
-                    { "$ref": "#/components/parameters/PaginationOffset" },
-                    { "$ref": "#/components/parameters/PaginationSort" },
-                    { "$ref": "#/components/parameters/PaginationOrder" },
-                    { "$ref": "#/components/parameters/PaginationQ" }
+                    { "$ref": "#/components/parameters/PaginationCursor" }
                 ],
                 "responses": {
-                    "200": { "description": "Product list envelope (may be empty)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListProductsResponse" } } } },
+                    "200": { "description": "Product page envelope (products may be empty; has_more and next_after are always present)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListProductsResponse" } } } },
                     "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "403": { "description": "Token lacks the `products:read` read-tier permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "insufficient_scope" } } } }
                 }

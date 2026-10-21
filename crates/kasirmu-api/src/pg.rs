@@ -130,7 +130,10 @@ pub use terminals::{register_terminal, verify_terminal_credentials};
 
 #[path = "pg/products.rs"]
 mod products;
-pub use products::{adjust_stock, create_product, get_product, list_missing_hashes, list_products};
+pub use products::{
+    DEFAULT_PRODUCT_PAGE_LIMIT, MAX_PRODUCT_PAGE_LIMIT, ProductPage, adjust_stock, create_product,
+    get_product, list_missing_hashes, list_products, list_products_page,
+};
 
 // ── Sales ─────────────────────────────────────────────────────────────
 #[path = "pg/sales.rs"]

@@ -58,7 +58,7 @@ fn money_overflow_error_returns_500_via_catchall() {
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
-// ── CreateProductRequest deserialization ────────────────────
+// -- CreateProductRequest deserialization --------------------
 
 #[test]
 fn create_product_request_minimal_fields() {
@@ -84,6 +84,60 @@ fn create_product_request_all_fields() {
     assert_eq!(req.category_id, Some("cat-1".into()));
     assert_eq!(req.barcode, Some("5901234123457".into()));
     assert_eq!(req.initial_stock, Some(10));
+}
+
+// -- O-H12: the response states its own bound -------------------------------
+
+/// has_more and next_after must be in the JSON ALWAYS - including the
+/// complete case - because a client cannot tell a bounded page from the whole
+/// catalogue otherwise, and that ambiguity was the data bug the bound risked.
+#[test]
+fn list_products_response_always_states_whether_more_follow() {
+    let complete = ListProductsResponse {
+        products: Vec::new(),
+        missing_hashes: Vec::new(),
+        has_more: false,
+        next_after: None,
+    };
+    let json = serde_json::to_value(&complete).expect("serialises");
+    assert_eq!(
+        json.get("has_more"),
+        Some(&serde_json::json!(false)),
+        "has_more must be present and false, not omitted: {json}"
+    );
+    assert!(
+        json.get("next_after").is_some(),
+        "next_after must be present (null on the last page): {json}"
+    );
+    assert!(
+        json.get("missing_hashes").is_none(),
+        "missing_hashes stays advisory and may be omitted: {json}"
+    );
+
+    let more = ListProductsResponse {
+        products: Vec::new(),
+        missing_hashes: Vec::new(),
+        has_more: true,
+        next_after: Some("SKU-100".into()),
+    };
+    let json = serde_json::to_value(&more).expect("serialises");
+    assert_eq!(json["has_more"], serde_json::json!(true));
+    assert_eq!(json["next_after"], serde_json::json!("SKU-100"));
+}
+
+/// The query parameters are optional and defaulted - an omitted query string
+/// must still parse, or every existing client would start getting a 400.
+#[test]
+fn list_products_query_defaults_when_absent() {
+    let q: ListProductsQuery =
+        serde_json::from_value(serde_json::json!({})).expect("empty query parses");
+    let qp: ListProductsQuery =
+        serde_json::from_value(serde_json::json!({"limit": 5, "after": "SKU-9"}))
+            .expect("populated query parses");
+    assert_eq!(qp.limit, Some(5));
+    assert_eq!(qp.after.as_deref(), Some("SKU-9"));
+    assert!(q.limit.is_none(), "no limit -> the server default applies");
+    assert!(q.after.is_none(), "no cursor -> the first page");
 }
 
 // ── PatchStockRequest deserialization ───────────────────────

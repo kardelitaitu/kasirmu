@@ -13,7 +13,7 @@ next: none | perf: N/A
 
 use axum::{
     Extension, Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -59,9 +59,29 @@ fn store_error_response(e: CoreError) -> Response {
 
 // ── Request / Response types ──────────────────────────────────────────
 
+/// Query parameters of `GET /api/v1/products` (debt entry O-H12).
+///
+/// `limit` is CLAMPED to `1..=MAX_PRODUCT_PAGE_LIMIT` rather than rejected,
+/// and `after` is the `next_after` of the previous page. Both are optional;
+/// the server always answers with an explicit `has_more` either way.
+#[derive(Debug, Default, Deserialize)]
+pub struct ListProductsQuery {
+    /// Maximum products to return. Defaults to `DEFAULT_PRODUCT_PAGE_LIMIT`.
+    pub limit: Option<usize>,
+    /// Keyset cursor: the `sku` a previous response returned as
+    /// `next_after`. Omit it to start from the first product.
+    pub after: Option<String>,
+}
+
 /// Response body for the list-products endpoint (spec 0046b §3.4).
 /// Wraps the product array with the server-side `missing_hashes` nudge
 /// so the desktop knows exactly which hashes the cloud still lacks.
+///
+/// **`has_more` is the bound's receipt (debt entry O-H12).** Before it
+/// existed an unbounded read and a truncated one were the same bytes, and a
+/// client could not tell them apart. It is serialised ALWAYS — unlike
+/// `missing_hashes`, which may be omitted — because `false` is a fact this
+/// response must state, not a default a reader may infer.
 #[derive(Serialize)]
 pub struct ListProductsResponse {
     /// The tenant's products with category name, stock, and image assignments.
@@ -70,6 +90,11 @@ pub struct ListProductsResponse {
     /// cloud's image store (`image_refs`). Desktop pushes these first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub missing_hashes: Vec<String>,
+    /// `true` when the catalogue continues past this page. Always present.
+    pub has_more: bool,
+    /// The `after` value that fetches the next page, or `null` on the last
+    /// page. Always present, so a client never has to guess a key.
+    pub next_after: Option<String>,
 }
 
 /// Request body for creating a new product.
@@ -111,14 +136,38 @@ pub struct PatchStockResponse {
 
 /// List the authenticated tenant's products, ordered by name, with category
 /// name, stock, and the `missing_hashes` nudge (spec 0046b §3.4).
+///
+/// Bounded since debt entry O-H12: one page of at most
+/// `MAX_PRODUCT_PAGE_LIMIT` products (`DEFAULT_PRODUCT_PAGE_LIMIT` when the
+/// caller asks for none), resumed with `?after=`. The response states
+/// `has_more` and `next_after` on EVERY reply, so a bounded answer is never
+/// indistinguishable from a complete one.
+///
+/// The SQLite branch stays UNPAGED on purpose, and is not a silent
+/// truncation of anything: it is the merchant's own local database, served by
+/// `kasirmu-local-api` on loopback and by `state.db` in dev/tests, and it
+/// answers with `has_more: false` — the truth for that store, not a default.
 pub async fn list_products(
     State(state): State<AppState>,
     Extension(claims): Extension<ApiTokenClaims>,
+    Query(query): Query<ListProductsQuery>,
 ) -> Response {
     if let Some(pool) = &state.pg {
         let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
-        return match crate::pg::list_products(pool, tenant_id).await {
-            Ok(products) => {
+        return match crate::pg::list_products_page(
+            pool,
+            tenant_id,
+            query.limit,
+            query.after.as_deref(),
+        )
+        .await
+        {
+            Ok(page) => {
+                let crate::pg::ProductPage {
+                    products,
+                    next_after,
+                    has_more,
+                } = page;
                 // ADVISORY, deliberately: `missing_hashes` is a push-priority
                 // nudge only — the desktop uploads what its OWN queue holds
                 // (platform/sync/src/image_push.rs `peek_push_batch`), and this
@@ -147,6 +196,8 @@ pub async fn list_products(
                 Json(ListProductsResponse {
                     products,
                     missing_hashes: missing,
+                    has_more,
+                    next_after,
                 })
                 .into_response()
             }
@@ -177,6 +228,11 @@ pub async fn list_products(
             Json(ListProductsResponse {
                 products,
                 missing_hashes: missing,
+                // The local SQLite store is answered whole: there is no
+                // second page, so a client walking this endpoint against
+                // `kasirmu-local-api` stops after one request.
+                has_more: false,
+                next_after: None,
             })
             .into_response()
         }
