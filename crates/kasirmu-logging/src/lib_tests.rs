@@ -1,33 +1,83 @@
 use super::*;
 use crate::visitor::MessageVisitor;
+use kasirmu_test_support::ScratchDir;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
+// ── Scratch directories ──────────────────────────────────────────────
+//
+// Every fixture in this file lives under `target/test-scratch` via
+// `kasirmu_test_support`, never in `std::env::temp_dir()`.
+//
+// The pre-O-M60 fixtures used `std::env::temp_dir()` with a unique suffix,
+// which reads as portable and is not: on this project's Windows machines the
+// MACHINE-level `TEMP` is `C:\WINDOWS\TEMP`, where an ordinary user can create
+// but not delete. The first stale `kasirmu-logging-*` directory left behind made
+// `create_dir_all` fail with `Access is denied. (os error 5)`, and 13 tests in
+// this file then reported it as a product defect. The scratch root under the
+// gitignored `target/` is both writable and cleanable, and
+// `kasirmu_test_support`'s `scratch_root_is_never_windows_temp` pins that so the
+// trap cannot return.
+
+/// A fresh scratch directory, removed when the returned guard drops.
+///
+/// Bind the guard for the length of the test: `let (_scratch, dir) = scratch(..);`
+fn scratch(prefix: &str) -> (ScratchDir, std::path::PathBuf) {
+    let guard = ScratchDir::new(prefix);
+    let path = guard.path().to_path_buf();
+    (guard, path)
+}
+
+/// A path under a fresh scratch directory that is a FILE, not a directory.
+///
+/// Several tests need "a path that cannot be used as a log directory", which a
+/// regular file provides on every platform. The parent directory is the scratch
+/// dir so the fixture is cleanable; the `File` guard is dropped immediately, so
+/// only the file remains on disk.
+fn scratch_file(prefix: &str) -> (ScratchDir, std::path::PathBuf) {
+    let (guard, dir) = scratch(prefix);
+    let path = dir.join("not-a-directory");
+    std::fs::write(&path, b"i am a file, not a directory").expect("probe file must be writable");
+    (guard, path)
+}
+
 // ── Retention cleanup ─────────────────────────────────────────
 
+/// `retention_days = 0` means retention is **off**, not "delete everything".
+///
+/// This is the pre-O-M60 meaning and both Tauri shells pass `0`, so the sweep
+/// must not exist at all for that value. The full sweep behaviour now lives in
+/// `retention_tests.rs` (O-M60); this keeps the public `0` contract pinned at
+/// the `try_init_with_file` entry point.
 #[test]
 fn cleanup_retention_zero_does_nothing() {
-    let dir = std::env::temp_dir().join(uuid::Uuid::now_v7().to_string());
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-cleanup");
     let file_path = dir.join("oz-pos.log");
     std::fs::write(&file_path, "test data").unwrap();
 
-    cleanup_old_log_files(dir.to_str().unwrap(), "oz-pos", 0);
+    let retainer = crate::retention_retainer_for_test(
+        &dir,
+        "oz-pos",
+        0,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    );
 
-    // File should still exist (retention 0 means skip cleanup).
+    assert!(
+        retainer.is_none(),
+        "retention_days = 0 must install no retainer, so nothing is ever swept"
+    );
     assert!(
         file_path.exists(),
         "file should not be removed when retention_days is 0"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn cleanup_retention_removes_old_files() {
-    let dir = std::env::temp_dir().join(uuid::Uuid::now_v7().to_string());
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-cleanup");
 
     // Create an old file (modification time in the past).
     let old_file = dir.join("oz-pos-old.log");
@@ -42,17 +92,24 @@ fn cleanup_retention_removes_old_files() {
     let new_file = dir.join("oz-pos-new.log");
     std::fs::write(&new_file, "new data").unwrap();
 
-    cleanup_old_log_files(dir.to_str().unwrap(), "oz-pos", 7);
+    let retainer = crate::retention_retainer_for_test(
+        &dir,
+        "oz-pos",
+        7,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    )
+    .expect("retention_days = 7 must install a retainer");
+    let report = retainer.run_now();
 
+    assert_eq!(report.removed, 1);
     assert!(!old_file.exists(), "old file should be removed");
     assert!(new_file.exists(), "new file should be kept");
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn cleanup_retention_skips_non_matching_prefix() {
-    let dir = std::env::temp_dir().join(uuid::Uuid::now_v7().to_string());
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-cleanup");
 
     let other_file = dir.join("other-app.log");
     std::fs::write(&other_file, "other data").unwrap();
@@ -60,30 +117,53 @@ fn cleanup_retention_skips_non_matching_prefix() {
         filetime::FileTime::from_unix_time(chrono::Utc::now().timestamp() - 30 * 86400, 0);
     filetime::set_file_mtime(&other_file, old_time).unwrap();
 
-    cleanup_old_log_files(dir.to_str().unwrap(), "oz-pos", 7);
+    crate::retention_retainer_for_test(
+        &dir,
+        "oz-pos",
+        7,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    )
+    .expect("retention_days = 7 must install a retainer")
+    .run_now();
 
     // File with non-matching prefix should be kept.
     assert!(
         other_file.exists(),
         "file with non-matching prefix should not be removed"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn cleanup_retention_nonexistent_dir() {
-    // Should not panic.
-    cleanup_old_log_files("C:\\nonexistent_dir_xyzzy", "oz-pos", 7);
+    // Should not panic, and should not claim a failure either.
+    let report = crate::retention_retainer_for_test(
+        std::path::Path::new("C:\\nonexistent_dir_xyzzy"),
+        "oz-pos",
+        7,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    )
+    .expect("retention_days = 7 must install a retainer")
+    .run_now();
+    assert!(report.is_empty());
 }
 
 #[test]
 fn cleanup_retention_empty_dir() {
-    let dir = std::env::temp_dir().join(uuid::Uuid::now_v7().to_string());
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-cleanup");
 
     // Should not panic or fail on empty dir.
-    cleanup_old_log_files(dir.to_str().unwrap(), "oz-pos", 7);
-    std::fs::remove_dir_all(&dir).ok();
+    let report = crate::retention_retainer_for_test(
+        &dir,
+        "oz-pos",
+        7,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    )
+    .expect("retention_days = 7 must install a retainer")
+    .run_now();
+    assert!(report.is_empty());
 }
 
 #[test]
@@ -191,8 +271,7 @@ static L1_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[test]
 fn l1_guard_retained_after_text_file_init() {
     let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = std::env::temp_dir().join(format!("kasirmu-logging-l1a-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-l1a");
     let before = crate::retained_file_log_guards();
     // A second subscriber in the same process would fail try_init; the
     // registry must still grow ONLY on success — so call via the registry
@@ -217,14 +296,12 @@ fn l1_guard_retained_after_text_file_init() {
             );
         }
     }
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn l1_guard_retained_after_json_file_init() {
     let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = std::env::temp_dir().join(format!("kasirmu-logging-l1b-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-l1b");
     let before = crate::retained_file_log_guards();
     let result = crate::try_init_json_with_file(dir.to_str().unwrap(), "l1b", 0);
     match result {
@@ -243,7 +320,6 @@ fn l1_guard_retained_after_json_file_init() {
             );
         }
     }
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -252,13 +328,11 @@ fn l1_file_writer_writes_after_init_returns() {
     // The behavioural regression test: log an event AFTER init returns and
     // verify it reaches the file (pre-fix, the writer was shut down at init
     // exit so nothing was written).
-    let dir = std::env::temp_dir().join(format!("kasirmu-logging-l1c-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let (_scratch, dir) = scratch("kasirmu-logging-l1c");
     let result = crate::try_init_json_with_file(dir.to_str().unwrap(), "l1c", 0);
     if result.is_err() {
         // Global subscriber already taken by a sibling test — behavioural
         // check covered by whichever init won; skip here.
-        std::fs::remove_dir_all(&dir).ok();
         return;
     }
     let marker = format!("l1-marker-{}", uuid_like());
@@ -271,7 +345,6 @@ fn l1_file_writer_writes_after_init_returns() {
         .filter_map(|e| std::fs::read_to_string(e.path()).ok())
         .any(|content| content.contains(&marker));
     assert!(found, "event logged after init must reach the log file");
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Cheap unique marker (no uuid dependency in this crate).
@@ -296,8 +369,7 @@ fn uuid_like() -> String {
 fn unusable_log_dir_is_reported_before_the_subscriber_is_set() {
     // A FILE where a directory is expected: create_dir_all fails with
     // AlreadyExists/NotADirectory on every platform.
-    let dir = std::env::temp_dir().join(format!("kasirmu-logging-probe-{}", std::process::id()));
-    std::fs::write(&dir, b"i am a file, not a directory").unwrap();
+    let (_scratch, dir) = scratch_file("kasirmu-logging-probe");
 
     let result = crate::try_init_with_file(dir.to_str().unwrap(), "probe", 0);
     assert!(
@@ -308,23 +380,18 @@ fn unusable_log_dir_is_reported_before_the_subscriber_is_set() {
         matches!(result, Err(LoggingError::LogDirUnusable(_))),
         "expected LogDirUnusable, got {result:?}"
     );
-
-    std::fs::remove_file(&dir).ok();
 }
 
 /// The pre-flight creates a missing directory, so the normal case still works.
 #[test]
 fn log_dir_is_created_when_missing() {
-    let base = std::env::temp_dir().join(format!("kasirmu-logging-mk-{}", std::process::id()));
+    let (_scratch, base) = scratch("kasirmu-logging-mk");
     let nested = base.join("a").join("b");
-    let _ = std::fs::remove_dir_all(&base);
 
     // The helper is what try_init_with_file calls first.
     crate::ensure_log_dir_writable(nested.to_str().unwrap())
         .expect("a missing directory must be created");
     assert!(nested.is_dir(), "the directory must now exist");
-
-    std::fs::remove_dir_all(&base).ok();
 }
 
 // ── Client initialiser: file sink first, stdout fallback ─────────────
@@ -340,8 +407,7 @@ fn log_dir_is_created_when_missing() {
 #[test]
 fn client_init_falls_back_to_stdout_when_the_dir_is_unusable() {
     let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let path = std::env::temp_dir().join(format!("kasirmu-logging-client-{}", std::process::id()));
-    std::fs::write(&path, b"file where a directory belongs").unwrap();
+    let (_scratch, path) = scratch_file("kasirmu-logging-client");
 
     let result = crate::try_init_with_file_or_stdout(Some(&path), "client", 0);
 
@@ -349,7 +415,6 @@ fn client_init_falls_back_to_stdout_when_the_dir_is_unusable() {
         !matches!(result, Err(LoggingError::LogDirUnusable(_))),
         "an unusable dir must fall back to stdout, not escape as LogDirUnusable: {result:?}"
     );
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -434,16 +499,11 @@ fn an_unparseable_value_falls_back_and_names_the_value() {
 
 #[test]
 fn try_init_json_with_file_fails_fast_on_unusable_dir() {
-    let path = std::env::temp_dir().join(format!(
-        "kasirmu-logging-json-unusable-{}",
-        std::process::id()
-    ));
-    std::fs::write(&path, b"file where a directory belongs").unwrap();
+    let (_scratch, path) = scratch_file("kasirmu-logging-json-unusable");
 
     let result = crate::try_init_json_with_file(path.to_str().unwrap(), "json-test", 0);
     assert!(
         matches!(result, Err(LoggingError::LogDirUnusable(_))),
         "try_init_json_with_file must fail with LogDirUnusable on invalid dir path: {result:?}"
     );
-    let _ = std::fs::remove_file(&path);
 }

@@ -1018,10 +1018,42 @@ worker thread.
 has** — `crates/kasirmu-logging/src/lib.rs:307-343` vs `:260` ✔ (3C-09) · **PAID** (`084f5002f`). `ensure_log_dir_writable(log_dir)?` wired into `try_init_json_with_file`, failing fast on unusable directory paths with `LogDirUnusable`. Verified in `lib_tests.rs`.
 
 **O-M60 · kasirmu-logging — retention runs once at init against hourly rotation** —
-`crates/kasirmu-logging/src/lib.rs:262`, `:280-282`, `:317`, `:339-341` ✔ (3C-10). Hourly
-rotation is 24 files/day with no count or size cap, and cleanup is a detached thread spawned once
-— a process up for weeks never prunes. Deletion failures are discarded at `:207` ◦. *Fix:*
-periodic timer or a rotation policy with a max-file limit; log the `remove_file` error.
+`crates/kasirmu-logging/src/retention.rs` ✔ **PAID 2026-10-22** (3C-10). Hourly rotation is 24
+files/day with no count or size cap, so a process up for weeks never pruned anything, and every
+`remove_file` error was discarded with `let _ =`.
+
+**Retention is now continuous, and driven by two independent triggers.** `RetainerWriter` sits in
+the writer chain between the non-blocking worker and the rolling appender, checks a deadline on
+every write and flush (one relaxed atomic load on the common path), and sweeps only when it is due.
+Log lines alone are not enough — an idle till writes nothing for hours — so `spawn_heartbeat` pushes
+a sentinel byte through the same channel every 30 minutes; `RetainerWriter` swallows it, so the
+appender never sees it. Both the sweep and the directory walk therefore happen on the appender's
+worker thread, which is the only thread that already owns the file.
+
+**Two defects the first draft had, both caught by tests rather than by reading.**
+`const HEARTBEAT: &[u8] = b"\\x00"` is FOUR ASCII bytes (backslash, x, 0, 0), not a NUL — Rust
+byte strings do not process that escape — so the heartbeat would have been appended to the log file
+as text, and the whole trigger was silently broken. `the_heartbeat_sentinel_is_exactly_one_nul_byte`
+and `a_heartbeat_write_reaches_the_inner_writer_zero_times` now pin the one-byte form and the
+swallow. The second was a plain-arithmetic `Duration + interval` in `rearm`, which panics on
+overflow; it is `checked_add` with the overflow treated as always-due, and pinned by
+`an_absurd_interval_does_not_panic_and_disables_the_periodic_sweep`.
+
+**Deletion failures are reported, not discarded.** `SweepReport { removed, failed }` carries each
+path and reason, and `report_sweep_failures` prints them to stderr rather than `tracing::warn!`
+because a sweep can run before the subscriber exists.
+
+**`retention_days = 0` still means OFF, not "delete everything".** Both Tauri shells pass 0 today, so
+re-reading it as "delete all" would wipe an install's entire log history on the next upgrade exactly
+when that history is worth having. `Retainer::new` returns `None` for 0 and installs neither the
+writer nor the thread; `retention_days_zero_disables_retention_entirely` pins it.
+
+**A test-infrastructure fix this entry needed.** All 24 new tests and 13 pre-existing ones failed on
+this machine at `create_dir_all` with `os error 5`, because every fixture built its directory from
+`std::env::temp_dir()`, which resolves to `C:\WINDOWS\TEMP` here (machine-level TEMP). Both
+`retention_tests.rs` and the pre-existing `lib_tests.rs` now use `kasirmu_test_support::ScratchDir`
+under the gitignored `target/`, guarded so it cleans up. The 13 `lib_tests.rs` failures were
+pre-existing, not this change. `cargo test -p kasirmu-logging --lib` = **60 passed, 0 failed**.
 
 **O-M61 · kasirmu-notification — unbounded `tokio::spawn` per event, and `RateLimited` is never
 matched** — `crates/kasirmu-notification/src/handlers.rs:98-125`, `:179-212`, `:249-275`;
