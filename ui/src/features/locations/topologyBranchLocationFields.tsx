@@ -81,6 +81,14 @@ export function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspecto
         profileRef.current = updated;
         setProfile(updated);
         if (queuedRef.current) continue;
+        // CLEAR BOTH. `draftRef` is mirrored during render, so `setDraft(null)` alone
+        // leaves the ref holding the values just saved — and `onChange` is the only
+        // thing that rebuilds the draft, so the next blur re-entered this loop with
+        // that stale snapshot and re-sent the whole payload (a duplicate mutation).
+        // `queuedRef` is reset for the same reason: a blur that landed just after the
+        // last `queuedRef` read would otherwise leave the flag true into the next call.
+        draftRef.current = null;
+        queuedRef.current = false;
         setDraft(null);
         break;
       }
