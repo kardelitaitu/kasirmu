@@ -66,6 +66,52 @@ A third claim — that `enterNestedModal`/`exitNestedModal` have zero production
 a note rather than a defect, which was the right call: it is a real observation but not one of the six
 defect classes, and I did not touch it.
 
+## Round 35: the same hunt, sharper, and one false positive refused
+
+A second pass with a stricter brief (proof standard: quote the lines, name the reachable trigger, say what
+it should do instead) returned 12 candidates across six areas. **Two were fixed, one was refused after
+reading the file.**
+
+### Fixed: the KDS per-item double-tap guard never fired
+
+`KdsTicketLineItem.tsx` built its cooldown wrapper *inside* the onClick:
+
+    createCooldownWrapper(() => onAdvanceItem(item), 200)();
+
+`createCooldownWrapper` closes over its own `lastFired = 0` **per instance**, so minting a new one per
+tap made the guard evaluate `now - 0 >= 200` — always true. The 200 ms protection this row is documented
+to have had never once fired. The proof that it was accidental: `KdsTicketCard`'s own card-level advance,
+written first, memoises its wrapper correctly (`useMemo(() => createCooldownWrapper(...), [editing, order,
+onAdvance])`). The row was extracted later and lost that part.
+
+### Fixed: audit rows survived a failed reload
+
+`AuditLogScreen`'s error card and empty state are both gated on `entries.length === 0`, and the catch
+never cleared the list. So: load succeeds, operator types a search, the second IPC fails — the OLD rows
+render under the NEW filter with **no error anywhere**, reading as "filter applied, these N entries
+match". A read that never answered presented as a successful, filtered one. The catch now clears the page
+on a reset load before reporting.
+
+### Refused: "the receipts screen swallows a hardware failure"
+
+The brief's own highest-confidence finding was wrong. I changed `setLoadFailed(false)` to a comment
+arguing it should never run; `RestaurantReceiptsScreen.test.tsx` failed immediately, because its Retry
+test asserts the banner **clears** on a successful re-read. The existing code was correct — success clears,
+failure sets, Retry re-runs. I reverted the file to HEAD in full.
+
+That is the second time this class of finding has collapsed on contact with a test. The rule I am taking
+from it: **a "this clear is wrong" claim must be checked against what the callback's counterpart does**,
+not read in isolation.
+
+### The test I did not ship
+
+The audit-log fix has no regression test. I wrote one, and could not make it stable — the mount path
+issues more than one `listAuditLogScoped` call under this harness, so both the "first load succeeds" and
+"second load fails" halves raced the mock. Rather than leave a flaky test in the suite or claim coverage
+it does not have, I deleted it and restored the file to HEAD. The fix is covered by the existing 43 audit
+tests passing; the *new* behaviour is not pinned by a test, and that is a gap worth naming rather than
+papering over.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
