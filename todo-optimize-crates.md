@@ -14,19 +14,27 @@ open work in every downstream reading this journal supplies.**
 
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
-| High | 26 | 24 | **2** |
+| **High** | 26 | **26** | **0** |
 | Medium | 66 | 34 | **32** |
 | Low | 23 | 5 | **18** |
 | Test (O-T) | 16 | 4 | **12** |
-| **Total** | **131** | **67** | **64** |
+| **Total** | **131** | **69** | **62** |
 
-**Updated 2026-10-21 (end of day).** Recounted by script after thirteen entries closed today.
-**Only TWO Highs remain open: O-H12 and O-H17.**
+**THE HIGH TIER IS EMPTY as of 2026-10-21.** All 26 High findings are closed: 21 fixed, 3 verified
+already paid by other lanes, 2 moot because their target files were deleted.
 
-- **O-H12** is the unbounded `GET /api/v1/products` (`pg/products.rs:312`), re-anchored today after
-  the `pg/` split and confirmed still live; it is the payload half of what O-H14 used to describe.
-- **O-H17** is the mobile checkout verifying RSA under the global DB mutex
-  (`apps/mobile-tauri/src/commands/pos.rs:993-1006`) — untouched this session.
+The last two closed this way:
+
+- **O-H12** — keyset product paging with an always-present `has_more`/`next_after`, and the
+  correlated stock subquery replaced by `LEFT JOIN LATERAL` (§11AN).
+- **O-H17** — the checkout no longer holds the process-wide DB mutex across the RSA verify; the
+  lock is released after the LOAD and the two pure-CPU checks run outside it (§11AQ). A cache was
+  attempted first, failed on an untestable revocation hazard, and was rejected and reverted
+  (§11AO/§11AP).
+
+**The remaining work is Medium-and-below.** The largest coherent block is the `platform/sync`
+Medium cluster (O-M34 to O-M39), which is the same round-trip shape O-H10 and O-H20 already have a
+proven template for.
 
 The earlier form of this table split "closed by a heading" from "marked PAID in-entry" and read 97
 open. That split was misleading: the two conventions are equivalent evidence, and separating them
