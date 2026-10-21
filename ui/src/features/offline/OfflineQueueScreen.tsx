@@ -276,14 +276,17 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
       pollGenRef.current += 1; // invalidate any in-flight poll
       if (timer) clearTimeout(timer);
     };
-    // sessionToken is read in this poll body (:178, :179, :180, :188, :203 — re-measured
-    // 2026-10-19; the note cited ":170, :171 and :179", and :170/:171 are component state, not
-    // reads). With [] this polled on a fixed 10s cadence
-    // with the mount-time token forever: after a cashier hot-swap (FastPINOverlay, and
-    // swapSessionToken destroys the old token at WorkspaceContext.tsx:273) every request failed
-    // with a dead session, pollFailuresRef reached 3, and the screen showed a permanent
-    // "stale queue" notice over a queue that was fine. Re-running is safe by construction --
-    // the cleanup bumps the generation and clears the timer, which is what :250/:261 guard on.
+    // sessionToken is read in THIS poll body by the two `pendingOfflineCountScoped` /
+    // `getOfflineQueueStatusSummaryScoped` calls inside its `Promise.all`.
+    // ⚠️ This note used to copy the LOAD effect's list of five reads verbatim, which was
+    // never true here — that parenthetical belongs to the other effect, and pasting it made
+    // a correct claim about the wrong body. Anchored by the two call names now.
+    // With [] this polled on a fixed 10s cadence with the mount-time token forever: after a
+    // cashier hot-swap (`FastPINOverlay`, and `swapSessionToken` destroys the old token via
+    // `destroySession`) every request failed with a dead session, pollFailuresRef reached 3,
+    // and the screen showed a permanent "stale queue" notice over a queue that was fine.
+    // Re-running is safe by construction — the cleanup bumps the generation and clears the
+    // timer, which is what the two `gen !== pollGenRef.current` guards check.
   }, [sessionToken]);
 
   // ── Sync all ──────────────────────────────────────────────────
@@ -579,24 +582,13 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
               </Localized>
             </div>
           )}
-          {/* P7-3: Pull-to-refresh indicator */}
-          {pullState !== 'idle' && (
-            <div
-              className="offline-queue-pull-indicator"
-              style={{
-                transform: `translateY(${pullDistance}px)`,
-                opacity: Math.min(1, pullDistance / 60),
-              }}
-            >
-              {pullState === 'pulling' && (
-                <span>{requiredLocalized(l10n, 'offline-queue-pull-to-refresh')}</span>
-              )}
-              {pullState === 'ready' && (
-                <span>{requiredLocalized(l10n, 'offline-queue-release-to-refresh')}</span>
-              )}
-              {pullState === 'loading' && <span className="offline-queue-refresh-spinner" />}
-            </div>
-          )}
+          {/* ⚠️ NO SECOND PULL-TO-REFRESH INDICATOR HERE (removed 2026-10-19).
+              This block was a verbatim copy of the one rendered above, OUTSIDE the
+              `phase === 'loading'` ternary — so whenever the table was shown, both
+              mounted and the operator saw the indicator TWICE at the same translateY,
+              which reads as a doubled/darkened bar mid-pull. The one above is the
+              single source: it is outside the ternary, so it covers the loading
+              skeleton, the empty state and this table alike. */}
           <table className="offline-queue-table" aria-label={requiredLocalized(l10n, 'offline-queue-table-aria')}>
             <thead>
               <tr>

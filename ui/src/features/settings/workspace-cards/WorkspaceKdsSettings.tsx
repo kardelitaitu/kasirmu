@@ -157,7 +157,7 @@ export function WorkspaceKdsSettings({
     // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
     // the `dirty` memo (its `useMemo` deps), and the touchedRef guard in the .then() is already
     // built for re-entry. Anchored by the memo's own identifier rather than a line number: the
-    // ":67" this note used to carry is a comment inside the loadFailed block.
+    // number this note used to carry is now a comment inside the loadFailed block.
     // The suppression that used to sit here is GONE (2026-10-12) because it was
     // stale: it was written for the old deps array, and once that array listed
     // sessionToken and reloadNonce the rule had nothing left to report. A disable

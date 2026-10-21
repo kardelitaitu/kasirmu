@@ -24,6 +24,13 @@
 // un-quoted. See `barePrefixed()` for the discriminator and its measured false-positive rate.
 // The two passes are kept separate because they answer different questions — backticked is
 // unambiguous, bare is shape-inferred — and a bug in one should not silence the other.
+//
+// ⚠️ WRITING ABOUT A LINE NUMBER (added 2026-10-19, after this defect was introduced by three
+// separate "fix" commits in one session): a colon-number ANYWHERE in a comment is a live
+// citation to this guard, including one describing the past. "The note said :1474" is read as a
+// claim about line 1474 right now — so the historical note becomes the next stale citation, and
+// fails the moment the cited line moves. Write **line 1474** instead. This file's own count
+// went UP twice for that reason before it started going down.
 
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';

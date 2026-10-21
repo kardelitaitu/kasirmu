@@ -111,7 +111,8 @@
   /* --color-success and --color-success-dim are the same hex in every theme
      (#6FE884 dark / #2E9E3E light) — 1.00:1, the badge read as an empty pill.
      --color-success-fg is the foreground tokens.css declares as the matched pair
-     of a success fill (TableManagementScreen.css:229 uses it the same way; the
+     of a success fill (the `.tables-table--available` rule in TableManagementScreen.css
+     uses it the same way; the
      sibling --free badge above already paints its own fg-on-fill token). */
   color: var(--color-success-fg);
 }

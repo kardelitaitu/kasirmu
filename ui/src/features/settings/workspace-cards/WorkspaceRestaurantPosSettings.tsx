@@ -63,7 +63,7 @@ export function WorkspaceRestaurantPosSettings({
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
   // The session the originals above were seeded for; replaces originalsLoaded as the fetch guard
   // so a store switch re-seeds. originalsLoaded stays for the `dirty` memo (its `useMemo`
-  // deps). Anchored by the memo's identifier: the ":52" this note carried is a comment
+  // deps). Anchored by the memo's identifier: the number this note carried is now a comment
   // inside the loadFailed block.
   const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
 
