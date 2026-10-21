@@ -41,4 +41,21 @@ describe('nested modal stacking', () => {
   it('gives the e-Faktur stamp overlay the nested layer, not the shared one', () => {
     expect(HISTORY_CSS).toMatch(/\.sales-history-overlay:has\(\.sales-history-stamp-modal\)\s*\{[^}]*z-index:\s*var\(--z-modal-nested\)/);
   });
+
+  it('gives the payment customer-search overlay a layer above the payment overlay', () => {
+    // .payment-overlay is `calc(var(--z-modal) + 10)` = 410; the search dialog is
+    // mounted inside it, so the plain --z-modal (400) put the child UNDER the
+    // parent. Anything at or below 410 fails this.
+    const payCss = readFileSync(
+      resolve(__dirname, '../features/sales/PaymentModal.css'),
+      'utf-8',
+    );
+    const body = payCss.match(
+      /\.payment-customer-search-overlay\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(body, 'the customer-search overlay rule must exist').toBeTruthy();
+    expect(body!).toMatch(/z-index:\s*var\(--z-modal-nested\)/);
+    // And the nested token must actually clear the parent's calc layer.
+    expect(tokenValue('z-modal-nested')).toBeGreaterThan(tokenValue('z-modal') + 10);
+  });
 });

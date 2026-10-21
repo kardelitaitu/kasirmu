@@ -1411,7 +1411,14 @@ input.payment-other-input:focus-visible {
 .payment-customer-search-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  /* Above the payment overlay it is opened FROM, below toasts.
+     `.payment-overlay` sits at `calc(var(--z-modal) + 10)` (410) because it has to
+     clear the app chrome, and this dialog is mounted INSIDE that overlay. At the
+     plain `--z-modal` (400) the child painted UNDER its own parent — the customer
+     search opened, focus moved into it (useFocusTrap(customerSearchPanelRef,
+     showCustomerSearch)), and the operator saw the payment panel still on top
+     with the search unreachable. Same class as RestaurantCartSheet.css:31-48. */
+  z-index: var(--z-modal-nested);
   display: flex;
   align-items: center;
   justify-content: center;
