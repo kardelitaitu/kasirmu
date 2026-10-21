@@ -3158,3 +3158,58 @@ trap. The `pub` comparator now carries that story in its doc so the next lane do
 `cargo test -p kasirmu-core --lib` = **3654 passed, 0 failed** (required because `offline.rs` is
 workspace-wide). The never-under test covers empty, small, quotes, backslashes, control characters,
 a long action, a long `last_error` and UTF-8.
+
+## §11AU — O-M45 resolved: the test that named the property passed under the bug (2026-10-22)
+
+One Medium finding closed (`kasirmu-payment`), and the useful part is that **the defect was caught in
+review, not by the suite** — including a test the lane wrote specifically to pin it.
+
+**The fix.** `ResilientProcessor` now uses full-jitter backoff and clamps its retry budget twice:
+`MAX_RETRIES = 8` at `ResilientProcessorConfig::new` and again in `retry_budget()`, which the loop
+reads because `max_retries` is a public field a struct literal can set past any constructor. The
+jitter source is injectable (`with_jitter`), so the tests assert exact sleeps under `start_paused`
+rather than tolerating a range.
+
+**The bug I found in the first draft.** The draft capped the *window* before drawing:
+
+```rust
+let window = initial.saturating_mul(1 << n).min(max_backoff_ms);
+(self.jitter)(window).min(window)
+```
+
+Once `initial * 2^n` passes the ceiling, every later attempt is handed the same bound. At
+`initial = 100, max = 300`, attempts 3 and 4 both see 300 — `min(400, 300)` and `min(800, 300)` are
+indistinguishable — so the exponential was **dead past the first cap**. That is not exponential
+backoff with jitter; it is a fixed-width window with jitter. The fix hands the source the uncapped
+exponential and clamps the result:
+
+```rust
+let exponential = initial.saturating_mul(1u64 << (attempt - 1).min(63));
+(self.jitter)(exponential).min(self.config.max_backoff_ms)
+```
+
+**Why the lane's test could not see it.** It asserted `bounds == vec![100, 200, 300]` and called that
+"the window must double per attempt and stop at `max_backoff_ms`". 300 is exactly what **both**
+theories predict at attempt 3, so the assertion passed under the broken and the correct code alike.
+The replacement hands the source `|b| b` so the bounds vector exposes which side the cap is on:
+correct reads `[100, 200, 400]`, the broken draft reads `[100, 200, 300]`. It was proven to fail on
+the re-injected bug before being kept, and the ceiling test fails on it too (150 ms vs 240 ms).
+
+| | bounds the source saw | sleeps |
+|---|---|---|
+| broken (cap the window) | `[100, 200, 300]` | `[100, 200, 300]` |
+| fixed (cap the result) | `[100, 200, 400]` | `[100, 200, 300]` |
+
+**The general lesson, which this journal has now recorded three times in different words:** a test
+that *names* a property is not a test that *pins* it, and a vector where both hypotheses agree
+distinguishes nothing. §11AT was the same failure in the other direction — a bound everyone believed
+until a never-under test disagreed.
+
+**The shift and the multiply are two traps, not one.** `:1172` says "roughly attempt 58, not 64",
+true of `initial * 2^n` (100 * 2^57 fits `u64`; 100 * 2^58 does not). But `1u64 << 64` traps on its
+own at attempt 65 regardless of the multiply. Both sites are saturating and `.min(63)`-guarded, so
+the panic is unreachable twice over.
+
+**Verification:** `cargo test -p kasirmu-payment --lib` = **194 passed, 0 failed** (6 new, 0 existing
+assertions changed — no pre-existing test asserted a sleep duration); `cargo check -p kasirmu-payment`
+exit 0; `rustfmt --edition 2024 --check` clean.
