@@ -59,10 +59,11 @@ describe('useAutoQr — reissue re-entry', () => {
   // (:341). React does not re-render between two clicks inside one await, so a DOM
   // `disabled` could not have saved it regardless.
   //
-  // THE UNVERIFIED CLAIM THIS PINS: RetailPosScreen.tsx:1436 (re-measured 2026-10-19;
-  // the note said :1425) justifies its own hold re-entry guard by writing 'The same
-  // guard shape `usePosHeldCarts` and `useAutoQr` already use.' Measured, useAutoQr
-  // does not — its only ref is `autoIssueSeq` (:104), a counter, not a guard. A reader
+  // THE UNVERIFIED CLAIM THIS PINS: the `handleHold` re-entry guard comment in
+  // RetailPosScreen.tsx — anchored by that function name, because every number this note
+  // has carried (`:1425`, then `:1436`) has since moved — justifies itself by writing
+  // 'The same guard shape `usePosHeldCarts` and `useAutoQr` already use.' Measured,
+  // useAutoQr does not — its only ref is `autoIssueSeq`, a counter, not a guard. A reader
   // auditing that block is told the class is already handled where it is not.
   it('mints one charge when two reissues land in one round-trip', async () => {
     const p = params();

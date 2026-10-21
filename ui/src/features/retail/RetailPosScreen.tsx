@@ -200,7 +200,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       });
     // sessionToken is read at :184. Without it, a cart mutation after a cashier hot-swap re-ran
     // this effect against the destroyed token, hit the catch above, and left trackSerialMap
-    // undefined for those SKUs -- which per the comment at :196 keeps the serial-capture UI
+    // undefined for those SKUs -- which per the comment just above keeps the serial-capture UI
     // hidden. Serial-tracked products would silently stop capturing serial numbers mid-shift,
     // and the effect would not retry until another explicit cart mutation.
   }, [lines, trackSerialMap, sessionToken]);
@@ -378,7 +378,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // The one ceiling for this picker, shared by the display and the commit.
   //
   // WHY IT IS A BUSINESS BOUND AND NOT A SCHEMA ONE: the DB CHECK on cart/sale
-  // line quantity is `qty > 0` (20260813_init.sql:208) with no upper limit, so
+  // line quantity is `qty > 0` (the `sale_lines` CHECK constraint in 20260813_init.sql)
+  // with no upper limit, so
   // nothing downstream would have caught an absurd value. The only other gate,
   // the stock check in `handleConfirmQty`, is skipped entirely for a product
   // whose `stock_qty` is null — every service item and anything inventory does
@@ -420,7 +421,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // 999999 committed exactly 999999 units.
     //
     // The ceiling is a BUSINESS bound, not a schema one: the DB CHECK is
-    // `qty > 0` (20260813_init.sql:208) with no upper limit, so nothing
+    // `qty > 0` (the `sale_lines` CHECK constraint in 20260813_init.sql) with no upper
+  // limit, so nothing
     // downstream would have caught it. A till quantity has no legitimate reading
     // at 10,000 units — an operator who fat-fingers a 9 into a box meaning 1
     // cannot tell 9 from 999999 on a touch screen, and the modal's own total

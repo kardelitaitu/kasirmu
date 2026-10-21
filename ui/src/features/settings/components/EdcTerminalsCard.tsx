@@ -64,7 +64,7 @@ export function EdcTerminalsCard({
     try {
       const list = await listEdcTerminalsScoped(sessionToken);
       // Defend the state at the boundary: the render path reads
-      // `terminals.length` and `terminals.map` unguarded (:248-:258), so a
+      // `terminals.length` and `terminals.map` unguarded in the render below, so a
       // backend that answers with a null/undefined body — or a caller whose
       // session predates the field — would crash the whole screen on
       // "Cannot read properties of undefined". Normalising once here keeps that
@@ -148,8 +148,8 @@ export function EdcTerminalsCard({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // RE-ENTRY GUARD. The Save button is disabled while submitting (:536), but this
-    // handler is also the form's `onSubmit` (:397) — pressing Enter in the Terminal Name
+    // RE-ENTRY GUARD. The Save button is `disabled={submitting}`, but this
+    // handler is also the form's `onSubmit` — pressing Enter in the Terminal Name
     // field submits it directly and never consults the button. Without this, two submits
     // ran `createEdcTerminalScoped` twice and configured TWO terminals for one register.
     // Same shape as the table screens' Save and Reserve forms (rounds 60-61).

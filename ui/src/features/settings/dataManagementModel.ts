@@ -3,15 +3,21 @@
  * DataType union, the DATA_TYPES checklist table, and the three wizard states
  * with their initial values.
  *
- * Moved verbatim out of DataManagementScreen.tsx by DataManagement lane slice 1
- * (types were :37-43, the table :62-69, the state interfaces :71-98, the initial
- * values :100-123). Nothing here renders, imports React, calls the api layer or
- * reads a Fluent bundle, so the screen's data rules can be tested without
+ * Moved verbatim out of `features/settings/DataManagementScreen.tsx` by DataManagement
+ * lane slice 1: the DataType union, the DATA_TYPES table, the three wizard-state
+ * interfaces and their initial values. Nothing here renders, imports React, calls the api
+ * layer or reads a Fluent bundle, so the screen's data rules can be tested without
  * mounting it — the shape of kds/kdsSettingsModel.ts.
  *
- * The icon helpers did NOT come along: eyeIcon/eyeOffIcon (:47-60) and
- * ICON_PROPS/tabIcon/folderIcon/checkIcon (:127-146) return JSX, and JSX cannot
- * live in a .ts file. They need a .tsx sibling, which is outside this slice.
+ * The icon helpers did NOT come along: `eyeIcon`/`eyeOffIcon` and
+ * `ICON_PROPS`/`tabIcon`/`folderIcon`/`checkIcon` return JSX, and JSX cannot live in a
+ * .ts file. They need a .tsx sibling, which is outside this slice.
+ *
+ * ⚠️ This paragraph listed six line RANGES for what moved. Every one of them is now past
+ * EOF — the source file was reduced to a 38-line composition shell and its body lives in
+ * the differently-pathed `features/settings/DataManagementScreen.tsx` — so the ranges
+ * pointed at nothing at all while reading as precise. Names survive a move; numbers into a
+ * file that can be re-sliced do not.
  *
  * SUPERSEDED paragraph, kept honest: when this table moved (slice 1) it held 12
  * English literals rendered raw by the screen, and measurement said the parity gate
