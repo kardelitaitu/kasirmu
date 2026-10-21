@@ -389,7 +389,14 @@ export function RestaurantPaymentsScreen({
       try {
         const [primary, edcList] = await Promise.all([
           getPrimaryLocationScoped(sessionToken),
-          listEdcTerminalsScoped(sessionToken).catch(() => [] as EdcTerminalDto[]),
+          // Same doctrine as the gateway reads below (:496-503): a swallowed EDC
+          // read left the card showing an empty terminal list with no banner, a
+          // green "All changes saved" header and an ENABLED Save — so saving
+          // wrote a default/no EDC binding over the real one. Flag it instead.
+          listEdcTerminalsScoped(sessionToken).catch(() => {
+            setLoadFailed(true);
+            return [] as EdcTerminalDto[];
+          }),
         ]);
 
         if (cancelled) return;

@@ -476,6 +476,25 @@ describe('RestaurantPaymentsScreen — EDC terminal', () => {
     expect(within(select).getByText(/Counter Lane 1/)).toBeInTheDocument();
   });
 
+  // The EDC list read used to be swallowed to [] with no flag — the identical
+  // mistake the gateway reads below it already avoid. A rejected
+  // list_edc_terminals_scoped then rendered an empty terminal list, a green
+  // "All changes saved" and an ENABLED Save, so saving wrote a blank/default
+  // EDC binding over the real one.
+  it('flags a failed EDC terminal read instead of showing an empty terminal list', async () => {
+    mocks.listEdc.mockRejectedValue(new Error('Server offline'));
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+    // The screen must not claim everything is saved over a read that failed.
+    expect(screen.queryByText('All changes saved')).not.toBeInTheDocument();
+    // And Save must be refused, not offered over default values.
+    expect(screen.getByTestId('restaurant-payments-save-btn')).toBeDisabled();
+  });
+
   it('shows Test Connection only after a default EDC is chosen and runs a status query', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
