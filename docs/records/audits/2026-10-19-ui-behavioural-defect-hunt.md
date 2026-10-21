@@ -715,6 +715,46 @@ dependency can change mid-flight, and none of these has one.
 Both axes are empty. Two focused subagents are running on listener/effect leaks and focus-trap boundaries,
 which are the remaining shapes I have not measured.
 
+## Round 54: one real a11y defect, and one refuted subagent claim
+
+**The defect — one Escape dismissed every nested overlay.** `SalesHistoryScreen` mounts three
+focus-trapped overlays, and the e-Faktur stamp dialog is opened from a button INSIDE the sale-detail
+dialog. Both traps are therefore active at once, and `useFocusTrap` attaches one document keydown
+listener per active trap with no check that the event concerns its own panel. One Escape ran every
+active `onEscape`. Measured with a probe before touching any code:
+
+```
+BEFORE dialogs= 2        AFTER dialogs= 0
+stamp gone= true         detail open= false
+```
+
+The cashier pressed Escape once and lost the detail view behind the stamp dialog as well. The existing
+suite already had a test for the stamp overlay and it PASSED throughout — it asserts the stamp dialog
+closes and the screen survives, which the double-dismiss also satisfies. A passing test for the wrong
+half of the behaviour is how this survived.
+
+Fix: the Escape branch now ignores the key unless the focused element is inside this panel. After:
+`AFTER dialogs= 1, stamp gone= true, detail open= true`. Kill test verified by reverting.
+
+**The refuted claim.** The focus/keyboard subagent reported that `LocationPicker`'s Enter handler
+commits the wrong row because `isSearchFocused` guards Space (:247) but not Enter, and typing resets
+`activeIndex` to 0 (:393). Every static claim in that report was true — I read all of them — but the
+conclusion was not. I wrote the test it implied and it PASSED, then probed the two specific scenarios
+it described:
+
+| scenario | actual |
+|---|---|
+| type "Shelf 7" → Enter | commits `loc-7` — the single filtered row is at index 0, so index 0 is correct |
+| type "Shelf 7" → Tab to the option → Enter | focus lands on Shelf 7, commits `loc-7` |
+| ↓↓ → Enter with no query | commits the row at the highlighted index, correctly |
+
+The reasoning error is worth naming: `activeIndex` being *stale at 0* is only a defect if 0 is the wrong
+row, and after filtering it is exactly the right one. The claim generalised from "the index does not
+track the selection" to "the wrong row is committed" without exercising a case where those differ.
+
+I kept the passing test — it is a genuine regression guard for the Enter path, which had no coverage —
+and recorded it as a test, not a fix.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
