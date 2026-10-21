@@ -474,8 +474,9 @@ export function RestaurantPaymentsScreen({
           //
           // F4: these two used to `.catch(() => null)` INDEPENDENTLY, which swallowed a
           // failed read. Combined with the `if (midtransGw)` / `if (stripeGw)` guards
-          // and the baseline seeded at `:409` on the success path (or `:545` in the
-          // load effect's `finally`) before this point, a failure left the
+          // and the baseline seeded on the success path (the `originalsRef.current.drafts =`
+          // assignment) or in the load effect's `finally` (the `draftsRef.current.map` one),
+          // both before this point, a failure left the
           // screen looking CLEAN while showing empty fields — so saving wrote the
           // blanks over the stored credentials. The flag is what makes that visible.
           try {
@@ -526,12 +527,16 @@ export function RestaurantPaymentsScreen({
       } finally {
         // F40: the baseline MUST be seeded before `loading` clears.
         //
-        // `originalsRef` starts as `{ drafts: [] }` (:320) and was only filled
-        // inside the `if (targetLocationId)` gate (`:391`, re-measured 2026-10-19; it
-        // read `if (primary)` when this note was written) — actually at `:409`. When no
-        // location resolves, or the rail read at `:393` throws — the screen still RENDERS
-        // rails, because `drafts` comes from the useState initializer (:251), but the
-        // baseline stays empty. The `dirty` memo then returns false at `:560` on
+        // `originalsRef` starts as `{ drafts: [] }` and is filled only inside the
+        // `if (targetLocationId)` gate (it read `if (primary)` when this note was
+        // written), by the `originalsRef.current.drafts = fullDrafts.map(…)` assignment.
+        // When no location resolves, or the `getLocalPaymentMethodsScoped` read throws,
+        // the screen still RENDERS rails, because `drafts` comes from the `useState`
+        // initializer, but the baseline stays empty. The `dirty` memo then returns false on
+        // ⚠️ Anchored by identifier rather than by line: these figures were carried in
+        // several places at once (the seeding one three times), so a shift at that line
+        // needed three simultaneous edits — and a half-fix is exactly what this file had
+        // already recorded once.
         // `length === 0` FOR EVER, so Save is permanently disabled and an
         // operator's rail toggle cannot be persisted at all. That is the state the
         // tablet is in, with an empty `local_payment_methods` table.

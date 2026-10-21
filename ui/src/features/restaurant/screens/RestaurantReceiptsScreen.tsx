@@ -872,11 +872,17 @@ export default function RestaurantReceiptsScreen({
       // ── This sample prices EXCLUSIVE tax; the preview above prices INCLUSIVE ──
       //
       // Deliberately, and not drift. The mode is a configured property of the tax-rate
-      // row, not a global setting: `crates/kasirmu-core/src/db/sales_tests.rs:1161`
-      // seeds an EXCLUSIVE rate (tax = subtotal * rate/100, added on top) and `:1284`
-      // seeds an INCLUSIVE one (total unchanged, tax extracted for reporting), and
-      // `completedSale.ts:154-161` reads all three figures back from the database
-      // without deriving them. So these two samples demonstrate the two modes a store
+      // row, not a global setting. In `crates/kasirmu-core/src/db/sales_tests.rs`,
+      // `compute_cart_tax_reports_has_exclusive` seeds an EXCLUSIVE rate
+      // (`seed_tax_rate(&conn, "VAT 10%", 1000, true, false)`: tax = subtotal * rate/100,
+      // added on top) and `compute_tax_inclusive_does_not_inflate_sale_total` seeds an
+      // INCLUSIVE one (`"GST 10%", 1000, true, true`: total unchanged, tax extracted for
+      // reporting). In `completedSale.ts` the `subtotal` / `tax` / `total` fields of the
+      // returned object are read back from the database without deriving them. So these two
+      // samples demonstrate the two modes a store
+      // ⚠️ Anchored by test-function and expression, not by line: two of the three numbers
+      // cited here pointed at unrelated Rust statements, and a line in a 5,500-line test
+      // file is the least stable anchor available.
       // can be configured for. The preview's convention lives in `receiptLogic.ts` as
       // `line total * 100/(100 + rate)`.
       //

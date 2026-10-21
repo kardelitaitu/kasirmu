@@ -219,8 +219,8 @@ export default function RestaurantMenu({
   // read was attempted" — until it is true, `unavailable` is untrusted
   // (it is only the empty seed) and pushing it would overwrite the real
   // 86'd list with `[]`. It is flipped in the `.then` of ANY successful
-  // `getSettingScoped` — both the initial fetch (:306) AND the visibility
-  // re-poll (:343, :352). The re-poll matters: while only the initial fetch
+  // `getSettingScoped` — both the initial fetch AND the visibility re-poll
+  // (`refetchUnavailable`). The re-poll matters: while only the initial fetch
   // could flip it, a first read that failed shut the gate for the life of the
   // mount, so the recovery path could load the server list into the UI while
   // every subsequent edit stayed local. Every other path (no token, no API,
@@ -353,14 +353,14 @@ export default function RestaurantMenu({
           return;
         }
         // OPEN THE GATE ON THE RECOVERY PATH TOO. This is the fix for the defect this
-        // comment replaces: the gate was set ONLY by the initial fetch (:306), so a
-        // first read that failed shut it permanently. The re-poll would then load the
-        // authoritative list into the UI (:343-353) while the gate at :316 stayed
-        // shut, leaving the terminal able to DISPLAY the 86 list and unable to persist
+        // comment replaces: the gate was set ONLY by the initial fetch, so a first read
+        // that failed shut it permanently. The re-poll (`refetchUnavailable`) would then
+        // load the authoritative list into the UI while the gate the initial fetch sets
+        // stayed shut, leaving the terminal able to DISPLAY the 86 list and unable to persist
         // any edit to it — the F5 cross-terminal feature silently dead after one
         // transient failure, which is precisely the failure this effect exists to
         // recover from. Reaching here means a read SUCCEEDED, so the empty-seed-clobbers-
-        // the-server hazard the gate guards against (see :294-298) cannot occur.
+        // the-server hazard the gate guards against (see the empty-seed note above) cannot occur.
         unavailableLoadedRef.current = true;
         try {
           const arr = JSON.parse(raw);
