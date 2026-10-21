@@ -461,12 +461,16 @@ limit/offset (or keyset on `created_at`) with a default page.
 `apps/desktop-tauri/src/commands/kds.rs:112-130` ✔. Fixed: indexed existing active tickets in `refresh_kds_queue_cache` to reuse cached line items and station routing for all unchanged orders, and passed `dirty_order_id` so that only the modified ticket is re-queried during item bumps. Reduced bridge round trips during order transitions and line bumps from $O(\text{active tickets})$ to $O(1)$. Verified with `kds_lan_live` test suite in `kasirmu-app`.
 
 **O-H17 · mobile — every checkout loads the subscription and verifies RSA under the global DB
-mutex** — ⚠️ **ATTEMPTED AND REVERTED 2026-10-21. Still OPEN.** A caching module was written and
-then deleted, because its own test caught it letting a **Premium row through the**
-**`BOOTSTRAP_FREE` sentinel path** — the licence bypass guarded at
-`crates/kasirmu-core/src/subscription.rs:275-293`. Nothing was committed; `kasirmu-core` is back
-to 3650/3650 green. The RSA
-cost stands.
+mutex** — ⚠️ **A cache was REJECTED 2026-10-21; see §11AO and §11AP for the corrected reasoning.**
+**MY EARLIER "licence bypass" CALL WAS WRONG** and is retracted: the Premium-through-sentinel
+result came from a deliberate `#[cfg(debug_assertions)]` short-circuit at
+`crates/kasirmu-core/src/license_verification/crl.rs:185-188`, documented at `:178-184`, which
+accepts the sentinel for ANY payload in debug builds only. Release rejects a paid sentinel at the
+base64 decode (`InvalidSubscriptionSignature`, symbol 95 = the `_` of `BOOTSTRAP_FREE`). The
+invariant IS pinned — by `sentinel_does_not_carry_a_paid_tier`
+(`subscription_tests.rs:198-213`), whose release arm asserts the rejection and whose debug arm
+deliberately asserts the permissive legacy behaviour. Two protecting tests exist
+(`license_verification_tests.rs:75` and that one). **The RSA cost stands and is real.**
 `apps/mobile-tauri/src/commands/pos.rs:840-846` and
 `apps/mobile-tauri/src/commands/pos/checkout.rs:662-669` ◦ — **RE-ANCHORED 2026-10-21:** the cited
 `pos.rs:993-1006` no longer exists. The block now sits at TWO sites, both inside
@@ -2863,3 +2867,56 @@ writing a sentinel signature is not a trade — it is a regression that would sh
 performance label. The next attempt should start from the bypass-proof direction: first prove the
 sentinel branch is unreachable for non-free tiers, then build the cache around a property that is
 already pinned.
+
+---
+
+## §11AP — O-H17: the "licence bypass" was MY error, and the real cost is 197 us not 21 (2026-10-21)
+
+**Two corrections, one of them to my own conclusion from §11AO.**
+
+**1. There was no licence bypass, and I said there was.** In §11AO I recorded that the rejected
+cache had "let a Premium row through the `BOOTSTRAP_FREE` sentinel path". That is false, and the
+lane was right to push back. The permission came from a deliberate, documented
+`#[cfg(debug_assertions)]` short-circuit at
+`crates/kasirmu-core/src/license_verification/crl.rs:185-188`, explained at `:178-184`:
+
+    // This short-circuit is the DEBUG one... The profile that matters is release, and
+    // release no longer reaches this function carrying a sentinel... A sentinel-signed
+    // row claiming a paid tier therefore still falls through to the base64 decode below
+    // and is rejected as an invalid symbol 95 at offset 9 -- the '_' of BOOTSTRAP_FREE.
+
+So a debug test run accepts a sentinel-signed Premium row **by design**, and release rejects it at
+the base64 decode. The invariant is pinned after all — by `sentinel_does_not_carry_a_paid_tier`
+(`subscription_tests.rs:198-213`), whose RELEASE arm asserts the rejection and whose DEBUG arm
+deliberately asserts the permissive behaviour so a future change to it surfaces. A second test,
+`verify_bootstrap_free_bypasses_rsa_in_debug` (`license_verification_tests.rs:75`), pins the debug
+arm. My reading was wrong because `subscription.rs:281` names a test
+(`bootstrap_free_sentinel_never_verifies_a_paid_tier`) that **does not exist** — the real one is
+named differently and lives in a different file. A comment naming a test is not the test.
+
+**The lesson has two halves.** The lane shipped a test that failed; I read the failure as a
+production defect without checking whether the failure was a debug-profile artefact of a
+deliberately permissive function. A test failing is evidence about the TEST first, and about the
+code only after the profile and the call path are accounted for.
+
+**2. The cost is an order of magnitude larger than reported.** The lane declined the cache on the
+grounds that verification costs ~21 us and cannot block a lock. I measured it, and the figure is
+wrong by roughly 10x in release and 120x in debug:
+
+| build | verify_license_signature, per call (2000 iterations, key parse excluded via the `OnceLock` at `crl.rs:220-233`) |
+|---|---|
+| **debug** | **2,562.8 us** |
+| **release** | **197.1 us** |
+
+Both measured on this machine by a throwaway test calling `verify_license_signature` against a real
+2048-bit key, then deleted. The lane's 21 us may have been a correctly-cached key with optimised
+bigint arithmetic on different hardware, or a mis-measurement; either way it is not reproducible
+here, and the decision to reject the cache rested on it.
+
+**So the conclusion in §11AO ("the RSA cost stands") holds — but for a better reason than the one
+given.** A cache is still not the right fix (revocation that does not touch the row is the
+unsolved hazard). The right fix is the one the lane itself proposed and correctly declined to make
+unilaterally: **the verification takes no lock and touches no database, so it does not need to run
+inside the guard.** Loading the row under the lock and releasing the lock before `verify_signature`
+removes ~197 us of held-mutex time per checkout with zero change to what is accepted. That is being
+landed as §11AQ.
