@@ -96,8 +96,8 @@ export function SplitBillModal({
    *     through to "take it back" and emptied it)
    *   current >= maxQty -> 0        (already full: take it back)
    *
-   * The auto-selection stays — it is what shows the operator how the dialog works,
-   * :62-63 — and this change is what makes it harmless.
+ * The auto-selection stays — it is what shows the operator how the dialog works,
+ * `initial[lines[0].id] = 1` in the seeding effect — and this change is what makes it harmless.
    */
   const toggleLineFull = useCallback((lineId: LineId, maxQty: number) => {
     setSelectedQtys((prev) => {

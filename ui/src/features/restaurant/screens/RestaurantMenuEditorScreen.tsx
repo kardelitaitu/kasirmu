@@ -1040,11 +1040,11 @@ export default function RestaurantMenuEditorScreen({
             type="button"
             className="btn btn--primary btn--md"
             // ⚠️ The name is part of the gate because `handleSaveDraft` RETURNS SILENTLY on a
-            // blank one (`:641` — `if (!draft || !sessionToken || !draft.name.trim()) return;`).
+            // blank one (`handleSaveDraft`’s own `!draft || !sessionToken || !draft.name.trim()` return).
             // Measured 2026-10-14 before this fix: New Item opens the form with `name: ''`
-            // (`EMPTY_DRAFT`, `:246`), Save rendered ENABLED, and clicking it produced no
-            // request, no toast and no state change — the operator taps Save and the till does
-            // nothing without saying why.
+            // (`EMPTY_DRAFT`, spread by `beginCreate`) and Save rendered ENABLED, and
+            // clicking it produced no request, no toast and no state change — the operator
+            // taps Save and the till does nothing without saying why.
             //
             // Disabled rather than validated-on-click: the field is the first thing in the form
             // and the ONLY required one, so an enabled button beside an empty required field is

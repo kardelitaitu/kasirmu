@@ -24,8 +24,8 @@ import './EodReportScreen.css';
 
 /**
  * The two Fluent keys that label a non-zero cash difference, ONE definition
- * each. They were spelled inline at both render sites below (was :154 and :187
- * at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is declared
+ * each. They were spelled inline at both render sites below (was line 154 and
+ * line 187 at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is
  * once per bundle (`eod-tag-over` / `eod-tag-short` in `shared-ui/locales/sales.ftl`
  * and `sales.id.ftl` — anchored by key name, not by line: the numbers here pointed at
  * `void-orders-line-total` and a prose comment). A rename that

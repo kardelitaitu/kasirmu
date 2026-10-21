@@ -255,8 +255,8 @@ export function usePosHeldCarts({
       // takeaway with a stray number in the Table field persisted
       // {"tableNumber":"T99","orderType":"takeaway"} and was labelled after a table
       // it does not own. `orderType` is a parameter of this hook (defaulting to
-      // dine_in) and the recall path at :356 already restores it, so the rule has
-      // everything it needs here.
+      // dine_in) and the recall path in `handleResumeOpenBill` already restores it, so the
+      // rule has everything it needs here.
       const trimmedTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
       const trimmedName = (customerName || openBillName || '').trim();
       // ⚠️ PAX IS DINE-IN ONLY, matching the table line above. The setting reads

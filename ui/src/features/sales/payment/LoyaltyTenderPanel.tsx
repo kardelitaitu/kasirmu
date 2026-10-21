@@ -58,7 +58,7 @@
  * account already in hand. The prop adds the flag; the account was structural.
  *
  * Nullable props: `pointsWorthMinor` is `number | null` (null while the
- * balance's valuation is pending, rendered as the ellipsis at :145) and that is
+ * balance’s valuation is pending, rendered as the ellipsis in the JSX below) and that is
  * the ONLY nullable value here; every other prop is required and non-null.
  * Nullability was deliberately not extended to carry the gate: `points: number
  * | null` would express only "no account", never "unlicensed", so it would be a
