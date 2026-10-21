@@ -193,6 +193,29 @@ fixed**, and two were rejected on reading.
 - **The "Pay Later over-limit warning can never fire"** chain required a zero-total cart for the same
   reason, plus an unproven double-charge path through the open-bill modal.
 
+## Round 38: four more, and one more refused
+
+- **A revision read that failed showed "Loading revision…" forever.** `select` had no try/catch and no
+  sequence guard: a rejection was an unhandled promise, and the detail pane keys on `!graph`, which
+  cannot tell a failure from a read in flight. Added a `loadError` field, a rendered error, and a
+  revision sequence token so a late answer cannot arm "Restore to editor" on the wrong revision.
+- **A restaurant bulk-save failure could show nothing at all.** The failure toast was queued *after* an
+  `await` inside the same `catch`, so a second rejection (the resync read) escaped unhandled — and the
+  optimistic "86 all" stayed on screen as if saved. Report first, then resync under its own try.
+- **The KDS retry dismissed the only error with nothing to retry.** `clearError()` ran before a
+  `fetchOrders()` that returns immediately without a session.
+- **The terminal panel + compare double-fetch** (recorded in the round-37 pass).
+
+### Refused
+
+- **"Sync All does not refresh the pending count."** `handleSyncAll` awaits `load()`, and `load` reads
+  the item list, the pending count, the status summary **and** the sync plan. The claim was written from
+  the handler in isolation; one read of the callback it awaits refutes it.
+
+That is now the fourth finding of this shape — *"X does not refresh/clear Y"* — that dissolves when you
+read what X actually calls. The rule I keep re-deriving: **read the callee before believing a claim about
+what a call does not do.**
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
