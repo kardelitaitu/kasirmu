@@ -109,7 +109,7 @@ export default function DailyTotalWidget() {
           </Localized>
         </div>
         <p className="reporting-widget-error" role="alert">
-          Could not load today's figures.
+          Could not load today&apos;s figures.
         </p>
       </div>
     );
