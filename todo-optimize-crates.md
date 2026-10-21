@@ -362,6 +362,9 @@ transaction** — `crates/kasirmu-bridge/src/data.rs:505-666` ✔. Fixed: pre-fe
 Fixed: added `Store::get_product_track_serial` and `Store::get_products_track_serial_batch` in `products_crud.rs` executing direct `SELECT sku, track_serial FROM products WHERE sku IN (...)` without wide 8-table joins, and updated `run_get_product_track_serial_batch` and `get_product_track_serial` in `kasirmu-bridge`. Verified in `products_tests.rs`.
 
 **O-H09 · cloud-server — plan middleware queries the DB on every sync request** —
+✅ **PAID 2026-10-21.** `PlanCache` (`sync_store/plan_cache.rs`): 5s TTL, 10k cap with
+nearest-expiry eviction, `Ok(None)` cached, **errors never cached and never converted to
+`Ok(None)`**. `plan_middleware` reads through `get_or_load`; the 500 arm is byte-identical.
 `apps/cloud-server/src/sync_api.rs:236-242` ◦
 `plan_middleware` runs on every `/api/sync/*` request; `get_tenant_plan`
 (`sync_store/tenant.rs:34-46`) is a pool checkout + transaction + `set_config` GUC + SELECT +
@@ -369,6 +372,10 @@ rollback — four round trips per request, uncached, so DB load scales with requ
 tenant churn. *Fix:* short-TTL per-tenant plan cache.
 
 **O-H10 · cloud-server — conflict detection does ~10 round trips per pushed item** —
+✅ **PAID 2026-10-21.** One detection pass per PAGE: `SyncStore::detect_conflicts` opens one
+transaction, sets the RLS GUC once, and answers the whole page with chunked `ANY(...)` reads
+and `UNNEST` writes. ~13 round trips/item → **7 per 500-item page**. Decision logic extracted
+to one `decide()` shared by both paths.
 `apps/cloud-server/src/sync_store.rs:178-200` ◦
 Per item, `detect_conflict` (`sync_store/conflicts.rs:239-297`) runs `load_entity_vector` +
 `load_entity_payload` + `save_entity_vector`, each with its own pool checkout + transaction +
@@ -2432,3 +2439,115 @@ gated `#[cfg_attr(not(feature = "pg-tests"), ignore)]`, and this machine has no 
 15432 and 5432 both refused, Docker daemon absent). It needs
 `cargo test -p kasirmu-api --features pg-tests` against a live PG, which CI has. Recorded as
 unrun rather than counted as passing.
+
+---
+
+## §11AG — O-H13 follow-up: the temp-dir class reaches a third crate, and two bugs in a subagent test (2026-10-21)
+
+**The temp-dir class, closed in `apps/cloud-server`.** Five tests in this crate failed with
+`PermissionDenied` creating a fixture: `db::tests::{sqlite_from_path_creates_db,
+sqlite_creates_a_missing_parent_directory, sqlite_accepts_a_bare_filename_with_no_parent}` and
+`image_gc::tests::gc_removes_files_when_present`. Three of them used `tempfile::tempdir()` rather
+than `std::env::temp_dir()` — a different library, the same `TEMP` lookup, and so the same
+`C:\WINDOWS\TEMP` that a normal user can create in but not delete from. This crate now has its
+own `test_scratch` module (`scratch_dir` + a `TempScratch` guard that removes itself on drop, a
+drop-in for `tempfile::TempDir` with the same `path()` accessor). **All five pass.**
+
+That brings the sweep to **three crates: `kasirmu-core` (19 sites / 15 files), `kasirmu-api`
+(1 site / 1 file), `kasirmu-cloud` (4 sites / 2 files).** The helper is now duplicated three times,
+which is the point at which the note under §11AE said duplication stops being cheaper than sharing
+— a shared test-support crate is the right follow-up, and is recorded here rather than done
+speculatively.
+
+**A subagent test that was wrong in both directions.** The O-H09 plan-cache work arrived with a
+source-scanning test asserting `!body.contains("unwrap_or")` inside `plan_middleware`, described as
+a fail-open guard. It was failing, and the code was not at fault:
+
+- `plan.unwrap_or(TenantPlan::Free)` on the **success** arm is the pre-existing gate rule — a
+  successful read that finds no plan row is a 403. That is fail-CLOSED. Removing it would have
+  changed semantics O-H09 was told not to touch.
+- `claims.tenant_id…unwrap_or("default")` is tenant resolution, nothing to do with plans.
+
+So the assertion was over-broad enough to fail on correct code — and too weak to catch the shape it
+named. The fail-open hazard is specifically the cache `Err` being swallowed before `map_err` can
+turn it into a 500. The assertion now checks exactly that: no `unwrap_or` between the
+`get_or_load(` call and its `map_err`. **9/9 plan-cache tests green.**
+
+**Verified on the implementation side, not just asserted:** `PlanCache::get_or_load` caches only on
+`Ok`, returns `Err` uncached so the next request retries the database, and never converts an `Err`
+into `Ok(None)` — `CacheDoc` at `plan_cache.rs:128-138` states the same, and the code at `:151-155`
+matches it.
+
+---
+
+## §11AH — O-H09 resolved: a short-TTL tenant-plan cache in front of the gate (2026-10-21)
+
+One High finding resolved on the most frequently executed database read in the server.
+
+**The cost.** `plan_middleware` runs on every `/api/sync/*` request and called
+`get_tenant_plan`, which for Postgres did pool checkout → transaction → `set_config('oz.tenant_id')`
+→ `SELECT plan FROM tenant_plans` → rollback. Four round trips per request, uncached, so database
+load scaled with **request rate** rather than tenant churn. The fix is the one the entry named.
+
+**Design decisions, each with its reason.**
+
+| choice | value | why |
+|---|---|---|
+| TTL | **5 seconds** | The TTL *is* the downgrade window: a tenant moved off `pro` keeps reaching `/api/sync/*` for at most this long. 5s still collapses a whole tenant's terminal heartbeat burst into one read; 60s buys nothing measurable and multiplies the exposure 12x. |
+| cap | **10,000 tenants** | Copied from the house ceiling in `kasirmu_core::rate_limiter::DEFAULT_MAX_TRACKED_USERNAMES`, so tenant growth cannot leak memory. Evicts nearest-expiry first, so a just-loaded entry is never the one thrown away. |
+| lock | `std::sync::Mutex`, guard never held across an `await` | `cached()` and `insert()` each take and release it; the loader awaits outside. A `tokio::Mutex` here would be wrong — a pure in-memory map needs no async lock. |
+
+**Fail-closed is the property that matters, and it was verified rather than asserted.**
+`get_or_load` never converts an `Err` into `Ok(None)`; it returns the error unchanged so the
+middleware's existing `map_err` still produces a 500. `Ok(None)` — a *successful* read finding no
+plan row — IS cached and still gates the tenant as `free` (403), which is fail-**closed**. Errors
+are never stored, so the next request retries the database instead of inheriting the failure.
+
+**A subagent test that failed on correct code, and was too weak to catch the bug it named.**
+It shipped asserting `!body.contains("unwrap_or")` inside `plan_middleware`. That fails on two
+legitimate uses that have nothing to do with fail-open: `plan.unwrap_or(TenantPlan::Free)` on the
+SUCCESS arm (the pre-existing 403 rule, which removing would have changed semantics O-H09 was told
+not to touch) and `claims.tenant_id…unwrap_or("default")` (tenant resolution). Meanwhile it could
+not have caught the real hazard, which is specifically the cache `Err` being swallowed **between**
+`get_or_load(` and its `map_err`. The assertion now checks exactly that interval. **9/9 plan-cache
+tests green.**
+
+---
+
+## §11AI — O-H10 resolved: one conflict-detection pass per page (2026-10-21)
+
+One High finding resolved, and the largest round-trip win in the ledger.
+
+**The cost, measured by the lane that fixed it.** `detect_conflict` called `load_entity_vector` +
+`load_entity_payload` + `save_entity_vector`, and **each** did its own pool checkout + transaction
++ `set_config` GUC + statement. Per item that is ~13 Postgres round trips, so a 500-item push cost
+**~5,000-6,500 round trips**.
+
+**After, per PAGE rather than per item:** 1 checkout + 1 `BEGIN` + **1** `set_config` + chunked
+`entity_type = ANY($2) AND entity_id = ANY($3)` reads + `UNNEST` inserts/upserts + 1 `COMMIT` =
+**7 round trips for a typical 500-item page.** SQLite gets one transaction (one fsync), one `IN`
+read, one multi-row insert and one multi-row upsert.
+
+**The RLS contract is a security control and was preserved explicitly, not incidentally.** The
+page's single transaction sets `oz.tenant_id` once with `is_local := true` before any statement,
+and every helper below takes the caller's `&Transaction` / `&Connection` — **none can open its
+own**, so no statement can run unscoped. Pinned by a source-level guard:
+`conflicts_postgres_arm_sets_the_tenant_guc_once_per_transaction` asserts exactly 7 `set_config`
+sites (5 PG entry points + 2 doc comments) and that the shared PG helpers never call `pool.get()`.
+
+**Resolution semantics unchanged** — the decision logic is extracted into one pure `decide()` used
+by both the single-item and batch forms, so there is one copy of the classify/C19/Stale arms
+rather than two that could drift. Equivalence is pinned by
+`sqlite_batch_detection_matches_n_single_item_calls`, comparing decisions, stored vectors/bodies
+and review rows against N sequential calls on a second fresh database.
+
+**That equivalence test was kill-tested rather than trusted.** Neutering the batch read so it
+reported "nothing stored" for every key made it fail with exactly the intended message — the same
+verification the O-H01 test needed after its first, vacuous version passed against a broken batch.
+
+**Honest partials, recorded as given:** the SQLite single-item path keeps its historical autocommit
+shape (only the batch path gains a transaction, so a page's vector advances are now atomic on
+error — a difference that can only cause re-detection, never a lost write); a failed detection now
+logs one line per page instead of one per item; and `insert_conflict` / `list_conflicts` /
+`resolve_conflict` still do one checkout per row (no caller in tree). **No migration was needed or
+made.**

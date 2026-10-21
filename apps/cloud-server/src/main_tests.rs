@@ -912,7 +912,18 @@ async fn lifecycle_free_tenant_upgraded_via_webhook_can_sync() {
     config.enforce_plans = true;
     config.stripe_webhook_secret = Some(secret.to_string());
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
-    let app = build_router(state.clone(), rate_limiter, &config, None);
+    // O-H09: the plan gate caches a tenant's plan for PLAN_CACHE_TTL. This test
+    // upgrades the tenant AFTER the router is built and then expects the very
+    // next push to be admitted, so it runs with a zero-TTL cache: the gate must
+    // still read the plan through the cache (that is the wiring under test),
+    // but never serve a stale "free" to a tenant the webhook just upgraded.
+    // The production TTL is asserted in `plan_cache_tests.rs`.
+    let plan_cache = std::sync::Arc::new(crate::sync_store::PlanCache::new(
+        std::time::Duration::ZERO,
+        crate::sync_store::MAX_CACHED_TENANTS,
+    ));
+    let app =
+        build_router_with_plan_cache(state.clone(), rate_limiter, &config, None, Some(plan_cache));
 
     let tenant = "lifecycle-tenant";
     let sale_id = uuid::Uuid::now_v7().to_string();

@@ -173,6 +173,7 @@ impl From<super::CloudServerState> for SyncState {
 ///
 ///   `.layer(axum::Extension(rate_limiter.clone()))` — makes RateLimiterState available
 ///   `.layer(axum::Extension(store))`                  — makes the SyncStore available to plan_middleware
+///   `.layer(axum::Extension(plan_cache))`             — O-H09: the short-TTL plan cache plan_middleware reads through
 ///   `.layer(axum::Extension(enforce_plans))`          — plan gate on/off
 ///   `.layer(middleware::from_fn(auth_middleware))`        ← outermost (injects ApiTokenClaims)
 ///   `.layer(middleware::from_fn(plan_middleware))`        ← reads claims, gates free tenants
@@ -181,15 +182,49 @@ impl From<super::CloudServerState> for SyncState {
 /// Execution order: auth_middleware → plan_middleware → rate_limit_middleware → handler
 /// Axum layers are applied from outside to inside, so the LAST .layer() is the
 /// innermost (closest to the handler).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "kept as the named entry point of the sync gate: production goes through \
+                  sync_router_with_plan_enforcement (default plan cache), this is the \
+                  flag-only form the sync plan tests call"
+    )
+)]
 pub fn sync_router(state: SyncState, enforce_plans: bool) -> Router {
     sync_router_with_plan_enforcement(state, enforce_plans)
 }
 
 /// Build the sync router with an explicit plan-enforcement flag (used by
 /// tests and by [`sync_router`], which reads `OZ_ENFORCE_PLANS`).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the flag-only form of the gate router; production adds the default plan \
+                  cache through sync_router_with_plan_enforcement_with_cache"
+    )
+)]
 pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) -> Router {
+    sync_router_with_plan_enforcement_with_cache(state, enforce_plans, None)
+}
+
+/// Build the sync router with an explicit plan cache (O-H09).
+///
+/// `None` installs a fresh [`crate::sync_store::PlanCache::default`], which is
+/// what production wants: one cache per router, shared by every request through
+/// the extension added below, alive for exactly as long as the deployed
+/// process. `Some` lets a test supply a cache whose TTL it controls — the only
+/// way to observe a plan change made after the router was built once the gate
+/// is caching, since a hit is by definition not a read.
+pub fn sync_router_with_plan_enforcement_with_cache(
+    state: SyncState,
+    enforce_plans: bool,
+    plan_cache: Option<Arc<crate::sync_store::PlanCache>>,
+) -> Router {
     let rate_limiter = state.rate_limiter.clone();
     let store = state.store();
+    let plan_cache = plan_cache.unwrap_or_default();
     Router::new()
         .route("/api/sync/push", post(push_handler))
         .route("/api/sync/pull", post(pull_handler))
@@ -206,6 +241,7 @@ pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) 
         .layer(middleware::from_fn(auth_middleware))
         .layer(axum::Extension(rate_limiter))
         .layer(axum::Extension(store))
+        .layer(axum::Extension(plan_cache))
         .layer(axum::Extension(enforce_plans))
 }
 
@@ -213,10 +249,16 @@ pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) 
 /// on the `free` plan (or with no assigned plan — fail closed) is rejected
 /// with a structured 403 `{"error":"plan_required"}`. Runs after auth so
 /// claims are available, before the handler.
+///
+/// O-H09: the plan is read through [`crate::sync_store::PlanCache`], so a
+/// second request inside the cache TTL does not reach the database. The gate's
+/// decisions are unchanged — a hit serves an answer a successful read produced,
+/// a miss performs the same read as before, and an error is still a 500.
 #[allow(clippy::result_large_err)]
 pub async fn plan_middleware(
     Extension(enforce_plans): Extension<bool>,
     Extension(store): Extension<crate::sync_store::SyncStore>,
+    Extension(plan_cache): Extension<Arc<crate::sync_store::PlanCache>>,
     request: Request,
     next: middleware::Next,
 ) -> Result<axum::response::Response, axum::response::Response> {
@@ -233,13 +275,21 @@ pub async fn plan_middleware(
         .and_then(|claims| claims.tenant_id.as_deref())
         .unwrap_or("default");
 
-    let plan = store.get_tenant_plan(tenant_id).await.map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(serde_json::json!({ "error": "internal" })),
-        )
-            .into_response()
-    })?;
+    // O-H09: read through the short-TTL plan cache instead of hitting the
+    // database on every request. A cache MISS still performs the same store
+    // read this gate always did; a hit skips it. The error arm below is
+    // unchanged and deliberately not folded into `unwrap_or(Free)`: an error is
+    // a 500, a plan of `None` is a 403, and the cache never stores an error.
+    let plan = plan_cache
+        .get_or_load(tenant_id, || store.get_tenant_plan(tenant_id))
+        .await
+        .map_err(|_| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(serde_json::json!({ "error": "internal" })),
+            )
+                .into_response()
+        })?;
 
     if plan.unwrap_or(TenantPlan::Free) == TenantPlan::Free {
         return Err((

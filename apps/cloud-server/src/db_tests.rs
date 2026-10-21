@@ -128,7 +128,7 @@ fn connect_sqlite_rejects_windows_path_on_unix() {
 
 #[test]
 fn sqlite_from_path_creates_db() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_scratch::TempScratch::new("cloud-db");
     let path = dir.path().join("test.db");
     let path_str = path.to_str().unwrap();
     let pool = DbPool::connect_sqlite(path_str).unwrap();
@@ -141,7 +141,7 @@ fn sqlite_from_path_creates_db() {
 /// the default is never opened, and fail on a fresh clone that has no var/.
 #[test]
 fn sqlite_creates_a_missing_parent_directory() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_scratch::TempScratch::new("cloud-db");
     let nested = dir.path().join("var").join("nested").join("kasir.db");
     assert!(
         !nested.parent().unwrap().exists(),
@@ -160,7 +160,7 @@ fn sqlite_creates_a_missing_parent_directory() {
 /// guard has to hold or every such open dies.
 #[test]
 fn sqlite_accepts_a_bare_filename_with_no_parent() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_scratch::TempScratch::new("cloud-db");
     let cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(dir.path()).unwrap();
     let result = DbPool::connect_sqlite("bare.db");

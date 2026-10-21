@@ -69,7 +69,124 @@ fn test_router_with_plan_enforcement(enforce: bool) -> Router {
         skip_push_validation: false,
         tenant_count_cache: TenantCountCache::default(),
     };
-    sync_router_with_plan_enforcement(state, enforce)
+    // O-H09: the plan cache is per-router, so a caller may install a zero-TTL
+    // one to observe a plan change made AFTER the router was built (see
+    // `lifecycle_free_tenant_upgraded_via_webhook_can_sync`).
+    sync_router_with_plan_enforcement_with_cache(state, enforce, None)
+}
+
+/// **O-H09 acceptance at the gate itself.** Two `/api/sync/status` requests for
+/// the same pro tenant, through the real router and the real middleware stack,
+/// must pass the gate — and the SECOND one must be answered without the plan
+/// lookup reaching the store.
+///
+/// A read is deliberately observable here rather than inferred: the router is
+/// given a store whose SQLite connection WILL FAIL any plan read, and the
+/// tenant's plan is then put into the cache by a first, successfully-gated
+/// request against a healthy connection. The second request therefore passes
+/// only if the gate is serving the cached answer — a direct read would return
+/// the store's error and the middleware would answer 500. That is the
+/// fail-closed direction asserted in the same breath: the control below sends
+/// the same request to the SAME broken connection with an empty cache and
+/// requires the 500.
+#[tokio::test]
+async fn plan_gate_second_request_is_served_without_reading_the_store() {
+    let plan_cache = Arc::new(crate::sync_store::PlanCache::default());
+    let warm = SyncState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    {
+        let conn = warm.db.lock().await;
+        kasirmu_core::Store::new(&conn)
+            .set_tenant_plan("tenant-pro", kasirmu_core::TenantPlan::Pro)
+            .unwrap();
+    }
+    let warm_app =
+        sync_router_with_plan_enforcement_with_cache(warm, true, Some(plan_cache.clone()));
+    let first = warm_app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/status",
+            Some("tenant-pro"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        first.status(),
+        StatusCode::OK,
+        "the first request reads the store and must pass"
+    );
+
+    // Same claims, same cache, a store whose read CANNOT succeed.
+    let cold = SyncState {
+        db: unreadable_plan_db(),
+        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    let cold_app =
+        sync_router_with_plan_enforcement_with_cache(cold.clone(), true, Some(plan_cache));
+    let second = cold_app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/status",
+            Some("tenant-pro"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        second.status(),
+        StatusCode::OK,
+        "a cached plan must answer the gate without touching the store"
+    );
+
+    // Control: the SAME unreadable store with an empty cache must 500, so the
+    // pass above is the cache's doing and the gate has not gone fail-open.
+    let control_app = sync_router_with_plan_enforcement_with_cache(
+        cold,
+        true,
+        Some(Arc::new(crate::sync_store::PlanCache::default())),
+    );
+    let control = control_app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/status",
+            Some("tenant-pro"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        control.status(),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "a failed plan read must stay a 500, never a pass or a 403"
+    );
+    let body = control.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["error"], "internal",
+        "the error body the gate has always returned"
+    );
+}
+
+/// A SQLite handle whose PLAN READS always fail, so a test can tell "the
+/// gate read the store" from "the gate served the cache" by the status code
+/// alone.
+///
+/// The connection itself is healthy (status/snapshot read fine); the failure is
+/// injected by dropping the table the plan query selects from. That is a real
+/// database error, not a mock: `get_tenant_plan` returns `Err`, which is
+/// exactly the shape a pool outage produces.
+fn unreadable_plan_db() -> Arc<Mutex<Connection>> {
+    let conn = fresh_db();
+    conn.execute("DROP TABLE tenant_plans", []).unwrap();
+    Arc::new(Mutex::new(conn))
 }
 
 /// Seed a tenant plan in the test DB shared by the given router.
