@@ -289,6 +289,37 @@ impl Store<'_> {
         }
     }
 
+    /// Look up display names for a batch of user IDs in the global database (O-M19).
+    ///
+    /// Avoids loading the full user table and decrypting/deserializing unrelated columns.
+    pub fn get_user_display_names_batch(
+        &self,
+        user_ids: &[&str],
+    ) -> Result<std::collections::HashMap<String, String>, CoreError> {
+        if user_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let mut result = std::collections::HashMap::with_capacity(user_ids.len());
+        for chunk in user_ids.chunks(200) {
+            let placeholders = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!("SELECT id, display_name FROM users WHERE id IN ({placeholders})");
+            let mut stmt = self.conn.prepare(&sql)?;
+            let params = rusqlite::params_from_iter(chunk.iter().copied());
+            let mut rows = stmt.query(params)?;
+            while let Some(row) = rows.next()? {
+                let id: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                result.insert(id, name);
+            }
+        }
+        Ok(result)
+    }
+
     /// Read a user's index id (1..=14,776,335).
     pub fn get_user_index_id(&self, user_id: &str) -> Result<Option<i64>, CoreError> {
         let mut stmt = self

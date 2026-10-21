@@ -181,4 +181,37 @@ impl Store<'_> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ids)
     }
+
+    /// Get all tax rate IDs assigned to categories in a single batched query (O-M17).
+    ///
+    /// Avoids executing $N$ queries across categories. Batches queries in chunks of 200
+    /// to stay comfortably below SQLite parameter limits.
+    pub fn get_category_tax_rates_batch(
+        &self,
+        category_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, CoreError> {
+        use std::collections::HashMap;
+
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        if category_ids.is_empty() {
+            return Ok(map);
+        }
+        for chunk in category_ids.chunks(200) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{i}")).collect();
+            let sql = format!(
+                "SELECT category_id, tax_rate_id FROM category_taxes \
+                 WHERE category_id IN ({}) ORDER BY created_at",
+                placeholders.join(", ")
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (cat_id, rate_id) = row?;
+                map.entry(cat_id).or_default().push(rate_id);
+            }
+        }
+        Ok(map)
+    }
 }

@@ -481,16 +481,14 @@ check.
 user) ◦. *Fix:* grouped count queries and one id→name map.
 
 **O-M17 · kasirmu-bridge — tax settings read is one query per category** —
-`crates/kasirmu-bridge/src/tax.rs:443-450` ◦. *Fix:* batched join, mirroring the products
-fix.
+`crates/kasirmu-bridge/src/tax.rs:443-450` ✔. Fixed: added `Store::get_category_tax_rates_batch(&category_ids)` in `crates/kasirmu-core/src/db/tax/assignments.rs`, replacing $N$ sequential per-category database queries with a single batched join in `run_list_category_tax_rates`. Verified in `tax_tests.rs` and `tax.rs` tests.
 
 **O-M18 · kasirmu-bridge — KDS chit fan-out is quadratic with per-pair clones** —
 `crates/kasirmu-bridge/src/kds.rs:136-147` (dedup via linear scan; `orders.iter().find()` at
-`:271`) ◦. *Fix:* `HashSet` dedup + map lookup.
+`:271`) ✔. Fixed: indexed existing jobs using a `HashSet<(String, String)>` seen set to eliminate $O(N^2)$ linear scanning in `build_kds_chit_jobs`, and indexed orders in a `HashMap<&str, &KdsOrder>` to eliminate per-job linear scans in `try_auto_print_kds_chit_jobs`. Verified in `kds.rs` tests.
 
 **O-M19 · kasirmu-bridge — analytics loads the whole user table for a handful of names** —
-`crates/kasirmu-bridge/src/analytics.rs:66-74` ◦. *Fix:* fetch names for the aggregate's ids
-only.
+`crates/kasirmu-bridge/src/analytics.rs:66-74` ✔. Fixed: added `Store::get_user_display_names_batch(&user_ids)` in `crates/kasirmu-core/src/db/staff.rs`, resolving display names only for active staff members present in the aggregated report rather than materializing the entire global users table into memory. Verified in `analytics.rs` and `staff.rs` tests.
 
 **O-M20 · kasirmu-bridge — `blocking_lock()` on the async session-resolution path** —
 `crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ **PROMOTED TO O-H26 IN §9 — this is a guaranteed
@@ -2101,6 +2099,28 @@ Three Medium performance and memory findings resolved across core domain engines
    - Replaced `.to_lowercase()` String allocations with zero-allocation `a.eq_ignore_ascii_case(addon)` in `has_addon`.
    - Parsed `allowed_types_json` using borrowed `Cow<str>` to avoid String allocation on workspace type checks.
    - Verified across all 155 unit tests in `subscription_tests.rs`.
+
+---
+
+## §11T — O-M17, O-M18, and O-M19 resolved: category tax batching, KDS indexing, and targeted analytics user queries (2026-10-21)
+
+Three Medium performance findings resolved across bridge operational handlers:
+
+1. **O-M17 · `kasirmu-bridge` batched category tax rate resolution (`tax.rs`, `db/tax/assignments.rs`)**:
+   - Added `Store::get_category_tax_rates_batch(&category_ids)` chunked at 200 items in `kasirmu-core`.
+   - Updated `run_list_category_tax_rates` to issue one batched lookup instead of $N$ sequential round trips across categories.
+   - Verified in `tax_tests.rs` and `tax.rs`.
+
+2. **O-M18 · `kasirmu-bridge` KDS chit generation deduplication and order indexing (`kds.rs`)**:
+   - Replaced linear searching across existing jobs with a `HashSet<(String, String)>` seen set in `build_kds_chit_jobs`, eliminating $O(N^2)$ algorithmic complexity during order chit generation.
+   - Indexed orders in a `HashMap<&str, &KdsOrder>` in `try_auto_print_kds_chit_jobs`, eliminating repeated linear order traversals per job.
+   - Verified in `kds.rs` test suite.
+
+3. **O-M19 · `kasirmu-bridge` scoped staff analytics display name resolution (`analytics.rs`, `db/staff.rs`)**:
+   - Added `Store::get_user_display_names_batch(&user_ids)` to query only staff IDs actually present in the report aggregation.
+   - Replaced loading and deserializing all global user rows in `get_staff_analytics_scoped` with the targeted batch query.
+   - Verified in `analytics.rs` and `staff.rs`.
+
 
 
 
