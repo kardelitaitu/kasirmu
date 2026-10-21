@@ -148,6 +148,23 @@ to look at what the DOM actually contains.
   wrote only on success, so a later failure left the old array and the `=== null` guard could never fire
   again — a failed reload silently kept offering a stale catalogue. Both now write `null` on `!ok`.
 
+## Round 37: the last two verified candidates
+
+- **Shifts stacked a stale drawer card under the failure card.** `load()` applies the active-shift
+  read, and the `else` branch set `activeShiftUnknown` without clearing `activeShift`. The two cards are
+  gated independently (`activeShift &&` and `activeShiftUnknown &&`), so a failed read left the previous
+  shift's opening balance, sales and cash on screen *above* "Failed to load shifts" — the numbers reading
+  as current at exactly the moment the screen admits it cannot read them. The list branch two lines up
+  already cleared its own value for the same reason.
+- **Stock count reported "no products match" from a catalogue that never loaded.** The read was
+  toast-only (auto-dismissing) and left `products` empty, so every search answered from an empty list.
+  Now `products` is `ProductDto[] | null` — `null` = unknown, `[]` = the answer that there are none —
+  with a durable `role="alert"` in the add-line card, and the read is cancelled on teardown. This is
+  precisely the distinction its warehouse sibling `WarehouseCountFlow` documents at length; the stock
+  count screen had the toast and nothing else.
+
+Both landed with kill tests verified in both directions (fix removed → red, restored → green).
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
