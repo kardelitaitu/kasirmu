@@ -1480,9 +1480,8 @@ export default function RestaurantReceiptsScreen({
               onClick={() => {
                 receiptInitializedRef.current = false;
                 // The hardware profile seeds the printer fields through its OWN effect
-                // (:647), so its guard has to be cleared too or a successful re-read
-                // would leave those fields holding the failure-era defaults.
-                hwInitializedRef.current = false;
+                // (the one guarded on hwInitializedRef), so its guard has to be cleared too or a
+                // successful re-read would leave those fields holding the failure-era defaults.
                 hw.reload();
                 setReloadNonce((n) => n + 1);
               }}

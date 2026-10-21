@@ -294,8 +294,8 @@ export default function TransactionLogScreen() {
                         size="sm"
                         className="shift-btn shift-btn-primary log-detail-btn"
                         // stopPropagation is the point, not a nicety: the row is ALSO a
-                        // control (:256), so without it one click runs the handler twice
-                        // and the row toggles open-then-closed -- a visible no-op.
+                        // click target (its own onClick), so without it one click runs the handler
+                        // twice and the row toggles open-then-closed -- a visible no-op.
                         onClick={(e) => {
                           e.stopPropagation();
                           void handleRowClick(tx.id);

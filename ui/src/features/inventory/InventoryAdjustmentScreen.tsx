@@ -193,7 +193,7 @@ export default function InventoryAdjustmentScreen() {
     // With the token missing from this array, an adjustment submitted after a cashier hot-swap
     // presented the destroyed session, so the write failed (or, if the old session were still
     // live, adjusted the wrong store's stock) while the form looked like any other retryable
-    // error. :185 also awaits load(), which now refreshes for the same session.
+// error. The reload below also awaits load(), which now refreshes for the same session.
   }, [selectedProduct, quantity, adjustmentType, reason, customReason, load, l10n, sessionToken]);
 
   // ── Stock status helpers ──────────────────────────────────────
