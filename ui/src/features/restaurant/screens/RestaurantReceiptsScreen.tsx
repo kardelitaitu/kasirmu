@@ -1480,8 +1480,13 @@ export default function RestaurantReceiptsScreen({
               onClick={() => {
                 receiptInitializedRef.current = false;
                 // The hardware profile seeds the printer fields through its OWN effect
-                // (the one guarded on hwInitializedRef), so its guard has to be cleared too or a
-                // successful re-read would leave those fields holding the failure-era defaults.
+                // (the one guarded on hwInitializedRef), so its guard has to be cleared too
+                // or a successful re-read would leave those fields holding the failure-era
+                // defaults. This comment described that clearing and the LINE WAS MISSING:
+                // `hw.reload()` alone re-reads the profile, but the seeding effect returns
+                // early on the still-true ref, so Save stayed disabled (`hw.loadFailed`
+                // clears on a successful load, `!hw.profile` does not) for the session.
+                hwInitializedRef.current = false;
                 hw.reload();
                 setReloadNonce((n) => n + 1);
               }}
