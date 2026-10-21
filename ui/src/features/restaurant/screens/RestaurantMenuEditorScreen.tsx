@@ -531,12 +531,25 @@ export default function RestaurantMenuEditorScreen({
           type: 'success',
         });
       } catch (err) {
-        const freshProds = await listProductsScoped(sessionToken);
-        setItems(freshProds);
+        // REPORT FIRST, then resync. The failure toast was queued AFTER an `await` inside
+        // this same catch block, so a second rejection (the resync read) escaped as an
+        // unhandled rejection and the operator saw NOTHING — while the optimistic bulk
+        // update stayed on screen as if it had been saved.
         addToast({
           message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
           type: 'error',
         });
+        // The resync is its own attempt: if it fails too, keep the last known items
+        // rather than blanking the menu, and say so instead of silently reverting.
+        try {
+          const freshProds = await listProductsScoped(sessionToken);
+          setItems(freshProds);
+        } catch (rereadErr) {
+          addToast({
+            message: l10nErrorMessage(rereadErr, l10n, 'restaurant-menu-editor-error-save'),
+            type: 'error',
+          });
+        }
       } finally {
         setBulkUpdating(false);
       }
