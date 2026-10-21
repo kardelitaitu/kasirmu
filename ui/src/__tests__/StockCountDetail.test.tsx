@@ -105,6 +105,36 @@ describe('StockCountDetail', () => {
     expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
   });
 
+  it('says the catalogue could not be read instead of letting every search return nothing', async () => {
+    // A failed catalogue read used to leave `products` empty, so the add-line search
+    // answered "no products match" for every query — a claim about the store's catalogue
+    // made from a read that never came back. The toast it fired auto-dismisses.
+    mockGetStockCount.mockResolvedValue(sampleCount);
+    mockGetLines.mockResolvedValue([]);
+    mockListProducts.mockRejectedValue(new Error('ipc down'));
+
+    renderWithFluentSync(
+      <ToastProvider><StockCountDetail countId="sc-1" onBack={vi.fn()} /></ToastProvider>,
+      stockCountingFtl,
+      sharedFtl,
+    );
+
+    // Scoped to the add-line card: the screen has other alerts (toast, status).
+    await waitFor(() => {
+      expect(
+        document.querySelector('.sc-detail-products-error'),
+      ).toHaveTextContent(/Failed to load products/);
+    });
+
+    // Typing a query must NOT replace that with "no matches".
+    const search = screen.getByRole('searchbox');
+    await act(async () => {
+      fireEvent.change(search, { target: { value: 'widget' } });
+    });
+    expect(document.querySelector('.sc-detail-products-error')).toHaveTextContent(/Failed to load products/);
+    expect(screen.queryByText(/no products match/i)).toBeNull();
+  });
+
   it('shows not found when count is null', async () => {
     mockGetStockCount.mockResolvedValue(null);
     renderWithFluentSync(<ToastProvider><StockCountDetail countId="sc-1" onBack={vi.fn()} /></ToastProvider>, stockCountingFtl, sharedFtl);
