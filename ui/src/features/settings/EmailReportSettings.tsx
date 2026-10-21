@@ -195,12 +195,13 @@ export default function EmailReportSettings() {
     } finally {
       setSaving(false);
     }
-    // sessionToken is read at :116 by setSettingScoped. `userId` used to be listed here and is a
-    // different value, so it never covered the token: saving after a store switch wrote SMTP
-    // credentials to the previous store -- or failed on the destroyed session, after the success
-    // toast had already been scheduled on the happy path. `userId` has since been dropped: nothing
-    // in this component read it, and its presence in the array was the only thing keeping the
-    // binding from being reported as unused.
+    // sessionToken is read by the `setSettingScoped` call in this body. `userId` used to be
+    // listed here and is a different value, so it never covered the token: saving after a
+    // store switch wrote SMTP credentials to the previous store -- or failed on the
+    // destroyed session, after the success toast had already been scheduled on the happy
+    // path. `userId` has since been dropped: nothing in this component read it, and its
+    // presence in the array was the only thing keeping the binding from being reported
+    // as unused.
   }, [config, l10n, addToast, sessionToken, passwordTouched]);
 
   // ── Schedule event handlers ────────────────────────────────────────

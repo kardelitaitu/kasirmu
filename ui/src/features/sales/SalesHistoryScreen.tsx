@@ -463,15 +463,14 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } finally {
       setVoiding(false);
     }
-    // sessionToken is read at :454 and was missing (the note said ":266", which is the tail of
-    // a doc comment — re-measured 2026-10-19). `session` was in the array but is never
-    // read in this body -- eslint only reported the missing token until the token was added,
-    // because the rule surfaces one problem per hook, so the unnecessary dep was latent behind
-    // it. `session` comes from useAuth() at :284 (staff identity; cited ":163", a </td>) and is
-    // a different value from useWorkspace()'s sessionToken at :298 (cited ":164", the createdAt
-    // cell); listing one never covered the other. A void is an
-    // audit-trail event: a stale token either fails the permission check outright or, if the old
-    // session were still live, attributes the void to the previous cashier.
+  // sessionToken is read in this body and was missing from the deps. `session` was in
+  // the array but is never read here -- eslint only reported the missing token, because
+  // the rule surfaces one problem per hook, so the unnecessary dep was latent behind it.
+  // `session` comes from `useAuth()` in the component body (staff identity) and is a
+  // different value from `useWorkspace()`’s sessionToken, destructured there too;
+  // listing one never covered the other. A void is an
+  // audit-trail event: a stale token either fails the permission check outright or, if the old
+  // session were still live, attributes the void to the previous cashier.
   }, [voidTarget, voidReason, load, l10n, invalidateCache, sessionToken]);
 
   // ── Client-side filtering + sorting ────────────────────────────
@@ -691,8 +690,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } finally {
       setPrinting(false);
     }
-    // sessionToken is read at :406. Because the catch above deliberately swallows everything,
-    // this is the quietest failure in the set: after a hot-swap the reprint presents a dead
+  // sessionToken is read by the reprint call in this body. Because the catch above
+  // deliberately swallows everything, this is the quietest failure in the set: after a
     // token, the call rejects, and the UI shows nothing at all -- no toast, no error, just a
     // button that stops doing anything. Listing the token at least makes the next attempt use
     // a live one.
@@ -873,12 +872,12 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     const data = await settleRead('refunds', listRefundsScoped(sessionToken!, saleId));
     setRefundsUnknown(!data.ok);
     setRefunds(data.ok ? data.value : []);
-    // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
-    // effect above already lists [sessionToken, l10n] in its own deps, so the token was
-    // understood to change -- this array just omitted it. With [] the callback kept the
-    // mount-time token, and because `handleRefunded` lists loadRefunds in its own deps,
-    // the refund list for an opened sale was
-    // fetched against whatever session was active when the screen mounted.
+    // sessionToken is a free variable from `useWorkspace()` in the component body, read by
+    // the `listRefundsScoped` call above. The sibling effect above already lists
+    // [sessionToken, l10n] in its own deps, so the token was understood to change -- this
+    // array just omitted it. With [] the callback kept the mount-time token, and because
+    // `handleRefunded` lists loadRefunds in its own deps, the refund list for an opened
+    // sale was fetched against whatever session was active when the screen mounted.
   }, [sessionToken]);
 
   // The margin read's own retry, deliberately NOT openDetail: the sale itself is
