@@ -461,7 +461,13 @@ limit/offset (or keyset on `created_at`) with a default page.
 `apps/desktop-tauri/src/commands/kds.rs:112-130` ✔. Fixed: indexed existing active tickets in `refresh_kds_queue_cache` to reuse cached line items and station routing for all unchanged orders, and passed `dirty_order_id` so that only the modified ticket is re-queried during item bumps. Reduced bridge round trips during order transitions and line bumps from $O(\text{active tickets})$ to $O(1)$. Verified with `kds_lan_live` test suite in `kasirmu-app`.
 
 **O-H17 · mobile — every checkout loads the subscription and verifies RSA under the global DB
-mutex** — `apps/mobile-tauri/src/commands/pos.rs:840-846` and
+mutex** — ⚠️ **ATTEMPTED AND REVERTED 2026-10-21. Still OPEN.** A caching module was written and
+then deleted, because its own test caught it letting a **Premium row through the**
+**`BOOTSTRAP_FREE` sentinel path** — the licence bypass guarded at
+`crates/kasirmu-core/src/subscription.rs:275-293`. Nothing was committed; `kasirmu-core` is back
+to 3650/3650 green. The RSA
+cost stands.
+`apps/mobile-tauri/src/commands/pos.rs:840-846` and
 `apps/mobile-tauri/src/commands/pos/checkout.rs:662-669` ◦ — **RE-ANCHORED 2026-10-21:** the cited
 `pos.rs:993-1006` no longer exists. The block now sits at TWO sites, both inside
 `state.db.lock().await`: the main checkout (`pos/checkout.rs:662-669`) and the shortfall-retry
@@ -2814,3 +2820,46 @@ they report `ignored`, not pass. The pure tests that DID run: `several_stock_sum
 into_one_total`, `no_stock_summary_rows_falls_back_to_the_inventory_aggregate`,
 `product_select_has_no_correlated_stock_subquery`, `stock_aggregate_is_scoped_to_the_current_row`,
 plus two route-contract tests. `cargo test -p kasirmu-api --lib` = **345 passed, 0 failed, 14 ignored**.
+
+---
+
+## §11AO — O-H17 attempted and REVERTED: the cache admitted a paid tier through the free sentinel (2026-10-21)
+
+**The entry stays OPEN.** This records a rolled-back attempt, because the failure is more useful
+than a silent retreat.
+
+**What was built.** A `subscription_verification` module caching the verified subscription, keyed
+on the four row attributes that define the claim (`tenant_subscription` has no version column),
+with the signature itself as part of the key. The design was reasonable; the reasoning was sound.
+It was not shipped.
+
+**What stopped it.** `cargo test -p kasirmu-core --lib subscription_verification` reported **3
+passed, 4 failed**, and one of those four is the worst failure available on this path:
+
+    a_failed_verify_is_never_remembered_as_success
+      "a paid tier cannot ride the free sentinel: Some(VerifiedSubscriptionGate { ... tier: Premium ... })"
+
+A `Premium` row was **accepted through the `BOOTSTRAP_FREE` sentinel branch**.
+`crates/kasirmu-core/src/subscription.rs:275-293` states the invariant that the sentinel is honoured
+only when `tier_key() == "free"`, and says in as many words that any edit letting a non-free tier
+reach that return is a full licence bypass — a forged row could then claim Premium by writing 14
+bytes. The test was written to guard exactly that, and it caught its own author.
+
+The other three failures were real too, and each was a lesson about TEST quality rather than
+licensing: an invalid base64 fixture (`Invalid symbol 45, offset 5`) meant the verify path was
+never exercised at all; and `an_unchanged_row_is_verified_once` counted MAP LOOKUPS instead of
+verifications — its probe printed `before=0 after=1` incrementing on every call while `len=1`, so it
+could not distinguish a hit from a miss. **A test that cannot tell those two states apart is not a
+test of a cache.**
+
+**The decision.** The instruction to the lane was explicit: if the cache cannot be made provably
+fail-closed and bypass-proof, delete the module, revert the wiring, and say so. That is what
+happened. The module and its tests are gone, `lib.rs` is unmodified, and
+`cargo test -p kasirmu-core --lib -- --test-threads=4` is back to **3650 passed, 0 failed**.
+
+**Why record a failure.** The RSA-2048 verification under the global DB mutex is a real cost on the
+hottest path, and it is still there. But trading it for a licence gate that can be bypassed by
+writing a sentinel signature is not a trade — it is a regression that would ship wearing a
+performance label. The next attempt should start from the bypass-proof direction: first prove the
+sentinel branch is unreachable for non-free tiers, then build the cache around a property that is
+already pinned.
