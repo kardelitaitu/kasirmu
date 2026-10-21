@@ -229,7 +229,7 @@ export const getBackupStatus = (): Promise<BackupStatus> =>
  *
  * The Rust command `get_backup_status_scoped` was added in 62e30fd7 as an F-017 security-audit
  * item and enforces `permissions::DATA_EXPORT` before delegating to the unscoped handler. It was
- * registered in lib.rs:564 and documented in api-reference.md:96, but nothing in ui/src ever
+ * registered in the desktop shell's `generate_handler!` and documented in api-reference.md:96, but nothing in ui/src ever
  * called it -- so the audit item was recorded complete while every UI path still used the
  * unchecked command. Same for `createBackupScoped` below.
  */

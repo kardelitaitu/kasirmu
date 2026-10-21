@@ -401,7 +401,7 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   resolutions: ResolvedShortfall[];
   /** CUR-02: tip collected at checkout.
    *  Nullable: `CompleteSaleWithResolvedShortfallsArgs.tip_minor` is `Option<i64>`
-   *  (`pos/checkout.rs:275`), so both an absent key and an explicit null are valid. */
+ *  (`CompleteSaleWithResolvedShortfallsArgs` in `pos/checkout.rs`), so both an absent key and an explicit null are valid. */
   tipMinor?: number | null;
   /** CUR-02: service charge collected at checkout. See `tipMinor`. */
   serviceChargeMinor?: number | null;
@@ -736,9 +736,9 @@ export const voidSaleScoped = (sessionToken: string, saleId: string, reason: str
  * The bill type a parked cart carries.
  *
  * `hold` is the serde default (`crates/kasirmu-bridge/src/pos/hold_orders.rs:75`),
- * and `open_bill` is `BILL_TYPE_OPEN_BILL` (`:25`) — the value the bridge compares
- * with `==` to decide whether the workspace may park an open bill
- * (`apps/mobile-tauri/src/commands/pos.rs:897`).
+ * and `open_bill` is `BILL_TYPE_OPEN_BILL` — the value the bridge compares
+ * with `==` to decide whether the workspace may park an open bill (`hold_cart_scoped`
+ * in apps/mobile-tauri/src/commands/pos.rs).
  *
  * Typed as a union rather than `string` because NEITHER end checks it: the
  * `held_carts.bill_type` column is `TEXT NOT NULL DEFAULT 'hold'` with no CHECK
