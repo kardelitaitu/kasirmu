@@ -2086,7 +2086,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // ⚠️ DECLARED ABOVE THE SUB-SCREEN EARLY RETURNS, NOT BELOW THEM.
   //
-  // This callback sat at :2381 in commit 4b7d5cf4c, i.e. after every sub-screen
+  // This callback sat at 2161 in commit 4b7d5cf4c, i.e. after every sub-screen
   // early return in this component (`showTables`, `showSalesHistory`,
   // `showStockInquiry`, `showReceipts`, ... eight of them). React's rules-of-hooks
   // require every hook to run in the same order on EVERY render, so on any sub-view
