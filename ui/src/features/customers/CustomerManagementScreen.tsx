@@ -209,7 +209,12 @@ export default function CustomerManagementScreen() {
         setLoadError(
           requiredLocalized(l10nRef.current, 'customer-mgmt-error-load'),
         );
+        // CLEAR BOTH. Emptying the rows without clearing `searchTotal` fell past the
+        // load-error card into "No customers match your search." — a confident negative
+        // from a read that never answered — and left the summary printing an old total
+        // ("Showing 0 of 120 customers") as current. An UNKNOWN search has no total.
         setCustomers([]);
+        setSearchTotal(null);
       } finally {
         if (seq === searchSeqRef.current) {
           setSearching(false);
