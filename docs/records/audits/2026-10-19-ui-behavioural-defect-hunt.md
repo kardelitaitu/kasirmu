@@ -103,6 +103,15 @@ That is the second time this class of finding has collapsed on contact with a te
 from it: **a "this clear is wrong" claim must be checked against what the callback's counterpart does**,
 not read in isolation.
 
+### Fixed: the warehouse picker claimed "none" on a failed read
+
+`WarehouseConsole`'s two picker dialogs (receive-from-transfer, receive-from-PO) both swallowed the
+list-read failure and rendered their **empty** state — "No in-transit transfers", "No approved purchase
+orders". That is an authoritative claim made on the strength of a read that never answered, and it is the
+worst kind for this screen: the operator's next move is to go looking for stock that the read could not
+see. Both loaders now set a `…Failed` flag on catch and the dialogs render
+`warehouse-receive-load-failed` with `role="alert"` instead. The key is in both bundles.
+
 ### The test I did not ship
 
 The audit-log fix has no regression test. I wrote one, and could not make it stable — the mount path
