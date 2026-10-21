@@ -55,7 +55,7 @@
  *
  * A mouse does not need a 32px target for a 4px separator, and it is the desktop layout
  * where the panel sits beside a list. Scoping to `pointer: coarse` keeps the tablet's
- * measured 44px target (the file's own COMPLIANT note at :605) and stops the overlap.
+ * measured 44px target (the COMPLIANT note further down this sheet) and stops the overlap.
  */
 @media (pointer: coarse) {
   .pos-resize-handle::before {

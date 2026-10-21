@@ -161,9 +161,10 @@ export function usePosState() {
    *
    * A NEGATIVE delta that lands the line at zero or below REMOVES it, which is what makes
    * `changeQty(id, -1)` the right call for a decrease button: `updateQty(id, 0)` — the
-   * arithmetic a decrease on a qty-1 line produces — is silently REJECTED at :139, so the
-   * button did nothing at all. The filter runs after the map, so a positive delta that
-   * cannot go non-positive is untouched.
+   * arithmetic a decrease on a qty-1 line produces — is silently REJECTED by `updateQty`,
+   * which returns early on a non-positive qty — so the button did nothing at all. The
+   * filter runs after the map, so a positive delta that cannot go non-positive is
+   * untouched.
    */
   const changeQty = useCallback((lineId: LineId, delta: number) => {
     if (delta === 0) return;

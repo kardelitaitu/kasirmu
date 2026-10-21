@@ -30,8 +30,8 @@ interface KdsDraftState {
  * The card's fallback for an UNSET key, taken from the model the runtime uses.
  *
  * This was a second hand-written copy of the same five default values. It is not
- * decorative: `:105`, `:109` and `:114` fall back to it when a key has never been
- * written, so the number shown here is the number the operator will get — and the
+ * decorative: the three `clamp*Threshold` helpers below fall back to it when a key has
+ * never been written, so the number shown here is the number the operator will get —
  * KDS board reads its own copy (`kdsSettingsModel.DEFAULT_SETTINGS`) for the same
  * case. Changing one default without the other would make Settings display a value
  * the board does not use. Derived now, so the two cannot disagree.
@@ -152,11 +152,11 @@ export function WorkspaceKdsSettings({
       setOriginalsLoaded(true);
     });
     // The suppression on the previous line was hiding this: the effect reads sessionToken five
-    // times (:79-:83) and its deps listed only the one-way latch originalsLoaded. eslint could
-    // not report it, which is why the sweep's count understated the class -- the real total was
-    // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
-    // the `dirty` memo (its `useMemo` deps), and the touchedRef guard in the .then() is already
-    // built for re-entry. Anchored by identifier rather than by line number.
+    // times in its `Promise.all` argument list and its deps listed only the one-way latch
+    // originalsLoaded. eslint could not report it, which is why the sweep’s count understated
+    // the class -- the real total was 11, not 10. Latching on the token makes a store switch
+    // re-seed; originalsLoaded stays for the `dirty` memo (its `useMemo` deps), and the
+    // touchedRef guard in the .then() is already there.
     // ⚠️ The five reads live in the `Promise.all` argument list of this effect's load
     // (`getSettingScoped(…)` calls that take the token) — NOT in the range this note used to
     // cite, which held the `originalsLoadedForRef` assignment and the `dirty` useMemo and

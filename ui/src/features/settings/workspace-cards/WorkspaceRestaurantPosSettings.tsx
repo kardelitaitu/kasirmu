@@ -91,10 +91,10 @@ export function WorkspaceRestaurantPosSettings({
   useEffect(() => {
     // Only seed initial values once; subsequent re-runs must not
     // overwrite user edits (e.g. when settings.receipt changes).
-    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set at :130/:138, never
-    // reset), so listing sessionToken in the deps alone would have changed nothing -- the guard
-    // short-circuits every later run. Latching on the token makes a store switch re-seed, which
-    // is what the touchedRef guard at :71 is already built for.
+    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set in the settle
+    // callbacks below, never reset), so listing sessionToken in the deps alone would have
+    // changed nothing -- the guard short-circuits every later run. Latching on the token makes
+    // a store switch re-seed, which is what the `touchedRef` guard is already built for.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the once-per-
     // session latch or the re-read would be short-circuited.
     // ⚠️ THE LATCH IS SET WHEN THE READ SETTLES, NOT WHEN IT STARTS.
@@ -144,8 +144,8 @@ export function WorkspaceRestaurantPosSettings({
     // `return` made the second unreachable, and nothing in a lint rule or test could see
     // it because both bodies were identical (removed 2026-10-19).
     //
-    // The cites here were also wrong: this note said "sessionToken is read at :68 from
-    // useWorkspace() at :32, and the save path at :125 already lists it". Measured:
+    // The cites here were also wrong: this note printed three numbers for the token’s
+    // source, the save path and the re-read. Measured:
     // `sessionToken` is destructured from `useWorkspace()` at the top of the component,
     // and the save path that uses it is the `setSettingsScoped(sessionToken ?? null, …)`
     // call — anchored by those two expressions instead of numbers, because all three

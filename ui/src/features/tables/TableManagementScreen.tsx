@@ -1542,8 +1542,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
       }
       // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
-      // `handleRenameSection` above. The `updateTableScoped` awaits at
-      // :1361-1376 leave the screen interactive, so a section added during them was
+      // `handleRenameSection` above. The `updateTableScoped` awaits in that rename
+      // leave the screen interactive, so a section added during them was
       // dropped by this replacement. `check-state-closure-after-await.py` reports this
       // line as its second candidate. Carried out through the same ref for the same
       // reason: see the local-`let` hazard noted in handleRenameSection.
@@ -2561,14 +2561,14 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   type="submit"
                   state={tableModalSaving ? 'processing' : 'ready'}
                   // ⚠️ The name is part of the gate because `handleSaveTableModal` RETURNS
-                  // SILENTLY on a blank one (`:323` — `if (!tableModal || !tableModal.name.trim())
-                  // return;`). Measured 2026-10-14 before this fix: + Add Table opens the modal
-                  // with `name: ''` (`:296-301`), the Save Table button rendered ENABLED, and
+                  // SILENTLY on a blank one (`if (!tableModal || !tableModal.name.trim()) return;`).
+                  // Measured 2026-10-14 before this fix: + Add Table opens the modal
+                  // with `name: ''`, the Save Table button rendered ENABLED, and
                   // clicking it produced no request, no error and no state change — the operator
                   // taps Save and the till does nothing without saying why. The same shape as
                   // `RestaurantMenuEditorScreen`'s item form, found in round 163.
                   //
-                  // Note the contrast with the token guard twelve lines up (`:318-321`), which
+                  // Note the contrast with the token guard above, which
                   // REPORTS rather than returning silently — consistent with that intent, the
                   // blank-name path is closed by disabling the control rather than by adding a
                   // second toast, since the field is empty and the reason is self-evident.

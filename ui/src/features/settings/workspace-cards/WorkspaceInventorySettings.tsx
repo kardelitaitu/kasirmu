@@ -110,8 +110,8 @@ export function WorkspaceInventorySettings({
     // sessionToken is a prop read by the two `getSettingScoped` calls in the `Promise.all`
     // above. Without it here, a card mounted before a store switch kept showing the previous
     // store's thresholds. `loaded` still drives the `dirty` memo, so it is kept rather than
-    // replaced. (Anchored by identifier: the ":21"/":75"/":76"/":49" figures were all either
-    // right by luck or pointed at a different statement.)
+// replaced. (Anchored by identifier: the four figures this note used to print were all
+// either right by luck or pointed at a different statement.)
   }, [loaded, sessionToken, reloadNonce]);
 
   // ── Save ─────────────────────────────────────────────────────

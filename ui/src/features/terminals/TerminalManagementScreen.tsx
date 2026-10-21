@@ -288,7 +288,7 @@ export default function TerminalManagementScreen() {
         if (!cancelled) {
           // asObject for the binding: it is read field-by-field right here, and
           // an absent payload must not reach those reads (utils/ipc-payload).
-          // asArray for the store list: the render maps it (:910).
+      // asArray for the store list: the render maps it below.
           const binding = asObject<typeof b>(b);
           setBinding(binding);
           setBindingStores(asArray<typeof stores[number]>(stores));

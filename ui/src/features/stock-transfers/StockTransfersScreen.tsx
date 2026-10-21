@@ -115,7 +115,7 @@ export default function StockTransfersScreen() {
         // The PRIMARY read settles like its two siblings below. As a bare await its
         // rejection discarded the other two ANSWERS: `Promise.all` rejects on the first
         // failure, so a failed transfer list threw away a products read and a terminals
-        // read that had already succeeded, and the two `=== null` notices (:657, :710)
+// read that had already succeeded, and the two `=== null` notices below for
         // then reported those dropdowns as unanswered when they had been answered. Same
         // shape as ShiftManagementScreen's `load` and SalesHistoryScreen's `openDetail`.
         settleRead('stock-transfers listStockTransfers', listStockTransfers(sessionToken)),

@@ -564,8 +564,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      // RE-ENTRY GUARD. The submit button is disabled while busy (:1360), but this
-      // handler is also the form's `onSubmit` (:659) — pressing Enter in a field submits
+      // RE-ENTRY GUARD. The submit button is disabled while busy, but this
+      // handler is also the form's `onSubmit` — pressing Enter in a field submits
       // it directly and never consults the button. Without this, two submits ran
       // `provisionDevice` twice, which CREATES the device, the location and the OWNER
       // ACCOUNT in one call (:592-608). This is the one-shot first-run operation, so a
