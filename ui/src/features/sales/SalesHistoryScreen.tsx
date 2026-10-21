@@ -260,7 +260,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   /**
    * The open sale's PRIMARY read did not answer.
    *
-   * The modal cannot render without a sale (`detailExit.shouldRender && detail`, :1626), so
+   * The modal cannot render without a sale (the `detailExit.shouldRender && detail` guard), so
    * this flag is what keeps a failed open distinguishable from one that is still loading or
    * that the cashier never triggered. Without it a rejected getSaleScoped was an empty catch
    * and a tap that drew nothing at all.
@@ -569,8 +569,9 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         //
         // THE PRIMARY READ GOES THROUGH settleRead LIKE ITS TWO SIBLINGS. It used to be a
         // bare await in a Promise.all whose catch was empty, so a rejected getSaleScoped
-        // took the whole trio down, `detail` stayed null, and the modal's guard at :1626
-        // rendered nothing at all: the cashier tapped a sale and the drawer never opened,
+        // took the whole trio down, `detail` stayed null, and the modal's
+        // `detailExit.shouldRender && detail` guard rendered nothing at all: the cashier
+        // tapped a sale and the drawer never opened,
         // with no message to tell a dead tap from a slow one. Refunds and margins already
         // reported their own failures; the read that everything else depends on did not.
         settleRead(

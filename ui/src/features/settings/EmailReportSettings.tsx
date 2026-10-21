@@ -91,7 +91,7 @@ export default function EmailReportSettings() {
   // The latch was never added, so a slower earlier response lands last and shows the
   // previous store again, by a different route.
   //
-  // THE CONSEQUENCE IS CREDENTIALS. `saveConfig` (:134) writes the CONFIG STATE that was
+  // THE CONSEQUENCE IS CREDENTIALS. `saveConfig` writes the CONFIG STATE that was
   // just rendered, so a stale read does not merely display the wrong host -- it can
   // persist the previous store SMTP host, username and password over this one.
   const configSeqRef = useRef(0);
@@ -115,9 +115,9 @@ export default function EmailReportSettings() {
     } finally {
       setLoading(false);
     }
-    // sessionToken is read at :70 and derived from useWorkspace() at :44. This array was empty,
-    // and :81 is `useEffect(() => { loadConfig(); }, [loadConfig])` with no latch, so loadConfig's
-    // identity is the only thing that re-triggers the fetch -- it never changed, so the SMTP
+    // sessionToken is derived from `useWorkspace()` and read inside `loadConfig`. This array was
+    // empty, and the `useEffect(() => { loadConfig(); }, [loadConfig])` below is latchless, so
+    // loadConfig's identity is the only thing that re-triggers the fetch -- it never changed, so the SMTP
     // config shown after a store switch was still the previous store's.
   }, [sessionToken]);
 
@@ -125,7 +125,7 @@ export default function EmailReportSettings() {
 
   // ── Load schedule config ───────────────────────────────────────────
   // Same latch as loadConfig above, for the same reason: the deps name sessionToken,
-  // so a store switch overlaps two reads. `saveSchedule` (:188) writes the schedule
+  // so a store switch overlaps two reads. `saveSchedule` writes the schedule
   // state this read populated, so a stale one can be persisted.
   const scheduleSeqRef = useRef(0);
   const loadSchedule = useCallback(async () => {
