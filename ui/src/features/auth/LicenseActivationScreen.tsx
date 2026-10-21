@@ -322,9 +322,15 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       }
     } catch (err: unknown) {
       const message = l10nErrorMessage(err, l10n, 'auth-activation-error');
-      
-      addToast({ 
-        type: 'error', 
+
+      // PERSIST IT TOO. The `success === false` branch above sets `errorMsg`, which
+      // stays on the form; this branch only raised a toast, which auto-dismisses. A
+      // transport failure (licence server unreachable — an invoke that REJECTS rather
+      // than resolving false) therefore left the form looking exactly like a submit
+      // that merely re-enabled its button, with no record of what went wrong.
+      setErrorMsg(message);
+      addToast({
+        type: 'error',
         message,
       });
     } finally {
@@ -619,8 +625,15 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
               aria-selected={authMode === 'pair'}
               className={`license-mode-tab ${authMode === 'pair' ? 'active' : ''}`}
               onClick={() => {
+                // ONLY set the mode. The effect above owns the fetch and gates it on
+                // `authMode === 'pair' && !pairingSession && !pairingLoading && !pairingError`.
+                // Calling loadPairingSession here as well ran it BEFORE this render
+                // committed, when `pairingLoading` was still false — so the effect then
+                // saw a stale "not loading" and started a SECOND device-pairing session.
+                // A failure in the click-time copy also set `pairingError`, which the
+                // effect's copy immediately cleared, hiding the error and minting a
+                // second live pairing code.
                 setAuthMode('pair');
-                if (!pairingSession) void loadPairingSession();
               }}
             >
               <Localized id="auth-tab-pair-device">Pair with Phone</Localized>
