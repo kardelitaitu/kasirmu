@@ -14,21 +14,27 @@ open work in every downstream reading this journal supplies.**
 
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
-| High | 26 | 18 | **8** |
-| Medium | 66 | 32 | **34** |
+| High | 26 | 24 | **2** |
+| Medium | 66 | 34 | **32** |
 | Low | 23 | 5 | **18** |
 | Test (O-T) | 16 | 4 | **12** |
-| **Total** | **131** | **59** | **72** |
+| **Total** | **131** | **67** | **64** |
 
-**Updated 2026-10-21 (later the same day).** The earlier form of this table split "closed by a
-heading" from "marked PAID in-entry" and read 97 open. That split was itself misleading: the two
-conventions are equivalent evidence, and separating them made the total look worse than the tree.
-One column now, recounted by script.
+**Updated 2026-10-21 (end of day).** Recounted by script after thirteen entries closed today.
+**Only TWO Highs remain open: O-H12 and O-H17.**
 
-**Of the 8 open Highs, two are stale readings rather than live debt:** O-H25's target file no
-longer exists (re-measured 11-10-26, noted under the entry), and O-H02/O-H12 describe the same
-products-listing shape. The genuinely live remainder is O-H14, O-H17, O-H18, O-H19 and O-H20 —
-mobile N+1s plus the `platform/sync` round-trip cluster.
+- **O-H12** is the unbounded `GET /api/v1/products` (`pg/products.rs:312`), re-anchored today after
+  the `pg/` split and confirmed still live; it is the payload half of what O-H14 used to describe.
+- **O-H17** is the mobile checkout verifying RSA under the global DB mutex
+  (`apps/mobile-tauri/src/commands/pos.rs:993-1006`) — untouched this session.
+
+The earlier form of this table split "closed by a heading" from "marked PAID in-entry" and read 97
+open. That split was misleading: the two conventions are equivalent evidence, and separating them
+made the total look worse than the tree.
+
+**Closed today, and how:** O-H01, O-H03, O-H04, O-H08, O-H09, O-H10, O-H11, O-H13, O-H18, O-H19,
+O-H20, O-H21 fixed; O-H23, O-H24, O-H26 verified already paid by other lanes; O-H25, O-M57, O-M58
+**moot** because their target files were deleted and the ledger had not noticed.
 
 (Counted by script over the entry headers, not by eye — a first pass of this very table said
 "Medium 47 defined / 21 closed", which is wrong in both columns and is exactly the census-rot
