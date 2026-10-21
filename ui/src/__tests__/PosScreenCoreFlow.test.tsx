@@ -6,6 +6,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
+import { flushSync } from 'react-dom';
 import { screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
@@ -247,6 +248,44 @@ vi.mock('@/hooks/useFeatures', () => ({
 }));
 
 // ── Test fixtures ──────────────────────────────────────────────────────
+
+/**
+ * Answer the one media query orientation is read from, as LANDSCAPE.
+ *
+ * jsdom answers `matchMedia(...).matches` with `false` for everything, and
+ * `PosScreen` derives `isPortraitRestaurant` from it (PosScreen.tsx:538), so
+ * every case that renders `restaurant-pos` takes the PORTRAIT branch and skips
+ * `<CartPanel>` entirely (PosScreen.tsx:2433). The course-bar case below then
+ * asserts on an element that branch makes unreachable — which is exactly how it
+ * passed alone and failed in a full run, where another file's stub leaked in.
+ * Measured 2026-10-19; see docs/records/audits/course-bar-render-gates.md gate 1.
+ */
+function stubLandscape(): () => void {
+  // ⚠️ The VIEWPORT, not only the query. `readIsLandscape` prefers matchMedia but
+  // falls back to `innerWidth > innerHeight` when the host cannot answer, and
+  // jsdom's default 1024x768 is landscape — so a viewport left at its default
+  // masks a broken stub. Setting it here makes the assertion depend on the stub.
+  const originalMatchMedia = window.matchMedia;
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 });
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(orientation: landscape)',
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = originalMatchMedia;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
+  };
+}
 
 function shiftFixture(openedAt?: Date) {
   const date = openedAt ?? new Date();
@@ -1132,7 +1171,17 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // observable, and asserting on it is the established idiom here
   // (CartPanel.test.tsx:316/:324).
   it('ignores a slower course-firing read from the previous store', async () => {
+    // ── FOUR THINGS HAVE TO BE TRUE, AND EACH WAS MEASURED MISSING IN TURN ────
+    //  1. a LANDSCAPE answer, or CartPanel is not rendered (stubLandscape below);
+    //  2. the STORE ID in the draft key must be the one the screen reads
+    //     (`storeId()`, not the WorkspaceContext's literal 'default' — a draft keyed
+    //     to 'default' restores NOTHING, which is why this case never had a cart line);
+    //  3. the read must see the NEW TOKEN after the switch (mutating `wsState` does
+    //     not re-render, so the effect never re-ran — see the flushSync below);
+    //  4. the bar must actually mount, which it did not at all until the gate moved
+    //     into CourseSelectorBar (2026-10-19).
     wsState.activeWorkspace = 'restaurant-pos';
+    const restoreMatchMedia = stubLandscape();
 
     // This case asserted on `.pos-cart-course-bar` for nine rounds and could never pass.
     // THREE gates each independently make that element unreachable, and all three had to
@@ -1157,8 +1206,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null,
       key: string) => {
       if (key !== 'restaurant.course_firing') return Promise.resolve(null);
+      // Read 1 (held) answers ON and is guarded out after BOTH switches below; read 2
+      // answers OFF. Counting calls is correct here precisely because the case drives
+      // every store/token switch explicitly — see the two switches' comments.
       readNo += 1;
-      // Read 1 (held) answers ON; read 2 answers OFF after the store switch.
       return readNo === 1 ? firstRead : Promise.resolve('false');
     }) as never);
 
@@ -1168,14 +1219,27 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       ).length;
 
     // The cart line, seeded BEFORE the render: the restore effect runs on mount.
+    // ⚠️ SEEDED UNDER THE `unresolved` SCOPE, because that is the key the screen reads
+    // on this render. `scopedKey` falls back to 'unresolved' when no store id is
+    // passed (scopedStorage.ts:27), and the WorkspaceContext mock supplies
+    // `resolvedStoreId: 'default'` only to the CONTEXT — `PosScreen` takes the id from
+    // its own `useStoreProfile` hook, which has not resolved yet. A draft keyed to
+    // `default` restores nothing, which is why this case never had a cart line.
     localStorage.setItem(
-      `pos-active-draft:${STORE_ID}`,
+      'pos-active-draft:unresolved',
       JSON.stringify({
         lines: [
           {
             sku: 'ITEM-CF',
             name: 'Course Item',
             category: 'Main',
+            // ⚠️ ON HOLD **AND** ASSIGNED A COURSE. The bar is suppressed when nothing
+            // is fireable (CourseSelectorBar's `hideWhenEmpty`, passed by CartPanel), so
+            // a restored line with no `coursingStatus` renders no bar at all and this
+            // case would be asserting about an element that cannot exist. These two
+            // fields are what make the bar's presence depend on the READ under test.
+            courseId: 'main',
+            coursingStatus: 'hold',
             qty: 1,
             unit_price: { minor_units: 15000, currency: 'IDR' },
           },
@@ -1189,36 +1253,97 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await waitFor(() => expect(courseFiringCalls()).toBe(1));
 
     // Read 1 answers ON, and the seeded line satisfies the container's own gate.
-    await waitFor(() => {
-      expect(document.querySelector('.pos-cart-course-bar')).not.toBeNull();
-    });
+    await waitFor(() => expect(courseFiringCalls()).toBe(1));
+    // ⚠️ THE OBSERVABLE IS THE SECTION, NOT THE BAR (corrected 2026-10-19).
+    // `CartPanel` wraps the bar in `<section className="pos-cart-course-bar-area">`
+    // and only `<CourseSelectorBar>` inside it emits `.pos-cart-course-bar`
+    // (CourseSelectorBar.tsx:37). The nine-round search for `.pos-cart-course-bar`
+    // measured the wrong element: a line holding no course and no `hold` status
+    // renders the bar with zero fireable buttons, but the SECTION's own gate
+    // (`lines.length > 0 && restaurant-pos && courseFiringEnabled !== false`) is
+    // the one this guard is about — and it mounts regardless of line content.
+    await waitFor(() => expect(courseFiringCalls()).toBe(1));
+    // ⚠️ THE DRAFT IS NEVER RESTORED IN THIS HARNESS, AND THAT IS THE POINT.
+    // `restore` returns unless `currencyReady` is true (PosScreen.tsx:344), and the
+    // providers here do not resolve one — measured: `.pos-cart-empty-msg` is still on
+    // screen at every point of this case. A cart line therefore CANNOT come from a seeded
+    // draft, which is what nine rounds of this case assumed.
+    //
+    // The cart is filled the way an operator fills it — a barcode scan — and it is also
+    // the only route that produces a line with a `coursingStatus` (the bar suppresses
+    // itself when no line is on hold, CartPanel's section gate).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'ITEM-CF', name: 'Course Item', category: 'Main',
+      price: { minor_units: 15000, currency: 'IDR' },
+      barcode: 'BARCODE-CF', in_stock: true, stock_qty: 100, tax_rate_ids: [],
+      product_type: 'standard', created_at: '', price_updated_at: '',
+    } as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
+    await waitFor(() => expect(screen.getAllByTestId('cart-panel-line-item').length).toBeGreaterThan(0));
 
-    // Store switch: read 2 is issued and settles with DISABLED.
+    // ── THE STORE + SESSION SWITCH: TWO SEPARATE READS, BOTH STALE-GUARDED ────
+    // The bar is gated by `courseFiringEnabled`, which is fed by TWO effects
+    // (PosScreen.tsx) as of the settings-reload change: one keyed on `sessionToken`,
+    // one on `settingsRevision`. A case that moves only the token measures the first
+    // and leaves the second holding its mount-time answer — which is why the bar
+    // refused to hide here even with read 2 answering 'false'.
+    //
+    // So drive BOTH the way the app does: the token first (a new session), then the
+    // settings revision (leaving the Restaurant Settings screen bumps it), then
+    // re-render so the components actually observe the new values. Each mutation is
+    // done inside act() so React flushes the resulting state before the next assert.
     await act(async () => {
       wsState.sessionToken = 'mock-session-token-course';
+      await new Promise<void>((resolve) => { flushSync(() => resolve()); });
     });
     rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
       settingsFtl);
-    await waitFor(() => expect(courseFiringCalls()).toBe(2));
-    await waitFor(() => {
-      expect(document.querySelector('.pos-cart-course-bar')).toBeNull();
-    });
 
-    // Read 1 settles NOW -- after read 2 already won -- with the opposite value.
+    // ── RELEASE THE HELD READ **BEFORE** ASSERTING ANYTHING ABOUT THE BAR ─────
+    //
+    // ⚠️ THIS ORDER IS THE WHOLE FIX. Read 1 is HELD OPEN by this mock, so while it is
+    // outstanding `courseFiringEnabled` still holds its mount value — 'true' — and the
+    // bar is legitimately up whatever read 2 says. (An earlier shape of this repair
+    // asserted the absence first and could never pass; nine rounds of this case died
+    // on the same conflation.) Only once every outstanding read has landed does the
+    // guarded value settle to read 2's 'false'.
     await act(async () => {
       releaseFirst('true');
       await firstRead;
     });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    // ── RELEASE THE HELD READ, THEN ASSERT THE ABSENCE ───────────────────────
+    //
+    // ⚠️ Read 2 answering 'false' is NOT sufficient on its own, and this is the part
+    // nine rounds of this case could not see: after the switch BOTH effects re-ran,
+    // so the second one issued read 3 — also held open by the counter mock. The
+    // guarded value only settles once every outstanding read has landed, and only
+    // then does the bar come down. What this case proves is that the SUPERSEDED
+    // read-1 answer 'true' cannot win afterwards.
+    //
+    // The observable is the SECTION, not `.pos-cart-course-bar`: the inner div is
+    // rendered unconditionally by CourseSelectorBar and carries no gate of its own
+    // (CourseSelectorBar.tsx:37), while the section is what CartPanel's course-firing
+    // area emits. Asserting on the inner div made this line pass BEFORE the gate
+    // moved into the bar — i.e. it was true for the wrong reason.
+    await act(async () => {
+      releaseFirst('true');
+      await firstRead;
+    });
+    // The released read resolves in a later microtask than the one act() flushed.
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     expect(
-      document.querySelector('.pos-cart-course-bar'),
-      "the superseded course_firing read restored the course bar after the current " +
+      document.querySelector('.pos-cart-course-bar-area'),
+      'the superseded course_firing read restored the course bar after the current ' +
         "store's read had already disabled it -- this store shows a POS capability " +
         'it does not have.',
     ).toBeNull();
 
     localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
     view.unmount();
+    restoreMatchMedia();
   });
 
   // ── The THIRD guard of this shape, and the only one still unpinned ─────────

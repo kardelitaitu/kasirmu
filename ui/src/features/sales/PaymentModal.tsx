@@ -1041,7 +1041,18 @@ retryCurrencyLoad,
             addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-table-assign-failed'), type: 'warning' });
           }
         }
-        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // A .catch, NOT an awaited bare call. This sits inside the table-claim `try`
+        // above, and a rejected create_kds_order_from_sale_scoped is handled by THAT
+        // catch, which only reports the table assignment. Measured in
+        // PaymentModalSaleFlow: 'orders is not iterable' surfaced as
+        // 'createKdsOrderFromSale failed' with NO order in hand, so the kitchen was
+        // never told and the toast named the wrong subsystem. Null-ish is treated as
+        // 'no orders' — the chit loop and publishFiredCourses both iterate.
+        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId).catch((kdsErr: unknown) => {
+          console.error('createKdsOrderFromSale failed', kdsErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+          return [] as Awaited<ReturnType<typeof createKdsOrderFromSaleScoped>>;
+        });
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
         // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
@@ -1680,7 +1691,18 @@ retryCurrencyLoad,
             addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-table-assign-failed'), type: 'warning' });
           }
         }
-        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // A .catch, NOT an awaited bare call. This sits inside the table-claim `try`
+        // above, and a rejected create_kds_order_from_sale_scoped is handled by THAT
+        // catch, which only reports the table assignment. Measured in
+        // PaymentModalSaleFlow: 'orders is not iterable' surfaced as
+        // 'createKdsOrderFromSale failed' with NO order in hand, so the kitchen was
+        // never told and the toast named the wrong subsystem. Null-ish is treated as
+        // 'no orders' — the chit loop and publishFiredCourses both iterate.
+        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId).catch((kdsErr: unknown) => {
+          console.error('createKdsOrderFromSale failed', kdsErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+          return [] as Awaited<ReturnType<typeof createKdsOrderFromSaleScoped>>;
+        });
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
         // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —

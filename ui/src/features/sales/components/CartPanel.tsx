@@ -973,9 +973,14 @@ export function CartPanel({
               </div>
             )}
 
-            {/* 3. Guest Count / Pax (DINE-IN only) */}
+            {/* 3. Guest Count / Pax (DINE-IN only).
+                No `title` on the pill: it wraps an input that already carries
+                `aria-label=pos-cart-guest-count-label`, so the native tooltip was the
+                same string twice — and it is the OS-square kind the tooltip rule bans
+                (nativeTooltipCompliance). The glyph is aria-hidden; the input's own
+                label is what a screen reader announces. */}
             {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
-              <div className="pos-cart-guest-pill" title={l10n.getString('pos-cart-guest-count-label') || 'Pax'}>
+              <div className="pos-cart-guest-pill">
                 <span className="pos-cart-guest-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -1037,12 +1042,24 @@ export function CartPanel({
         </section>
 
         {/* ── Area: Course firing ─────────────────────── */}
-        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false && (
+        {/* ⚠️ The section is gated HERE **and** the conditions are repeated inside
+            <CourseSelectorBar>, which returns null on the same three. That is not
+            duplication for its own sake: the bar is also rendered standalone
+            (CourseSelectorBar.test.tsx), so it has to hold its own contract, while the
+            SECTION has to be gated or it wraps nothing and paints an empty area.
+            `hideWhenEmpty` additionally suppresses the bar when no line is on hold —
+            opt-in, because an all-fired cart legitimately shows an empty bar and that
+            behaviour is pinned by the bar's own suite. */}
+        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false
+          && !lines.every((l) => l.coursingStatus !== 'hold') && (
           <section className="pos-cart-course-bar-area" aria-label="Course Firing">
             <CourseSelectorBar
               lines={lines}
               fireCourse={fireCourse}
               fireAllCourses={fireAllCourses}
+              activeWorkspace={activeWorkspace}
+              courseFiringEnabled={courseFiringEnabled}
+              hideWhenEmpty
             />
           </section>
         )}

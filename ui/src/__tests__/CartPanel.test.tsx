@@ -405,8 +405,45 @@ describe('CartPanel (smoke)', () => {
       lines: [makeLine('Espresso')],
       openBills: [{ id: 'bill-1' } as never],
     });
-    expect(restoFull.panel.querySelector('.pos-cart-course-bar')).not.toBeNull();
+    // ⚠️ THE PROBE IS THE SECTION, AND THE FIXTURE LINE IS NOT ENOUGH (corrected
+    // 2026-10-19). `.pos-cart-course-bar` is emitted unconditionally by
+    // CourseSelectorBar and never carried the gate; the panel's course-firing AREA is
+    // the section. But the section is also suppressed when NO line is on hold, and the
+    // default fixture line carries no `coursingStatus` — so "present once a line exists"
+    // only holds for a line that is actually coursing. Restated as it is really used.
+    // `renderPanel` resolves the panel by role+name across the WHOLE document, so the
+    // previous render must be torn down first or it reports "multiple region Cart".
     restoFull.unmount();
+    const restoCoursing = renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [{ ...makeLine('Espresso'), courseId: 'main', coursingStatus: 'hold' } as never],
+      openBills: [{ id: 'bill-1' } as never],
+      courseFiringEnabled: true,
+    });
+    expect(restoCoursing.panel.querySelector('.pos-cart-course-bar-area')).not.toBeNull();
+    restoCoursing.unmount();
+
+    // The suppression rule, stated positively: with the store's `restaurant.course_firing`
+    // EXPLICITLY on (`true`), a cart with no held line renders no bar — a restored draft
+    // (every line `coursingStatus` undefined) has nothing to fire.
+    // `renderPanel` looks the panel up by role+name across the document, so tear down
+    // EVERY earlier render first or it reports "multiple region Cart".
+    restoFull.unmount();
+    const restoIdle = renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [makeLine('Espresso')],
+      courseFiringEnabled: true,
+    });
+    expect(restoIdle.panel.querySelector('.pos-cart-course-bar-area')).toBeNull();
+    // …and it comes back the moment a line is on hold.
+    restoIdle.unmount();
+    const restoHeld = renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [{ ...makeLine('Espresso'), courseId: 'main', coursingStatus: 'hold' } as never],
+      courseFiringEnabled: true,
+    });
+    expect(restoHeld.panel.querySelector('.pos-cart-course-bar-area')).not.toBeNull();
+    restoHeld.unmount();
     // Stock inquiry is retail-only: the same render without the restaurant
     // workspace gains it, and the badge now carries the count.
     const retail = renderPanel({ lines: [makeLine('Espresso')], openBills: [{ id: 'b' } as never] });
