@@ -1759,17 +1759,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // A SUB-VIEW is an early return that REPLACES this screen: `if (showSalesHistory)`,
   // `if (showTables)` and `if (showStockInquiry)` below, each a `return (<LocalizedError
   // Boundary>…)`; the payment modal is the fourth, `<PaymentModal>`. `isAnyOverlayOpen`
-  // covers the local DIALOGS but none of these, and
-  // ⚠️ These were cited as :1864 / :1675 / :1684 / :1626 and NONE of them were
-  // sub-views: those were PaymentModal’s lineItems map and the
-  // `settlingIdsInFlight.add`/`.delete` in handleSettleCredit. Four numbers, four
-  // misses — what a block of cites above a ~200-line insertion looks like after it
-  // lands.
-  // although their flags sat in the dependency array below the handler never READ
-  // them — so the retail function keys stayed live while a replacement screen owned
-  // the view. F1 (Pay) opened the payment dialog for a cart the cashier could not
-  // see, and F2/F3/F4 could clear, discount or re-hold that same invisible cart.
-  // That is money, so the keys are unbound unless the sale view is the one showing.
+  // covers the local DIALOGS but none of these, and although their flags sat in the
+  // dependency array below, the handler never READ them — so the retail function keys
+  // stayed live while a replacement screen owned the view. F1 (Pay) opened the payment
+  // dialog for a cart the cashier could not see, and F2/F3/F4 could clear, discount or
+  // re-hold that same invisible cart.
   //
   // `showPayment` is included for the same reason it is in the deps: without it the
   // hotkeys keep acting on the cart BEHIND the payment dialog.
