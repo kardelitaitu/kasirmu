@@ -478,6 +478,39 @@ action is to report it, not to launder it.
 The honest summary for this round is therefore: **the worktree is clean of my work — 0 content diffs,
 0 untracked files** — and the 32 ` M` entries are a reporting artefact, not uncommitted work.
 
+## Round 46: three defects, two from subagents, and one refutation of my own
+
+Three fixes landed this round, each with a test proven to fail without it.
+
+**1. Dashboard kept the previous range's figures after a failed refresh** (`DashboardScreen.tsx`).
+`loadData`'s catch set `error` and nothing else, so `dailyRevenue`, `topProducts` and `lowStock`
+still held the OLD range's values while the banner said the load failed. The low-stock branch then
+printed **"All stock levels are healthy."** — because an empty array is what it tests, and the array
+was empty only because the read had thrown. The fix clears the data and gates the health claim on
+`!error`, with a new `dashboard-stock-unknown` string for the honest state.
+
+**2. Suppliers turned a failed read into "the registry is empty"** (`SuppliersScreen.tsx`).
+The catch was literally `setSuppliers([])` — it *installed* the empty answer, and the empty-state
+card then said "No suppliers yet." with an "Add your first supplier" CTA. The file already had an
+`error` state, but it belonged to the create/edit form and was never used for the list read. Now a
+separate `loadError` renders an alert plus Retry.
+
+**3. The EDC terminal read was swallowed while its neighbours were not** (`RestaurantPaymentsScreen.tsx`).
+This one is a subagent find and it is the sharpest of the three, because the file argues against
+itself: at line 496 it calls `setLoadFailed(true)` inside the `.catch` of the two gateway reads,
+with a comment explaining that a swallowed read leaves the screen looking clean — and 100 lines
+*above*, the EDC list read still did `listEdcTerminalsScoped(token).catch(() => [])` with no flag.
+A rejected EDC read therefore rendered an empty terminal list, a green "All changes saved", and an
+**enabled** Save that wrote a blank `defaultEdcTerminalId` over the real hardware binding.
+
+**What I refuted first.** I read `SalesReportScreen.tsx` in full and was confident I had found a bug:
+`fetchData` and `fetchPrevData` share one `fetchGenerationRef`, so I expected each to invalidate the
+other and the period-comparison delta never to render. I wrote a probe and it **passed** — the delta
+rendered correctly, including with a deliberately slow current-period read that resolved after the
+previous-period read. Sequential effects mean the counter advances in a safe order here. I deleted
+the probe rather than report a defect that does not exist. That is the fourth time this campaign a
+plausible-looking shape survived contact with a probe, and it is why the probe comes before the fix.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
