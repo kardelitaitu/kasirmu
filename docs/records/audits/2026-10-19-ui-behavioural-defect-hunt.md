@@ -423,13 +423,29 @@ would have done automatically. The campaign has now fixed ~50 defects and, as of
 behavioural fix that can be pinned carries a test that fails without it. That is the durable form of the
 work; the diffs are not.
 
-### What the coverage gap says about the remaining surface
+### Round 45: the coverage backlog turned out to be empty
 
-`WarehouseConsole` having zero behavioural tests is not unique — it is one of the largest, but the same
-grep finds several screens whose only coverage is static. That is a different kind of backlog from the
-defect hunts: **not "is this code wrong" but "would anyone notice if it broke".** It is measurable, it is
-finite, and unlike the defect scans it does not deplete — every screen that gains its first test makes
-the next regression visible instead of silent.
+Last round's note above said `WarehouseConsole` was "one of the largest" of a class of barely-tested
+screens. That was an inference from one file, not a measurement. Measured properly, it does not hold:
+
+| measure | result |
+|---|---|
+| screens with no **name-matched** test file | 10, all thin wrappers (25–112 lines) |
+| components >120 lines with no test **reference at all** | 3 — all three analytics components, all mounted and exercised through `AnalyticsScreen.test.tsx` |
+| modules >200 lines with no test reference | 0 real hits (the rest are test files matching themselves) |
+
+Two lessons, both about measuring rather than estimating:
+
+1. **Name-matching undercounts coverage badly.** `EdcTerminalsCard` (528 lines) looked untested because
+   its test is called `EdcTerminalFormDoubleSubmit.test.tsx`. Grepping for the *identifier* rather than
+   the *filename* found it immediately.
+2. **A component being unmounted is not the same as untested.** `AnalyticsHeatmap` has no test file and no
+   other module imports it by name in a test — but `AnalyticsScreen` renders it, and the screen's suite
+   mounts the screen. Indirect coverage counts.
+
+So the "coverage backlog" I proposed as the next axis **does not exist**, and the honest thing is to say so
+rather than manufacture work for it. `WarehouseConsole` was the genuine exception — a 751-line screen with
+only static coverage — and it now has a behavioural test.
 
 ## Verification
 
