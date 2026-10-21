@@ -152,7 +152,12 @@ impl InventoryStockHandler {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         if ingredients.is_empty() {
-            let mut update_stmt = tx.prepare("UPDATE inventory SET qty = qty - ?1, updated_at = ?2 WHERE product_id = ?3 RETURNING qty")?;
+            // O-M64: deduction statements come from the connection's prepared-
+            // statement cache (`Connection::prepare_cached`) instead of being re-
+            // prepared at each site. The cache is keyed by SQL text and lives on the
+            // `Connection`; `Transaction` derefs to its `Connection`, so `tx` reaches
+            // the same cache the connection keeps across transactions.
+            let mut update_stmt = tx.prepare_cached("UPDATE inventory SET qty = qty - ?1, updated_at = ?2 WHERE product_id = ?3 RETURNING qty")?;
             let new_qty: Option<i64> = update_stmt
                 .query_row(params![qty, now, &product_id], |r| r.get(0))
                 .ok();
@@ -184,7 +189,10 @@ impl InventoryStockHandler {
                     .ok();
 
                 let deduct_qty = qty * quantity_required;
-                let mut update_stmt = tx.prepare("UPDATE inventory SET qty = qty - ?1, updated_at = ?2 WHERE product_id = ?3 RETURNING qty")?;
+                // O-M64: same SQL text as the simple-product arm above, so this takes
+                // the already-prepared statement out of the connection's cache instead
+                // of preparing it once per ingredient.
+                let mut update_stmt = tx.prepare_cached("UPDATE inventory SET qty = qty - ?1, updated_at = ?2 WHERE product_id = ?3 RETURNING qty")?;
                 let new_qty: Option<i64> = update_stmt
                     .query_row(params![deduct_qty, now, &ingredient_product_id], |r| {
                         r.get(0)

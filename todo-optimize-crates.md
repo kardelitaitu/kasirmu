@@ -1018,9 +1018,20 @@ serialises all other access to that connection. *Fix:* pool or `spawn_blocking`;
 to one transaction.
 
 **O-M64 · modules-inventory — the same UPDATE is re-`prepare`d per line and per ingredient** —
-`modules/inventory/src/handlers.rs:155`, `:187` ✔ (3D-03). A 20-line sale with a 4-ingredient BOM
-compiles identical SQL ~100 times; `prepare_cached` is used nowhere in `foundation/` or
-`modules/`. *Fix:* hoist one prepared statement above both loops.
+`modules/inventory/src/handlers.rs:160`, `:195` ✔ (3D-03) · **PAID** (uncommitted working tree).
+A 20-line sale with a 4-ingredient BOM compiled the identical SQL ~100 times. Fixed with
+`tx.prepare_cached(...)` at BOTH sites rather than a hoist: the cache is keyed by SQL text on the
+`Connection`, and `Transaction` derefs to its `Connection`, so the win is per-connection (spans
+the whole handler and every later transaction on that `Arc<Mutex<Connection>>`), not per-transaction
+— a hoist would only have deduplicated within one `handle_line` call. Zero call-site churn:
+`prepare_cached` returns `CachedStatement`, which the existing `let mut update_stmt` bindings and
+`query_row` calls accept via `DerefMut` to `Statement`. Behaviour unchanged — same rows, same
+`Some(q) if q >= 0` insufficient-stock arms, same `stock_summary` mirror, same logging, and the
+`.ok()` arms were deliberately NOT touched (separate debt class). Pinned by
+`handler_deducts_bom_ingredients_when_recipe_exists` (3-ingredient BOM, proves every ingredient is
+deducted — no duplicate test added), `handler_mixed_bom_and_simple_products` (both `prepare_cached`
+sites in one transaction on a warm cache) and `an_undecodable_recipe_row_refuses_the_sale_rather_than_mis_deducting`.
+`cargo check -p modules-inventory` clean; `cargo test -p modules-inventory --lib` 37 passed, 0 failed.
 
 **O-M65 · modules-inventory — two lookups per line, plus one query per ingredient purely for a
 log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04). `SELECT id` then
