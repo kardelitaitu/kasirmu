@@ -1926,7 +1926,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // dialog, which reads to the cashier as "saved". The change was silently lost.
       //
       // The state is reachable: the restore paths fill `setLines` from a persisted
-      // payload with no currency check (usePosHeldCarts :426, PosScreen :229), so a
+      // payload with no currency check (the `setLines(data.lines.map(…))` restore in
+  // `usePosHeldCarts`, and the `setLines(revived)` draft restore in this file), so a
       // cart can hold a line whose currency differs from `lines[0]`.
       const applied = updateLineModifiers(
         editingCartLine.id,

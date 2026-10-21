@@ -26,7 +26,9 @@ import './EodReportScreen.css';
  * The two Fluent keys that label a non-zero cash difference, ONE definition
  * each. They were spelled inline at both render sites below (was :154 and :187
  * at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is declared
- * once per bundle (locales/sales.ftl:479, sales.id.ftl:464). A rename that
+ * once per bundle (`eod-tag-over` / `eod-tag-short` in `shared-ui/locales/sales.ftl`
+ * and `sales.id.ftl` — anchored by key name, not by line: the numbers here pointed at
+ * `void-orders-line-total` and a prose comment). A rename that
  * landed on three of four copies would render a raw id, and Fluent's getString
  * returns null on a miss, which React renders as NOTHING: the tag would simply
  * vanish from a cash-reconciliation figure.
@@ -66,7 +68,7 @@ export const EOD_TAG_KEYS = {
  * under yesterday by the old filter.
  *
  * The fix is not a bigger date comparison, it is WHICH day is being asked for.
- * `build_eod_report` (crates/kasirmu-bridge/src/history.rs:398) draws every
+ * `build_eod_report` (crates/kasirmu-bridge/src/history.rs) draws every
  * figure in the report from `Store::export_daily_summary`, which buckets by the
  * store's UTC offset -- and its own comment says the header and body must share
  * ONE day definition or "the header and the body of one sheet could describe

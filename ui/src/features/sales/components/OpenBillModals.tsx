@@ -50,9 +50,13 @@ export function OpenBillInput({
   handleOpenBill,
 }: OpenBillInputProps) {
   const { l10n } = useLocalization();
-  // Every sibling sales modal installs this (ItemModifierModal:253, SplitBillModal:37,
-  // PromotionsModal:66, RefundModal:176, PriceOverrideModal:176, StockShortfallDialog
-  // :115). These two were the only `aria-modal="true"` dialogs without it, so a
+  // Every sibling sales modal installs this — `useFocusTrap` in ItemModifierModal,
+  // SplitBillModal (both under `sales/components/`) and PromotionsModal, RefundModal,
+  // PriceOverrideModal, StockShortfallDialog (all three directly under `sales/`; the
+  // paths were previously implied to be the components dir, which is wrong for these).
+  // Anchored by the `useFocusTrap(` call rather than a line per file: of the six numbers
+  // this note carried, two were right and four had rotted, one of them past EOF.
+  // These two were the only `aria-modal="true"` dialogs without it, so a
   // keyboard operator got no autofocus into the dialog, Tab walked out into the page
   // still rendered behind it, and Escape did nothing. Measured before the fix:
   // activeElement was <body>, Tab reached an outside button, and Escape did not call
