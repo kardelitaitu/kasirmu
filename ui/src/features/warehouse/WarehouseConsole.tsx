@@ -87,12 +87,17 @@ export default function WarehouseConsole() {
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferPick | null>(null);
   const [transferListOpen, setTransferListOpen] = useState(false);
   const [inTransit, setInTransit] = useState<PendingTransferPick[]>([]);
+  // A failed list read must not render as "there are none". The dialog's empty state is
+  // an authoritative claim, so it needs to know the difference between an answered
+  // empty list and a read that never answered.
+  const [inTransitFailed, setInTransitFailed] = useState(false);
   const [destinationOpen, setDestinationOpen] = useState(false);
 
   // PO receive (Phase 2)
   const [pendingPo, setPendingPo] = useState<PurchaseOrderDto | null>(null);
   const [poListOpen, setPoListOpen] = useState(false);
   const [poList, setPoList] = useState<PurchaseOrderDto[]>([]);
+  const [poListFailed, setPoListFailed] = useState(false);
 
   // ── Products for the bound location ────────────────────────────────
   const loadProducts = useCallback(async () => {
@@ -165,8 +170,12 @@ export default function WarehouseConsole() {
           lines: t.lines,
         })),
       );
+      setInTransitFailed(false);
     } catch {
-      // Non-critical — dialog shows the empty state.
+      // NOT "the dialog shows the empty state" — that would tell the operator there is
+      // nothing in transit on the strength of a read that never answered.
+      setInTransit([]);
+      setInTransitFailed(true);
     }
   }, [sessionToken]);
 
@@ -333,8 +342,10 @@ export default function WarehouseConsole() {
     try {
       const all = await listPurchaseOrdersScoped(sessionToken);
       setPoList(all.filter((po) => po.status === 'approved'));
+      setPoListFailed(false);
     } catch {
-      // Non-critical — dialog shows the empty state.
+      setPoList([]);
+      setPoListFailed(true);
     }
   }, [sessionToken]);
 
@@ -672,7 +683,9 @@ export default function WarehouseConsole() {
           open
           title={requiredLocalized(l10n, 'warehouse-receive-source-transfer')}
           message={
-            inTransit.length === 0 ? (
+            inTransitFailed ? (
+              <p role="alert">{requiredLocalized(l10n, 'warehouse-receive-load-failed')}</p>
+            ) : inTransit.length === 0 ? (
               <p>{requiredLocalized(l10n, 'warehouse-receive-no-transfers')}</p>
             ) : (
               <ul className="warehouse-transfer-list">
@@ -699,7 +712,9 @@ export default function WarehouseConsole() {
           open
           title={requiredLocalized(l10n, 'warehouse-receive-source-po')}
           message={
-            poList.length === 0 ? (
+            poListFailed ? (
+              <p role="alert">{requiredLocalized(l10n, 'warehouse-receive-load-failed')}</p>
+            ) : poList.length === 0 ? (
               <p>{requiredLocalized(l10n, 'warehouse-receive-no-pos')}</p>
             ) : (
               <ul className="warehouse-transfer-list">

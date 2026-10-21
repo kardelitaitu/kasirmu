@@ -771,6 +771,7 @@ warehouse-receive-source-po = Receive from purchase order
 warehouse-receive-source-transfer = Receive from transfer
 warehouse-receive-no-transfers = No in-transit transfers
 warehouse-receive-no-pos = No approved purchase orders
+warehouse-receive-load-failed = Could not load the list — close and try again
 warehouse-receive-confirmed = Received! { $number } — { $count } items
 warehouse-receive-expected = Expected
 warehouse-receive-received = Received

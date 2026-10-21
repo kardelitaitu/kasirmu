@@ -750,6 +750,7 @@ warehouse-receive-source-po = Terima dari pesanan pembelian
 warehouse-receive-source-transfer = Terima dari transfer
 warehouse-receive-no-transfers = Tidak ada transfer dalam perjalanan
 warehouse-receive-no-pos = Tidak ada pesanan pembelian yang disetujui
+warehouse-receive-load-failed = Daftar tidak dapat dimuat — tutup dan coba lagi
 warehouse-receive-confirmed = Diterima! { $number } — { $count } item
 warehouse-receive-expected = Diharapkan
 warehouse-receive-received = Diterima
