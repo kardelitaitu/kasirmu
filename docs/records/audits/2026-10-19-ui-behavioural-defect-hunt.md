@@ -447,6 +447,37 @@ So the "coverage backlog" I proposed as the next axis **does not exist**, and th
 rather than manufacture work for it. `WarehouseConsole` was the genuine exception — a 751-line screen with
 only static coverage — and it now has a behavioural test.
 
+## Round 45: 32 modified files, 0 changed bytes
+
+The worktree reported 32 modified entries. They were not work. Every one of them is a **stale stat
+cache entry**, and the evidence is three independent measurements agreeing:
+
+| measure | value |
+|---|---|
+| `git status --porcelain` entries | 32, all ` M` (none untracked, none staged) |
+| `git diff --ignore-cr-at-eol --numstat` | **0 lines across the whole tree** |
+| `git hash-object <path>` vs `git rev-parse :<path>` | identical for every file sampled |
+
+The `--porcelain=v2` form settles it without inference: each entry prints the *same* object id twice —
+`1 .M N... 100644 100644 100644 <same> <same> README.md` — where the first is the index blob and the
+second the working-tree blob. Git itself is reporting that the content matches and only the stat data
+disagrees. `git update-index --refresh` printed `needs update` for all 32 and changed nothing, which is
+the signature of a stat cache that cannot be repaired in place.
+
+The mechanism fits: `core.autocrlf=true` with `text: auto`, while the index blobs hold LF (verified —
+`git cat-file -p :README.md` shows bare LF, and `git check-attr` reports `eol: lf`). `core.trustctime` is
+`false`, so the racy-git ctime check is already off and cannot be the cause; the remaining candidate is
+the mtime/size pair on files rewritten by the line-ending step.
+
+**I did not "fix" it.** The only commands that would clear the cache are `git checkout -- <paths>` or a
+`git add`, and both are forbidden here: `git add` is barred outright by §7.3, and `checkout` would
+overwrite working-tree files that other lanes share. AGENTS.md §7.3 already documents this exact
+situation — *"Not every ` M` is content … matching hashes mean nothing to commit"* — so the correct
+action is to report it, not to launder it.
+
+The honest summary for this round is therefore: **the worktree is clean of my work — 0 content diffs,
+0 untracked files** — and the 32 ` M` entries are a reporting artefact, not uncommitted work.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
