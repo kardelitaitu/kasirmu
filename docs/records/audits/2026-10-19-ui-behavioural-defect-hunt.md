@@ -353,6 +353,44 @@ useful part: those return a mix of real defects and confident nonsense that must
 50%+ hit rate** and no false positives to argue with. When the defect shape can be written as a regex,
 write it — reserve the agents for the judgement calls the regex cannot make (is this empty state TRUE?).
 
+## Round 43: the scanner's yield drops, and what that means
+
+Three more mechanical scans, each targeting a different shape of the same family:
+
+| scan | sites | confirmed |
+|---|---|---|
+| `.catch(() => []/null/{})` fallbacks | 37 | 0 |
+| `?? []` / `?? null` fallbacks | 214 | 0 |
+| screens with no toast **and** no alert **and** no error text | 12 | 0 (all thin wrappers, zero `await`) |
+| rendered `.length` counts (a zero is a claim) | 48 | **1** |
+
+**One defect found: `DebtRemindersCard` told the merchant their debtors were settled.** The card uses
+`Promise.allSettled` so one read cannot take the other down — but then *dropped* the rejection, leaving
+the array at its `[]` initial value, and the render turns "no overdue rows" into the affirmative badge
+**"Up to date"**. One failed receivables read asserted, in the merchant's own dashboard, that nothing was
+owed. Both sides had it; both now carry a per-side failure flag, and a kill test pins it.
+
+### Why the yield dropped, and why that is the signal
+
+Rounds 42 and 43 both used regex scans. Round 42's found 5 defects in 14 candidates; round 43's found 1 in
+311. That is not the scans getting worse — it is the **backlog being consumed**. The same is true of the
+agent hunts: the last two batches returned findings that were mostly already-fixed sites, with the agents
+independently rediscovering `poListFailed`, `settleRead` and other fixes this campaign landed.
+
+Four families are now provably thin:
+
+- **failure-collapsed-to-empty** — 8 fixed across the campaign; the remaining catches are delete handlers,
+  best-effort cache writes, or values re-derived from an independent source.
+- **drifted line citations** — closed to 0 in round 32, and every `.rs` cite has now been read once.
+- **stale-line-number comments** — the guard's census is 0 and the rule is "anchor by symbol".
+- **duplicated async work** — the handful of double-fetches (compare panel, pairing, menu editor) are fixed.
+
+The honest statement is that **this vein is close to worked out**. Further rounds in the same shape will
+return mostly refutations, which costs more to disprove than it is worth. The next useful axis is a
+different *kind* of question — not "does this failure render as success", but things a regex cannot ask:
+whether a screen's stated contract matches what it does, whether a test asserts the right thing, whether
+two modules disagree about an invariant.
+
 ## Verification
 
 `WorkspaceRestaurantPosSettings` 15 tests, `TableManagementScreen` 79, `RestaurantPaymentsScreen` 51,
