@@ -16,30 +16,13 @@ use tower::ServiceExt;
 
 /// A unique scratch directory for image storage, kept INSIDE the checkout.
 ///
-/// Do not use `std::env::temp_dir()` here. It resolves `TEMP`/`TMP`, and on
-/// this project's Windows machines the MACHINE-level value is
-/// `C:\WINDOWS\TEMP` — creatable by an ordinary user but not deletable, so a
-/// fixture there can never be cleaned up and, once a stale directory exists,
-/// `create_dir_all` fails with `PermissionDenied` and every test in this file
-/// reads as broken. Measured 2026-10-21: all twelve image tests failed this way
-/// before the change, with the same `Os { code: 5 }` at this line.
-///
-/// `target/` is already gitignored (`.gitignore:2`), so nothing here can be
-/// committed, and the per-test UUID keeps parallel tests apart. Resolved from
-/// `CARGO_MANIFEST_DIR` rather than the CWD, because tests run from the crate
-/// root while `target/` lives at the workspace root.
+/// Delegates to [`kasirmu_test_support::scratch_dir`], which owns the whole
+/// `C:\WINDOWS\TEMP` rationale in one place (see that crate's docs). Measured
+/// 2026-10-21: all twelve image tests failed here with `Os { code: 5 }` before
+/// the fixture moved under the gitignored `target/` tree.
 fn scratch_image_dir() -> std::path::PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace = manifest
-        .ancestors()
-        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
-        .unwrap_or(manifest);
-    workspace
-        .join("target")
-        .join("test-scratch")
-        .join(format!("kasirmu-api-img-{}", uuid::Uuid::new_v4()))
+    kasirmu_test_support::scratch_dir("kasirmu-api-img")
 }
-
 /// Create a unique scratch directory for image storage (no `tempfile` dep).
 fn temp_image_dir() -> (AppState, std::path::PathBuf) {
     let dir = scratch_image_dir();
