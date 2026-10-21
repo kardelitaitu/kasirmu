@@ -63,6 +63,45 @@
 }
 
 
+/* ── Load error banner ────────────────────────────────────────────────
+   The order list failing to load is not an empty order list; the banner
+   holds until the retry returns real rows. */
+
+.po-load-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.po-load-error > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.po-load-retry {
+  flex-shrink: 0;
+  height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.po-load-retry:hover {
+  background: var(--color-danger-bg);
+}
+
 .po-table-wrap {
   overflow-x: auto;
 }
