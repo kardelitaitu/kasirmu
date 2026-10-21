@@ -2987,7 +2987,7 @@ has no harness for. That remains a real gap.
 
 ---
 
-## §11AR — the temp-dir class in the mobile crate: 144 failures from two lines (2026-10-21)
+## §11AR — O-H17 verification: the temp-dir class in the mobile crate was 144 failures from two lines (2026-10-21)
 
 **The largest single test-defect count of the session, and it was masking nothing but itself.**
 `cargo test -p kasirmu-mobile --lib` reported **578 passed, 144 failed**. Every one of the 144
