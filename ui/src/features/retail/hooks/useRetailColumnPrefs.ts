@@ -124,14 +124,26 @@ export function useRetailColumnPrefs(): {
     const stale = () => prefsSeqRef.current !== seq;
     getUserPreferencesScoped(sessionToken)
       .then((raw) => {
-        const serverPrefs: RetailColumnPrefs = {
-          visibleColumns: parseColumns(raw['retail_visible_columns']),
-          hideInactive: raw['retail_hide_inactive'] === 'true',
-          viewMode: raw['retail_view_mode'] === 'grid' ? 'grid' : 'text',
-        };
         if (stale()) return;
-        setPrefs(serverPrefs);
-        writeLocalPrefs(userId, serverPrefs);
+        // AN ABSENT KEY IS NOT AN ANSWER. `=== 'grid' ? 'grid' : 'text'` collapsed
+        // "never saved" into "saved as text", and the write below then put that default
+        // over the localStorage copy that WAS the user's choice — so a store whose grid
+        // mode was picked locally reverted to text on every reload. Only take the
+        // server's word when the server actually carries one; otherwise keep the
+        // current (localStorage-backed) value.
+        const serverViewMode =
+          raw['retail_view_mode'] === 'grid' || raw['retail_view_mode'] === 'text'
+            ? (raw['retail_view_mode'] as RetailColumnPrefs['viewMode'])
+            : undefined;
+        setPrefs((current) => {
+          const serverPrefs: RetailColumnPrefs = {
+            visibleColumns: parseColumns(raw['retail_visible_columns']),
+            hideInactive: raw['retail_hide_inactive'] === 'true',
+            viewMode: serverViewMode ?? current.viewMode,
+          };
+          writeLocalPrefs(userId, serverPrefs);
+          return serverPrefs;
+        });
       })
       .catch(() => {
         // Server unavailable — keep localStorage defaults (already set).
