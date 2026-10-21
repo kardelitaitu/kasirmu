@@ -84,10 +84,28 @@ def sections(text: str) -> list[tuple[str, str]]:
     return out
 
 
+# Words that UNDO a closing claim. "recount after thirteen closes, leaving only O-H12 and O-H17
+# open at High" names two entries and contains "closes", but the ids it names are the ones that
+# are STILL OPEN -- it is a status report, not a resolution. Without this veto the gate demanded
+# a section for both, which is the noisy direction: a false positive here teaches a reader to
+# ignore the gate, which is worse than the gap it closes.
+NOT_CLOSING = ("open", "remain", "remaining", "still", "not closed", "re-anchor",
+               "defer", "todo", "backlog")
+
+
 def is_closing_subject(subject: str) -> bool:
-    """True when a commit subject names an entry AND claims to close it."""
+    """True when a commit subject names an entry AND claims to close it.
+
+    The verb must be present AND no not-closing word may be, because a subject that
+    names ids while saying they "remain open" is a status report. Both halves are
+    needed: `resolve O-H01` closes; `recount, leaving O-H12 open` does not.
+    """
     lowered = subject.lower()
-    return bool(ID_RE.search(subject)) and any(v in lowered for v in CLOSING_VERBS)
+    if not ID_RE.search(subject):
+        return False
+    if not any(v in lowered for v in CLOSING_VERBS):
+        return False
+    return not any(w in lowered for w in NOT_CLOSING)
 
 
 # A resolved entry may be marked TWO ways in this journal, and both are legitimate:
