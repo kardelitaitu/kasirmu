@@ -270,6 +270,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | release | [Line-number citation drift: measured, partly repaired, and still open — 2026-10-19](audits/2026-10-19-line-number-citation-residual.md) | — |
 | topology | [Seventy NUL-filled files in node_modules, and the gate failures they faked — 2026-10-19](audits/2026-10-19-node-modules-nul-corruption.md) | — |
 | general | [Every required gate now has a runner it can actually reach — 2026-10-19](audits/2026-10-19-required-gates-without-runners.md) | — |
+| release | [Rust line cites in UI comments: a 26-cite sample, 11 repaired — 2026-10-19](audits/2026-10-19-rust-citations-in-ui-comments.md) | — |
 | release | [UI comment citations: 223 → 4, and the four that remain are correct — 2026-10-19](audits/2026-10-19-ui-comment-citation-sweep.md) | — |
 | release | [A green citation gate that could not see two dead citations — 2026-10-19](audits/2026-10-19-ungraded-citations-and-a-guard-that-measured-the-wrong-process.md) | — |
 | general | [49 of the 50 "modified" paths are phantoms, and one is real (round 289)](audits/49-of-50-modified-paths-are-phantoms.md) | — |
