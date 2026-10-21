@@ -461,7 +461,13 @@ limit/offset (or keyset on `created_at`) with a default page.
 `apps/desktop-tauri/src/commands/kds.rs:112-130` ✔. Fixed: indexed existing active tickets in `refresh_kds_queue_cache` to reuse cached line items and station routing for all unchanged orders, and passed `dirty_order_id` so that only the modified ticket is re-queried during item bumps. Reduced bridge round trips during order transitions and line bumps from $O(\text{active tickets})$ to $O(1)$. Verified with `kds_lan_live` test suite in `kasirmu-app`.
 
 **O-H17 · mobile — every checkout loads the subscription and verifies RSA under the global DB
-mutex** — ⚠️ **A cache was REJECTED 2026-10-21; see §11AO and §11AP for the corrected reasoning.**
+mutex** — ✅ **PAID 2026-10-21, by releasing the lock rather than caching.** The LOAD stays
+under the guard; `verify_signature` + `enforce_pos_writable` now run AFTER it is released, at
+both sites. ~197 us of held-mutex time removed per checkout in release (2,563 us in debug) with
+**zero change to what is accepted**. A cache was tried and rejected — see §11AO/§11AP.
+The behavioural note, stated rather than hidden: a revocation landing in the microseconds
+between read and check no longer pre-empts THAT checkout; the next command sees it.
+⚠️ **A cache was REJECTED 2026-10-21; see §11AO and §11AP for the corrected reasoning.**
 **MY EARLIER "licence bypass" CALL WAS WRONG** and is retracted: the Premium-through-sentinel
 result came from a deliberate `#[cfg(debug_assertions)]` short-circuit at
 `crates/kasirmu-core/src/license_verification/crl.rs:185-188`, documented at `:178-184`, which
@@ -2920,3 +2926,97 @@ unilaterally: **the verification takes no lock and touches no database, so it do
 inside the guard.** Loading the row under the lock and releasing the lock before `verify_signature`
 removes ~197 us of held-mutex time per checkout with zero change to what is accepted. That is being
 landed as §11AQ.
+
+---
+
+## §11AQ — O-H17 resolved by releasing the lock, not by caching it (2026-10-21)
+
+One High finding resolved — and the resolution is the one the rejected cache was standing in
+front of.
+
+**The defect was never the RSA cost in isolation; it was the RSA cost INSIDE the mutex.** Both
+checkouts did this:
+
+    let db = state.db.lock().await;
+    let sub = TenantSubscription::load(&db, "default")?...;
+    sub.verify_signature()?;        // ~197 us of pure CPU, no lock, no DB
+    sub.enforce_pos_writable()?;    // reads only in-memory fields
+
+`verify_signature` takes no lock and touches no database — it is a sentinel check plus
+`verify_license_signature`, whose public key is already cached in a `OnceLock` (`crl.rs:220-233`,
+the O-M09 fix). So the verification never needed the guard; it was simply written inside it.
+
+**The fix is six lines.** Only the LOAD stays under the lock (it needs the connection); the two
+pure-CPU calls move out, in their original order:
+
+    let sub = {
+        let db = state.db.lock().await;
+        TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+    sub.enforce_pos_writable()?;
+
+**Zero change to what is accepted.** The row verified is the exact row read under the lock — moved
+out, not re-read. The one behavioural difference is stated in the code comment rather than hidden:
+a revocation or grace-window expiry landing in the microseconds between the read and the check no
+longer pre-empts THAT checkout; the next command sees it.
+
+**Why this rather than the cache.** The cache failed on an unsolvable hazard — a CRL revocation
+delivered through a licence-KEY entry does not touch the tenant row, so any key derived from row
+attributes would keep serving "fine" indefinitely. Releasing the lock has no such failure mode,
+needs no key, introduces no staleness, and is strictly a narrowing of the critical section.
+
+**Measured, both builds, 2000 iterations with key parsing excluded:** 197.1 us per verify in
+release, 2,562.8 us in debug. The rejected lane had reported ~21 us and used that figure to argue
+the cost was not worth fixing at all — a 10x understatement in release and 120x in debug. The
+measurement is in §11AP.
+
+**Verification.** `cargo check -p kasirmu-mobile` clean; `cargo test -p kasirmu-mobile --lib`
+**721 passed, 1 failed**, and the one failure is pre-existing and not from this change —
+`commands::registration_gate_tests::drift_pin_registration_floor_is_met` reports "lib.rs registers
+437 commands and this floor says 428", a deliberate pin another lane must raise in its own
+documented pass (`lib.rs` is untouched here).
+
+**Coverage gap, recorded rather than papered over.** The ordering (signature before writability)
+is covered at the CORE layer by `test_complete_sale_deduction_fails_when_subscription_read_only`
+and its shortfall twin (`db/sales_tests.rs:5112`, `:5153`), each asserting a lapsed subscription
+refuses the sale and persists no row. There is **no mobile-layer test** driving the two
+`#[command]` wrappers on a lapsed subscription — they need `AppState` + session plumbing the crate
+has no harness for. That remains a real gap.
+
+---
+
+## §11AR — the temp-dir class in the mobile crate: 144 failures from two lines (2026-10-21)
+
+**The largest single test-defect count of the session, and it was masking nothing but itself.**
+`cargo test -p kasirmu-mobile --lib` reported **578 passed, 144 failed**. Every one of the 144
+failed with `Access is denied (os error 5)` or `create scratch dir: PermissionDenied` against a
+path under `C:\WINDOWS\TEMP`. The code under test was fine throughout.
+
+**The root was two lines.** `AppState::for_test` and `AppState::for_test_with_conn` are the shared
+fixture every mobile test goes through, and both built their store directory with
+`std::env::temp_dir().join(...)`. The machine-level `TEMP` is `C:\WINDOWS\TEMP` — creatable but
+not deletable for an ordinary user — so the store DB could not be opened.
+
+**Fixing the class, not the instance.** `state::test_scratch_root()` returns `<workspace>/target/test-scratch`,
+creating it, and is `pub(crate)` precisely so no fourth copy of the eleven-line helper appears.
+Three further shapes had to be converted separately, and each was invisible to a naive search:
+
+| shape | where | why the first sweep missed it |
+|---|---|---|
+| `tempfile::tempdir()` | 21 files | matched and swapped to `tempdir_in(scratch_root())` |
+| `tempfile::Builder::new()...tempdir()` | `recovery_tests.rs` | the builder chain, not the plain call |
+| `std::env::temp_dir().join(format!(...))` | `image_download_tests.rs`, `loyalty_tests.rs`, `state_tests.rs` | multi-line `format!`, so a single-line regex missed it |
+
+`tempdir_in` was chosen over a hand-rolled guard because it keeps the SAME auto-delete `TempDir`
+contract — only the parent changes — so 42 call sites needed no edit beyond the constructor.
+
+**Result: 578/144 → 721 passed, 1 failed**, and that one failure is pre-existing and unrelated
+(`registration_gate_tests::drift_pin_registration_floor_is_met`, a deliberate pin on `lib.rs`
+command count that another lane must raise). **`lib.rs` is untouched.**
+
+**Tally for the session: four crates now carry this fix** — `kasirmu-core` (19 sites), `kasirmu-api`
+(1), `kasirmu-cloud` (4), `kasirmu-mobile` (46 across 26 files). That is four local copies of the
+same helper, which is well past the threshold where a shared test-support crate was the right call.
+Recorded as the obvious follow-up rather than done speculatively at the end of a long session.
