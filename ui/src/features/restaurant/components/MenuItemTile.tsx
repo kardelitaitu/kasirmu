@@ -285,7 +285,10 @@ export const MenuItemTile = memo(function MenuItemTile({ product, sourceInStock,
 }, (prev, next) => {
   // WHY THIS COMPARATOR EXISTS, and why the default one was not merely suboptimal.
   //
-  // MenuItemGrid passes product={{ ...product, inStock: ... }} (:107) -- a NEW object
+  // MenuItemGrid passes product={{ ...product, inStock: ... }}
+  // (components/MenuItemGrid.tsx:122 — re-measured 2026-10-19; this note said ":107",
+  // a bare number that matched no line of the file that actually makes the object, and
+  // pointed into THIS file's `return;` instead) -- a NEW object
   // literal on every render of the grid, so a default shallow compare never matched and
   // this memo was DEAD CODE: every one of up to ~100 tiles re-rendered on every grid
   // render, on the tablet that is the restaurant till. Comparing the product BY VALUE is

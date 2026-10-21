@@ -19,9 +19,11 @@
 // ⚠️ CORRECTED 2026-10-18. This line used to read "...class names and
 // role="menu"/menuitem semantics are pinned by RestaurantMenu.test.tsx", and the
 // second half was FALSE in two ways. The menuitem role is GONE — the container is
-// role="dialog" (:181), because a menu may only hold menuitem-family children while
+// role="dialog" (:191, re-measured 2026-10-19; this note said :181, which is the
+// popup's `top:` offset), because a menu may only hold menuitem-family children while
 // this popup also holds the colour strip (axe aria-required-children); see the NOTE
-// at :64. So there is no menu/menuitem semantics left for a test to pin, and
+// at :74 (was `:64`, which is `onClose` in the props interface). So there is no
+// menu/menuitem semantics left for a test to pin, and
 // `RestaurantMenu.test.tsx` contains no role="menu" assertion. What IS pinned there
 // is the CLASS NAME (.restaurant-context-menu, :783) and the keyboard behaviour after
 // the role change — Shift+F10 focus, ArrowUp/ArrowDown roving, and the walk from the
