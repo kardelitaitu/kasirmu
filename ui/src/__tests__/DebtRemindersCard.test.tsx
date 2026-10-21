@@ -102,6 +102,22 @@ describe('DebtRemindersCard', () => {
     expect(recBlock?.textContent).not.toContain('Up to date');
   });
 
+  it('does NOT claim the payables panel is Up to date when that read failed', async () => {
+    // The mirror of the receivables case: the two reads fail independently, so each side
+    // needs its own guard. A failed payables read left the array at [] and the panel
+    // rendered the affirmative all-clear over bills that may well be overdue.
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockRejectedValue(new Error('ipc down'));
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load payables/i)).toBeTruthy();
+    });
+    const payBlock = screen.getByText('Vendor Bills (Hutang)').closest('.dashboard-debt-panel');
+    expect(payBlock?.textContent).not.toContain('Up to date');
+  });
+
   it('renders overdue and due-soon customer receivables with outstanding amount', async () => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 

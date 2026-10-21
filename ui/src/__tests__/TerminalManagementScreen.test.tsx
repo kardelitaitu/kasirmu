@@ -11,13 +11,14 @@ import terminalsFtl from '@/locales/terminals.ftl?raw';
 import type { TerminalDto } from '@/api/terminals';
 
 const { mockListTerminals, mockRegisterTerminal, mockDeleteTerminal,
-  mockListTerminalOverrides, mockSetTerminalOverride } =
+  mockListTerminalOverrides, mockSetTerminalOverride, mockGetDeviceBinding } =
   vi.hoisted(() => ({
     mockListTerminals: vi.fn(),
     mockRegisterTerminal: vi.fn(),
     mockDeleteTerminal: vi.fn(),
     mockListTerminalOverrides: vi.fn(),
     mockSetTerminalOverride: vi.fn(),
+    mockGetDeviceBinding: vi.fn(),
   }));
 
 vi.mock('@/api/terminals', () => ({
@@ -28,7 +29,7 @@ vi.mock('@/api/terminals', () => ({
   listTerminalOverridesScoped: (_sessionToken: string, id: string) => mockListTerminalOverrides(id),
   setTerminalOverrideScoped: (...args: unknown[]) => mockSetTerminalOverride(...args),
   deleteTerminalOverrideScoped: () => Promise.resolve(),
-  getDeviceBindingScoped: () => Promise.resolve({ bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false }),
+  getDeviceBindingScoped: () => mockGetDeviceBinding(),
   setDeviceBindingScoped: () => Promise.resolve(),
   clearDeviceBindingScoped: () => Promise.resolve(),
 }));
@@ -101,6 +102,7 @@ describe('TerminalManagementScreen', () => {
     mockRegisterTerminal.mockResolvedValue({ id: 'new-t' });
     mockDeleteTerminal.mockResolvedValue(undefined);
     mockListWorkspacesForStoreScoped.mockResolvedValue([]);
+    mockGetDeviceBinding.mockResolvedValue({ bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false });
     mockSetTerminalOverride.mockResolvedValue(undefined);
   });
 
@@ -184,6 +186,28 @@ describe('TerminalManagementScreen', () => {
     await waitFor(() => {
       expect(screen.getAllByText('Edit').length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('Delete').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('says the instance list could not be read instead of showing an empty store', async () => {
+    // Opening Edit loads the store's workspace instances for the binding picker. A
+    // rejected read used to empty the list with no error, so the "— Select instance —"
+    // placeholder was identical to a store that genuinely has no instances and Bind
+    // stayed disabled with nothing explaining why.
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    mockGetDeviceBinding.mockResolvedValue({
+      bounded: true, boundStoreId: 'store-1', boundInstanceId: 'inst-1', signatureValid: true,
+    });
+    mockListWorkspacesForStoreScoped.mockRejectedValue(new Error('ipc down'));
+    renderScreen();
+
+    await waitFor(() => expect(screen.getAllByText('Edit').length).toBeGreaterThanOrEqual(1));
+    await act(async () => {
+      await userEvent.click(screen.getAllByText('Edit')[0]!);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load this store/i)).toBeInTheDocument();
     });
   });
 
