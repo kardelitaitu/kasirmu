@@ -15,12 +15,17 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 68 | 68 | **0** |
+| Medium | 69 | 68 | **1** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **134** | **134** | **0** |
+| **Total** | **135** | **134** | **1** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-22 (round 21). 135 defined, 134 closed, 1 open: O-M69.** The probe's own blind spot found it:
+`audit_log` has no index leading with `outcome`, so filtering the audit screen by outcome is WORSE than not
+filtering — a full scan where the unfiltered query at least walked an index. Measured, with a measured fix
+already known; open only because the migration is the remaining step.
 
 **Updated 2026-10-22 (round 20). 134 defined, 134 closed, 0 open.** O-M68 closed (§11CE) — and it is the
 first entry in this file ever FOUND BY TOOL rather than by reading, which is the point: `scripts/check-query-plans.py`
@@ -1048,6 +1053,26 @@ filters `sl.sku IN (...)` and therefore plans `SEARCH` on the good index. So the
 open against the whole activity ledger, not per sale. That is a materially smaller problem than the first
 draft of this entry implied, and it moves the decision toward EITHER a cheap index OR leaving it alone
 until a store's activity table is measured at a size where a once-per-open scan is actually felt.
+
+**O-M69 · kasirmu-core — the audit-log `outcome` filter scans the whole log** —
+`crates/kasirmu-core/src/db/audit.rs:191-247` (builder) called from
+`list_audit_entries_page` (`:755`) / `list_audit_entries_export_filtered` ◦. `build_audit_where` appends
+`outcome = ?N` when the caller filters, but `audit_log` carries indexes only on `action`, `created_at`,
+`(target_type, target_id)` and `user_id` (`20260813_init.sql:1093-1099`) — **no index leads with
+`outcome`**. MEASURED over 2,000 seeded rows + `ANALYZE`, on the paging query
+`... WHERE outcome = ? ORDER BY created_at DESC, id DESC LIMIT 51`:
+
+    outcome filter     -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
+    no filter          -> SCAN audit_log USING INDEX idx_audit_log_created_at
+    cursor (no filter) -> SEARCH audit_log USING INDEX idx_audit_log_created_at (created_at<?)
+
+**Adding an `outcome` filter makes the plan WORSE than no filter at all**: it drops the index-only walk
+for a full table scan plus a temp B-tree sort. Every admin audit screen filtered to `failure` reads the
+entire log.
+
+*Fix (measured):* `CREATE INDEX idx_audit_log_outcome_created ON audit_log(outcome, created_at DESC, id DESC)`.
+With it, the same query plans `SEARCH audit_log USING COVERING INDEX idx_probe (outcome=?)` and the temp
+B-tree disappears. Not yet applied — see §11CF for why it is recorded open rather than shipped.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
