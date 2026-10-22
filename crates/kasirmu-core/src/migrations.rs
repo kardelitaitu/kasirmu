@@ -748,6 +748,18 @@ pub fn ensure_bootstrap_subscription(
 /// up, and swapping the 66-odd surviving `run` call sites over to
 /// `fresh_db()` needs no prerequisite work here.
 ///
+/// RE-CONFIRMED at suite scale 2026-10-23, because the note above was written
+/// from a microbenchmark and someone had already tried to raise the thread count
+/// once. `kasirmu-bridge`'s full suite, 1542 tests, is the end-to-end version of
+/// the same curve: **1395-1471 s at libtest's default 32 threads, 355.95 s at 4**
+/// (identical 1542 passed / 0 failed). Per-module, `kds::` alone: 42.79 s at 1
+/// thread, 31.17 s at 2, **26.37 s at 4**, 50.80 s at 8, 92.90 s at 32. The
+/// modules that hurt are exactly the ones that construct many `TestBridge`s —
+/// every `TestBridge::new()` clones this snapshot — while the 332-test
+/// `topology` module, which mostly does not, finishes in 9.66 s serial and is
+/// unaffected. `.config/nextest.toml` now pins `test-threads = 4` on
+/// `[profile.default]` so the ceiling is applied instead of rediscovered.
+///
 /// The returned connection carries the same per-connection PRAGMAs
 /// [`run`] applies (see there for why each exists), except
 /// `journal_mode = WAL`: an in-memory database cannot use WAL — SQLite
