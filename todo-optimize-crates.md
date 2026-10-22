@@ -7156,3 +7156,62 @@ in aggregate. Three rounds of 23-minute suites is roughly an hour of wall time, 
 twenty minutes to measure once.
 
 ### Ledger: 147 defined, 147 closed, 0 open.
+## §11CY — O-M82 OPENED: nextest runs kasirmu-core 4.6x slower than cargo test, and the snapshot explains it (2026-10-23)
+
+**Recorded, not fixed. The fix is a design change to the test database, not a flag.**
+
+### The measurement
+
+While confirming round 35's thread pin applies to the largest crate, one number did not
+fit and would have been easy to skip past:
+
+| runner | kasirmu-core --lib (3674 tests) | per test |
+|---|---|---|
+| `cargo test -- --test-threads=4` | **65.10 s** | 17.7 ms |
+| `cargo nextest run` (default profile) | 294.89 s | 80.3 ms |
+| `cargo nextest run --profile quick` | 298.29 s | 81.2 ms |
+
+**4.6x slower under nextest**, and identical between the default and `quick` profiles —
+which rules out `retries` (the obvious suspect, since `quick` sets `retries = 0` and
+`default` sets `count = 2`). The difference is not retry policy.
+
+### Why, and why it hits core but not bridge
+
+`fresh_db()` (`crates/kasirmu-core/src/migrations.rs:782`) builds a pre-migrated SQLite
+snapshot once, in a `static LazyLock<Mutex<Connection>>`, then clones it per test through
+SQLite's backup API. The whole point of that design is that the 68-migration chain runs
+**once per process** and every later test in that process gets a ~3 ms page copy.
+
+`cargo test` runs one process per test BINARY, so the snapshot is built once and shared by
+all 3674 tests. **nextest forks a process per TEST**, so each of the 3674 tests rebuilds
+the entire 68-migration chain (~305 ms measured) before it does anything. Partial overlap
+under 4-way parallelism is why the result is 298 s rather than the 1120 s a naive
+3074 x 305 ms would predict — but the mechanism is the same one.
+
+`kasirmu-bridge` does not suffer this: its 38-test `kds::` module ran **15.04 s under
+nextest against 26.37 s under `cargo test --test-threads=4`**, i.e. nextest is 1.75x
+FASTER there. Its fixtures are cheaper to build, so nextest's per-test process isolation
+costs less than its better scheduling saves. **The same tool is the fastest runner for one
+crate and the slowest for another, and neither measurement generalises.**
+
+### Why it is not fixed this round
+
+Removing the per-process rebuild means sharing one migrated snapshot across processes
+(a memory-mapped file, or a template the runner copies), which changes how 613 `fresh_db()`
+call sites obtain their database. That is a redesign of the test harness, not a
+configuration change, and a wrong version of it silently hands two tests the same database
+— the exact defect class this ledger has spent three rounds removing from the scratch
+directories.
+
+### What a fix would have to show
+
+1. The snapshot is shared, and a mutation in one test is still invisible to the next.
+2. `cargo nextest run` on `kasirmu-core` drops toward the 65 s that `cargo test` achieves,
+   without any test changing its reported result (3674 passed either way).
+3. It is measured on `kasirmu-bridge` too, because that crate currently BENEFITS from
+   nextest and a fix that helps one while hurting the other is not a fix.
+
+Meanwhile the honest advice is runner-per-crate, not one answer: `cargo test` for
+`kasirmu-core`, `nextest` for `kasirmu-bridge`.
+
+### Ledger: 148 defined, 147 closed, 1 open.
