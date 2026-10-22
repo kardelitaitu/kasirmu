@@ -15,7 +15,8 @@ next: none | perf: N/A
 //! # Usage
 //!
 //! ```no_run
-//! let pool = DbPool::from_env().await?;
+//! let config = CloudServerConfig::from_env()?;
+//! let pool = DbPool::from_config(&config).await?;
 //! let conn = pool.get().await?;
 //! ```
 
@@ -76,24 +77,6 @@ impl DbPool {
             .await;
         }
         Self::connect_sqlite(&config.db_path)
-    }
-
-    /// Create a pool from the environment (used by tests that set env vars).
-    /// Production code should go through [`CloudServerConfig`].
-    #[cfg(test)]
-    pub async fn from_env() -> Result<Self, DbError> {
-        Self::from_env_with_retries(5).await
-    }
-
-    /// Like [`from_env`] but with a caller-chosen retry budget for the
-    /// underlying `connect_postgres`. Tests asserting a connection failure
-    /// on a dead port should pass `max_attempts: 1` to avoid 30+ seconds
-    /// of backoff sleeps.
-    #[cfg(test)]
-    pub async fn from_env_with_retries(max_attempts: u32) -> Result<Self, DbError> {
-        let config =
-            CloudServerConfig::from_env().expect("CloudServerConfig::from_env failed in test");
-        Self::from_config_with_retries(&config, max_attempts).await
     }
 
     /// Detect paths that are obviously non-Linux: a Windows drive-letter
