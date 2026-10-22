@@ -908,3 +908,147 @@ fn an_ordinary_tenant_is_accepted_and_its_scoped_keys_are_not_refused() {
         );
     }
 }
+// ── O-M27: the three settings writes are ONE unit ───────────────────
+
+/// A failure on the SECOND write must leave the FIRST unwritten.
+///
+/// # The defect this pins
+///
+/// `write_settings` used to hand `apply_ops_sqlite` a plain `&Connection`, and
+/// each op committed on its own. So a save touching store name + SMTP + report
+/// schedule could fail on SMTP and leave the store name APPLIED — a partial save
+/// reported as a failed one. An earlier attempt produced a run that answered
+/// **HTTP 200 with all three keys written** after a write that was supposed to
+/// fail.
+///
+/// # How the failure is induced (and why it is real)
+///
+/// A trigger on `settings` that raises for one specific key. That is a genuine
+/// database-level failure of the second op, not a contrived argument the store
+/// would have accepted anyway — the earlier attempt's failure to induce one is
+/// exactly why its test proved nothing.
+///
+/// Both directions are asserted: the first key keeps its PREVIOUS value
+/// afterwards (the rollback), and a clean save writes all three (so the rollback
+/// is not being achieved by writing nothing at all).
+#[tokio::test]
+async fn a_failing_second_op_rolls_back_the_first() {
+    let state = state_with(Some("sekret"));
+    let tenant = "default";
+
+    // Write one key first, so the rollback has a known previous value to keep.
+    {
+        let db = state.db.lock().await;
+        let tx = db.unchecked_transaction().unwrap();
+        apply_ops_sqlite(
+            &tx,
+            tenant,
+            Op::Write("New Store Name".into()),
+            Op::Leave,
+            Op::Leave,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    }
+
+    // Make the SECOND op fail. The trigger fires only for the SMTP key, so the
+    // store-name write in the same call genuinely succeeds first and must then
+    // be rolled back.
+    {
+        let db = state.db.lock().await;
+        let trigger = format!(
+            "CREATE TRIGGER o_m27_reject_smtp BEFORE INSERT ON settings \
+             WHEN NEW.key = '{}:{}' \
+             BEGIN SELECT RAISE(ABORT, 'O-M27 induced failure'); END;",
+            SMTP_CONFIG_SETTINGS_KEY, tenant
+        );
+        db.execute_batch(&trigger).unwrap();
+    }
+
+    let result = write_settings(
+        &state,
+        tenant,
+        Op::Write("Half-Written Name".into()),
+        Op::Write("{\"host\":\"smtp.example.com\"}".into()),
+        Op::Leave,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "the SMTP write must be reported as a failed save, got {result:?}"
+    );
+
+    // FALSIFICATION CHECK, permanent: the same three ops applied inside a
+    // transaction that is DROPPED without commit must also leave the previous
+    // value — this is the mechanism the assertion below depends on, asserted
+    // directly so a regression in rusqlite's drop-rollback cannot silently
+    // weaken the test above.
+    {
+        let db = state.db.lock().await;
+        let tx = db.unchecked_transaction().unwrap();
+        let _ = apply_ops_sqlite(
+            &tx,
+            tenant,
+            Op::Write("Rolled Back Name".into()),
+            Op::Leave,
+            Op::Leave,
+        );
+        drop(tx); // no commit: rusqlite rolls back
+        let store = Store::new(&db);
+        let name = store
+            .get_setting(&scoped_key(STORE_NAME_SETTINGS_KEY, tenant))
+            .unwrap();
+        assert_eq!(
+            name.as_deref(),
+            Some("New Store Name"),
+            "a transaction dropped without commit must roll its writes back"
+        );
+    }
+
+    {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        let name = store
+            .get_setting(&scoped_key(STORE_NAME_SETTINGS_KEY, tenant))
+            .unwrap();
+        assert_eq!(
+            name.as_deref(),
+            Some("New Store Name"),
+            "the failed save must leave the PREVIOUS value untouched, not the new \
+             one — without the transaction this reads the half-written name"
+        );
+    }
+}
+
+/// And the happy path still writes all three (the rollback above is not
+/// achieved by writing nothing).
+#[tokio::test]
+async fn a_saving_call_writes_all_three_keys() {
+    let state = state_with(Some("sekret"));
+    let tenant = "default";
+
+    write_settings(
+        &state,
+        tenant,
+        Op::Write("Store A".into()),
+        Op::Write("{\"host\":\"smtp.example.com\"}".into()),
+        Op::Write("{\"enabled\":true}".into()),
+    )
+    .await
+    .expect("a save with no induced failure must succeed");
+
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    for base in [
+        STORE_NAME_SETTINGS_KEY,
+        SMTP_CONFIG_SETTINGS_KEY,
+        REPORT_SCHEDULE_SETTINGS_KEY,
+    ] {
+        let value = store.get_setting(&scoped_key(base, tenant)).unwrap();
+        assert!(
+            value.is_some(),
+            "{base}: a successful save must write every op"
+        );
+    }
+}

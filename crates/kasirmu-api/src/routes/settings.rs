@@ -466,7 +466,22 @@ async fn write_settings(
         apply_ops_pg(pool, tenant, store_op, smtp_op, schedule_op).await
     } else {
         let db = state.db.lock().await;
-        apply_ops_sqlite(&db, tenant, store_op, smtp_op, schedule_op)
+        // O-M27: the three writes are ONE unit. Without this transaction each
+        // `execute` auto-committed on its own, so a failure on the second or
+        // third op left the first APPLIED and the handler reported a failed
+        // save over a half-written config — a partial save presented as either
+        // success or a clean error, depending on which write failed.
+        //
+        // The `Transaction` is created HERE rather than inside
+        // `apply_ops_sqlite` so the atomicity is visible at the point that owns
+        // the connection, and dropped without `commit()` on any error path —
+        // rusqlite rolls back on drop, which is what makes the `?` in the
+        // callee sufficient.
+        let tx = db
+            .unchecked_transaction()
+            .map_err(|e| format!("DB error: {e}"))?;
+        apply_ops_sqlite(&tx, tenant, store_op, smtp_op, schedule_op)?;
+        tx.commit().map_err(|e| format!("DB error: {e}"))
     }
 }
 
@@ -509,7 +524,16 @@ async fn apply_ops_pg(
 }
 
 fn apply_ops_sqlite(
-    conn: &rusqlite::Connection,
+    // O-M27: a `&Transaction`, not a `&Connection`, and the type change is the
+    // point. The three ops below are ONE unit — with a plain connection each
+    // `execute` auto-commits, so a failure on the second op left the first
+    // applied. Taking `&Transaction` makes the requirement part of the
+    // signature, so a future caller cannot reintroduce the bug by forgetting to
+    // open one: it will not compile.
+    //
+    // `Transaction` derefs to `Connection`, so `Store::new` and `execute` work
+    // unchanged through it.
+    conn: &rusqlite::Transaction<'_>,
     tenant: &str,
     store_op: Op,
     smtp_op: Op,
