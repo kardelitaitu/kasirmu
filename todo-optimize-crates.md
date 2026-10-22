@@ -924,8 +924,7 @@ with automatic pruning of expired cooldowns across tenants on insert.
 `crates/kasirmu-bridge/src/pos/preview.rs:176` and `crates/kasirmu-bridge/src/pos/checkout.rs` ✔. Fixed: discount percent clamped with `checkout_discount_percent` across both preview and shortfall checkout doors; verified with `preview_and_shortfall_doors_treat_a_high_discount_percent_identically`.
 
 **O-M31 · mobile — org switch / session creation take the global DB mutex 5 and 3 times** —
-`apps/mobile-tauri/src/commands/auth.rs:634-752`, `:413`, `:438`, `:467` ◦. Each acquisition
-interleaves with the sync daemon and every POS command. *Fix:* one guard, no awaits inside.
+`apps/mobile-tauri/src/commands/auth.rs` ✔ · **PAID** (`b825483a6`). Collapsed database mutex acquisitions into single scoped locks in `switch_organization` and `create_session`. See §11BN.
 
 **O-M32 · shells — conflict commands build a fresh `reqwest::Client`, no timeout** —
 `apps/mobile-tauri/src/commands/sync.rs`, `apps/desktop-tauri/src/commands/sync.rs` ✔ **PAID 2026-10-22 in `010ad308f`**.
@@ -4650,6 +4649,21 @@ Resolved by:
    using `tx.prepare_cached`, eliminating all per-ingredient SKU lookups in the deduction loop.
 
 Verified with `cargo test -p modules-inventory`. All 37 tests pass.
+
+## §11BN — O-M31 resolved: collapsed database mutex acquisitions in mobile auth commands (2026-10-22)
+
+In `apps/mobile-tauri/src/commands/auth.rs`, `switch_organization` previously acquired and released the global
+database lock four separate times across sequential verification steps (org enumeration check, user assignment
+gate, PIN re-authentication, and tenant integrity verification), and `create_session` previously acquired and
+released the global database lock three separate times. Each acquisition interleaved with concurrent commands and
+background sync daemons.
+
+Resolved by:
+1. Collapsing the four sequential database checks in `switch_organization` into a single scoped lock on `state.db`.
+2. Unifying organization scoping and instance access verification in `create_session` into a single scoped lock on `state.db`.
+
+Verified with `cargo test -p kasirmu-mobile auth`. All 40 tests pass.
+
 
 
 
