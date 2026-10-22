@@ -1690,9 +1690,7 @@ sites in one transaction on a warm cache) and `an_undecodable_recipe_row_refuses
 `cargo check -p modules-inventory` clean; `cargo test -p modules-inventory --lib` 37 passed, 0 failed.
 
 **O-M65 · modules-inventory — two lookups per line, plus one query per ingredient purely for a
-log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04). `SELECT id` then
-`SELECT product_type` could be one; the ingredient `SELECT sku` exists only to make the `info!`
-at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
+log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04) · **PAID** (`82ca1df5b`). Folded product ID and product type into single cached query and joined ingredient SKU in recipe query. See §11BM.
 
 **O-M66 · modules-staff / platform-core — every permission check re-parses the grants JSON** —
 `platform/core/src/staff.rs:52-60`, `platform/core/src/rbac.rs:259-280` ✔ (3D-06). Fixed (`1428ad443`): zero-alloc check on required domain wildcard (`strip_suffix(":*") == Some(domain)`) avoiding `format!` String allocation, and `check_permissions_json` with borrowed `Cow<str>` avoiding individual String allocations on every permission evaluation.
@@ -4636,6 +4634,23 @@ Resolved by:
 4. Adding unit tests in `handlers_tests.rs` for successful rate-limit retries and giving up after max attempts.
 
 Verified with `cargo test -p kasirmu-notification`. All 38 tests pass.
+
+## §11BM — O-M65 resolved: folded product lookup and joined ingredient SKU in inventory handler (2026-10-22)
+
+In `modules/inventory/src/handlers.rs`, `InventoryStockHandler::handle_line` previously executed two separate
+database queries per sold line item (`SELECT id FROM products WHERE sku = ?1` followed by
+`SELECT product_type FROM products WHERE id = ?1`), and in the BOM recipe deduction path, executed an extra
+query per ingredient (`SELECT sku FROM products WHERE id = ?1`) solely to produce the ingredient SKU for logging.
+
+Resolved by:
+1. Folding the product ID and product type lookups into a single prepared and cached query:
+   `SELECT id, product_type FROM products WHERE sku = ?1`.
+2. Joining `products` on `r.ingredient_product_id = p.id` directly in the recipe query
+   (`SELECT r.ingredient_product_id, r.quantity_required, p.sku FROM product_recipes r LEFT JOIN products p ...`),
+   using `tx.prepare_cached`, eliminating all per-ingredient SKU lookups in the deduction loop.
+
+Verified with `cargo test -p modules-inventory`. All 37 tests pass.
+
 
 
 
