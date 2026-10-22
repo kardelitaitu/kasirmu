@@ -154,6 +154,29 @@ def split_top_level_commas(text: str) -> list[str]:
     return [c.strip() for c in out if c.strip()]
 
 
+def find_top_level_alias(col: str) -> str | None:
+    """Find the column alias defined at paren depth 0, e.g. `expr AS alias`.
+
+    Inner `CAST(x AS INTEGER)` or subqueries carry `AS` inside parentheses;
+    only an `AS` at depth 0 defines the projection column's alias.
+    """
+    depth = 0
+    i = 0
+    n = len(col)
+    while i < n:
+        ch = col[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and (i == 0 or (not col[i - 1].isalnum() and col[i - 1] != "_")):
+            m = re.match(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", col[i:], re.IGNORECASE)
+            if m:
+                return m.group(1)
+        i += 1
+    return None
+
+
 def column_base(col: str) -> str:
     """The bare column name behind an alias, a function wrapper and a table prefix.
 
@@ -162,7 +185,8 @@ def column_base(col: str) -> str:
     wrapper. Taking the text before the first paren -- the obvious implementation --
     drops it, and then reports every COALESCE-wrapped column as a mismatch.
     """
-    body = col.split()[-1] if re.search(r"\bAS\b", col, re.IGNORECASE) else col
+    alias = find_top_level_alias(col)
+    body = alias if alias else col
     body = body.strip().strip(chr(34)).strip()
     while True:
         # Peel one outer wrapper: `COALESCE(x, y)` -> `x`; `CAST(x AS t)` -> `x`.
@@ -332,8 +356,8 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
             # comparing the field to the alias is exactly as sound as comparing it to
             # a bare column name, and it still tolerates the legitimate renames
             # (`closed_count` -> `closed_shift_count`).
-            alias = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", col, re.IGNORECASE)
-            base = alias.group(1).lower() if alias else column_base(col)
+            alias = find_top_level_alias(col)
+            base = alias.lower() if alias else column_base(col)
             lname = name.lower()
             if base.endswith(lname) or lname.endswith(base):
                 continue
@@ -420,8 +444,24 @@ def _self_test() -> int:
             print("      got  %s" % got)
         else:
             print("  %-52s ok" % name)
+
+    alias_cases = [
+        ("COALESCE(SUM(CASE WHEN CAST(x AS INTEGER) <= 30 THEN 1 ELSE 0 END), 0) AS current_minor", "current_minor"),
+        ("p.id AS user_id", "user_id"),
+        ("COALESCE(s.name, 'Unknown Supplier')", None),
+        ("CAST(julianday(?2) AS INTEGER)", None),
+    ]
+    for expr, want_alias in alias_cases:
+        got_alias = find_top_level_alias(expr)
+        if got_alias != want_alias:
+            bad += 1
+            print("  alias extraction for '%s' FAIL" % expr[:40])
+            print("      want %s, got %s" % (want_alias, got_alias))
+        else:
+            print("  alias extraction for '%s' ok" % expr[:40])
+
     print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases)))
+          % ("FAILED" if bad else "OK", len(cases) + len(alias_cases)))
     return 1 if bad else 0
 
 
