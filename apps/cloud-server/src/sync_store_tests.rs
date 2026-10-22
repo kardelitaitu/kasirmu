@@ -167,6 +167,7 @@ fn sample_item(id: &str) -> OfflineQueueItem {
         synced_at: None,
         priority: SyncPriority::Normal,
         origin_terminal_id: None,
+        sale_id: None,
     }
 }
 

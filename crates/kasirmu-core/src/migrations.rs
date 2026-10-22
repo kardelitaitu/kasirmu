@@ -480,6 +480,12 @@ pub const ALL: &[Migration] = &[
         id: "20261021_receivables.sql",
         sql: include_str!("../migrations/20261021_receivables.sql"),
     },
+    // O-M04: indexed sale_id and (status, action) on offline_queue for O(1) point-probe
+    // idempotency checks during checkout settlement.
+    Migration {
+        id: "20261023_offline_queue_sale_id.sql",
+        sql: include_str!("../migrations/20261023_offline_queue_sale_id.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

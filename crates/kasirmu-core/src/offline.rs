@@ -95,6 +95,9 @@ pub struct OfflineQueueItem {
     /// self-originated".
     #[serde(default)]
     pub origin_terminal_id: Option<String>,
+    /// Optional sale ID associated with this mutation for O(1) point-probe idempotency (O-M04).
+    #[serde(default)]
+    pub sale_id: Option<String>,
 }
 
 /// Status of an offline queue item.
@@ -150,6 +153,7 @@ impl OfflineQueueItem {
             tenant_id: String::from("default"),
             priority: SyncPriority::Normal,
             origin_terminal_id: None,
+            sale_id: None,
         }
     }
 

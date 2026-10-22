@@ -219,8 +219,8 @@ impl SyncStore {
                 for item in items {
                     let outcome = match tx.execute(
                         "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-                         last_error, created_at, synced_at, tenant_id, origin_terminal_id)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                         last_error, created_at, synced_at, tenant_id, origin_terminal_id, sale_id)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                         params![
                             item.id,
                             item.action,
@@ -232,6 +232,7 @@ impl SyncStore {
                             item.synced_at,
                             tenant_id,
                             item.origin_terminal_id,
+                            item.sale_id,
                         ],
                     ) {
                         Ok(_) => PushOutcome::Accepted,
@@ -291,12 +292,13 @@ impl SyncStore {
                         &item.synced_at,
                         &tenant_id,
                         &item.origin_terminal_id,
+                        &item.sale_id,
                     ];
                     let outcome = match tx
                         .query_opt(
                             "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-                         last_error, created_at, synced_at, tenant_id, origin_terminal_id)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                         last_error, created_at, synced_at, tenant_id, origin_terminal_id, sale_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                          ON CONFLICT (id) DO NOTHING
                          RETURNING id",
                             params,

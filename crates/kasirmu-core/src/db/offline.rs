@@ -144,7 +144,7 @@ impl Store<'_> {
     /// List all pending (unsynced) offline queue items, oldest first.
     pub fn list_pending_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -157,7 +157,7 @@ impl Store<'_> {
         limit: usize,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], Self::row_to_offline_queue_item)?;
@@ -171,7 +171,7 @@ impl Store<'_> {
         limit: usize,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], Self::row_to_offline_queue_item)?;
@@ -186,7 +186,7 @@ impl Store<'_> {
     /// List all offline queue items.
     pub fn list_all_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -210,7 +210,7 @@ impl Store<'_> {
         tenant_id: &str,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map(params![tenant_id], Self::row_to_offline_queue_item)?;
@@ -224,7 +224,7 @@ impl Store<'_> {
         limit: usize,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )?;
         let rows = stmt.query_map(
@@ -242,7 +242,7 @@ impl Store<'_> {
         limit: usize,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?2",
         )?;
         let rows = stmt.query_map(
@@ -715,6 +715,7 @@ impl Store<'_> {
             ),
             // NULL stays NULL: "unknown origin", never a default.
             origin_terminal_id: row.get("origin_terminal_id")?,
+            sale_id: row.get("sale_id")?,
         })
     }
 }

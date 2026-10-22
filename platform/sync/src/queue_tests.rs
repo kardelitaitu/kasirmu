@@ -355,6 +355,7 @@ fn queue_apply_resolution_local_wins() {
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
         origin_terminal_id: None,
+        sale_id: None,
     };
 
     let resolved = ResolvedItem {
@@ -390,6 +391,7 @@ fn queue_apply_resolution_remote_wins() {
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
         origin_terminal_id: None,
+        sale_id: None,
     };
 
     let resolved = ResolvedItem {

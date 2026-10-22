@@ -1735,6 +1735,66 @@ fn rolled_back_settlement_enqueues_nothing() {
             .unwrap()
     );
 }
+
+#[test]
+fn has_pending_outbox_row_uses_sale_id_index_and_falls_back_for_legacy_rows() {
+    let conn = fresh();
+    seed_item(&conn, "OUTBOX-OM04", 10);
+    let s = store(&conn);
+
+    // 1. Check query plan uses the covering index idx_offline_queue_sale_pending
+    let mut stmt = conn
+        .prepare("EXPLAIN QUERY PLAN SELECT 1 FROM offline_queue WHERE sale_id = ?1 AND status = 'pending' AND action = ?2")
+        .unwrap();
+    let plan: String = stmt
+        .query_map(params!["sale-plan-test", "complete_sale"], |r| {
+            r.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+    assert!(
+        plan.contains("idx_offline_queue_sale_pending"),
+        "expected query to use idx_offline_queue_sale_pending, got:\n{plan}"
+    );
+
+    // 2. Wired sale populates sale_id and is found via point probe
+    let sale = sale_with_one_line("OUTBOX-OM04", 1, 100);
+    let id = sale.id.clone();
+    s.complete_sale_deduction(&sale, None, &[split(100, None)], "user-om04", None)
+        .unwrap();
+
+    let recorded_sale_id: Option<String> = conn
+        .query_row(
+            "SELECT sale_id FROM offline_queue WHERE action = 'complete_sale' AND sale_id = ?1",
+            params![&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(recorded_sale_id, Some(id.clone()));
+    assert!(
+        s.has_pending_outbox_row_for_sale("complete_sale", &id)
+            .unwrap()
+    );
+
+    // 3. Backward compatibility: legacy row with sale_id NULL is found via fallback
+    let legacy_id = "legacy-sale-999";
+    conn.execute(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, tenant_id, priority, sale_id)
+         VALUES (?1, 'complete_sale', ?2, 'pending', 0, 'default', 1, NULL)",
+        params!["queue-legacy-1", format!("{{\"sale_id\":\"{legacy_id}\"}}")],
+    )
+    .unwrap();
+    assert!(
+        s.has_pending_outbox_row_for_sale("complete_sale", legacy_id)
+            .unwrap()
+    );
+    assert!(
+        !s.has_pending_outbox_row_for_sale("complete_sale", "non-existent-sale")
+            .unwrap()
+    );
+}
 // ── C3 S2: the origin terminal and the effect key ───────────────
 
 /// The origin must survive the local round trip: enqueued into the row and

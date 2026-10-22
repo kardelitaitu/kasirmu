@@ -203,9 +203,9 @@ impl Store<'_> {
         item.priority = priority;
         item.origin_terminal_id = enqueue_origin(self.conn)?;
         self.conn.execute(
-            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id],
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id, item.sale_id],
         )?;
         Ok(item)
     }
@@ -248,16 +248,29 @@ impl Store<'_> {
         tenant_id: &str,
         priority: SyncPriority,
     ) -> Result<OfflineQueueItem, CoreError> {
+        Self::enqueue_offline_in_tx_with_sale_id(tx, action, payload, tenant_id, priority, None)
+    }
+
+    /// Variant of `enqueue_offline_in_tx` that records the indexed `sale_id` (O-M04).
+    pub fn enqueue_offline_in_tx_with_sale_id(
+        tx: &rusqlite::Transaction<'_>,
+        action: &str,
+        payload: &str,
+        tenant_id: &str,
+        priority: SyncPriority,
+        sale_id: Option<&str>,
+    ) -> Result<OfflineQueueItem, CoreError> {
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
+        item.sale_id = sale_id.map(str::to_string);
         // C3 S5a: same origin stamp as the non-transactional lane. This is the
         // lane the sale settlement uses, so a miss here would leave the gate
         // dormant for exactly the mutation the double deduction was seen on.
         item.origin_terminal_id = enqueue_origin(tx)?;
         tx.execute(
-            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id],
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id, item.sale_id],
         )?;
         Ok(item)
     }
@@ -329,12 +342,13 @@ impl Store<'_> {
                 serde_json::to_value(profile).unwrap_or(serde_json::Value::Null);
         }
         let payload = payload_map.to_string();
-        Self::enqueue_offline_in_tx(
+        Self::enqueue_offline_in_tx_with_sale_id(
             tx,
             "complete_sale",
             &payload,
             &tenant_id,
             SyncPriority::Critical,
+            Some(&sale.id),
         )?;
         Ok(())
     }
@@ -401,12 +415,13 @@ impl Store<'_> {
             "lines": lines,
         })
         .to_string();
-        Self::enqueue_offline_in_tx(
+        Self::enqueue_offline_in_tx_with_sale_id(
             tx,
             "refund_sale",
             &payload,
             &tenant_id,
             SyncPriority::Critical,
+            Some(&refund.sale_id),
         )?;
         Ok(())
     }
@@ -427,12 +442,13 @@ impl Store<'_> {
             |row| row.get(0),
         )?;
         let payload = serde_json::json!({ "sale_id": sale_id }).to_string();
-        Self::enqueue_offline_in_tx(
+        Self::enqueue_offline_in_tx_with_sale_id(
             tx,
             "void_sale",
             &payload,
             &tenant_id,
             SyncPriority::Critical,
+            Some(sale_id),
         )?;
         Ok(())
     }
@@ -476,12 +492,13 @@ impl Store<'_> {
             "idempotency_key": split.idempotency_key,
         })
         .to_string();
-        Self::enqueue_offline_in_tx(
+        Self::enqueue_offline_in_tx_with_sale_id(
             tx,
             "payment.recorded",
             &payload,
             &tenant_id,
             SyncPriority::Critical,
+            Some(sale_id),
         )?;
         Ok(())
     }
@@ -489,28 +506,34 @@ impl Store<'_> {
     /// OUTBOX: does a still-pending row for this action already exist for
     /// THIS SALE?
     ///
-    /// Keyed on the sale id inside the payload rather than on the whole
-    /// payload string, on purpose: `enqueue_offline_dedup` compares
-    /// `action + payload` byte-for-byte, and the two writers of this row build
-    /// the JSON from different places (a settlement from the `Sale` struct,
-    /// the handler from the event), so any shape or key-order drift between
-    /// them would silently turn "skip" into "second row" and push the sale
-    /// twice. A substring probe on the quoted sale id needs no JSON1
-    /// extension, cannot match a prefix of a longer id because the closing
-    /// quote is part of the needle, and makes the invariant a property of the
-    /// queue rather than a property of the caller.
+    /// Uses an indexed point probe on `sale_id` (O-M04) hitting the covering
+    /// index `idx_offline_queue_sale_pending` in O(log N) point seek, with a
+    /// backward-compatible fallback for legacy rows without a populated `sale_id`.
     pub fn has_pending_outbox_row_for_sale(
         &self,
         action: &str,
         sale_id: &str,
     ) -> Result<bool, CoreError> {
-        let needle = format!("\"sale_id\":\"{sale_id}\"");
+        // Fast path: point probe on the indexed sale_id column using the covering
+        // index idx_offline_queue_sale_pending (O(log N) point seek, 0 backlog scans).
         let exists: bool = self.conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM offline_queue
-              WHERE status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0)",
+              WHERE sale_id = ?1 AND status = 'pending' AND action = ?2)",
+            params![sale_id, action],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Ok(true);
+        }
+
+        // Backward compatibility fallback: legacy pre-migration rows where sale_id IS NULL.
+        let needle = format!("\"sale_id\":\"{sale_id}\"");
+        let legacy_exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM offline_queue
+              WHERE sale_id IS NULL AND status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0)",
             params![action, needle],
             |row| row.get(0),
         )?;
-        Ok(exists)
+        Ok(legacy_exists)
     }
 }

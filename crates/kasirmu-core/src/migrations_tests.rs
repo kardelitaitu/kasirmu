@@ -921,7 +921,9 @@ fn init_sql_creates_complete_schema_surface() {
         // 20261021_receivables.sql adds 5: tenant+status, customer, partial
         // due-date on receivables, and payments-by-receivable, payments-by-tenant
         // on receivable_payments (+5).
-        194,
+        // 20261023_offline_queue_sale_id.sql adds 2: idx_offline_queue_sale_pending
+        // (covering point-probe on sale_id) and idx_offline_queue_status_action (+2).
+        196,
         "index surface drifted"
     );
     assert_eq!(

@@ -49,20 +49,20 @@ pub(super) async fn pg_push_batch_multirow(
 
     for chunk in items.chunks(MULTIROW_CHUNK) {
         let n = chunk.len();
-        // Build "($1,...,$9),($10,...,$18),…" numbered placeholders.
+        // Build "($1,...,$11),($12,...,$22),…" numbered placeholders.
         let mut sql = String::from(
             "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-             last_error, created_at, synced_at, tenant_id, origin_terminal_id) VALUES ",
+             last_error, created_at, synced_at, tenant_id, origin_terminal_id, sale_id) VALUES ",
         );
         let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            Vec::with_capacity(n * 10);
+            Vec::with_capacity(n * 11);
         for (r, item) in chunk.iter().enumerate() {
             if r > 0 {
                 sql.push(',');
             }
-            let base = r * 10;
+            let base = r * 11;
             sql.push_str(&format!(
-                "(${},${},${},${},${},${},${},${},${},${})",
+                "(${},${},${},${},${},${},${},${},${},${},${})",
                 base + 1,
                 base + 2,
                 base + 3,
@@ -72,7 +72,8 @@ pub(super) async fn pg_push_batch_multirow(
                 base + 7,
                 base + 8,
                 base + 9,
-                base + 10
+                base + 10,
+                base + 11
             ));
             params.extend_from_slice(&[
                 &item.id,
@@ -85,6 +86,7 @@ pub(super) async fn pg_push_batch_multirow(
                 &item.synced_at,
                 &tenant_id,
                 &item.origin_terminal_id,
+                &item.sale_id,
             ]);
         }
         sql.push_str(" ON CONFLICT (id) DO NOTHING RETURNING id");
@@ -157,7 +159,8 @@ pub(super) async fn pg_pull_items(
     limit: i64,
 ) -> Result<Vec<OfflineQueueItem>, String> {
     const SELECT: &str = "SELECT id, action, payload, status, retry_count, last_error, \
-                          created_at, synced_at, tenant_id, priority, origin_terminal_id \
+                          created_at, synced_at, tenant_id, priority, origin_terminal_id, \
+                          sale_id \
                           FROM offline_queue";
 
     // D1 (ADR #43): prepare each query shape once; the connection-level
@@ -251,6 +254,7 @@ fn pg_row_to_item(row: &tokio_postgres::Row) -> Result<OfflineQueueItem, String>
         origin_terminal_id: row
             .try_get("origin_terminal_id")
             .map_err(|e| e.to_string())?,
+        sale_id: row.try_get("sale_id").map_err(|e| e.to_string())?,
     })
 }
 

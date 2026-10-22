@@ -227,16 +227,16 @@ fn decode_pull_cursor(cursor: Option<&str>) -> (Option<String>, Option<String>) 
 fn build_pull_sql(since: Option<&str>, cursor: Option<&str>) -> &'static str {
     match (since, cursor) {
         (None, Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n           AND ($4::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $4)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n           AND ($4::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $4)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
         }
         (Some(_), Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n           AND ($5::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $5)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $6"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n           AND ($5::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $5)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $6"
         }
         (Some(_), None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND ($3::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $3)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND ($3::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $3)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
         }
         (None, None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND ($2::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $2)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND ($2::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $2)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
         }
     }
 }
@@ -875,6 +875,7 @@ impl PgTransport {
                     priority: kasirmu_core::offline::SyncPriority::Normal,
                     // NULL stays NULL: "unknown origin", never a default.
                     origin_terminal_id: row.get("origin_terminal_id"),
+                    sale_id: row.get("sale_id"),
                 }
             })
             .collect();

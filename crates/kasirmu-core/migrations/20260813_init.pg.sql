@@ -354,6 +354,7 @@ BEGIN
             ('offline_queue', 'tenant_id', 'TEXT', '''default''', true),
             ('offline_queue', 'priority', 'BIGINT', '1', true),
             ('offline_queue', 'origin_terminal_id', 'TEXT', NULL::text, false),
+            ('offline_queue', 'sale_id', 'TEXT', NULL::text, false),
             ('processed_webhooks', 'event_id', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'provider', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'received_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'')', true),
@@ -1557,7 +1558,7 @@ CREATE TABLE IF NOT EXISTS offline_queue (
     last_error      TEXT,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     synced_at       TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1, origin_terminal_id TEXT);
+, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1, origin_terminal_id TEXT, sale_id TEXT);
 
 CREATE TABLE IF NOT EXISTS processed_webhooks (
     event_id TEXT PRIMARY KEY,
@@ -3498,7 +3499,14 @@ CREATE INDEX IF NOT EXISTS idx_midtrans_transactions_tenant
 
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 
+CREATE INDEX IF NOT EXISTS idx_offline_queue_sale_pending
+    ON offline_queue(sale_id, status, action)
+    WHERE sale_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_status ON offline_queue(status);
+
+CREATE INDEX IF NOT EXISTS idx_offline_queue_status_action
+    ON offline_queue(status, action);
 
 CREATE INDEX IF NOT EXISTS idx_offline_queue_synced_at ON offline_queue(synced_at);
 
