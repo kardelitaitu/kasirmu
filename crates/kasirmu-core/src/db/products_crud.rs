@@ -936,41 +936,48 @@ impl Store<'_> {
         if ids.is_empty() {
             return Ok(());
         }
-        // Build a parameterised query with placeholders
-        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{i}")).collect();
-        let sql = format!(
-            "SELECT product_id, slot, hash, position FROM product_images \
-             WHERE product_id IN ({}) ORDER BY slot ASC",
-            placeholders.join(", ")
-        );
-        let mut stmt = self.conn.prepare(&sql)?;
-        let mut param_refs: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
-        for id in &ids {
-            param_refs.push(id);
-        }
-        let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i32>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i32>(3)?,
-            ))
-        })?;
+
+        // O-H02: Chunk image lookups into batches of 250 to prevent SQLite variable number
+        // overflow and unbounded query strings on large catalogs.
+        const BATCH_SIZE: usize = 250;
         let mut by_product: std::collections::HashMap<
             String,
             Vec<crate::db::products::ProductImage>,
         > = std::collections::HashMap::new();
-        for row in rows {
-            let (product_id, slot, hash, position) = row?;
-            by_product
-                .entry(product_id)
-                .or_default()
-                .push(crate::db::products::ProductImage {
-                    slot,
-                    hash,
-                    position,
-                });
+
+        for chunk in ids.chunks(BATCH_SIZE) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{i}")).collect();
+            let sql = format!(
+                "SELECT product_id, slot, hash, position FROM product_images \
+                 WHERE product_id IN ({}) ORDER BY slot ASC",
+                placeholders.join(", ")
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> = chunk
+                .iter()
+                .map(|id| id as &dyn rusqlite::types::ToSql)
+                .collect();
+            let rows = stmt.query_map(param_refs.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i32>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i32>(3)?,
+                ))
+            })?;
+            for row in rows {
+                let (product_id, slot, hash, position) = row?;
+                by_product
+                    .entry(product_id)
+                    .or_default()
+                    .push(crate::db::products::ProductImage {
+                        slot,
+                        hash,
+                        position,
+                    });
+            }
         }
+
         for p in products.iter_mut() {
             if let Some(imgs) = by_product.remove(&p.product.id) {
                 p.images = imgs;
