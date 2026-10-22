@@ -1662,10 +1662,7 @@ pre-existing, not this change. `cargo test -p kasirmu-logging --lib` = **60 pass
 
 **O-M61 · kasirmu-notification — unbounded `tokio::spawn` per event, and `RateLimited` is never
 matched** — `crates/kasirmu-notification/src/handlers.rs:98-125`, `:179-212`, `:249-275`;
-`lib.rs:60-67` ◦ (3C-11). No concurrency cap or retry; `NotificationError::RateLimited {
-retry_after_seconds }` is constructed but no non-test code matches on it, so the `Retry-After`
-value is computed and thrown away. *Fix:* bounded queue with a semaphore; honour `Retry-After`
-with a capped attempt count.
+`lib.rs:60-67` ✔ (3C-11) · **PAID** (`cbc0087c1`). Bounded background notification tasks with 16-permit `Semaphore` and added `send_template_with_retry` with 3-attempt backoff on `RateLimited`. See §11BL.
 
 **O-M62 · modules-currency — the live IPC command ships the entire rate history** —
 `modules/currency/src/repository.rs:50-72` ✔ (3D-01) · **PAID** (`a93b0b758`). Added `DEFAULT_MAX_EXCHANGE_RATES = 500` bound to `list_exchange_rates` and added `list_exchange_rates_bounded(limit)` with `LIMIT` pushdown. Verified in `repository_tests.rs`.
@@ -4622,6 +4619,24 @@ Resolved by:
    string contents are not repeatedly re-allocated or re-parsed per recipient.
 
 Verified with `cargo test -p kasirmu-notification`. All 36 tests pass.
+
+## §11BL — O-M61 resolved: bounded notification semaphore and rate-limit backoff (2026-10-22)
+
+In `crates/kasirmu-notification/src/handlers.rs`, notification event handlers (`OrderConfirmationHandler`,
+`StockLowAlertHandler`, `PaymentReceiptHandler`) previously spawned unbounded `tokio::spawn` background tasks
+and dropped rate-limit retry opportunities by discarding `NotificationError::RateLimited { retry_after_seconds }`.
+
+Resolved by:
+1. Adding `spawn_notification` with a global static `Semaphore` bounding concurrent background notification
+   tasks to `MAX_CONCURRENT_NOTIFICATIONS` (16).
+2. Implementing `send_template_with_retry` honoring `NotificationError::RateLimited` with bounded
+   backoff up to `MAX_RATE_LIMIT_RETRIES` (3 attempts) capped at `MAX_RETRY_DELAY_SECS` (60s).
+3. Wiring `spawn_notification` and `send_template_with_retry` into `OrderConfirmationHandler`, `StockLowAlertHandler`,
+   and `PaymentReceiptHandler`.
+4. Adding unit tests in `handlers_tests.rs` for successful rate-limit retries and giving up after max attempts.
+
+Verified with `cargo test -p kasirmu-notification`. All 38 tests pass.
+
 
 
 
