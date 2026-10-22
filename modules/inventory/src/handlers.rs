@@ -66,31 +66,20 @@ impl InventoryStockHandler {
     ) -> Result<(), InventoryError> {
         use rusqlite::params;
 
-        // Look up product ID by SKU.
-        let product_id: Option<String> = tx
-            .query_row(
-                "SELECT id FROM products WHERE sku = ?1",
-                params![sku],
-                |row| row.get(0),
-            )
+        // O-M65: Fold product ID and product_type lookups into one query by SKU.
+        let mut prod_stmt =
+            tx.prepare_cached("SELECT id, product_type FROM products WHERE sku = ?1")?;
+        let product: Option<(String, Option<String>)> = prod_stmt
+            .query_row(params![sku], |row| Ok((row.get(0)?, row.get(1)?)))
             .ok();
 
-        let product_id = match product_id {
-            Some(pid) => pid,
+        let (product_id, ptype_str) = match product {
+            Some((pid, pt)) => (pid, pt),
             None => {
                 error!(sku, "inventory handler: product not found by SKU");
                 return Ok(());
             }
         };
-
-        // Check product type
-        let ptype_str: Option<String> = tx
-            .query_row(
-                "SELECT product_type FROM products WHERE id = ?1",
-                params![product_id],
-                |row| row.get(0),
-            )
-            .ok();
 
         if let Some(ref pt) = ptype_str
             && let Some(product_type) = ProductType::parse_str(pt)
@@ -123,10 +112,19 @@ impl InventoryStockHandler {
             );
         }
 
-        // Query recipe ingredients
-        let mut stmt = tx.prepare("SELECT ingredient_product_id, quantity_required FROM product_recipes WHERE parent_product_id = ?1")?;
+        // Query recipe ingredients with joined product SKU (O-M65).
+        let mut stmt = tx.prepare_cached(
+            "SELECT r.ingredient_product_id, r.quantity_required, p.sku \
+             FROM product_recipes r \
+             LEFT JOIN products p ON r.ingredient_product_id = p.id \
+             WHERE r.parent_product_id = ?1",
+        )?;
         let ings = stmt.query_map(params![product_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })?;
 
         // Every row must decode. `ings.flatten()` used to drop row-level
@@ -179,15 +177,7 @@ impl InventoryStockHandler {
                 }
             }
         } else {
-            for (ingredient_product_id, quantity_required) in ingredients {
-                let ingredient_sku: Option<String> = tx
-                    .query_row(
-                        "SELECT sku FROM products WHERE id = ?1",
-                        params![&ingredient_product_id],
-                        |r| r.get(0),
-                    )
-                    .ok();
-
+            for (ingredient_product_id, quantity_required, ingredient_sku) in ingredients {
                 let deduct_qty = qty * quantity_required;
                 // O-M64: same SQL text as the simple-product arm above, so this takes
                 // the already-prepared statement out of the connection's cache instead
