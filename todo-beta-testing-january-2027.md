@@ -168,4 +168,4 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - UI typecheck clean (`tsc --noEmit`, exit 0); UI lint clean (0 errors across `ui/`).
 - Full Vitest suite verified: 827+ test files, 13,120+ tests green.
 - Performance debt closed: O-M04 (covering index idempotency probe) and O-M68 (covering range index on `product_activity`), bringing the optimization ledger to 100% completion (134/134).
-- Web Topology Authoring: ratified ADR-66, established `topology_revisions` metadata schema and PG twin, integrated domain models with cryptographic signing/verification in `kasirmu-bridge`, and verified multi-tenant/org isolation test suite (T1).
+- Web Topology Authoring: ratified ADR-66 (Phase 0), established `topology_revisions` metadata schema and PG twin (Phase 1 in `806c49480`), and implemented server-side desired-state plan validation, diff summary, cryptographic signing (`OZ_TOPOLOGY_SIGNING_KEY`), optimistic concurrency control (I4/T8), and tenant-isolated replication pull in `kasirmu-api` (Phase 2 in `d83614830`).
