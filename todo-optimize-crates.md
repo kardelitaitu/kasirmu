@@ -6881,3 +6881,84 @@ imported, spaced calls; definition, doc mention, line comment; and three scope-p
 cases including the exact one that fooled mistake 1.
 
 ### Ledger: 145 defined, 144 closed, 1 open.
+## §11CU — O-M80 resolved: the 12 'environmental' recovery failures were a guard dropped one scope too early (2026-10-23)
+
+Landed in `229177a6e`.
+
+### What was reported, and what was true
+
+The `kasirmu-core` fixture migration finished with this result:
+
+```
+test result: FAILED. 3662 passed; 12 failed; 0 ignored; 0 measured; finished in 165.87s
+```
+
+All 12 were `db::recovery*`, all with the same message:
+
+```
+SqliteFailure(Error { code: CannotOpen, extended_code: 14 },
+  Some("unable to open database file: C:\\dev\\kasirmu\\target\\test-scratch\\
+        oz_restore_gate_well_formed-<uuid>\\candidate.db"))
+```
+
+The report concluded these were **pre-existing and environmental**: the same 12 failed at HEAD,
+the same code passed in a clean tree at `%TEMP%`, and a filesystem bisect (python sqlite3, the
+bundled `sqlite3.exe`, ctypes `CreateFileW`) showed writes succeeding under the crate directory,
+under `%TEMP%`, and under other `target/` subdirectories — but not under
+`target/test-scratch`. The recommendation was that other lanes should expect these failures.
+
+**That conclusion was wrong, and the bisect was the tell.** A filesystem that refuses SQLite
+opens in exactly one subdirectory is not a filesystem property; it is a directory that does not
+exist. `Connection::open` reports a missing parent directory as `CannotOpen`, not as `NotFound`.
+
+### The actual cause, in three lines
+
+```rust
+fn new(label: &str) -> Self {
+    let scratch = kasirmu_test_support::ScratchDir::new(&format!("oz_restore_{label}"));
+    std::fs::create_dir_all(scratch.path()).unwrap();
+    Self(scratch.path().to_path_buf())   // <-- guard dropped HERE, deletes the directory
+}
+```
+
+`Scratch` is a tuple struct holding a `PathBuf`. The `ScratchDir` guard was a LOCAL, so it was
+dropped when `new()` returned — deleting the directory it had just created. The `create_dir_all`
+above it ran while the directory still existed, so it silently succeeded and hid the problem.
+Every later `Connection::open(path.join("candidate.db"))` then failed, because the parent was gone.
+
+HEAD's version used the unguarded `scratch_dir()` and therefore worked: the directory persisted
+by accident. The migration converted a helper that leaked directories into one that deleted the
+directory out from under its own callers — and the conversion looked mechanical.
+
+### The fix
+
+The struct now holds the GUARD, not the path: `struct Scratch(kasirmu_test_support::ScratchDir)`,
+with `self.0.path()` at the accessor sites. The hand-written `Drop` and the defensive
+`create_dir_all` are both deleted, because the guard supplies both. Applied to all three helpers
+(`recovery_gate_tests`, `recovery_inline_tests`, `recovery_tests`).
+
+### Verification
+
+```
+cargo test -p kasirmu-core --lib recovery_   ->  10 passed; 0 failed  (was 12 failing)
+cargo test -p kasirmu-core --lib             ->  3674 passed; 0 failed (was 3662 / 12)
+cargo test -p kasirmu-bridge --lib           ->  1542 passed; 0 failed
+cargo test -p kasirmu-api --lib              ->  374 passed; 0 failed; 14 ignored
+target/test-scratch directory count          ->  1653 -> 2
+```
+
+### The lesson, which is about diagnosis and not about Rust
+
+A guard's lifetime is part of the migration, not an implementation detail of it. When moving from
+'bare path, nobody owns it' to 'guard owns it', EVERY scope between construction and last use has
+to be re-checked, because the guard deletes at the end of the scope it lives in. A helper that
+returns `Self(path)` from a function that owns the guard returns a path to nothing.
+
+And the diagnosis deserves recording more than the fix: **an environmental explanation was
+accepted for a defect that a three-line read would have found.** The evidence for 'environmental'
+was strong — reproduction at HEAD, a clean-tree control, a three-tool filesystem bisect. Every one
+of those observations was true and every one was consistent with the real cause, because they all
+compared trees where the helper had DIFFERENT CODE (HEAD's unguarded version vs the migrated one);
+the 'control' at HEAD was not a control at all. A control must hold the suspect constant.
+
+### Ledger: 146 defined, 145 closed, 1 open.
