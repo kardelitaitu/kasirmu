@@ -17,26 +17,30 @@ open work in every downstream reading this journal supplies.**
 | **High** | 26 | **26** | **0** |
 | Medium | 67 | 64 | **3** |
 | Low | 23 | 23 | **0** |
-| Test (O-T) | 17 | 16 | **1** |
-| **Total** | **133** | **129** | **4** |
+| Test (O-T) | 17 | 17 | **0** |
+| **Total** | **133** | **130** | **3** |
 
 **Updated 2026-10-22 (round 18) — every remaining entry RE-DERIVED from the tree, not inherited.**
-**4 entries remain open:** O-M04, O-M11, O-M63 (Medium) and O-T09 (Test). The High and Low tiers are empty.
+**3 entries remain open, all Medium:** O-M04, O-M11, O-M63. The High, Low and **Test** tiers are empty.
 
-**Round 18 closed 6 entries, and FIVE of them were already done before the round started** — O-M20, O-T02,
-O-T05 (fixed in earlier commits, lacking a closing verb), O-M57, O-M58 (files deleted) — plus O-M54, which
-was genuinely open but **described the wrong defect**. Fewer than one in six of the "open" list was a real,
-undescribed problem.
+**Round 18 closed 7 entries, and SIX of them were already done when the round started** — O-M20, O-T02,
+O-T05 (fixed in earlier commits, lacking a closing verb), O-M57, O-M58 (files deleted), O-T09 (the fix was
+real but the entry was still open). Only O-M54 was genuinely misdescribed. **Of the 10 entries this ledger
+listed as open, one in ten described a real defect at the place and cost the entry claimed.**
 
-**The two findings worth carrying forward:**
+**Three findings worth carrying forward:**
 
 1. **O-M54's headline claim was false.** It said `DATE(s.created_at)` forces a full scan growing with
    history. MEASURED: it already `SEARCH`ed `idx_sales_status_created_date`, an EXPRESSION index
    (`20260814_analytics_index.sql:4`, commit `ed76ebc6`) built for that exact shape. The rewrite found a
    smaller real win — independence from that one index — and is recorded at that size (§11BX).
-2. **Two of the four survivors are dead in the default build.** O-M11's `RedisCache` is behind the optional
-   `cache-redis` feature, which NOTHING in the workspace enables; O-M63's handler is declared
-   "DEAD / test-only" in its own file. **The open count now overstates the real work by half.**
+2. **Two of the three survivors are DEAD IN THE DEFAULT BUILD.** O-M11's `RedisCache` sits behind the
+   optional `cache-redis` feature, which nothing in the workspace enables; O-M63's handler is declared
+   "DEAD / test-only" in its own file. **The open count overstates the remaining real work by roughly
+   two thirds.** Only O-M04 (an `instr()` payload scan over every pending row, on the settlement path) is
+   a live cost.
+3. **The Test tier is now genuinely empty, and that is the first tier ever cleared by evidence rather
+   than by assertion** — every one of its 17 entries was re-read against the tree in this round.
 **Round 17's headline is a test that was red and nobody had noticed.** Closing O-T15 meant replacing four
 300 ms sleeps; running the FULL suite found a FIFTH site the ledger never listed — the `void_sale` race —
 failing under load while passing 6/6 in isolation. I measured it rather than guessing, and the measurement
@@ -2138,6 +2142,16 @@ platform-sync --lib pg_daemon`: **55 passed, 0 failed**.
 **O-T09 · stress fixtures build 5,000 nodes + 5,000 wires, then verify with 10,000 `format!`s** —
 `crates/kasirmu-bridge/src/topology/topology_stress_tests.rs:1738-1744` ✔ (4A-09). Two allocations
 and two assertions per iteration to prove a ring. *Fix:* cut to ~500 and assert with `windows(2)`.
+
+**✅ RESOLVED 2026-10-22 — but NOT the prescribed way, because the prescription was wrong.**
+"Cut to ~500" would have weakened a genuine stress test: the case is a 5,000-node/5,000-wire graph
+round-tripped through the database, and a 500-node version asserts less than the name promises.
+The fixture stays at 5,000 and **both assertions stay** (from-edge and to-edge check different things).
+What changed is the allocation: one `String` buffer `clear()`ed per side instead of 10,000 throwaway
+`format!`s, plus the wire index in each panic message so a ring break names where it broke. The entry's
+line reference was also off — the assertion loop is `:1776-1782`, not `:1738-1744` (that range holds
+only the builder). Verified: `cargo test -p kasirmu-bridge --lib topology` → **320 passed, 0 failed**,
+both 5,000-item tests green.
 
 **O-T10 · `run_sweep()` reads ~224 source files, six times per run** —
 `apps/desktop-tauri/src/commands/registration_gate_tests.rs:466-481` ✔ (4A-10). Fixed: memoised via `std::sync::OnceLock<Sweep>`, eliminating 5 redundant 224-file source walks across test assertions.
@@ -5131,3 +5145,56 @@ Three attempts, and only the third one counts:
 
 A plan test against a copy of the SQL is worse than no plan test: it reports green about code nobody runs.
 The hoist is what made the assertion meaningful, and that is the transferable lesson here.
+
+## §11BY — O-T09 resolved, and a full-suite abort that turned out to be mine (2026-10-22)
+
+Landed in `3fda1176f`.
+
+### The entry's prescribed fix was wrong, and following it would have been the defect
+
+O-T09 said: "cut to ~500 and assert with `windows(2)`". The case is
+`five_thousand_nodes_with_five_thousand_wires_combined_db` — a genuine 5,000-node / 5,000-wire graph
+round-tripped through the database. **Shrinking the fixture to 500 would have made the test assert less
+than its name promises**, which is a slower version of deleting it. The prescription would have introduced
+the very defect the Test tier exists to remove.
+
+What was actually wasteful is the *verification*: `format!("combo-n-{i:04}")` allocated a fresh id per
+side per wire, 10,000 throwaway `String`s. Now one buffer is `clear()`ed and reused, and **both assertions
+remain** (from-edge and to-edge check different things). The panic messages gained the wire index, so a
+ring break names where it broke instead of just that it broke.
+
+The entry's line reference was off too: the loop is `:1776-1782`; `:1738-1744` holds only the builder.
+
+### The part I got wrong, recorded because I nearly shipped it as a finding
+
+Running the FULL `kasirmu-bridge` suite aborted with `exit code 0xffffffff` after dozens of unrelated tests
+printed "has been running for over 60 seconds". I wrote in a lane brief that this was "both pre-existing
+and real", and told the lane to treat it as an existing defect.
+
+**It was not pre-existing.** A baseline run at HEAD — the lane's change reverted — completed:
+
+```
+test result: ok. 1528 passed; 0 failed; 1 ignored; finished in 1340.63s
+```
+
+Twenty-two minutes, clean. The abort came from MY environment: I had killed `kasirmu_*` test binaries
+twice that round to free a locked `.exe`, and I was running the suite alongside other work. The "over 60
+seconds" lines are the harness reporting a loaded machine, and every one of those tests passes alone in
+~1.7 s (`pos::tests::list_held_carts_empty_when_none` = 1 passed, 1.63 s).
+
+**The lesson is the reverse of the earlier rounds'.** I had a prior belief — "a multi-MB `eprintln!` in a
+tokio worker caused exactly this abort" — and I let it stand in for evidence. The lane then grepped the
+whole crate for large print calls and found **none**: the theory was not even applicable here.
+A remembered symptom is not a diagnosis, and writing it into a brief does not make it one.
+
+### Verification actually obtained
+
+```
+cargo check -p kasirmu-bridge --all-targets   -> exit 0
+cargo test  -p kasirmu-bridge --lib topology  -> 320 passed, 0 failed (both 5,000-item tests green)
+cargo test  -p kasirmu-bridge --lib (HEAD)    -> 1528 passed, 0 failed, 1 ignored (1340.63s)
+```
+
+**No timing claim is made for this change.** 10,000 allocations became 2; a test harness cannot see that,
+and the two `--lib topology` runs (10.42 s vs 11.06 s baseline) are inside run-to-run noise. The honest
+claim is the allocation count, not a speedup.
