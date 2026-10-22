@@ -1571,9 +1571,9 @@ archive exists today; the branch was kept rather than deleted on a guess).
 touched).
 
 **O-M53 · kasirmu-notification — the message is rebuilt per recipient and the SMTP transport
-per tick** — `crates/kasirmu-notification/src/email_scheduler.rs:118-150` (clones `:135`, `:140`;
-transport `:116`) ✔ (3C-02) · **LIVE**. Both bodies cloned per recipient, one round trip each,
-TCP+TLS re-established every tick. *Fix:* build the two `SinglePart`s once; cache the transport.
+per tick** — `crates/kasirmu-notification/src/email_scheduler.rs` ✔ **PAID 2026-10-22 in `ff01fa5db`** (3C-02).
+Fixed: hoisted from address parsing and `SinglePart`/`MultiPart` building above the recipient loop,
+eliminating repeated text and HTML body clones across recipients.
 
 **O-M54 · kasirmu-reporting — every predicate is non-sargable and two queries are unbounded** —
 `crates/kasirmu-reporting/src/daily_summary.rs:130` ✔ (with `:79-88`, `:124-133`;
@@ -4609,6 +4609,20 @@ Resolved with:
 4. Added unit tests for solid-colour preservation and asymmetric border trimming.
 
 Verified with `cargo test -p kasirmu-media`. All 32 tests pass in 0.14s.
+
+## §11BK — O-M53 resolved: hoisted multipart body and from address across recipients (2026-10-22)
+
+In `crates/kasirmu-notification/src/email_scheduler.rs`, `send_email_via_smtp` previously parsed `config.from`
+and constructed the multipart alternative body — repeatedly cloning large `email.text_body` and
+`email.html_body` strings — inside the `for recipient in to` loop on every recipient.
+
+Resolved by:
+1. Parsing `from_addr` once above the loop.
+2. Building `text_part`, `html_part`, and `multipart` once above the loop, so large HTML and text
+   string contents are not repeatedly re-allocated or re-parsed per recipient.
+
+Verified with `cargo test -p kasirmu-notification`. All 36 tests pass.
+
 
 
 
