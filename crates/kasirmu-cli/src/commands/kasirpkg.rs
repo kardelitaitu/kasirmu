@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 
 use kasirmu_core::Settings;
 use kasirmu_core::db::Store;
@@ -90,6 +91,58 @@ fn importable_settings_row(row: &serde_json::Value) -> Option<(&str, &str)> {
     }
 }
 
+/// Serialize one export arm into the JSON array [`KasirpkgPayload`] carries —
+/// or fail, naming the arm.
+///
+/// O-M50. The arms used to read
+/// `serde_json::to_value(&rows).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default()`,
+/// which has TWO silent failure modes and reported success through both:
+///
+/// * `to_value(..)` returned `Err` — e.g. a `Currency` whose three bytes are
+///   not UTF-8, which is a REAL failure of its hand-written `Serialize` impl
+///   (`foundation/src/money.rs`). A database-resident value made the arm a
+///   silently EMPTY array: the package was written, the command exited 0, and
+///   it reported an export containing zero products — indistinguishable from a
+///   store that has none.
+/// * `to_value(..)` returned `Ok` but not an array — unreachable while every
+///   arm is a `Vec`, and `unwrap_or_default()` would have hidden the day one
+///   stopped being one.
+///
+/// Both now propagate. The CLI reports failure the way the rest of this crate
+/// does (see `main.rs` and `error.rs`): `anyhow::Result` travels out of `run()`,
+/// `main` returns it, and the process exits NON-ZERO with Rust's default report
+/// on stderr. The `.context` names the arm, so the operator learns which data
+/// type failed without a backtrace.
+///
+/// The serde round-trip stays: the payload is `Vec<serde_json::Value>`, so
+/// this helper serializes the rows by REFERENCE (no clone of them) and moves
+/// the array in — the deep clone the ledger also names is gone, and
+/// `ExportError` is the one thing `serde_json::ArrayFromIter`'s `FromIterator`
+/// cannot express.
+fn export_arm<T: Serialize>(rows: &[T], arm: &'static str) -> Result<Vec<serde_json::Value>> {
+    match serde_json::to_value(rows).with_context(|| format!("serializing {arm} for export"))? {
+        serde_json::Value::Array(items) => Ok(items),
+        other => Err(anyhow::anyhow!(
+            "serializing {arm} for export produced {}, not a JSON array — refusing to write \
+             a package that would silently carry zero {arm} rows",
+            json_kind(&other)
+        )),
+    }
+}
+
+/// The JSON kind of `value`, for the error message in [`export_arm`]. A bare
+/// `{value:?}` would print a whole table into the terminal.
+fn json_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "a boolean",
+        serde_json::Value::Number(_) => "a number",
+        serde_json::Value::String(_) => "a string",
+        serde_json::Value::Array(_) => "an array",
+        serde_json::Value::Object(_) => "an object",
+    }
+}
+
 /// Export store data to an encrypted .kasirpkg file.
 pub(crate) fn run_export_kasirpkg(
     conn: &Connection,
@@ -119,44 +172,28 @@ pub(crate) fn run_export_kasirpkg(
     // Collect data from the database.
     let products = if wants("products") {
         let prods = store.list_products()?;
-        serde_json::to_value(&prods)
-            .ok()
-            .and_then(|v| v.as_array().cloned())
-            .unwrap_or_default()
+        export_arm(&prods, "products")?
     } else {
         vec![]
     };
 
     let categories = if wants("categories") {
         let cats = store.list_categories()?;
-        serde_json::to_value(&cats)
-            .ok()
-            .and_then(|v| v.as_array().cloned())
-            .unwrap_or_default()
+        export_arm(&cats, "categories")?
     } else {
         vec![]
     };
 
     let sales = if wants("sales") {
         let sales_list = store.list_sales()?;
-        Some(
-            serde_json::to_value(&sales_list)
-                .ok()
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default(),
-        )
+        Some(export_arm(&sales_list, "sales")?)
     } else {
         None
     };
 
     let customers = if wants("customers") {
         let custs = store.list_customers()?;
-        Some(
-            serde_json::to_value(&custs)
-                .ok()
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default(),
-        )
+        Some(export_arm(&custs, "customers")?)
     } else {
         None
     };
@@ -177,12 +214,7 @@ pub(crate) fn run_export_kasirpkg(
         for u in &mut usrs {
             u.pin_hash.clear();
         }
-        Some(
-            serde_json::to_value(&usrs)
-                .ok()
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default(),
-        )
+        Some(export_arm(&usrs, "users")?)
     } else {
         None
     };

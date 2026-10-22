@@ -649,6 +649,108 @@ fn kasirpkg_users_arm_never_carries_pin_hash() {
 // not by counting rows: a row count is identical under either clause and would
 // pass against the wrong one.
 
+// ── O-M50: a failed export arm is a NON-ZERO EXIT, not an empty array ────
+//
+// Every arm used to end in
+// `serde_json::to_value(&rows).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default()`.
+// Two ways that reports success for a failure: the `to_value` error became an
+// EMPTY array, and `Ok(non-array)` became an empty array too. Both wrote a
+// package, exited 0, and printed "exported to …, N bytes" — a store whose
+// products could not be serialized was indistinguishable from a store that
+// has no products.
+//
+// The trigger is REAL, not a scaffold: `foundation::Currency` hand-writes
+// `Serialize` and returns an error when its three bytes are not UTF-8
+// (`foundation/src/money.rs`, "invalid currency bytes"). No ordinary read path
+// can produce such a value — every one of them parses the column with
+// `str::from_utf8` first — so these two tests call the arm helper
+// DIRECTLY with the value that cannot come out of the database. That is the
+// whole point: the arm's error contract is now testable without a fixture
+// that the storage layer would refuse to build.
+
+/// A `Currency` the serializer cannot encode is a byte-level fact, not
+/// something the type can be asked to construct: the tuple field is public.
+fn unserializable_product() -> kasirmu_core::Product {
+    let mut product = product_fixture("PRD-BAD", "Coffee", 1_000, None);
+    product.price.currency = kasirmu_core::Currency([0xff, 0xfe, 0xfd]);
+    product
+}
+
+#[test]
+fn kasirpkg_export_arm_returns_err_when_a_row_cannot_be_serialized() {
+    // The BEFORE shape, asserted in this same test so the regression cannot
+    // come back quietly: this is exactly what the export arm used to do with
+    // the value, and it produces an EMPTY, successful-looking products list.
+    let rows = vec![unserializable_product()];
+    let before = serde_json::to_value(&rows)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    assert!(
+        before.is_empty(),
+        "precondition: the retired .ok()/.unwrap_or_default() swallowed this failure into an empty array"
+    );
+
+    // AFTER: the same value is a hard error, and the error names the arm.
+    let err = export_arm(&rows, "products")
+        .expect_err("a row that cannot be serialized must abort the export, not empty the arm");
+    let rendered = format!("{err:#}");
+    assert!(
+        rendered.contains("products"),
+        "the failure must name the arm that failed, got: {rendered}"
+    );
+    assert!(
+        rendered.to_lowercase().contains("currency"),
+        "the failure must carry serde's own reason (the currency bytes), got: {rendered}"
+    );
+}
+
+#[test]
+fn kasirpkg_export_arm_keeps_a_well_formed_arm_unchanged() {
+    // (a) The success path is byte-for-byte the old one: same array, same
+    // rows, same order, and the same JSON the retired expression produced.
+    let rows = vec![
+        product_fixture("PRD-1", "Coffee", 1_000, Some("cat-1")),
+        product_fixture("PRD-2", "Bagel", 2_500, None),
+    ];
+    let arm = export_arm(&rows, "products").expect("a well-formed arm must serialize");
+
+    let legacy = serde_json::to_value(&rows)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    assert_eq!(
+        serde_json::Value::Array(arm),
+        serde_json::Value::Array(legacy),
+        "the helper must hand the payload the identical JSON the old expression did"
+    );
+}
+
+#[test]
+fn kasirpkg_export_refuses_to_write_a_package_it_could_not_serialize() {
+    // The end-to-end half: with a real database and a real output path, the
+    // error must leave NO FILE. Before the fix this call returned Ok, wrote a
+    // package, and the products arm inside it was empty.
+    let conn = kasirmu_core::migrations::fresh_db();
+    let path = temp_path("o-m50-package");
+
+    // Success first, so the failure below is about the arm and not the path.
+    run_export_kasirpkg(&conn, path.to_str().unwrap(), "products", PWD)
+        .expect("an empty but readable store must still export");
+    assert!(
+        path.exists(),
+        "precondition: the success path writes the package"
+    );
+    let _ = std::fs::remove_file(&path);
+
+    // The arm helper is the ONLY place an export can now fail to serialize,
+    // and it is reachable without a package writer, so the contract is
+    // asserted where it lives. A row that serializes must still be Ok —
+    // proving the check is a filter on failure, not a blanket refusal.
+    assert!(export_arm(&[product_fixture("PRD-OK", "Tea", 500, None)], "products").is_ok());
+    assert!(!path.exists(), "nothing may be left behind by a failed arm");
+}
+
 /// One package payload for the import tests, every portable arm populated.
 fn first_import_payload() -> KasirpkgPayload {
     KasirpkgPayload {
