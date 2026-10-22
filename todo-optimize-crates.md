@@ -15,20 +15,25 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 61 | **5** |
-| Low | 23 | 17 | **6** |
+| Medium | 66 | 63 | **3** |
+| Low | 23 | 18 | **5** |
 | Test (O-T) | 16 | 10 | **6** |
-| **Total** | **131** | **114** | **17** |
+| **Total** | **131** | **117** | **14** |
 
-**Updated 2026-10-22 (round 10).** O-M24, O-M25 and O-M49 closed by this session; O-L01, O-L02, O-L06,
-O-L07, O-L08, O-L09, O-L10, O-L11, O-L18 and O-M26 closed by concurrent sessions in the same round. **The
-High tier is empty and 17 entries remain**: 6 Test, 6 Low, 5 Medium.
+**Updated 2026-10-22 (round 11).** O-M46 (fixed, not merely relabelled — §11BB), O-M50 and O-M51 closed in
+this round. **The High tier is empty and 14 entries remain**: 6 Test, 5 Low, 3 Medium.
 
-**One of them is not really closed: O-M46.** Commit `401ddd3da` says it resolves the entry, and the
-`kasirmu-local-api` suite HANGS at HEAD because of two tests that commit added (§11AZ). The gate counts it
-as closed because the commit subject says so; the tree says otherwise. **A suite that hangs is worse than
-a suite that fails** — a red test names itself, a hang produces a CI timeout with no name — so the next
-pass should fix or revert that commit before anything else.
+**O-M46 is genuinely resolved now, and how it was resolved is the round's lesson.** The previous commit
+said "resolve" while the crate HUNG: two tests that could never pass, one of them asserting a BLOCKING
+property on a SYNCHRONOUS trait method — a property that does not exist. Behind that test sat a real
+defect (`send().await` on a closed channel never resolves and parked a spawned task forever), and behind
+THAT sat a third fact: a process-wide 1000/min audit rate limit that returns `Ok` without writing. Three
+problems, one test failure, and the test had to be renamed because its name was itself the false claim.
+
+**A note on my own record this round.** I misdiagnosed O-M51 twice — once calling a `0xffffffff` abort a
+spinning eviction loop, once reading `left: 0 right: 1` as "nothing evicted". Both times the lane measured
+and corrected me: the abort was its own multi-megabyte `eprintln!` inside a tokio worker, and the count was
+a per-peer drop counted on the wrong side. **A symptom I have seen before is not a diagnosis.**
 
 Counting rule unchanged — a `## §11*` heading or an in-entry marking verb; never a commit message alone.
 
@@ -1287,14 +1292,87 @@ a measurement, not an assertion.
 
 `cargo test -p kasirmu-cli --lib` = **152 passed, 0 failed**; 5 tests added.
 
-**O-M50 · kasirmu-cli — export deep-clones the payload and `.ok()`s a failure into an empty
-array** — `crates/kasirmu-cli/src/commands/kasirpkg.rs:120-128` ◦ (3B-06). A serialisation
-failure reports success with zero rows. *Fix:* move the `Vec` out in one step and propagate.
+**O-M50 · kasirmu-cli — export deep-clones the payload and `.ok()`s a failure into an empty**
+**array** — `crates/kasirmu-cli/src/commands/kasirpkg.rs` ✔ **PAID 2026-10-22** (3B-06).
+
+All SIX export arms ended in
+`serde_json::to_value(&rows).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default()`, which has
+TWO silent failure modes that both report success: an `Err` becomes an empty `Vec`, and an `Ok(non-array)`
+does too. The package was still written, exit was 0, and stderr printed `exported to <path> (N bytes)` —
+a store whose rows could not be serialised was indistinguishable from a store with zero rows. The deep
+clone is the same expression: `.as_array().cloned()` copied the whole JSON array out of the `Value`.
+
+**The trigger is real, not scaffolded.** `foundation::Currency` hand-writes `Serialize` and returns
+`"invalid currency bytes"` when its `[u8;3]` is not UTF-8 (`foundation/src/money.rs:134`). No ordinary DB
+read path can produce it — every row mapper goes through `str::from_utf8`/`String` first — which is
+precisely why nobody ever saw it: the arm's error contract was enforced by nothing and observed by
+nothing.
+
+**Propagate, not warn.** `export_arm<T>(rows, arm)` serialises by REFERENCE, propagates with
+`.context("serializing {arm} for export")`, and rejects a non-array `Ok` naming the arm and the JSON kind
+(a small `json_kind` helper, so a whole table is never dumped into the terminal). Propagation costs no
+plumbing here because the crate's established style is `anyhow::Result` out of `run()` and `main`, so the
+failure exits NON-ZERO with a message; warn-and-continue would have produced a silently PARTIAL package —
+the same defect wearing a log line.
+
+The serde round-trip stays on purpose: `KasirpkgPayload` holds `Vec<serde_json::Value>` and
+`ArrayFromIter::from_iter` is only implemented for `Result<Value, E>`, which cannot express a propagating
+serialisation failure. The clone was removed by passing `&[T]`, not by restructuring.
+
+**The test proves the old expression was wrong, not just that the new one works:** it asserts the RETIRED
+expression turns the same value into an EMPTY array, then that `export_arm` returns `Err` naming `products`
+with serde's `currency` reason. Falsified by restoring the old body, which makes it fail with
+"must abort the export, not empty the arm: []". A success-path test pins the JSON byte-identical to what
+the retired expression produced. `cargo test -p kasirmu-cli --lib` = **155 passed, 0 failed**.
 
 **O-M51 · kasirmu-lan — replay buffer clones its key on every hit and evicts by full scan** —
-`crates/kasirmu-lan/src/replay.rs:136`, `:160-166` ◦ (3B-07). `entry(key.clone())` on the hot
-path; once the 8,192 cap is reached, eviction is `min_by_key` over all queues. *Fix:* `entry_ref`,
-plus a global FIFO index for O(log n) eviction.
+`crates/kasirmu-lan/src/replay.rs` ✔ **PAID 2026-10-22** (3B-07). Both halves. The key clone was
+`queues.entry(key.clone())`; `ReplayKey` is an enum over `String`, so every push heap-allocated a key
+string whether or not the queue already existed. Eviction was `min_by_key(|q| q.front().seq)` over every
+queue, plus a `key.clone()` to name the victim.
+
+**Eviction is INSERTION ORDER, and establishing that is what made the swap safe.** The old scan picked the
+smallest still-buffered `seq`, and `seq` is `next_seq += 1` under the mutex with every queue FIFO — so the
+smallest `seq` IS the globally oldest insertion. There are no timestamps anywhere in `replay.rs`. A
+`VecDeque<(seq, key)>` in insertion order is therefore exactly equivalent: same victim for the same
+sequence. In a replay buffer that equivalence is not a nicety — a different eviction order changes which
+nonces are still remembered.
+
+**The equivalence is proved by an ORACLE, not by argument.** `ScanOracle` reimplements the old full scan
+verbatim, and over a 13,000-push adversarial script (bulk fills, per-peer cap flush, single-event
+dribbles, re-fills, a second identity, multi-eviction bursts) the test asserts after EVERY push that the
+next eviction victim — `(seq, key)`, compared as a pair — matches the scan's choice, plus population and
+per-queue content equality at the end. The script deliberately makes seq order and queue iteration order
+disagree, because that is the only thing that could differ.
+
+**A single removal path, so index drift is impossible by construction.** `pop_front_event` and
+`take_queue` are the ONLY two functions that remove an event, and both maintain `fifo`/`live`/`total`
+together. The per-peer cap, the global eviction and `drain` all route through them. That matters because a
+`drain` punches a hole the index must learn about, and a structure that is maintained at three call sites
+is a structure that will eventually be maintained at two.
+
+The key clone is gone without a `Borrow` hack: `contains_key` borrows, and the owned key is materialised
+only on a MISS. A borrowed `ReplayKeyRef` for a two-variant enum over `String` needs `unsafe` or a repr
+trick, and that was named and declined rather than contorted into.
+
+**A bug the lane introduced and reverted, worth recording:** its first version enforced the per-peer cap
+AFTER the append with `>`. Not equivalent — on the crossing push the queue's own drop pre-empted the
+global eviction and let the total sit one over the cap. The original sequence (per-peer `>= cap` check
+BEFORE the append, global cap after) was restored, and the equivalence test is what caught it.
+
+**Two escalations I raised were WRONG, and the lane measured that rather than deferring.** A `0xffffffff`
+abort I attributed to a spinning eviction loop was its own diagnostic `eprintln!` formatting an
+8,192-event buffer into a multi-megabyte string inside an await-free tokio worker. And a `left: 0 right: 1`
+I read as "nothing evicted" was its test counting the per-peer drop on the wrong side. The lesson is the
+mirror of this journal's recurring one: **a symptom I have seen before is not a diagnosis** — I matched an
+abort signature to the previous round's hang and was wrong about the cause both times I did it.
+
+`cargo check -p kasirmu-lan --all-targets` = exit 0, zero warnings (`--all-targets` caught a `dead_code`
+warning `--lib` did not — the same "test passed, check failed" trap from §11AY, and the helper was removed
+rather than silenced). `cargo test -p kasirmu-lan --lib` = **89 passed, 0 failed** (84 before; 5 new),
+all 6 pre-existing tests untouched. One flaky run failed `two_devices_alternating_addresses_do_not_cross_
+deliver` on `os error 10013` binding a FIXED port from a pre-existing test — environmental, and it passed
+on re-run.
 
 **O-M52 · kasirmu-plugin — `read_entry` fallback is O(n²) with an allocation per entry** —
 `crates/kasirmu-plugin/src/package.rs:330-339` ◦ (3B-09). *Fix:* keep the filename index built
