@@ -622,9 +622,39 @@ use. See §9 for the corrected entry. *Fix:* `lock().await`, and delete the stal
 at `:407-408`.
 
 **O-M21 · kasirmu-bridge — failed store-DB creation silently discarded** —
-`crates/kasirmu-bridge/src/locations.rs:263` ◦. `let _ = ctx.db_manager.create_store_db(…)`;
-the caller succeeds for a location with no database, surfacing later as unrelated errors on a
-growing set of locations. *Fix:* propagate; make row + DB creation atomic or failed.
+`crates/kasirmu-bridge/src/locations.rs` ✔ **PAID 2026-10-22.** `let _ = ctx.db_manager.create_store_db(…)`
+with no log at all: a create that could not write the branch's database still returned `Ok` with the
+profile row inserted. The merchant got a branch they could see and could not open, and the failure
+surfaced one command later in `create_session` as `opening store db: …` — an error naming the OPEN and
+nothing about the create that had dropped the real cause.
+
+The result now propagates (`create_store_db(..).map_err(|e| { tracing::error!(..); BridgeError::Internal(..) })?`).
+Three properties make the refusal clean, and all three were checked rather than assumed:
+
+- **Ordering.** The create runs BEFORE `create_location_profile`, so a failure leaves no profile row
+  behind — the row and the database are not "atomic" in the transaction sense, they are ordered so the
+  only partial outcome is the harmless one (a database with no row, which `store_db_exists` reports
+  and nothing lists).
+- **Ruling R3 (path-free client errors).** The cause carries an absolute path and goes to the log at
+  error level; the returned message names the store instead, the way `topology/commands.rs:598` does.
+- **No safe fallback.** A memory DB would be a branch whose data vanishes on restart, and `open_store`
+  would still try the real path on the next command.
+
+Pinned by `create_location_profile_refuses_when_the_store_db_cannot_be_created`, which asserts the
+PAIR — an `Err(Internal)` and `!store_db_exists(id)` — rather than a single expression, because a
+fixture that blocks the whole data directory is refused earlier by `resolve_scope` and would let the
+test pass for the wrong reason. The premise (`create_store_db` really fails for this manager) is
+asserted first, so a green result cannot be a fixture that quietly worked. Measured on the pre-fix
+tree: the command answered `Ok`, `list_locations_scoped` returned the new id, and `store_db_exists`
+answered `false`.
+
+**A test-infrastructure fix this entry needed.** `TestBridge::new` built its store directory from
+`std::env::temp_dir()`, which is `C:\WINDOWS\TEMP` on this machine — create-but-not-delete, so a stale
+`kasirmu-bridge-test-*` directory made every harness test in the crate panic with `os error 5`, reading
+as a product bug. `testing.rs::unique_store_dir` now delegates to `kasirmu_test_support::scratch_dir`
+under the gitignored `target/`.
+
+`cargo test -p kasirmu-bridge --lib locations::` = **12 passed, 0 failed**.
 
 **O-M22 · cloud-server — batch outcome reassembly is O(n²) with item clones** —
 `apps/cloud-server/src/sync_api.rs:368-379` (clone at `:333`) ◦. A 1,000-item push does 10⁶

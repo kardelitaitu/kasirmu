@@ -229,9 +229,17 @@ pub async fn get_primary_location_scoped(
 ///
 /// Returns [`BridgeError::InvalidSession`] for an unknown/expired token,
 /// [`BridgeError::PermissionDenied`] without `settings:edit`,
-/// [`BridgeError::Internal`] when the store lock is poisoned or the default
-/// tenant subscription row is missing, and [`BridgeError::Core`] on DB and
+/// [`BridgeError::Internal`] when the store lock is poisoned, the default
+/// tenant subscription row is missing, or the location's own store database
+/// cannot be created, and [`BridgeError::Core`] on DB and
 /// subscription-limit errors.
+///
+/// A store-database failure is fatal to the call, not tolerated: the profile
+/// row is written only after the branch's database exists, so this command
+/// either returns a location that can be opened or returns an error and writes
+/// nothing. Before O-M21 the creation failure was discarded and the profile was
+/// inserted anyway, which produced a branch that failed later, in
+/// `create_session`, with an error naming the open rather than the create.
 pub async fn create_location_profile_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -287,7 +295,45 @@ pub async fn create_location_profile_scoped(
 
     // The database manager still uses the historical store-db abstraction;
     // it is a physical data-store name, not the site-unit hierarchy term.
-    let _ = ctx.db_manager.create_store_db(&args.id);
+    //
+    // O-M21: this result used to be DISCARDED — `let _ = …` with no log — so a
+    // create that could not write the branch's database (an unwritable data
+    // directory, a store id the manager refuses, a migration failure) still
+    // returned `Ok` with the profile row inserted. The merchant got a branch
+    // they could see and could not open: the failure surfaced one command
+    // later, in `create_session`, as `opening store db: …` — an error naming
+    // nothing about the create that had dropped the real cause. There is no
+    // safe fallback here (a memory DB would be a branch whose data is gone on
+    // restart, and `open_store` would still try the real path on the next
+    // command), so the error propagates and nothing is inserted on failure.
+    //
+    // Ordering note: this runs BEFORE `create_location_profile`, so propagating
+    // here leaves no profile row behind. Nothing in this function wrote
+    // anything before this point (the quota gate arms an in-memory slot and
+    // warms marker rows; neither is the profile), so the refusal is clean.
+    //
+    // Ruling R3 (path-free client errors) is honoured the same way
+    // `topology/commands.rs:598` honours it: the cause — which carries the
+    // absolute path — goes to the log at error level, and the returned message
+    // names the store instead.
+    //
+    // MEASURED, on the pre-fix tree, with the fixture
+    // `create_location_profile_refuses_when_the_store_db_cannot_be_created`:
+    // the discarded call was `create_store_db("loc-..-o-m21")`, whose failure
+    // `checked_store_db_path` reports without touching the filesystem. The
+    // command then answered `Ok`, `list_locations_scoped` returned
+    // `["default", "loc-..-o-m21"]`, and `store_db_exists` answered `false`.
+    ctx.db_manager.create_store_db(&args.id).map_err(|e| {
+        tracing::error!(
+            location_id = %args.id,
+            error = %e,
+            "creating the location's store database failed — no profile was written"
+        );
+        BridgeError::Internal(format!(
+            "creating store database for location '{}': {e}",
+            args.id
+        ))
+    })?;
 
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let profile = LocationProfile {

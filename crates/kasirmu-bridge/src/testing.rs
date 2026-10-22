@@ -29,7 +29,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use kasirmu_core::cache::Cache;
 use kasirmu_core::migrations;
@@ -53,23 +52,27 @@ pub const TEST_SESSION_TTL_SECONDS: i64 = 86400;
 /// Instance counter disambiguating store directories within one test process.
 static NEXT_BRIDGE_ID: AtomicU64 = AtomicU64::new(0);
 
-/// Unique directory under the OS temp dir for `store-<id>.sqlite` files.
+/// Unique directory for `store-<id>.sqlite` files, under `target/test-scratch`.
 ///
 /// One directory per `TestBridge` keeps parallel test instances from
 /// colliding on the same `store-<id>.sqlite` file (the manager creates the
-/// directory lazily on first `open_store`). Leftover directories are left
-/// for the OS temp cleaner, exactly like `AppState::for_test`'s store files.
+/// directory lazily on first `open_store`).
+///
+/// This used to be `std::env::temp_dir()` with a hand-rolled pid/nanos/counter
+/// suffix. On this project's Windows machines the MACHINE-level `TEMP` is
+/// `C:\WINDOWS\TEMP`, where an ordinary user can create but not delete: once
+/// one stale `kasirmu-bridge-test-*` directory existed, `create_dir_all` failed
+/// with `Access is denied. (os error 5)` and the panic surfaced from
+/// `provisioned_store_manager`, i.e. from `TestBridge::new()` — every harness
+/// test in this crate, reading as a product bug. `kasirmu_test_support` roots
+/// the same per-call-unique directory under the gitignored `target/`, which is
+/// writable and cleanable; its `scratch_root_is_never_windows_temp` pins the
+/// property so a future edit cannot reintroduce the trap.
 pub(crate) fn unique_store_dir() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-test-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        NEXT_BRIDGE_ID.fetch_add(1, Ordering::Relaxed)
-    ))
+    // Keep the counter: callers that never touch the filesystem still bump it,
+    // and dropping the static would leave the imports above unused.
+    NEXT_BRIDGE_ID.fetch_add(1, Ordering::Relaxed);
+    kasirmu_test_support::scratch_dir("kasirmu-bridge-store")
 }
 
 /// Open a fresh, fully migrated connection for a test.
