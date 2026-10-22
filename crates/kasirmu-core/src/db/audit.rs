@@ -1154,3 +1154,7 @@ impl Store<'_> {
 #[cfg(test)]
 #[path = "audit_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "audit_dynamic_where_tests.rs"]
+mod dynamic_where_tests;
