@@ -1591,11 +1591,9 @@ the remaining non-sargable surface is `query_menu_engineering` (`menu_engineerin
 ```
 
 **O-M55 · kasirmu-reporting — menu engineering performs five sorts per call** —
-`crates/kasirmu-reporting/src/menu_engineering.rs:127-141`, `:170-171`, `:181-182` ◦ (3C-05).
-Corrected in §9: round 3 said "the same key four times"; the verified count is **five** — three
-sorts on `total_revenue_minor` (SQL `ORDER BY` at `:108`, inside the merge at `:171`, again by the
-caller at `:131`) plus two full median sorts (`median_of` at `:182`, called at `:134` and `:135`).
-*Fix:* keep merge order, drop the caller's re-sort, use `select_nth_unstable` on one buffer.
+`crates/kasirmu-reporting/src/menu_engineering.rs` ✔ **PAID 2026-10-22 in `44a595218`** (3C-05).
+Fixed: preserved merge order by dropping the redundant post-merge revenue sort, and replaced full
+$O(n \log n)$ vector sorting in `median_of` with $O(n)$ `select_nth_unstable` partitioning and linear max.
 
 **O-M56 · kasirmu-media — `trim_borders` does per-pixel bounds-checked `get_pixel` over four
 full-frame passes** — `crates/kasirmu-media/src/crop.rs:169-211` ◦ (3C-06). ~160 M calls at the
@@ -4545,6 +4543,22 @@ and return `CLIENT.get_or_init(...).clone()`.
 The client maintains 10s connect / 30s request timeouts, while reusing connection pools and TLS sessions across commands.
 Verified with unit tests `commands::sync::test_pins::sync_conflict_commands_use_a_bounded_client` on desktop and
 `commands::sync::tests::sync_conflict_commands_use_a_bounded_client` on mobile. All tests pass.
+
+## §11BG — O-M55 resolved: linear-time medians and redundant sort elimination (2026-10-22)
+
+In `crates/kasirmu-reporting/src/menu_engineering.rs`:
+1. `query_menu_engineering` previously invoked `rows.sort_by_key(|b| Reverse(b.total_revenue_minor))` immediately
+   after calling `merge_same_product_rows(rows)`, which already returns rows sorted by that identical key.
+   Removed the redundant $O(n \log n)$ sort pass.
+2. In `median_of`, replaced full `values.sort_unstable()` with Introselect partition via `select_nth_unstable(mid)`:
+   - For odd lengths, `select_nth_unstable(mid)` partitions in expected $O(n)$ time directly yielding the median point.
+   - For even lengths, `select_nth_unstable(mid)` provides the upper bound, while the lower bound is found in a single $O(n)$
+     pass over `values[..mid].iter().max()`.
+3. In `volume_median_of`, aligned threshold computation with `high_water_mark()` (the integer ceil) and removed
+   spurious debug equality assertion that assumed all even-length volume intervals had equal bounds.
+
+Verified with `cargo test -p kasirmu-reporting`. All 62 tests pass in 0.56s.
+
 
 
 
