@@ -54,6 +54,61 @@ const SENSITIVE_DETAIL_KEYS: &[&str] = &[
 /// Marker substituted for redacted secret values (AUD-06).
 const REDACTED_MARKER: &str = "[REDACTED]";
 
+// -- Hoisted SQL -------------------------------------------------------
+//
+// `audit_log` is append-only and nothing prunes it except the retention sweep,
+// so it is one of the longest LARGE tables in the database and every unindexed
+// read of it gets slower for the life of the install. The four static readers
+// below are hoisted to `pub` constants for the same reason as
+// `DAILY_REVENUE_SQL` (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form. This
+// module is already public, so these constants add no new surface.
+//
+// The filter-building page query (`list_audit_entries_page`) is NOT here: its
+// WHERE clause is assembled per call and has no static body worth sharing.
+//
+// Purely textual: each method prepares exactly the string it did before, and
+// the continuation indentation inside each literal is the original one - the
+// text is relocated, not re-indented, so `LIST_AUDIT_ENTRIES_SQL` and
+// `VERIFY_AUDIT_CHAIN_SQL` carry a `#[rustfmt::skip]`-style oddity honestly:
+// see the note on each.
+
+/// `Store::has_audit_row_for`: the existence probe behind the settlement
+/// doors' idempotent audit write. Plain equality on the `action` and
+/// `target_id` columns (each carries its own index); outcome is deliberately
+/// irrelevant to the caller.
+pub const AUDIT_ROW_PROBE_SQL: &str =
+    "SELECT EXISTS(SELECT 1 FROM audit_log WHERE action = ?1 AND target_id = ?2)";
+
+/// `Store::list_audit_entries`: one page of the log, newest first.
+///
+/// `#[rustfmt::skip]` is load-bearing: the literal's continuation lines carry
+/// the original SQL indentation, and rustfmt would RE-INDENT them. That changes
+/// the query text (harmless to SQLite, but it breaks the "the constant is the
+/// query, byte for byte" guarantee the plan probe depends on — and it would move
+/// the text without anyone reviewing a query change).
+#[rustfmt::skip]
+pub const LIST_AUDIT_ENTRIES_SQL: &str =
+    "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
+             FROM audit_log ORDER BY created_at DESC LIMIT ?1 OFFSET ?2";
+
+/// `Store::verify_audit_chain`: every hashed entry, in chain order.
+///
+/// `#[rustfmt::skip]` for the same reason as [`LIST_AUDIT_ENTRIES_SQL`]: the
+/// continuation indentation is part of the text the product prepares.
+#[rustfmt::skip]
+pub const VERIFY_AUDIT_CHAIN_SQL: &str = "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash
+             FROM audit_log
+             WHERE hash != ''
+             ORDER BY created_at ASC, id ASC";
+
+/// `Store::count_audit_entries_after`: the unreviewed badge (AUD-02/AUD-04),
+/// counted in SQL over the whole table rather than the loaded page.
+pub const COUNT_AUDIT_ENTRIES_AFTER_SQL: &str =
+    "SELECT COUNT(*) FROM audit_log WHERE created_at > ?1";
+
 /// Maximum persisted length (in chars) for an audit `details` payload
 /// (AUD-06). Oversized payloads are truncated with an explicit marker.
 const MAX_DETAIL_LEN: usize = 4000;
@@ -690,7 +745,7 @@ impl Store<'_> {
         target_id: &str,
     ) -> Result<bool, CoreError> {
         let found: i64 = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM audit_log WHERE action = ?1 AND target_id = ?2)",
+            AUDIT_ROW_PROBE_SQL,
             rusqlite::params![action, target_id],
             |row| row.get(0),
         )?;
@@ -703,10 +758,7 @@ impl Store<'_> {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditEntry>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
-             FROM audit_log ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
-        )?;
+        let mut stmt = self.conn.prepare(LIST_AUDIT_ENTRIES_SQL)?;
         let rows = stmt.query_map(rusqlite::params![limit, offset], |row| {
             Ok(AuditEntry {
                 id: row.get("id")?,
@@ -951,12 +1003,7 @@ impl Store<'_> {
     /// 1. Its `previous_hash` matches the preceding entry's `hash`.
     /// 2. Its `hash` matches the recomputed canonical SHA-256 hash.
     pub fn verify_audit_chain(&self) -> Result<AuditChainVerificationResult, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash
-             FROM audit_log
-             WHERE hash != ''
-             ORDER BY created_at ASC, id ASC",
-        )?;
+        let mut stmt = self.conn.prepare(VERIFY_AUDIT_CHAIN_SQL)?;
 
         let mut rows = stmt.query([])?;
         let mut expected_previous: Option<String> = None;
@@ -1043,7 +1090,7 @@ impl Store<'_> {
     /// independent of the currently loaded page.
     pub fn count_audit_entries_after(&self, created_at: &str) -> Result<u64, CoreError> {
         let n: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM audit_log WHERE created_at > ?1",
+            COUNT_AUDIT_ENTRIES_AFTER_SQL,
             rusqlite::params![created_at],
             |row| row.get(0),
         )?;

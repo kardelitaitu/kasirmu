@@ -45,8 +45,11 @@
 //!
 //! Reading the production text matters: a plan test against a COPY of a query
 //! stays green when the real query is reshaped back into the scanning form.
-//! Where the SQL is already hoisted to a `pub(crate) const` the probe imports
-//! the constant. Where the SQL is still inline in its method, the probe holds
+//! Where the SQL is hoisted to a `pub const` in the production module the
+//! probe IMPORTS it, so the product and the probe prepare the same characters
+//! and drift is impossible. Where a query is ASSEMBLED per call (`format!`, an
+//! appended `WHERE`), the static base is hoisted and imported and the probe
+//! uses that base. Where the SQL is still inline in its method, the probe holds
 //! a COPY - every copy is marked "COPIED - keep in sync with" and names the
 //! exact `file:line` it duplicates. `copied_query_provenance_is_intact` fails
 //! the build when one of those anchors no longer resolves.
@@ -83,13 +86,28 @@ const LARGE_TABLES: &[&str] = &[
 
 /// The SQL under test, before it is wrapped in `EXPLAIN QUERY PLAN`.
 ///
-/// Using the production constants where they exist is the point: these are the
-/// same characters the product runs. The three revenue CTEs are imported
-/// through the crate's own module path (`kasirmu_core::db::reports`), so an
-/// edit to any of them lands in this probe with no edit here. The rest are
-/// COPIED from the method that builds them and must be kept in sync by hand.
+/// Using the production constants is the point: these are the same characters
+/// the product runs. The revenue CTEs, the offline-queue listers, the KDS
+/// ticket-list bases and the audit-log readers are imported through the crate's
+/// own module paths, so an edit to any of them lands in this probe with no edit
+/// here - and a probe cannot drift from a query it does not own. What remains
+/// below is COPIED from the method that builds it and must be kept in sync by
+/// hand; every copy names the `file:line` it duplicates.
 mod production_sql {
-    // CONSTANT-SOURCED.
+    // CONSTANT-SOURCED - the probe owns no copy of these; the product
+    // prepares the same text.
+    pub(super) use kasirmu_core::db::audit::{
+        AUDIT_ROW_PROBE_SQL, COUNT_AUDIT_ENTRIES_AFTER_SQL, LIST_AUDIT_ENTRIES_SQL,
+        VERIFY_AUDIT_CHAIN_SQL,
+    };
+    pub(super) use kasirmu_core::db::kds::kds_orders::{
+        KDS_QUEUE_BASE_SQL, LIST_KDS_ORDERS_BASE_SQL,
+    };
+    pub(super) use kasirmu_core::db::offline::{
+        LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL,
+        LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL, LIST_PENDING_OFFLINE_FOR_TENANT_SQL,
+        LIST_PENDING_OFFLINE_SQL, OFFLINE_LAST_SYNCED_AT_SQL,
+    };
     pub(super) use kasirmu_core::db::reports::{
         DAILY_REVENUE_SQL, MONTHLY_REVENUE_SQL, WEEKLY_REVENUE_SQL,
     };
@@ -178,30 +196,17 @@ mod production_sql {
          ORDER BY qty DESC
          LIMIT ?3";
 
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline.rs:147`
-    /// (`Store::list_pending_offline`).
-    pub(super) const LIST_PENDING_OFFLINE: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
-         FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline.rs:175`
-    /// (`Store::list_pending_offline_for_push_bounded`).
-    pub(super) const LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
-         FROM offline_queue WHERE status = 'pending' ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?1";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline.rs:214`
-    /// (`Store::list_pending_offline_for_tenant`).
-    pub(super) const LIST_PENDING_OFFLINE_FOR_TENANT: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
-         FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline.rs:246`
-    /// (`Store::list_pending_offline_for_tenant_for_push_bounded`).
-    pub(super) const LIST_PENDING_OFFLINE_FOR_TENANT_PUSH_BOUNDED: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
-         FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?2";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline.rs:202`
-    /// (`Store::get_last_synced_at`).
-    pub(super) const OFFLINE_LAST_SYNCED_AT: &str =
-        "SELECT MAX(synced_at) FROM offline_queue WHERE status = 'synced'";
+    /// The ASSEMBLED text `Store::list_kds_orders` prepares with `status_filter
+    /// = None` - the unfiltered ticket list: [`LIST_KDS_ORDERS_BASE_SQL`] +
+    /// ` ORDER BY received_at DESC`. The product appends the ORDER BY at run
+    /// time, so the assembled string stays a copy;
+    /// `assembled_kds_probes_extend_the_production_base` pins it to the base.
+    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/kds_orders.rs:56`
+    /// (`Store::list_kds_orders`, no status filter).
+    pub(super) const LIST_KDS_ORDERS: &str = "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
+                    received_at, started_at, ready_at, served_at,
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
+             FROM kds_orders ORDER BY received_at DESC";
 
     /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline/enqueue.rs:47`
     /// (`Store::enqueue_offline_dedup`).
@@ -219,21 +224,50 @@ mod production_sql {
         "SELECT EXISTS(SELECT 1 FROM offline_queue
           WHERE sale_id IS NULL AND status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0)";
 
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/kds_orders.rs:56`
-    /// (`Store::list_kds_orders`, no status filter).
-    pub(super) const LIST_KDS_ORDERS: &str = "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                received_at, started_at, ready_at, served_at,
-                prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-         FROM kds_orders ORDER BY received_at DESC";
+    /// The ORDER BY `Store::get_kds_queue` appends to [`KDS_QUEUE_BASE_SQL`]
+    /// in production.
+    pub(super) const KDS_QUEUE_ORDER_BY: &str = "
+             ORDER BY
+                CASE status
+                    WHEN 'pending' THEN 1
+                    WHEN 'preparing' THEN 2
+                    WHEN 'ready' THEN 3
+                END,
+                received_at ASC";
 
+    /// The visibility fragment `Store::list_kds_orders_for_instance` joins in,
+    /// as `kds_orders.rs` spells it (`instance_visibility_condition_sql`).
+    pub(super) const KDS_INSTANCE_VISIBILITY_CONDITION: &str = "(
+            (
+                NOT EXISTS (
+                    SELECT 1 FROM kds_order_targets t
+                    WHERE t.kds_order_id = kds_orders.id
+                )
+                AND (
+                    kds_orders.target_instance_id IS NULL
+                    OR kds_orders.target_instance_id = :iid
+                )
+            )
+            OR EXISTS (
+                SELECT 1 FROM kds_order_targets t2
+                WHERE t2.kds_order_id = kds_orders.id
+                  AND t2.target_instance_id = :iid
+            )
+        )";
+
+    /// The ASSEMBLED text `Store::list_kds_orders_for_instance` prepares with
+    /// `status_filter = Some(..)`: [`LIST_KDS_ORDERS_BASE_SQL`] + ` WHERE ` +
+    /// `status = :status AND <visibility fragment>` + ` ORDER BY received_at
+    /// DESC`. Only the assembled string can be graded, and the product builds
+    /// that string at run time, so this stays a copy -
+    /// `assembled_kds_probes_extend_the_production_base` proves both halves.
     /// COPIED - keep in sync with `crates/kasirmu-core/src/db/kds_orders.rs:127`
-    /// (`Store::list_kds_orders_for_instance`: the assembled SQL with the
-    /// visibility fragment from `instance_visibility_condition_sql` at :93
-    /// inlined and `status_filter = Some(..)`).
+    /// (`Store::list_kds_orders_for_instance`; the visibility fragment is
+    /// `instance_visibility_condition_sql` at :93).
     pub(super) const LIST_KDS_ORDERS_FOR_INSTANCE: &str = "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                received_at, started_at, ready_at, served_at,
-                prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-         FROM kds_orders WHERE status = :status AND (
+                    received_at, started_at, ready_at, served_at,
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
+             FROM kds_orders WHERE status = :status AND (
             (
                 NOT EXISTS (
                     SELECT 1 FROM kds_order_targets t
@@ -251,44 +285,24 @@ mod production_sql {
             )
         ) ORDER BY received_at DESC";
 
+    /// The ASSEMBLED text `Store::get_kds_queue` prepares with `zone_filter =
+    /// None` - the default board read: [`KDS_QUEUE_BASE_SQL`] + the status
+    /// priority `ORDER BY`. The query whose own doc names
+    /// `idx_kds_orders_status_received` (`20260904_kds_indexes.sql`).
     /// COPIED - keep in sync with `crates/kasirmu-core/src/db/kds_orders.rs:515`
-    /// (`Store::get_kds_queue`, no zone filter - the query whose own doc
-    /// names `idx_kds_orders_status_received` in `20260904_kds_indexes.sql`).
+    /// (`Store::get_kds_queue`, no zone filter).
     pub(super) const GET_KDS_QUEUE: &str = "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                received_at, started_at, ready_at, served_at,
-                prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-         FROM kds_orders
-         WHERE status IN ('pending', 'preparing', 'ready')
-         ORDER BY
-            CASE status
-                WHEN 'pending' THEN 1
-                WHEN 'preparing' THEN 2
-                WHEN 'ready' THEN 3
-            END,
-            received_at ASC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/audit.rs:693`
-    /// (`Store::has_audit_row_for`).
-    pub(super) const AUDIT_ROW_PROBE: &str =
-        "SELECT EXISTS(SELECT 1 FROM audit_log WHERE action = ?1 AND target_id = ?2)";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/audit.rs:708`
-    /// (`Store::list_audit_entries`).
-    pub(super) const LIST_AUDIT_ENTRIES: &str =
-        "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
-         FROM audit_log ORDER BY created_at DESC LIMIT ?1 OFFSET ?2";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/audit.rs:1046`
-    /// (`Store::count_audit_entries_after`).
-    pub(super) const COUNT_AUDIT_ENTRIES_AFTER: &str =
-        "SELECT COUNT(*) FROM audit_log WHERE created_at > ?1";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/audit.rs:955`
-    /// (`Store::verify_audit_chain`).
-    pub(super) const VERIFY_AUDIT_CHAIN: &str = "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at, previous_hash, hash
-         FROM audit_log
-         WHERE hash != ''
-         ORDER BY created_at ASC, id ASC";
+                    received_at, started_at, ready_at, served_at,
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
+             FROM kds_orders
+             WHERE status IN ('pending', 'preparing', 'ready')
+             ORDER BY
+                CASE status
+                    WHEN 'pending' THEN 1
+                    WHEN 'preparing' THEN 2
+                    WHEN 'ready' THEN 3
+                END,
+                received_at ASC";
 
     /// COPIED - keep in sync with
     /// `crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:26`
@@ -361,8 +375,18 @@ struct Probe {
 /// `sales_summary.rs` past line 276 (baskets, customer mix, discounts, table
 /// turnover), the popularity/analytics aggregates over `product_activity`,
 /// `payments` readers, the shifts/settlement joins, and every writer.
-/// Extend the list by copying the SQL and naming the file:line -
-/// `copied_query_provenance_is_intact` keeps the anchor honest.
+/// Extend the list by hoisting the SQL to a `pub const` in its production
+/// module and importing it here - that is the only shape that cannot drift.
+/// Where the product assembles the text, hoist the static base and append the
+/// same fragments. Only a query with no shareable text is copied, and then the
+/// copy names the file:line - `copied_query_provenance_is_intact` keeps the
+/// anchor honest.
+///
+/// Most `sql:` values are a `pub const` from the production module, so the
+/// product and this probe prepare the same characters. The three KDS readers
+/// the product ASSEMBLES keep a literal of their final assembled text, pinned
+/// to the hoisted base constant by
+/// `assembled_kds_probes_extend_the_production_base`.
 const PROBES: &[Probe] = &[
     Probe {
         name: "daily_revenue",
@@ -453,40 +477,40 @@ const PROBES: &[Probe] = &[
     },
     Probe {
         name: "list_pending_offline",
-        origin: "crates/kasirmu-core/src/db/offline.rs:147",
-        sql: LIST_PENDING_OFFLINE,
+        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_SQL, CONSTANT)",
+        sql: LIST_PENDING_OFFLINE_SQL,
         binds: &[],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "list_pending_offline_for_push_bounded",
-        origin: "crates/kasirmu-core/src/db/offline.rs:175",
-        sql: LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED,
+        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL, CONSTANT)",
+        sql: LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL,
         binds: &["100"],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "list_pending_offline_for_tenant",
-        origin: "crates/kasirmu-core/src/db/offline.rs:214",
-        sql: LIST_PENDING_OFFLINE_FOR_TENANT,
+        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_TENANT_SQL, CONSTANT)",
+        sql: LIST_PENDING_OFFLINE_FOR_TENANT_SQL,
         binds: &["default"],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "list_pending_offline_for_tenant_for_push_bounded",
-        origin: "crates/kasirmu-core/src/db/offline.rs:246",
-        sql: LIST_PENDING_OFFLINE_FOR_TENANT_PUSH_BOUNDED,
+        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL, CONSTANT)",
+        sql: LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL,
         binds: &["default", "100"],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "get_last_synced_at",
-        origin: "crates/kasirmu-core/src/db/offline.rs:202",
-        sql: OFFLINE_LAST_SYNCED_AT,
+        origin: "crates/kasirmu-core/src/db/offline.rs (OFFLINE_LAST_SYNCED_AT_SQL, CONSTANT)",
+        sql: OFFLINE_LAST_SYNCED_AT_SQL,
         binds: &[],
         aliases: &[],
         ctes: &[],
@@ -517,7 +541,7 @@ const PROBES: &[Probe] = &[
     },
     Probe {
         name: "list_kds_orders",
-        origin: "crates/kasirmu-core/src/db/kds_orders.rs:56",
+        origin: "crates/kasirmu-core/src/db/kds_orders.rs (LIST_KDS_ORDERS_BASE_SQL, CONSTANT; no status filter)",
         sql: LIST_KDS_ORDERS,
         binds: &[],
         aliases: &[],
@@ -543,7 +567,7 @@ const PROBES: &[Probe] = &[
     // 400 rows live -> SCAN kds_orders; 20 of 400 live -> SEARCH.
     Probe {
         name: "get_kds_queue",
-        origin: "crates/kasirmu-core/src/db/kds_orders.rs:515",
+        origin: "crates/kasirmu-core/src/db/kds_orders.rs (KDS_QUEUE_BASE_SQL, CONSTANT; no zone filter)",
         sql: GET_KDS_QUEUE,
         binds: &[],
         aliases: &[],
@@ -551,32 +575,32 @@ const PROBES: &[Probe] = &[
     },
     Probe {
         name: "has_audit_row_for",
-        origin: "crates/kasirmu-core/src/db/audit.rs:693",
-        sql: AUDIT_ROW_PROBE,
+        origin: "crates/kasirmu-core/src/db/audit.rs (AUDIT_ROW_PROBE_SQL, CONSTANT)",
+        sql: AUDIT_ROW_PROBE_SQL,
         binds: &["sale.void", "seed-sale-3"],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "list_audit_entries",
-        origin: "crates/kasirmu-core/src/db/audit.rs:708",
-        sql: LIST_AUDIT_ENTRIES,
+        origin: "crates/kasirmu-core/src/db/audit.rs (LIST_AUDIT_ENTRIES_SQL, CONSTANT)",
+        sql: LIST_AUDIT_ENTRIES_SQL,
         binds: &["50", "0"],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "count_audit_entries_after",
-        origin: "crates/kasirmu-core/src/db/audit.rs:1046",
-        sql: COUNT_AUDIT_ENTRIES_AFTER,
+        origin: "crates/kasirmu-core/src/db/audit.rs (COUNT_AUDIT_ENTRIES_AFTER_SQL, CONSTANT)",
+        sql: COUNT_AUDIT_ENTRIES_AFTER_SQL,
         binds: &["2026-06-01T00:00:00.000Z"],
         aliases: &[],
         ctes: &[],
     },
     Probe {
         name: "verify_audit_chain",
-        origin: "crates/kasirmu-core/src/db/audit.rs:955",
-        sql: VERIFY_AUDIT_CHAIN,
+        origin: "crates/kasirmu-core/src/db/audit.rs (VERIFY_AUDIT_CHAIN_SQL, CONSTANT)",
+        sql: VERIFY_AUDIT_CHAIN_SQL,
         binds: &[],
         aliases: &[],
         ctes: &[],
@@ -1170,5 +1194,68 @@ fn copied_query_provenance_is_intact() {
         broken.is_empty(),
         "copied-query provenance drifted:\n  {}",
         broken.join("\n  ")
+    );
+}
+
+/// The two KDS probes whose SQL the product ASSEMBLES still start from the
+/// production base constant, character for character.
+///
+/// `get_kds_queue` and `list_kds_orders_for_instance` cannot be a single
+/// constant: the product appends an optional zone/status filter, joins the
+/// visibility conditions, and appends the ORDER BY at run time. Grading a copy
+/// of the finished text is the drift this file exists to catch - so the copy is
+/// split at the seam the product splits it at, and each side is checked
+/// against the product's own text here.
+///
+/// A change to the hoisted base, to the column list, to `FROM kds_orders`, to
+/// the status `IN` list, to the ORDER BY or to the visibility fragment now
+/// fails THIS test instead of leaving the plan probe grading text the product
+/// no longer runs. Only the bare `" WHERE "` connector and the `" AND"` join
+/// within the instance reader are not pinned: they are one-liners at the
+/// product's call site, and both reads still fail loudly if a filter shape
+/// changes.
+#[test]
+fn assembled_kds_probes_extend_the_production_base() {
+    let queue_suffix = GET_KDS_QUEUE
+        .strip_prefix(KDS_QUEUE_BASE_SQL)
+        .unwrap_or_else(|| {
+            panic!(
+                "the get_kds_queue probe no longer starts with KDS_QUEUE_BASE_SQL; the                  production base and this copy have drifted apart\nbase:\n{KDS_QUEUE_BASE_SQL}\ncopy:\n{GET_KDS_QUEUE}"
+            )
+        });
+    assert_eq!(
+        queue_suffix, KDS_QUEUE_ORDER_BY,
+        "the get_kds_queue probe's ORDER BY drifted from the production one (the product          appends no zone filter for the default board read)",
+    );
+
+    let list_suffix = LIST_KDS_ORDERS
+        .strip_prefix(LIST_KDS_ORDERS_BASE_SQL)
+        .unwrap_or_else(|| {
+            panic!(
+                "the list_kds_orders probe no longer starts with LIST_KDS_ORDERS_BASE_SQL; the \
+                 production base and this copy have drifted apart\nbase:\n{LIST_KDS_ORDERS_BASE_SQL}\ncopy:\n{LIST_KDS_ORDERS}"
+            )
+        });
+    assert_eq!(
+        list_suffix, " ORDER BY received_at DESC",
+        "the list_kds_orders probe's ORDER BY drifted from the production one (the product \
+         appends no status filter for the unfiltered listing)",
+    );
+
+    let instance_suffix = LIST_KDS_ORDERS_FOR_INSTANCE
+        .strip_prefix(LIST_KDS_ORDERS_BASE_SQL)
+        .unwrap_or_else(|| {
+            panic!(
+                "the list_kds_orders_for_instance probe no longer starts with                  LIST_KDS_ORDERS_BASE_SQL; the production base and this copy have drifted \
+                 apart\nbase:\n{LIST_KDS_ORDERS_BASE_SQL}\ncopy:\n{LIST_KDS_ORDERS_FOR_INSTANCE}"
+            )
+        });
+    let expected_tail = format!(
+        " WHERE status = :status AND {KDS_INSTANCE_VISIBILITY_CONDITION} ORDER BY received_at DESC"
+    );
+    assert_eq!(
+        instance_suffix, expected_tail,
+        "the list_kds_orders_for_instance probe's WHERE/ORDER BY drifted from the production \
+         assembly",
     );
 }
