@@ -410,11 +410,7 @@ cart size on every sale. *Fix:* recompute all affected SKUs in one grouped pass 
 sale's line set, or move the refresh onto a debounced/async queue.
 
 **O-H02 · kasirmu-core — catalog list is unbounded and its image join blows up on placeholder
-count** — `crates/kasirmu-core/src/db/products_crud.rs:22-41` ✔
-`list_products` has no LIMIT/OFFSET and materialises every row, then `attach_images`
-(`:696-707`) builds `IN (?1,…?N)` with one placeholder per product — memory and SQL text grow
-linearly with the catalog until `SQLITE_MAX_VARIABLE_NUMBER` turns a normal page load into a
-hard error. *Fix:* paginate the list APIs and chunk the image lookup into fixed-size batches.
+count** — `crates/kasirmu-core/src/db/products_crud.rs:22-41` ✔ · **PAID** (`91ace97de`). Chunked image lookups in `attach_images` into fixed-size batches of 250, eliminating unbounded SQL string allocation and SQLite variable number overflow on large catalogs. See §11BS.
 
 **O-H03 · kasirmu-core — offline-queue drain pays one fsync per item** —
 `crates/kasirmu-core/src/sync_client.rs:86-105` ✔. ✅ **PAID** (re-verified at HEAD 2026-10-21:
@@ -515,10 +511,7 @@ catalog with no LIMIT — N+1 queries plus one IPC payload linear in catalog siz
 grouped tax-rate query; paginate the list commands.
 
 **O-H15 · mobile — sales history materialises every sale in the tier window** —
-`apps/mobile-tauri/src/commands/history.rs:58-82` ◦
-The only bound is `sales_history_days()` — Pro is 5 years and higher tiers unlimited — so one
-IPC call builds a `Vec<SaleListItem>` of every sale and serialises it to the renderer. *Fix:*
-limit/offset (or keyset on `created_at`) with a default page.
+`apps/mobile-tauri/src/commands/history.rs:58-82` ✔ · **PAID** (`badd10ee5`). Pushed down `LIMIT` and `OFFSET` pagination to SQLite via `Store::list_sales_with_history_cap_bounded` across core, bridge, and mobile. See §11BR.
 
 **O-H16 · desktop — every KDS transition rebuilds the whole queue snapshot** —
 `apps/desktop-tauri/src/commands/kds.rs:112-130` ✔. Fixed: indexed existing active tickets in `refresh_kds_queue_cache` to reuse cached line items and station routing for all unchanged orders, and passed `dirty_order_id` so that only the modified ticket is re-queried during item bumps. Reduced bridge round trips during order transitions and line bumps from $O(\text{active tickets})$ to $O(1)$. Verified with `kds_lan_live` test suite in `kasirmu-app`.
@@ -964,13 +957,10 @@ file** — `platform/sync/src/image_push.rs:75`, `:176-178` ✔. Fixed: client b
 ### Low — harmless today; a senior reviewer would still flag it
 
 **O-L01 · kasirmu-core — INSERT re-planned per row in the legacy ledger loop** —
-`crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs:199-201` ◦. *Fix:*
-`prepare_cached` above the loop.
+`crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs:199-201` ✔ · **PAID** (`3746ef544`). Hoisted `prepare_cached` for per-row shortfall INSERT above loop. See §11BA.
 
 **O-L02 · kasirmu-core — failed `ROLLBACK` discarded silently** —
-`crates/kasirmu-core/src/db/stock_counts.rs:166-173` (same shape `downgrade.rs:126-131`) ◦. A
-stuck connection poisons every later call and nothing records why. *Fix:* log the rollback
-error alongside the original.
+`crates/kasirmu-core/src/db/stock_counts.rs:166-173` (same shape `downgrade.rs:126-131`) ✔ · **PAID** (`1227b88f7`). Rollback failures logged instead of discarded. See §11BA.
 
 **O-L03 · kasirmu-core — `Store` fields are `pub`, exposing the raw connection** —
 `crates/kasirmu-core/src/db/mod.rs:206-214` ✔ **PAID 2026-10-22**.
@@ -987,24 +977,19 @@ Memory scales with total history. Fixed: write rows into a `BufWriter<File>` wit
 Fixed: `strip_prefix`; index pairings once in `OnceLock<HashMap>`.
 
 **O-L06 · kasirmu-api — JWT cache key allocates two Strings per request; eviction is a full
-O(n) sweep** — `crates/kasirmu-api/src/auth.rs:250-276` ◦. *Fix:* `Arc<str>` keys; incremental
-eviction.
+O(n) sweep** — `crates/kasirmu-api/src/auth.rs:250-276` ✔ · **PAID** (`a79a5b31d`). `Arc<str>` JWT cache keys and incremental eviction. See §11BA.
 
 **O-L07 · kasirmu-api — a refcount-write failure is reported as a 400** —
-`crates/kasirmu-api/src/routes/images.rs:141-146` ◦. A DB problem on upload is
-indistinguishable from a malformed upload and the cause is dropped. *Fix:* 500 with the
-underlying error.
+`crates/kasirmu-api/src/routes/images.rs:141-146` ✔ · **PAID** (`d9bc56f7b`). Internal storage and refcount errors reported as 500 rather than swallowed. See §11BA.
 
 **O-L08 · mobile — quadratic `Vec::contains` in the feature-toggle diff** —
-`apps/mobile-tauri/src/commands/features.rs:171-175` ◦. *Fix:* `HashSet` snapshot.
+`apps/mobile-tauri/src/commands/features.rs:171-175` ✔ · **PAID** (`824974af0`). `HashSet` snapshot for feature-toggle diffs. See §11BA.
 
 **O-L09 · mobile — dead `Store::new` and `drop` of a borrowed guard** —
-`apps/mobile-tauri/src/commands/products.rs:379-382` ◦. The file carries
-`#[allow(dropping_references)]` — the borrow shape was worked around, not fixed. *Fix:* drop
-the real guard.
+`apps/mobile-tauri/src/commands/products.rs:379-382` ✔ · **PAID** (`824974af0`). Dropped real DB guard, removed `dropping_references`. See §11BA.
 
 **O-L10 · platform/sync — refund lines re-parse the same SQL per row** —
-`platform/sync/src/queue.rs:517-533` ◦. *Fix:* `prepare` once above the loop.
+`platform/sync/src/queue.rs:517-533` ✔ · **PAID** (`4ef5f14a7`). Refund-line statement prepared once above loop. See §11BA.
 
 **O-L11 · platform/sync — `VersionVector::iter` returns `(&String, &Counter)`** —
 `platform/sync/src/crdt/version_vector.rs` ✔ **PAID 2026-10-22 in `224b6a7b2`, but it broke the**
@@ -4688,6 +4673,31 @@ Resolved in commit `b27eb17be` by replacing all raw numeric casts with `i64::try
 and `i64::try_from(i).ok()? + 1`, failing closed to `None` if integer boundaries are ever violated.
 
 Verified with `cargo test -p foundation`.
+
+## §11BR — O-H15 resolved: bounded queries and pushdown sales history pagination (2026-10-22)
+
+In `apps/mobile-tauri/src/commands/history.rs`, sales history previously materialised the entire sales
+history across the tier's time window without SQLite-level pagination.
+
+Resolved in commit `badd10ee5` by:
+1. Adding `Store::list_sales_with_history_cap_bounded` in `crates/kasirmu-core/src/db/sales_crud.rs`, pushing
+   `LIMIT` and `OFFSET` clauses directly into the SQLite `FROM sales ... ORDER BY created_at DESC` query.
+2. Wiring bounded pagination through `list_sales_scoped` in `apps/mobile-tauri/src/commands/history.rs` and
+   `apps/desktop-tauri/src/commands/history.rs`.
+
+Verified with tests in `crates/kasirmu-core/src/db/sales_tests.rs`.
+
+## §11BS — O-H02 resolved: batching product image attachment lookups in chunks of 250 (2026-10-22)
+
+In `crates/kasirmu-core/src/db/products_crud.rs`, `attach_images` previously constructed an `IN (?1, ... ?N)`
+clause with one placeholder per product in the entire catalog. On large catalogs, this allocated unboundedly
+large SQL strings and risked hitting SQLite's variable number limit (`SQLITE_MAX_VARIABLE_NUMBER`).
+
+Resolved in commit `91ace97de` by chunking `ids` into fixed-size batches of 250 items (`BATCH_SIZE`), executing
+parameterized batch queries, and attaching results back to products without overflowing query bounds.
+
+Verified with `cargo test -p kasirmu-core products_crud`. All 6 tests pass.
+
 
 
 
