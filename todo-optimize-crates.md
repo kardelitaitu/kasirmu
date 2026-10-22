@@ -15,12 +15,16 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 72 | 72 | **0** |
+| Medium | 73 | 73 | **0** |
 | Low | 24 | 24 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **139** | **139** | **0** |
+| **Total** | **140** | **140** | **0** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-23 (round 30). 140 defined, 140 closed, 0 open.** O-M74 closed: the workspace picker
+repair swallowed its own failure, and once surfaced the real cause was a SCHEMA RENAME the store DB had
+applied and the global DB had not (§11CO). The test that measured this had been `#[ignore]`d; it now runs.
 
 **Updated 2026-10-23 (round 29). 139 defined, 139 closed, 0 open.** O-M73 closed: `20261023` added
 `sale_id` and NEVER backfilled it, so every pre-migration row paid the slow probe forever. The backfill's
@@ -1234,6 +1238,35 @@ substring branch still finds those rows exactly as before.
 **✅ RESOLVED 2026-10-22 in `d3d85ff6b`.** Falsified: removing the `+47` guard makes
 `the_sale_id_backfill_fills_only_well_formed_ids_and_never_garbage` fail with `left: Some("abc")`,
 `right: None`. Restored, it passes.
+
+**O-M74 · kasirmu-bridge — the workspace picker repair reported success and persisted nothing** —
+`crates/kasirmu-bridge/src/workspaces.rs:176-188` ◦. `list_workspaces` repairs an empty store DB from the
+global one by inserting the missing `workspace_instances` rows. Every insert was rejected and the error was
+discarded, so the picker showed the right rows while the store DB stayed empty and the repair re-ran on every
+boot.
+
+**TWO independent causes, and the second was only found by making the first visible:**
+
+1. `let _ = db.execute(...)` **swallowed the error**, and `if let Ok(db)` swallowed a poisoned lock. Nothing
+   anywhere reported that the write had failed.
+2. With the error surfaced, the real message was `no such table: store_profiles`.
+   `20260906_rename_store_to_location.sql:14-17` renamed `store_profiles` → `locations` and
+   `workspace_instances.store_id` → `location_id` **in the store database**, while the GLOBAL database the
+   repair reads still uses the old names. The repair was writing global names into a store schema that had
+   moved on.
+
+*Fix:* resolve the names the target DB actually has (`table_exists`) instead of assuming, seed the parent row
+before the instances, and `tracing::warn!` every failure. The listing result is unchanged, so this cannot
+regress the caller.
+
+**✅ RESOLVED 2026-10-22 in `63becfd75`.** The test that had been `#[ignore]`d since the defect was measured —
+`list_workspaces_repairs_from_global_when_the_store_db_is_empty` — now passes and is **un-ignored**.
+`kasirmu-bridge` is 1,542 passed / 0 failed / **0 ignored**.
+
+**Still open, deliberately:** the sibling `list_workspaces_for_store_scoped` (`workspaces.rs:736`) has **no
+repair at all**, so the terminal-management screen's cross-store picker still shows an empty grid in the same
+situation. That is a feature decision rather than a defect in this function, and it is recorded on the entry
+rather than silently fixed.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -6426,3 +6459,47 @@ generate-pg-migration.py --check            -> ok, 129 tables, 169 indexes
 
 Falsified: removing the `+47` guard fails the test with `left: Some("abc")`, `right: None`. Cost measured
 at 5,000 rows / 9.2 ms, so the migration is not a startup-latency concern.
+
+## §11CO — O-M74 resolved: a swallowed error hid a schema rename, and the fix took four wrong attempts (2026-10-23)
+
+Landed in `63becfd75`.
+
+### The defect, in two layers
+
+The workspace picker repairs an empty store DB by copying `workspace_instances` rows from the global DB.
+Layer one: `let _ = db.execute(...)` discarded every insert result, and `if let Ok(db)` discarded a poisoned
+lock. Layer two, only visible once layer one was fixed: `no such table: store_profiles`.
+
+`20260906_rename_store_to_location.sql:14-17` renamed `store_profiles` → `locations` and
+`workspace_instances.store_id` → `location_id` **in the store database**. The GLOBAL database the repair reads
+from still uses the old names. So the repair was writing global column names into a store schema that had
+moved on, and the FK then rejected the instance.
+
+### Four wrong attempts, recorded because each looked right
+
+| # | Attempt | Result |
+|---|---|---|
+| 1 | Add `tracing::warn!` to the swallowed error | No output — `tracing` is not initialised in this test |
+| 2 | Seed `store_profiles` before the instances | `no such table: store_profiles` — the table is `locations` here |
+| 3 | `eprintln!` diagnostics | **Worked**, and gave the actual error |
+| 4 | `db.as_ref()` for the helper | `E0599` — a `MutexGuard` is not `AsRef` |
+
+**Attempt 1 is the instructive one.** I had already decided that surfacing the error was the fix, so I read
+the absence of output as "the branch did not run" for two rounds of edits. `tracing::warn!` is a no-op
+without a subscriber — the diagnostic tool was silently inert, which is the same failure shape as the bug I
+was fixing. `eprintln!` found it immediately.
+
+### Verification
+
+```
+cargo check -p kasirmu-bridge --all-targets  -> exit 0, zero warnings
+cargo test  -p kasirmu-bridge --lib           -> 1542 passed, 0 failed, 0 IGNORED
+```
+
+The previously `#[ignore]`d `list_workspaces_repairs_from_global_when_the_store_db_is_empty` now passes and
+runs in the default suite. Its doc comment was rewritten to record both causes, since the original said only
+that the second assertion "FAILS today".
+
+**Left open on purpose:** the sibling `list_workspaces_for_store_scoped` has no repair at all, so the
+terminal-management cross-store picker still shows an empty grid in the same situation. That is a feature
+decision, recorded on the entry rather than quietly implemented.
