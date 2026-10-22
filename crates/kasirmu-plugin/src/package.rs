@@ -86,6 +86,25 @@ pub(crate) fn sanitise_entry_name(name: &str) -> Result<String, PluginError> {
     Ok(normalised)
 }
 
+/// The last `/`-separated component of `path`, or `path` itself if it holds no
+/// separator.
+///
+/// A bare `s.rsplit('/').next()` also compiles, but it returns `Some("")` for a
+/// name ending in `/` and hides that the empty case is "the whole name"; this
+/// helper keeps both call sites (index build and index lookup) using the one
+/// rule. Splitting on a substring returns char-boundary slices, so this is
+/// Unicode-safe without a guard; and `from_reader` rejects any archive whose
+/// names carry an empty component, so an on-disk name never ends in `/`.
+///
+/// Declared before its first caller below so it is compiled on every path —
+/// `cargo check --all-targets` and `cargo test` both see it in use.
+fn last_component(path: &str) -> &str {
+    match path.rsplit_once('/') {
+        Some((_, last)) => last,
+        None => path,
+    }
+}
+
 /// The recognised entry types inside an `.kasirpkg` archive.
 #[derive(Debug, Clone, PartialEq)]
 pub enum KasirpkEntry {
@@ -122,12 +141,38 @@ impl KasirpkEntry {
 }
 
 /// An opened `.kasirpkg` archive.
+///
+/// # Lookup invariants (O-M52)
+///
+/// `filename_index` stores a NAME that is already a key of `entry_contents`,
+/// never a second copy of the bytes:
+///
+/// - `entry_contents` is the exact-name map consulted first by `read_entry` and
+///   solely by `read_entry_exact`. `from_reader` already normalises every stored
+///   name it inserts (see below), so this map and `read_entry_exact` agree.
+/// - `filename_index` is the last-path-component index consulted by
+///   `read_entry` when the exact lookup misses. Built once during parse, so a
+///   lookup is O(1) instead of a full scan.
+///
+/// The indexes' recorded winner follows the stored name, not the map's
+/// iteration order: a `HashMap` re-shuffles between runs (`RandomState`), and the
+/// old scan's answer for a duplicated filename therefore depended on the run.
+/// Picking the winner at parse time makes that answer stable.
+///
+/// Duplicate handling: an EXACT name match always beats a same-filename entry
+/// stored under a different path, and among entries that share a filename the
+/// FIRST one inserted (in archive read order) wins. `entry_contents` keeps the
+/// last exact name inserted, as it always did.
 #[derive(Debug, Clone)]
 pub struct KasirpkArchive {
     path: PathBuf,
     parsed_manifest: Option<Value>,
     entries: Vec<(String, KasirpkEntry)>,
     entry_contents: HashMap<String, Vec<u8>>,
+    /// Last path component, forward-slash normalised → the exact stored name
+    /// that answers it. The value is a key of `entry_contents`, not a copy of
+    /// the bytes.
+    filename_index: HashMap<String, String>,
 }
 
 impl KasirpkArchive {
@@ -162,6 +207,7 @@ impl KasirpkArchive {
         let mut parsed_manifest: Option<Value> = None;
         let mut entries: Vec<(String, KasirpkEntry)> = Vec::new();
         let mut entry_contents: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut filename_index: HashMap<String, String> = HashMap::new();
         let mut manifest_found = false;
         let mut total_uncompressed: u64 = 0;
 
@@ -225,13 +271,11 @@ impl KasirpkArchive {
                 )));
             }
 
-            // Normalise path separators to forward-slash for consistent matching
+            // Normalise path separators to forward-slash for consistent matching.
+            // `sanitise_entry_name` has already rewritten every `\` to `/`, so
+            // this is the valid char-boundary slice and a no-op copy of `name`.
             let normalised = name.replace('\\', "/");
-            let filename = normalised
-                .rsplit('/')
-                .next()
-                .unwrap_or(&normalised)
-                .to_string();
+            let filename = last_component(&normalised).to_string();
 
             let entry = if filename == "manifest.json" {
                 manifest_found = true;
@@ -248,6 +292,15 @@ impl KasirpkArchive {
             };
 
             entries.push((name.clone(), entry));
+            // The exact-name map keeps the LAST entry for a repeated name (the
+            // pre-existing `HashMap::insert` behaviour); the filename index keeps
+            // the FIRST, matching the linear scan it replaces. The index stores
+            // the stored NAME, so every value it holds is a live key of
+            // `entry_contents` and a lookup can never reach another entry's
+            // bytes.
+            filename_index
+                .entry(filename)
+                .or_insert_with(|| name.clone());
             entry_contents.insert(name, data);
         }
 
@@ -262,6 +315,7 @@ impl KasirpkArchive {
             parsed_manifest,
             entries,
             entry_contents,
+            filename_index,
         })
     }
 
@@ -320,24 +374,48 @@ impl KasirpkArchive {
         if let Some(data) = self.entry_contents.get(filename) {
             return Some(data.as_slice());
         }
-        // Fall back to matching on the last path component
-        let normalised = filename.replace('\\', "/");
-        let target = normalised
-            .rsplit('/')
-            .next()
-            .unwrap_or(&normalised)
-            .to_string();
-        for (stored_name, data) in &self.entry_contents {
-            let stored_normalised = stored_name.replace('\\', "/");
-            let stored_file = stored_normalised
-                .rsplit('/')
-                .next()
-                .unwrap_or(&stored_normalised);
-            if stored_file == target {
-                return Some(data.as_slice());
-            }
+        // Fall back to matching on the last path component, via the index built
+        // during parse. The scan is gone — but its answer is not: see
+        // `filename_index` for the duplicate rule.
+        //
+        // The backslash rewrite is not decorative. Stored names are already
+        // forward-slash only, but a `\`-separated QUERY must still resolve — the
+        // old fallback compared last components AFTER rewriting `\` to `/`, so
+        // `"scripts\\a.lua"` found `scripts/a.lua`. `last_component` alone
+        // treats the backslash as an ordinary character, which would quietly
+        // narrow what is findable.
+        if filename.contains('\\') {
+            let normalised = filename.replace('\\', "/");
+            return self.lookup_filename(last_component(&normalised));
         }
-        None
+        self.lookup_filename(last_component(filename))
+    }
+
+    /// Resolve a last-path-component name through `filename_index`, or scan
+    /// `entry_contents` if the index does not cover the archive.
+    ///
+    /// The scan is the pre-index linear fallback (first match in `entry_contents`
+    /// iteration order), kept for archives whose index is empty or short — a
+    /// `KasirpkArchive` assembled by any path other than `from_reader`
+    /// (`filename_index` is private, so none exists in this crate today; the
+    /// scan costs nothing here and keeps such a value answerable rather than
+    /// silently unfindable). Every archive `from_reader` returns has one index
+    /// entry per content and never reaches the scan.
+    fn lookup_filename(&self, target: &str) -> Option<&[u8]> {
+        if self.filename_index.len() == self.entry_contents.len() {
+            return self
+                .filename_index
+                .get(target)
+                .and_then(|stored| self.entry_contents.get(stored))
+                .map(Vec::as_slice);
+        }
+        // Stored names carry no backslash (see `from_reader`), so splitting on
+        // either separator here matches the old scan's `replace` + `rsplit('/')`
+        // without allocating per entry.
+        self.entry_contents
+            .iter()
+            .find(|(stored, _)| stored.rsplit(['/', '\\']).next() == Some(target))
+            .map(|(_, data)| data.as_slice())
     }
 
     /// Read the raw bytes of an entry by its exact path inside the archive.
