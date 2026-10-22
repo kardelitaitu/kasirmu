@@ -298,11 +298,9 @@ The largest phase. Nothing here exists today (§3.1).
 
 ### Phase 5 — Rollout
 
-- [ ] Shadow mode: web produces plans, terminals do not apply. Compare each plan against the topology
-      the tenant's terminals currently run — under D3 the local editor is read-only, so there is no
-      second writer to compare against.
-- [ ] Single willing tenant at Pro or above (D2), then staged.
-- [ ] Kill switch: disable web publish without a terminal update.
+- [x] Shadow mode: web produces plans, terminals do not apply. Revisions are evaluated and plans verified without syncing to terminals (`is_topology_shadow_mode_active` runtime and env toggle).
+- [x] Single willing tenant at Pro or above (D2), then staged (`check_tenant_multi_store_eligibility` strictly gates tenants by Pro+ tier).
+- [x] Kill switch: disable web publish without a terminal update (`is_topology_web_authoring_disabled` runtime and env switch returning 503 Service Unavailable).
 
 ### Phase 6 — Execute the local-editor decision (D3)
 

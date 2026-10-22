@@ -257,6 +257,47 @@ pub fn resolved_topology_signing_key(api_secret: &str) -> (String, Vec<u8>) {
     (key_id, raw_key.into_bytes())
 }
 
+// ── Rollout Controls: Kill Switch & Shadow Mode (Phase 5) ─────────────
+
+/// Check if the centralized web authoring kill switch is active (Phase 5).
+///
+/// Checks runtime `settings` table (`topology:kill_switch`) with fallback to env vars.
+/// When active, web plan and publish endpoints immediately return 503 Service Unavailable,
+/// disabling web publishing without requiring an emergency terminal update.
+pub fn is_topology_web_authoring_disabled(db: &rusqlite::Connection) -> bool {
+    db.query_row(
+        "SELECT value FROM settings WHERE key = 'topology:kill_switch'",
+        [],
+        |r| r.get::<_, String>(0),
+    )
+    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    .unwrap_or_else(|_| {
+        std::env::var("OZ_TOPOLOGY_WEB_AUTHORING_DISABLED")
+            .or_else(|_| std::env::var("KASIRMU_TOPOLOGY_WEB_AUTHORING_DISABLED"))
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
+}
+
+/// Check if shadow mode rollout is active (Phase 5).
+///
+/// Checks runtime `settings` table (`topology:shadow_mode`) with fallback to env vars.
+/// When active, web authoring evaluates and validates plans without syncing revisions to terminals.
+pub fn is_topology_shadow_mode_active(db: &rusqlite::Connection) -> bool {
+    db.query_row(
+        "SELECT value FROM settings WHERE key = 'topology:shadow_mode'",
+        [],
+        |r| r.get::<_, String>(0),
+    )
+    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    .unwrap_or_else(|_| {
+        std::env::var("OZ_TOPOLOGY_SHADOW_MODE")
+            .or_else(|_| std::env::var("KASIRMU_TOPOLOGY_SHADOW_MODE"))
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
+}
+
 // ── Multi-Store Eligibility Gate ───────────────────────────────────────
 
 /// Verify tenant eligibility for centralized web authoring (ADR-66 D2 & T11).
@@ -382,6 +423,21 @@ pub async fn topology_plan_handler(
 ) -> Response {
     let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
 
+    // 0. Kill switch check (Phase 5)
+    {
+        let db = state.db.lock().await;
+        if is_topology_web_authoring_disabled(&db) {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "kill_switch_active",
+                    "message": "Centralized topology web authoring is temporarily disabled by administrative kill switch"
+                })),
+            )
+                .into_response();
+        }
+    }
+
     // 1. Multi-store eligibility check (ADR-66 D2 & T11)
     {
         let db = state.db.lock().await;
@@ -502,6 +558,21 @@ pub async fn topology_publish_handler(
     let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
     let actor = claims.sub.clone();
     let org_id = body.org_id.as_deref().unwrap_or("");
+
+    // 0. Kill switch check (Phase 5)
+    {
+        let db = state.db.lock().await;
+        if is_topology_web_authoring_disabled(&db) {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "kill_switch_active",
+                    "message": "Centralized topology web authoring is temporarily disabled by administrative kill switch"
+                })),
+            )
+                .into_response();
+        }
+    }
 
     // 1. Multi-store eligibility check (ADR-66 D2 & T11)
     {
@@ -802,6 +873,19 @@ pub async fn topology_pull_handler(
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
 
     let db = state.db.lock().await;
+
+    // In shadow mode (Phase 5), terminals do not pull/apply revisions
+    if is_topology_shadow_mode_active(&db) {
+        return (
+            StatusCode::OK,
+            Json(TopologyPullResponse {
+                branch_id: query.branch_id,
+                tenant_id: tenant_id.to_string(),
+                revisions: Vec::new(),
+            }),
+        )
+            .into_response();
+    }
     let mut stmt = match db.prepare_cached(
         "SELECT id, branch_id, revision, base_revision, change_note, diagram,
                 workspace_creations, workspace_updates, workspace_archives,

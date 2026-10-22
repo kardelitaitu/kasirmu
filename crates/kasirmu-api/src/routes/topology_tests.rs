@@ -510,3 +510,110 @@ async fn publish_signs_payload_and_writes_audit_trail() {
         .unwrap();
     assert_eq!(audit_count, 1, "audit_log must record published revision");
 }
+
+#[tokio::test]
+async fn kill_switch_disables_web_authoring_plan_and_publish() {
+    let (app, db) = test_app();
+    {
+        let conn = db.lock().await;
+        seed_tenant_plan(&conn, "tenant-kill-switch", "pro", 2);
+        // Activate kill switch in settings
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('topology:kill_switch', '1')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let plan_req = authed_req(
+        "POST",
+        "/api/v1/topology/plan",
+        Some("tenant-kill-switch"),
+        Some(
+            &serde_json::json!({
+                "branch_id": "branch-1",
+                "nodes": [],
+                "wires": [],
+            })
+            .to_string(),
+        ),
+    );
+    let plan_resp = app.clone().oneshot(plan_req).await.unwrap();
+    assert_eq!(plan_resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let pub_req = authed_req(
+        "POST",
+        "/api/v1/topology/publish",
+        Some("tenant-kill-switch"),
+        Some(
+            &serde_json::json!({
+                "branch_id": "branch-1",
+                "nodes": [],
+                "wires": [],
+            })
+            .to_string(),
+        ),
+    );
+    let pub_resp = app.oneshot(pub_req).await.unwrap();
+    assert_eq!(pub_resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn shadow_mode_withholds_revisions_from_terminal_pull() {
+    let (app, db) = test_app();
+    {
+        let conn = db.lock().await;
+        seed_tenant_plan(&conn, "tenant-shadow", "pro", 2);
+    }
+
+    // Publish revision 1
+    let (nodes, wires) = sample_valid_graph("branch-shadow");
+    let pub_req = authed_req(
+        "POST",
+        "/api/v1/topology/publish",
+        Some("tenant-shadow"),
+        Some(
+            &serde_json::json!({
+                "branch_id": "branch-shadow",
+                "nodes": nodes,
+                "wires": wires,
+            })
+            .to_string(),
+        ),
+    );
+    let pub_resp = app.clone().oneshot(pub_req).await.unwrap();
+    assert_eq!(pub_resp.status(), StatusCode::CREATED);
+
+    // Normal pull sees the revision
+    let pull_req1 = authed_req(
+        "GET",
+        "/api/v1/topology/revisions/pull?branch_id=branch-shadow&since_revision=0",
+        Some("tenant-shadow"),
+        None,
+    );
+    let pull_resp1 = app.clone().oneshot(pull_req1).await.unwrap();
+    assert_eq!(pull_resp1.status(), StatusCode::OK);
+    let pull_json1 = body_json(pull_resp1).await;
+    assert_eq!(pull_json1["revisions"].as_array().unwrap().len(), 1);
+
+    // Activate shadow mode in settings
+    {
+        let conn = db.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('topology:shadow_mode', '1')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let pull_req2 = authed_req(
+        "GET",
+        "/api/v1/topology/revisions/pull?branch_id=branch-shadow&since_revision=0",
+        Some("tenant-shadow"),
+        None,
+    );
+    let pull_resp2 = app.oneshot(pull_req2).await.unwrap();
+    assert_eq!(pull_resp2.status(), StatusCode::OK);
+    let pull_json2 = body_json(pull_resp2).await;
+    assert_eq!(pull_json2["revisions"].as_array().unwrap().len(), 0);
+}
