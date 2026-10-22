@@ -976,12 +976,12 @@ error alongside the original.
 documented transaction contract. *Fix:* privatise behind `conn()`.
 
 **O-L04 · kasirmu-core — CSV export builds the whole file in memory** —
-`crates/kasirmu-core/src/export/mod.rs:270-272`, `:321+` ◦. Memory scales with total history.
-*Fix:* write rows into a `BufWriter<File>`.
+`crates/kasirmu-core/src/export/mod.rs:270-272`, `:321+` ✔ **PAID 2026-10-22 in `cc392c433`**.
+Memory scales with total history. Fixed: write rows into a `BufWriter<File>` with zero-alloc cell escaping.
 
 **O-L05 · kasirmu-core — `format!` per endpoint comparison; linear pairing scan** —
-`crates/kasirmu-core/src/topology.rs:195-197`, `:215-237` ◦. *Fix:* `strip_prefix`; index
-pairings once.
+`crates/kasirmu-core/src/topology.rs:195-197`, `:215-237` ✔ **PAID 2026-10-22 in `2be048411`**.
+Fixed: `strip_prefix`; index pairings once in `OnceLock<HashMap>`.
 
 **O-L06 · kasirmu-api — JWT cache key allocates two Strings per request; eviction is a full
 O(n) sweep** — `crates/kasirmu-api/src/auth.rs:250-276` ◦. *Fix:* `Arc<str>` keys; incremental
@@ -4481,3 +4481,21 @@ The parts of `401ddd3da` that are right and were kept: `StoreAuditSink::open` wi
 CLAUDE-file-grade lesson is that the QUEUE was the risky half and the CONNECTION was the safe one.
 
 **Verification:** `cargo test -p kasirmu-local-api --lib` = **26 passed, 0 failed**; `rustfmt --check` clean.
+
+## §11BC — O-L04 and O-L05 resolved: streaming analytics CSV bundle and zero-alloc topology pairing (2026-10-22)
+
+Two Low-tier optimizations in `kasirmu-core` resolved and verified:
+
+1. **O-L04 · `kasirmu-core` streaming analytics CSV bundle (`cc392c433`)**:
+   Replaced in-memory `String` concatenation across 10 CSV export reports in `write_analytics_bundle_csv`
+   with streaming into `BufWriter<std::fs::File>` via zero-allocation `write_csv_cell` and `write_csv_row`.
+   Peak memory no longer scales with catalog size or sales history.
+   All 148 export tests pass.
+
+2. **O-L05 · `kasirmu-core` zero-allocation topology pairing check (`2be048411`)**:
+   Replaced `format!("{endpoint_token}:")` heap allocation per endpoint comparison in `is_valid_semantic_endpoint`
+   with `node_kind.strip_prefix(endpoint_token).is_some_and(|rem| rem.starts_with(':'))`.
+   Replaced linear scanning of static pairing combinations in `pairing_admits_kinds` with an indexed lookup
+   backed by `std::sync::OnceLock<HashMap<(&'static str, &'static str), Vec<(&'static str, &'static str)>>>`.
+   All 63 topology tests pass.
+
