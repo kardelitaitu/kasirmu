@@ -134,6 +134,7 @@ impl QuotaAlertState {
     }
 
     /// Number of active tenant entries in the cooldown map (used for tests and metrics).
+    #[cfg(test)]
     pub async fn active_tenant_count(&self) -> usize {
         self.last_alerts.lock().await.len()
     }
