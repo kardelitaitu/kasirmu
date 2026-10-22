@@ -8,6 +8,7 @@
 //! Extracted from the inline `mod tests` in `pg_daemon.rs` (F-018).
 
 use super::*;
+use kasirmu_core::CoreError;
 use kasirmu_core::migrations;
 use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 
@@ -895,14 +896,125 @@ fn mark_offline_synced_is_idempotent() {
     assert!(store.mark_offline_synced(&id).is_ok());
 }
 
+/// An id that was never enqueued is [`CoreError::NotFound`] — NOT a no-op.
+///
+/// `Store::mark_offline_synced` documents both halves of the contract
+/// (`db/offline.rs`: "CoreError::NotFound when the id does not exist. An id that
+/// exists in a non-pending state is an idempotent no-op returning Ok(())"), and
+/// the idempotent half is pinned by `mark_offline_synced_is_idempotent` right
+/// above. This test is the other half.
+///
+/// It used to assert nothing (`let _ = result;`) under a comment admitting
+/// "Ok (or Err depending on implementation)" — so it could only fail on a panic
+/// and still paid for a `fresh_db()` snapshot clone. The contract is documented
+/// and is not a coin flip: the missing row must surface as `NotFound`, never as
+/// a silent success that would tell the drain loop a non-existent item synced.
 #[test]
 fn mark_offline_synced_nonexistent_item() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
-    // Syncing a nonexistent ID should not panic
-    let result = store.mark_offline_synced("nonexistent-id");
-    // Should be Ok (or Err depending on implementation) — but never panic
-    let _ = result;
+
+    let err = store
+        .mark_offline_synced("nonexistent-id")
+        .expect_err("a never-enqueued id must be refused, not silently accepted");
+    match &err {
+        CoreError::NotFound { entity, id } => {
+            assert_eq!(
+                *entity, "offline_queue",
+                "NotFound must name the queue table"
+            );
+            assert_eq!(
+                id, "nonexistent-id",
+                "NotFound must echo the id it looked for"
+            );
+        }
+        other => panic!("a missing queue id must be NotFound, got: {other:?}"),
+    }
+
+    // Nothing was written or resolved by the failed call.
+    assert_eq!(
+        raw_pending_count(&conn),
+        0,
+        "the refused mark must write nothing"
+    );
+}
+
+/// The BATCH drain deliberately DISAGREES with the single-item variant: an
+/// unknown id in the batch is an error, and the whole batch rolls back.
+///
+/// `Store::mark_offline_synced` raises `NotFound` for a missing id; a reader
+/// might expect `mark_offline_synced_batch` to swallow it ("a batch of 100
+/// where one was already deleted should not fail the drain"). It does not: the
+/// batch loop is `Self::mark_synced_on(&tx, id)?` per id inside ONE
+/// transaction (`db/offline.rs`), so the `?` propagates the first
+/// `NotFound` and the transaction is dropped uncommitted. This test pins that
+/// decision so a future "be lenient" change is a visible, deliberate one — and
+/// pins the atomicity that makes it safe: the valid ids in the poisoned batch
+/// must NOT be left half-marked.
+#[test]
+fn mark_offline_synced_batch_rejects_an_unknown_id_and_rolls_back() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let first = enqueue_item(&conn, "sale.completed", r#"{"sale_id":"s1"}"#);
+    let second = enqueue_item(&conn, "sale.completed", r#"{"sale_id":"s2"}"#);
+    assert_eq!(raw_pending_count(&conn), 2);
+
+    let ids = vec![first.clone(), "nonexistent-id".to_owned(), second.clone()];
+    let err = store
+        .mark_offline_synced_batch(&ids)
+        .expect_err("an unknown id must fail the batch, not be skipped");
+    assert!(
+        matches!(&err, CoreError::NotFound { entity, id }
+            if *entity == "offline_queue" && id == "nonexistent-id"),
+        "the batch must surface the NotFound for the offending id, got: {err:?}"
+    );
+
+    // The batch is ONE transaction: the ids that WOULD have been marked are
+    // still pending, because the failed batch committed nothing.
+    assert_eq!(
+        raw_pending_count(&conn),
+        2,
+        "a failed batch must not leave the valid ids half-marked"
+    );
+
+    // Without the poison id the same batch succeeds — proving the failure
+    // above came from the unknown id and not from the ids themselves.
+    let good = vec![first, second];
+    assert!(store.mark_offline_synced_batch(&good).is_ok());
+    assert_eq!(raw_pending_count(&conn), 0);
+}
+
+/// The tenant-scoped variant shares the single-item contract for an id that is
+/// simply absent: `NotFound`.
+///
+/// `Store::mark_offline_synced_for_tenant` documents `NotFound` when the id
+/// "does not exist **or** belongs to a different tenant". Only the absent-id
+/// half is pinned here; the cross-tenant half needs a second tenant's row seeded
+/// with its own `tenant_id`, which this fixture does not build. The absent-id
+/// half is the one this variant shared with `mark_offline_synced`, and all
+/// three variants are now asserted with the same shape.
+#[test]
+fn mark_offline_synced_for_tenant_nonexistent_item() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    // `enqueue_offline` writes into the default tenant (`enqueue.rs:29`), which
+    // is the tenant these rows must be marked under.
+    let tenant = "default";
+
+    let err = store
+        .mark_offline_synced_for_tenant("nonexistent-id", tenant)
+        .expect_err("a never-enqueued id must be refused, not silently accepted");
+    assert!(
+        matches!(&err, CoreError::NotFound { entity, id }
+            if *entity == "offline_queue" && id == "nonexistent-id"),
+        "the tenant-scoped miss must be NotFound, got: {err:?}"
+    );
+
+    // Control: an id that DOES exist, in this tenant, is marked for real — so
+    // the NotFound above is about the id and not about the tenant argument.
+    let id = enqueue_item(&conn, "sale.completed", r#"{"sale_id":"s1"}"#);
+    assert!(store.mark_offline_synced_for_tenant(&id, tenant).is_ok());
+    assert_eq!(raw_pending_count(&conn), 0);
 }
 
 #[test]

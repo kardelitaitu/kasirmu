@@ -1,7 +1,7 @@
 use super::*;
 use crate::migrations;
 use crate::{Cart, CartLine, Money, Sale, Sku};
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 /// A provisioned store database.
 ///
@@ -1359,7 +1359,15 @@ fn list_kds_orders_ordered_by_received_at_desc() {
     let conn = fresh();
     let s = store(&conn);
 
-    // Create two orders with distinct timing (sleep to separate timestamps).
+    // Create two orders with distinct timing.
+    //
+    // NO SLEEP (O-T16). `create_kds_order` stamps `received_at` itself
+    // (`kds.rs:151`, millisecond precision), so the old `sleep(5ms)` between the
+    // two inserts was a guess at clock behaviour this test does not control: 5ms
+    // does not GUARANTEE two distinct stamps on a coarse clock, and a run that
+    // got equal stamps had an ordering decided by SQLite, not by the test.
+    // `received_at` is not a parameter of `CreateKdsOrderInput`, so the values are
+    // pinned with two targeted UPDATEs instead — deterministic, no wall clock.
     let sale_id1 = uuid::Uuid::now_v7().to_string();
     let ts1 = test_sale(&sale_id1);
     s.create_sale(&ts1).unwrap();
@@ -1375,8 +1383,6 @@ fn list_kds_orders_ordered_by_received_at_desc() {
             priority: false,
         })
         .unwrap();
-
-    std::thread::sleep(std::time::Duration::from_millis(5));
 
     let sale_id2 = uuid::Uuid::now_v7().to_string();
     let ts2 = test_sale(&sale_id2);
@@ -1394,11 +1400,38 @@ fn list_kds_orders_ordered_by_received_at_desc() {
         })
         .unwrap();
 
+    // Write the timestamps the assertion is about. The FIRST order gets the
+    // LATER stamp and the SECOND the earlier one, so a passing result cannot be
+    // satisfied by insertion order or rowid: only `ORDER BY received_at DESC`
+    // puts `o1` first.
+    let mut set_received_at = conn
+        .prepare("UPDATE kds_orders SET received_at = ?1 WHERE id = ?2")
+        .unwrap();
+    assert_eq!(
+        set_received_at
+            .execute(params!["2025-01-02T00:00:00.000Z", o1.id])
+            .unwrap(),
+        1,
+        "the first order must be stamped for real"
+    );
+    assert_eq!(
+        set_received_at
+            .execute(params!["2025-01-01T00:00:00.000Z", o2.id])
+            .unwrap(),
+        1,
+        "the second order must be stamped for real"
+    );
+    drop(set_received_at);
+
     let all = s.list_kds_orders(None).unwrap();
     assert_eq!(all.len(), 2);
-    // Most recent first.
-    assert_eq!(all[0].id, o2.id);
-    assert_eq!(all[1].id, o1.id);
+    // Most recent first — guaranteed by the two explicit stamps above.
+    assert_eq!(
+        all[0].received_at, "2025-01-02T00:00:00.000Z",
+        "the order with the later received_at must come first"
+    );
+    assert_eq!(all[0].id, o1.id);
+    assert_eq!(all[1].id, o2.id);
 }
 
 // ── update_kds_order_items tests ─────────────────────────────────

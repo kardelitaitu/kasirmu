@@ -770,7 +770,38 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
         seed_card(&conn, "GC-C18-R1");
     }
 
+    // B holds the write lock until A's busy handler reports it is BLOCKED on
+    // it — no timer (O-T15).
+    //
+    // The 300 ms sleep this replaces was a bet on wall-clock behaviour: on a
+    // stalled host A's read could land after B's commit (which is why this test
+    // had no restage loop and simply failed), and the sleep was paid in full
+    // whether or not the window had been used. The property is unchanged and
+    // still the whole point: A must READ `active` while B's uncommitted
+    // `redeemed` is invisible, then lose its compare-and-set once B commits.
+    //
+    // A cannot signal mid-call, so A's busy handler signals for it: it runs on
+    // A's own thread, inside `freeze_gift_card`, after the status read and
+    // before the UPDATE. That is the proof A is inside the window, and it
+    // replaces the sleep with a fact. The wait is bounded (5 s) so a bug that
+    // makes A never block FAILS here rather than hanging.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Reported through a `static` mailbox because rusqlite's `busy_handler`
+    // takes a function POINTER: a capturing closure cannot be passed.
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         std::thread::spawn(move || {
@@ -785,9 +816,10 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
                 .unwrap();
             assert_eq!(rows, 1, "the rival transition must touch the staged card");
             locked_tx.send(()).unwrap();
-            // B releases on its own timer: A is blocked inside
-            // `freeze_gift_card` and cannot signal mid-call.
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            // Commit either when A is demonstrably waiting on the lock, or (the
+            // timeout arm) when A has already finished — in which case its
+            // outcome is classified below instead of the test hanging.
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -795,9 +827,16 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = store(&conn_a).freeze_gift_card("GC-C18-R1");
     rival.join().unwrap();
 
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing freeze must have BLOCKED on B's write lock first; \
+         it never entered the race window"
+    );
     let err = outcome.expect_err("a freeze that lost the race must be refused");
     assert!(
         matches!(
@@ -838,7 +877,27 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
         store(&conn).freeze_gift_card("GC-C18-R2").unwrap();
     }
 
+    // Same channel-driven release as the freeze test above (O-T15): B holds the
+    // write lock until A's busy handler reports A is BLOCKED on it. The
+    // property is unchanged: A reads `frozen`, B's uncommitted `active` is
+    // invisible to it, and A's compare-and-set fails once B commits.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Reported through a `static` mailbox because rusqlite's `busy_handler`
+    // takes a function POINTER: a capturing closure cannot be passed.
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         std::thread::spawn(move || {
@@ -853,7 +912,7 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
                 .unwrap();
             assert_eq!(rows, 1, "the rival transition must touch the staged card");
             locked_tx.send(()).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -861,9 +920,16 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = store(&conn_a).unfreeze_gift_card("GC-C18-R2");
     rival.join().unwrap();
 
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing unfreeze must have BLOCKED on B's write lock first; \
+         it never entered the race window"
+    );
     let err = outcome.expect_err("an unfreeze that lost the race must be refused");
     assert!(
         matches!(

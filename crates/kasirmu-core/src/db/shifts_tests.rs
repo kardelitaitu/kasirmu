@@ -992,7 +992,33 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
         seed_user(&conn);
     }
 
+    // B holds the write lock until A's busy handler reports A is BLOCKED on it —
+    // no timer (O-T15).
+    //
+    // The 300 ms sleep this replaces was a bet on wall-clock behaviour: a host
+    // that descheduled A past B's commit turned the intended "A waits on B's
+    // lock" into "A ran afterwards", and the test's own outcome silently differed.
+    // The property being pinned is that A's `BEGIN IMMEDIATE` must contend with
+    // B's lock BEFORE its duplicate check, so the check runs against B's
+    // committed row — A blocking on that lock is exactly that event, and A's busy
+    // handler can report it from inside the call. The wait is bounded (5 s,
+    // matching A's busy_timeout) so a regression that takes no write lock FAILS
+    // here instead of hanging.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         std::thread::spawn(move || {
@@ -1006,9 +1032,9 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
             )
             .unwrap();
             locked_tx.send(()).unwrap();
-            // B releases on its own timer: A is blocked inside `open_shift` and
-            // cannot signal mid-call.
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            // Release on A's report (or on the bound, in which case A's outcome
+            // is classified below rather than the test hanging).
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -1018,8 +1044,18 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
     // lock request lands inside B's window instead of after B's commit.
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    // rusqlite's `busy_handler` takes a function POINTER, so the handler cannot
+    // capture the sender: it reports through a `static` mailbox instead.
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = Store::new(&conn_a).open_shift("user-1", None, 200);
     rival.join().unwrap();
+
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing open must have BLOCKED on B's write lock before its duplicate \
+         check; it never entered the race window"
+    );
 
     let err = outcome.expect_err("a second open shift for the same user must be refused");
     assert!(
