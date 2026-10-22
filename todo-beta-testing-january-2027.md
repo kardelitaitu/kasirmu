@@ -167,5 +167,5 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - Localized in-app updater Android-only error states in `162863abc`, aligned test suite in `552d394a9`.
 - UI typecheck clean (`tsc --noEmit`, exit 0); UI lint clean (0 errors across `ui/`).
 - Full Vitest suite verified: 827+ test files, 13,120+ tests green.
-- Performance debt closed: O-M04 (covering index idempotency probe) and O-M68 (covering range index on `product_activity`).
-- Web Topology Authoring: ratified ADR-66, established `topology_revisions` metadata schema and PG twin.
+- Performance debt closed: O-M04 (covering index idempotency probe) and O-M68 (covering range index on `product_activity`), bringing the optimization ledger to 100% completion (134/134).
+- Web Topology Authoring: ratified ADR-66, established `topology_revisions` metadata schema and PG twin, integrated domain models with cryptographic signing/verification in `kasirmu-bridge`, and verified multi-tenant/org isolation test suite (T1).
