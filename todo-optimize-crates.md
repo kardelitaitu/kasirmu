@@ -7215,3 +7215,139 @@ Meanwhile the honest advice is runner-per-crate, not one answer: `cargo test` fo
 `kasirmu-core`, `nextest` for `kasirmu-bridge`.
 
 ### Ledger: 148 defined, 147 closed, 1 open.
+## §11CZ — O-M82 CLOSED: the disk snapshot took nextest on kasirmu-core from 294.89 s to 48.52 s (2026-10-23)
+
+Landed in `ba3a605ac`.
+
+### What round 36 left open, and what dissolved it
+
+Round 36 recorded this as needing "a design change to the test database, not a flag",
+because sharing one snapshot across processes sounded like it meant sharing one mutable
+database. Measuring first showed the costs were not close enough to justify that fear:
+
+```
+assemble the migration SQL      458.8 us
+RUN the 82 migrations           440.66 ms   <-- what every process paid
+clone an existing snapshot        1.05 ms   <-- 420x cheaper
+```
+
+(The existing comment said "~305 ms"; the real figure on this machine is 440.66 ms, so
+the note understated the problem it was describing.)
+
+### The change
+
+`fresh_db()` keeps its in-process `LazyLock` snapshot — one process running many tests still
+pays nothing — and adds a FILE cache at
+`target/test-scratch/kasirmu-core-migrated-snapshot-<fingerprint>.sqlite`. A cold process
+clones from the file instead of rebuilding the chain; a cold cache builds once and publishes
+the file for every other process.
+
+Three properties had to hold, and each is deliberate:
+
+1. **The key covers ids AND sql lengths.** A migration edited in place would otherwise reuse
+   a stale schema — the classic cache-key bug, in the one crate where debugging it would be
+   most expensive.
+2. **Writes go to a staging name and are renamed.** Two nextest processes racing on a cold
+   cache must never let one open a half-written file.
+3. **A torn or locked file falls back to rebuilding**, and a read-only scratch root simply
+   skips the write. The cache is a speed property, never a correctness one.
+
+### The measurement
+
+| runner | kasirmu-core --lib, 3674 tests |
+|---|---|
+| nextest, before | 294.89 s |
+| nextest, cold cache | **48.52 s** |
+| nextest, warm cache | 49.71 s |
+| cargo test --test-threads=4 | 66.02 s (unchanged) |
+
+**6.1x faster under nextest**, and `cargo test` did not regress. 3674 passed at every
+configuration, and after the fix the full suite is 3675 passed (the new test is counted).
+
+### The guard, and its falsification
+
+The risk this change carries is exactly the one round 36 named: a shared cache that also
+carried writes would leak one test's rows into another. `fresh_db_cache_holds_no_business_rows`
+asserts the file holds the full migration set and ZERO rows in `settings`, `locations`,
+`workspace_instances`, `products` and `sales`.
+
+Falsified by writing one `settings` row into the cache with an external sqlite client:
+
+```
+assertion `left == right` failed: the snapshot cache must hold no rows in settings;
+    a shared mutable cache would leak one test's writes into another
+test result: FAILED. 0 passed; 1 failed
+```
+
+Restored afterwards. The write was possible, which is why the test is a real guard rather
+than a formality.
+
+### One failure during verification, chased down and exonerated
+
+A full run reported `db::audit::tests::log_audit_in_tx_redacts_sensitive_details` FAILED.
+Recorded here because it was investigated rather than retried:
+
+- It passed in isolation, and did not reproduce in the next full run (3675/0).
+- Six consecutive `audit::` runs passed, cold cache and warm.
+- With `--test-threads=1`, `audit::` is 91/91 green; with parallelism it failed a
+  DIFFERENT test each time (`audit_chain_verification_detects_chain_discontinuity`, then
+  `audit_log_long_user_id`).
+
+**Cause: the audit tests share process-global counters.** `audit.rs` holds `AUDIT_COUNT` and
+`AUDIT_WINDOW_START` as statics, and every test calls `reset_audit_rate_limit_for_test()`,
+which zeroes them. Under parallelism one test's reset erases another's count. That is a
+pre-existing isolation defect that has nothing to do with this change — the statics predate
+it, and the failure moves between tests instead of landing on one. Recorded as O-M83.
+
+### Ledger: 149 defined, 148 closed, 1 open.
+## §11DA — O-M83 OPENED: the audit tests share process-global rate-limit counters (2026-10-23)
+
+**Recorded, not fixed.** Found while investigating one failure that turned out not to be
+mine (see §11CZ), and it is a real defect on its own.
+
+### The measurement
+
+```
+cargo test -p kasirmu-core --lib audit:: -- --test-threads=1   ->  91 passed, 0 failed
+cargo test -p kasirmu-core --lib audit:: -- --test-threads=8   ->  90 passed, 1 failed
+```
+
+Three parallel runs failed three DIFFERENT tests — `audit_chain_verification_detects_chain_
+discontinuity`, `audit_log_long_user_id`, and once `log_audit_in_tx_redacts_sensitive_details`
+— which is the signature of shared state rather than a broken assertion.
+
+### The cause
+
+`crates/kasirmu-core/src/db/audit.rs` keeps the rate limiter in two process-wide statics:
+
+```rust
+AUDIT_COUNT          // AtomicU64
+AUDIT_WINDOW_START   // AtomicU64
+```
+
+and `reset_audit_rate_limit_for_test()` stores 0 into both. Ninety-one tests call it (or
+`set_audit_rate_limit_for_test`), and libtest runs them concurrently in ONE process, so a
+test that resets the window is racing every test that is mid-way through counting against
+it. The tests are individually correct and collectively unsound.
+
+### Why it is not fixed this round
+
+The honest fixes change what is under test:
+
+1. **Serialize the affected tests** (`#[serial]`, already a dev-dependency — `serial_test` is
+   in `crates/kasirmu-core/Cargo.toml:53`). Cheap, honest, but slows 91 tests and leaves the
+   production code's global-state design in place.
+2. **Make the limiter injectable** (pass the clock/counter in, or give `Store` its own
+   instance). That is the real fix and it touches production code, so it needs its own round
+   with its own review — not a tail-end edit to a performance commit.
+
+Fixing it inside a performance round would also make the two changes impossible to bisect
+apart if the suite later went red.
+
+### What is already true, and why this is not urgent
+
+The flake is rare enough that eleven consecutive targeted runs and two full-suite runs
+(3675 passed) did not reproduce it. It is a landmine for anyone who changes the audit path
+or runs the suite on a busier machine, not a red build today.
+
+### Ledger: 149 defined, 148 closed, 1 open.
