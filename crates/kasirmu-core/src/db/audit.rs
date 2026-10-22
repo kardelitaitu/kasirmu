@@ -17,9 +17,7 @@ findings: exemplary AUD-02..09 implementation — AUD-06 redaction (20 sensitive
 next: none | perf: SQL-computed counts per AUD-02/03
 */
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
-use rusqlite::OptionalExtension;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::AuditEntry;
 use crate::error::CoreError;
@@ -315,49 +313,94 @@ pub const AUDIT_RATE_LIMIT: u64 = 1000;
 /// Rate-limit sliding window duration in seconds (P3).
 pub const AUDIT_WINDOW_SECS: u64 = 60;
 
-static AUDIT_COUNT: AtomicU64 = AtomicU64::new(0);
-static AUDIT_WINDOW_START: AtomicU64 = AtomicU64::new(0);
-
-/// Check if the in-memory audit log rate limit has been exceeded (P3).
+/// Settings keys holding the limiter's window state.
 ///
-/// Returns `Ok(())` if within the budget, or `Err(CoreError::RateLimited)` if exceeded.
-pub fn check_audit_rate_limit() -> Result<(), CoreError> {
+/// The counters live in the DATABASE, not in process statics, and that is a
+/// correctness fix rather than a preference. They used to be two `AtomicU64`s,
+/// which made the limiter PROCESS-GLOBAL: with 91 audit tests running
+/// concurrently in one libtest process, whichever test saturated the budget
+/// silently refused every other test's audit writes until its window expired.
+/// Measured 2026-10-23 at `--test-threads=16`: **2 of 10 runs failed**, each time
+/// naming a different victim (`audit_chain_verification_detects_chain_
+/// discontinuity`, `audit_log_long_user_id`, ...), which is the signature of
+/// shared state rather than a broken assertion. Serialised, the same module was
+/// 91/91 green.
+///
+/// Per-database state also matches what the limiter is FOR: a budget on writes
+/// to one audit log. Two stores were never meant to share one allowance.
+const AUDIT_COUNT_KEY: &str = "audit.rate_limit.count";
+const AUDIT_WINDOW_KEY: &str = "audit.rate_limit.window_start";
+
+/// Check whether one more audit write fits in this database's budget (P3).
+///
+/// Returns `Ok(())` if within the budget, or `Err(CoreError::RateLimited)` if
+/// exceeded. The state is read and written through `conn`, so each database
+/// (and in tests, each fresh in-memory database) has its own allowance.
+///
+/// A missing or unreadable counter is treated as 0: the limiter is a guard
+/// rail, and failing closed on a settings read would drop audit rows for a
+/// reason that has nothing to do with rate.
+pub fn check_audit_rate_limit(conn: &Connection) -> Result<(), CoreError> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let window_start = AUDIT_WINDOW_START.load(Ordering::Relaxed);
-    if now.saturating_sub(window_start) >= AUDIT_WINDOW_SECS
-        && AUDIT_WINDOW_START
-            .compare_exchange(window_start, now, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-    {
-        AUDIT_COUNT.store(1, Ordering::Relaxed);
+    let read_u64 = |key: &str| -> u64 {
+        conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+            row.get::<_, String>(0)
+        })
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0)
+    };
+    let write_u64 = |key: &str, value: u64| {
+        let _ = conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2) \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![key, value.to_string()],
+        );
+    };
+
+    let window_start = read_u64(AUDIT_WINDOW_KEY);
+    if now.saturating_sub(window_start) >= AUDIT_WINDOW_SECS {
+        // New window: this write opens it.
+        write_u64(AUDIT_WINDOW_KEY, now);
+        write_u64(AUDIT_COUNT_KEY, 1);
         return Ok(());
     }
 
-    let count = AUDIT_COUNT.fetch_add(1, Ordering::Relaxed);
+    let count = read_u64(AUDIT_COUNT_KEY);
     if count >= AUDIT_RATE_LIMIT {
         return Err(CoreError::RateLimited("audit write rate exceeded".into()));
     }
+    write_u64(AUDIT_COUNT_KEY, count + 1);
     Ok(())
 }
 
-/// Reset rate limit counters to initial state (for testing).
+/// Reset rate limit counters in THIS database (for testing).
 #[cfg(test)]
-pub(crate) fn reset_audit_rate_limit_for_test() {
-    AUDIT_COUNT.store(0, Ordering::Relaxed);
-    AUDIT_WINDOW_START.store(0, Ordering::Relaxed);
+pub(crate) fn reset_audit_rate_limit_for_test(conn: &Connection) {
+    let _ = conn.execute(
+        "DELETE FROM settings WHERE key IN (?1, ?2)",
+        rusqlite::params![AUDIT_COUNT_KEY, AUDIT_WINDOW_KEY],
+    );
 }
 
-/// Set rate limit counters to specific values (for testing).
+/// Set rate limit counters to specific values in THIS database (for testing).
 #[cfg(test)]
-pub(crate) fn set_audit_rate_limit_for_test(count: u64, window_start_secs: u64) {
-    AUDIT_COUNT.store(count, Ordering::Relaxed);
-    AUDIT_WINDOW_START.store(window_start_secs, Ordering::Relaxed);
+pub(crate) fn set_audit_rate_limit_for_test(conn: &Connection, count: u64, window_start_secs: u64) {
+    let _ = conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![AUDIT_COUNT_KEY, count.to_string()],
+    );
+    let _ = conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![AUDIT_WINDOW_KEY, window_start_secs.to_string()],
+    );
 }
-
 /// Canonical SHA-256 hash calculation for an audit log entry (P1).
 ///
 /// Hashing payload format:
@@ -484,7 +527,7 @@ fn enqueue_audit_for_sync(
 /// disagree about what an audit row may contain. Redaction happens HERE, before
 /// the statement, so neither writer can bypass it.
 fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), CoreError> {
-    if let Err(err) = check_audit_rate_limit() {
+    if let Err(err) = check_audit_rate_limit(conn) {
         tracing::warn!(action = %entry.action, error = %err, "audit rate limit exceeded, skipping write");
         return Ok(());
     }

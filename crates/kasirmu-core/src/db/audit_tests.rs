@@ -1379,7 +1379,7 @@ fn a_forged_sweep_marker_defeats_audit_immutability() {
 fn audit_rate_limit_allows_writes_under_threshold() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     let entry = AuditEntry::new(
         "user-1",
@@ -1393,7 +1393,7 @@ fn audit_rate_limit_allows_writes_under_threshold() {
 
     let entries = s.list_audit_entries(10, 0).unwrap();
     assert_eq!(entries.len(), 1);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 }
 
 #[test]
@@ -1406,7 +1406,7 @@ fn audit_rate_limit_drops_writes_when_threshold_exceeded() {
         .as_secs();
 
     // Saturate the rate limit counter
-    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now);
+    set_audit_rate_limit_for_test(&conn, AUDIT_RATE_LIMIT, now);
 
     let entry = AuditEntry::new(
         "user-1",
@@ -1424,21 +1424,24 @@ fn audit_rate_limit_drops_writes_when_threshold_exceeded() {
     let entries = s.list_audit_entries(10, 0).unwrap();
     assert_eq!(entries.len(), 0);
 
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 }
 
 #[test]
 fn audit_rate_limit_check_returns_err_when_exceeded() {
+    // The limiter is per-database now, so this test needs a database of its own:
+    // saturating a shared process-global counter is what made the module flaky.
+    let conn = fresh();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now);
-    let result = check_audit_rate_limit();
+    set_audit_rate_limit_for_test(&conn, AUDIT_RATE_LIMIT, now);
+    let result = check_audit_rate_limit(&conn);
     assert!(matches!(result, Err(CoreError::RateLimited(_))));
 
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 }
 
 #[test]
@@ -1452,7 +1455,7 @@ fn audit_rate_limit_resets_after_window_expires() {
 
     // Set counter to limit, but with window start in the past (> AUDIT_WINDOW_SECS ago)
     let past = now.saturating_sub(AUDIT_WINDOW_SECS + 10);
-    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, past);
+    set_audit_rate_limit_for_test(&conn, AUDIT_RATE_LIMIT, past);
 
     let entry = AuditEntry::new(
         "user-1",
@@ -1470,7 +1473,7 @@ fn audit_rate_limit_resets_after_window_expires() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].target_id.as_deref(), Some("sale-after-reset"));
 
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 }
 
 #[test]
@@ -1481,7 +1484,7 @@ fn log_audit_in_tx_drops_writes_when_rate_limited() {
         .unwrap_or_default()
         .as_secs();
 
-    set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now);
+    set_audit_rate_limit_for_test(&conn, AUDIT_RATE_LIMIT, now);
 
     let tx = conn.transaction().unwrap();
     let entry = AuditEntry::new(
@@ -1499,7 +1502,7 @@ fn log_audit_in_tx_drops_writes_when_rate_limited() {
     let entries = store(&conn).list_audit_entries(10, 0).unwrap();
     assert_eq!(entries.len(), 0);
 
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 }
 
 // ── Chain-Hash Tamper Detection (P1) ────────────────────────────
@@ -1508,7 +1511,7 @@ fn log_audit_in_tx_drops_writes_when_rate_limited() {
 fn audit_chain_hash_populates_previous_hash_and_hash_on_write() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     let entry1 = AuditEntry::new(
         "user-1",
@@ -1566,7 +1569,7 @@ fn audit_chain_hash_populates_previous_hash_and_hash_on_write() {
 fn audit_chain_verification_detects_field_tampering() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     for i in 1..=3 {
         let entry = AuditEntry::new(
@@ -1597,7 +1600,7 @@ fn audit_chain_verification_detects_field_tampering() {
 fn audit_chain_verification_detects_chain_discontinuity() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     let mut ids = Vec::new();
     for i in 1..=3 {
@@ -1631,7 +1634,7 @@ fn audit_chain_verification_detects_chain_discontinuity() {
 fn audit_chain_verification_grandfathers_unhashed_rows() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     // Insert legacy grandfathered row directly (hash = '')
     conn.execute(
@@ -1664,7 +1667,7 @@ fn audit_chain_verification_grandfathers_unhashed_rows() {
 fn log_audit_enqueues_offline_sync_item() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     let entry = AuditEntry::new(
         "user-1",
@@ -1698,7 +1701,7 @@ fn log_audit_enqueues_offline_sync_item() {
 fn log_audit_in_tx_enqueues_and_commits_sync_item() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     let entry = AuditEntry::new(
         "user-2",
@@ -1730,7 +1733,7 @@ fn log_audit_in_tx_enqueues_and_commits_sync_item() {
 fn log_audit_in_tx_rolls_back_sync_item_atomically() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     let entry = AuditEntry::new(
         "user-3",
@@ -1759,7 +1762,7 @@ fn log_audit_in_tx_rolls_back_sync_item_atomically() {
 fn log_audit_is_resilient_when_offline_queue_is_dropped() {
     let conn = fresh();
     let s = store(&conn);
-    reset_audit_rate_limit_for_test();
+    reset_audit_rate_limit_for_test(&conn);
 
     // Drop offline_queue to simulate missing table or degraded state
     conn.execute_batch("DROP TABLE offline_queue;").unwrap();
