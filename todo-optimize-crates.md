@@ -15,12 +15,19 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 67 | 67 | **0** |
+| Medium | 68 | 67 | **1** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **133** | **133** | **0** |
+| **Total** | **134** | **133** | **1** |
 
 **Updated 2026-10-22 (round 19) — the ledger stays EMPTY: 133 defined, 133 closed, 0 open.**
+
+**Updated 2026-10-22 (round 20).** 134 defined, 133 closed, **1 open: O-M68** (§11CC). O-M68 was found by the
+same kind of measurement that produced §11CB — `EXPLAIN QUERY PLAN` over a seeded table — and it is left OPEN
+on purpose: fixing it means adding an index to a table that grows one row per product search, which is a
+write-amplification trade-off the read-side measurement does not settle. **Recording a deliberate open item
+is the opposite of the failure this ledger kept producing** (entries marked closed that were never done, and
+entries marked open that were already done).
 
 Round 19 did NOT add entries. It swept the ledger one more time in the direction nobody had checked —
 **"says closed but is not"** — and then went looking for work in the CODE instead of the document.
@@ -1020,6 +1027,16 @@ terminal** — `platform/sync/src/daemon_tick.rs:585-589` ✔. Fixed: gated CRL 
 
 **O-M39 · platform/sync — image-push client has no timeout; DB mutex re-taken per missing
 file** — `platform/sync/src/image_push.rs:75`, `:176-178` ✔. Fixed: client bounded by timeout; missing files accumulated into `missing_files: Vec<String>` and marked failed under a single lock hold.
+
+**O-M68 · kasirmu-core — the popularity recompute traverses the whole `product_activity` index** —
+`crates/kasirmu-core/src/db/popularity.rs:1056-1061` ◦. The unrestricted window aggregate
+(no `sku` filter) plans `SCAN product_activity USING INDEX idx_product_activity_sku`, so `created_at >=`
+is applied only after every index row is fetched: the cost grows with the entire activity ledger, not
+with the window. The SKU-filtered sibling at `:885-891` correctly plans `SEARCH ... (sku=?)`, which proves
+the index works and that only the UNRESTRICTED query is affected.
+*Fix:* an index leading on `created_at` — `(created_at)` for a plain range seek, or
+`(created_at, sku, event_type)` to also cover the GROUP BY. Not applied yet: see §11CC for the
+write-amplification trade-off that needs a decision.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -5402,3 +5419,59 @@ rustfmt --edition 2024 --check              -> exit 0
 The plan test was FALSIFIED before acceptance: with the migration unregistered AND the CTE re-inlined, it
 fails and quotes `MATERIALIZE r / SCAN rf1`. Restored, it passes. **3657 -> 3658** is the one new test;
 nothing was deleted.
+
+## §11CC — O-M68 opened: `product_activity` traverses its whole index on every popularity pass (2026-10-22)
+
+**Status: OPEN — measured, not yet fixed.** This is the one entry deliberately left open, and it is
+recorded as an ENTRY (not a journal closure) so the counting rule reads it correctly.
+
+### The measurement
+
+`crates/kasirmu-core/src/db/popularity.rs:1056-1061` aggregates search/edit signals with:
+
+```sql
+SELECT sku, event_type, strftime('%Y-%m-%d', created_at) AS day, COUNT(*) AS cnt
+  FROM product_activity
+ WHERE created_at >= datetime('now', ?1)
+ GROUP BY sku, event_type, day
+```
+
+Measured with `EXPLAIN QUERY PLAN` over 3,000 seeded rows + `ANALYZE`:
+
+    SCAN product_activity USING INDEX idx_product_activity_sku
+    USE TEMP B-TREE FOR GROUP BY
+
+`SCAN ... USING INDEX` is an INDEX-ONLY walk, not a table scan — but it still visits **every row in the
+index**, and the `created_at >=` predicate can only be applied AFTER each row is fetched, because
+`idx_product_activity_sku` is on `sku` alone. So the cost grows with the entire activity ledger, not with
+the window.
+
+### Why this is not simply 'add an index' — the sibling query already proves the shape works
+
+The SAME table has a better-planned sibling at `popularity.rs:885-891`, which additionally filters
+`sku IN (...)` and plans as:
+
+    SEARCH product_activity USING INDEX idx_product_activity_sku (sku=?)
+
+So the index IS used for a SKU-filtered lookup. The scan appears only when the query is UNRESTRICTED, and
+the fix is therefore a schema question:
+
+- **Option A:** `CREATE INDEX idx_product_activity_created_at ON product_activity(created_at)` — turns the
+  unrestricted window into a range SEARCH. One index, no query change. Straightforward.
+- **Option B:** `(created_at, sku, event_type)` — a covering index so the GROUP BY needs no temp B-tree
+  either. Strictly better for this query, slightly larger.
+- **Option C:** leave it. `product_activity` grows one row per product search/edit; on a busy store it is
+  plausibly the FASTEST-growing table in the schema, which argues against leaving it.
+
+### Why it is not closed in this round
+
+Changing the schema of a table that grows per user action is a decision with a write-amplification cost
+(one more index on a hot INSERT path) that the measurement does not answer. The read is a background
+popularity recompute, not a request path, so the urgency is lower than the `refunds` scan fixed in §11CB —
+which sat on the report path. **Needs a measurement of how often the popularity pass runs and how large
+`product_activity` gets in practice.**
+
+### Also confirmed NOT a problem
+
+`activity_day_counts` (`popularity.rs:614-621`) filters `sku = ?1 AND event_type = ?2 AND created_at >= ?3`,
+which `idx_product_activity_sku` serves. Only the unrestricted aggregate at `:1059` scans.
