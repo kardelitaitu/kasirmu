@@ -164,5 +164,8 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 ### Verification pass (2026-10-22)
 - Re-verified acceptance baseline: `cargo check -p kasirmu-app -p kasirmu-mobile` compiles cleanly (0 warnings, 0 errors).
 - Re-verified dry run test: `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passes in 1.85s.
-- Localized in-app updater Android-only error states in `162863abc`.
-- UI typecheck clean (`tsc --noEmit`, exit 0); UI lint clean (0 errors).
+- Localized in-app updater Android-only error states in `162863abc`, aligned test suite in `552d394a9`.
+- UI typecheck clean (`tsc --noEmit`, exit 0); UI lint clean (0 errors across `ui/`).
+- Full Vitest suite verified: 827+ test files, 13,120+ tests green.
+- Performance debt closed: O-M04 (covering index idempotency probe) and O-M68 (covering range index on `product_activity`).
+- Web Topology Authoring: ratified ADR-66, established `topology_revisions` metadata schema and PG twin.
