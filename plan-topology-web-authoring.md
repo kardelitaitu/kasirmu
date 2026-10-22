@@ -277,14 +277,17 @@ immutable revisions. `set_topology_revision_pinned` is at
 
 The largest phase. Nothing here exists today (§3.1).
 
-- [ ] Transport: how a terminal authenticates to the server and fetches revisions since its watermark.
-- [ ] Idempotent, ordered delivery per branch; replay and out-of-order are no-ops (I4).
-- [ ] Pull → verify signature → validate locally → apply in one transaction, reusing
-      `apply_topology_diff` semantics (ADR #22 Amendment 1 §B; also present at
-      `apps/desktop-tauri/src/commands/topology/commands.rs:212` and
-      `crates/kasirmu-bridge/src/topology/commands.rs:417`).
-- [ ] On any failure: roll back, keep last known good, surface it. Never half-apply (I3).
-- [ ] Network-optional by construction: absence of the server is a normal state, not an error (I1).
+- [x] Transport: how a terminal authenticates to the server and fetches revisions since its watermark
+      (`TopologyReplicationTransport` trait with async desugaring in `crates/kasirmu-bridge/src/topology/replication.rs`).
+- [x] Idempotent, ordered delivery per branch; replay and out-of-order are no-ops (I4, verified in
+      `replayed_and_duplicate_revisions_are_skipped_idempotently` and `revision_sequence_gap_is_refused`).
+- [x] Pull → verify signature → validate locally → apply in one transaction, reusing
+      `apply_topology_diff` semantics (ADR #22 Amendment 1 §B; verified in
+      `single_revision_applies_atomically_to_sqlite` and `full_replication_cycle_pulls_and_applies_monotonic_revisions`).
+- [x] On any failure: roll back, keep last known good, surface it. Never half-apply (I3, verified in
+      `invalid_semantic_graph_is_rejected_and_leaves_db_clean` and `tampered_signature_is_rejected_whole`).
+- [x] Network-optional by construction: absence of the server is a normal state, not an error (I1, verified in
+      `network_unavailability_degrades_gracefully_without_error_propagation`).
 
 ### Phase 4 — Web editor
 

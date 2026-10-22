@@ -808,6 +808,29 @@ pub fn insert_topology_revision(
     wire_count: usize,
     ctx: &TopologyRevisionContext<'_>,
 ) -> Result<(), BridgeError> {
+    insert_topology_revision_scoped(
+        tx,
+        branch_id,
+        DEFAULT_TENANT_ID,
+        revision,
+        envelope,
+        node_count,
+        wire_count,
+        ctx,
+    )
+}
+
+/// Insert an immutable revision row scoped to an explicit tenant (ADR-66).
+pub fn insert_topology_revision_scoped(
+    tx: &Transaction<'_>,
+    branch_id: &str,
+    tenant_id: &str,
+    revision: u64,
+    envelope: &str,
+    node_count: usize,
+    wire_count: usize,
+    ctx: &TopologyRevisionContext<'_>,
+) -> Result<(), BridgeError> {
     let published_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let org_id = ctx.org_id.unwrap_or("default");
     let actor = ctx.actor.unwrap_or(ctx.published_by);
@@ -828,7 +851,7 @@ pub fn insert_topology_revision(
         params![
             uuid::Uuid::now_v7().to_string(),
             branch_id,
-            DEFAULT_TENANT_ID,
+            tenant_id,
             revision as i64,
             ctx.change_note,
             envelope,

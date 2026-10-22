@@ -11,5 +11,6 @@
 pub mod commands;
 pub mod model;
 pub mod persistence;
+pub mod replication;
 pub mod revisions;
 pub mod semantics;
