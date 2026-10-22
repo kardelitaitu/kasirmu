@@ -295,6 +295,43 @@ fn read_key_map_covers_all_protected_get_routes() {
     );
 }
 
+// ── topology replication pull (map-coverage repair) ─────────────────
+
+#[tokio::test]
+async fn topology_pull_route_is_gated_not_passed_through() {
+    // The coverage test above is a SOURCE parse: it proves an entry exists but
+    // says nothing about what the middleware does with it. This drives the
+    // request through the middleware and asserts the 403, so a later edit that
+    // renames the key or the path fails here as well as there.
+    let app = matrix_app();
+    let url = "/api/v1/topology/revisions/pull?branch_id=b&since_revision=0";
+
+    // A read-scoped token without topology:write is refused.
+    let denied = app
+        .clone()
+        .oneshot(req_with_claims(
+            url,
+            claims(Some(vec!["products:read".into()])),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        denied.status(),
+        StatusCode::FORBIDDEN,
+        "topology pull must not be reachable by an unrelated read scope"
+    );
+
+    // The topology:write scope reaches it.
+    let allowed = app
+        .oneshot(req_with_claims(
+            url,
+            claims(Some(vec!["topology:write".into()])),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::OK);
+}
+
 // ── Tier matrix (spec 0047 F3) ──────────────────────────────────────
 
 /// Register every READ_KEY_MAP path on a probe router.

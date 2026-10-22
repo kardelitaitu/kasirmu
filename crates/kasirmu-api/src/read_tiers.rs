@@ -123,6 +123,24 @@ pub const READ_KEY_MAP: &[ReadKeyEntry] = &[
         key: "products:read",
         pii: false,
     },
+    // ── Topology (ADR-66 replication pull) ───────────────────────
+    // Same defect class as /api/v1/memos/active above: the Phase 3/5 router
+    // added this GET under the protected router and the gate passes unmapped
+    // paths through, so a read-scoped token could pull revision payloads with
+    // no permission check. The key is the topology family's existing one —
+    // the registry declares no read key for the family (only "topology:write"),
+    // and a reader who may publish the graph may plainly read it.
+    // No "topology:read" is invented here: an entry naming an unregistered key
+    // would deny every scoped token (has_permission is false for unknown keys)
+    // and quietly break terminal replication.
+    // pii: false — the payload is a diagram envelope plus revision metadata
+    // (ids, counts, signature); workspace node payloads are not queried here.
+    ReadKeyEntry {
+        method: "GET",
+        path: "/api/v1/topology/revisions/pull",
+        key: "topology:write",
+        pii: false,
+    },
 ];
 
 // ── Presets ──────────────────────────────────────────────────────────
