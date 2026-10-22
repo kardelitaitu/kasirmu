@@ -578,10 +578,7 @@ Per item, an `INSERT INTO offline_queue …` inside a single transaction — a 5
 multi-row `INSERT … VALUES (…), (…)` on a prepared statement.
 
 **O-H21 · platform/sync — apply loop: one autocommitted UPDATE per item while holding the DB
-mutex, and `zip` silently drops items** — `platform/sync/src/daemon.rs:214-270` ◦
-A 1,000-item drain is 1,000 fsyncs with the DB lock held throughout, and
-`pending.iter().zip(results.iter())` silently discards items if `results` is shorter. *Fix:*
-one transaction (or `UPDATE … WHERE id IN (…)`), and assert/report the length mismatch.
+mutex, and `zip` silently drops items** — `platform/sync/src/daemon.rs:214-270`, `lib.rs` ✔ · **PAID** (`a5797e020`). Batched accepted push outcomes into a single transaction via `mark_synced_batch` and preserved length-mismatch diagnostics. See §11BT.
 
 **O-H22 · platform/core — the process-wide store-DB mutex is held across migrations** —
 `platform/core/src/database/manager.rs:73-87` ✔. Fixed: scoped global `store_dbs` mutex to map lookup and insert, running `open_or_create_connection` and migrations outside the global lock, and serialized same-store initialization via per-store init locks. Verified with concurrent opening tests in `manager_tests.rs`.
@@ -4697,6 +4694,22 @@ Resolved in commit `91ace97de` by chunking `ids` into fixed-size batches of 250 
 parameterized batch queries, and attaching results back to products without overflowing query bounds.
 
 Verified with `cargo test -p kasirmu-core products_crud`. All 6 tests pass.
+
+## §11BT — O-H21 resolved: batching push sync outcomes into single transaction (2026-10-22)
+
+In `platform/sync/src/daemon.rs` (`apply_push_results`) and `platform/sync/src/lib.rs` (`apply_push_outcomes`),
+accepted push outcomes and duplicate-id replays previously executed `store.mark_offline_synced` or `queue.mark_synced`
+one item at a time in autocommit mode. On a batch of $N$ items, this produced $N$ disk writes and $N$ individual
+transactions while holding the database connection lock.
+
+Resolved in commit `a5797e020` by:
+1. Adding `mark_synced_batch` to `SyncQueue` in `platform/sync/src/queue.rs`, delegating to `Store::mark_offline_synced_batch`.
+2. Accumulating all accepted and duplicate-replay item IDs in `apply_push_results` (`daemon.rs`) and `apply_push_outcomes` (`lib.rs`)
+   into a batch and executing a single `mark_synced_batch` call within one transaction.
+3. Preserving the length-mismatch diagnostic that logs a warning if the outcomes vector length does not match pending batch length.
+
+Verified with `cargo test -p platform-sync --lib`. All 497 tests pass.
+
 
 
 
