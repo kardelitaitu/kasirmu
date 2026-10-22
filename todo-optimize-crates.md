@@ -15,12 +15,17 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 70 | 70 | **0** |
+| Medium | 71 | 71 | **0** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **136** | **136** | **0** |
+| **Total** | **137** | **137** | **0** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-22 (round 25). 137 defined, 137 closed, 0 open.** O-M71 opened and closed as
+NOT-ACTIONABLE in the same round: `list_gift_cards`' four scanning shapes are a leading-wildcard `LIKE`, a
+mutable range, and the unfiltered default page — none of which an index can serve, and one of which (a
+balance index) would put a maintain cost on the hottest write path to serve a rare filter.
 
 **Updated 2026-10-22 (round 24). 136 defined, 136 closed, 0 open.** O-M70 opened and closed in the same
 round: the legacy outbox probe's residual cost, measured twice wrongly before being measured right.
@@ -1121,6 +1126,31 @@ table with no data shaping the choice, then called the table-scan reading a find
 which I only ran because the fix needed proving — showed the pre-fix plan already SEEKED. **A plan measured
 on an unseeded table is not evidence about production**, which is the same rule that made the earlier
 gift-card and audit "scans" turn out to be fixture artefacts.
+
+**O-M71 · kasirmu-core — `list_gift_cards` search and balance filters cannot use an index** —
+`crates/kasirmu-core/src/db/gift_cards.rs:182-232` ◦. Four of six filter shapes read the whole table.
+**Measured over 3,000 seeded cards + `ANALYZE`:**
+
+| Shape | Plan |
+|---|---|
+| `status = ?` (even a 2.5%-selective one) | `SEARCH g USING INDEX idx_gift_cards_status` |
+| `card_number LIKE 'GC-0001%'` (PREFIX) | `SCAN g` |
+| `card_number LIKE '%0001%'` (INFIX) | `SCAN g` |
+| `current_balance_minor >= ?` | `SCAN g` |
+| no filter | `SCAN g` |
+
+**CLOSED AS NOT-ACTIONABLE 2026-10-22 — no index can fix three of these, and the fourth should not have one.**
+- The `search` and `issued_to` filters build `LIKE '%<escaped>%'` — a LEADING wildcard, which no B-tree can
+  serve. (Even the prefix form scans: SQLite only uses an index for `LIKE` when the column is indexed with
+  `COLLATE NOCASE` or `PRAGMA case_sensitive_like` is on, and this schema does neither.) Fixing it would mean
+  FTS or a trigram index — a different storage decision, not a missing index.
+- `min_balance` is a RANGE on a value that changes on every redemption, so an index would be maintained on
+  a hot write path to serve a rarely-used filter.
+- The unfiltered shape is the default page; it scans by definition and is bounded by cards issued, not by
+  transaction volume — **it is not the O-M69 growth class.**
+
+So the entry is closed with the measurement rather than an index, and the probe's pin at 4 stays: it now
+fails both if a shape regresses AND if someone later adds an index, forcing a deliberate re-measurement.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
