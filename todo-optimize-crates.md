@@ -1598,8 +1598,9 @@ Fixed: preserved merge order by dropping the redundant post-merge revenue sort, 
 $O(n \log n)$ vector sorting in `median_of` with $O(n)$ `select_nth_unstable` partitioning and linear max.
 
 **O-M56 · kasirmu-media — `trim_borders` does per-pixel bounds-checked `get_pixel` over four
-full-frame passes** — `crates/kasirmu-media/src/crop.rs:169-211` ◦ (3C-06). ~160 M calls at the
-40 MP cap before the solid-colour guard fires. *Fix:* walk `as_raw()` rows, bail out early.
+full-frame passes** — `crates/kasirmu-media/src/crop.rs` ✔ **PAID 2026-10-22 in `7ecc94f4b`** (3C-06).
+Fixed: walked `rgb.as_raw()` contiguous byte slices using `chunks_exact(3)`, bounded vertical column
+scanning to `top..bottom`, and added immediate early return for solid-colour images.
 
 **O-M57 · kasirmu-logging — syslog layer allocates per field and blocks per record** —
 ❌ **MOOT 2026-10-21.** The target no longer exists: `crates/kasirmu-logging/src/syslog.rs` was
@@ -4593,6 +4594,22 @@ $O(1)$ set containment checks against `referenced`, eliminating sequential per-f
 per-file path join allocations.
 
 Verified with `cargo test -p kasirmu-mobile --lib image_download`. All 8 tests pass.
+
+## §11BJ — O-M56 resolved: raw buffer scanning and early bailouts in border trimming (2026-10-22)
+
+In `crates/kasirmu-media/src/crop.rs`, `trim_borders` previously scanned four edges using nested loops of
+`rgb.get_pixel(col, row) != corner`, invoking bounds-checked coordinate math on every single pixel across
+four full-frame passes (~160 million calls on a 40MP image). Furthermore, solid-colour images scanned all
+four edges completely before checking `top >= bottom`.
+
+Resolved with:
+1. Direct contiguous slice access over `rgb.as_raw()` with `chunks_exact(3)` vectorization across rows.
+2. Immediate return if `top >= h` (solid-colour image), avoiding unnecessary bottom, left, and right scans.
+3. Bounding left and right column scans strictly within `top..bottom`, avoiding scanning known corner-colour rows.
+4. Added unit tests for solid-colour preservation and asymmetric border trimming.
+
+Verified with `cargo test -p kasirmu-media`. All 32 tests pass in 0.14s.
+
 
 
 
