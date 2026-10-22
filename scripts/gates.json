@@ -1574,6 +1574,24 @@
       }
     },
     {
+      "id": "query-plan-gate",
+      "label": "Query-plan regression (no probe scans a LARGE table)",
+      "status": "required",
+      "_note": "Added 2026-10-22. scripts/check-query-plans.py runs crates/kasirmu-core/tests/integration/query_plan_probe.rs, which seeds 400 rows into every LARGE table (sales, sale_lines, refunds, refund_lines, offline_queue, audit_log, product_activity, stock_movements, payments, kds_orders), ANALYZEs, and EXPLAINs 27 curated production queries, asserting none reads a large table in full. It shipped in f49038c50 as a working gate that NOTHING ran automatically -- the exact shape this manifest exists to close: a check that works only when a human remembers to type it, where a scan regression lands silently because it compiles, lints and passes every suite. `--check` re-runs the probe's own falsification first (forcing_a_scan_fails_the_probe strips the daily-revenue predicates and requires the SAME detector to fire), so a detector gone deaf exits 2 rather than reporting clean. PROVEN TO FIRE before wiring, on a clean throwaway worktree of HEAD: exit 0 with '27 probed queries, none reads a LARGE table in full'; with the WHERE removed from list_stock_movements it exits 1 naming 'list_stock_movements (crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:26)' and 'reads in full: stock_movements (SCAN stock_movements)'; the file was then restored byte-for-byte (blob hash equal to HEAD). REVIEWED BYPRODUCT, recorded because it is a real limit of the probe and NOT a defect to silence: the detector treats any 'SCAN x USING INDEX ...' as an ORDERED INDEX WALK and therefore NOT a read, so a bulk page through a composite index (SCAN stock_movements USING INDEX idx_stock_movements_location_created for LIMIT/OFFSET with no WHERE) is deliberately not flagged. The gate grades missing SEEKS, not every unbounded walk; the probe's own comment documents the same honesty for get_kds_queue. PLACEMENT IS DELIBERATE. NOT pre-commit: it is a cargo TEST (compile plus two runs, ~20-50 s warm) and pre-commit's eight steps run on every commit, several of them ~50 ms python -- a 20-50 s compile there would be hostile and would teach people to bypass the hook with --no-verify. NOT pre-push Tier 0 either: run-pre-push.py's static list is stdlib python and bash with no cargo task at all, and the gates.json check.sh-needle mechanism resolves labels only against scripts/check.sh, so a label for a pre-push-only step would be reported by verify-ci-docs-drift.py as a runner that does not exist. It goes in scripts/check.sh (the full matrix, which already runs clippy and rustdoc) and in dev-ci.yml#static-gates as the backstop that cannot be forgotten, the same pairing the rest of this job's python gates use.",
+      "runners": {
+        "check.sh": [
+          "query plan gate"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Query-plan regression probe"
+        ]
+      }
+    },
+    {
       "id": "mapper-alignment",
       "label": "Positional row-mapper alignment",
       "status": "required",

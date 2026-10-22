@@ -469,6 +469,24 @@ step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-tes
 step "client type drift" "python3 scripts/check-client-type-drift.py" python3 scripts/check-client-type-drift.py
 step "client type drift self-test" "python3 scripts/check-client-type-drift.py --self-test" python3 scripts/check-client-type-drift.py --self-test
 
+# ── Query-plan regression — no probed production query scans a LARGE table ──
+# The last real performance defect in this project -- every revenue report reading
+# the whole `refunds` table -- was found BY HAND with EXPLAIN QUERY PLAN. This is
+# that pass made repeatable: crates/kasirmu-core/tests/integration/query_plan_probe.rs
+# seeds 400 rows into every LARGE table, ANALYZEs, EXPLAINs 27 curated production
+# queries and asserts none reads a large table in full. A missing index or a
+# dropped predicate is invisible to every other gate here -- it compiles, lints,
+# passes its suite, and gets slower with every row of transaction volume.
+# `--check` re-runs the probe's own falsification FIRST (`forcing_a_scan_fails_the_probe`
+# strips the daily-revenue predicates and requires the SAME detector to fire), so a
+# detector gone deaf exits 2 instead of reporting a clean tree.
+# Exits 0 clean, 1 a query scans a large table, 2 the probe could not run -- so a
+# probe that failed to compile never reads as one that found nothing.
+# Cost: a cargo TEST (compile + two runs), ~20-50 s warm. That is why it is here and
+# in dev-ci.yml#static-gates, and NOT in pre-commit, which must stay fast.
+# Gate: scripts/gates.json -> "query-plan-gate".
+step "query plan gate" "python3 scripts/check-query-plans.py --check" python3 scripts/check-query-plans.py --check
+
 # ── Row-mapper alignment — a positional read vs the SELECT feeding it ──────
 # `name: row.get(3)?` couples a mapper to its SQL by POSITION, and nothing in Rust
 # checks that coupling: reorder the projection and the fields silently take each

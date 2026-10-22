@@ -1223,6 +1223,18 @@ jobs:
         run: python3 scripts/check-merged-lines.py
       - name: Merged source lines self-test
         run: python3 scripts/check-merged-lines.py --self-test
+      # The last real performance defect here -- every revenue report reading the
+      # whole refunds table -- was found BY HAND with EXPLAIN QUERY PLAN. This is
+      # that pass made repeatable: the probe seeds 400 rows into every LARGE table,
+      # ANALYZEs, EXPLAINs 27 curated production queries and asserts none reads a
+      # large table in full. A scan regression is invisible to every other job --
+      # it compiles, lints, passes nextest, and gets slower with every new row.
+      # `--check` re-runs the probe's own falsification FIRST, so a detector gone
+      # deaf exits 2 instead of reporting a clean tree. Exit 1 is a real finding.
+      # Gates the whole job, so a plan regression surfaces in ~1 min rather than
+      # behind cargo-nextest. Gates.json: query-plan-gate.
+      - name: Query-plan regression probe
+        run: python3 scripts/check-query-plans.py --check
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,
