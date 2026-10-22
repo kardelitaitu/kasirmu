@@ -173,7 +173,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       }
     })();
     return () => { cancelled = true; };
-  }, [activeSaleId, sessionToken]);
+  }, [activeSaleId, sessionToken, l10n]);
 
   // ── Open initial sale if provided ────────────────────────────────
 

@@ -346,7 +346,7 @@ export function usePosHeldCarts({
       openingBillRef.current = false;
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease]);
+  }, [activeShift, lines, subtotal, customerName, openBillName, tableNumber, guestCount, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, discountPercent, discountLabel, resetCart, setTableNumber, setCustomerName, setGuestCount, activeOpenBillId, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions, l10nRef, dispatchOnTabSave, onDispatchKitchen, releaseLease, deductionLocationIdRef]);
 
   /**
    * Load a held tab into the cart.
@@ -569,7 +569,7 @@ export function usePosHeldCarts({
     // `getConflict` is a callback over lease state, so it changes whenever the
     // registry does — which is the point: the guard must read the CURRENT conflict
     // answer at resume time, not one captured when this callback was created.
-  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, getConflict, l10nRef, activeOpenBillId, lines.length]);
+  }, [setLines, setDiscount, setTableNumber, setCustomerName, setGuestCount, setTipPercent, setServiceCharge, setOrderType, addToast, openBillsExit, sessionToken, claimLease, getConflict, l10nRef, activeOpenBillId, lines.length, deductionLocationIdRef, onRestoreDeductionLocation]);
 
   return {
     activeOpenBillId,

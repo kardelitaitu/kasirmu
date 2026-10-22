@@ -361,7 +361,7 @@ export default function TerminalManagementScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedStoreId, editingId, sessionToken]);
+  }, [selectedStoreId, editingId, sessionToken, l10n]);
 
   const closeModal = useCallback(() => {
     setShowModal(false);
