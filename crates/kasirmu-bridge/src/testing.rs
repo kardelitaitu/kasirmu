@@ -605,9 +605,9 @@ impl TestBridge {
     /// `with_db_manager` replaces the manager but leaves `_store_scratch`
     /// pointing at the directory `TestBridge::new()` allocated — it is a bare
     /// setter and cannot know where the caller's manager stores its files. A
-    /// test module that builds its own manager over
-    /// `kasirmu_test_support::scratch_dir(...)` therefore gets a `PathBuf` with
-    /// no `Drop`, and nothing ever deletes the directory.
+    /// test module that builds its own manager over the UNGUARDED builder,
+    /// [`kasirmu_test_support::scratch_dir`], therefore gets a `PathBuf` with no
+    /// `Drop`, and nothing ever deletes the directory.
     ///
     /// That is not hypothetical: six modules had each copied a local
     /// `unique_store_dir() -> PathBuf` (inventory, local_payment, regional,
@@ -615,6 +615,13 @@ impl TestBridge {
     /// directories were measured in `target/test-scratch/` after a handful of
     /// runs. Use this constructor instead: the guard rides on the bridge, so the
     /// directory lives exactly as long as the manager that uses it.
+    ///
+    /// The module-wide rule is the one [`unique_store_dir`] already states: a
+    /// helper that creates a scratch directory returns it TOGETHER WITH its
+    /// [`kasirmu_test_support::ScratchDir`] (`(PathBuf, ScratchDir)`) and the
+    /// caller binds the guard for as long as the directory is used. A guard
+    /// bound inside the helper would drop on return and delete the directory
+    /// mid-test; a bare `scratch_dir` path is never deleted at all.
     #[must_use]
     pub fn with_db_manager_scratch(
         mut self,

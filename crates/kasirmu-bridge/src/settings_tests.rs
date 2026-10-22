@@ -2254,15 +2254,25 @@ async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
 // These tests drive the real `get_hardware_settings` over a `TestBridge`, with a
 // unique temp base dir per case so the profile file is a real file on disk.
 
-/// A unique base directory for one hardware-settings test, and the terminal id it
-/// is keyed by. Rooted under `target/test-scratch` -- `std::env::temp_dir()`
-/// resolves to the MACHINE-level `C:\WINDOWS\TEMP` on this project's Windows
-/// machines, a directory an ordinary user can create in but not delete from, so a
-/// stale `kasirmu-bridge-hw-*` entry made the create itself fail with
-/// `os error 5`. `scratch_dir`'s per-call UUID replaces the
-/// pid/nanos/counter triple, and `target/` is writable and gitignored.
-fn hw_base_dir() -> std::path::PathBuf {
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-hw")
+/// A unique base directory for one hardware-settings test, with the `ScratchDir`
+/// guard that owns it.
+///
+/// Rooted under `target/test-scratch` -- `std::env::temp_dir()` resolves to the
+/// MACHINE-level `C:\WINDOWS\TEMP` on this project's Windows machines, a
+/// directory an ordinary user can create in but not delete from, so a stale
+/// `kasirmu-bridge-hw-*` entry made the create itself fail with `os error 5`.
+/// The per-call UUID of `ScratchDir::new` replaces the pid/nanos/counter triple,
+/// and `target/` is writable and gitignored.
+///
+/// The guard is returned alongside the path rather than dropped here (the
+/// `(PathBuf, ScratchDir)` shape `testing::unique_store_dir` established): the
+/// test writes the profile file and then drives `get_hardware_settings` over it,
+/// so a guard bound in this function would delete the directory mid-test. It
+/// also stops the leak the bare `scratch_dir` path caused -- one
+/// `kasirmu-bridge-hw-*` directory per case, per run, forever.
+fn hw_base_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-hw");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// A profile with an unmistakable printer device path, so a value read back can be
@@ -2300,7 +2310,7 @@ async fn seed_hw_row(
 /// TODO 4e box 1: once a row exists, the JSON file is never consulted.
 #[tokio::test]
 async fn hw_db_row_wins_over_json_file() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-db-wins");
     let ctx = tb.ctx();
 
@@ -2318,7 +2328,7 @@ async fn hw_db_row_wins_over_json_file() {
 /// then takes the row, so a later file edit cannot change the resolved profile.
 #[tokio::test]
 async fn hw_json_seeds_a_missing_row_once() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-seed-once");
     let ctx = tb.ctx();
 
@@ -2352,7 +2362,7 @@ async fn hw_json_seeds_a_missing_row_once() {
 /// seed the row, and the row then wins over a later file.
 #[tokio::test]
 async fn hw_legacy_settings_seed_a_missing_row() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-legacy-seed");
     let ctx = tb.ctx();
 
@@ -2380,7 +2390,7 @@ async fn hw_legacy_settings_seed_a_missing_row() {
 /// stays authoritative, and the caller gets defaults instead of a superseded file.
 #[tokio::test]
 async fn hw_unreadable_row_does_not_fall_back_to_file() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-bad-row");
     let ctx = tb.ctx();
 
@@ -2410,7 +2420,7 @@ async fn hw_unreadable_row_does_not_fall_back_to_file() {
 /// it returns is the type's defaults.
 #[tokio::test]
 async fn hw_no_source_returns_defaults_and_pins_a_row() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-nothing");
     let ctx = tb.ctx();
 

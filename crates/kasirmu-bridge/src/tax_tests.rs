@@ -385,18 +385,25 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-/// Unique per-test directory for the store sqlite files. Mirrors the
-/// harness's per-instance store root (`testing.rs` builds one for the
-/// default `TestBridge` manager); a handle is needed here only where a
-/// test must pre-seed a store database before driving the scoped ops.
-fn store_dir() -> std::path::PathBuf {
-    // Rooted under `target/test-scratch` rather than
-    // `std::env::temp_dir()`, which on this project's Windows machines is the
-    // MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary user can
-    // create in but not delete from, so a stale entry made the create itself
-    // fail with `os error 5`. `scratch_dir`'s per-call UUID replaces the
-    // pid/nanos/counter triple.
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-tax-tests")
+/// Unique per-test directory for the store sqlite files, returned with the
+/// `ScratchDir` guard that owns it. Mirrors the harness's per-instance store
+/// root (`testing.rs` builds one for the default `TestBridge` manager); a handle
+/// is needed here only where a test must pre-seed a store database before
+/// driving the scoped ops.
+///
+/// The guard travels with the path (the `(PathBuf, ScratchDir)` shape
+/// `testing::unique_store_dir` established): the caller hands the manager both
+/// and then keeps reading the databases it opens, so a guard bound here would
+/// drop on return. Rooted under `target/test-scratch` rather than
+/// `std::env::temp_dir()`, which on this project's Windows machines is the
+/// MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary user can create
+/// in but not delete from, so a stale entry made the create itself fail with
+/// `os error 5`. `ScratchDir::new`'s per-call UUID replaces the
+/// pid/nanos/counter triple, and its `Drop` removes what the bare
+/// `scratch_dir` path leaked.
+fn store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-tax-tests");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 #[tokio::test]
@@ -487,7 +494,8 @@ async fn scoped_tax_command_reads_only_the_session_store() {
     let conn = temp_conn();
     seed_owner_user(&conn);
 
-    let db_manager = StoreDatabaseManager::new(store_dir(), kasirmu_core::migrations::ALL);
+    let (dir, _scratch) = store_dir();
+    let db_manager = StoreDatabaseManager::new(dir, kasirmu_core::migrations::ALL);
     let bridge = TestBridge::new()
         .with_conn(conn)
         .with_db_manager(db_manager.clone());

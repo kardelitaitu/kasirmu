@@ -1095,16 +1095,22 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
 
 // ── §J B3: per-location quota rows ───────────────────────────────────
 
-fn b3_manager() -> StoreDatabaseManager {
+fn b3_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
     // A per-call unique directory under `target/test-scratch`, not
     // `std::env::temp_dir()`: on this project's Windows machines the
     // MACHINE-level `TEMP` is `C:\WINDOWS\TEMP`, where an ordinary
     // user can create but not delete. This used to hand the bare temp root to the
     // manager, so every `b3-*` store database landed directly in it (and could
-    // never be removed). `scratch_dir` returns a fresh, empty directory the
-    // manager can own outright.
-    let dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-b3");
-    StoreDatabaseManager::new(dir, kasirmu_core::migrations::ALL)
+    // never be removed). `ScratchDir::new` returns a fresh, empty directory the
+    // manager can own outright, and the GUARD travels back with the manager (the
+    // `testing::unique_store_dir` shape): bound here it would drop on return and
+    // delete the store databases the test is still reading, while the former
+    // bare `scratch_dir` path leaked one directory per case.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-b3");
+    (
+        StoreDatabaseManager::new(scratch.path().to_path_buf(), kasirmu_core::migrations::ALL),
+        scratch,
+    )
 }
 
 /// A store id unique to this process and test, because `b3_manager` opens a
@@ -1121,7 +1127,7 @@ fn per_location_rows_skip_a_store_with_no_database_and_create_none() {
     // settings screen, and `open_store` CREATES the file when missing. A
     // location row whose database does not exist yet must be skipped, and the
     // skip must not leave a file behind.
-    let manager = b3_manager();
+    let (manager, _scratch) = b3_manager();
     let sid = b3_store_id("ghost");
     assert!(!manager.store_db_exists(&sid));
     let rows = per_location_over_quota_rows(
@@ -1142,7 +1148,7 @@ fn per_location_rows_skip_a_store_with_no_database_and_create_none() {
 
 #[test]
 fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
-    let manager = b3_manager();
+    let (manager, _scratch) = b3_manager();
     let sid = b3_store_id("pro-kds");
     {
         let conn = manager.open_store(&sid).unwrap();

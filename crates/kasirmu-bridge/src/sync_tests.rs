@@ -637,17 +637,23 @@ fn update_pg_sync_settings_data_password_preserved_when_none() {
 // ---------------------------------------------------------------------------
 
 /// Unique per-test scratch directory standing in for the app-data dir that
-/// holds the live databases.
+/// holds the live databases, returned WITH the `ScratchDir` guard that owns it.
 ///
 /// Rooted under `target/test-scratch` rather than
 /// `std::env::temp_dir()` (`C:\WINDOWS\TEMP` on this project's Windows
 /// machines, where an ordinary user can create but not delete -- so the fixture
 /// both leaked forever and, once stale, failed its own create with
-/// `os error 5`). The directory is returned as a bare path: the backup-
-/// rotation tests below keep writing into it for the whole test body, and
-/// `target/` is gitignored, so a leftover is the cheaper mistake.
-fn unique_backup_dir() -> std::path::PathBuf {
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-sync-backup")
+/// `os error 5`).
+///
+/// The guard is returned alongside the path (the `(PathBuf, ScratchDir)` shape
+/// `testing::unique_store_dir` established) because the backup-rotation tests
+/// below keep writing into the directory for the whole test body: a guard bound
+/// here would drop on return and delete it mid-test, while the bare
+/// `scratch_dir` path this replaced was never deleted at all and leaked one
+/// `kasirmu-bridge-sync-backup-*` directory per case.
+fn unique_backup_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-sync-backup");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Create a file in dir and return its path.
@@ -744,7 +750,7 @@ fn backup_name_matching_is_strict_enough_to_scope_by_store() {
 
 #[test]
 fn successful_pull_removes_the_pre_pull_backup() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let backup = write_backup(&store, "20260908121212");
@@ -762,7 +768,7 @@ fn successful_pull_removes_the_pre_pull_backup() {
 
 #[test]
 fn failed_pull_retains_the_pre_pull_backup() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let backup = write_backup(&store, "20260908121212");
@@ -779,7 +785,7 @@ fn failed_pull_retains_the_pre_pull_backup() {
 
 #[test]
 fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     for ts in ["20260101000000", "20260102000000", "20260103000000"] {
@@ -799,7 +805,7 @@ fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
 
 #[test]
 fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     write_backup(&store, "20260101000000");
@@ -821,7 +827,7 @@ fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
 /// failed pull: neither one's next pull may touch the other's.
 #[test]
 fn two_stores_do_not_rotate_each_other_out() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store_a = store_db_in(&dir, "a");
     let store_b = store_db_in(&dir, "b");
@@ -875,7 +881,7 @@ fn two_stores_do_not_rotate_each_other_out() {
 /// recovery point for anything and are swept outright rather than capped.
 #[test]
 fn legacy_main_named_backups_are_swept_by_the_next_pull() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let legacy: Vec<std::path::PathBuf> = ["20260101000000", "20260102000000", "20260103000000"]
@@ -910,7 +916,7 @@ fn legacy_main_named_backups_are_swept_by_the_next_pull() {
 /// one copy, not zero.
 #[test]
 fn the_legacy_sweep_stands_down_when_the_stems_coincide() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let store = store_db_in(&dir, "7");
     let main_db = store.clone(); // pathological: main DB *is* this store DB
     let retained = write_backup(&store, "20260104000000");
@@ -933,7 +939,7 @@ fn the_legacy_sweep_stands_down_when_the_stems_coincide() {
 
 #[test]
 fn rotation_never_touches_files_that_are_not_pre_pull_backups() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let other_db = touch(&dir, "warehouse.db");
@@ -966,7 +972,7 @@ fn disposal_survives_a_missing_or_unlistable_directory() {
     // A backup that was already removed (or never created because the pull
     // failed before Phase 3) must not turn into a second error, and a db path
     // with no readable parent must not panic.
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let gone = pre_pull_backup_path(&store, "20260101000000");

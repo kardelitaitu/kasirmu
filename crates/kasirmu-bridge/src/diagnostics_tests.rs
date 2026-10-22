@@ -38,7 +38,12 @@ fn test_validate_output_path_rejects_traversal() {
 
 #[test]
 fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
-    let temp_dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-crash-test");
+    // A `ScratchDir` guard, bound for the whole test: the report is written
+    // from the `write_crash_report_entry` call below and read back after it, so
+    // the directory has to outlive every use. The former bare `scratch_dir`
+    // path leaked one directory per run.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-crash-test");
+    let temp_dir = scratch.path();
 
     let report = CrashReport {
         timestamp: "2026-10-07T03:30:00Z".to_string(),
@@ -153,14 +158,19 @@ async fn call_export(
 ) -> (
     Result<DiagnosticExportResult, BridgeError>,
     std::path::PathBuf,
+    kasirmu_test_support::ScratchDir,
 ) {
     // `std::env::temp_dir()` is `C:\WINDOWS\TEMP` on this project's Windows
-    // machines, where an ordinary user can create but not delete. The bare
-    // `scratch_dir` path is deliberate: the directory is RETURNED to the
-    // caller below, which asserts on the archive and then removes it, so a
-    // `ScratchDir` guard bound here would drop at the end of this function
-    // and delete the directory out from under the test that owns it.
-    let dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-diag-gate");
+    // machines, where an ordinary user can create but not delete.
+    //
+    // The guard travels WITH the path, the shape `testing.rs::unique_store_dir`
+    // established. A `ScratchDir` bound here would drop at the end of this
+    // function and delete the directory out from under the test that asserts on
+    // the archive, so it is returned as the third element instead; the former
+    // bare `scratch_dir` path left the caller nothing to clean up with beyond
+    // an explicit `remove_dir_all`, and one directory leaked per call.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-diag-gate");
+    let dir = scratch.path().to_path_buf();
     let out = dir.join("diagnostics.zip");
     let ctx = bridge.ctx();
     let result = export_diagnostics(
@@ -175,14 +185,14 @@ async fn call_export(
         "x86_64",
     )
     .await;
-    (result, dir)
+    (result, dir, scratch)
 }
 
 /// An unknown token is refused before any permission question is asked.
 #[tokio::test]
 async fn export_diagnostics_refuses_an_unknown_session() {
     let bridge = diagnostics_state();
-    let (result, dir) = call_export(&bridge, "no-such-token").await;
+    let (result, dir, _scratch) = call_export(&bridge, "no-such-token").await;
     let _ = std::fs::remove_dir_all(&dir);
     assert!(
         matches!(result, Err(BridgeError::InvalidSession)),
@@ -200,7 +210,7 @@ async fn export_diagnostics_refuses_an_unknown_session() {
 async fn export_diagnostics_refuses_a_session_without_settings_read() {
     let bridge = diagnostics_state();
     let token = mint(&bridge, "user-auditor", "role-auditor");
-    let (result, dir) = call_export(&bridge, &token).await;
+    let (result, dir, _scratch) = call_export(&bridge, &token).await;
     let _ = std::fs::remove_dir_all(&dir);
     // role-auditor HAS SETTINGS_READ; if this ever fails with PermissionDenied
     // the preset changed rather than the gate, which is what the message says.
@@ -219,7 +229,7 @@ async fn export_diagnostics_refuses_a_session_without_settings_read() {
 async fn export_diagnostics_admits_a_session_with_settings_read() {
     let bridge = diagnostics_state();
     let token = mint(&bridge, "user-owner", "role-owner");
-    let (result, dir) = call_export(&bridge, &token).await;
+    let (result, dir, _scratch) = call_export(&bridge, &token).await;
     let _ = std::fs::remove_dir_all(&dir);
     assert!(
         !matches!(result, Err(BridgeError::PermissionDenied(_))),
@@ -242,7 +252,7 @@ async fn export_diagnostics_admits_a_session_with_settings_read() {
 async fn export_diagnostics_refuses_a_staff_session_that_still_holds_operations() {
     let bridge = diagnostics_state();
     let token = mint(&bridge, "user-staff", "role-staff");
-    let (result, dir) = call_export(&bridge, &token).await;
+    let (result, dir, _scratch) = call_export(&bridge, &token).await;
     let _ = std::fs::remove_dir_all(&dir);
     assert!(
         matches!(result, Err(BridgeError::PermissionDenied(_))),
@@ -301,7 +311,12 @@ fn report_with_secrets() -> CrashReport {
 /// function the shells actually register rather than through its helper.
 #[tokio::test]
 async fn record_crash_report_works_without_a_session_and_still_sanitizes() {
-    let dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-crash-async");
+    // Bound for the whole test: the report is written by `record_crash_report`
+    // below and read back from this directory afterwards, so a guard dropped
+    // early would delete it mid-test. The former bare `scratch_dir` path leaked
+    // one directory per run.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-crash-async");
+    let dir = scratch.path();
 
     let res = record_crash_report(Some(&dir), report_with_secrets()).await;
     assert!(

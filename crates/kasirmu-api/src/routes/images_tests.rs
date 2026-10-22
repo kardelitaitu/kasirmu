@@ -16,16 +16,32 @@ use tower::ServiceExt;
 
 /// A unique scratch directory for image storage, kept INSIDE the checkout.
 ///
-/// Delegates to [`kasirmu_test_support::scratch_dir`], which owns the whole
+/// Delegates to [`kasirmu_test_support::ScratchDir`], which owns the whole
 /// `C:\WINDOWS\TEMP` rationale in one place (see that crate's docs). Measured
 /// 2026-10-21: all twelve image tests failed here with `Os { code: 5 }` before
 /// the fixture moved under the gitignored `target/` tree.
-fn scratch_image_dir() -> std::path::PathBuf {
-    kasirmu_test_support::scratch_dir("kasirmu-api-img")
+///
+/// A GUARD, not a bare path: [`kasirmu_test_support::scratch_dir`] deletes
+/// nothing on drop, so every call leaked one `kasirmu-api-img-*` directory per
+/// run forever. The guard is returned alongside the path and the caller keeps it
+/// bound for the whole test body, so the directory outlives every write the
+/// test makes into it and is removed when the test ends.
+fn scratch_image_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-api-img");
+    (scratch.path().to_path_buf(), scratch)
 }
+
 /// Create a unique scratch directory for image storage (no `tempfile` dep).
-fn temp_image_dir() -> (AppState, std::path::PathBuf) {
-    let dir = scratch_image_dir();
+///
+/// The third element is the `ScratchDir` that owns `image_dir`; bind it and
+/// keep it alive for the whole test, and drop the explicit `cleanup` call —
+/// the guard removes the directory when it goes out of scope.
+fn temp_image_dir() -> (
+    AppState,
+    std::path::PathBuf,
+    kasirmu_test_support::ScratchDir,
+) {
+    let (dir, scratch) = scratch_image_dir();
     std::fs::create_dir_all(&dir).unwrap();
     let state = AppState {
         db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
@@ -38,7 +54,7 @@ fn temp_image_dir() -> (AppState, std::path::PathBuf) {
         cors_origins: DEFAULT_CORS_ORIGINS.iter().map(|s| s.to_string()).collect(),
         image_dir: dir.clone(),
     };
-    (state, dir)
+    (state, dir, scratch)
 }
 
 /// Clean up the temp image dir created by [`temp_image_dir`].
@@ -104,7 +120,7 @@ fn is_webp_magic_rejects_non_webp() {
 
 #[tokio::test]
 async fn store_image_atomic_writes_file() {
-    let (_, dir) = temp_image_dir();
+    let (_, dir, _scratch) = temp_image_dir();
     let hash = "abcdef0123456789";
     let bytes = b"test image data";
     let duplicate = store_image_atomic(&dir, hash, bytes).await.unwrap();
@@ -117,7 +133,7 @@ async fn store_image_atomic_writes_file() {
 
 #[tokio::test]
 async fn store_image_atomic_detects_duplicate() {
-    let (_, dir) = temp_image_dir();
+    let (_, dir, _scratch) = temp_image_dir();
     let hash = "abcdef0123456789";
     let bytes = b"test image data";
     store_image_atomic(&dir, hash, bytes).await.unwrap();
@@ -128,7 +144,7 @@ async fn store_image_atomic_detects_duplicate() {
 
 #[test]
 fn process_image_rejects_empty_body() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let claims = crate::auth::ApiTokenClaims {
         sub: "test".into(),
         jti: uuid::Uuid::new_v4().to_string(),
@@ -148,7 +164,7 @@ fn process_image_rejects_empty_body() {
 
 #[tokio::test]
 async fn put_image_accepts_valid_webp() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
     let body = make_webp_body();
@@ -175,7 +191,7 @@ async fn put_image_accepts_valid_webp() {
 
 #[tokio::test]
 async fn put_image_rejects_non_webp() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
 
@@ -197,7 +213,7 @@ async fn put_image_rejects_non_webp() {
 
 #[tokio::test]
 async fn put_image_hash_mismatch_returns_409_without_storing() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
     let body = make_webp_body();
@@ -246,7 +262,7 @@ async fn put_image_hash_mismatch_returns_409_without_storing() {
 
 #[tokio::test]
 async fn put_image_hash_match_stores_successfully() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
     let body = make_webp_body();
@@ -274,7 +290,7 @@ async fn put_image_hash_match_stores_successfully() {
 
 #[tokio::test]
 async fn put_image_malformed_body_with_wrong_hash_returns_400_not_409() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
     // The body is NOT a WebP AND the supplied hash doesn't match. The
@@ -299,7 +315,7 @@ async fn put_image_malformed_body_with_wrong_hash_returns_400_not_409() {
 
 #[tokio::test]
 async fn put_image_db_refcount_failure_returns_500_not_400() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     // Drop image_refs table to simulate an internal database failure
     {
         let db = state.db.lock().await;
@@ -337,7 +353,7 @@ async fn put_image_db_refcount_failure_returns_500_not_400() {
 
 #[tokio::test]
 async fn get_image_returns_404_for_unknown_hash() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
 
@@ -359,7 +375,7 @@ async fn get_image_returns_404_for_unknown_hash() {
 
 #[tokio::test]
 async fn get_image_returns_404_for_invalid_hash() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
 
@@ -381,7 +397,7 @@ async fn get_image_returns_404_for_invalid_hash() {
 
 #[tokio::test]
 async fn get_image_succeeds_when_refcounted() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let token = test_token(&state, "tenant-a");
     let app = router(state.clone());
 
@@ -436,7 +452,7 @@ async fn get_image_succeeds_when_refcounted() {
 
 #[tokio::test]
 async fn batch_put_accepts_multiple_images() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let app = router(state.clone());
     let token = test_token(&state, "tenant-a");
 
@@ -474,7 +490,7 @@ async fn batch_put_accepts_multiple_images() {
 
 #[tokio::test]
 async fn missing_returns_only_hashes_not_in_image_refs() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let token = test_token(&state, "tenant-a");
     let app = router(state.clone());
 
@@ -597,7 +613,7 @@ async fn get_pack(state: &AppState, tenant: &str, hashes: &[&str]) -> axum::resp
 /// request) — every case the old per-hash loop handled.
 #[tokio::test]
 async fn pack_batched_lookup_matches_the_per_hash_answer() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let imgs = make_webp_bodies(3, 64);
     upload_all(&state, "tenant-a", &imgs).await;
     let foreign = make_webp_bodies(4, 64).pop().unwrap();
@@ -655,7 +671,7 @@ async fn pack_batched_lookup_matches_the_per_hash_answer() {
 /// skipped, and the puller's cue that nothing in this pack is available.
 #[tokio::test]
 async fn pack_with_no_referenced_hashes_is_an_empty_ok_body() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let foreign = make_webp_bodies(1, 64).pop().unwrap();
     upload_all(&state, "tenant-b", &[foreign.clone()]).await;
     let foreign_h = sha256_hex16(&foreign);
@@ -674,7 +690,7 @@ async fn pack_with_no_referenced_hashes_is_an_empty_ok_body() {
 /// never reaches the store.
 #[tokio::test]
 async fn pack_with_no_valid_hashes_is_bad_request() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     let resp = get_pack(&state, "tenant-a", &["short", "UPPERCASE0000000", ""]).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let json = body_json(resp).await;
@@ -691,7 +707,7 @@ async fn pack_with_no_valid_hashes_is_bad_request() {
 /// the bytes.
 #[tokio::test]
 async fn pack_enforces_the_file_and_byte_ceilings() {
-    let (state, dir) = temp_image_dir();
+    let (state, dir, _scratch) = temp_image_dir();
     // Thin WebP bodies: the frame overhead is 4 bytes per image, so the cap
     // must be reached by IMAGE BYTES, which is what O-M24's ledger note
     // (`a Vec growing to PACK_MAX_BYTES`) is about.

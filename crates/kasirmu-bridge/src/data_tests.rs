@@ -111,7 +111,7 @@ impl tracing::Subscriber for Capture {
     fn exit(&self, _i: &tracing::span::Id) {}
 }
 
-fn temp_store_path(tag: &str) -> std::path::PathBuf {
+fn temp_store_path(tag: &str) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
     // Unique per CALL, not just per process: `tag + pid` gave every
     // `ungated`-tagged test in one binary the same `store.db`, so a second one
     // would have read the first one's backup file (precedent: `unique_store_dir`
@@ -121,14 +121,17 @@ fn temp_store_path(tag: &str) -> std::path::PathBuf {
     // which on this project's Windows machines resolves to the MACHINE-level
     // `C:\WINDOWS\TEMP` -- a directory an ordinary user can create in but not
     // delete from, so a stale fixture made `create_dir_all` fail with
-    // `os error 5` and reported it as a product defect. The bare
-    // `scratch_dir` path is used rather than a `ScratchDir` guard because the
-    // directory must outlive this function: the test keeps writing and reading
-    // `store.db` through `get_backup_status` after this returns, and a guard
-    // dropped here would delete it mid-test. A leftover under the gitignored
-    // `target/` is the cheaper mistake.
-    let dir = kasirmu_test_support::scratch_dir(&format!("kasirmu-bridge-{tag}"));
-    dir.join("store.db")
+    // `os error 5` and reported it as a product defect.
+    //
+    // The path is returned TOGETHER WITH its `ScratchDir` guard, the shape
+    // `testing.rs::unique_store_dir` established. A guard bound here and
+    // dropped on return would delete the directory while the test is still
+    // writing and reading `store.db` through `get_backup_status`; the caller
+    // binds it instead, so the directory lives for the whole body and is
+    // removed at the end. Every call used to leak one
+    // `kasirmu-bridge-{tag}-*` directory forever.
+    let scratch = kasirmu_test_support::ScratchDir::new(&format!("kasirmu-bridge-{tag}"));
+    (scratch.path().join("store.db"), scratch)
 }
 
 fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Path) {
@@ -167,7 +170,7 @@ fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Pa
 
 #[tokio::test]
 async fn ungated_get_backup_status_emits_exactly_one_event() {
-    let db = temp_store_path("ungated");
+    let (db, _scratch) = temp_store_path("ungated");
     let capture = Capture::default();
     {
         let _guard = capture.install();
@@ -200,7 +203,7 @@ async fn ungated_get_backup_status_emits_exactly_one_event() {
 #[tokio::test]
 async fn scoped_get_backup_status_emits_zero_events_after_passing_the_check() {
     use crate::testing::TestBridge;
-    let db = temp_store_path("scoped");
+    let (db, _scratch) = temp_store_path("scoped");
     let bridge = TestBridge::new();
     let token = bridge.token_granting(permissions::DATA_EXPORT).await;
     let capture = Capture::default();
@@ -801,7 +804,7 @@ fn import_gate_users_rejects_at_cap_and_writes_nothing() {
 /// The restore surface is filesystem-shaped — generations, a request file — so
 /// unlike the rest of this module its cases cannot run over an in-memory
 /// connection. Same shape as `recovery.rs`'s `Scratch`.
-struct RestoreScratch(std::path::PathBuf);
+struct RestoreScratch(kasirmu_test_support::ScratchDir);
 
 impl RestoreScratch {
     fn new(label: &str) -> Self {
@@ -809,14 +812,25 @@ impl RestoreScratch {
         // Windows machines, where an ordinary user can create but not delete:
         // the pid/nanos suffix made every run leak a directory and a stale one
         // made the create itself fail with `os error 5`. `target/test-scratch`
-        // is writable and the struct's own `Drop` (below) removes it, so the
-        // guard shape is unchanged -- only the root moves.
-        let dir = kasirmu_test_support::scratch_dir(&format!("kasirmu-bridge-restore-{label}"));
-        Self(dir)
+        // is writable, so the guard shape is unchanged -- only the root moves.
+        //
+        // The directory is held as a `ScratchDir` rather than a bare
+        // `PathBuf` plus a hand-written `Drop`: the bare `scratch_dir` path
+        // leaked one directory per case, and that `Drop` is now the shared
+        // guard's. It lives as long as this struct, which the tests keep bound
+        // for the whole restore flow (`prepared_request` hands it back to its
+        // caller for exactly that reason).
+        Self(kasirmu_test_support::ScratchDir::new(&format!(
+            "kasirmu-bridge-restore-{label}"
+        )))
+    }
+
+    fn path(&self) -> &std::path::Path {
+        self.0.path()
     }
 
     fn live(&self) -> std::path::PathBuf {
-        self.0.join("store.db")
+        self.path().join("store.db")
     }
 
     /// A migrated, file-backed database at `path` carrying `store.name`.
@@ -833,12 +847,6 @@ impl RestoreScratch {
         let mut path = self.live();
         path.set_extension("backup.db");
         path
-    }
-}
-
-impl Drop for RestoreScratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
@@ -1134,11 +1142,11 @@ async fn restore_prepare_writes_the_exact_file_name_the_boot_consumer_reads() {
         expected.is_file(),
         "restore_prepare must write exactly '{}'; the directory holds {:?}",
         expected.display(),
-        dir_entries(&scratch.0)
+        dir_entries(scratch.path())
     );
     // Exactly one file under the consumer's suffix: a second derivation in the
     // writer would leave the consumer reading the wrong one of the two.
-    let requests: Vec<String> = dir_entries(&scratch.0)
+    let requests: Vec<String> = dir_entries(scratch.path())
         .into_iter()
         .filter(|name| name.ends_with(CONSUMER_REQUEST_SUFFIX))
         .collect();
