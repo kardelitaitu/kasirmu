@@ -507,6 +507,223 @@ fn every_row_declares_its_currency() {
     );
 }
 
+/// Seed one completed sale+line stamped at an explicit instant.
+///
+/// The plain `seed_sale_with_line` hard-codes 2026-07-10T10:00Z, which cannot
+/// express a boundary. This variant exists solely so the range test below can
+/// place a sale at the last millisecond of a day and at the first of the next.
+fn seed_sale_at(conn: &Connection, sale_id: &str, sku: &str, at: &str, line_minor: i64) {
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES (?1, ?2, 'USD', 1, 'completed', ?3, ?3, ?2, 0)",
+        params![sale_id, line_minor, at],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES (?1, ?2, ?3, 1, ?4, ?4, 'USD', 0)",
+        params![format!("sl-{sale_id}"), sale_id, sku, line_minor],
+    )
+    .unwrap();
+}
+
+/// O-M54: the date filter is a HALF-OPEN instant range, and this pins where the
+/// boundary actually falls.
+///
+/// The predicate used to be `DATE(created_at) BETWEEN ?1 AND ?2`, which wraps the
+/// column in a function and therefore cannot use an index on
+/// `sales.created_at` — every report was a full scan growing with history. It
+/// is now `created_at >= ?1 AND created_at < date(?2, '+1 day')`.
+///
+/// The rewrite is only acceptable if it selects EXACTLY the same days. The risk
+/// is the upper bound: if `date(end, '+1 day')` were compared against a column
+/// that also contains a date-only string, that string would sort BEFORE the
+/// bound and a sale at exactly midnight would slip into the next day. This
+/// fixture places a sale on each side of the boundary — the last millisecond of
+/// the end day, and the first millisecond of the following day — so a bound that
+/// is off by one day, or an upper bound that is inclusive of the wrong edge,
+/// fails here instead of silently shifting revenue between months.
+#[test]
+fn menu_engineering_range_is_half_open_on_calendar_days() {
+    let conn = fresh();
+    seed_product(&conn, "COFFEE", 100, 40);
+    // Inside the range: the LAST millisecond of the end day must be included.
+    seed_sale_at(
+        &conn,
+        "me-last-ms",
+        "COFFEE",
+        "2026-07-31T23:59:59.999Z",
+        500,
+    );
+    // Outside: the FIRST millisecond of the next day must be excluded.
+    seed_sale_at(
+        &conn,
+        "me-next-day",
+        "COFFEE",
+        "2026-08-01T00:00:00.000Z",
+        999,
+    );
+    // Outside on the other edge: the day before the start must be excluded.
+    seed_sale_at(
+        &conn,
+        "me-prev-day",
+        "COFFEE",
+        "2026-06-30T23:59:59.999Z",
+        111,
+    );
+    // Inside: the first millisecond of the start day must be included.
+    seed_sale_at(
+        &conn,
+        "me-first-ms",
+        "COFFEE",
+        "2026-07-01T00:00:00.000Z",
+        250,
+    );
+
+    let result = query_menu_engineering(&conn, "2026-07-01", "2026-07-31").unwrap();
+
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "all in-range sales of one product/currency must collapse to one row"
+    );
+    let row = &result.rows[0];
+    assert_eq!(
+        row.total_volume, 2,
+        "exactly the two sales inside the range may be counted; got {}",
+        row.total_volume
+    );
+    assert_eq!(
+        row.total_revenue_minor, 750,
+        "500 (last ms of end day) + 250 (first ms of start day) = 750;          999 (next day) and 111 (previous day) must be excluded"
+    );
+}
+
+/// O-M54, the half that actually matters: the planner must be able to SEEK.
+///
+/// The boundary test above proves the rewrite selects the same DAYS. It does not
+/// prove it is any faster — a full scan selects the right rows too. The defect
+/// was never the answer, it was the cost: `DATE(created_at)` wraps the COLUMN in
+/// a function, so SQLite cannot use `idx_sales_created_at` and every report scans
+/// the whole `sales` table, growing with history.
+///
+/// This asserts the query plan directly, the same way
+/// `migrations_tests::analytics_query_uses_status_created_date_index` does for
+/// the analytics path. If a future edit reintroduces `DATE(s.created_at)` in the
+/// WHERE clause, this fails and names the plan — the boundary test would still
+/// pass, which is exactly why both exist.
+#[test]
+fn menu_engineering_date_filter_can_use_an_index() {
+    let mut conn = fresh();
+    migrations::run(&mut conn).unwrap();
+    // SEED BEFORE PLANNING. On an empty table SQLite has no statistics and
+    // answers with a scan of whichever index it likes best — measured: with zero
+    // rows the OLD `DATE(created_at)` predicate came back as
+    // `SCAN s USING COVERING INDEX idx_sales_created_at`, which made the
+    // counterfactual below pass for a reason unrelated to the rewrite. A plan is
+    // only meaningful against a table big enough for the choice to matter.
+    for i in 0..200 {
+        let at = format!("2026-07-{:02}T10:00:00.000Z", (i % 28) + 1);
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+             VALUES (?1, 100, 'USD', 1, 'completed', ?2, ?2, 100, 0)",
+            params![format!("plan-{i}"), at],
+        )
+        .unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    // The SAME SQL the product runs, prefixed with EXPLAIN. Reading a constant
+    // rather than a copy is the whole point: the earlier version of this test
+    // kept its own literal and stayed GREEN when the production predicate was
+    // reverted to `DATE(s.created_at) BETWEEN ?1 AND ?2`.
+    let plan_of = |conn: &Connection, sql: &str, params: [&str; 2]| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map(params, |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n")
+    };
+    let plan = plan_of(&conn, MENU_ENGINEERING_SQL, ["2026-07-01", "2026-07-31"]);
+
+    // MEASURED (2026-10-22), and LESS dramatic than the debt entry claimed, so
+    // these assertions state what is true rather than what the entry promised:
+    //
+    //   old `DATE(s.created_at) BETWEEN ?1 AND ?2`, SEEDED table:
+    //     SEARCH s USING INDEX idx_sales_status_created_date
+    //   new half-open range, SEEDED table:
+    //     SEARCH s USING INDEX idx_sales_status_created_date
+    //
+    // BOTH SEEK. The reason is in `20260814_analytics_index.sql`:
+    //     CREATE INDEX idx_sales_status_created_date ON sales(status, date(created_at))
+    // — an EXPRESSION index built for exactly the `status = … AND
+    // DATE(created_at) BETWEEN …` shape. So the "full scan that grows with
+    // history" this entry describes was already fixed by that index; the
+    // rewrite buys PORTABILITY, not speed.
+    //
+    // What the rewrite genuinely buys, and what these assertions pin: the query
+    // no longer DEPENDS on an expression index existing. Drop that index and the
+    // old form falls back to a scan while the new form still seeks — asserted
+    // below, and mirrored in `the_old_date_predicate_depends_on_the_expression_index`.
+    assert!(
+        plan.contains("SEARCH"),
+        "the date filter must SEEK the range, not scan the table; plan:\n{plan}"
+    );
+    assert!(
+        !plan.contains("SCAN s"),
+        "`sales` must not be scanned; plan:\n{plan}"
+    );
+
+    // FACT 3: drop the expression index and the query must STILL seek. This is
+    // the real justification for the rewrite, and the only way to prove it —
+    // on a schema that has only a plain `idx_sales_created_at`.
+    conn.execute_batch("DROP INDEX IF EXISTS idx_sales_status_created_date")
+        .unwrap();
+    conn.execute_batch("ANALYZE").unwrap();
+    let plan_no_expr = plan_of(&conn, MENU_ENGINEERING_SQL, ["2026-07-01", "2026-07-31"]);
+    assert!(
+        plan_no_expr.contains("SEARCH"),
+        "without the expression index the half-open range must still seek; \
+         plan:\n{plan_no_expr}"
+    );
+    assert!(
+        plan_no_expr.contains("idx_sales_created_at"),
+        "expected the plain created_at index to serve the range; plan:\n{plan_no_expr}"
+    );
+}
+
+/// The counterfactual, on its own connection: the OLD `DATE(column)` predicate
+/// LOSES its seek once the expression index is gone — the fragility the rewrite
+/// removes. Separate test because it drops an index.
+#[test]
+fn the_old_date_predicate_depends_on_the_expression_index() {
+    let mut conn = fresh();
+    migrations::run(&mut conn).unwrap();
+    conn.execute_batch("DROP INDEX IF EXISTS idx_sales_status_created_date")
+        .unwrap();
+    conn.execute_batch("ANALYZE").unwrap();
+
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN
+             SELECT 1 FROM sales s
+              WHERE s.status = 'completed' AND DATE(s.created_at) BETWEEN ?1 AND ?2",
+        )
+        .unwrap();
+    let old_plan = stmt
+        .query_map(["2026-07-01", "2026-07-31"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+
+    assert!(
+        !old_plan.contains("SEARCH"),
+        "the OLD DATE(column) predicate can still seek without the expression \
+         index — the rewrite would be redundant; plan:\n{old_plan}"
+    );
+}
 /// Single-currency behaviour must be unchanged: the common case still yields
 /// exactly one row per product, so this fix is not a behaviour change there.
 #[test]

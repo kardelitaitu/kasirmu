@@ -2,10 +2,15 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-reporting slice A: deep read)
 crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: R-1 INFO (menu_engineering merge_same_product_rows keeps the first-seen unit price/cost — the revenue-descending SQL order's first row, not the mode — so merged margin_per_unit can misrepresent; proposed: derive unit price as total_revenue/total_volume or document) | R-2 INFO (all reporting queries wrap DATE(s.created_at) in WHERE predicates — non-sargable, full table scans on large sales tables; fine today, propose sargable range predicates when volume grows)
-next: none | perf: DATE() non-sargable (R-2, deliberately NOT scheduled —
-  an INFO note to revisit if sales-table volume ever makes the full scan
-  visible; there are no sargable rewrites pending, and the tz-aware
-  DATE(created_at, tz) form is the current shape)
+next: none | perf: R-2 RESOLVED HERE 2026-10-22 (O-M54) for THIS query only —
+  query_menu_engineering's WHERE was DATE(s.created_at) BETWEEN ?1 AND ?2 and is
+  now the half-open sargable range s.created_at >= ?1 AND s.created_at <
+  date(?2, '+1 day'). MEASURED with EXPLAIN QUERY PLAN over 200 seeded rows:
+  old = "SCAN s USING COVERING INDEX idx_sales_created_at" (walks every row);
+  new = "SEARCH s USING INDEX idx_sales_status_created_date (status=? AND <expr>>?
+  AND <expr><?)" (seeks the range). The remaining DATE() predicates in the
+  crate's OTHER report queries (and the tz-aware DATE(created_at, tz) form)
+  are unchanged and still R-2 INFO.
 R-1 RESOLVED 2026-10-04 by documentation, the audit's second option:
   merge_same_product_rows (menu_engineering.rs) carries a `// REP-B:` comment
   stating the kept unit price/cost is the FIRST-SEEN row from the
@@ -180,10 +185,53 @@ impl MenuEngineeringResult {
     }
 }
 
+/// The menu engineering aggregation SQL.
+///
+/// Hoisted to a module constant so the test that asserts its QUERY PLAN
+/// (`menu_engineering_date_filter_can_use_an_index`) reads the SAME text the
+/// product runs. A plan test against a copy of the SQL is worthless: the
+/// earlier version of that test kept its own literal and stayed green when the
+/// production predicate was reverted to the non-sargable form.
+///
+/// // REP-A, C22 and O-M54 comments live at the call site below.
+const MENU_ENGINEERING_SQL: &str = "SELECT COALESCE(p.id, sl.sku) AS product_id, sl.sku AS sku,
+                COALESCE(p.name, sl.sku) AS name,
+                sl.currency AS currency,
+                COALESCE(SUM(sl.qty), 0) AS total_volume,
+                sl.unit_minor AS unit_price_minor,
+                COALESCE(sl.cost_minor, p.cost_minor, 0) AS unit_cost_minor,
+                (sl.unit_minor - COALESCE(sl.cost_minor, p.cost_minor, 0)) AS margin_per_unit,
+                SUM((sl.unit_minor - COALESCE(sl.cost_minor, p.cost_minor, 0)) * sl.qty) AS total_margin_minor,
+                SUM(sl.line_minor) AS total_revenue_minor
+         FROM sale_lines sl
+         JOIN sales s ON sl.sale_id = s.id
+         LEFT JOIN products p ON sl.sku = p.sku
+         WHERE s.status = 'completed'
+           AND s.created_at >= ?1 AND s.created_at < date(?2, '+1 day')
+         GROUP BY COALESCE(p.id, sl.sku), sl.currency, sl.unit_minor
+         ORDER BY total_revenue_minor DESC";
+
 /// Run the menu engineering aggregation query for a date range.
 ///
 /// Returns per-product totals for volume, revenue, and contribution margin,
 /// along with the median values used for quadrant classification.
+///
+/// # Range semantics
+///
+/// Both bounds are INCLUSIVE CALENDAR DAYS, in whatever zone the stored
+/// `created_at` values are written in (the same convention as the rest of the
+/// report suite). The predicate is written as a half-open instant range,
+/// `created_at >= start AND created_at < (end + 1 day)`, rather than
+/// `DATE(created_at) BETWEEN start AND end`.
+///
+/// O-M54: the `DATE(...)` form wraps the COLUMN in a function, so SQLite cannot
+/// use an index on `sales.created_at` and every report is a full scan that grows
+/// with history. The half-open range leaves the column bare, so the planner can
+/// seek. It is equivalent for the stored format (`YYYY-MM-DDTHH:MM:SS.sssZ`:
+/// ISO-8601 strings sort lexicographically, and `date(?2, '+1 day')` yields
+/// `YYYY-MM-DD`, which is BELOW every timestamp sharing that date prefix — so
+/// the upper bound excludes the whole end day and only that day).
+/// `menu_engineering_range_is_half_open_on_calendar_days` pins the boundary.
 pub fn query_menu_engineering(
     conn: &rusqlite::Connection,
     start_date: &str,
@@ -201,22 +249,7 @@ pub fn query_menu_engineering(
         // money in no currency, and the row carried no code for the UI to
         // format with. Same convention as the rest of the report suite --
         // see db/reports/product_sales.rs:175 and revenue.rs:144.
-        "SELECT COALESCE(p.id, sl.sku) AS product_id, sl.sku AS sku,
-                COALESCE(p.name, sl.sku) AS name,
-                sl.currency AS currency,
-                COALESCE(SUM(sl.qty), 0) AS total_volume,
-                sl.unit_minor AS unit_price_minor,
-                COALESCE(sl.cost_minor, p.cost_minor, 0) AS unit_cost_minor,
-                (sl.unit_minor - COALESCE(sl.cost_minor, p.cost_minor, 0)) AS margin_per_unit,
-                SUM((sl.unit_minor - COALESCE(sl.cost_minor, p.cost_minor, 0)) * sl.qty) AS total_margin_minor,
-                SUM(sl.line_minor) AS total_revenue_minor
-         FROM sale_lines sl
-         JOIN sales s ON sl.sale_id = s.id
-         LEFT JOIN products p ON sl.sku = p.sku
-         WHERE s.status = 'completed'
-           AND DATE(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY COALESCE(p.id, sl.sku), sl.currency, sl.unit_minor
-         ORDER BY total_revenue_minor DESC",
+        MENU_ENGINEERING_SQL,
     )?;
 
     let mut rows: Vec<MenuEngineeringRow> = stmt
