@@ -552,18 +552,26 @@ pub struct SyncConflictDto {
 /// forever and the spinner never clears. 10s connect / 30s total matches the
 /// convention for the other bounded non-bulk JSON calls (`sync_client`,
 /// `whatsapp`, the payment drivers).
+///
+/// O-M32: Reuses a single shared client across calls to avoid re-initializing
+/// TLS contexts and connection pools on every invocation.
 fn bounded_conflict_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|e| {
-            tracing::error!(
-                error = %e,
-                "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
-            );
-            reqwest::Client::new()
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|e| {
+                    tracing::error!(
+                        error = %e,
+                        "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
+                    );
+                    reqwest::Client::new()
+                })
         })
+        .clone()
 }
 
 async fn sync_server_credentials(
