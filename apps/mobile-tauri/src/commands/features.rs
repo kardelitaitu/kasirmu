@@ -155,8 +155,9 @@ pub async fn set_feature(
         let mut auto_enabled: Vec<String> = Vec::new();
 
         if args.enabled {
-            // Before enabling, track what was already enabled.
-            let before_enable: Vec<Feature> = reg.enabled_features().collect();
+            // Before enabling, track what was already enabled (O-L08: HashSet avoids quadratic scan).
+            let before_enable: std::collections::HashSet<Feature> =
+                reg.enabled_features().collect();
 
             // Enable the feature (this auto-enables dependencies).
             reg.enable(feature);
