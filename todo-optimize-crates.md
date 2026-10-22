@@ -6049,3 +6049,82 @@ cargo test  -p kasirmu-core --lib                  -> 3673 passed, 0 failed (183
 python scripts/check-query-plans.py --check        -> exit 0, both tiers
 generate-pg-migration.py                           -> 129 tables, 169 indexes
 ```
+
+## §11CJ — the probe can no longer drift: 26 of 27 sourced from production constants (2026-10-22)
+
+Landed in `51ff9a8ad` and `79be56727`.
+
+### The copy problem is essentially closed
+
+| | Before | After |
+|---|---|---|
+| Probe entries sourced from shared production constants | 14 | **26** |
+| Probe entries holding their own copy | 13 | **1** |
+
+Twelve further constants hoisted: `TOP_PRODUCTS_SQL`, `CATEGORY_BREAKDOWN_SQL`, `INVENTORY_TREND_SQL`
+(`reports/product_sales.rs`); `HOURLY_HEATMAP_SQL`, `PAYMENT_METHOD_BREAKDOWN_SQL`, `VOIDED_ITEMS_SQL`
+(`reports/sales_summary.rs`); `OFFLINE_ENQUEUE_DEDUP_PROBE_SQL`, `OFFLINE_OUTBOX_PROBE_SQL`,
+`OFFLINE_OUTBOX_LEGACY_FALLBACK_SQL` (`offline/enqueue.rs`); `LIST_STOCK_MOVEMENTS_SQL`,
+`STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL` (`products_stock_adjust/movements.rs`); `STOCK_LEDGER_SUM_SQL`
+(`products_stock_adjust/ledger.rs`).
+
+The one remaining copy is `list_kds_orders_for_instance`, which stays pinned-to-base because its visible
+fragment comes from a private method that would have to be widened for a test's sake.
+
+### `TOP_PRODUCTS_SQL` is the interesting one
+
+It is `format!`-built with a RUNTIME order clause, so only the static base could be hoisted — the
+`KDS_QUEUE_BASE_SQL` pattern. `concat!` cannot take a base const, so the probe joins the same base with a
+pinned revenue tail at run time, and **two new tests hold the join honest**:
+`top_products_probe_extends_the_production_base` (tail char-for-char, and it is the revenue/default branch)
+and `top_products_ranking_terms_come_from_the_product` (both ranking literals still present in production
+source). That is a weaker guarantee than a shared constant, and it is stated as weaker rather than presented
+as equivalent.
+
+### The tokenizer earned its keep again
+
+The literal-multiset proof caught a defect introduced DURING this work: the first insertion re-indented the
+continuation lines (12 spaces instead of 20) in all three `product_sales` literals. That is a text change
+nobody would review as a query change. The tokenizer flagged it, it was reverted, and the proof now reads
+byte-identical on every file: product_sales 7/7, sales_summary 12/12, enqueue 11/11, movements 6/6,
+ledger 8/8, with the unchanged baselines still clean (revenue 3/3, audit 26/26, offline 27/27, kds_orders 19/19).
+
+Every multi-line converted const carries `#[rustfmt::skip]`, and that was **verified by running `rustfmt` and
+re-running the tokenizer** rather than by assuming the attribute works.
+
+### O-M71 — closed as NOT-ACTIONABLE, with the numbers that rule out an index
+
+`list_gift_cards` has four scanning shapes. Measured over 3,000 cards + `ANALYZE`:
+
+| Shape | Plan |
+|---|---|
+| `status = ?` (even at 2.5% selectivity) | `SEARCH g USING INDEX idx_gift_cards_status` |
+| `card_number LIKE 'GC-0001%'` (PREFIX) | `SCAN g` |
+| `card_number LIKE '%0001%'` (INFIX) | `SCAN g` |
+| `current_balance_minor >= ?` | `SCAN g` |
+| unfiltered default page | `SCAN g` |
+
+Three of those cannot be fixed by an index: a LEADING wildcard is unindexable (and even the PREFIX form scans,
+because SQLite only uses an index for `LIKE` under `COLLATE NOCASE` or `PRAGMA case_sensitive_like`, and this
+schema uses neither); `min_balance` is a RANGE on a value that changes on every redemption, so indexing it
+puts maintenance on the hottest write path to serve a rare filter; and the unfiltered page is bounded by cards
+issued, not transaction volume — **not the O-M69 growth class.**
+
+Closed with the measurement instead of an index. The probe's pin at 4 stays, so it fails both on regression
+AND on a future index landing, forcing a deliberate re-measurement either way.
+
+### What this round did NOT do, and why
+
+I had planned to extend the gates to `apps/cloud-server`. Checked first: its analytical SQL is PostgreSQL
+(`email_pg/analytics.rs`), there is no PostgreSQL on this machine, and a plan assertion that has never
+executed against a real server is exactly the kind of false confidence this ledger exists to prevent. **Not
+attempted, rather than attempted-and-claimed.** The `ui/` half has no SQL to probe.
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets             -> exit 0
+cargo test  -p kasirmu-core --test integration query_plan_probe -> 6 passed, 0 failed
+cargo test  -p kasirmu-core --lib                     -> 3673 passed, 0 failed (193.70s)
+rustfmt --edition 2024 --check                        -> exit 0 on all 10 files
+```
