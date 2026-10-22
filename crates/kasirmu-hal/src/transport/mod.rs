@@ -11,6 +11,8 @@ next: none | perf: N/A
 /// one borrows its captured VM through `bt_android::with_env`.
 #[cfg(target_os = "android")]
 pub mod apk_signature;
+/// Buffered CR/LF-terminated read loop shared by the serial and BT scanners.
+pub(crate) mod barcode_reader;
 /// Android Bluetooth (SPP/RFCOMM) transport — JNI over BluetoothSocket.
 #[cfg(target_os = "android")]
 pub mod bt_android;
