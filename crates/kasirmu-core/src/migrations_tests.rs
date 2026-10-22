@@ -923,7 +923,12 @@ fn init_sql_creates_complete_schema_surface() {
         // on receivable_payments (+5).
         // 20261023_offline_queue_sale_id.sql adds 2: idx_offline_queue_sale_pending
         // (covering point-probe on sale_id) and idx_offline_queue_status_action (+2).
-        196,
+        // 20261024_refunds_analytics_index.sql adds 2:
+        // idx_refunds_currency_created_date (the date(created_at) expression
+        // index the three revenue report CTEs seek on) and
+        // idx_refunds_processed_by_created_at (the bare created_at range the
+        // shift-close reconciliation seeks on). No table, no trigger.
+        198,
         "index surface drifted"
     );
     assert_eq!(
@@ -1015,6 +1020,161 @@ fn offline_queue_query_uses_status_or_tenant_status_index() {
     assert!(
         plan.contains("idx_offline_queue"),
         "offline queue query did not use an offline_queue index; plan:\n{plan}"
+    );
+}
+
+/// The revenue reports aggregate refunds through a CTE that filters
+/// `DATE(refunds.created_at, tz) BETWEEN ?1 AND ?2`. `refunds` shipped with
+/// exactly one index — `idx_refunds_sale_id` — so before
+/// `20261024_refunds_analytics_index.sql` every revenue report, for any date
+/// range, SCANNED the whole refunds table (measured, not inferred).
+/// `idx_refunds_currency_created_date` is the expression index built for that
+/// shape; prove the planner actually SEARCHes through it.
+///
+/// The seed and the ANALYZE are load-bearing: on an EMPTY table SQLite may pick
+/// a scan of any index it likes, which makes the assertion vacuous. With 500
+/// realistic rows and statistics, a plan that scans is a plan that scans.
+#[test]
+fn revenue_refund_cte_uses_refunds_currency_created_date_index() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // One completed sale to hang the refunds off (refunds.sale_id is NOT NULL
+    // with an FK), and one sale line so refund_lines has a real parent.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at)
+         VALUES ('plan-sale-1', 100000, 'MUR', 1, 'completed', '2026-03-01T10:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position, cost_minor)
+         VALUES ('plan-line-1', 'plan-sale-1', 'PLAN-SKU', 1, 1000, 1000, 'MUR', 1, 500)",
+        [],
+    )
+    .unwrap();
+
+    // 500 refunds, each with a line, over 2026. THREE ingredients are
+    // load-bearing and each was found by bisection — change any and the plan
+    // test goes quietly vacuous:
+    //  * ~500 rows with statistics, not an empty table (an empty table plans
+    //    however SQLite likes);
+    //  * two PROCESSORS, so idx_refunds_processed_by_created_at offers the
+    //    planner a real alternative to the expression index;
+    //  * refund_lines populated, so the cost subquery is not optimised away.
+    {
+        let tx = conn.transaction().unwrap();
+        for i in 0..500i64 {
+            let day = (i % 300) + 1;
+            let currency = if i % 3 == 0 { "MUR" } else { "USD" };
+            let processor = if i % 2 == 0 {
+                "plan-user-1"
+            } else {
+                "plan-user-2"
+            };
+            tx.execute(
+                "INSERT INTO refunds (id, sale_id, total_minor, currency, processed_by, created_at)
+                 VALUES (?1, 'plan-sale-1', ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    format!("plan-refund-{i}"),
+                    1000i64 + i,
+                    currency,
+                    processor,
+                    format!(
+                        "2026-{:02}-{:02}T{:02}:00:00.000Z",
+                        (day % 12) + 1,
+                        (day % 28) + 1,
+                        i % 24
+                    ),
+                ],
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency)
+                 VALUES (?1, ?2, 'plan-line-1', 'PLAN-SKU', 1, 100, 100, ?3)",
+                rusqlite::params![format!("plan-refund-line-{i}"), format!("plan-refund-{i}"), currency],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    // The exact predicate the three revenue CTEs use (revenue.rs daily/weekly/
+    // monthly all spell it this way).
+    fn plan_for(conn: &rusqlite::Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> String {
+        let mut stmt = conn.prepare(sql).unwrap();
+        stmt.query_map(args, |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n")
+    }
+
+    // The SQL under test is the PRODUCTION text, imported rather than retyped:
+    // a plan test that keeps its own copy of the query stays green when the
+    // real one is reshaped back into the scanning form.
+    use crate::db::reports::revenue::{DAILY_REVENUE_SQL, MONTHLY_REVENUE_SQL, WEEKLY_REVENUE_SQL};
+
+    let as_plan = |sql: &str| format!("EXPLAIN QUERY PLAN {sql}");
+
+    let tz_zero: [&dyn rusqlite::ToSql; 3] = [&"2026-01-01", &"2026-12-31", &"-0 hours"];
+    let tz_shifted: [&dyn rusqlite::ToSql; 3] = [&"2026-01-01", &"2026-12-31", &"+4 hours"];
+    let wide_range: [&dyn rusqlite::ToSql; 3] = [&"2000-01-01", &"2099-12-31", &"-0 hours"];
+    let daily_plan = as_plan(DAILY_REVENUE_SQL);
+    let report_plans = [
+        ("daily", plan_for(&conn, &daily_plan, &tz_zero)),
+        (
+            "weekly",
+            plan_for(&conn, &as_plan(WEEKLY_REVENUE_SQL), &tz_zero),
+        ),
+        (
+            "monthly",
+            plan_for(&conn, &as_plan(MONTHLY_REVENUE_SQL), &tz_zero),
+        ),
+        (
+            "daily (store offset +4 hours)",
+            plan_for(&conn, &daily_plan, &tz_shifted),
+        ),
+        (
+            "daily (range covering the table)",
+            plan_for(&conn, &daily_plan, &wide_range),
+        ),
+    ];
+
+    for (label, plan) in &report_plans {
+        // `SCAN rf1 USING INDEX idx_refunds_currency_created_date` is the
+        // whole index and NOT the table — an index-only walk is the win. What
+        // must never appear is `SCAN rf1` with no index: the table scan that
+        // made every report read all of refunds.
+        assert!(
+            plan.contains("USING INDEX idx_refunds_currency_created_date"),
+            "{label}: revenue refund CTE did not use \
+             idx_refunds_currency_created_date; plan:\n{plan}"
+        );
+        assert!(
+            !plan.contains("SCAN rf1\n") && !plan.lines().any(|line| line.trim() == "SCAN rf1"),
+            "{label}: revenue refund CTE must not scan the refunds table; plan:\n{plan}"
+        );
+    }
+
+    // The shift-close queries filter a BARE created_at range leading on
+    // processed_by, which the date() expression index cannot serve.
+    let shift_plan = plan_for(
+        &conn,
+        "EXPLAIN QUERY PLAN
+         SELECT COALESCE(SUM(r.total_minor), 0)
+           FROM refunds r
+          WHERE r.processed_by = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
+        &[&"plan-user-1", &"2026-01-01", &"2026-12-31"],
+    );
+    assert!(
+        shift_plan.contains("idx_refunds_processed_by_created_at"),
+        "shift-close refunds query did not use idx_refunds_processed_by_created_at; plan:\n{shift_plan}"
+    );
+    assert!(
+        !shift_plan.contains("SCAN r"),
+        "shift-close refunds query must SEARCH refunds, not SCAN it; plan:\n{shift_plan}"
     );
 }
 

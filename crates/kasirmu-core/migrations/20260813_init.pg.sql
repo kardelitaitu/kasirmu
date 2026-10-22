@@ -3601,6 +3601,9 @@ CREATE INDEX IF NOT EXISTS idx_receivables_due
 CREATE INDEX IF NOT EXISTS idx_receivables_tenant_status
     ON receivables(tenant_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_refunds_processed_by_created_at
+    ON refunds(processed_by, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_refunds_sale_id ON refunds(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);

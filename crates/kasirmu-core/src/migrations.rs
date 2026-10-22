@@ -486,6 +486,19 @@ pub const ALL: &[Migration] = &[
         id: "20261023_offline_queue_sale_id.sql",
         sql: include_str!("../migrations/20261023_offline_queue_sale_id.sql"),
     },
+    // Measured defect: the daily/weekly/monthly revenue CTEs filter
+    // `DATE(refunds.created_at, tz) BETWEEN ?1 AND ?2`, which no existing index
+    // serves, so every revenue report scanned the whole refunds table. Adds the
+    // expression index idx_refunds_currency_created_date mirroring
+    // 20260814_analytics_index.sql's precedent for sales, plus
+    // idx_refunds_processed_by_created_at for the bare-created_at range the
+    // shift-close reconciliation uses. Two indexes, no table and no trigger, so
+    // the index-surface pin in migrations_tests.rs moves 196 -> 198. Appended at
+    // the registry tail so no earlier migration reorders.
+    Migration {
+        id: "20261024_refunds_analytics_index.sql",
+        sql: include_str!("../migrations/20261024_refunds_analytics_index.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

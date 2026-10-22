@@ -94,7 +94,10 @@ DT_PG = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
 # them: an expression index on a value derived from a TEXT column via a
 # cast (`date(created_at)` / `created_at::date`) is rejected because the
 # text→date cast is STABLE (DateStyle-dependent), not IMMUTABLE.
-SQLITE_ONLY_INDEXES = {"idx_sales_status_created_date"}
+SQLITE_ONLY_INDEXES = {
+    "idx_sales_status_created_date",
+    "idx_refunds_currency_created_date",
+}
 
 # Indexes an EARLIER revision of this generator emitted and a later SQLite
 # migration removed. Postgres has no re-apply for a dropped object: the

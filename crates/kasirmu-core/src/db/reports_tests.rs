@@ -158,6 +158,52 @@ fn daily_revenue_gross_profit_from_product_costs() {
     );
 }
 
+/// Several refunds on one day/currency must net their cost out exactly once.
+///
+/// The refunds CTE is now a nested block so SQLite can use
+/// `idx_refunds_currency_created_date` (measured: the inline form scanned).
+/// That rewrote `(correlated cost subquery) AS rcost` into
+/// `SUM((same subquery)) / COUNT(*)`. The two are equal ONLY if the subquery is
+/// CONSTANT within each (day, currency) group — which it is, because it is
+/// correlated on (day, currency) and not on the individual refund. This test
+/// pins that: a group of THREE refunds whose aggregate is not a clean multiple
+/// would expose a truncating division or a double count.
+#[test]
+fn several_refunds_in_one_day_net_their_cost_exactly_once() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    // 6 units at cost 400 = 2400 total cost.
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 6, 1000);
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 400 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+
+    // THREE refunds, same day and currency: 1 + 2 + 1 = 4 of 6 units refunded.
+    // At cost 400 per unit, refunded cost is 1600.
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+    refund_units(&conn, &sale_id, "SHIRT", 2, 1000);
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+
+    let rows = store(&conn)
+        .daily_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows.len(), 1, "all three refunds fall on one day/currency");
+    assert_eq!(
+        rows[0].refund_minor, 4000,
+        "three refunds of 1+2+1 units at 1000 each refund 4000"
+    );
+    // Two units stay sold at cost 400 = 800. The refunded 4 units of cost
+    // (1600) leave COGS; the inline and nested forms must agree EXACTLY.
+    assert_eq!(
+        rows[0].cogs_minor, 800,
+        "COGS must be the 2 unrefunded units only (2 * 400); a truncating rcost_sum/n or a double count would move this off 800",
+    );
+    assert_eq!(rows[0].total_minor, 6000);
+    assert_eq!(rows[0].net_revenue_minor, 2000);
+    assert_eq!(rows[0].gross_profit_minor, 1200);
+}
 // ── REP-08: refunded cost must leave COGS ──────────────────────
 
 #[test]

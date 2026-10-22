@@ -20,7 +20,9 @@ next: none for COR-21 (cloud email parity for tz recorded as follow-up in audit-
 
 mod datetime;
 mod product_sales;
-mod revenue;
+// pub(crate) so the plan test in migrations_tests.rs can plan the SAME SQL text
+// the product runs (the MENU_ENGINEERING_SQL precedent).
+pub(crate) mod revenue;
 mod sales_summary;
 
 pub(crate) use datetime::{check_date_bound, parse_utc_offset};
