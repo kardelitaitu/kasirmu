@@ -15,13 +15,24 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 62 | **4** |
+| Medium | 66 | 63 | **3** |
 | Low | 23 | 21 | **2** |
 | Test (O-T) | 16 | 10 | **6** |
-| **Total** | **131** | **119** | **12** |
+| **Total** | **131** | **120** | **11** |
 
-**Updated 2026-10-22 (round 12).** O-M52 closed (and O-L11's cross-crate build break repaired). **The High
-tier is empty and 12 entries remain**: 6 Test, 2 Low, 4 Medium.
+**Updated 2026-10-22 (round 13).** O-M27 closed (both halves) and O-M43 closed. **The High tier is empty and**
+**11 entries remain**: 6 Test, 2 Low, 3 Medium.
+
+**Two of this round's three fixes are of a kind worth naming: the type did the work.** O-M27's transaction
+was falsified by *trying to reintroduce the bug* — passing `&db` where `&Transaction` is required now fails
+to COMPILE, so the defect is unrepresentable rather than merely tested. O-M43 hit the opposite, a prescribed
+fix that could not exist (`jni::JavaVM` is not `Clone` on 0.21), and needed an invariant change —
+`set_java_vm` is now SET-ONCE — before an `unsafe` pointer could cross a lock soundly.
+
+**And one of them is not verified the way the others are.** O-M43 records plainly that NOTHING executed the
+Android path: `--target aarch64-linux-android` fails before `kasirmu-hal` is built (no NDK sysroot), so the
+file was never type-checked by a target build. A host test calling `vm_pointer()` and asserting the no-VM
+error would have been a false green over code it never runs, and was not written.
 
 **The round's lesson is about GATES, and it cost a whole round to learn.** I ran
 `cargo check --workspace --all-targets` for the first time as a deliberate step, and it failed immediately:
@@ -815,9 +826,8 @@ existing ones adapted to the new type, none weakened.
 *Fix:* multi-row INSERT / `unnest`.
 
 **O-M27 · kasirmu-api — settings endpoint: 8 round trips to read, 3 writes with no**
-**transaction** — `crates/kasirmu-api/src/routes/settings.rs` ⚠️ **TRANSACTION HALF PAID 2026-10-22 in
-`d635cb6cc`; the READ half (8 round trips) is still open.** *Fix:* `WHERE key = ANY($1)`; wrap writes in one
-transaction.
+**transaction** — `crates/kasirmu-api/src/routes/settings.rs` ✔ **PAID 2026-10-22, both halves.**
+Transaction: `d635cb6cc`. Batched read: `c9562428f`.
 
 **What was verified before the attempt, and it is the valuable part: BOTH backends were non-atomic.** The
 ledger names `apply_ops_pg`, but the SQLite path has the same defect and nobody had noticed. At HEAD,
@@ -871,10 +881,32 @@ opening a transaction, because `apply_ops_sqlite` would then never run at all.
 `cargo check -p kasirmu-api --all-targets` = exit 0 · `cargo test -p kasirmu-api --lib` = **353 passed,**
 **0 failed**, 14 ignored (351 before; 2 new).
 
-**Still open on this entry: the READ half** — `read_settings` makes 8 round trips (four `Some`/fallback
-pairs). Batch it to one `WHERE key = ANY($1)` over the 8 candidate keys. **Preserve the fallback semantics
-exactly: a scoped key that exists with an EMPTY value returns `Some("")` and must NOT fall through to the
-bare key.** That distinction is what an operator sees, and it is the easy thing to get wrong in a rewrite.
+### The read half (`c9562428f`)
+
+`read_settings` went from 8 round trips to 1. The 8 is worth spelling out because the old code
+SHORT-CIRCUITED: four `get_setting_scoped_pg` calls, each doing the scoped query and then the bare query
+only if the scoped one missed — so the range was 4 to 8, and the *worst* case was 8, which is what the
+ledger named. Now one `SELECT key, value FROM settings WHERE key = ANY($1::text[])` over all 8 candidate
+keys, resolved in memory.
+
+**The SQLite branch had the identical per-key loop and was batched too**, using
+`WHERE key IN (SELECT value FROM json_each(?1))` with the key list as ONE bound JSON array — fixed SQL text,
+no interpolation, and no dependency on rusqlite's optional `array` feature (this workspace enables only
+`bundled` + `backup`, so `rarray` is not compiled in). A `format!`ed `IN (...)` list would have worked too
+and would have been the wrong instinct in a file that already documents injection hazards.
+
+**The precedence rule is `rows.get(scoped).or_else(|| rows.get(bare))` — presence, never truthiness.** The
+case that catches a careless rewrite is a scoped key that EXISTS with an EMPTY value: it must return
+`Some("")` and must NOT fall through to the bare value. A `.filter(|v| !v.is_empty())` anywhere in that fold
+breaks it, and the resulting bug (an operator's deliberately-cleared setting silently reverting to the
+legacy value) is invisible until someone reads their config back. Four tests pin the four cases, and the
+same five outcomes are re-asserted through the public GET handler so the response SHAPE is pinned too, not
+just the helper.
+
+**Verified by execution vs by reading, stated separately:** 10 of the 11 new tests RUN against real
+in-memory SQLite. The Postgres `ANY($1::text[])` statement is **compiled only** — there is no Postgres on
+this machine and the one pg test is `#[ignore]`d. It is verified by reading and compilation, and that is a
+materially weaker claim than the rest of this entry.
 
 **One placement note that killed the earlier attempt:** the first try changed things in the file while
 ANOTHER session was committing to the same tree, and the resulting file was neither its version nor HEAD.
@@ -1180,12 +1212,39 @@ rule it enforces is unchanged.
 `cargo test -p kasirmu-hal --lib` = **428 passed, 0 failed** (up from 361; 67 new tests).
 
 **O-M43 · kasirmu-hal — the Android JNI `VM` mutex is held across blocking connect and read** —
-`crates/kasirmu-hal/src/transport/bt_android.rs:63-86` ✔ (3A-05). The guard is taken for
-`attach_current_thread` *and* the whole closure, which includes `BtRfcommStream::connect`
-(multi-second) and `read` (blocks until data). One printer read stalls every Bluetooth operation
-in the process. *Fix:* lock only long enough to clone the `JavaVM`, then attach and block
-outside the guard.
+`crates/kasirmu-hal/src/transport/bt_android.rs` ✔ **PAID 2026-10-22 in `fa92db2ab`, UNEXERCISED.** (3A-05).
+The guard was taken for `attach_current_thread` *and* the whole closure, which includes
+`BtRfcommStream::connect` (multi-second) and `read` (blocks until data) — so one read stalled every
+Bluetooth operation in the process.
 
+**The prescribed fix — "lock only long enough to clone the `JavaVM`" — is not possible as written.**
+`jni::JavaVM` is **not `Clone`** on 0.21 (the file's own comment said so). What the crate does offer is
+`get_java_vm_pointer() -> *mut sys::JavaVM` and `unsafe JavaVM::from_raw(ptr)`, and `JavaVM` is
+`#[repr(transparent)]` over that pointer with no `Drop`. So the fix copies the RAW POINTER out under the
+lock, releases it, and re-wraps outside — the conversion `Clone` would have given, expressed as `unsafe`.
+
+**And it needed an invariant change to be sound, which is the part worth keeping.** `set_java_vm` used to
+be "last writer wins" (`*guard = Some(vm)`). That would DROP the stored `JavaVM` on a second call and leave
+every in-flight caller attaching on a **dangling pointer**. It is now SET-ONCE: the first VM wins, later
+calls are ignored and their value dropped outside the lock. Only one call site exists (inside `JNI_OnLoad`,
+which ART calls once per library load), so this tightens what was already true in practice — but the
+pointer could not cross a lock without it.
+
+`vm_pointer()` is a three-statement function whose only job is lock → read pointer → unlock, so "no blocking
+call under the mutex" is checkable by eye rather than asserted in a comment. The only `VM.lock()` sites in
+the file are now inside `vm_pointer` and `set_java_vm`. The attach guard still outlives `f`, and the error
+mapping is unchanged.
+
+**⚠️ NOTHING EXECUTED THE ANDROID PATH.** `cargo check -p kasirmu-hal --target aarch64-linux-android` fails
+BEFORE `kasirmu-hal` is built — `zstd-sys` (via `kasirmu-core`) cannot find `aarch64-linux-android-clang` or
+`string.h`, i.e. no NDK sysroot on this host. A grep of that run for `Compiling kasirmu-hal` / `Compiling
+jni` / `error[E` returns zero matches. So the file was never type-checked by a target build and no test ran
+it. What IS verified: `cargo check -p kasirmu-hal --all-targets` exit 0, `cargo test -p kasirmu-hal --lib`
+**428 passed** (unchanged — host cfg excludes this module), `rustfmt --check` clean.
+
+**A false green was available and deliberately not taken:** a host test calling `vm_pointer()` and asserting
+the no-VM error would pass while exercising none of the code of interest. The final authority on this file
+is an Android build or a review of the two-lock-site claim.
 **O-M44 · kasirmu-hal — `discover_all()` per configured USB printer at startup** —
 `crates/kasirmu-hal/src/bootstrap.rs:299-302` ◦ (3A-07). N printers means N complete bus
 enumerations, each returning the same list, of which only element 0 is kept. *Fix:* hoist one
