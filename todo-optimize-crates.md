@@ -1038,6 +1038,14 @@ the index works and that only the UNRESTRICTED query is affected.
 `(created_at, sku, event_type)` to also cover the GROUP BY. Not applied yet: see §11CC for the
 write-amplification trade-off that needs a decision.
 
+**SCOPE CORRECTED 2026-10-22 (already, before anyone acted on it): this is NOT on the per-sale path.**
+The scan lives in `recompute_all_popularity` (`popularity.rs:1010`), which its own doc says runs **"at store
+open"** — while the per-sale path calls `recompute_popularity_batch` (`sales_lifecycle.rs:635`), which
+filters `sl.sku IN (...)` and therefore plans `SEARCH` on the good index. So the cost is paid ONCE per store
+open against the whole activity ledger, not per sale. That is a materially smaller problem than the first
+draft of this entry implied, and it moves the decision toward EITHER a cheap index OR leaving it alone
+until a store's activity table is measured at a size where a once-per-open scan is actually felt.
+
 ### Low — harmless today; a senior reviewer would still flag it
 
 **O-L01 · kasirmu-core — INSERT re-planned per row in the legacy ledger loop** —
@@ -5466,10 +5474,12 @@ the fix is therefore a schema question:
 ### Why it is not closed in this round
 
 Changing the schema of a table that grows per user action is a decision with a write-amplification cost
-(one more index on a hot INSERT path) that the measurement does not answer. The read is a background
-popularity recompute, not a request path, so the urgency is lower than the `refunds` scan fixed in §11CB —
-which sat on the report path. **Needs a measurement of how often the popularity pass runs and how large
-`product_activity` gets in practice.**
+(one more index on a hot INSERT path) that the read-side measurement does not answer. **The call frequency IS
+now established** (see the SCOPE CORRECTED note on the entry): `recompute_all_popularity` runs at store open,
+while the per-sale path uses the `IN (...)`-filtered batch variant that plans well. So this is a once-per-open
+cost, not a per-sale one — which makes it LOWER priority than the §11CB refunds scan, that one sitting on
+the report path. **What is still unmeasured: how large `product_activity` gets in a real store**, which is
+the number that would decide it.
 
 ### Also confirmed NOT a problem
 
