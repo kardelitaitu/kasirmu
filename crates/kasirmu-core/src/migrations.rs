@@ -499,6 +499,13 @@ pub const ALL: &[Migration] = &[
         id: "20261024_refunds_analytics_index.sql",
         sql: include_str!("../migrations/20261024_refunds_analytics_index.sql"),
     },
+    // O-M68: covering range index for unrestricted window popularity recompute.
+    // Turns SCAN product_activity USING INDEX idx_product_activity_sku into
+    // SEARCH product_activity USING COVERING INDEX idx_product_activity_created_at.
+    Migration {
+        id: "20261025_product_activity_created_at.sql",
+        sql: include_str!("../migrations/20261025_product_activity_created_at.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

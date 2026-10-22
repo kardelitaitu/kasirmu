@@ -928,7 +928,10 @@ fn init_sql_creates_complete_schema_surface() {
         // index the three revenue report CTEs seek on) and
         // idx_refunds_processed_by_created_at (the bare created_at range the
         // shift-close reconciliation seeks on). No table, no trigger.
-        198,
+        // 20261025_product_activity_created_at.sql adds 1:
+        // idx_product_activity_created_at on product_activity(created_at, sku, event_type)
+        // for O-M68 covering range search on unrestricted window popularity recomputes (+1).
+        199,
         "index surface drifted"
     );
     assert_eq!(
@@ -1175,6 +1178,68 @@ fn revenue_refund_cte_uses_refunds_currency_created_date_index() {
     assert!(
         !shift_plan.contains("SCAN r"),
         "shift-close refunds query must SEARCH refunds, not SCAN it; plan:\n{shift_plan}"
+    );
+}
+
+/// O-M68: the unrestricted activity window query in `recompute_all_popularity`
+/// must execute an index range SEARCH via `idx_product_activity_created_at`,
+/// not a table-wide index SCAN.
+///
+/// Like `revenue_refund_cte_uses_refunds_currency_created_date_index`, the seed
+/// distribution is load-bearing: with realistic history (older activity outside
+/// the 30-day window plus recent activity inside), the planner uses the covering
+/// range index to inspect only the recent fraction of the ledger.
+#[test]
+fn popularity_activity_window_uses_created_at_covering_index() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // 800 older rows from 2025 and 200 recent rows from 2026
+    {
+        let tx = conn.transaction().unwrap();
+        for i in 0..800i64 {
+            let sku = format!("SKU-{}", i % 20);
+            let etype = if i % 2 == 0 { "search" } else { "edit" };
+            tx.execute(
+                "INSERT INTO product_activity (id, sku, event_type, created_at, tenant_id)
+                 VALUES (?1, ?2, ?3, '2025-01-01T12:00:00.000Z', 'default')",
+                rusqlite::params![format!("old-act-{i}"), sku, etype],
+            )
+            .unwrap();
+        }
+        for i in 0..200i64 {
+            let sku = format!("SKU-{}", i % 20);
+            let etype = if i % 2 == 0 { "search" } else { "edit" };
+            tx.execute(
+                "INSERT INTO product_activity (id, sku, event_type, created_at, tenant_id)
+                 VALUES (?1, ?2, ?3, datetime('now', '-5 days'), 'default')",
+                rusqlite::params![format!("new-act-{i}"), sku, etype],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN
+             SELECT sku, event_type, strftime('%Y-%m-%d', created_at) AS day, COUNT(*) AS cnt
+             FROM product_activity
+             WHERE created_at >= datetime('now', ?1)
+             GROUP BY sku, event_type, day",
+        )
+        .unwrap();
+    let plan = stmt
+        .query_map(["-30 days"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+
+    assert!(
+        plan.contains("SEARCH") && plan.contains("idx_product_activity_created_at"),
+        "popularity activity window query did not use idx_product_activity_created_at range search; plan:\n{plan}"
     );
 }
 

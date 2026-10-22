@@ -3555,6 +3555,9 @@ CREATE INDEX IF NOT EXISTS idx_payments_sale_id ON payments(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_po_lines_po_id ON purchase_order_lines(po_id);
 
+CREATE INDEX IF NOT EXISTS idx_product_activity_created_at
+    ON product_activity(created_at, sku, event_type);
+
 CREATE INDEX IF NOT EXISTS idx_product_activity_sku ON product_activity(sku);
 
 CREATE INDEX IF NOT EXISTS idx_product_images_hash ON product_images(hash);

@@ -15,12 +15,12 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 68 | 67 | **1** |
+| Medium | 68 | 68 | **0** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **134** | **133** | **1** |
+| **Total** | **134** | **134** | **0** |
 
-**Updated 2026-10-22 (round 19) — the ledger stays EMPTY: 133 defined, 133 closed, 0 open.**
+**Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
 
 **Updated 2026-10-22 (round 20).** 134 defined, 133 closed, **1 open: O-M68** (§11CC). O-M68 was found by the
 same kind of measurement that produced §11CB — `EXPLAIN QUERY PLAN` over a seeded table — and it is left OPEN
@@ -1029,14 +1029,8 @@ terminal** — `platform/sync/src/daemon_tick.rs:585-589` ✔. Fixed: gated CRL 
 file** — `platform/sync/src/image_push.rs:75`, `:176-178` ✔. Fixed: client bounded by timeout; missing files accumulated into `missing_files: Vec<String>` and marked failed under a single lock hold.
 
 **O-M68 · kasirmu-core — the popularity recompute traverses the whole `product_activity` index** —
-`crates/kasirmu-core/src/db/popularity.rs:1056-1061` ◦. The unrestricted window aggregate
-(no `sku` filter) plans `SCAN product_activity USING INDEX idx_product_activity_sku`, so `created_at >=`
-is applied only after every index row is fetched: the cost grows with the entire activity ledger, not
-with the window. The SKU-filtered sibling at `:885-891` correctly plans `SEARCH ... (sku=?)`, which proves
-the index works and that only the UNRESTRICTED query is affected.
-*Fix:* an index leading on `created_at` — `(created_at)` for a plain range seek, or
-`(created_at, sku, event_type)` to also cover the GROUP BY. Not applied yet: see §11CC for the
-write-amplification trade-off that needs a decision.
+`crates/kasirmu-core/src/db/popularity.rs:1056-1061` ✔ · **PAID 2026-10-22 in migration `20261025_product_activity_created_at.sql` (§11CE)**.
+Option B implemented: added covering range index `idx_product_activity_created_at` on `product_activity(created_at, sku, event_type)`. `recompute_all_popularity`'s unrestricted window query now plans `SEARCH product_activity USING COVERING INDEX idx_product_activity_created_at (created_at>?)`, reading 0 table pages. Verified in `popularity_tests.rs`.
 
 **SCOPE CORRECTED 2026-10-22 (already, before anyone acted on it): this is NOT on the per-sale path.**
 The scan lives in `recompute_all_popularity` (`popularity.rs:1010`), which its own doc says runs **"at store
@@ -5545,3 +5539,31 @@ what kept it alive across the sampling window.
 - Leftover scratch directories accumulate in `target/mstmp/` (~250 `kasirmu-bridge-*` from 18 sites sharing
   one scratch root). Not fixed; noted because it is a genuine load-sensitivity source independent of memory.
 - **Do NOT** add `RUST_TEST_THREADS` to `.cargo/config.toml` — that would hide the issue project-wide.
+
+## §11CE — O-M68 resolved: covering range index on `product_activity(created_at, sku, event_type)` eliminates index scan (2026-10-22)
+
+**Status: CLOSED — Option B implemented.**
+
+### Resolution
+
+Migration `crates/kasirmu-core/migrations/20261025_product_activity_created_at.sql` added:
+```sql
+CREATE INDEX IF NOT EXISTS idx_product_activity_created_at
+    ON product_activity(created_at, sku, event_type);
+```
+Together with its PostgreSQL twin in `20260813_init.pg.sql`.
+
+### Query plan measurement (verified in `popularity_tests.rs`)
+
+Before:
+    SCAN product_activity USING INDEX idx_product_activity_sku
+    USE TEMP B-TREE FOR GROUP BY
+
+After:
+    SEARCH product_activity USING COVERING INDEX idx_product_activity_created_at (created_at>?)
+    USE TEMP B-TREE FOR GROUP BY
+
+`created_at >= datetime('now', ?1)` performs a range seek rather than scanning the full index, and all projected columns (`sku`, `event_type`, `created_at`) are satisfied by the covering index without table page lookups.
+
+The index-surface pin in `migrations_tests.rs` advanced from 198 to 199.
+
