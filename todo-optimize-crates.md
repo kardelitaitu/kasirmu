@@ -15,12 +15,16 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 73 | 73 | **0** |
+| Medium | 74 | 74 | **0** |
 | Low | 24 | 24 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **140** | **140** | **0** |
+| **Total** | **141** | **141** | **0** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-23 (round 31). 141 defined, 141 closed, 0 open.** O-M75 closed: an `#[ignore]` reason that
+said "needs python3 + cryptography" was FALSE — both are installed, and the test passes in 1.57 s. Un-ignoring
+it then exposed 77 fixtures rooted in an unwritable `C:\WINDOWS\TEMP` (§11CP).
 
 **Updated 2026-10-23 (round 30). 140 defined, 140 closed, 0 open.** O-M74 closed: the workspace picker
 repair swallowed its own failure, and once surfaced the real cause was a SCHEMA RENAME the store DB had
@@ -1267,6 +1271,34 @@ regress the caller.
 repair at all**, so the terminal-management screen's cross-store picker still shows an empty grid in the same
 situation. That is a feature decision rather than a defect in this function, and it is recorded on the entry
 rather than silently fixed.
+
+**O-M75 · kasirmu-plugin — a test ignored for a REASON THAT WAS FALSE, plus 77 fixtures in the wrong temp root** —
+`crates/kasirmu-plugin/tests/signature_roundtrip.rs:84` and `src/*_tests.rs` (6 files) ◦.
+
+The `#[ignore]` said *"needs python3 + the cryptography package"*. **Both are installed on this machine**
+(`python3` resolves via the cargo bin shim, `cryptography` is 50.0.0), so the reason described a environment
+that did not exist. Run un-ignored, the test PASSED in 1.57 s. It had been skipped for no reason.
+
+That is the second time in two rounds that an `#[ignore]`'d test turned out to be hiding something — the
+previous one (O-M74) was hiding a live defect. **An `#[ignore]` reason is a claim about the environment, and
+nobody re-checks it.**
+
+Un-ignoring it then surfaced a REAL problem: `tempfile::tempdir()` resolves through `TEMP`, which on this
+machine is `C:\WINDOWS\TEMP` — a user can create there but cannot delete, so a stale directory makes the
+create fail with `PermissionDenied`. `crates/kasirmu-test-support`'s own module docs describe this exact trap
+and name it as having broken **144 tests at once** in `mobile-tauri`.
+
+*Fix:* `tempfile::tempdir()` → `kasirmu_test_support::tempdir()` at **77 sites across 6 files**, which roots
+every fixture under `<workspace>/target/test-scratch/` (gitignored, per-call UUID, auto-deleting). Added the
+`kasirmu-test-support` dev-dependency to `kasirmu-plugin`.
+
+**✅ RESOLVED 2026-10-22 in `094d0ce0d`.** `kasirmu-plugin`: 239 lib + 1 + 2 tests, **0 failed, 0 ignored**.
+
+**The generalisable part:** the fixture-location trap is invisible unless the directory has already been
+polluted. `tempfile::tempdir()` passing today is not evidence it will pass when another session's stale
+fixture is sitting in `C:\WINDOWS\TEMP` — which is also why my own build recipe masks it, since it overrides
+`TEMP` to `target/mstmp` before running cargo. That masking made this look like a repository bug in one run
+and a non-issue in the next, and both readings were wrong.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -6503,3 +6535,62 @@ that the second assertion "FAILS today".
 **Left open on purpose:** the sibling `list_workspaces_for_store_scoped` has no repair at all, so the
 terminal-management cross-store picker still shows an empty grid in the same situation. That is a feature
 decision, recorded on the entry rather than quietly implemented.
+
+## §11CP — O-M75 resolved: an ignore reason that was simply false, and the fixture trap behind it (2026-10-23)
+
+Landed in `094d0ce0d`.
+
+### The reason was wrong, and checking it took one command
+
+`crates/kasirmu-plugin/tests/signature_roundtrip.rs` carried:
+
+```rust
+#[ignore = "needs python3 + the cryptography package; run with --ignored"]
+```
+
+Both are present on this machine — `python3` resolves through the cargo bin shim, `cryptography` is 50.0.0.
+Run with `--ignored`, the test **passed in 1.57 s**. It had been skipped for a reason that described an
+environment which did not exist.
+
+This is the second consecutive round in which an `#[ignore]`d test was hiding something. O-M74's was hiding a
+live defect; this one was hiding a working test. **An `#[ignore]` reason is a claim about the environment, and
+nothing re-checks it** — the comment ages while the machine changes under it.
+
+### Un-ignoring it found a real hazard immediately
+
+The moment it ran without `--ignored`, it failed with
+`PermissionDenied ... C:\WINDOWS\TEMP\.tmpeCx8I`. `tempfile::tempdir()` resolves through `TEMP`, which is
+`C:\WINDOWS\TEMP` at machine scope here — **creatable but not deletable by an ordinary user**, so once any
+stale directory exists the create itself fails and reads as a broken test.
+
+`crates/kasirmu-test-support`'s module documentation describes this exact trap and records it as having
+broken **144 tests at once** in `mobile-tauri`. The remedy existed; this crate had not adopted it.
+
+### The fix, and its size
+
+`tempfile::tempdir()` → `kasirmu_test_support::tempdir()` at **77 sites across 6 files**
+(`grants_tests`, `loader_tests`, `manager_tests`, `manifest_tests`, `package_tests`, `signature_tests`), plus
+the dev-dependency. Every fixture now lives under `<workspace>/target/test-scratch/`: gitignored, per-call
+UUID, auto-deleting.
+
+### The uncomfortable part: my own build recipe masked it
+
+My `.bat` wrapper sets `TEMP`/`TMP` to `target/mstmp` before invoking cargo. That override means the trap
+cannot fire in a run I launch that way — so the SAME test looked like a repository bug under the wrapper and
+a non-issue when I called `cargo` directly. **Both readings were wrong**, and neither would have been stable
+for the next person, who will not be using my wrapper.
+
+That is worth recording as a class: a build recipe that changes the environment can hide environment-
+dependent test failures, and it will hide them from exactly the engineer best placed to fix them.
+
+### Verification
+
+```
+cargo check -p kasirmu-plugin --all-targets  -> exit 0
+cargo test  -p kasirmu-plugin                 -> 239 + 1 + 2 passed, 0 failed, 0 IGNORED
+rustfmt --edition 2024 --check                -> exit 0 on all 7 files
+```
+
+**Already complying:** `mobile-tauri` has 21 bare `tempfile::tempdir()` calls and 0 `kasirmu_test_support::tempdir()`,
+yet its suite is 721 passed / 1 failed where that one failure is an unrelated command-count drift pin. So the
+trap is latent there rather than active — recorded, not touched, because the crate is another session's area.
