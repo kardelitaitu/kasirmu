@@ -110,6 +110,7 @@ impl SecretCache {
         self.order.push_back((token_arc, cached_at));
     }
 
+    #[cfg(test)]
     pub(crate) fn remove(&mut self, token: &str) -> bool {
         self.tokens.remove(token).is_some()
     }
@@ -143,6 +144,7 @@ impl JwtCache {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn remove(&mut self, secret: &str, token: &str) -> bool {
         if let Some(sc) = self.by_secret.get_mut(secret) {
             sc.remove(token)
