@@ -3346,6 +3346,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 
+CREATE INDEX IF NOT EXISTS idx_audit_log_outcome_created
+    ON audit_log(outcome, created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_type, target_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);

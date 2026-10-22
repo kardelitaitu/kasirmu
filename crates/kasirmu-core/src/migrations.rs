@@ -512,6 +512,15 @@ pub const ALL: &[Migration] = &[
         id: "20261026_topology_revisions_metadata.sql",
         sql: include_str!("../migrations/20261026_topology_revisions_metadata.sql"),
     },
+    // O-M69: covering index for the outcome-filtered audit screen. No existing
+    // audit_log index led with `outcome`, so ADDING that predicate to the page
+    // query dropped the index-only walk for a full scan plus a temp sort —
+    // filtering was slower than not filtering (measured, 5,000 rows + ANALYZE).
+    // One index, no table and no trigger, so the surface pin moves 199 -> 200.
+    Migration {
+        id: "20261027_audit_log_outcome_created.sql",
+        sql: include_str!("../migrations/20261027_audit_log_outcome_created.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

@@ -931,7 +931,10 @@ fn init_sql_creates_complete_schema_surface() {
         // 20261025_product_activity_created_at.sql adds 1:
         // idx_product_activity_created_at on product_activity(created_at, sku, event_type)
         // for O-M68 covering range search on unrestricted window popularity recomputes (+1).
-        199,
+        // 20261027_audit_log_outcome_created.sql adds 1:
+        // idx_audit_log_outcome_created on audit_log(outcome, created_at DESC, id DESC)
+        // for O-M69, so the outcome-filtered audit page seeks instead of scanning (+1).
+        200,
         "index surface drifted"
     );
     assert_eq!(
@@ -1243,6 +1246,105 @@ fn popularity_activity_window_uses_created_at_covering_index() {
     );
 }
 
+/// O-M69: the OUTCOME-FILTERED audit page must SEEK, not scan.
+///
+/// `list_audit_entries_page` builds `WHERE` at run time through `build_audit_where`
+/// (`db/audit.rs`), so this is one of the queries the query-plan probe cannot see:
+/// the SQL does not exist as a string until the call is assembled. That is exactly
+/// where the defect hid.
+///
+/// Before `20261027_audit_log_outcome_created.sql`, `audit_log` had indexes on
+/// `action`, `created_at`, `(target_type, target_id)` and `user_id` — none leading
+/// with `outcome`. Measured: the outcome-filtered page planned `SCAN audit_log` plus
+/// a temp B-tree sort, while the UNFILTERED page at least walked
+/// `idx_audit_log_created_at`. Adding the filter made the plan worse than omitting it.
+///
+/// Both values of `outcome` are asserted, because the index only earns its keep if it
+/// serves the common one (`success`) as well as the rare one (`failure`).
+#[test]
+fn audit_page_filtered_by_outcome_seeks_instead_of_scanning() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // 5,000 rows with failures rare (1 in 100): the shape a real log has, and the
+    // shape that makes the planner weigh a scan at all.
+    {
+        let tx = conn.transaction().unwrap();
+        for i in 0..5_000i64 {
+            tx.execute(
+                "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+                 VALUES (?1, 'u1', 'login', 'user', ?2, '{}', ?3, ?4)",
+                rusqlite::params![
+                    format!("plan-audit-{i:06}"),
+                    format!("t{i}"),
+                    if i % 100 == 0 { "failure" } else { "success" },
+                    format!("2026-{:02}-{:02}T10:00:00.000Z", (i % 12) + 1, (i % 28) + 1),
+                ],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    // THE FIRST PAGE IS THE SCAN, not the cursor pages. Measured on this schema
+    // before `20261027`:
+    //   cursor + outcome     -> SEARCH audit_log USING INDEX idx_audit_log_created_at
+    //   FIRST page + outcome -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
+    // The cursor clause (created_at < ?) gives the planner something to range on, so
+    // only the FIRST page was a full scan -- and that is the page every user lands on.
+    // Asserting the cursor form alone would have tested the healthy path and passed
+    // for the wrong reason. That mistake was made, caught by falsification, and fixed
+    // here: both shapes are asserted, for both values of outcome.
+    let first_page =
+        "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
+               FROM audit_log
+              WHERE outcome = ?1
+              ORDER BY created_at DESC, id DESC LIMIT ?2";
+    let keyset_page =
+        "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
+               FROM audit_log
+              WHERE outcome = ?1
+                AND (created_at < ?2 OR (created_at = ?2 AND id < ?3))
+              ORDER BY created_at DESC, id DESC LIMIT ?4";
+
+    for outcome in ["failure", "success"] {
+        let q1 = format!("EXPLAIN QUERY PLAN {first_page}");
+        let p1 = conn
+            .prepare(&q1)
+            .unwrap()
+            .query_map(rusqlite::params![outcome, 51], |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n");
+        assert!(
+            p1.contains("idx_audit_log_outcome_created"),
+            "first page, outcome = {outcome}: did not use idx_audit_log_outcome_created; plan:\n{p1}"
+        );
+        assert!(
+            !p1.lines().any(|l| l.trim() == "SCAN audit_log"),
+            "first page, outcome = {outcome} must not scan audit_log; plan:\n{p1}"
+        );
+
+        let q2 = format!("EXPLAIN QUERY PLAN {keyset_page}");
+        let p2 = conn
+            .prepare(&q2)
+            .unwrap()
+            .query_map(
+                rusqlite::params![outcome, "2026-07-01T00:00:00.000Z", "m", 51],
+                |r| r.get::<_, String>(3),
+            )
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n");
+        assert!(
+            p2.contains("idx_audit_log_outcome_created"),
+            "keyset page, outcome = {outcome}: did not use idx_audit_log_outcome_created; plan:\n{p2}"
+        );
+    }
+}
 /// Simulate the documented existing-dev-DB upgrade path. A pre-reset
 /// database carries legacy `schema_migrations` rows (now absent from the
 /// registry) and has already been seeded. Running the incremental
