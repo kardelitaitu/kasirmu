@@ -163,7 +163,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "done-todo-restaurant-recipe-authoring.md",
     "done-todo-retail-vs-restaurant-product-model.md",
     "done-todo-tablet-provisioned-workspaces-invisible-to-picker.md",
-    "plan-topology-web-authoring.md",
+    "done-plan-topology-web-authoring.md",
 
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.

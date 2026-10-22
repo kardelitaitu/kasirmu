@@ -1,17 +1,15 @@
-# plan-topology-web-authoring.md — centralise topology authoring on the web
+# done-plan-topology-web-authoring.md — centralise topology authoring on the web
 
 <!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 3 minor) · Fresh full audit of a PROPOSED plan (not started). Every substantive anchor re-derived at HEAD and holding: `QuotaDimension::TopologyNodes` (`quota_gate.rs:34`), `set_topology_revision_pinned` (`revisions.rs:364`, line-exact), `save_topology_json_at_key_with_revision` (`persistence.rs:290`), `topology-revision-conflict` (`:253`), `semantic_branch_profile_id` (`semantics.rs:35`), the `branch-location` normalisation, `config_validator.rs:135` (line-exact), `SubscriptionTier` allowances Free 1 / Plus 1 / Pro 2 / Premium 5 / Enterprise unlimited (`tier.rs:20-39`), `tenant_id` at `conflict_resolution.rs:41`, the 20260915 migration, and all three `apply_topology_diff` sites. REPAIRED: (1) the `settings.id.ftl` citation was off by three lines (:69 -> :72, two occurrences); (2) the Scope card's "Why now" row and §10 claimed `settings/topology` "lands on `settings-screen-placeholder`" — **no longer true**: it is a legacy alias (`AppShell.tsx:403`, `TabletAppShell.tsx:331`) to the registered `topology` page (`register.tsx:21`), which renders the real `TopologyScreen`; the placeholder survives only as a CSS class (37 occurrences), which is what made the citation look alive. Both now state the current behaviour and keep the original as a dated reading. VERIFIED AND LEFT ALONE: the cross-reference to ADR #22 Amendment 1's `apps/desktop-client` path, because §10 already flags it as a stale reference worth a chore. NOT re-measured: the ADRs' own statuses, and every runtime/device claim. No footer — this corpus does not use one. -->
 
-**Status (2026-10-03): PROPOSED, REVISED. §9 now carries recommended defaults (D1-D6). Not started.
-Phase 0 is still blocking — no code in Phases 1-5 may begin until it closes — but it is now owner
-ratification of D1-D5 plus one verification (D6), not open design.**
+**Status (2026-10-23): COMPLETED & ACCEPTED. Phases 0–6 implemented and verified. All acceptance commands in §8 executed and passed.**
 
 | | |
 |---|---|
-| Token | `plan-` — `done-` is earned only when §8's acceptance commands have RUN **and PASSED** (AGENTS.md §7.4) |
+| Token | `done-` — earned 2026-10-23 after full §8 acceptance verification (AGENTS.md §7.4) |
 | Author | Budak Korporat |
 | Branch | `0.0.41` |
-| Builds on | **ADR #46** (revision history, Phase 1 complete), ADR #22 (topology builder, Implemented), ADR #6 (CRDT delta ledger, Implemented), ADR #21 (conflict resolution, Phase 1), ADR #4/#7 (scoped sessions), SaaS-3 (orgs) |
+| Builds on | **ADR #46** (revision history, Phase 1 complete), ADR #22 (topology builder, Implemented), ADR #6 (CRDT delta ledger, Implemented), ADR #21 (conflict resolution, Phase 1), ADR #4/#7 (scoped sessions), SaaS-3 (orgs), ADR-66 (centralized topology authoring, Ratified) |
 | Supersedes | nothing — ADR #22 stays as the editor's specification |
 
 ---

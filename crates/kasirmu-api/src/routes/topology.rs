@@ -1,4 +1,4 @@
-//! Store topology authoring, signing, and replication endpoints (ADR-66 / plan-topology-web-authoring.md Phase 2).
+//! Store topology authoring, signing, and replication endpoints (ADR-66 / done-plan-topology-web-authoring.md Phase 2).
 //!
 //! Provides centralized planning, cryptographic signing, revision publication,
 //! and terminal replication for multi-store topology configurations.

@@ -15,12 +15,12 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 74 | 74 | **0** |
+| Medium | 76 | 75 | **1** |
 | Low | 24 | 24 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **141** | **141** | **0** |
+| **Total** | **143** | **142** | **1** |
 
-**Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+**Updated 2026-10-23 (round 33). 143 defined, 142 closed, 1 open.** O-M76 closed: read gate passed topology replication pull route through unchecked; mapped to `topology:write` with `pii: false` (§11CQ). O-M77 opened: cross-store workspace picker has no read-repair, left open deliberately as data-ownership decision (§11CR).
 
 **Updated 2026-10-23 (round 31). 141 defined, 141 closed, 0 open.** O-M75 closed: an `#[ignore]` reason that
 said "needs python3 + cryptography" was FALSE — both are installed, and the test passes in 1.57 s. Un-ignoring
@@ -1299,6 +1299,17 @@ polluted. `tempfile::tempdir()` passing today is not evidence it will pass when 
 fixture is sitting in `C:\WINDOWS\TEMP` — which is also why my own build recipe masks it, since it overrides
 `TEMP` to `target/mstmp` before running cargo. That masking made this look like a repository bug in one run
 and a non-issue in the next, and both readings were wrong.
+
+**O-M76 · kasirmu-api — read gate passed topology replication pull route through unchecked** —
+`crates/kasirmu-api/src/read_tiers.rs:125` and `crates/kasirmu-api/src/read_tiers_tests.rs:297` ✔ · **PAID** (`2907a50e4`).
+`/api/v1/topology/revisions/pull` was registered on the protected router but omitted from `READ_KEY_MAP`.
+The allow-by-omission design passed it through without verifying permissions.
+Fixed: mapped to `topology:write` with `pii: false`. See §11CQ.
+
+**O-M77 · kasirmu-bridge — cross-store workspace picker has no read-repair** —
+`crates/kasirmu-bridge/src/workspaces.rs:799` and `crates/kasirmu-bridge/src/workspaces_tests.rs:360` ◦.
+`list_workspaces` gained read-repair from the global database, but the sibling `list_workspaces_for_store_scoped` has no such repair.
+Left open deliberately as a product/data-ownership decision. See §11CR.
 
 ### Low — harmless today; a senior reviewer would still flag it
 

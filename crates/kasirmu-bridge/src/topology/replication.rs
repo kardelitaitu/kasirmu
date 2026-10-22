@@ -1,4 +1,4 @@
-//! Topology replication client for physical terminals (ADR-66 / plan-topology-web-authoring.md Phase 3).
+//! Topology replication client for physical terminals (ADR-66 / done-plan-topology-web-authoring.md Phase 3).
 //!
 //! Provides the transport abstraction, cryptographic verification, watermark tracking,
 //! and atomic application pipeline for synchronizing web-authored topology revisions to physical terminals.

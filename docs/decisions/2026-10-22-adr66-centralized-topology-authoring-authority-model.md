@@ -2,7 +2,7 @@
 num: 66
 area: topology
 title: "ADR-66: Centralized Topology Authoring — Desired-State Authority Model, Signed-Revision Contract, and Multi-Store Eligibility"
-status: Ratified (2026-10-22) — ratifies D1–D5 and establishes the architectural contract for plan-topology-web-authoring.md
+status: Ratified (2026-10-22) — ratifies D1–D5 and establishes the architectural contract for done-plan-topology-web-authoring.md
 ---
 
 # ADR-66: Centralized Topology Authoring
@@ -10,7 +10,7 @@ status: Ratified (2026-10-22) — ratifies D1–D5 and establishes the architect
 **Status:** Ratified (2026-10-22).
 **Date:** 2026-10-22
 **Recorded against:** branch `0.0.41`
-**Related:** ADR-22 (topology builder), ADR-45 (semantic contract v2), ADR-46 (topology revision history and restore), ADR-47 (scoped authorization), `plan-topology-web-authoring.md`
+**Related:** ADR-22 (topology builder), ADR-45 (semantic contract v2), ADR-46 (topology revision history and restore), ADR-47 (scoped authorization), `done-plan-topology-web-authoring.md`
 **Tags:** topology, sync, security, multi-store, authority, signing
 
 > Cite this record by filename: `docs/decisions/2026-10-22-adr66-centralized-topology-authoring-authority-model.md`.
@@ -23,7 +23,7 @@ In `kasir.mu`, store topology models cashier terminals, kitchen display systems 
 
 Previously (under ADR-22 and ADR-46), topology was authored exclusively on a single desktop or tablet terminal within the physical store (`ui/src/features/locations/TopologyScreen.tsx`), persisted into local SQLite (`topology_revisions` table, migration `20260915_topology_revisions.sql`). For a multi-store merchant (2 to 50+ branches), configuring devices and routing rules required physical presence at each store terminal.
 
-[`plan-topology-web-authoring.md`](file:///c:/dev/kasirmu/plan-topology-web-authoring.md) proposes centralizing authoring to the cloud dashboard (`dashboard.kasir.mu`). This raises fundamental architecture and security questions:
+[`done-plan-topology-web-authoring.md`](file:///c:/dev/kasirmu/done-plan-topology-web-authoring.md) proposes centralizing authoring to the cloud dashboard (`dashboard.kasir.mu`). This raises fundamental architecture and security questions:
 1. Does the cloud become the source of truth, or does the local terminal retain authority?
 2. How are offline-first guarantees preserved when a branch loses internet connectivity?
 3. Who is eligible to author topology on the web?

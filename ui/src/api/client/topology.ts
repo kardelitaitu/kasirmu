@@ -1,4 +1,4 @@
-//! Topology client for the kasir.mu cloud API (ADR-66 / plan-topology-web-authoring.md Phase 4).
+//! Topology client for the kasir.mu cloud API (ADR-66 / done-plan-topology-web-authoring.md Phase 4).
 
 import type { HttpClient } from './client';
 
