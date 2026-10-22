@@ -2069,8 +2069,36 @@ and two assertions per iteration to prove a ring. *Fix:* cut to ~500 and assert 
 **Low**
 
 **O-T11 · four rate-limit tests drive ~400 sequential HTTP pushes** —
-`apps/cloud-server/src/sync_api_tests.rs:2246-2255` ✔ (4A-11). *Fix:* keep one 101-request burst
-for the 429 boundary.
+`apps/cloud-server/src/sync_api_tests.rs` ✔ **PAID 2026-10-22 in `9cb8b3e46`** (4A-11). Requests
+**507 → 406** across the six rate-limit tests, with no assertion lost.
+
+**The ledger's suggested fix was already in place, which is why the entry needed re-reading.** "Keep one
+101-request burst for the 429 boundary" describes tests that were ALREADY minimal: `..._when_push_limit_
+exceeded` sends exactly 101 and `..._includes_retry_after_header` sends 100 + 1. There was nothing to trim
+there.
+
+**The real cost was SETUP, not assertion.** `rate_limit_tenant_isolation` and `rate_limit_endpoint_isolation`
+each burned a 100-request burst purely to bring one bucket to its cap, then probed a neighbour — 200 of the
+507 requests spent getting ready to assert rather than asserting. Because the bucket key is
+`"{tenant_id}|{prefix}"` (`rate_limit.rs:242`), the tenant axis and the endpoint axis cannot interfere, so
+both neighbours can be probed against the SAME exhausted bucket. The two tests are now one,
+`rate_limit_buckets_are_isolated_per_tenant_and_per_endpoint`, with a numbered comment per assertion and a
+doc-comment table mapping each back to the original that asserted it: tenant-a/push 429, tenant-b/push 200,
+tenant-a/pull 200. Assertion messages kept verbatim.
+
+**The budgets are compile-time constants and no API change was made.** `rate_limit.rs:56-85` is a
+`const RATE_LIMITS` table with push at `capacity: 100`; there is no per-test override and no reset hook.
+Making the cap injectable to save test time was considered and rejected — a production API change to speed
+up a test is a bad trade, and the fold made it unnecessary.
+
+**The honest measurement: the win is in REQUESTS, not seconds.** The subset reports `finished in 0.39s`
+before AND after — below the resolution of the change, because the saved round trips are cheap in-process
+`oneshot`s and the wall-clock is dominated by 31 × `fresh_db()` migrations. An entry about request count was
+resolved by counting requests; claiming a time win would have been a nicer-sounding falsehood.
+
+`cargo check -p kasirmu-cloud --all-targets` exit 0 · `cargo test -p kasirmu-cloud --bin kasirmu-cloud` =
+**401 passed, 0 failed**, 43 ignored (402 before — exactly the one fewer test the fold predicts; none
+deleted outright).
 
 **O-T12 · env-var tests take a process-wide lock *and* `#[serial]`, and tolerate 12 s** —
 `apps/cloud-server/src/db_tests.rs:141-151`, `:333-347` ✔ (4A-12). *Fix:* injectable config;
