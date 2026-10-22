@@ -78,6 +78,57 @@ pub struct TopologyRevisionContext<'a> {
     pub workspace_updates: usize,
     /// Count of workspace instances this Apply archived.
     pub workspace_archives: usize,
+    /// Organization scope (SaaS-3 / ADR-66). Defaults to "default" if omitted.
+    pub org_id: Option<&'a str>,
+    /// Staff member / author identity. Defaults to `published_by` if omitted.
+    pub actor: Option<&'a str>,
+    /// Identifier of the cryptographic signing key used (ADR-66 D4).
+    pub key_id: Option<&'a str>,
+    /// Hex-encoded cryptographic signature of the revision envelope (ADR-66 D4).
+    pub signature: Option<&'a str>,
+    /// Base revision this revision was planned against (ADR-66 optimistic concurrency).
+    pub base_revision: Option<i64>,
+}
+
+impl<'a> TopologyRevisionContext<'a> {
+    /// Create a standard local Apply context.
+    pub fn new(
+        change_note: &'a str,
+        published_by: &'a str,
+        workspace_creations: usize,
+        workspace_updates: usize,
+        workspace_archives: usize,
+    ) -> Self {
+        Self {
+            change_note,
+            published_by,
+            workspace_creations,
+            workspace_updates,
+            workspace_archives,
+            org_id: None,
+            actor: None,
+            key_id: None,
+            signature: None,
+            base_revision: None,
+        }
+    }
+
+    /// Attach authority and cryptographic signature metadata (ADR-66).
+    pub fn with_signed_metadata(
+        mut self,
+        org_id: Option<&'a str>,
+        actor: Option<&'a str>,
+        key_id: Option<&'a str>,
+        signature: Option<&'a str>,
+        base_revision: Option<i64>,
+    ) -> Self {
+        self.org_id = org_id;
+        self.actor = actor;
+        self.key_id = key_id;
+        self.signature = signature;
+        self.base_revision = base_revision;
+        self
+    }
 }
 
 /// Longest accepted Apply change note, in characters (ADR #46 §6).
@@ -169,6 +220,19 @@ pub struct TopologyRevisionSummary {
     /// fulfil, which is the one user-visible consequence of choosing to
     /// deflate instead of delete.
     pub restorable: bool,
+    /// Organization scope (ADR-66 / SaaS-3).
+    pub org_id: String,
+    /// Author / actor identity.
+    pub actor: String,
+    /// Key ID for cryptographic verification (ADR-66 D4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+    /// Cryptographic signature of the revision (ADR-66 D4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    /// Base revision for optimistic concurrency arbitration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_revision: Option<i64>,
 }
 
 /// Read history newest-first for one branch. `branch_id` is `""` for the
@@ -182,13 +246,16 @@ pub fn list_topology_revision_summaries(
         "SELECT revision, change_note, published_at, published_by, pinned,
                 node_count, wire_count, workspace_creations, workspace_updates,
                 workspace_archives, contract_schema_version,
-                (diagram IS NOT NULL) AS restorable
+                (diagram IS NOT NULL) AS restorable,
+                org_id, actor, key_id, signature, base_revision
          FROM topology_revisions
          WHERE branch_id = ?1
          ORDER BY revision DESC
          LIMIT ?2",
     )?;
     let rows = stmt.query_map(params![branch_id, limit as i64], |r| {
+        let key_id: String = r.get(14)?;
+        let signature: String = r.get(15)?;
         Ok(TopologyRevisionSummary {
             revision: r.get(0)?,
             change_note: r.get(1)?,
@@ -202,9 +269,122 @@ pub fn list_topology_revision_summaries(
             workspace_archives: r.get(9)?,
             contract_schema_version: r.get(10)?,
             restorable: r.get::<_, i64>(11)? != 0,
+            org_id: r.get(12)?,
+            actor: r.get(13)?,
+            key_id: if key_id.is_empty() {
+                None
+            } else {
+                Some(key_id)
+            },
+            signature: if signature.is_empty() {
+                None
+            } else {
+                Some(signature)
+            },
+            base_revision: r.get(16)?,
         })
     })?;
     rows.collect::<Result<_, _>>().map_err(Into::into)
+}
+
+/// Read history newest-first for one branch, strictly isolated by tenant and org.
+///
+/// Implements §4.1 / §7 T1 tenant and organization isolation.
+pub fn list_topology_revision_summaries_scoped(
+    conn: &Connection,
+    branch_id: &str,
+    tenant_id: &str,
+    org_id: &str,
+    limit: u32,
+) -> Result<Vec<TopologyRevisionSummary>, BridgeError> {
+    let mut stmt = conn.prepare(
+        "SELECT revision, change_note, published_at, published_by, pinned,
+                node_count, wire_count, workspace_creations, workspace_updates,
+                workspace_archives, contract_schema_version,
+                (diagram IS NOT NULL) AS restorable,
+                org_id, actor, key_id, signature, base_revision
+         FROM topology_revisions
+         WHERE branch_id = ?1 AND tenant_id = ?2 AND org_id = ?3
+         ORDER BY revision DESC
+         LIMIT ?4",
+    )?;
+    let rows = stmt.query_map(params![branch_id, tenant_id, org_id, limit as i64], |r| {
+        let key_id: String = r.get(14)?;
+        let signature: String = r.get(15)?;
+        Ok(TopologyRevisionSummary {
+            revision: r.get(0)?,
+            change_note: r.get(1)?,
+            published_at: r.get(2)?,
+            published_by: r.get(3)?,
+            pinned: r.get::<_, i64>(4)? != 0,
+            node_count: r.get(5)?,
+            wire_count: r.get(6)?,
+            workspace_creations: r.get(7)?,
+            workspace_updates: r.get(8)?,
+            workspace_archives: r.get(9)?,
+            contract_schema_version: r.get(10)?,
+            restorable: r.get::<_, i64>(11)? != 0,
+            org_id: r.get(12)?,
+            actor: r.get(13)?,
+            key_id: if key_id.is_empty() {
+                None
+            } else {
+                Some(key_id)
+            },
+            signature: if signature.is_empty() {
+                None
+            } else {
+                Some(signature)
+            },
+            base_revision: r.get(16)?,
+        })
+    })?;
+    rows.collect::<Result<_, _>>().map_err(Into::into)
+}
+
+/// Canonical payload string used for signing and verifying a topology revision (ADR-66).
+pub fn canonical_topology_revision_payload(
+    tenant_id: &str,
+    org_id: &str,
+    branch_id: &str,
+    revision: i64,
+    base_revision: Option<i64>,
+    envelope: &str,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let envelope_hash = hex::encode(Sha256::digest(envelope.as_bytes()));
+    let base_str = base_revision
+        .map(|b| b.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    format!("{tenant_id}:{org_id}:{branch_id}:{revision}:{base_str}:{envelope_hash}")
+}
+
+/// Compute HMAC-SHA256 signature for a topology revision payload (ADR-66 D4).
+pub fn sign_topology_revision_payload(key: &[u8], canonical_payload: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
+    mac.update(canonical_payload.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// Verify HMAC-SHA256 signature for a topology revision payload in constant time (ADR-66 D4).
+pub fn verify_topology_revision_signature(
+    key: &[u8],
+    canonical_payload: &str,
+    hex_signature: &str,
+) -> bool {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let Ok(sig_bytes) = hex::decode(hex_signature) else {
+        return false;
+    };
+    let Ok(mut mac) = <Hmac<Sha256> as Mac>::new_from_slice(key) else {
+        return false;
+    };
+    mac.update(canonical_payload.as_bytes());
+    mac.verify_slice(&sig_bytes).is_ok()
 }
 
 /// The three answers a request for one revision's graph can get.
@@ -225,6 +405,16 @@ pub enum TopologyRevisionLookup {
         published_at: String,
         /// Session user who Applied it.
         published_by: String,
+        /// Organization scope (ADR-66).
+        org_id: String,
+        /// Author / actor identity.
+        actor: String,
+        /// Key ID for cryptographic verification.
+        key_id: Option<String>,
+        /// Cryptographic signature.
+        signature: Option<String>,
+        /// Base revision.
+        base_revision: Option<i64>,
     },
     /// Recorded, with a restorable envelope.
     Restorable {
@@ -239,6 +429,16 @@ pub enum TopologyRevisionLookup {
         contract_schema_version: i64,
         /// The stored envelope, byte-identical to what `settings` held.
         envelope: String,
+        /// Organization scope (ADR-66).
+        org_id: String,
+        /// Author / actor identity.
+        actor: String,
+        /// Key ID for cryptographic verification.
+        key_id: Option<String>,
+        /// Cryptographic signature.
+        signature: Option<String>,
+        /// Base revision.
+        base_revision: Option<i64>,
     },
 }
 
@@ -256,20 +456,67 @@ pub fn load_topology_revision_row(
 ) -> Result<TopologyRevisionLookup, BridgeError> {
     // `diagram` is read as Option<String>; the row's existence is probed
     // separately, so a deflated row is not mistaken for a missing one.
-    let row: Option<(Option<String>, String, String, String, i64)> = conn
+    let row: Option<(
+        Option<String>,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        String,
+        String,
+        String,
+        Option<i64>,
+    )> = conn
         .query_row(
             "SELECT diagram, change_note, published_at, published_by,
-                    contract_schema_version
+                    contract_schema_version, org_id, actor, key_id, signature, base_revision
              FROM topology_revisions
              WHERE branch_id = ?1 AND revision = ?2",
             params![branch_id, revision],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                    r.get(9)?,
+                ))
+            },
         )
         .optional()?;
 
-    let Some((diagram, change_note, published_at, published_by, contract_version)) = row else {
+    let Some((
+        diagram,
+        change_note,
+        published_at,
+        published_by,
+        contract_version,
+        org_id,
+        actor,
+        key_id,
+        signature,
+        base_revision,
+    )) = row
+    else {
         return Ok(TopologyRevisionLookup::NotFound);
     };
+    let key_id = if key_id.is_empty() {
+        None
+    } else {
+        Some(key_id)
+    };
+    let signature = if signature.is_empty() {
+        None
+    } else {
+        Some(signature)
+    };
+
     match diagram {
         Some(envelope) => Ok(TopologyRevisionLookup::Restorable {
             change_note,
@@ -277,11 +524,21 @@ pub fn load_topology_revision_row(
             published_by,
             contract_schema_version: contract_version,
             envelope,
+            org_id,
+            actor,
+            key_id,
+            signature,
+            base_revision,
         }),
         None => Ok(TopologyRevisionLookup::Deflated {
             change_note,
             published_at,
             published_by,
+            org_id,
+            actor,
+            key_id,
+            signature,
+            base_revision,
         }),
     }
 }
@@ -552,16 +809,22 @@ pub fn insert_topology_revision(
     ctx: &TopologyRevisionContext<'_>,
 ) -> Result<(), BridgeError> {
     let published_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let org_id = ctx.org_id.unwrap_or("default");
+    let actor = ctx.actor.unwrap_or(ctx.published_by);
+    let key_id = ctx.key_id.unwrap_or("");
+    let signature = ctx.signature.unwrap_or("");
     tx.execute(
         "INSERT INTO topology_revisions
             (id, branch_id, tenant_id, revision, change_note, diagram,
              workspace_creations, workspace_updates, workspace_archives,
              node_count, wire_count, contract_schema_version,
-             pinned, published_at, published_by)
+             pinned, published_at, published_by,
+             org_id, actor, key_id, signature, base_revision)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6,
                  ?7, ?8, ?9,
                  ?10, ?11, ?12,
-                 0, ?13, ?14)",
+                 0, ?13, ?14,
+                 ?15, ?16, ?17, ?18, ?19)",
         params![
             uuid::Uuid::now_v7().to_string(),
             branch_id,
@@ -580,6 +843,11 @@ pub fn insert_topology_revision(
             kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION as i64,
             published_at,
             ctx.published_by,
+            org_id,
+            actor,
+            key_id,
+            signature,
+            ctx.base_revision,
         ],
     )?;
     Ok(())

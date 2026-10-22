@@ -241,10 +241,9 @@ server-side, as ADR #22 §5 already requires via `TenantSubscription`.
 - [x] **ADR drafted recording the authority model (D1), the signed-revision contract (D4), §3.2
       granularity, the v1 eligibility gate (D2), the read-only local editor (D3), and I1-I5.**
       Codified in `docs/decisions/2026-10-22-adr66-centralized-topology-authoring-authority-model.md`.
-- [ ] §4.1 tenant isolation audit complete, expressed as tests.
-- [ ] ADR #46 §6 (audit on apply) confirmed landed, per §4.5 — D5's audit requirement depends on it.
-- [ ] Replication path design reviewed — see §3.1; still the largest item and still needs its own
-      estimate. D3 narrows it: one writer per branch, so no rebase or merge machinery in v1.
+- [x] §4.1 tenant isolation audit complete, expressed as tests (verified in `scoped_listing_strictly_isolates_by_tenant_and_org`).
+- [x] ADR #46 §6 (audit on apply) confirmed landed, per §4.5 (verified in `revisions.rs:502` and `the_audit_record_describes_the_apply`).
+- [x] Replication path design reviewed — see §3.1; D3 narrows it: one writer per branch, so no rebase or merge machinery in v1.
 
 **Exit gate:** ADR committed; every §7 T1 test fails-then-passes; audit work confirmed.
 
@@ -255,11 +254,11 @@ with `id`, `branch_id`, `revision`, `change_note`, a self-contained envelope, DE
 immutable revisions. `set_topology_revision_pinned` is at
 `crates/kasirmu-bridge/src/topology/revisions.rs:364`.
 
-- [ ] Add `tenant_id`, `org_id`, `actor`, `key_id`, `signature` as **metadata** — not as a new key
-      (§3.2). `key_id` is D4; without it there is no rotation path.
-- [ ] Give the table a Postgres twin. Today the migration has **no** `.pg.sql` counterpart, so the
-      revision history is local-only; the server cannot hold canonical history without it.
-- [ ] Generate the PG migration with `python3 scripts/generate-pg-migration.py` (house rule).
+- [x] Add `tenant_id`, `org_id`, `actor`, `key_id`, `signature`, `base_revision` as **metadata** — not as a new key
+      (§3.2). `key_id` is D4; without it there is no rotation path (migration `20261026_topology_revisions_metadata.sql`,
+      bridge domain models in `revisions.rs`, and TypeScript interface in `ui/src/api/topology.ts`).
+- [x] Give the table a Postgres twin. Counterpart generated and registered in `20260813_init.pg.sql`.
+- [x] Generate the PG migration with `python3 scripts/generate-pg-migration.py` (house rule, verified with `--check`).
 
 ### Phase 2 — Server plan/apply
 

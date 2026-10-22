@@ -1845,6 +1845,11 @@ fn racing_publishes_to_one_branch_yield_two_ordered_revisions() {
                     workspace_creations: 1,
                     workspace_updates: 0,
                     workspace_archives: 0,
+                    org_id: None,
+                    actor: None,
+                    key_id: None,
+                    signature: None,
+                    base_revision: None,
                 };
                 // expected = None: both publishers believe they are current.
                 // The IMMEDIATE transaction must serialize them.
@@ -1931,6 +1936,11 @@ fn racing_publishes_with_the_same_expected_revision_cas_reject_one() {
                     workspace_creations: 0,
                     workspace_updates: 1,
                     workspace_archives: 0,
+                    org_id: None,
+                    actor: None,
+                    key_id: None,
+                    signature: None,
+                    base_revision: None,
                 };
                 // Both publishers read current=0 and send expected=0.
                 // Exactly one may win.
