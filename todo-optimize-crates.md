@@ -1248,9 +1248,9 @@ it. What IS verified: `cargo check -p kasirmu-hal --all-targets` exit 0, `cargo 
 the no-VM error would pass while exercising none of the code of interest. The final authority on this file
 is an Android build or a review of the two-lock-site claim.
 **O-M44 · kasirmu-hal — `discover_all()` per configured USB printer at startup** —
-`crates/kasirmu-hal/src/bootstrap.rs:299-302` ◦ (3A-07). N printers means N complete bus
-enumerations, each returning the same list, of which only element 0 is kept. *Fix:* hoist one
-`discover_all()` above the loop.
+`crates/kasirmu-hal/src/bootstrap.rs:299-302` ✔ **PAID 2026-10-22 in `647a8614f`** (3A-07).
+N printers means N complete bus enumerations, each returning the same list, of which only element 0 is kept.
+Fixed: hoisted one `discover_all()` above the loop, converting it to an iterator consumed across configured USB printers.
 
 **O-M45 · kasirmu-payment — backoff has no jitter and `max_retries` is uncapped** —
 `crates/kasirmu-payment/src/resilience.rs:337-341` ◦ (3A-11) · **PAID 2026-10-22.** Every terminal in a
@@ -4520,5 +4520,19 @@ Two Low-tier optimizations resolved and verified across the workspace:
    `Vec<u8>` write buffer; eliminated `format!("{line}\n")` string allocations on `PeerTx::Plain` by writing bytes directly;
    and avoided intermediate vector cloning in `read_line`.
    All 89 tests pass.
+
+## §11BE — O-M44 resolved: single-pass USB printer discovery during HAL bootstrap (2026-10-22)
+
+In `crates/kasirmu-hal/src/bootstrap.rs`, `apply_config` previously invoked
+`UsbReceiptPrinter::discover_all()` inside the `for printer in &config.printers` loop whenever a printer
+specified `Connection::Usb`. If multiple USB printers were configured, the system executed multiple
+blocking USB bus enumerations, repeatedly discovering the same list of devices.
+
+Hoisted `discover_all()` above the printer iteration loop into a lazily-checked iterator:
+1. If no printers use `Connection::Usb`, `discover_all()` is never invoked.
+2. If one or more printers use `Connection::Usb`, the bus is enumerated exactly once into an iterator,
+   and each configured USB printer takes the next available device.
+Verified with unit test `multiple_usb_printers_hoist_discovery_and_skip_when_absent`. All 26 bootstrap tests pass.
+
 
 
