@@ -5950,3 +5950,72 @@ it ignored.
 `push_outcome_documented_schema_matches_serde_wire_shape` was RED with the field list on both sides. Documented
 rather than loosening the test — that test derives its expectation from `serde_json::to_value` of the real
 enum, so it is the one thing standing between the wire format and the published contract.
+
+## §11CI — the CI gate now runs both tiers, and O-M70 measured three times before being right (2026-10-22)
+
+Landed in `bf1c70d2c` and `1c66df60e`.
+
+### The gate was running only half its coverage
+
+`scripts/check-query-plans.py` ran `cargo test --test integration query_plan_probe` — the string-based
+probe — and NOTHING ELSE. The 13 run-time-WHERE tests added in §11CH are `--lib` unit tests, so they
+executed in nobody's CI. The gate reported "OK - 27 probed queries" while the newest coverage, covering
+exactly the class O-M69 belonged to, never ran.
+
+Fixed by adding a second tier (`run_unit_plan_gate`) that runs `cargo test --lib dynamic_where` after the
+integration probe, and failing the gate (exit 2) if it does not pass. **Falsified**: unregistering the O-M69
+migration makes the gate exit 2 and name the missing index.
+
+This is the same class of error as the two bugs found in the gate last round — coverage that exists but is
+not wired to anything. Worth stating plainly: **a test that no gate runs is a test you do not have.**
+
+### O-M70, and why it took three measurements
+
+Following O-M04's `sale_id` column, `has_pending_outbox_row_for_sale` has two branches. The fast one is
+indexed and seeks. The LEGACY branch (`sale_id IS NULL`) is the only route to any row written before
+migration `20261023`, which added the column without backfilling.
+
+I measured it three times, and the first two were wrong:
+
+| Attempt | Claim | Why it was wrong |
+|---|---|---|
+| 1 | `SCAN offline_queue` | planned against a table too small/thin to shape the choice |
+| 2 | "so the legacy branch is a full scan" | carried attempt 1 forward as a finding without re-measuring |
+| 3 | `SEARCH ... idx_offline_queue_status_action (status=? AND action=?)` | **true** — measured on a seeded table during FALSIFICATION |
+
+**The falsification is what caught it.** I unregistered the migration to prove the new test fails, and the
+failure message quoted the PRE-FIX plan — which was already a SEARCH, not a scan. The real residual cost is
+narrower: `idx_offline_queue_status_action` is `(status, action)`, **not covering**, so each candidate row is
+fetched from the table just to run `instr(payload, ?)`.
+
+### The fix, sized to the real problem
+
+```sql
+CREATE INDEX idx_offline_queue_legacy_sale_probe
+    ON offline_queue(action, status, payload) WHERE sale_id IS NULL;
+```
+
+PARTIAL on `sale_id IS NULL`, so it is exactly as large as the legacy set and costs nothing for rows the
+fast path already serves; `payload` is included so `instr` is evaluated from the index entry with no table
+fetch. Plan becomes `SEARCH ... USING INDEX idx_offline_queue_legacy_sale_probe (action=? AND status=?)`.
+
+An intermediate attempt — `(status, action) WHERE sale_id IS NULL` — turned the scan into
+`SCAN ... USING INDEX`, an index walk rather than a seek, so it was discarded. Two attempts, measured, one
+kept.
+
+### The lesson, which is about ORDER not technique
+
+**A plan measured on an unseeded table is not evidence about production.** I have now made this mistake in
+three consecutive rounds — the gift-card "scan" (80% `active`), the audit "scan" (40% security actions), and
+this one (no data at all). Each time the falsification step caught it. The practice that works is not
+"measure carefully"; it is **measure, then try to DISPROVE the measurement**, because the falsification is
+where the wrong reading surfaces.
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets          -> exit 0
+cargo test  -p kasirmu-core --lib                  -> 3673 passed, 0 failed (183.32s)
+python scripts/check-query-plans.py --check        -> exit 0, both tiers
+generate-pg-migration.py                           -> 129 tables, 169 indexes
+```
