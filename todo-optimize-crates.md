@@ -6668,3 +6668,43 @@ rustfmt --edition 2021 --check              -> clean on my hunks (@@ -125 / @@ -
 ```
 
 **Ledger: 142 defined, 142 closed, 0 open.**
+
+## §11CR — O-M77 opened: the sibling workspace picker still has no read-repair (2026-10-23)
+
+**Recorded, not fixed.** This is a product decision, not a bug I should silently reverse.
+
+`list_workspaces` (the pre-session picker) gained a read-repair path: when the store db's
+`workspace_instances` is empty, it re-seeds from the global identity db. `list_workspaces_for_store_scoped`
+(`workspaces.rs:799` — the terminal-management screen's cross-store picker, reached from
+`apps/desktop-tauri/src/commands/workspaces.rs`) has **no such repair**. Same fixture, same global row,
+and it returns `[]`.
+
+`list_workspaces_for_store_scoped_has_no_read_repair` (`workspaces_tests.rs:360`) pins the asymmetry
+with this message, which is the right instruction to leave behind:
+
+> If this ever returns the global row, the repair was extended here too — good, and this test should
+> then assert the repair instead.
+
+### Why I am not fixing it this round
+
+The function is not a straight copy of its sibling. It loads the assignment **and** the signed tenant
+subscription from the global db, validates clock rollback, verifies the RSA signature, and applies
+`list_workspaces_with_entitlement`. A repair bolted onto that path has to answer a question the
+sibling never faces: **when the store db is empty, which rows are the authoritative ones** — the global
+rows filtered by the same entitlement, or nothing until a sync runs? The sibling answers "re-seed and
+persist". For a cross-store picker that may then be used to create assignments, re-seeding changes what
+a *different* store's db contains as a side effect of a *read*.
+
+That is a data-ownership call, and the recorded decision is that reads repair the picker they serve.
+Extending it is a deliberate act with a migration-shaped consequence, so it stays open rather than
+being folded into a gate fix.
+
+### What closing it would take
+
+1. Decide the authority rule above, and write it down where the test points.
+2. If repair is adopted, factor the sibling's `has_empty` / `global_rows` logic into one helper so the
+   two paths cannot drift again — the duplication is what let the asymmetry appear in the first place.
+3. Flip the assertion in `list_workspaces_for_store_scoped_has_no_read_repair` to assert the repair,
+   and rename it; it names the absence, so it cannot survive the fix unedited.
+
+**Ledger: 143 defined, 142 closed, 1 open.**
