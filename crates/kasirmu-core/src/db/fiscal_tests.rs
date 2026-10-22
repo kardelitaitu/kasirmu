@@ -496,8 +496,10 @@ fn the_schema_refuses_a_kind_that_bypasses_core_validation() {
 fn concurrent_claims_never_issue_the_same_number() {
     use rusqlite::{Connection, Transaction, TransactionBehavior};
 
-    let dir = kasirmu_test_support::scratch_dir("oz_fiscal_race");
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory and deletes it on drop; keep it alive for
+    // the whole test, including the spawned claimers that read the file.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_fiscal_race");
+    let dir = scratch.path();
     let db_path = dir.join("test.db");
 
     {
@@ -557,7 +559,6 @@ fn concurrent_claims_never_issue_the_same_number() {
     assert_eq!(counter, 2, "the series must have advanced once per claim");
 
     drop(conn);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ── issue_tax_invoice_for_sale & sale_statutory_number ───────────────

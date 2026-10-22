@@ -985,10 +985,12 @@ fn open_shift_failed_open_leaves_no_row() {
 /// and then refuses.
 #[test]
 fn open_shift_race_cannot_create_a_second_open_shift() {
-    let dir = kasirmu_test_support::scratch_dir("oz_shift_race");
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_shift_race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_user(&conn);
     }
 
@@ -1078,5 +1080,4 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
 
     drop(check);
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }

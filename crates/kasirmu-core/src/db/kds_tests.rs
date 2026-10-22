@@ -276,8 +276,9 @@ fn update_kds_status_race_cannot_overwrite_a_competing_transition() {
         true
     }
 
-    let dir = kasirmu_test_support::scratch_dir("oz_kds_race");
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_kds_race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let order_id = {
         let file_conn = {

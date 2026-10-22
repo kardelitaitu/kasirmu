@@ -522,10 +522,13 @@ fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
 /// voided. Needs a real second connection, hence the file-backed DB.
 #[test]
 fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale() {
-    let dir = kasirmu_test_support::scratch_dir("oz_void_race");
+    // The guard owns the directory and deletes it on drop; keep it alive for
+    // the whole test, including the rival thread that opens the same file.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_void_race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let sale_id = {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         let mut cart = Cart::new(usd());
         cart.add_line(CartLine::new(Sku::new("VOID-RACE"), 1, price(1000)))
             .unwrap();
@@ -640,7 +643,6 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
     assert_eq!(status, "completed", "the loser must not win the column");
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ── Phase 5 P5.1: the cross-vertical write contract ────────────────────

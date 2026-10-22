@@ -763,7 +763,10 @@ fn unfreeze_gift_card_refuses_an_active_card() {
 /// status and timestamp survive exactly as B wrote them.
 #[test]
 fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
-    let dir = kasirmu_test_support::scratch_dir("oz_gc_freeze_race");
+    // The guard owns the directory and deletes it on drop, so the fixture
+    // cannot be left behind by a failed assertion.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_gc_freeze_race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
         let conn = fresh_file(&dir);
@@ -857,7 +860,6 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     );
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// C18 (slice P1.4): the same compare-and-set in the other direction.
@@ -869,7 +871,10 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 /// it A's UPDATE matches zero rows and the unfreeze is refused.
 #[test]
 fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
-    let dir = kasirmu_test_support::scratch_dir("oz_gc_unfreeze_race");
+    // The guard owns the directory and deletes it on drop, so the fixture
+    // cannot be left behind by a failed assertion.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_gc_unfreeze_race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
         let conn = fresh_file(&dir);
@@ -950,7 +955,6 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     );
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The idempotency read must tell "no prior redemption" apart from a read that

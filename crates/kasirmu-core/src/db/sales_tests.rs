@@ -3565,8 +3565,10 @@ fn void_pending_sale_with_recipe_restores_ingredient_stock() {
 #[test]
 fn concurrent_complete_sale_serialized_by_begin_immediate() {
     // Use a file-based DB so two connections can access it concurrently.
-    let dir = kasirmu_test_support::scratch_dir("oz_concurrent");
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory and deletes it on drop; it must outlive
+    // every thread that opens the file below.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_concurrent");
+    let dir = scratch.path();
     let db_path = dir.join("test.db");
 
     // Clone the schema from a fresh_db() snapshot into the file DB.
@@ -3645,9 +3647,6 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
         matches!(loser, CoreError::Validation { field, .. } if *field == "stock"),
         "loser must fail the stock check, got: {loser:?}"
     );
-
-    // Clean up.
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// True when a `CoreError` wraps a SQLite busy/locked failure — the

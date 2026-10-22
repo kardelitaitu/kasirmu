@@ -98,8 +98,11 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
     // pre-fix unconditional UPDATE returns `Ok` on the first attempt, which
     // panics immediately rather than retrying.
     for _attempt in 0..8 {
-        let dir = kasirmu_test_support::scratch_dir("oz_sale_race");
-        let conn = fresh_file(&dir);
+        // Every attempt owns its own guarded directory; the guard deletes it
+        // when this iteration's scope ends (on the early return too).
+        let scratch = kasirmu_test_support::ScratchDir::new("oz_sale_race");
+        let dir = scratch.path();
+        let conn = fresh_file(dir);
         let sale_id = seed_pending_sale(&conn);
         let db_path = dir.join("kasir.db");
 
@@ -211,14 +214,11 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
                     "completed",
                     "the losing transition overwrote the winner"
                 );
-                let _ = std::fs::remove_dir_all(&dir);
                 return;
             }
             // A read too late — B had already committed, so there was no race
             // left to lose. Restage.
-            Err(CoreError::Validation { .. }) => {
-                let _ = std::fs::remove_dir_all(&dir);
-            }
+            Err(CoreError::Validation { .. }) => {}
             // The pre-fix behaviour: the losing transition succeeded and
             // silently discarded the winner's `completed`.
             Ok(sale) => panic!(
@@ -242,8 +242,10 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
 /// no-overwrite property for the committed case.
 #[test]
 fn a_committed_competing_transition_is_not_overwritten() {
-    let dir = kasirmu_test_support::scratch_dir("oz_sale_cas");
-    let conn = fresh_file(&dir);
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz_sale_cas");
+    let dir = scratch.path();
+    let conn = fresh_file(dir);
     let sale_id = seed_pending_sale(&conn);
 
     // A second connection, the shape a second terminal or a sync replay
@@ -281,8 +283,6 @@ fn a_committed_competing_transition_is_not_overwritten() {
         .unwrap();
     assert_eq!(after, before, "the refused call still bumped the version");
     assert_eq!(stored_status(&other, &sale_id), "active");
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // -- a sale header that cannot be read must not map to a plausible default --
