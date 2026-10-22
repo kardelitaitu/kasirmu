@@ -126,7 +126,7 @@ export function UpdateSettingsCard() {
         }
       } else {
         setStep('error');
-        setErrorMessage('In-app updates are Android-only');
+        setErrorMessage(l10n.getString('settings-updater-android-only'));
       }
     } catch (err: unknown) {
       setStep('error');
@@ -187,7 +187,7 @@ export function UpdateSettingsCard() {
         setStep('ready');
       } else {
         setStep('error');
-        setErrorMessage('In-app updates are Android-only');
+        setErrorMessage(l10n.getString('settings-updater-android-only'));
       }
     } catch (err: unknown) {
       if (unlistenRef.current) {

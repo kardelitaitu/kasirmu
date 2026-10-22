@@ -1297,5 +1297,6 @@ settings-updater-offline-warning-body = You have { $count } unsynced transaction
 settings-updater-offline-sync-now = Sync Now
 settings-updater-offline-ignore-proceed = Proceed Anyway
 settings-updater-cancel = Cancel
+settings-updater-android-only = In-app updates are available for Android only.
 
 

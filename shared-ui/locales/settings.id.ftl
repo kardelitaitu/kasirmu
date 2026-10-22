@@ -1265,5 +1265,6 @@ settings-updater-offline-warning-body = Anda memiliki { $count } transaksi yang 
 settings-updater-offline-sync-now = Sinkronkan Sekarang
 settings-updater-offline-ignore-proceed = Tetap Lanjutkan
 settings-updater-cancel = Batal
+settings-updater-android-only = Pembaruan dalam aplikasi hanya tersedia untuk Android.
 
 
