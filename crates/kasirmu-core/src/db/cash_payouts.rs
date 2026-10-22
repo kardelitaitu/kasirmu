@@ -6,7 +6,7 @@ findings: validates amount>0 and open shift; COR-28 INFO: FIXED (C18, slice P1.2
 next: none | perf: N/A
 */
 
-use rusqlite::params;
+use rusqlite::{Transaction, TransactionBehavior, params};
 
 use crate::CashPayout;
 use crate::error::CoreError;
@@ -57,7 +57,15 @@ impl Store<'_> {
         // write time inside the transaction, so a shift that closed in that
         // window yields zero rows and is refused with the same closed-shift
         // error (the `void_sale` shape, sales_lifecycle.rs).
-        let tx = self.conn.unchecked_transaction()?;
+        //
+        // O-M67: IMMEDIATE, not the DEFERRED `unchecked_transaction` this used
+        // to open. A deferred transaction takes no lock until the INSERT, so
+        // the read and the compare-and-set above were not atomic and the
+        // window was as wide as the gap between the two statements. IMMEDIATE
+        // contends at BEGIN, where the connection's 5000 ms busy_timeout
+        // applies (the argument at sales_checkout.rs:241), so the caller
+        // serialises against a concurrent close before it reads the shift.
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
         let rows = tx.execute(
             "INSERT INTO cash_payouts (id, shift_id, amount_minor, reason, created_at)
              SELECT ?1, ?2, ?3, ?4, ?5
