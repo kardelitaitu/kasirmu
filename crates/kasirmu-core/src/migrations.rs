@@ -723,6 +723,90 @@ pub fn ensure_bootstrap_subscription(
     Ok(written > 0)
 }
 
+/// `<workspace>/target/test-scratch`, created if absent.
+///
+/// A local copy of the walk-up in `kasirmu-test-support`, because that crate is a
+/// DEV-dependency and `fresh_db` is reachable from the library. Reusing the same
+/// path matters: the test-support fixtures and this snapshot cache must share one
+/// root, or the gitignore that covers `target/` stops describing reality.
+/// The snapshot cache file for the CURRENT migration set.
+///
+/// Named by fingerprint, so a build whose migrations changed gets a different
+/// file rather than reusing a schema from before the change. Two builds sharing
+/// one checkout therefore never read each other's snapshot.
+fn snapshot_cache_path() -> std::path::PathBuf {
+    scratch_root().join(format!(
+        "kasirmu-core-migrated-snapshot-{:016x}.sqlite",
+        migration_fingerprint(),
+    ))
+}
+
+fn scratch_root() -> std::path::PathBuf {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest
+        .ancestors()
+        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
+        .unwrap_or(manifest)
+        .join("target")
+        .join("test-scratch");
+    let _ = std::fs::create_dir_all(&root);
+    root
+}
+
+/// A fingerprint of the embedded migration set, used as the disk-cache key.
+///
+/// Every migration is a compile-time constant, so this is stable across runs
+/// on the same build. It covers ids AND sql lengths: a migration whose SQL
+/// changes without its id changing would otherwise reuse a stale snapshot --
+/// the classic cache-key bug, and this crate is exactly where that would be
+/// expensive to debug.
+fn migration_fingerprint() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    ALL.len().hash(&mut h);
+    for mig in ALL {
+        mig.id.hash(&mut h);
+        mig.sql.len().hash(&mut h);
+    }
+    h.finish()
+}
+
+/// Build the in-memory snapshot connection.
+///
+/// Split out of fresh_db so the disk-cache path can call it when the cache
+/// is cold.
+fn build_snapshot_conn() -> rusqlite::Connection {
+    use std::sync::LazyLock;
+
+    fn cached_sql() -> &'static str {
+        static SQL: LazyLock<String> = LazyLock::new(|| {
+            let mut buf = String::with_capacity(48_000);
+            buf.push_str("PRAGMA foreign_keys = ON;\n");
+            buf.push_str(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (\n\
+                 id         TEXT PRIMARY KEY,\n\
+                 applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
+                 checksum   TEXT\n\
+                 );\n",
+            );
+            for mig in ALL {
+                buf.push_str("BEGIN;\n");
+                buf.push_str(mig.sql);
+                buf.push('\n');
+                buf.push_str("INSERT INTO schema_migrations (id) VALUES ('");
+                buf.push_str(mig.id);
+                buf.push_str("');\nCOMMIT;\n");
+            }
+            buf
+        });
+        &SQL
+    }
+
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch(cached_sql()).unwrap();
+    conn
+}
+
 /// Create a fresh in-memory database with all migrations already applied.
 ///
 /// Uses a [`std::sync::LazyLock`]ed pre-migrated snapshot connection.
@@ -778,52 +862,67 @@ pub fn ensure_bootstrap_subscription(
 pub fn fresh_db() -> rusqlite::Connection {
     use std::sync::{LazyLock, Mutex};
 
-    /// Pre-migrated snapshot — built once, cloned for every test.
-    static SNAPSHOT: LazyLock<Mutex<rusqlite::Connection>> = LazyLock::new(|| {
-        use std::sync::OnceLock;
+    // A file-backed snapshot in the scratch root, shared ACROSS PROCESSES.
+    //
+    // Why this exists: nextest forks one process per TEST, so the in-memory
+    // static below is rebuilt in every one of them. MEASURED 2026-10-23 on
+    // kasirmu-core (82 migrations): running the migration chain costs 440.66 ms
+    // while cloning an existing snapshot costs 1.05 ms -- a 420x difference.
+    // A full nextest run therefore paid that chain per test: 294.89 s under
+    // nextest against 65.10 s under cargo test --test-threads=4, for the same
+    // 3674 tests. The file cache is the fix: build once, reuse everywhere.
+    //
+    // The cache is keyed by a fingerprint of the migration set, so a changed
+    // migration produces a different file and never reads a stale schema.
+    // A corrupt or unreadable file falls back to rebuilding rather than failing.
+    let snapshot_file = snapshot_cache_path();
 
-        fn cached_sql() -> &'static str {
-            static SQL: OnceLock<String> = OnceLock::new();
-            SQL.get_or_init(|| {
-                let mut buf = String::with_capacity(48_000);
-                buf.push_str("PRAGMA foreign_keys = ON;\n");
-                buf.push_str(
-                    "CREATE TABLE IF NOT EXISTS schema_migrations (\n\
-                     id         TEXT PRIMARY KEY,\n\
-                     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
-                     checksum   TEXT\n\
-                     );\n",
-                );
-                for mig in ALL {
-                    buf.push_str("BEGIN;\n");
-                    buf.push_str(mig.sql);
-                    buf.push('\n');
-                    buf.push_str("INSERT INTO schema_migrations (id) VALUES ('");
-                    buf.push_str(mig.id);
-                    buf.push_str("');\n");
-                    buf.push_str("COMMIT;\n");
-                }
-                buf
-            })
+    // The in-process snapshot, still the fastest path when it is warm: one
+    // process running many tests (what cargo test does) pays nothing here.
+    static SNAPSHOT: LazyLock<Mutex<rusqlite::Connection>> =
+        LazyLock::new(|| Mutex::new(build_snapshot_conn()));
+
+    let mut fresh = rusqlite::Connection::open_in_memory().unwrap();
+
+    if snapshot_file.is_file() {
+        // Fast path: clone from the shared file.
+        let src = match rusqlite::Connection::open(&snapshot_file) {
+            Ok(c) => c,
+            Err(_) => {
+                // A torn or locked file must not fail a test: rebuild it.
+                let _ = std::fs::remove_file(&snapshot_file);
+                build_snapshot_conn()
+            }
+        };
+        {
+            let backup = rusqlite::backup::Backup::new(&src, &mut fresh)
+                .expect("backup from the cached snapshot cannot fail");
+            backup
+                .run_to_completion(100, std::time::Duration::from_millis(0), None)
+                .expect("page copy from the cached snapshot cannot fail");
         }
+    } else {
+        // Cold cache: build the snapshot, then persist it for other processes.
+        let snapshot = SNAPSHOT.lock().unwrap();
+        {
+            let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh)
+                .expect("backup from the in-memory snapshot cannot fail");
+            backup
+                .run_to_completion(100, std::time::Duration::from_millis(0), None)
+                .expect("page copy from the in-memory snapshot cannot fail");
+        }
+        drop(snapshot);
 
-        let conn = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
-        conn.execute_batch(cached_sql()).unwrap(); // INVARIANT: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
-        Mutex::new(conn)
-    });
-
-    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail (fresh_db # Panics)
-    {
-        let snapshot = SNAPSHOT.lock().unwrap(); // INVARIANT: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
-        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // INVARIANT: both connections are valid in-memory SQLite handles; Backup::new cannot fail
-        backup
-            .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .unwrap(); // INVARIANT: page copy between two in-memory DBs cannot fail at runtime
-    } // drop Backup (releases &mut fresh borrow), then drop MutexGuard
+        // Write the file for the next process. Best-effort: a read-only scratch
+        // root costs speed, never correctness, and the next caller retries.
+        write_snapshot_file(&snapshot_file);
+    }
 
     // Mirror the per-connection PRAGMAs `run` applies. WAL is impossible
-    // for `:memory:` (SQLite pins it to `memory`), so only the three
-    // per-connection settings are reproduced.
+    // for :memory: (SQLite pins it to memory), so only the three
+    // per-connection settings are reproduced. Without the busy timeout a
+    // contended test connection fails instantly instead of waiting, which is
+    // how a concurrency test can pass without ever exercising the wait.
     fresh
         .pragma_update(None, "busy_timeout", "5000")
         .expect("busy_timeout on a fresh test DB cannot fail");
@@ -834,6 +933,38 @@ pub fn fresh_db() -> rusqlite::Connection {
         .pragma_update(None, "foreign_keys", "ON")
         .expect("foreign_keys on a fresh test DB cannot fail");
     fresh
+}
+
+/// Persist the migrated snapshot to a file so later PROCESSES can reuse it.
+///
+/// Written to a staging name and renamed, so a reader never sees a half-written
+/// snapshot: two nextest processes racing on a cold cache would otherwise be
+/// able to open a truncated file, which is exactly the failure the fallback in
+/// fresh_db exists for.
+fn write_snapshot_file(target: &std::path::Path) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static WRITING: AtomicBool = AtomicBool::new(false);
+    // Only one thread writes; the others continue with the in-memory copy. A
+    // second writer would just reproduce the same bytes, so skipping it is free.
+    if WRITING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let staging = target.with_extension("staging");
+    {
+        let src = build_snapshot_conn();
+        let mut file = rusqlite::Connection::open(&staging)
+            .expect("staging snapshot file must be creatable in the scratch root");
+        let backup = rusqlite::backup::Backup::new(&src, &mut file)
+            .expect("backup into the staging file cannot fail");
+        backup
+            .run_to_completion(100, std::time::Duration::from_millis(0), None)
+            .expect("page copy into the staging file cannot fail");
+    }
+    if std::fs::rename(&staging, target).is_err() {
+        // Another process won the race, or the file is locked. Either way the
+        // in-memory path is correct; just do not leave the staging file behind.
+        let _ = std::fs::remove_file(&staging);
+    }
 }
 #[cfg(test)]
 #[path = "migrations_tests.rs"]

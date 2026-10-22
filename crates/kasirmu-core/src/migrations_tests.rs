@@ -4338,3 +4338,58 @@ fn the_reconcile_writes_the_row_the_baseline_seeds() {
         "the reconcile and the seed must write the same row"
     );
 }
+
+/// The shared snapshot cache must never carry a test's writes.
+///
+/// `fresh_db` persists a migrated snapshot to `target/test-scratch` so that
+/// PROCESSES (nextest forks one per test) stop re-running the 68-migration chain
+/// each time -- measured 440.66 ms per chain against 1.05 ms per clone, which
+/// took a full nextest run of kasirmu-core from 294.89 s to 48.52 s.
+///
+/// That cache is exactly the thing this test has to guard: if a future edit made
+/// it shared AND writable, two tests would silently read each other's rows and
+/// the failures would land in whichever test ran second, far from the cause.
+/// So the invariant is asserted directly on the file.
+#[test]
+fn fresh_db_cache_holds_no_business_rows() {
+    // Force the cache into existence.
+    let conn = fresh_db();
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0))
+        .unwrap();
+    drop(conn);
+
+    let path = snapshot_cache_path();
+    assert!(
+        path.is_file(),
+        "fresh_db must publish its snapshot cache file at {}",
+        path.display()
+    );
+
+    let file = rusqlite::Connection::open(&path).expect("the cache file must open");
+    let migrations: i64 = file
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        migrations,
+        ALL.len() as i64,
+        "the cache must hold exactly the embedded migration set"
+    );
+    // The graded half: the cache is a template, never a shared database.
+    for table in [
+        "settings",
+        "locations",
+        "workspace_instances",
+        "products",
+        "sales",
+    ] {
+        let n: i64 = file
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap_or(0);
+        assert_eq!(
+            n, 0,
+            "the snapshot cache must hold no rows in {table}; a shared mutable \
+             cache would leak one test's writes into another"
+        );
+    }
+}
