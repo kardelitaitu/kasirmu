@@ -6203,3 +6203,55 @@ a gate running half its coverage; this round ran an autofix that reported `FIX=0
 guard. The lesson is not "check the exit code" — every one of these exited 0. It is **diff the artifact**, which
 is why the literal-multiset tokenizer caught three previous mistakes and why `git status` after the autofix
 caught this one before it was committed.
+
+## §11CL — O-M72 partially closed: 67 of 111 UI warnings removed by configuration, 44 left (2026-10-22)
+
+Landed in `040a242e6`. UI lint went **111 warnings -> 44**, 0 errors, with **zero production code touched**.
+
+### The 67 were the rule misreading its own input
+
+`react-refresh/only-export-components` fires when a file exports a component AND something else. Its
+"something else" is a component-only heuristic, and the files in question export PURE FUNCTIONS and
+CONSTANTS — the pattern several of them document explicitly, e.g. `KdsCardColorsContext.tsx`:
+
+> "Exported for testing. … it validated a private reimplementation. … editing a colour in production would
+> leave the suite green while testing values nothing uses."
+
+So the exports are deliberate and load-bearing; **splitting them into separate files to satisfy the linter
+would have weakened the tests it was complaining about.** `eslint.config.js` already had an `allowExportNames`
+list with 7 names and the same rationale — the list was simply incomplete.
+
+Extended it with 44 more names and one scoped `off` for `src/__tests__/topologyEditorTestHarness.tsx`, which
+is a test harness (nothing there is ever hot-reloaded) rather than a production module.
+
+### The 44 that remain are NOT automatable, and that is now PROVEN twice
+
+`@typescript-eslint/consistent-type-imports` × 44, all inline `import()` annotations. Two attempts to clear
+them mechanically both had to be reverted (round 26's §11CK records both in detail):
+
+1. `eslint --fix` with a `--rule` override **deleted an `eslint-disable` guard** in 13 files.
+2. A hand-written regex converter reported `changed 27 of 27` and **broke value-position `import()` calls**,
+   which `tsc` caught as 8 errors.
+
+Still open, and the entry now says so rather than implying the work is nearly done.
+
+### A REAL defect found on the way, and fixed by someone else first
+
+Running the full suite showed **6 failing tests** in `topologyThemeParity.test.ts`, and they were genuine:
+`NodeTopologyEditor.css` used `var(--color-info-fg, …)` and `var(--color-info-border, …)`, but
+`ui/src/theme/tokens.css` defines only `--color-info`, `-bg` and `-subtle`. Those two resolved their FALLBACK
+forever, which is the exact failure the phantom-token test exists to catch.
+
+I fixed it (replacing both with real tokens) and the suite went 6 failures -> 1. **A concurrent session then
+landed `6a40d64dc` with the same fix**, so my edit was superseded and the tree no longer contains it. The
+finding was real either way and is recorded here because the test caught it, not me.
+
+### Verification
+
+```
+npm run lint       -> exit 0, 44 warnings, 0 errors   (was 111)
+npm run typecheck  -> exit 0
+npm run test       -> 13,126 passed, 1 failed in the full parallel run
+   the 1 failure is topologyThemeParity, which passes 7/7 in isolation;
+   it is the known load-sensitivity from §11CI, not a logic failure
+```
