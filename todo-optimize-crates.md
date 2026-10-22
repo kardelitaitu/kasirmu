@@ -20,30 +20,29 @@ open work in every downstream reading this journal supplies.**
 | Test (O-T) | 17 | 17 | **0** |
 | **Total** | **133** | **133** | **0** |
 
-**Updated 2026-10-22 (round 18) — THE LEDGER IS EMPTY. 133 defined, 133 closed, 0 open.**
+**Updated 2026-10-22 (round 19) — the ledger stays EMPTY: 133 defined, 133 closed, 0 open.**
 
-Every entry was re-derived from the tree in this round, not inherited. **Nine of the ten entries that were
-listed as open were not what they said they were:**
+Round 19 did NOT add entries. It swept the ledger one more time in the direction nobody had checked —
+**"says closed but is not"** — and then went looking for work in the CODE instead of the document.
 
-| Fate | Entries |
-|---|---|
-| Already done, merely missing a closing verb | O-M20, O-T02, O-T05 (+ five from round 17) |
-| Moot — the module was deleted | O-M57, O-M58 |
-| Already fixed by an expression index the entry never mentions | O-M54 |
-| Dead in the default build | O-M11 (`cache-redis` off), O-M63 (handler declared dead) |
-| Measured at ~17 µs — declined | O-M04 |
-| **Genuinely open and fixed** | **O-T09** |
+### The audit: 22 weakest-evidence closures traced, zero false
 
-**The failure mode is consistent: an entry's RANK and its TITLE are both claims, and neither is evidence.**
-A Medium entry titled "substring-scans every payload" reads as a hot-path defect even when it is dead code or
-17 microseconds deep. Re-deriving each entry from the tree — `EXPLAIN QUERY PLAN`, `grep` for a feature flag, a
-timed probe — turned 10 "open" items into 7 closures, 2 declines and one honest fix. **O-T09's own PRESCRIBED
-fix would have weakened a genuine 5,000-node stress test**; the real waste was 10,000 throwaway `format!`s in
-the verification, not the fixture.
+Targeted the 48 `Fixed:` lines with no commit hash plus the bulk prose paragraphs. Every one resolved to a
+live symbol, wired at the claimed call site. **No entry claimed a fix that was absent.** The document does not
+lie about completion; it is unreliable about *why*, *where*, and *whether the work was worth doing*, and those
+are the parts a reader acts on. §11CA records the three PROSE defects it did find (O-H03 named the wrong
+collaborator, O-T05's "every sleep replaced" was overstated, O-L16's citation had drifted).
 
-**Two invariants now hold and should be kept:** every closing is backed by a measurement, a deleted file, or
-a named commit — and where a fix was declined, the entry records the number that justifies declining. The
-ledger can be re-opened by a contradiction, not by re-reading a title.
+### The work: a measured table scan found by probing, not by reading the ledger
+
+`refunds` had exactly one index (`sale_id`) and no `created_at` index at all, so all three revenue report
+CTEs planned `SCAN rf1`. §11CB records the fix, and the two attempts that did NOT work first (the index alone
+was insufficient; only restructuring the CTE makes SQLite seek). It also records the money risk that
+restructuring introduced and the test that closes it by passing against BOTH shapes.
+
+**The recurring lesson, now three rounds old:** every entry that said "open" was over-described, and the
+defect worth fixing was found by planning queries rather than by reading a journal. That is the argument for
+collecting debt from CODE, and §11CB is the first one collected that way.
 **Round 17's headline is a test that was red and nobody had noticed.** Closing O-T15 meant replacing four
 300 ms sleeps; running the FULL suite found a FIFTH site the ledger never listed — the `void_sale` race —
 failing under load while passing 6/6 in isolation. I measured it rather than guessing, and the measurement
@@ -5332,3 +5331,74 @@ The document is not lying about completion. It is unreliable about *why*, *where
 worth doing* — and those are the parts a reader acts on. That is the reason the round-18 conclusion stands:
 the next useful debt should be collected from CODE (scripted probes over the tree), not from prose appended
 to a 5,000-line journal.
+
+## §11CB — O-M54 (refunds half): a measured table scan the index could not fix alone (2026-10-22)
+
+Landed in `2e32389bc`. Found by a scripted probe over the tree, not by reading the ledger — which is
+the round-18 conclusion put into practice.
+
+### The measurement
+
+`refunds` shipped with exactly ONE index: `idx_refunds_sale_id ON refunds(sale_id)`
+(`20260813_init.sql:1234`). The revenue reports build three CTEs over refunds (daily/weekly/monthly)
+filtering `DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2`. Measured with `EXPLAIN QUERY PLAN` over a
+seeded + `ANALYZE`d database:
+
+    sales side   -> SEARCH s1 USING INDEX idx_sales_status_created_date (status=?)
+    refunds side -> SCAN rf1                                    <-- FULL TABLE SCAN
+
+The sales side already seeks because `20260814_analytics_index.sql` built
+`idx_sales_status_created_date ON sales(status, date(created_at))` for exactly that shape. **Refunds never
+got the equivalent.** That asymmetry is the defect: every revenue report over any range scanned the whole
+refunds table.
+
+### The part that took three attempts, and why each earlier attempt was wrong
+
+1. **Adding the expression index alone did NOT fix it.** With `idx_refunds_currency_created_date ON
+   refunds(currency, date(created_at))` present, the query STILL planned `SCAN rf1`. Column order was not the
+   lever either — `(currency, date(...))`, `(date(...), currency)` and both together all gave `SCAN rf1`.
+2. **The reason is the shape, not the index.** With the cost subquery INLINE in the same GROUP BY block,
+   SQLite prices the correlated per-row lookup against the group and abandons the index for a scan. Splitting
+   the refunds aggregate into a nested CTE (`rg` then `r`) makes it plan the seek the index exists for.
+3. **The first plan test was worthless and I nearly accepted it.** It asserted against a query written INTO
+   the test rather than the one production runs, so it passed while `revenue.rs` still scanned. That is the
+   third time this project has caught the same failure mode. The fix is structural: the three SQL strings are
+   now `pub(crate) const DAILY_REVENUE_SQL / WEEKLY_REVENUE_SQL / MONTHLY_REVENUE_SQL` in `revenue.rs`, and
+   both the report and the test read the SAME constant — the `MENU_ENGINEERING_SQL` pattern. A test cannot
+   drift from a query it does not own.
+
+### The money risk the restructure introduced, and how it was closed
+
+Rewriting `(correlated subquery) AS rcost` as `SUM((same subquery)) / COUNT(*)` puts an INTEGER DIVISION on a
+**money** column. It is equivalent only because the subquery is correlated on `(day, currency)` and not on the
+individual refund, so it is constant per group. That is an argument, and this ledger has learned not to trust
+arguments. So it is pinned: `several_refunds_in_one_day_net_their_cost_exactly_once` in
+`crates/kasirmu-core/src/db/reports_tests.rs` seeds THREE refunds (1+2+1 units) on one day and asserts COGS is
+exactly 800 — **and it was run against BOTH the old inline form and the new nested form, passing on each**, so
+equivalence is demonstrated rather than asserted.
+
+### What was actually won, stated at its real size
+
+The migration adds two indexes:
+- `idx_refunds_currency_created_date ON refunds(currency, date(created_at))` — the three report CTEs.
+- `idx_refunds_processed_by_created_at ON refunds(processed_by, created_at)` — the two shift-close /
+  drawer-reconciliation queries in `shifts.rs`, which already used a sargable bare range and needed only an
+  index, no rewrite at all.
+
+**The honest limit:** the index is reachable for NARROW windows. At a 365-day range the estimates were scan
+20.0 vs index 19.1 and SQLite still prefers the scan-and-filter. A manager pulling a week — the common case —
+is the win; a year is not. That limit is written in the `DAILY_REVENUE_SQL` doc comment so it cannot be
+quietly overclaimed later.
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets   -> exit 0
+cargo test  -p kasirmu-core --lib           -> 3658 passed, 0 failed (190.71s)
+generate-pg-migration.py --check            -> ok: 129 tables, 166 indexes, 7 seed inserts
+rustfmt --edition 2024 --check              -> exit 0
+```
+
+The plan test was FALSIFIED before acceptance: with the migration unregistered AND the CTE re-inlined, it
+fails and quotes `MATERIALIZE r / SCAN rf1`. Restored, it passes. **3657 -> 3658** is the one new test;
+nothing was deleted.
