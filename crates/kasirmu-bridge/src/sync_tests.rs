@@ -152,7 +152,13 @@ async fn sync_run_scoped_drains_large_backlog_in_bounded_batches() {
 
     let bridge = crate::testing::TestBridge::new();
     let token = bridge.token_granting(permissions::SYNC_MANAGE).await;
-    let store_id = "store-batch-drain";
+    // `token_granting` registers its session against the literal store id
+    // "store-pin" (testing.rs), and `sync_run_scoped` reads through
+    // `resolve_session(token).store_id`. A test that enqueues into a DIFFERENT
+    // store therefore pushes nothing: the queue it filled is never the queue
+    // the command drains, so `synced` comes back 0 and the assertion reads like
+    // a batching defect. It is a fixture defect -- one store id, named once.
+    let store_id = "store-pin";
 
     {
         let conn = bridge.db_manager().open_store(store_id).unwrap();
@@ -631,22 +637,17 @@ fn update_pg_sync_settings_data_password_preserved_when_none() {
 // ---------------------------------------------------------------------------
 
 /// Unique per-test scratch directory standing in for the app-data dir that
-/// holds the live databases (tempfile is not a dev-dependency here).
+/// holds the live databases.
+///
+/// Rooted under `target/test-scratch` rather than
+/// `std::env::temp_dir()` (`C:\WINDOWS\TEMP` on this project's Windows
+/// machines, where an ordinary user can create but not delete -- so the fixture
+/// both leaked forever and, once stale, failed its own create with
+/// `os error 5`). The directory is returned as a bare path: the backup-
+/// rotation tests below keep writing into it for the whole test body, and
+/// `target/` is gitignored, so a leftover is the cheaper mistake.
 fn unique_backup_dir() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "kasirmu-bridge-sync-backup-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    kasirmu_test_support::scratch_dir("kasirmu-bridge-sync-backup")
 }
 
 /// Create a file in dir and return its path.
