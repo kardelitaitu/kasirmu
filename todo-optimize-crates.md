@@ -6182,10 +6182,18 @@ That is the worst class of autofix: it removes a SUPPRESSION, so the rule it gua
 next `npm run lint` would surface 67 new warnings that were deliberately silenced, in files nobody touched.
 The change was reverted with `git checkout -- ui/src/` and the tree is byte-identical to HEAD.
 
-**Recorded as O-M72, not fixed.** The 44 remain, and the fix is to convert inline `import()` annotations to
-`import type` declarations by hand — or to run `--fix` with ONLY `consistent-type-imports` enabled and
-`react-refresh` left at its configured value, then diff every file. The second is plausible but unproven,
-and a destructive autofix here costs more than 44 warnings do.
+**Recorded as O-M72, not fixed.** The 44 remain.
+
+**A SECOND attempt also failed, and this one is the more instructive.** I wrote a targeted Node converter
+matching two patterns — `typeof import('m')` and `import('m').Member` — and it reported `changed 27 of 27`.
+It was wrong: **some `import('m')` uses are VALUE positions, not types.** After conversion `npm run typecheck`
+reported 8 errors including `TS2693: 'T__api_settings' only refers to a type, but is being used as a value
+here`. Reverted with `git checkout -- ui/`; typecheck green again at exit 0.
+
+Both failures share one shape: a regex cannot tell a type position from a value position, and neither an
+autofixer's exit code nor its own success message can either. **27 of 27 changed, 0 errors reported, and
+the code was broken.** The only thing that caught it was running the type checker afterwards — which is the
+same lesson as the literal-multiset tokenizer and the `git status` after the eslint autofix.
 
 ### Why this is worth a section in a PERFORMANCE ledger
 
