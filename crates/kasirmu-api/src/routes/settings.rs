@@ -574,33 +574,152 @@ async fn get_setting_scoped_pg(
     crate::pg::get_setting_pg(pool, base).await
 }
 
-/// Read a tenant's effective settings (scoped key first, bare fallback).
-async fn read_settings(state: &AppState, tenant: &str) -> Result<SettingsView, String> {
-    let (store_name, smtp_raw, schedule_raw, last_sent) = if let Some(pool) = &state.pg {
-        (
-            get_setting_scoped_pg(pool, STORE_NAME_SETTINGS_KEY, tenant).await?,
-            get_setting_scoped_pg(pool, SMTP_CONFIG_SETTINGS_KEY, tenant).await?,
-            get_setting_scoped_pg(pool, REPORT_SCHEDULE_SETTINGS_KEY, tenant).await?,
-            get_setting_scoped_pg(pool, LAST_SENT_KEY, tenant).await?,
+/// Resolve ONE base's effective value from an already-fetched key/value map:
+/// the scoped key wins **if it EXISTS**, otherwise the bare key, otherwise
+/// `None`.
+///
+/// "Exists" is exactly that — presence of the row, not truthiness of the value.
+/// A scoped row holding the empty string resolves to `Some("")` and does NOT
+/// fall through to the bare key. This is the rule
+/// [`get_setting_scoped_pg`] has always had (it branches on
+/// `Option::is_some` off a single `SELECT ... WHERE key = $1`), and it is the
+/// rule the cloud report loop's `get_smtp_config_pg` has too. A `.filter()`
+/// over the value here would silently turn a deliberately-blanked tenant
+/// override — the documented way to switch a tenant's relay off — back into
+/// whatever the bare row says.
+fn resolve_scoped_from_map(
+    rows: &std::collections::HashMap<String, String>,
+    base: &str,
+    tenant: &str,
+) -> Option<String> {
+    rows.get(&scoped_key(base, tenant))
+        .or_else(|| rows.get(base))
+        .cloned()
+}
+
+/// The four bases `read_settings` resolves, in response order.
+const READ_SETTINGS_BASES: [&str; 4] = [
+    STORE_NAME_SETTINGS_KEY,
+    SMTP_CONFIG_SETTINGS_KEY,
+    REPORT_SCHEDULE_SETTINGS_KEY,
+    LAST_SENT_KEY,
+];
+
+/// Every key a tenant's effective read can touch: four scoped, four bare.
+fn read_settings_candidate_keys(tenant: &str) -> Vec<String> {
+    let mut keys = Vec::with_capacity(READ_SETTINGS_BASES.len() * 2);
+    for base in READ_SETTINGS_BASES {
+        keys.push(scoped_key(base, tenant));
+    }
+    keys.extend(READ_SETTINGS_BASES.iter().map(|b| (*b).to_string()));
+    keys
+}
+
+/// Resolve all four effective settings from one key/value map (see
+/// [`resolve_scoped_from_map`] for the precedence rule).
+fn resolve_settings_from_map(
+    rows: &std::collections::HashMap<String, String>,
+    tenant: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    let resolve = |base: &str| resolve_scoped_from_map(rows, base, tenant);
+    (
+        resolve(STORE_NAME_SETTINGS_KEY),
+        resolve(SMTP_CONFIG_SETTINGS_KEY),
+        resolve(REPORT_SCHEDULE_SETTINGS_KEY),
+        resolve(LAST_SENT_KEY),
+    )
+}
+
+/// Fetch several settings rows from Postgres in ONE round trip.
+///
+/// `settings.key` is the primary key in both dialects
+/// (`crates/kasirmu-core/migrations/20260813_init.pg.sql:1628-1632`), so the
+/// returned map contains a key only when that row EXISTS — which is the
+/// property the scoped-over-bare precedence is built on.
+async fn get_settings_batch_pg(
+    pool: &deadpool_postgres::Pool,
+    keys: &[String],
+) -> Result<std::collections::HashMap<String, String>, String> {
+    use std::collections::HashMap;
+    let client = pool.get().await.map_err(|e| e.to_string())?;
+    let rows = client
+        .query(
+            "SELECT key, value FROM settings WHERE key = ANY($1::text[])",
+            &[&keys],
         )
+        .await
+        .map_err(|e| format!("DB error: {e}"))?;
+    Ok(rows
+        .iter()
+        .map(|r| (r.get::<_, String>(0), r.get::<_, String>(1)))
+        .collect::<HashMap<String, String>>())
+}
+
+/// Fetch [`read_settings_candidate_keys`] from SQLite in one statement.
+///
+/// The in-process equivalent of [`get_settings_batch_pg`]. The key list is
+/// passed as ONE bound JSON-array parameter and expanded inside SQLite by
+/// `json_each`, so the statement text is fixed and no key is ever concatenated
+/// into SQL — which also keeps it under the bound-parameter ceiling however
+/// long the key list grows (the `rarray` shortcut is not built here: this
+/// workspace enables only rusqlite's `bundled` and `backup` features).
+fn get_settings_batch_sqlite(
+    conn: &rusqlite::Connection,
+    keys: &[String],
+) -> Result<std::collections::HashMap<String, String>, String> {
+    use std::collections::HashMap;
+    let bound = serde_json::to_string(keys).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT key, value FROM settings
+              WHERE key IN (SELECT value FROM json_each(?1))",
+        )
+        .map_err(|e| format!("DB error: {e}"))?;
+    let mut rows = stmt.query([&bound]).map_err(|e| format!("DB error: {e}"))?;
+    let mut out = HashMap::with_capacity(keys.len());
+    while let Some(row) = rows.next().map_err(|e| format!("DB error: {e}"))? {
+        let key: String = row.get(0).map_err(|e| format!("DB error: {e}"))?;
+        let value: String = row.get(1).map_err(|e| format!("DB error: {e}"))?;
+        out.insert(key, value);
+    }
+    Ok(out)
+}
+
+/// Read a tenant's effective settings (scoped key first, bare fallback).
+///
+/// # Round-trip economy (O-M27, second half)
+///
+/// This used to call [`get_setting_scoped_pg`] once per base, and that helper
+/// does two queries (scoped, then bare). Four bases therefore cost up to EIGHT
+/// Postgres round trips for four values. Both lanes now fetch the eight
+/// candidate keys in ONE statement and resolve scoped-over-bare in memory with
+/// [`resolve_settings_from_map`]: one round trip on Postgres, one statement on
+/// SQLite.
+///
+/// The RESULT is unchanged, including the case that is easy to lose in a batch
+/// rewrite: a scoped row that exists and is EMPTY resolves to the empty string
+/// and does not fall through to the bare row. See
+/// [`resolve_scoped_from_map`], and the four precedence cases pinned in
+/// `settings_tests.rs`.
+///
+/// [`get_setting_scoped_pg`] itself is kept because the PUT lane's
+/// keep-on-blank merge ([`stored_smtp_raw`]) still needs exactly one value and
+/// has nothing to batch it with.
+async fn read_settings(state: &AppState, tenant: &str) -> Result<SettingsView, String> {
+    let keys = read_settings_candidate_keys(tenant);
+    let (store_name, smtp_raw, schedule_raw, last_sent) = if let Some(pool) = &state.pg {
+        let rows = get_settings_batch_pg(pool, &keys).await?;
+        resolve_settings_from_map(&rows, tenant)
     } else {
         let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let get_scoped = |base: &str| -> Result<Option<String>, String> {
-            if let Some(v) = store
-                .get_setting(&scoped_key(base, tenant))
-                .map_err(|e| e.to_string())?
-            {
-                return Ok(Some(v));
-            }
-            store.get_setting(base).map_err(|e| e.to_string())
-        };
-        (
-            get_scoped(STORE_NAME_SETTINGS_KEY)?,
-            get_scoped(SMTP_CONFIG_SETTINGS_KEY)?,
-            get_scoped(REPORT_SCHEDULE_SETTINGS_KEY)?,
-            get_scoped(LAST_SENT_KEY)?,
-        )
+        let rows = get_settings_batch_sqlite(&db, &keys)?;
+        drop(db);
+        resolve_settings_from_map(&rows, tenant)
     };
 
     // Malformed stored values surface as `null` rather than failing the

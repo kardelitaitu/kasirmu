@@ -1052,3 +1052,341 @@ async fn a_saving_call_writes_all_three_keys() {
         );
     }
 }
+
+// ── O-M27: ONE statement resolves all four values, precedence intact ────────
+//
+// The read used to call `get_setting_scoped_pg` per base, and that helper does
+// two queries — scoped, then bare — so four values cost up to eight round
+// trips. The batch form fetches the eight candidate keys in one statement and
+// resolves scoped-over-bare in memory. The precedence rule is the part that
+// must survive the rewrite, and its subtlest case is pinned below: a scoped row
+// that EXISTS but holds the EMPTY string wins, and does NOT fall through to the
+// bare row. An in-memory `.filter(|v| !v.is_empty())` — the obvious way to
+// write the fold — would silently resurrect the bare value for a tenant that
+// deliberately blanked its override.
+
+/// The four bases the read resolves, in the order the helper returns them —
+/// named through the same constants, so a rename moves these cases with it.
+const PRECEDENCE_BASES: [&str; 4] = [
+    STORE_NAME_SETTINGS_KEY,
+    SMTP_CONFIG_SETTINGS_KEY,
+    REPORT_SCHEDULE_SETTINGS_KEY,
+    LAST_SENT_KEY,
+];
+
+/// A tenant id no other case in this file uses, so a leftover row can never
+/// decide one of these outcomes.
+const PRECEDENCE_TENANT: &str = "om27-precedence";
+
+/// Seed one `settings` row directly, as pre-endpoint provisioning would.
+async fn seed_raw_setting(state: &AppState, key: &str, value: &str) {
+    let db = state.db.lock().await;
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        rusqlite::params![key, value],
+    )
+    .unwrap();
+}
+
+/// The candidate key list is exactly four scoped plus four bare, with no
+/// duplicates — the shape the single statement binds.
+#[test]
+fn candidate_keys_are_four_scoped_and_four_bare() {
+    let keys = read_settings_candidate_keys(PRECEDENCE_TENANT);
+    assert_eq!(
+        keys.len(),
+        8,
+        "the read binds four scoped plus four bare keys: {keys:?}"
+    );
+    let unique: std::collections::HashSet<&String> = keys.iter().collect();
+    assert_eq!(
+        unique.len(),
+        keys.len(),
+        "a duplicate key would make the batched result depend on row order: {keys:?}"
+    );
+    for base in PRECEDENCE_BASES {
+        assert!(
+            keys.contains(&scoped_key(base, PRECEDENCE_TENANT)),
+            "{base}: the scoped key must be among the candidates"
+        );
+        assert!(
+            keys.contains(&base.to_string()),
+            "{base}: the bare fallback key must be among the candidates"
+        );
+    }
+}
+
+/// Case 1 — scoped only: the scoped row is returned.
+#[tokio::test]
+async fn precedence_scoped_only_returns_the_scoped_value() {
+    let state = state_with(None);
+    seed_raw_setting(
+        &state,
+        &scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+        "Scoped Store",
+    )
+    .await;
+
+    let view = read_settings(&state, PRECEDENCE_TENANT)
+        .await
+        .expect("read must succeed");
+    assert_eq!(
+        view.store_name.as_deref(),
+        Some("Scoped Store"),
+        "a scoped row with no bare row must be the effective value"
+    );
+    assert!(
+        view.smtp_config.is_none() && view.report_schedule.is_none(),
+        "the other bases were never seeded and must stay unset"
+    );
+    assert!(
+        view.last_report_sent_at.is_none(),
+        "the last-sent basis must stay unset"
+    );
+}
+
+/// Case 2 — bare only: the scoped key is absent, so the bare row is used.
+#[tokio::test]
+async fn precedence_bare_only_falls_back_to_the_bare_value() {
+    let state = state_with(None);
+    seed_raw_setting(&state, STORE_NAME_SETTINGS_KEY, "Bare Store").await;
+
+    let view = read_settings(&state, PRECEDENCE_TENANT)
+        .await
+        .expect("read must succeed");
+    assert_eq!(
+        view.store_name.as_deref(),
+        Some("Bare Store"),
+        "a tenant with no scoped override must read the bare row"
+    );
+}
+
+/// Case 3 — both present: the scoped row wins, the bare row is ignored.
+#[tokio::test]
+async fn precedence_both_present_returns_the_scoped_value() {
+    let state = state_with(None);
+    seed_raw_setting(
+        &state,
+        &scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+        "Scoped Store",
+    )
+    .await;
+    seed_raw_setting(&state, STORE_NAME_SETTINGS_KEY, "Bare Store").await;
+
+    let view = read_settings(&state, PRECEDENCE_TENANT)
+        .await
+        .expect("read must succeed");
+    assert_eq!(
+        view.store_name.as_deref(),
+        Some("Scoped Store"),
+        "when both rows exist the scoped override wins — the bare value drifting \
+         underneath it must not be able to change what the operator sees"
+    );
+}
+
+/// Case 4 — scoped present but EMPTY: the empty string is the value.
+///
+/// This is the case an in-memory fold gets wrong. Presence, not truthiness,
+/// decides: `Some("")` must come back, NOT the bare row's value.
+#[tokio::test]
+async fn precedence_scoped_present_but_empty_does_not_fall_through() {
+    let state = state_with(None);
+    seed_raw_setting(
+        &state,
+        &scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+        "",
+    )
+    .await;
+    seed_raw_setting(&state, STORE_NAME_SETTINGS_KEY, "Bare Store").await;
+
+    let view = read_settings(&state, PRECEDENCE_TENANT)
+        .await
+        .expect("read must succeed");
+    assert_eq!(
+        view.store_name.as_deref(),
+        Some(""),
+        "an EMPTY scoped row still EXISTS and wins; falling through to the bare \
+         row would resurrect a value the tenant deliberately blanked, got {:?}",
+        view.store_name
+    );
+    assert_ne!(
+        view.store_name.as_deref(),
+        Some("Bare Store"),
+        "the bare row must not surface behind an existing empty scoped row"
+    );
+}
+
+/// The same outcomes through the public GET, i.e. the `SettingsView` the
+/// operator actually receives is unchanged by the batch rewrite: field names,
+/// presence and JSON types all still hold.
+#[tokio::test]
+async fn get_settings_reports_the_batched_precedence_per_case() {
+    for (label, scoped, bare, expected) in [
+        ("scoped only", Some("Scoped"), None::<&str>, Some("Scoped")),
+        ("bare only", None, Some("Bare"), Some("Bare")),
+        ("both present", Some("Scoped"), Some("Bare"), Some("Scoped")),
+        // The whole point of the fourth case: "" is an answer, not an absence.
+        ("scoped empty", Some(""), Some("Bare"), Some("")),
+        ("neither", None, None, None),
+    ] {
+        let state = state_with(None);
+        if let Some(v) = scoped {
+            seed_raw_setting(
+                &state,
+                &scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+                v,
+            )
+            .await;
+        }
+        if let Some(v) = bare {
+            seed_raw_setting(&state, STORE_NAME_SETTINGS_KEY, v).await;
+        }
+
+        let resp = router(state)
+            .oneshot(get_settings(Some(PRECEDENCE_TENANT), None))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{label}");
+        let json = body_json(resp).await;
+        assert_eq!(json["tenant"], PRECEDENCE_TENANT, "{label}");
+        assert_eq!(
+            json["store_name"],
+            match expected {
+                Some(v) => serde_json::Value::String(v.into()),
+                None => serde_json::Value::Null,
+            },
+            "{label}: the GET response must report the same effective value the \
+             per-key read did"
+        );
+        // The response shape is untouched by the rewrite.
+        for field in [
+            "store_name",
+            "smtp_config",
+            "report_schedule",
+            "last_report_sent_at",
+        ] {
+            assert!(
+                json.get(field).is_some(),
+                "{label}: SettingsView must still carry {field}"
+            );
+        }
+        assert!(
+            json["smtp_config"].is_null() && json["report_schedule"].is_null(),
+            "{label}: bases that were never seeded stay null"
+        );
+    }
+}
+
+/// An empty settings table resolves to four `None`s — the batched statement
+/// returns no rows at all, and the fold must not invent any.
+#[tokio::test]
+async fn batched_read_of_an_empty_settings_table_is_all_none() {
+    let state = state_with(None);
+    let view = read_settings(&state, PRECEDENCE_TENANT)
+        .await
+        .expect("an empty table is not an error");
+    assert!(view.store_name.is_none());
+    assert!(view.smtp_config.is_none());
+    assert!(view.report_schedule.is_none());
+    assert!(view.last_report_sent_at.is_none());
+    assert_eq!(view.tenant, PRECEDENCE_TENANT);
+}
+
+/// The SQLite fetch binds its own candidate keys and nothing else: a row that
+/// is not among them must not be able to influence the outcome. This is what
+/// makes the single statement equivalent to the per-key reads it replaced.
+#[tokio::test]
+async fn batched_sqlite_fetch_reads_only_the_candidate_keys() {
+    let state = state_with(None);
+    let keys = read_settings_candidate_keys(PRECEDENCE_TENANT);
+    seed_raw_setting(&state, "unrelated.key", "nope").await;
+    seed_raw_setting(
+        &state,
+        &scoped_key(STORE_NAME_SETTINGS_KEY, "another-tenant"),
+        "Other",
+    )
+    .await;
+
+    let rows = {
+        let db = state.db.lock().await;
+        get_settings_batch_sqlite(&db, &keys).expect("batch read must succeed")
+    };
+    assert!(
+        rows.is_empty(),
+        "no candidate key has a row, so the batch must return nothing: {:?}",
+        rows.keys().collect::<Vec<_>>()
+    );
+}
+
+/// All four bases resolve independently in one pass — the batch is not
+/// accidentally collapsing them into one lookup.
+#[tokio::test]
+async fn batched_read_resolves_each_base_independently() {
+    let state = state_with(None);
+    // base 1: scoped only; base 2: bare only; base 3: scoped empty; base 4: none.
+    seed_raw_setting(
+        &state,
+        &scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+        "Scoped Store",
+    )
+    .await;
+    let bare_smtp = r#"{"host":"bare.example"}"#;
+    seed_raw_setting(&state, SMTP_CONFIG_SETTINGS_KEY, bare_smtp).await;
+    seed_raw_setting(
+        &state,
+        &scoped_key(REPORT_SCHEDULE_SETTINGS_KEY, PRECEDENCE_TENANT),
+        "",
+    )
+    .await;
+    seed_raw_setting(&state, REPORT_SCHEDULE_SETTINGS_KEY, r#"{"enabled":true}"#).await;
+
+    let keys = read_settings_candidate_keys(PRECEDENCE_TENANT);
+    let (store_name, smtp_raw, schedule_raw, last_sent) = {
+        let db = state.db.lock().await;
+        let rows = get_settings_batch_sqlite(&db, &keys).unwrap();
+        drop(db);
+        resolve_settings_from_map(&rows, PRECEDENCE_TENANT)
+    };
+
+    assert_eq!(store_name.as_deref(), Some("Scoped Store"));
+    assert_eq!(smtp_raw.as_deref(), Some(bare_smtp));
+    assert_eq!(
+        schedule_raw.as_deref(),
+        Some(""),
+        "an empty scoped row wins over a live bare row, per base"
+    );
+    assert!(
+        last_sent.is_none(),
+        "a base with no rows at all resolves to None"
+    );
+}
+
+/// The batched map is a `HashMap`, which has no order — resolution must never
+/// depend on which row came back first. Both insertion orders are asserted.
+#[test]
+fn resolution_is_independent_of_row_order() {
+    for scoped_inserted_first in [true, false] {
+        let mut rows = std::collections::HashMap::new();
+        let mut put = |key: String, value: &str| {
+            rows.insert(key, value.to_string());
+        };
+        if scoped_inserted_first {
+            put(
+                scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+                "Scoped",
+            );
+            put(STORE_NAME_SETTINGS_KEY.to_string(), "Bare");
+        } else {
+            put(STORE_NAME_SETTINGS_KEY.to_string(), "Bare");
+            put(
+                scoped_key(STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT),
+                "Scoped",
+            );
+        }
+        assert_eq!(
+            resolve_scoped_from_map(&rows, STORE_NAME_SETTINGS_KEY, PRECEDENCE_TENANT).as_deref(),
+            Some("Scoped"),
+            "scoped wins regardless of fetch order (scoped inserted first:              {scoped_inserted_first})"
+        );
+    }
+}
