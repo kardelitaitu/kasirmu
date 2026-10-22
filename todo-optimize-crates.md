@@ -7077,3 +7077,82 @@ an arbitrary number of force-killed processes proves very little.
 Consequence for future rounds: when the bridge suite is interrupted by a kill, the
 leftovers are expected, and `python scripts/check-scratch-leaks.py` is the static check
 that does not depend on how a process died.
+## §11CX — O-M81 closed: the bridge suite was 3.9x slower than it needed to be, and more threads caused it (2026-10-23)
+
+Landed in `843cac981e`.
+
+### The question nobody had answered
+
+`cargo test -p kasirmu-bridge --lib` had been taking **1395-1471 s** for three rounds.
+Each round it was noted as "slow but progressing" and deferred, because the obvious
+hypothesis — `fresh_db`'s global `Mutex` serialising every test-db clone — was already
+documented as measured and deliberate, so it read as "expected".
+
+### What the per-module measurement showed, and why the hypothesis was wrong
+
+| module | tests | time |
+|---|---|---|
+| topology | 332 | **7.76 s** |
+| kds | 38 | 61.94 s |
+| auth | 72 | 53.17 s |
+| reports | 42 | 52.89 s |
+| sync | 38 | 4.20 s |
+
+The 332-test module finished in under eight seconds while a 38-test module took sixty.
+Serial totals confirm it is not "every test costs ~1.2 s": `topology::` at
+`--test-threads=1` runs all 332 in **9.66 s** (0.03 s each), and a single kds test alone
+takes 1.68 s. So the cost is per-module, not per-test.
+
+The discriminator is `TestBridge::new()`: `kds`, `auth`, `reports`, `pos` and `staff`
+build many bridges, and every `TestBridge::new()` clones the migrated snapshot through
+`fresh_db()`. `topology` mostly does not. That is the documented ceiling — but the
+documented ceiling is about CLONES, not about module size, which is why nobody connected
+them.
+
+### The measurement that names the fix
+
+`kds::` alone, one variable (thread count):
+
+| threads | time |
+|---|---|
+| 1 | 42.79 s |
+| 2 | 31.17 s |
+| **4** | **26.37 s** |
+| 8 | 50.80 s |
+| 32 | 92.90 s |
+
+**Raising the thread count made it 3.5x slower.** libtest's default is the core count, so
+the suite had been running at the worst point on its own curve.
+
+Then the whole suite, with nothing changed but that flag:
+
+```
+cargo test -p kasirmu-bridge --lib                        -> 1395-1471 s  (1542 passed)
+cargo test -p kasirmu-bridge --lib -- --test-threads=4    ->    355.95 s  (1542 passed)
+```
+
+Identical results, 3.9x faster. Confirmed under nextest too, which honours the new
+`.config/nextest.toml` setting: `kds::` **15.04 s**, 38/38 passed.
+
+### The change
+
+`.config/nextest.toml` `[profile.default]` gains `test-threads = 4` with the curve above
+written into the comment, so the next person does not "optimise" it back. `[profile.ci]`
+inherits it. `[profile.quick]` already used 4 — the fast path was right and the default
+was not. `migrations.rs`'s existing note (the one that predicted this) gains the
+suite-scale numbers, because its microbenchmark version had already failed to prevent the
+regression once.
+
+### Why this is worth a section
+
+**"Documented as deliberate" and "documented correctly" are different claims.** The
+`fresh_db` note was accurate about its own function and measured carefully, and it still
+did not stop the suite from running at a bad setting for months, because it described a
+ceiling on clone throughput and the symptom was a total suite time. A note that describes
+a mechanism needs a second note at the place where a knob chooses between operating points.
+
+Second: the deferral each round was rational in isolation ("slow but progressing") and wrong
+in aggregate. Three rounds of 23-minute suites is roughly an hour of wall time, against about
+twenty minutes to measure once.
+
+### Ledger: 147 defined, 147 closed, 0 open.
