@@ -5211,6 +5211,9 @@ cargo test  -p kasirmu-bridge --lib topology  -> 320 passed, 0 failed (both 5,00
 cargo test  -p kasirmu-bridge --lib (HEAD)    -> 1528 passed, 0 failed, 1 ignored (1340.63s)
 ```
 
+**AND THE WITH-CHANGE RUN SETTLES IT: 1528 passed, 0 failed, 1 ignored, 1333.48s.** Two full runs — HEAD (1340.63s clean) and with the change (1333.48s clean) — both 1528/0/1. The 0xffffffff abort never came back,
+which confirms it was never about this change.
+
 **No timing claim is made for this change.** 10,000 allocations became 2; a test harness cannot see that,
 and the two `--lib topology` runs (10.42 s vs 11.06 s baseline) are inside run-to-run noise. The honest
 claim is the allocation count, not a speedup.
