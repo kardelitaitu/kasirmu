@@ -683,7 +683,7 @@ async fn handle_peer(
                 {
                     Ok(Ok(state)) => {
                         tracing::debug!(peer = %peer_addr, "LAN noise-psk-v1 handshake accepted");
-                        PeerTx::Noise(reader, state)
+                        PeerTx::new_noise(reader, state)
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(peer = %peer_addr, error = %e, "LAN noise-psk-v1 handshake rejected");
@@ -751,7 +751,7 @@ async fn handle_peer(
     // peers read/write encrypted frames.
     if let Some(ref payload) = discovery_payload {
         match &mut conn {
-            PeerTx::Noise(stream, state) => {
+            PeerTx::Noise(stream, state, _) => {
                 // Frames are read through the same connection-level
                 // reader that consumed the selector byte and the
                 // handshake frames, so a discover frame the client
