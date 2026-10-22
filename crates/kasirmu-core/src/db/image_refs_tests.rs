@@ -75,6 +75,98 @@ fn missing_hashes_returns_absent_hashes() {
     assert!(missing.contains(&"absent2"));
 }
 
+/// The batched `image_refs_present` must agree with the per-hash
+/// `image_ref_exists` on EVERY hash — present, absent, zero-refcount (a row
+/// that exists but is not active), other-tenant, and repeated — and must
+/// answer in the CALLER'S order. This is the equivalence the pack handler
+/// depends on when it replaces N `image_ref_exists` calls with one batched
+/// call: if the two ever disagree, a pack silently gains or loses a frame.
+#[test]
+fn image_refs_present_matches_image_ref_exists_for_a_mixed_list() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    store.ref_image("tenant-a", "present01", 100).unwrap();
+    store.ref_image("tenant-a", "present02", 200).unwrap();
+    // refcount is now 0 — the ROW still exists with refcount = 0 until GC,
+    // so a batched query that dropped its `refcount > 0` filter would report
+    // a stale row as referenced.
+    store.ref_image("tenant-a", "unrefd01", 100).unwrap();
+    store.unref_image("tenant-a", "unrefd01").unwrap();
+    // A different tenant's active ref must not leak through the filter.
+    store.ref_image("tenant-b", "otherten", 100).unwrap();
+    let candidates = [
+        "present01",
+        "absent01",
+        "present02",
+        "unrefd01",
+        "otherten",
+        "absent02",
+        "present01", // repeated on purpose
+    ];
+    let expected: Vec<bool> = candidates
+        .iter()
+        .map(|h| store.image_ref_exists("tenant-a", h).unwrap())
+        .collect();
+    let got = store.image_refs_present("tenant-a", &candidates).unwrap();
+    assert_eq!(
+        got, expected,
+        "batched answer must equal the per-hash answer, in caller order"
+    );
+    assert_eq!(
+        got,
+        vec![true, false, true, false, false, false, true],
+        "and that answer must be the literal one, not merely self-consistent"
+    );
+}
+
+/// An empty list never opens a transaction and never answers for anybody.
+#[test]
+fn image_refs_present_empty_list_is_empty() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    assert!(
+        store
+            .image_refs_present("tenant-a", &[])
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// The chunking, pinned across the boundary: `IMAGE_REFS_IN_CHUNK + 100`
+/// candidates force exactly 2 chunks, with present and absent hashes
+/// INTERLEAVED on both sides of it. A `present` set that only kept the last
+/// chunk's rows would lose every `true` from the first chunk; a chunk that
+/// lost the tenant filter would report `tenant-b`'s rows as present.
+#[test]
+fn image_refs_present_survives_a_list_longer_than_the_chunk() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    let total = IMAGE_REFS_IN_CHUNK + 100;
+    let candidates: Vec<String> = (0..total)
+        .map(|i| {
+            if i % 5 == 0 {
+                format!("absent{i:06}")
+            } else {
+                format!("present{i:06}")
+            }
+        })
+        .collect();
+    for (i, hash) in candidates.iter().enumerate() {
+        if i % 5 == 0 {
+            store.ref_image("tenant-b", hash, 100).unwrap();
+        } else {
+            store.ref_image("tenant-a", hash, 100).unwrap();
+        }
+    }
+    let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    let got = store.image_refs_present("tenant-a", &refs).unwrap();
+    let expected: Vec<bool> = (0..total).map(|i| i % 5 != 0).collect();
+    assert_eq!(got.len(), total);
+    assert_eq!(
+        got, expected,
+        "present-set union across all chunks, in candidate order"
+    );
+}
 #[test]
 fn gc_images_deletes_old_zero_refcount_rows() {
     let conn = fresh_db();

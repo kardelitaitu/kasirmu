@@ -481,6 +481,219 @@ async fn missing_returns_only_hashes_not_in_image_refs() {
     cleanup(&dir);
 }
 
+// ── Image pack (O-M24) ───────────────────────────────────────────────
+
+/// Build `n` DISTINCT WebP bodies so each hashes differently. Size matters:
+/// one body is `body_len` bytes and the pack frames are what the 2 MB
+/// ceiling counts.
+fn make_webp_bodies(n: usize, body_len: usize) -> Vec<Vec<u8>> {
+    (0..n)
+        .map(|i| {
+            let mut b = make_webp_body();
+            b.resize(body_len.max(16), 0);
+            // Distinguish the bodies past the 16-byte WebP header, so the
+            // size is preserved and the hashes still differ.
+            b[12..16].copy_from_slice(&(i as u32).to_be_bytes());
+            b
+        })
+        .collect()
+}
+
+/// Upload `bodies` through the real PUT route so the files AND the
+/// `image_refs` rows both exist, exactly as in production.
+async fn upload_all(state: &AppState, tenant: &str, bodies: &[Vec<u8>]) {
+    let token = test_token(state, tenant);
+    for body in bodies {
+        let resp = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/v1/images")
+                    .header("Authorization", format!("Bearer {token}"))
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+}
+
+/// Decode `[u32 be len][bytes]` frames into the list of frame payloads.
+/// Deliberately strict: a trailing partial frame is a failure, not tail-
+/// truncation — the pack either frames cleanly or it does not.
+fn decode_pack_frames(bytes: &[u8]) -> Vec<Vec<u8>> {
+    let mut frames = Vec::new();
+    let mut off = 0usize;
+    while off < bytes.len() {
+        assert!(off + 4 <= bytes.len(), "truncated length prefix at {off}");
+        let len = u32::from_be_bytes(bytes[off..off + 4].try_into().unwrap()) as usize;
+        off += 4;
+        assert!(off + len <= bytes.len(), "truncated frame body at {off}");
+        frames.push(bytes[off..off + len].to_vec());
+        off += len;
+    }
+    frames
+}
+
+async fn get_pack(state: &AppState, tenant: &str, hashes: &[&str]) -> axum::response::Response {
+    let token = test_token(state, tenant);
+    router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/images:pack?hashes={}", hashes.join(",")))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+/// O-M24, half (a): the pack answers with EXACTLY the same bytes, in exactly
+/// the same order, after the per-hash `image_ref_exists` loop was replaced by
+/// one batched lookup. The request mixes present hashes, absent hashes, a
+/// hash that only ANOTHER tenant references, a hash repeated mid-list, and
+/// malformed entries (dropped by the grammar filter, they do not 400 the
+/// request) — every case the old per-hash loop handled.
+#[tokio::test]
+async fn pack_batched_lookup_matches_the_per_hash_answer() {
+    let (state, dir) = temp_image_dir();
+    let imgs = make_webp_bodies(3, 64);
+    upload_all(&state, "tenant-a", &imgs).await;
+    let foreign = make_webp_bodies(4, 64).pop().unwrap();
+    upload_all(&state, "tenant-b", &[foreign]).await;
+
+    let h: Vec<String> = imgs.iter().map(|b| sha256_hex16(b)).collect();
+    let foreign_h = sha256_hex16(&make_webp_bodies(4, 64)[3]);
+    let order = [
+        h[1].as_str(),
+        "aaaaaaaaaaaaaaaa", // absent
+        h[0].as_str(),
+        foreign_h.as_str(), // present for tenant-b only → skipped
+        "nonsense",         // malformed → filtered, request still 200
+        h[2].as_str(),
+        h[0].as_str(), // repeated → appears twice, in place
+    ];
+    let resp = get_pack(&state, "tenant-a", &order).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "application/octet-stream",
+        "the pack Content-Type is part of the wire contract"
+    );
+    assert_eq!(
+        resp.headers()
+            .get("cache-control")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "max-age=31536000, immutable"
+    );
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+
+    // The caller-visible ordering IS the request order, missing entries
+    // skipped — not the query's row order and not a re-sort.
+    let frames = decode_pack_frames(&bytes);
+    assert_eq!(
+        frames,
+        vec![
+            imgs[1].clone(),
+            imgs[0].clone(),
+            imgs[2].clone(),
+            imgs[0].clone()
+        ]
+    );
+    cleanup(&dir);
+}
+
+/// A pack whose hashes are ALL absent (or foreign) is an empty 200 body —
+/// not a 404 — the same answer the per-hash loop gave when every hash was
+/// skipped, and the puller's cue that nothing in this pack is available.
+#[tokio::test]
+async fn pack_with_no_referenced_hashes_is_an_empty_ok_body() {
+    let (state, dir) = temp_image_dir();
+    let foreign = make_webp_bodies(1, 64).pop().unwrap();
+    upload_all(&state, "tenant-b", &[foreign.clone()]).await;
+    let foreign_h = sha256_hex16(&foreign);
+    let resp = get_pack(&state, "tenant-a", &["aaaaaaaaaaaaaaaa", &foreign_h]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert!(
+        bytes.is_empty(),
+        "no referenced hash → no frames, not a 404"
+    );
+    cleanup(&dir);
+}
+
+/// The 400 for a request with no USABLE hash is unchanged by the batching:
+/// the grammar filter runs before any database work, and an empty result
+/// never reaches the store.
+#[tokio::test]
+async fn pack_with_no_valid_hashes_is_bad_request() {
+    let (state, dir) = temp_image_dir();
+    let resp = get_pack(&state, "tenant-a", &["short", "UPPERCASE0000000", ""]).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"], "no valid hashes");
+    cleanup(&dir);
+}
+
+/// The file cap (64) and the BYTE cap (2 MB) are both still enforced.
+///
+/// `PACK_MAX_BYTES` pins the exact ceiling: 2 MB of frames is the most a
+/// pack may carry, and the frame that would cross it is dropped, not
+/// truncated. `PACK_MAX_FILES` takes the earlier 413 path — a distinct
+/// status, and the only one that depends on `hashes.len()` rather than on
+/// the bytes.
+#[tokio::test]
+async fn pack_enforces_the_file_and_byte_ceilings() {
+    let (state, dir) = temp_image_dir();
+    // Thin WebP bodies: the frame overhead is 4 bytes per image, so the cap
+    // must be reached by IMAGE BYTES, which is what O-M24's ledger note
+    // (`a Vec growing to PACK_MAX_BYTES`) is about.
+    let body_len = 32 * 1024;
+    let imgs = make_webp_bodies(PACK_MAX_FILES, body_len);
+    upload_all(&state, "tenant-a", &imgs).await;
+    let hashes: Vec<String> = imgs.iter().map(|b| sha256_hex16(b)).collect();
+    let refs: Vec<&str> = hashes.iter().map(String::as_str).collect();
+
+    let resp = get_pack(&state, "tenant-a", &refs).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert!(
+        bytes.len() <= PACK_MAX_BYTES,
+        "pack body {} exceeded PACK_MAX_BYTES {PACK_MAX_BYTES}",
+        bytes.len()
+    );
+    let frames = decode_pack_frames(&bytes);
+    let expected_max = PACK_MAX_BYTES / (body_len + 4);
+    assert_eq!(
+        frames.len(),
+        expected_max,
+        "the byte cap keeps floor(PACK_MAX_BYTES / frame_size) whole frames"
+    );
+    // Every frame is a WHOLE image — a truncated frame would mean the cap cut
+    // through a body instead of before it.
+    for (i, frame) in frames.iter().enumerate() {
+        assert_eq!(frame, &imgs[i], "frame {i} is a whole, ordered body");
+    }
+
+    // 65 hashes is over the FILE cap, regardless of size → 413.
+    let mut too_many: Vec<&str> = refs.clone();
+    too_many.push("aaaaaaaaaaaaaaaa");
+    let resp = get_pack(&state, "tenant-a", &too_many).await;
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"], "pack exceeds 64 files");
+    cleanup(&dir);
+}
+
 async fn body_json(resp: axum::response::Response) -> serde_json::Value {
     let bytes = resp
         .into_body()

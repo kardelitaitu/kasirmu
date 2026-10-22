@@ -401,6 +401,9 @@ pub async fn get_image(
 /// Up to 64 files / 2 MB, length-prefixed frames `[u32 be len][bytes]`.
 /// Missing/unreferenced hashes are silently skipped (the puller treats a
 /// missing frame as 404 for that hash and keeps it in the missing set).
+///
+/// One `image_refs` lookup for the whole request (see the body), then the
+/// frames are read and appended in REQUEST ORDER.
 pub async fn get_image_pack(
     State(state): State<AppState>,
     axum::Extension(claims): axum::Extension<ApiTokenClaims>,
@@ -427,32 +430,46 @@ pub async fn get_image_pack(
             .into_response();
     }
 
-    let mut out: Vec<u8> = Vec::with_capacity(PACK_MAX_BYTES.min(1024));
-    for h in &hashes {
-        // Content-spine gate per hash.
-        let referenced = {
-            let db = state.db.lock().await;
-            let store = Store::new(&db);
-            // Fail-CLOSED by decision, not by accident: this is the content-spine
-            // tenancy gate, so an error must read as "not referenced" and skip the
-            // frame — never as "referenced". Skipping is recoverable (the puller
-            // treats a missing frame as a 404 for that hash and retries), but it
-            // is otherwise silent, so name it.
-            match store.image_ref_exists(tenant_id, h) {
-                Ok(referenced) => referenced,
-                Err(e) => {
-                    tracing::warn!(
-                        tenant_id,
-                        hash = h,
-                        operation = "Store::image_ref_exists",
-                        error = %e,
-                        "images:pack spine lookup failed, treating the hash as unreferenced (fail-closed, frame skipped)"
-                    );
-                    false
-                }
+    // Content-spine gate for the WHOLE request: ONE lock acquisition and ONE
+    // batched statement over the hash set (chunked inside the Store), not one
+    // lock and one query per hash. Debt O-M24: `AppState.db` is a single
+    // process-wide `Arc<Mutex<Connection>>`, so the old per-hash loop acquired
+    // the same global mutex up to 64 times per pack and ran 64 separate
+    // statements — every one of them a chance to queue behind, and block, every
+    // other writer in the server.
+    //
+    // Fail-CLOSED by decision, not by accident: this is the content-spine
+    // tenancy gate, so an error must read as "referenced by nobody" and skip
+    // every frame — never as "referenced". Skipping is recoverable (the puller
+    // treats a missing frame as a 404 for that hash and retries), but it is
+    // otherwise silent, so name it. The blast radius is deliberately wider than
+    // the old per-hash form: one failed batched read now skips the whole pack
+    // instead of only the hash whose individual query failed. That is the same
+    // fail direction, and a database that cannot answer one chunked lookup
+    // cannot answer the other 63 either.
+    let referenced: Vec<bool> = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        match store.image_refs_present(tenant_id, &hashes) {
+            Ok(flags) => flags,
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id,
+                    hashes = hashes.len(),
+                    operation = "Store::image_refs_present",
+                    error = %e,
+                    "images:pack spine lookup failed, treating every hash as unreferenced (fail-closed, all frames skipped)"
+                );
+                vec![false; hashes.len()]
             }
-        };
-        if !referenced {
+        }
+        // The lock is held for exactly this lookup and released before the first
+        // file is opened — the same discipline the per-hash version claimed by
+        // construction.
+    };
+    let mut out: Vec<u8> = Vec::with_capacity(PACK_MAX_BYTES.min(1024));
+    for (h, &is_referenced) in hashes.iter().zip(&referenced) {
+        if !is_referenced {
             continue;
         }
         let path = image_path(&state.image_dir, h);

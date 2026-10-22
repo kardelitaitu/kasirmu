@@ -102,6 +102,72 @@ impl Store<'_> {
         Ok(count > 0)
     }
 
+    /// Which of `hashes` the tenant has an ACTIVE reference to (`refcount > 0`).
+    ///
+    /// The batched form of calling [`Store::image_ref_exists`] once per hash:
+    /// the same predicate, ONE statement per chunk inside ONE transaction, and
+    /// the per-hash answers mapped back to the caller's list. The answer is a
+    /// `Vec<bool>` parallel to `hashes` (including any hash repeated in it),
+    /// so an order-sensitive caller — the pack frames run in request order —
+    /// needs no side map to put the answers back.
+    ///
+    /// Shares `missing_hashes`'s data-driven chunking ([`IMAGE_REFS_IN_CHUNK`]):
+    /// the list length comes from the caller, never from the schema, so a long
+    /// list is read in MORE chunks rather than in an unscoped sweep. Absent
+    /// hashes default to `false`, which is what makes a chunk that lost a row
+    /// indistinguishable from a genuinely-unreferenced hash — the chunking is
+    /// pinned by `image_refs_present_survives_a_list_longer_than_the_chunk`.
+    ///
+    /// One transaction, not one auto-commit per chunk: every chunk reads the
+    /// same snapshot, so a concurrent ref/unref cannot make two hashes of the
+    /// same pack disagree about which snapshot they were read from.
+    pub fn image_refs_present(
+        &self,
+        tenant_id: &str,
+        hashes: &[&str],
+    ) -> Result<Vec<bool>, CoreError> {
+        use std::collections::HashSet;
+        if hashes.is_empty() {
+            return Ok(vec![]);
+        }
+        // A pack repeats hashes routinely (the client's catalog is deduped per
+        // product, not per request), so the `IN` list is built from the DISTINCT
+        // set — chunk count scales with distinct hashes, not with the raw list.
+        let distinct: HashSet<&str> = hashes.iter().copied().collect();
+        let distinct: Vec<&str> = distinct.into_iter().collect();
+        let tx = self.conn.unchecked_transaction()?;
+        let mut present: HashSet<&str> = HashSet::with_capacity(distinct.len());
+        for chunk in distinct.chunks(IMAGE_REFS_IN_CHUNK) {
+            let placeholders: Vec<String> = (1..=chunk.len())
+                .map(|i| format!("?{}", i + IMAGE_REFS_LEAD_PARAMS)) // ?1 = tenant_id, ?2.. = hashes
+                .collect();
+            let sql = format!(
+                "SELECT hash FROM image_refs WHERE tenant_id = ?1 AND hash IN ({}) AND refcount > 0",
+                placeholders.join(", ")
+            );
+            let mut stmt = tx.prepare(&sql)?;
+            let mut param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                Vec::with_capacity(chunk.len() + IMAGE_REFS_LEAD_PARAMS);
+            param_refs.push(&tenant_id as &dyn rusqlite::types::ToSql);
+            for c in chunk {
+                param_refs.push(c);
+            }
+            let rows: Vec<String> = stmt
+                .query_map(param_refs.as_slice(), |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            // Map the rows back onto the caller's BORROWED hashes so the set
+            // keeps the caller's lifetimes (no `String` kept past the loop, no
+            // per-hash clone) — the chunk is the only thing a row can match.
+            for row in rows {
+                if let Some(found) = chunk.iter().find(|c| **c == row.as_str()) {
+                    present.insert(*found);
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(hashes.iter().map(|h| present.contains(h)).collect())
+    }
+
     /// Given a list of candidate hashes, return the subset that the tenant
     /// does NOT have an active reference for (set-difference: candidates -
     /// present). Used by the server to compute `missing_hashes` on the
