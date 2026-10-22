@@ -633,3 +633,492 @@ fn kasirpkg_users_arm_never_carries_pin_hash() {
 
     let _ = std::fs::remove_file(&path);
 }
+
+// ── O-M49: the import upserts, and a RE-import behaves as it always did ──
+//
+// The import used to run TWO statements per row (a `SELECT 1 … WHERE <key>`
+// probe, then an INSERT or an UPDATE picked from its answer) against a SQL
+// string re-compiled every time. It is now ONE `INSERT … ON CONFLICT … DO
+// UPDATE` per row against ONE prepared statement per table.
+//
+// The conflict behaviour of the old shape was REPLACE-ONLY: the INSERT branch
+// ran when the row was absent, the UPDATE branch wrote a fixed column list
+// when it was present. So a re-import UPDATES. `ON CONFLICT DO NOTHING` and
+// `DO UPDATE` differ observably — a stale column ends up old vs new — which is
+// exactly what the two re-import tests below separate. They assert by VALUE,
+// not by counting rows: a row count is identical under either clause and would
+// pass against the wrong one.
+
+/// One package payload for the import tests, every portable arm populated.
+fn first_import_payload() -> KasirpkgPayload {
+    KasirpkgPayload {
+        categories: vec![
+            serde_json::to_value(kasirmu_core::Category::new(
+                "cat-1", "Drinks", "#ff0000", "",
+            ))
+            .unwrap(),
+            serde_json::to_value(kasirmu_core::Category::new("cat-2", "Food", "", "")).unwrap(),
+        ],
+        products: vec![
+            serde_json::to_value(product_fixture("PRD-1", "Coffee", 1_000, Some("cat-1"))).unwrap(),
+            serde_json::to_value(product_fixture("PRD-2", "Bagel", 2_500, Some("cat-2"))).unwrap(),
+        ],
+        customers: Some(vec![
+            serde_json::to_value(customer_fixture(
+                "cust-1",
+                "Alice",
+                Some("alice@example.com"),
+            ))
+            .unwrap(),
+        ]),
+        users: Some(vec![
+            serde_json::to_value(user_fixture("user-1", "alice", "Alice", "role-1")).unwrap(),
+        ]),
+        sales: None,
+        settings: None,
+    }
+}
+
+fn product_fixture(
+    sku: &str,
+    name: &str,
+    price_minor: i64,
+    category_id: Option<&str>,
+) -> kasirmu_core::Product {
+    let mut p = kasirmu_core::Product::new(
+        sku,
+        name,
+        kasirmu_core::Money {
+            minor_units: price_minor,
+            currency: "USD".parse().expect("USD is a currency"),
+        },
+    );
+    p.id = format!("id-{sku}");
+    p.category_id = category_id.map(str::to_owned);
+    p
+}
+
+fn customer_fixture(id: &str, name: &str, email: Option<&str>) -> kasirmu_core::Customer {
+    let mut c = kasirmu_core::Customer::new(name);
+    c.id = id.to_owned();
+    c.email = email.map(|e| e.parse().expect("valid email"));
+    c
+}
+
+fn user_fixture(id: &str, username: &str, display_name: &str, role_id: &str) -> kasirmu_core::User {
+    // `pin_hash` is present because `from_value::<User>` requires it (no
+    // `serde(default)`); the import must never restore it.
+    kasirmu_core::User {
+        id: id.to_owned(),
+        username: username.to_owned(),
+        pin_hash: "$argon2id$v=19$m=19456,t=2,p=1$c291cmNl$c291cmNlaGFzaA".to_owned(),
+        display_name: display_name.to_owned(),
+        role_id: role_id.to_owned(),
+        is_active: true,
+        created_at: "2020-01-01T00:00:00.000Z".to_owned(),
+        updated_at: "2020-01-01T00:00:00.000Z".to_owned(),
+    }
+}
+
+/// Write a payload to a decryptable package and return its path.
+fn package_for(payload: &KasirpkgPayload) -> std::path::PathBuf {
+    let path = temp_path("m49");
+    let bytes = export_kasirpkg(
+        PWD,
+        "Import Store",
+        "0.0.1",
+        vec![
+            "categories".into(),
+            "products".into(),
+            "customers".into(),
+            "users".into(),
+        ],
+        HashMap::new(),
+        payload,
+    )
+    .unwrap();
+    std::fs::write(&path, &bytes).unwrap();
+    path
+}
+
+/// A database with the `roles` row the imported users point at.
+fn import_target_db() -> Connection {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO roles (id, name, permissions) VALUES ('role-1', 'staff', '[]')",
+        [],
+    )
+    .unwrap();
+    conn
+}
+
+/// One row as plain strings, so a multi-column assertion stays readable and
+/// shows every column that drifted rather than only the first that differs.
+fn read_row(conn: &Connection, sql: &str) -> Vec<String> {
+    conn.query_row(sql, [], |r| {
+        (0..r.as_ref().column_count())
+            .map(|i| match r.get::<_, rusqlite::types::Value>(i)? {
+                rusqlite::types::Value::Null => Ok("<null>".to_owned()),
+                rusqlite::types::Value::Integer(n) => Ok(n.to_string()),
+                rusqlite::types::Value::Real(f) => Ok(f.to_string()),
+                rusqlite::types::Value::Text(t) => Ok(t),
+                rusqlite::types::Value::Blob(_) => Ok("<blob>".to_owned()),
+            })
+            .collect::<rusqlite::Result<Vec<String>>>()
+    })
+    .unwrap()
+}
+
+/// Every column of the four import targets, in one comparable tuple per row.
+fn snapshot(conn: &Connection) -> String {
+    let mut out = String::new();
+    for (label, sql) in [
+        (
+            "categories",
+            "SELECT id, name, colour, icon FROM categories ORDER BY id",
+        ),
+        (
+            "products",
+            "SELECT id, sku, name, price_minor, currency, category_id, barcode, tenant_id, is_active FROM products ORDER BY sku",
+        ),
+        (
+            "customers",
+            "SELECT id, name, coalesce(email,'<null>'), coalesce(phone,'<null>'), notes, loyalty_points, total_spent_minor, currency FROM customers ORDER BY id",
+        ),
+        (
+            "users",
+            "SELECT id, username, display_name, role_id, is_active, length(pin_hash) FROM users ORDER BY id",
+        ),
+    ] {
+        let mut stmt = conn.prepare(sql).unwrap();
+        let cols = stmt.column_count();
+        let rows = stmt
+            .query_map([], |r| {
+                let mut vals = Vec::new();
+                for i in 0..cols {
+                    let v: rusqlite::types::Value = r.get(i)?;
+                    vals.push(format!("{v:?}"));
+                }
+                Ok(vals.join("|"))
+            })
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
+        out.push_str(&format!(
+            "{label}:
+"
+        ));
+        for row in rows {
+            out.push_str("  ");
+            out.push_str(&row);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+#[test]
+fn kasirpkg_fresh_import_writes_every_arm() {
+    // (a) A fresh import lands the expected rows, with the two CREATE-ONLY
+    // arms ('/USD'/0/0 and the blanked pin_hash + inactive flag) intact.
+    let conn = import_target_db();
+    let path = package_for(&first_import_payload());
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    assert_eq!(
+        conn.query_row("SELECT count(*) FROM categories", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    // A category with an empty colour gets the "#6366f1" fallback.
+    assert_eq!(
+        conn.query_row(
+            "SELECT colour FROM categories WHERE id = 'cat-2'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "#6366f1"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT name, price_minor, category_id FROM products WHERE sku = 'PRD-1'",
+            [],
+            |r| Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, Option<String>>(2)?
+            ))
+        )
+        .unwrap(),
+        ("Coffee".to_owned(), 1_000, Some("cat-1".to_owned()))
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT loyalty_points, total_spent_minor, currency FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?
+            ))
+        )
+        .unwrap(),
+        (0, 0, "USD".to_owned()),
+        "the INSERT path must seed zero loyalty/spend and the 'USD' default"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT pin_hash, is_active FROM users WHERE id = 'user-1'",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        )
+        .unwrap(),
+        (String::new(), 0),
+        "a fresh import must blank the exported verifier and land the user inactive"
+    );
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn kasirpkg_reimport_updates_a_stale_local_row() {
+    // (b1) THE UPDATE-vs-SKIP proof. Between the two imports the local rows are
+    // hand-edited to stale values. An upsert that UPDATES overwrites them; one
+    // that SKIPS (ON CONFLICT DO NOTHING) leaves them stale. Row counts are
+    // identical either way, so only the values separate the two clauses.
+    let conn = import_target_db();
+    let payload = first_import_payload();
+    let path = package_for(&payload);
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    // EVERY column the old UPDATE arm wrote is staled, plus the foreign key
+    // and null-able ones — a column left out of the new `DO UPDATE SET` list
+    // would then silently stay stale, which is the second half of the
+    // behaviour this test exists to pin.
+    for stale in [
+        "UPDATE categories SET name = 'STALE', colour = '#000000' WHERE id = 'cat-1'",
+        "UPDATE products SET name = 'STALE', price_minor = 1, currency = 'ZZZ', category_id = NULL, barcode = 'stale-barcode', created_at = 'STALE', updated_at = 'STALE' WHERE sku = 'PRD-1'",
+        "UPDATE customers SET name = 'STALE', email = 'stale@example.com', phone = 'stale-phone', notes = 'STALE', created_at = 'STALE', updated_at = 'STALE' WHERE id = 'cust-1'",
+        "UPDATE users SET username = 'stale-user', display_name = 'STALE', role_id = 'role-1', created_at = 'STALE', updated_at = 'STALE' WHERE id = 'user-1'",
+    ] {
+        assert_eq!(conn.execute(stale, []).unwrap(), 1, "stale setup: {stale}");
+    }
+
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    assert_eq!(
+        conn.query_row(
+            "SELECT name, colour FROM categories WHERE id = 'cat-1'",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        )
+        .unwrap(),
+        ("Drinks".to_owned(), "#ff0000".to_owned()),
+        "a re-import must UPDATE a stale category, not skip it"
+    );
+    // `updated_at` is asserted too: the old UPDATE arm always wrote it, so it
+    // belongs in the DO UPDATE list, and dropping it from that list must fail
+    // here rather than pass silently.
+    assert_eq!(
+        read_row(
+            &conn,
+            "SELECT name, price_minor, currency, coalesce(category_id,'<null>'), \
+             coalesce(barcode,'<null>'), updated_at IS NOT 'STALE' \
+             FROM products WHERE sku = 'PRD-1'"
+        ),
+        vec!["Coffee", "1000", "USD", "cat-1", "<null>", "1",],
+        "a re-import must UPDATE every column the old UPDATE arm wrote, by sku"
+    );
+    assert_eq!(
+        read_row(
+            &conn,
+            "SELECT name, email, coalesce(phone,'<null>'), notes, updated_at IS NOT 'STALE' \
+             FROM customers WHERE id = 'cust-1'"
+        ),
+        vec!["Alice", "alice@example.com", "<null>", "", "1"],
+        "a re-import must UPDATE every column the old UPDATE arm wrote, by id"
+    );
+    assert_eq!(
+        read_row(
+            &conn,
+            "SELECT username, display_name, role_id, updated_at IS NOT 'STALE' \
+             FROM users WHERE id = 'user-1'"
+        ),
+        vec!["alice", "Alice", "role-1", "1"],
+        "a re-import must UPDATE every column the old UPDATE arm wrote, by id"
+    );
+
+    // And it still did not duplicate anything.
+    for (table, expected) in [
+        ("categories", 2),
+        ("products", 2),
+        ("customers", 1),
+        ("users", 1),
+    ] {
+        assert_eq!(
+            conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            expected,
+            "a re-import must not insert a second {table} row"
+        );
+    }
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn kasirpkg_reimport_preserves_what_the_old_update_arm_never_touched() {
+    // (b2) The other half of "updates, and only in the same columns". The old
+    // UPDATE arms wrote a FIXED column list, so a re-import left the
+    // create-only columns alone. Carrying the column list into DO UPDATE keeps
+    // that: a live customer's balance survives, a live user keeps its verifier
+    // and its active flag, and a re-import never rewrites created_at.
+    let conn = import_target_db();
+    let payload = first_import_payload();
+    let path = package_for(&payload);
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    let live = kasirmu_core::auth::hash_pin("9876").expect("hash_pin");
+    conn.execute(
+        "UPDATE customers SET loyalty_points = 500, total_spent_minor = 12345, currency = 'IDR' WHERE id = 'cust-1'",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE users SET is_active = 1, pin_hash = ?1 WHERE id = 'user-1'",
+        rusqlite::params![live],
+    )
+    .unwrap();
+    let created_before: String = conn
+        .query_row(
+            "SELECT created_at FROM products WHERE sku = 'PRD-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    assert_eq!(
+        conn.query_row(
+            "SELECT loyalty_points, total_spent_minor, currency FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?
+            ))
+        )
+        .unwrap(),
+        (500, 12345, "IDR".to_owned()),
+        "a re-import must NOT zero a live customer's loyalty/spend or reset its currency; \
+         the old UPDATE arm never wrote those columns"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT pin_hash, is_active FROM users WHERE id = 'user-1'",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        )
+        .unwrap(),
+        (live, 1),
+        "a re-import must neither blank a live account's verifier nor deactivate it; \
+         the old UPDATE arm never wrote pin_hash or is_active"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT created_at FROM products WHERE sku = 'PRD-1'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        created_before,
+        "a re-import must not rewrite created_at"
+    );
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn kasirpkg_reimport_is_row_for_row_idempotent() {
+    // Two imports of one package leave a byte-identical database. This is the
+    // cheap, total form of "update, not skip-and-drift, and not insert-twice":
+    // any arm that inserted a duplicate, or updated a column it used to skip,
+    // or skipped a column it used to update, changes the snapshot.
+    let conn = import_target_db();
+    let path = package_for(&first_import_payload());
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+    let once = snapshot(&conn);
+
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+    let twice = snapshot(&conn);
+
+    assert_eq!(
+        once, twice,
+        "importing the same package twice must leave every column value unchanged"
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn kasirpkg_reimport_still_errors_on_a_unique_collision() {
+    // A DIFFERENT id colliding on a unique key is not a re-import: the old
+    // INSERT branch raised SQLITE_CONSTRAINT_UNIQUE and rolled the import
+    // back, and the upsert must not absorb that as an update.
+    //   * users: (tenant_id, username) — a new id with a taken username.
+    //   * categories: name is NOT NULL UNIQUE — a new id with a taken name.
+    let conn = import_target_db();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id) VALUES ('local-1', 'alice', '', 'Local Alice', 'role-1')",
+        [],
+    )
+    .unwrap();
+    let payload = KasirpkgPayload {
+        categories: vec![
+            serde_json::to_value(kasirmu_core::Category::new(
+                "local-cat",
+                "Drinks",
+                "#123456",
+                "",
+            ))
+            .unwrap(),
+        ],
+        products: vec![],
+        customers: None,
+        sales: None,
+        settings: None,
+        users: Some(vec![
+            serde_json::to_value(user_fixture("user-1", "alice", "Alice", "role-1")).unwrap(),
+        ]),
+    };
+    let path = package_for(&payload);
+
+    let err = run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false)
+        .expect_err("a username collision from a different id must abort the import");
+
+    assert!(
+        format!("{err:#}").to_lowercase().contains("unique"),
+        "the failure must still be the unique-constraint error, got: {err:#}"
+    );
+    assert_eq!(
+        conn.query_row("SELECT count(*) FROM categories", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0,
+        "the collision must roll the WHOLE import back, exactly as before"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT display_name FROM users WHERE id = 'local-1'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "Local Alice",
+        "the colliding local row must be untouched"
+    );
+    let _ = std::fs::remove_file(&path);
+}
