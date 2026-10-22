@@ -6050,7 +6050,7 @@ python scripts/check-query-plans.py --check        -> exit 0, both tiers
 generate-pg-migration.py                           -> 129 tables, 169 indexes
 ```
 
-## §11CJ — the probe can no longer drift: 26 of 27 sourced from production constants (2026-10-22)
+## §11CJ — O-M71 closed and the probe's last twelve copies hoisted to constants (2026-10-22)
 
 Landed in `51ff9a8ad` and `79be56727`.
 
