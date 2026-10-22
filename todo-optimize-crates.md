@@ -15,14 +15,17 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 69 | 68 | **1** |
+| Medium | 69 | 69 | **0** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **135** | **134** | **1** |
+| **Total** | **135** | **135** | **0** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
 
-**Updated 2026-10-22 (round 21). 135 defined, 134 closed, 1 open: O-M69.** The probe's own blind spot found it:
+**Updated 2026-10-22 (round 22). 135 defined, 135 closed, 0 open.** O-M69 resolved (`8a1e68b12`) — and the
+interesting part is not the index, it is that **the falsification corrected my own diagnosis**: my first
+test asserted the cursor page, which already seeked, so it passed while testing the healthy path. The
+defect was on the FIRST page. §11CG records it. The probe's own blind spot found it:
 `audit_log` has no index leading with `outcome`, so filtering the audit screen by outcome is WORSE than not
 filtering — a full scan where the unfiltered query at least walked an index. Measured, with a measured fix
 already known; open only because the migration is the remaining step.
@@ -1062,17 +1065,26 @@ until a store's activity table is measured at a size where a once-per-open scan 
 `outcome`**. MEASURED over 2,000 seeded rows + `ANALYZE`, on the paging query
 `... WHERE outcome = ? ORDER BY created_at DESC, id DESC LIMIT 51`:
 
-    outcome filter     -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
-    no filter          -> SCAN audit_log USING INDEX idx_audit_log_created_at
-    cursor (no filter) -> SEARCH audit_log USING INDEX idx_audit_log_created_at (created_at<?)
+    FIRST page + outcome -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
+    cursor page + outcome -> SEARCH audit_log USING INDEX idx_audit_log_created_at
+    no filter            -> SCAN audit_log USING INDEX idx_audit_log_created_at
 
-**Adding an `outcome` filter makes the plan WORSE than no filter at all**: it drops the index-only walk
-for a full table scan plus a temp B-tree sort. Every admin audit screen filtered to `failure` reads the
-entire log.
+**Adding an `outcome` filter makes the FIRST page worse than no filter at all**: it drops the index-only
+walk for a full table scan plus a temp B-tree sort. The KEYSET pages are fine — the `created_at < ?` cursor
+clause gives the planner a range — so the defect hits exactly the page every user lands on.
+
+*(Corrected 2026-10-22 while fixing: my first reading said the cursor query also scanned. It does not.
+The original test I wrote asserted only the cursor shape and would have passed on a broken build; the
+falsification run is what exposed it.)*
 
 *Fix (measured):* `CREATE INDEX idx_audit_log_outcome_created ON audit_log(outcome, created_at DESC, id DESC)`.
-With it, the same query plans `SEARCH audit_log USING COVERING INDEX idx_probe (outcome=?)` and the temp
-B-tree disappears. Not yet applied — see §11CF for why it is recorded open rather than shipped.
+With it, the same query plans `SEARCH audit_log USING COVERING INDEX (outcome=?)` and the temp B-tree
+disappears — for BOTH values of `outcome`, and for both the first page and the keyset pages.
+
+**✅ RESOLVED 2026-10-22 — migration `20261027_audit_log_outcome_created.sql`.** Measured before and
+after, both shapes, both outcome values. Falsified: unregistering the migration makes
+`audit_page_filtered_by_outcome_seeks_instead_of_scanning` fail on the FIRST page with
+`SCAN audit_log USING INDEX idx_audit_log_created_at`; re-registering makes it pass.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -5739,3 +5751,71 @@ cargo test  -p kasirmu-core --lib                          -> 3659 passed, 0 fai
 rustfmt --edition 2024 --check                             -> exit 0 on all five files
 verify-ci-docs-drift / check-gate-runners / verify-gate-completeness -> all exit 0
 ```
+
+## §11CG — O-M69 resolved: the audit outcome filter, and a falsification that caught my own wrong measurement (2026-10-22)
+
+Landed in `8a1e68b12`. Migration `20261027_audit_log_outcome_created.sql`:
+
+```sql
+CREATE INDEX idx_audit_log_outcome_created ON audit_log(outcome, created_at DESC, id DESC);
+```
+
+### The measurement was wrong the first time, and the falsification is what exposed it
+
+§11CF recorded that the outcome-filtered audit query scanned, and gave three plan rows. **One of those rows
+was wrong.** I had measured the cursor form and the no-filter form but not the FIRST page with an outcome
+filter, and I quoted a cursor query as if it were representative.
+
+Re-measured properly, on 5,000 rows + `ANALYZE`, without the new index:
+
+| Shape | Plan |
+|---|---|
+| **first page** + outcome | **`SCAN audit_log` + `USE TEMP B-TREE FOR ORDER BY`** |
+| keyset page + outcome | `SEARCH audit_log USING INDEX idx_audit_log_created_at (created_at<?)` |
+| no filter | `SCAN audit_log USING INDEX idx_audit_log_created_at` |
+
+So the defect is narrower than I first claimed and **worse-placed**: the cursor clause gives the planner a
+range to work with, so only the FIRST page scanned — and the first page is the one every user lands on.
+
+**My first version of the test asserted only the cursor shape.** It passed, it was falsifiable, and it was
+testing the healthy path. Running the falsification (unregister the migration → the test must fail) is what
+revealed it: the test failed, but on the CURSOR plan, which showed the cursor query already seeking. I then
+measured all three shapes separately, found the first page was the real one, and rewrote the test to assert
+**both shapes for both `outcome` values**. Only then does it fail for the right reason.
+
+### What a falsification actually buys
+
+This is the clearest case yet of the pattern this ledger keeps recording, and it cuts against ME this time:
+a test can be green, falsifiable, and still aimed at the wrong query. The falsification did not merely
+confirm the fix — it corrected the diagnosis. **The three prior rounds all recorded 'a test that names a
+property is not a test that pins it'; this round adds the sequel: a test that FAILS without the fix may
+still be failing on a plan that was never the problem.**
+
+### Why this one is not covered by the plan probe, and could not be
+
+`list_audit_entries_page` assembles its `WHERE` at run time through `build_audit_where`
+(`db/audit.rs:191-247`), so the SQL exists only as a string built at the call. The probe works by preparing
+a known string; it cannot see a query that is constructed. **That is the probe's documented boundary**, and
+this defect lived exactly on it — which is a useful fact about both the probe and the risk surface:
+**dynamic-WHERE builders are where the next one is hiding.**
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets   -> exit 0
+cargo test  -p kasirmu-core --lib           -> 3660 passed, 0 failed (191.73s)
+generate-pg-migration.py --check            -> ok, 129 tables, 168 indexes
+rustfmt --edition 2024 --check              -> exit 0
+```
+
+**3659 -> 3660** is the one new test; nothing deleted. Falsified before acceptance: unregistering the
+migration makes `audit_page_filtered_by_outcome_seeks_instead_of_scanning` fail on the FIRST page with
+`SCAN audit_log USING INDEX idx_audit_log_created_at`; re-registering makes it pass.
+
+### An operational trap worth recording
+
+After unregistering the migration and restoring it, `cargo test` reported `migration_registry_matches_filesystem`
+FAILING with "migration file ... has NO registry entry" while the entry was visibly present in the source.
+**Cargo had not rebuilt**: it ran the stale binary in 0.00s. `touch`ing the source file forced a real
+rebuild and the test passed. When a test contradicts what you can read in the file, suspect the build
+before the code.
