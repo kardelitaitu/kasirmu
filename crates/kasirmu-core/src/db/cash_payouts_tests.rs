@@ -408,7 +408,14 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
     };
 
     // Give A time to pass the pre-read and block inside the INSERT, then let
-    // B commit. A cannot finish before that: B holds the write lock.
+    // B commit.
+    //
+    // ⚠️ This 200 ms is NOT a synchronisation primitive and it does not make the
+    // interleaving deterministic — see the audit note on the assertions below.
+    // `create_cash_payout` opens a DEFERRED transaction (`unchecked_transaction`,
+    // cash_payouts.rs:60), so A takes no lock at BEGIN: its contention happens
+    // only at the INSERT, i.e. AFTER the out-of-transaction pre-read has already
+    // returned. Nothing here can prove A read before B committed.
     std::thread::sleep(std::time::Duration::from_millis(200));
     commit_tx.send(()).unwrap();
     closer.join().unwrap();
@@ -431,6 +438,25 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
         )
         .unwrap();
     assert_eq!(stored, 0, "the refused payout must not be persisted");
+
+    // ⚠️ AUDIT (round 17): EVERY assertion above passes even when A's pre-read
+    // lands after B's commit — i.e. even when A never entered the check-then-act
+    // window this test is named for. Both hypotheses produce
+    // `Validation { field: "status" }`:
+    //   (a) A read an OPEN shift, blocked on the INSERT, and the `WHERE EXISTS
+    //       ... status = 'open'` CAS matched zero rows (the property the test
+    //       claims to pin), and
+    //   (b) A read a CLOSED shift and the fast-path rejection at
+    //       cash_payouts.rs:43 fired, never touching the CAS.
+    // So this test cannot fail if the CAS predicate is deleted — the same defect
+    // class as `void_sale_race` (`sales_lifecycle_tests.rs`), fixed there by
+    // making A open its transaction IMMEDIATE so it contends at BEGIN, where a
+    // busy handler can prove A was inside the window.
+    //
+    // Making it deterministic is a PRODUCTION change: `create_cash_payout` must
+    // begin IMMEDIATE (or run the pre-read inside the same transaction, the way
+    // `void_sale` does). Tracked as a debt entry; not changed here on a
+    // read-only round. Do not read this test as evidence the CAS is defended.
 
     // And the closed-shift invariant the guard exists to protect.
     let status: String = conn_a

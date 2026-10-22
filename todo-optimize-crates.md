@@ -15,13 +15,21 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 63 | **3** |
+| Medium | 67 | 63 | **4** |
 | Low | 23 | 21 | **2** |
-| Test (O-T) | 16 | 10 | **6** |
-| **Total** | **131** | **120** | **11** |
+| Test (O-T) | 17 | 13 | **4** |
+| **Total** | **133** | **122** | **11** |
 
-**Updated 2026-10-22 (round 13).** O-M27 closed (both halves) and O-M43 closed. **The High tier is empty and**
-**11 entries remain**: 6 Test, 2 Low, 3 Medium.
+**Updated 2026-10-22 (round 17).** O-T13, O-T15 and O-T16 closed (§11BU); O-T17 and O-M67 opened by the
+same round. **The High tier is empty and 11 entries remain**: 4 Test, 2 Low, 4 Medium. The total held at
+11 only because three closures were paid for by two openings.
+
+**Round 17's headline is a test that was red and nobody had noticed.** Closing O-T15 meant replacing four
+300 ms sleeps; running the FULL suite found a FIFTH site the ledger never listed — the `void_sale` race —
+failing under load while passing 6/6 in isolation. I measured it rather than guessing, and the measurement
+said exactly what the ledger suspected of the whole class: A had read `Completed`, so it never reached the
+compare-and-set the test exists to defend. **A green command is evidence the command ran, not that the
+interleaving happened.** The replacement asserts that A blocked, so the run now proves its own premise.
 
 **Two of this round's three fixes are of a kind worth naming: the type did the work.** O-M27's transaction
 was falsified by *trying to reintroduce the bug* — passing `&db` where `&Transaction` is required now fails
@@ -2082,7 +2090,7 @@ tighten the bound to the 5 s `wait_timeout` under test.
 **O-T13 · a test that asserts nothing** — `platform/sync/src/pg_daemon_tests.rs:543-551` ✔
 (4A-13). `mark_offline_synced_nonexistent_item` computes a result and `let _ = result;`, with a
 comment admitting either outcome is fine — it can only fail on panic, and still pays a snapshot
-clone. *Fix:* assert the contract.
+clone. *Fix:* assert the contract. **✅ RESOLVED — §11BU.**
 
 **O-T14 · four Redis legs are `#[ignore]`d from dev CI** —
 `apps/cloud-server/src/redis_backend_tests.rs:96`, `:127`, `:141`, `:61` ✔ (4A-14). TTL/expiry
@@ -2091,11 +2099,37 @@ behaviour is untested in the default run. *Fix:* a fake backend, or record why d
 **O-T15 · 300 ms sleeps to hold a lock window open** —
 `crates/kasirmu-core/src/db/sales_crud_tests.rs:132-135` ✔ (4A-15), same shape at
 `db/shifts_tests.rs:629`, `db/gift_cards_tests.rs:811`/`:877`. *Fix:* drive the release with a
-channel the blocked caller can reach.
+channel the blocked caller can reach. **✅ RESOLVED — §11BU.** (A FOURTH site outside the ledger's
+list — `db/sales_lifecycle_tests.rs`, the `void_sale` race — was already red for exactly this
+reason and is fixed in the same commit.)
 
 **O-T16 · a 5 ms sleep to separate two timestamps** —
 `crates/kasirmu-core/src/db/kds_tests.rs:1566` ✔ (4A-16). *Fix:* insert explicit distinct
-`received_at` values.
+`received_at` values. **✅ RESOLVED — §11BU.**
+
+**O-T17 · an interleaving test whose two hypotheses agree** —
+`crates/kasirmu-core/src/db/cash_payouts_tests.rs` (`create_cash_payout` race) ✔. Found while
+closing O-T15, and it is the SAME defect class as the `void_sale` race: the test asserts
+`Validation { field: "status" }`, which both reachable paths produce — the compare-and-set matching
+zero rows (the property claimed) and the out-of-transaction fast-path rejection at
+`cash_payouts.rs:43` (which never touches the CAS). It cannot fail if the CAS predicate is deleted.
+*Fix:* see O-M67 — `create_cash_payout` must begin IMMEDIATE so the test can prove A was inside
+the window.
+
+**O-M67 · kasirmu-core — `create_cash_payout` reads its guard OUTSIDE a DEFERRED transaction** —
+`crates/kasirmu-core/src/db/cash_payouts.rs:37-60` ✔. `create_cash_payout` does what `void_sale`
+used to: it reads the shift (`get_shift`) and rejects a closed one *before* opening its
+transaction, so the read and the compare-and-set are not atomic. The CAS clause
+(`WHERE EXISTS (... AND status = 'open')`) is what actually keeps cash from leaving a closed
+drawer, and the deferred transaction gives it nothing to contend with until the INSERT — meaning
+the window is as wide as the gap between the two statements, and no test can currently prove the
+CAS is what refused the payout (see O-T17: the fast-path rejection produces the identical error).
+
+`void_sale` (`sales_lifecycle.rs:906`) already has the fix — `Transaction::new_unchecked(self.conn,
+TransactionBehavior::Immediate)`, recorded at `sales_checkout.rs:241` as "IMMEDIATE contends at BEGIN
+where the 5000 ms busy_timeout applies". *Fix:* begin IMMEDIATE (a one-line change, same argument
+shape), then rewrite the O-T17 test in the O-T15 shape so a busy handler proves A was inside the
+window. Not done in round 17 — it is a production change and the round was a read-only one.
 
 **Clean, and worth saying so:** `db/products_tests.rs` (102 tests) and `db/sales_tests.rs`
 (151 tests) use the snapshot helper and contain **zero sleeps**; `sync_api_tests.rs` simulates
@@ -4723,4 +4757,95 @@ Verified with `cargo test -p platform-sync --lib`. All 497 tests pass.
 
 
 
+
+
+## §11BU — O-T13, O-T15 and O-T16 resolved: three named contracts instead of three coin flips (2026-10-22)
+
+Landed in `0789305cf`. Six test files, +394/−36. Every change below replaces a test that could not
+distinguish the property it named from its opposite.
+
+### O-T13 — the "coin flip" had a documented answer
+
+`mark_offline_synced` now asserts `CoreError::NotFound { entity: "offline_queue", id }` per the
+contract in its own `#Errors` (`db/offline.rs:279-282`), plus `raw_pending_count == 0` — the refused
+call writes nothing. The snapshot clone the old test paid for now earns itself.
+
+**The batch variant disagrees with the single one, and its docs do not say so.**
+`mark_offline_synced_batch` (`db/offline.rs:294-315`) has **no `#Errors` section at all**, and its
+loop is `mark_synced_on(&tx, id)?` inside ONE transaction: the first `NotFound` propagates and the
+transaction is dropped uncommitted. **Unknown ids are NOT skipped — one deleted id fails the whole
+drain.** The test pins the actual contract (NotFound, plus rollback proven by draining the same
+batch without the poison id), not the lenient contract a reader might assume. Leniency would be a
+change in `offline.rs`, outside this task.
+
+The tenant variant shares the single-item contract for an absent id; the cross-tenant `NotFound` is
+documented but needs a second tenant's row, which the fixture does not build — stated in the test
+rather than silently skipped.
+
+### O-T15 — four 300 ms windows, and a fifth nobody had found
+
+All five now share one shape: B holds the write lock, A runs on the main thread, **A's busy handler
+fires exactly when A has read and is blocked**, A signals over mpsc, B commits. Each test additionally
+asserts A really blocked, so a run that never enters the window FAILS instead of passing for the
+wrong reason.
+
+| Site | Property preserved |
+|---|---|
+| `sales_crud_tests.rs` | A reads `pending`, B commits, A's CAS finds nothing → `Conflict`, B's status survives |
+| `shifts_tests.rs` | `BEGIN IMMEDIATE` contends before the duplicate check → `Validation{user_id}`, exactly one open shift |
+| `gift_cards_tests.rs` ×2 | A reads `active`/`frozen` behind B's uncommitted write, loses the CAS, winner's row survives |
+| **`sales_lifecycle_tests.rs`** | **the `void_sale` race — not in the ledger's list, and already RED** |
+
+**The fifth site is the round's real finding.** `void_sale_race_reports_the_conflict_rather_than_
+overwriting_a_completed_sale` was failing on a full-suite run while passing 6/6 in isolation. I
+measured the failure instead of guessing:
+
+```
+DIAG outcome=Err(Validation { field: "status", message: "only active sales can be
+be voided (current: Completed)" }) db_status=completed
+```
+
+A's pre-check read `Completed` — it never entered the compare-and-set the test exists to defend, so
+the test was green only on the days the 300 ms window happened to hold. `void_sale` opens
+`BEGIN IMMEDIATE` (`sales_lifecycle.rs:906`), so it contends at BEGIN where a busy handler can
+prove A is inside the window; the timer is now replaced by that fact. The earlier isolation runs
+were not evidence — a green command is evidence the command ran, not that the interleaving happened.
+
+### O-T16 — explicit timestamps, with the order inverted
+
+`create_kds_order` stamps `received_at` itself (`kds.rs:151`), so the sleep became two targeted
+`UPDATE kds_orders SET received_at = ?`. The **first-inserted** order deliberately gets the **later**
+stamp, so a pass cannot come from insertion order or rowid — only from `ORDER BY received_at DESC`.
+The other two sleeps in `kds_tests.rs` were read and left: one is *inside* a busy handler (its own
+yield between retries), one is a bounded poll on another thread's atomic flag with a 5 s ceiling.
+
+### Gotcha worth recording
+
+rusqlite 0.31's `busy_handler` takes `fn(i32) -> bool` — a **function pointer**, so a capturing
+closure fails `E0308`. The first attempt did, and the gate caught it; rewritten as a
+`static Mutex<Option<Sender<()>>>` mailbox plus a plain `fn`. All waits are `recv_timeout(5s)` so a
+regression that never blocks fails with a named message instead of hanging — a hang is worse than a
+failure, because CI reports a timeout with no test name.
+
+### Two new entries, both found by looking at what the fix did NOT cover
+
+**O-T17** — the `create_cash_payout` race test has the identical defect (both reachable paths return
+`Validation{status}`), and **O-M67** — its production cause: `create_cash_payout` reads its guard
+outside a DEFERRED transaction, exactly as `void_sale` did before it was fixed. Neither was patched
+in this round; O-M67 is a production change and the round was read-only apart from tests. The test
+now carries the audit note so it is not read as evidence the CAS is defended.
+
+### Verification
+
+```
+cargo check -p kasirmu-core  --all-targets   -> exit 0
+cargo check -p platform-sync --all-targets   -> exit 0
+cargo test  -p platform-sync --lib           -> 497 passed, 0 failed, 4 ignored
+cargo test  -p kasirmu-core  --lib           -> 3655 passed, 0 failed (153.59s), FULL SUITE
+rustfmt --edition 2024 --check               -> exit 0 on all six files
+```
+
+The core suite count is **3654 → 3655**: the `sales_crud_tests` change consolidated one existing
+test (the 8-attempt restage loop stays inside it), and three tests were added in `platform-sync`.
+No assertion was dropped.
 
