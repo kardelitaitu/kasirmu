@@ -216,15 +216,15 @@ pub use shifts::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
 /// boundaries for multi-statement workflows.
 pub struct Store<'a> {
     /// Underlying SQLite connection.
-    pub conn: &'a Connection,
+    pub(crate) conn: &'a Connection,
     /// Optional caching layer for product and inventory lookups.
     /// Uses `Arc` so multiple `Store` instances can share the same
     /// cache backend (e.g. Redis).
-    pub cache: Option<Arc<dyn Cache>>,
+    pub(crate) cache: Option<Arc<dyn Cache>>,
     /// Terminal ID for pub/sub message tagging (multi-terminal).
     /// Passed through to `Cache::publish_inventory_change` so other
     /// terminals can skip their own messages.
-    pub terminal_id: Option<String>,
+    pub(crate) terminal_id: Option<String>,
     /// W4-S4 TOCTOU closure: the tier a pre-tx quota gate armed for the NEXT
     /// creation on this Store, consumed inside the create transaction (so the
     /// check and the write commit atomically). Mutex keeps `Store` Sync;
@@ -266,8 +266,18 @@ impl<'a> Store<'a> {
     }
 
     /// Return a reference to the underlying connection.
-    pub fn conn(&self) -> &Connection {
+    pub fn conn(&self) -> &'a Connection {
         self.conn
+    }
+
+    /// Return the optional cache layer.
+    pub fn cache(&self) -> Option<&Arc<dyn Cache>> {
+        self.cache.as_ref()
+    }
+
+    /// Return the terminal ID for pub/sub message tagging.
+    pub fn terminal_id(&self) -> Option<&str> {
+        self.terminal_id.as_deref()
     }
 }
 

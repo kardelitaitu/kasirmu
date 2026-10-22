@@ -1182,7 +1182,7 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
             .create_workspace_instance(&format!("{sid}-kds-3"), "kds", &sid, "Kitchen 3", "", None)
             .unwrap();
         store
-            .conn
+            .conn()
             .execute(
                 "UPDATE workspace_instances SET status = 'quota_suspended' WHERE id = ?1",
                 rusqlite::params![format!("{sid}-kds-3")],

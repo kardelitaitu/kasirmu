@@ -236,7 +236,7 @@ async fn put_image_hash_mismatch_returns_409_without_storing() {
 
     let db = state.db.lock().await;
     let n: i64 = kasirmu_core::db::Store::new(&db)
-        .conn
+        .conn()
         .query_row("SELECT COUNT(*) FROM image_refs", [], |r| r.get(0))
         .unwrap();
     assert_eq!(n, 0, "hash mismatch must not create a refcount");
