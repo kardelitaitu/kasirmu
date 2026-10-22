@@ -236,9 +236,9 @@ server-side, as ADR #22 §5 already requires via `TenantSubscription`.
 
 - [ ] **Owner ratifies D1-D5 (§9)**, or overrules them in writing. D1 is the load-bearing one: an
       overrule to model A voids this plan from §3, as §1 already states.
-- [ ] **D6 verified — the only open question left.** Confirm `branch_id` is exactly one location
-      (§9 D6). The evidence favours that reading; if it is wrong, the design does not change, only
-      T9's fixture and D2's eligibility count.
+- [x] **D6 verified — resolved 2026-10-22.** Confirmed in code: `semantic_branch_profile_id` binds
+      `branch_id` to `store_profile_id` (location) across `topology.rs:138`, `topology_tests.rs:439-460`,
+      and `persistence.rs:708`. Branch == location holds across the codebase.
 - [ ] ADR drafted recording the authority model (D1), the signed-revision contract (D4), §3.2
       granularity, the v1 eligibility gate (D2), the read-only local editor (D3), and I1-I5.
 - [ ] §4.1 tenant isolation audit complete, expressed as tests.
