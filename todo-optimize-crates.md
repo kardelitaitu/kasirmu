@@ -6594,3 +6594,77 @@ rustfmt --edition 2024 --check                -> exit 0 on all 7 files
 **Already complying:** `mobile-tauri` has 21 bare `tempfile::tempdir()` calls and 0 `kasirmu_test_support::tempdir()`,
 yet its suite is 721 passed / 1 failed where that one failure is an unrelated command-count drift pin. So the
 trap is latent there rather than active — recorded, not touched, because the crate is another session's area.
+
+## §11CQ — O-M76 resolved: the read gate was passing a topology route through unchecked (2026-10-23)
+
+Landed in `2907a50e4`.
+
+### The failure, and why the test that found it exists
+
+`read_key_map_covers_all_protected_get_routes` failed with:
+
+```
+READ_KEY_MAP is missing GET route(s) that the router registers, so the read gate
+would pass them through unchecked (API-A): ["/api/v1/topology/revisions/pull"]
+```
+
+`/api/v1/topology/revisions/pull` was added by the topology Phase 3/5 work as a GET on the
+**protected** router. `read_gate_middleware` looks the `(method, path)` up in `READ_KEY_MAP` and,
+when nothing matches, **passes the request through** — the map is an allow-by-omission design, which
+is correct for sync and public routes and wrong for any protected GET nobody remembered to add. So a
+token scoped to `products:read` could pull revision payloads (diagram envelopes, signatures,
+publishing actor) with no permission check at all.
+
+This is the **same defect class as `/api/v1/memos/active`** (API-A), which is why that test was
+rewritten to parse `lib.rs` rather than a hand-typed list. The test worked exactly as designed: it
+fired on the next route that repeated the mistake.
+
+### Choosing the key: do not invent one
+
+The topology family registers **only `topology:write`** — there is no `topology:read`. Writing
+`key: "topology:read"` would have looked tidier and been a second bug: `has_permission` is false for
+any key not in the registry, so **every scoped token would be denied** and terminal replication would
+break silently — a fail-closed bug that no test in this file was aimed at.
+
+The entry therefore names `topology:write`: the permission that already governs the graph, and one a
+publisher plainly holds. If a read-only topology tier is ever wanted, it is a registry change
+(`platform/core/src/permission_registry.rs`) plus a `ReadKeyEntry` edit, and the coverage test will
+hold the second half of that in place.
+
+`pii: false` — the handler selects `id, branch_id, revision, base_revision, change_note, diagram,
+…, published_by, tenant_id, org_id, actor, key_id, signature`. That is revision metadata plus a
+diagram envelope; it does not join workspace or location rows.
+
+### The test I added, and its falsification
+
+The coverage test is a **source parse**: it proves an entry exists, and says nothing about what the
+middleware does with it. A renamer could keep it green. So
+`topology_pull_route_is_gated_not_passed_through` drives the real middleware:
+
+- `permissions: ["products:read"]` → 403
+- `permissions: ["topology:write"]` → 200
+
+Falsified by deleting the `ReadKeyEntry` and re-running: **left 200, right 403** — the test fails on
+the real bypass, not on a technicality. Restored, 23/23 pass.
+
+### The stale-binary trap fired again
+
+After restoring the file the suite came back `21 passed; 2 failed` with the entry plainly present on
+disk (`git diff --stat` showing +18). The restore reported success and `Select-String` found the path
+string; only the re-run disagreed. Touching the file and re-running gave 23/23.
+
+That is the **seventh** time this checkout has run a stale test binary. The rule already written here
+holds: if a test result contradicts source you can read, `touch` and retry — but note what made this
+instance confusing, because a truthy `grep -c 'topology/revisions/pull'` returning `1` is consistent
+with both "restored" and "partially restored". Counting a string is not inspecting the artifact.
+
+### Verification
+
+```
+cargo test -p kasirmu-api --lib read_tiers  -> 23 passed, 0 failed  (was 22 with 1 failing)
+falsification (entry removed)               -> topology_pull... FAILED, left 200 right 403
+rustfmt --edition 2021 --check              -> clean on my hunks (@@ -125 / @@ -297);
+                                               import-block drift predates this change
+```
+
+**Ledger: 142 defined, 142 closed, 0 open.**
