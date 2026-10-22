@@ -15,17 +15,18 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 55 | **11** |
+| Medium | 66 | 60 | **6** |
 | Low | 23 | 16 | **7** |
 | Test (O-T) | 16 | 10 | **6** |
-| **Total** | **131** | **107** | **24** |
+| **Total** | **131** | **112** | **19** |
 
-**Updated 2026-10-22 (round 8).** O-M22, O-M23 and O-M47 closed, on top of round 7's three Test
-entries and round 6's nine. **The High tier is empty and 24 entries remain**: 6 Test, 7 Low, 11 Medium.
-The Medium remainder is now mostly the device layer — `kasirmu-hal` (O-M40–M42: four USB walks, one
-enumeration per connect, a syscall per byte) — plus `kasirmu-plugin`'s unbounded query (O-M48) and the
-`kasirmu-cli`/`kasirmu-lan` pair. Counting rule unchanged — a `## §11*` heading or an in-entry marking
-verb; never a commit message alone.
+**Updated 2026-10-22 (round 9).** O-M40, O-M41, O-M42 and O-M48 closed, on top of round 8's O-M22/M23/M47
+and round 7's three Test entries. **The High tier is empty and 19 entries remain**: 6 Test, 7 Low, 6
+Medium. The Medium remainder is now a scatter rather than a block — `kasirmu-api` image packing (O-M24),
+the cloud snapshot cache (O-M25), the per-memo insert fan-out (O-M26), the Android JNI mutex (O-M43), the
+local-api audit sink (O-M46) and the `kasirpkg` per-row probes (O-M49) — so the next pass can take them in
+parallel with no shared files. Counting rule unchanged — a `## §11*` heading or an in-entry marking verb;
+never a commit message alone.
 
 **A correction that cost this round: THREE Test entries I opened as work were already paid**
 (O-T01, O-T03 and O-T04's prescribed fix), and one (O-T04) understated its own blast radius by 43%
@@ -936,22 +937,66 @@ by currency, and resolve the store's currency instead of hard-coding.
 ### Medium — likely to bite within years
 
 **O-M40 · kasirmu-hal — `probe_all` walks the USB bus four times** —
-`crates/kasirmu-hal/src/transport/usb.rs:274-286` (with `:199-210`) ✔ (3A-01). Scanners cost two
-walks (`CLASS_HID` + `CLASS_VENDOR_SPECIFIC`), scales a third `CLASS_HID`, printers a fourth,
-and each walk opens every matching device to read three string descriptors (`:162-173`).
-*Fix:* enumerate once into a `Vec<UsbDeviceInfo>` and classify in memory.
+`crates/kasirmu-hal/src/transport/usb.rs` ✔ **PAID 2026-10-22** (3A-01). Scanners cost two walks
+(`CLASS_HID` + `CLASS_VENDOR_SPECIFIC`), scales a third `CLASS_HID` and printers a fourth, and each
+walk opened every matching device to read three string descriptors — so the duplicate walks cost far
+more than the enumeration itself. `probe_all` now performs ONE walk and partitions in memory.
+
+**The class had to ride along with the record.** The fix is not the `Vec<UsbDeviceInfo>` this entry
+suggested, because an interface can expose several settings and `UsbDeviceInfo` does not carry which
+class matched — and the HID-versus-vendor-specific split is exactly what must stay exact. `walk_bus`
+hands each match back as a `pub(crate) Classified { class, info }`, and the per-category
+post-processing (the dedup loop, the re-classify/retain steps, the label fallbacks) was lifted
+VERBATIM into `scanners_from`/`printers_from`/`scales_from`.
+
+**The device lists are proved unchanged, not asserted.** `usb_tests.rs` carries a verbatim port of the
+OLD three-walk implementation as an oracle, fed the same synthetic enumeration as the new partition and
+compared on `(vid, pid, interface, label, category)` IN ORDER — plus an exhaustive sweep of every
+VID/PID in all three tables against all three classes, and a fixture covering a dual-class scanner (the
+dedup rule), a vendor-only scanner (merged after HID), and unknown devices (dropped).
+`every_known_vid_pid_is_classified_identically_by_old_and_new_paths` is the exhaustive one.
+
+**The honest limit:** the walk itself needs libusb and real hardware and is NOT unit-tested. What is
+pinned is everything downstream of the enumeration.
 
 **O-M41 · kasirmu-hal — one full bus enumeration per device connect** —
-`crates/kasirmu-hal/src/transport/usb.rs:320-337` ✔ (3A-02). `open_device` builds a fresh
-`rusb::Context` and lists every device to find one VID/PID; it is the connect path for
-`UsbReceiptPrinter::ensure_connected` and `UsbHidBarcodeScanner::connect`, so every reconnect
-after `NoDevice` re-walks the bus. *Fix:* open by `rusb::Device` from the cached enumeration.
+`crates/kasirmu-hal/src/transport/usb.rs` ✔ **PAID 2026-10-22** (3A-02), but NOT by the fix this entry
+prescribed. `open_device` built a fresh `rusb::Context` per connect; it now uses a process-wide
+`USB_CONTEXT: OnceLock<Context>` shared with the walk.
+
+**A cache of `rusb::Device` handles was considered and rejected, and the reason is the interesting part.**
+`DeviceList` owns and frees the list it returns, so any cache outliving a walk must re-derive each
+`Device` from the raw pointer — i.e. it still pays a fresh `get_device_list` — while adding a real unplug
+hazard: a stale handle turns a clean `NoDevice` into a confusing open failure. The cache buys nothing
+and risks the one thing a reconnect path must get right. So nothing about a connection is retained:
+`open_device` builds a fresh device list on every call, an unplugged device is simply absent
+(`NotFound`), and a replug re-enumerates normally. A miss is a fresh enumeration by construction.
 
 **O-M42 · kasirmu-hal — serial barcode read is one syscall per byte** —
-`crates/kasirmu-hal/src/drivers/serial_scanner.rs:136-137` ✔ (3A-03), same block at
-`drivers/bt_scanner.rs:144-145` ◦. A 13-character barcode costs 13 blocking `read()` calls, and
-the dead `Ok(n)` arm (`:155-166`) shows a multi-byte read was intended. *Fix:* read into a
-`[u8; 64]` and scan the returned slice for the terminator.
+`crates/kasirmu-hal/src/transport/barcode_reader.rs` ✔ **PAID 2026-10-22** (3A-03). A 13-character
+barcode cost 13 blocking `read()` calls; both `serial_scanner::poll` and `bt_scanner::poll` now read
+64-byte chunks through one shared `BarcodeReader`. The `Ok(n)` arm that looked dead was evidence the
+multi-byte read had been intended and narrowed away.
+
+**Bytes arriving AFTER the terminator are RETAINED, not discarded.** They belong to a later barcode, and
+retaining them is what makes a barcode split across two reads neither lost nor duplicated. The module
+header documents it, `barcode_split_across_two_reads_keeps_every_character` pins it, and
+`barcode_split_at_every_offset_is_reassembled` sweeps every split point.
+
+**A bug in the first cut was found by the test that was written to prove the fix.** An `Ok(0)` between
+two bites of one code made the first cut hand back the partial prefix; the split test caught it, and the
+rule is now: with nothing buffered a poll ends immediately, with a PARTIAL code buffered the partial is
+kept and the loop returns to the deadline check — so a barcode split across a would-block still
+reassembles. `a_zero_length_read_does_not_end_the_poll_while_a_code_is_pending` pins that.
+
+Pinned end-to-end through the real driver `poll()` on BOTH scanners, including a test that asserts
+`read()` count == 1 for a 13-character code. `MAX_BARCODE_LEN` now has one definition (still 1024, still
+`bytes`); the driver modules `pub use` it, so `drivers::serial_scanner::MAX_BARCODE_LEN` and its BT twin
+still resolve. One existing SOURCE-TEXT guard (`include_str!`, which demanded three literal definitions)
+was amended to name the two surviving definitions, with the reason recorded in its doc — the bytes-unit
+rule it enforces is unchanged.
+
+`cargo test -p kasirmu-hal --lib` = **428 passed, 0 failed** (up from 361; 67 new tests).
 
 **O-M43 · kasirmu-hal — the Android JNI `VM` mutex is held across blocking connect and read** —
 `crates/kasirmu-hal/src/transport/bt_android.rs:63-86` ✔ (3A-05). The guard is taken for
@@ -1038,9 +1083,50 @@ keyword` is the sibling of `sql_validation_regexes_compile`: a pattern typo or a
 `cargo test -p kasirmu-plugin --lib` = **226 passed, 0 failed** (224 before, plus the two above).
 
 **O-M48 · kasirmu-plugin — plugin `query` is unbounded and clones each column name per cell** —
-`crates/kasirmu-plugin/src/db.rs:93-128` ✔ (3B-04). No row cap; the whole result set is
-materialised into `Vec<Value>` and `name.clone()` runs once per cell. *Fix:* enforce a row
-ceiling and intern names once per query.
+`crates/kasirmu-plugin/src/db.rs` ✔ **PAID 2026-10-22** (3B-04). `query` materialised the whole result
+set into `Vec<Value>` and then serialised it to a `String`, so peak memory was ~2x the encoded result,
+with no ceiling at all — the only plugin budget in the workspace without a number (the Lua VM has 10
+MiB, a script file 1 MiB, a package entry 16 MiB).
+
+**The ceiling, and why that number.** `pub const MAX_QUERY_ROWS: usize = 10_000`, tied to the Lua VM cap
+the result actually COMPETES against: the JSON string crosses into the plugin as a Lua string, which the
+VM allocates and counts against its 10 MiB. A realistic plugin row encodes to a few hundred bytes, so
+10 000 rows is a few MiB — inside that budget with room for the script's own tables, and far past any
+legitimate hook, which runs inside a checkout rather than producing a report.
+
+**Excess rows are an ERROR, not a truncation.**
+`PluginError::PermissionDenied` carrying the number and the remedy ("add a LIMIT … narrow the WHERE
+clause, or page through the data"). Reusing `PermissionDenied` keeps the public error enum unchanged. The
+reason truncation was rejected: a discount or tax hook fed a silently-truncated result computes wrong
+money and cannot detect it, so the fail-closed direction is the only defensible one at a sandbox
+boundary.
+
+**The cap is enforced by COUNTING ROWS AS THEY ARE READ, not by rewriting the SQL.** This matters more
+than it looks: `validate_sql` rejects quoted identifiers (PLG-11) and comment-stripping already runs
+before extraction, so a rewrite that appends `LIMIT n` would have to survive a trailing semicolon, an
+existing LIMIT, and a trailing comment — and getting that wrong in a sandbox is a bypass. The read loop
+cannot be defeated that way because no text is appended at all. The check fires on the first EXCESS row
+(the 10 001st, before `seen` is incremented), so nothing beyond the cap is ever retained.
+
+`validate_sql` is deliberately UNCHANGED — same keyword set, no new rejection. A plugin `LIMIT 999999`
+is not rejected by the validator because the read-loop cap already makes it unreachable, and a second
+check that could disagree with the first is worse than one check that cannot.
+
+**The names half: one allocation per distinct name per query, not per cell.** `column_names` is collected
+once and an `owned_keys` buffer holds one single-entry map per distinct name; every row clones from that
+buffer. A 1,000 x 10 result went from 10 000 name allocations to 10. Output is byte-identical, pinned by
+tests over `SELECT *` with NULL/INTEGER/REAL/BLOB(hex, base64)/TEXT, expression columns, aliased columns,
+duplicate labels (which still collapse to one key) and the empty result.
+
+A latent abort was removed with it: `row.get_unwrap(i)` became a propagating `row.get(..)`. That unwrap
+sat on a path a PLUGIN can drive, so a column-type surprise would have aborted the host process rather
+than failing one query.
+
+**Boundary pinned at cap-1, cap and cap+1** — `query_cap_returns_every_row_one_below_the_ceiling`,
+`query_cap_allows_exactly_the_ceiling`, `query_cap_rejects_one_row_above_the_ceiling`, plus
+`query_cap_counts_engine_rows_not_the_plugins_limit_clause` (`LIMIT 999999` over cap+5 still errors) and
+two output-identity tests. The cap is inclusive, so the `LIMIT` the error recommends does not itself trip
+it. `cargo test -p kasirmu-plugin --lib` = **233 passed, 0 failed**.
 
 **O-M49 · kasirmu-cli — `kasirpkg` import probes existence per row, per table** —
 `crates/kasirmu-cli/src/commands/kasirpkg.rs:346-372` ✔ (3B-05, also `:316-343`, `:398-457` ◦).
@@ -3746,3 +3832,74 @@ cache before the code — and note that the ICE was masking a genuine error, not
 
 **Verification this round:** `kasirmu-cloud` **398 passed, 0 failed** (43 ignored) ·
 `kasirmu-plugin` **226 passed, 0 failed**.
+## §11AY — O-M40, O-M41, O-M42, O-M48: the device layer, and three fixes that refused their own prescription (2026-10-22)
+
+Four more Medium entries closed: the `kasirmu-hal` device block and the plugin's unbounded query. Three
+of the four did NOT take the fix their ledger entry prescribed, and in each case the ledger's suggestion
+was wrong for a reason worth recording.
+
+### O-M40 — the class had to ride along
+
+`probe_all` called three probe functions that between them walked the bus FOUR times, and each walk
+opened every matching device to read three string descriptors — so the walks were never the real cost,
+the descriptor reads were. It is now one walk that partitions in memory.
+
+The suggested fix ("enumerate once into a `Vec<UsbDeviceInfo>`") does not work as written: an interface
+can expose several settings, `UsbDeviceInfo` carries no record of WHICH class matched, and the HID-
+versus-vendor-specific split is precisely what must stay exact. So each match comes back as
+`Classified { class, info }`. The per-category post-processing — the dedup rule, the re-classify and
+retain steps, the label fallbacks — was lifted VERBATIM rather than rewritten.
+
+**The proof is an oracle, not an assertion.** The test file carries a verbatim port of the OLD three-walk
+implementation, fed the same synthetic enumeration and compared on `(vid, pid, interface, label,
+category)` IN ORDER, plus an exhaustive sweep of every VID/PID in all three tables against all three
+classes. That is the only way to show a refactor of this shape did not quietly change which devices a
+merchant sees.
+
+### O-M41 — the cache was rejected, and it buys nothing
+
+`open_device` built a fresh `rusb::Context` per connect. Fixed by sharing one context process-wide.
+
+The ledger said "open by `rusb::Device` from the cached enumeration". That was rejected: `DeviceList`
+owns and frees the list it returns, so any cache outliving a walk must re-derive each `Device` from the
+raw pointer anyway — **it still pays a fresh `get_device_list`** — while adding a real hazard, because a
+stale handle turns a clean `NoDevice` into a confusing open failure on a reconnect path. The cache buys
+nothing and risks the one thing a reconnect must get right. Nothing about a connection is retained: a
+miss is a fresh enumeration by construction, so an unplug is `NotFound` and a replug just works.
+
+### O-M42 — and a bug found by the test written to prove the fix
+
+One `read()` per byte became 64-byte chunks through a shared `BarcodeReader`. The `Ok(n)` arm that
+looked dead was evidence the multi-byte read had been intended and narrowed away.
+
+**Bytes arriving after the terminator are RETAINED**, because they belong to a later barcode; retaining
+them is what makes a split barcode neither lost nor duplicated. Writing that test caught a real bug in
+the first cut: an `Ok(0)` between two bites of one code made it hand back the partial prefix. The rule is
+now explicit — nothing buffered ends the poll, a partial code keeps the poll alive across the
+would-block — and it is pinned at every split offset.
+
+That is the second time in three rounds that a test written for a stated property found a defect in the
+implementation that claimed to have it (§11AT, §11AU were the first two). The pattern is consistent
+enough to state as a rule: **the test is not evidence that the code is right; it is the instrument that
+finds out.**
+
+### O-M48 — a budget with no number
+
+Plugin `query` materialised the whole result set and then serialised it, so peak memory was ~2x the
+encoded result, with no ceiling — the only plugin budget in the workspace without one (the Lua VM has
+10 MiB, a script 1 MiB, a package entry 16 MiB).
+
+Now `MAX_QUERY_ROWS = 10_000`, tied to the Lua VM cap the result actually competes against, and an excess
+row is an ERROR rather than a truncation: a discount or tax hook fed a silently-truncated result computes
+wrong money and cannot detect it. **The cap counts rows as they are read, and does not rewrite the SQL** —
+that distinction matters because `validate_sql` rejects quoted identifiers and strips comments, so a
+`LIMIT`-appending rewrite would have to survive a trailing semicolon, an existing LIMIT and a trailing
+comment, and getting that wrong inside a sandbox is a bypass. Pinned at cap-1, cap and cap+1, plus a
+`LIMIT 999999` case that still errors.
+
+A latent abort went with it: `row.get_unwrap(i)` became a propagating `row.get(..)`. That unwrap sat on a
+path a PLUGIN can drive, so a column-type surprise would have aborted the host rather than failing one
+query.
+
+**Verification this round:** `kasirmu-hal` **428 passed, 0 failed** (361 before; 67 new) ·
+`kasirmu-plugin` **233 passed, 0 failed** (226 before; 7 new).
