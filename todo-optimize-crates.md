@@ -15,16 +15,22 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 40 | **26** |
-| Low | 23 | 11 | **12** |
-| Test (O-T) | 16 | 4 | **12** |
-| **Total** | **131** | **81** | **50** |
+| Medium | 66 | 45 | **21** |
+| Low | 23 | 15 | **8** |
+| Test (O-T) | 16 | 9 | **7** |
+| **Total** | **131** | **95** | **36** |
 
-**Updated 2026-10-22 (round 6).** O-M45, O-M60, O-L20 and O-L22 closed, plus O-M64 earlier in the
-round; O-M21 lands with its own commit. The High tier stays empty, and the remaining 50 are
-Medium-and-below: 12 Test, 12 Low, 26 Medium (11 of those are the `kasirmu-hal`, `kasirmu-plugin`,
-`kasirmu-cli` and cloud/api Medium block). Counting rule unchanged — a `## §11*` heading or an
-in-entry marking verb; never a commit message alone.
+**Updated 2026-10-22 (round 7).** O-T06, O-T07 and O-T08 closed this round, on top of round 6's
+O-M64, O-M45, O-M60, O-L20, O-L22 and O-M21. The High tier is still empty and **36 entries remain**:
+8 Low, 7 Test, 21 Medium (11 of those are the `kasirmu-hal`, `kasirmu-plugin`, `kasirmu-cli` and
+cloud/api block, which is the largest coherent group left). Counting rule unchanged — a `## §11*`
+heading or an in-entry marking verb; never a commit message alone.
+
+**A correction that cost this round: THREE Test entries I opened as work were already paid**
+(O-T01, O-T03 and O-T04's prescribed fix), and one (O-T04) understated its own blast radius by 43%
+(787 call sites where the true count is 1,394). The Test tier was the last place I expected census
+rot, which is the argument for re-verifying a tier before believing its own open list. §11AW records
+what each one actually was.
 
 **Updated 2026-10-21 (round 5).** O-M34 closed. The `platform/sync` Medium cluster it belonged
 to was ALREADY complete — O-M35 through O-M39 all said "Fixed:" in their own text and I verified
@@ -1376,13 +1382,12 @@ lines were read verbatim.
 **High — plausibly costs minutes of suite wall-clock**
 
 **O-T01 · desktop topology tests replay the full migration chain ~45 times per run** —
-`apps/desktop-tauri/src/commands/topology/topology_tests.rs:16-24` ✔ (4A-01)
-`fresh_conn()` does `migrations::run(&mut conn)` — the whole chain, not the cached snapshot — and
-it is the shared helper: 22 `fresh_conn()` calls plus 9 direct `run` sites in
-`topology_command_tests.rs`, 10 in `topology_tests.rs`, 3 in `topology_serde_tests.rs`, 1 in
-`topology_stress_tests.rs`. The crate already ships `migrations::fresh_db()`, and the bridge's own
-topology tests already use it — this is the one file that did not get the memo. *Fix:* one line —
-`fresh_conn()` calls `migrations::fresh_db()`.
+`apps/desktop-tauri/src/commands/topology/topology_tests.rs:16-32` ✔ **ALREADY PAID 2026-10-21** (4A-01).
+Verified at `d42a69b09`: `fresh_conn()` IS `migrations::fresh_db()`, and the helper's own comment
+records the measurement that drove it — `run` replays all 68 migrations at ~305 ms, `fresh_db` clones
+a pre-migrated snapshot at ~3 ms, across 35 calls in the four topology test files. This entry was
+**stale when I read it as open**: the ledger still showed the pre-fix source, and the fix had already
+landed. Same class as the three O-H23/24/26 findings in round 5 — a plan doc that had not been told.
 
 ```rust
 21      let mut conn = Connection::open_in_memory().unwrap();
@@ -1398,16 +1403,27 @@ for read-only schema assertions; keep the real `run` only in the tests whose sub
 **Medium**
 
 **O-T03 · `queue_tests.rs` permanently leaks 76 in-memory databases** —
-`platform/sync/src/queue_tests.rs:13-16` ✔ (4A-03). `setup_store()` does
-`Box::leak(Box::new(migrations::fresh_db()))` on every one of ~77 tests, to buy a `'static`
-lifetime nothing needs. *Fix:* return a borrowed fixture; drop the leak.
+`platform/sync/src/queue_tests.rs:21-23` ✔ **ALREADY PAID 2026-10-21** (4A-03). `setup_store` now takes
+`&Connection` and returns `Store<'_>`; the leak is gone and the comment at `:14-20` records what it
+cost — `Store<'a>` borrows its connection for any `'a`, so the `'static` was never needed, and the
+leak held ~2 MiB alive per call site for the life of the binary. Also stale when I read it as open.
 
-**O-T04 · `fresh_db()` clones under one process-wide mutex, and 787 call sites share it** —
-`crates/kasirmu-core/src/migrations.rs:524-568` ✔ (4A-04). The snapshot is a
-`static SNAPSHOT: LazyLock<Mutex<Connection>>` (`:528`) and the clone takes that lock (`:563`) for
-a full `Backup::run_to_completion` (`:564-567`). With **787** `fresh_db()` call sites in test files
-(measured today), every DB construction in a test binary serialises on one lock — a hard barrier
-under `cargo nextest`'s per-binary threads. *Fix:* a small per-thread snapshot pool.
+**O-T04 · `fresh_db()` clones under one process-wide mutex, and 1,394 call sites share it** —
+`crates/kasirmu-core/src/migrations.rs:710-765` ✔ **MOOT AS WRITTEN 2026-10-22** (4A-04). The
+measurement this entry asks for has ALREADY been done and the answer is recorded on the function
+itself (`:682-689`): "384 clones spread over N threads get *slower* past two threads — 1.15 s at 1
+thread, 0.76 s at 2, 2.18 s at 8, 3.75 s at 32. Replacing this `Mutex` with a per-thread source did not
+lift that ceiling; it measured ~15% worse at 4+ threads." So the prescribed fix — "a small per-thread
+snapshot pool" — was tried, measured, and found WORSE. Whatever caps parallel DB construction sits
+below this function, most likely SQLite's global allocation mutex.
+
+**The call-site count in this entry was also wrong in the direction that mattered.** It said 787; the
+true count at `d42a69b09` is **1,394**. An entry that understates its own blast radius by 43% invites
+a reader to think of this as a corner case. It is not — it is the single most-used test helper in the
+workspace.
+
+The `Mutex` stays. `RwLock` would be worse, not better: `Backup::new` takes a `RefCell` borrow on its
+source, so two readers would race it — a data race, not an optimisation.
 
 **O-T05 · `daemon_tests.rs` states ~5.5 s of pure sleep** — `platform/sync/src/daemon_tests.rs:174-181` ✔
 (4A-05). 27 sleeps (500 ms + 200 ms after every `daemon.start()`, three more pairs, 600 ms, 300 +
@@ -1415,19 +1431,73 @@ under `cargo nextest`'s per-binary threads. *Fix:* a small per-thread snapshot p
 1 s `timeout`.
 
 **O-T06 · `rate_limiter_tests.rs` states 4.2 s of sleep** —
-`crates/kasirmu-core/src/rate_limiter_tests.rs:211`, `:223-225`, `:238` ✔ (4A-06). Four sleeps
-(2 s, 600 + 600 ms, 1 s); the file annotates its own jitter at `:241`. *Fix:* inject a clock, or
-back-date `last_refill` as `apps/cloud-server/src/rate_limit_tests.rs:25` already does.
+`crates/kasirmu-core/src/rate_limiter_tests.rs` ✔ **PAID 2026-10-22** (4A-06). FIVE sleeps, not the four
+this entry listed (`:463`'s 1,100 ms was missed), all removed by back-dating the limiter's own stored
+`Instant`s — option (b), following the precedent at `apps/cloud-server/src/rate_limit_tests.rs:25`. No
+clock injected, no production API changed, `rate_limiter.rs` untouched: the test module is a child of
+the module under test, so `limiter.attempts` is directly reachable.
+
+Two test-only helpers carry it, and the split between them is the point. `backdate_attempts` ages
+EVERY attempt for a user; `backdate_first_attempt` ages only `attempts[0]`. In the two tests whose old
+sleep sat BETWEEN `record_failure` calls, aging every attempt would have degenerated into "everything
+expired" and quietly stopped testing partial pruning — so the second helper exists precisely to keep
+those tests honest.
+
+**Assertion strength went UP, which is the real win.** `:242` was
+`assert!((8..=10).contains(&err), "retry_after should be ~9")` — a 3-wide window that pinned only the
+magnitude and would have passed had the code used the newest attempt or elapsed 0. With time
+controlled it is `assert_eq!(err, 9)`. A tolerance window in a test is a signal that the test could not
+see what it was naming.
+
+**A documentation defect fell out of it.** `window_expiry_partial_prune`'s comments claimed `t=0` and
+`t=0.6s`, but the code's own 600 ms gap made the second attempt land at t=0.6s while the comment
+described a 0.6s OFFSET — the prose never matched the code. The rewrite makes them agree.
+
+`cargo test -p kasirmu-core --lib rate_limiter`: **34 passed**, and the body went from **2.00 s to
+0.01 s** — the sleeps were the entire cost.
 
 **O-T07 · `kds_tests.rs` pastes the same 24-field `Sale` literal 14 times** —
-`crates/kasirmu-core/src/db/kds_tests.rs:446-470` ✔ (4A-07). ~340 duplicated lines of source and
-compile unit; the file already defines the right helper locally at `:703` (`mk_sale`) and simply
-never hoisted it. *Fix:* module-level `fn test_sale(id)`.
+`crates/kasirmu-core/src/db/kds_tests.rs` ✔ **PAID 2026-10-22** (4A-07). It was **21** literals, not 14,
+and 18 of them collapsed into helpers; the file went 4,283 → 3,868 lines.
+
+The work that mattered was the fingerprint, not the edit. Every literal was diffed field by field
+BEFORE anything was replaced, and exactly three dimensions varied: `id`; the `created_at`/`updated_at`
+pair (cosmetically `now.clone()`/`now` vs `now.clone()`/`now.clone()`, but both always assigned from ONE
+`let now` captured per test, so the two strings were always equal); and, at exactly one site each,
+`total`/`subtotal`/`line_count` = 1200/1200/1 and `status` = `Active`. Every other field — currency,
+payment method, tender, discount, tax, customer, base currency, tender rate, tip, service charge, lines,
+version — was identical at every site.
+
+So the helper chain carries those dimensions as PARAMETERS rather than normalising them away:
+`test_sale(id)`, `test_sale_with_total(id, total_minor)`, `test_sale_typed(id, status, total_minor)`,
+with `line_count` derived from the total so the row stays self-consistent. Collapsing the two odd sites
+into the common shape would have silently changed what two tests seeded — the classic refactor failure
+this entry could have caused.
+
+16 orphaned `let now` bindings were dropped with it, and one genuine `unused variable` warning at the
+e2e site was fixed. `cargo test -p kasirmu-core --lib kds`: **178 passed, 0 failed**.
 
 **O-T08 · a 10,000-iteration fixture to assert two counts** —
-`platform/sync/src/pg_daemon_tests.rs:573-589` ✔ (4A-08). `large_batch_enqueue_10k_items` performs
-10,000 `enqueue_offline` calls, each running a subscription load plus an autocommit INSERT, to
-assert a count. *Fix:* a few hundred rows, or one set-based insert.
+`platform/sync/src/pg_daemon_tests.rs` ✔ **PAID 2026-10-22** (4A-08).
+
+**Is 10,000 load-bearing? No, and that had to be established before choosing.** Traced
+`Store::enqueue_offline` → `enqueue_offline_with_tenant` → `enqueue_offline_inner`
+(`crates/kasirmu-core/src/db/offline/enqueue.rs:191`): per call it does one subscription load, one
+settings read and one autocommit INSERT, with no batch detection, threshold or size-dependent branch
+anywhere in the chain. The only real batch bound in the system is
+`DEFAULT_MAX_OUTBOX_BATCH_ITEMS = 100` (`platform/sync/src/daemon.rs:308`), already pinned by a
+separate test in `daemon_tests.rs`.
+
+So the count was kept — it is a scale marker, and renaming the test would lose what its name says —
+and the WRITE was made set-based instead: one transaction, one prepared INSERT, 10,000 executes
+inside it, same columns and the same `pending`/`default`/priority-1 values the old calls wrote. A
+doc comment now records that 10,000 is NOT tied to the batch cap, so no future reader mistakes it for
+a production limit.
+
+**1.07 s → 0.55 s** measured over repeated isolated runs. The remaining cost is the 10k-row insert
+itself; what went away is the per-row subscription read and the per-row autocommit fsync. The test
+needs no Postgres here — it is a plain `#[cfg(test)] mod` with no `#[ignore]`. `cargo test -p
+platform-sync --lib pg_daemon`: **55 passed, 0 failed**.
 
 **O-T09 · stress fixtures build 5,000 nodes + 5,000 wires, then verify with 10,000 `format!`s** —
 `crates/kasirmu-bridge/src/topology/topology_stress_tests.rs:1738-1744` ✔ (4A-09). Two allocations
@@ -3426,3 +3496,94 @@ source with `kasirmu-test-support`.
 **Verification:** `kasirmu-payment` 194 passed · `kasirmu-reporting` 62 passed ·
 `modules-sales` 33 passed · `kasirmu-logging` 60 passed · `modules-inventory` 37 passed.
 All 0 failed.
+## §11AW — O-T06, O-T07, O-T08 paid; O-T01, O-T03 already paid; O-T04's fix was measured WORSE (2026-10-22)
+
+Round 7 went looking for work in the Test tier (O-T) and found it in a very different shape than the
+ledger advertised. **Three of the six entries I set out to close were already closed**, and the fix the
+fourth prescribed had already been tried, measured, and found to make things worse. That is the census
+rot §11E warned about, in the tier I had least reason to suspect it.
+
+### O-T06, O-T07, O-T08 — paid, and all three in the same spirit
+
+All three are test-suite cost, none touches production code. The details are in their entries; the
+common lesson is worth stating once.
+
+**O-T06** removed the last wall-clock sleeps from the rate-limiter tests by back-dating the limiter's
+own stored `Instant`s, which turned a tolerance window into an exact assertion: `(8..=10)` became
+`assert_eq!(err, 9)`. **A range assertion is a confession** — it says the test could not see precisely
+what it was naming. The body went from 2.00 s to 0.01 s.
+
+**O-T07** collapsed 18 of 21 copy-pasted `Sale` literals into three helpers. The important part was
+not the edit but the fingerprint taken first: exactly three fields varied across the sites, and two of
+those variations existed at exactly ONE site each. A helper that had normalised them away would have
+silently changed what two tests seed.
+
+**O-T08** proved 10,000 was not load-bearing before deciding what to do with it — by tracing the whole
+enqueue chain and finding no size-dependent branch anywhere, and by locating the real batch cap
+(100) and the test that already pins it. Then it kept the count as a scale marker and made the write
+set-based: 1.07 s → 0.55 s.
+
+### O-T01, O-T03 — already paid; O-T04 — already measured and rejected
+
+- **O-T01** (`fresh_conn` replays the migration chain) is **already fixed**: the helper IS
+  `migrations::fresh_db()`, and its comment records the 305 ms vs 3 ms measurement that drove it.
+- **O-T03** (`queue_tests` leaks 76 in-memory DBs) is **already fixed**: `setup_store` takes a
+  `&Connection` and returns a borrowed `Store`.
+- **O-T04** asked for "a small per-thread snapshot pool" for `fresh_db()`. **That was tried, and it
+  measured ~15% WORSE at 4+ threads** — the measurement is written on the function itself
+  (`migrations.rs:682-689`). The entry was also wrong about its own blast radius: it said 787 call
+  sites; the true count is **1,394**. An entry that understates itself by 43% invites a reader to treat
+  it as a corner case. The `Mutex` stays, and an `RwLock` would be actively dangerous — `Backup::new`
+  takes a `RefCell` borrow on its source, so two readers would race it.
+
+### The one real find: a scratch directory leaked per test, 1,911 deep
+
+Investigating why the full 1,529-test bridge suite aborts (`0xffffffff`, no panic text, no
+`test result` line), I found the cause in the harness rather than in any test.
+
+`unique_store_dir()` returned a bare `PathBuf` from `kasirmu_test_support::scratch_dir`, and its own
+comment said leftovers were "left for the OS temp cleaner". **There is no OS temp cleaner for
+`target/`.** One directory per `TestBridge::new()` accumulated permanently: **1,911**
+`kasirmu-bridge-store-*` directories measured after a handful of suite runs.
+
+The fix is one field. `provisioned_store_manager` now returns `(manager, ScratchDir)` and `TestBridge`
+holds `_store_scratch` — a field, not a local, because a local in `new()` would be dropped at the end
+of `new()` and delete the directory the manager is still using. Two `memo_tests` call sites that build
+their own manager destructure the guard the same way.
+
+**Proven, not asserted:** the scratch count was 2,338 before a full 26-test `memo::` run and **2,338
+after it**. Before the fix, every run added one per test.
+
+### The full-suite abort is now a %TEMP% problem, and it is a list, not a mystery
+
+The lane chasing the same abort established the honest position: **no green full suite has been
+observed in this environment, and I am not claiming one.** What it did establish is that the failures
+are environmental, not product defects — 41 of them failed on `os error 5`, the machine-`TEMP` trap.
+
+The remaining exposure is enumerated, and it is the obvious next task for this tier:
+`data_tests.rs:123,807,479` · `diagnostics_tests.rs:41,158,300,356` ·
+`local_payment_tests.rs:35` · `regional_tests.rs:107` · `settings_tests.rs:2267` ·
+`subscription_tests.rs:1099` · `sync_tests.rs:642` · `tables_tests.rs:54` · `tax_tests.rs:399` ·
+`avatars_tests.rs:155` · `branding_tests.rs:215,231,232,250,270,286` · `pos_tests.rs:2619` ·
+`topology/topology_command_tests.rs:17` · `topology/topology_stress_tests.rs:20`.
+
+### The build recipe, once, because it cost several rounds
+
+`cargo check`/`cargo test` fail here on `cl.exe D8050` and on `lib.exe LNK1104`. Four variables, all
+needed, run from a `.bat` through `cmd /c`:
+
+```bat
+call "...vcvars64.bat"
+set RUSTFLAGS=-C debuginfo=0
+set CARGO_PROFILE_DEV_DEBUG=0
+set TEMP=<a writable dir>
+set AR=C:\Program Files\LLVM\bin\llvm-lib.exe
+```
+
+The `AR` override is the non-obvious one: cc-rs 1.2.65 passes the OUTPUT `.a` as an INPUT to `lib.exe`,
+which MSVC answers with LNK1104. `llvm-lib` tolerates it. Verified by hand — the same invocation
+fails, minus the duplicate argument succeeds.
+
+**Verification this round:** `kasirmu-core` rate_limiter **34 passed** (2.00 s → 0.01 s) ·
+`kasirmu-core` kds **178 passed** · `platform-sync` pg_daemon **55 passed** (1.07 s → 0.55 s) ·
+`kasirmu-bridge` locations **12 passed**, memo **26 passed**. Scratch directories: 2,338 → 2,338.
