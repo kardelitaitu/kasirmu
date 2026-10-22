@@ -815,8 +815,8 @@ existing ones adapted to the new type, none weakened.
 *Fix:* multi-row INSERT / `unnest`.
 
 **O-M27 · kasirmu-api — settings endpoint: 8 round trips to read, 3 writes with no**
-**transaction** — `crates/kasirmu-api/src/routes/settings.rs` ⚠️ **STILL OPEN. Attempted 2026-10-22,**
-**reverted; work below is a verified START, not a fix.** *Fix:* `WHERE key = ANY($1)`; wrap writes in one
+**transaction** — `crates/kasirmu-api/src/routes/settings.rs` ⚠️ **TRANSACTION HALF PAID 2026-10-22 in
+`d635cb6cc`; the READ half (8 round trips) is still open.** *Fix:* `WHERE key = ANY($1)`; wrap writes in one
 transaction.
 
 **What was verified before the attempt, and it is the valuable part: BOTH backends were non-atomic.** The
@@ -847,10 +847,38 @@ For Postgres, take one `Client` from the pool, `BEGIN`/`COMMIT`, `ROLLBACK` on e
 2. Do not let the diagnostic print the settings payload. One attempt dumped an `smtp_config` row including
    its `password` field into test output. A fixture secret, but that is the shape that becomes a real leak.
 
-The attempt was reverted because it left the crate uncompilable (`E0425: cannot find value
-`SECRET_KEY_DENY_LIST``) and had begun deleting pre-existing tests. `crates/kasirmu-api` is back to
-**351 passed, 0 failed, 14 ignored** and `cargo check --all-targets` clean. Nothing from the attempt
-survives; a second attempt should start from the call-site signature change above.
+**The first attempt was reverted** — it left the crate uncompilable (`E0425: cannot find value
+`SECRET_KEY_DENY_LIST``) and had begun deleting pre-existing tests.
+
+### What actually landed (`d635cb6cc`)
+
+`write_settings` now opens the transaction at the call site that owns the connection, and
+`apply_ops_sqlite` takes `&rusqlite::Transaction<'_>` instead of `&Connection`. **The signature change is the
+fix, not a style choice.** It was falsified by trying to reintroduce the bug: passing `&db` where
+`&Transaction` is required now fails to COMPILE (`E0308` ×2), so the defect is unrepresentable rather than
+merely tested. That is a stronger guarantee than any assertion.
+
+The commit also carries the test the earlier attempt could not make work. Its first version failed to
+induce a failure at all (the store accepted the "failing" value), so it proved nothing. The landed version
+installs a SQLite TRIGGER that raises on one specific key, which is a genuine database-level failure of the
+second op — and it asserts BOTH directions: the first key keeps its PREVIOUS value after the failed save,
+and a clean save writes all three (so the rollback is not achieved by writing nothing).
+
+A third assertion pins the MECHANISM rather than the caller: three ops inside a transaction that is DROPPED
+without `commit()` must roll back. Without it, the main test would still pass if the caller silently stopped
+opening a transaction, because `apply_ops_sqlite` would then never run at all.
+
+`cargo check -p kasirmu-api --all-targets` = exit 0 · `cargo test -p kasirmu-api --lib` = **353 passed,**
+**0 failed**, 14 ignored (351 before; 2 new).
+
+**Still open on this entry: the READ half** — `read_settings` makes 8 round trips (four `Some`/fallback
+pairs). Batch it to one `WHERE key = ANY($1)` over the 8 candidate keys. **Preserve the fallback semantics
+exactly: a scoped key that exists with an EMPTY value returns `Some("")` and must NOT fall through to the
+bare key.** That distinction is what an operator sees, and it is the easy thing to get wrong in a rewrite.
+
+**One placement note that killed the earlier attempt:** the first try changed things in the file while
+ANOTHER session was committing to the same tree, and the resulting file was neither its version nor HEAD.
+If you pick this up, verify `git status` shows only your files before concluding a compile failure is yours.
 
 **O-M28 · cloud-server — quota cooldown map never swept, two `String` allocs per probe** —
 `apps/cloud-server/src/quota_detector.rs:103-116` ◦. Grows with tenant churn. *Fix:* prune on
