@@ -24,6 +24,18 @@ fail-fast = { max-fail = 1 }
 # allocation mutex. Every TestBridge::new() takes that path, which is why the
 # modules that build many bridges (kds, auth, reports, pos, staff) are the slow
 # ones and the 332-test topology module, which mostly does not, finishes in 9.7 s.
+#
+# AND IT HOLDS FOR THE BIGGEST CRATE TOO, re-measured 2026-10-23 so this is not a
+# one-crate anecdote. kasirmu-core --lib, 3674 tests, same machine:
+#   1 thread     -> 107.04 s
+#   2 threads    ->  77.35 s
+#   4 threads    ->  65.10 s   <- the same optimum
+#   8 threads    -> 114.43 s
+#   default (32) -> 179.96 s    (2.8x slower than 4)
+# 3674 passed, 0 failed at every point on that curve, so the setting costs no
+# coverage -- it only stops the runner from racing itself. Two crates, two
+# independently measured curves, the same minimum at 4.
+#
 # So 4 is not a compromise between speed and safety: it is the fastest measured
 # point, and it is what [profile.quick] already used.
 test-threads = 4
