@@ -15,27 +15,28 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 67 | 60 | **7** |
+| Medium | 67 | 64 | **3** |
 | Low | 23 | 23 | **0** |
-| Test (O-T) | 17 | 14 | **3** |
-| **Total** | **133** | **123** | **10** |
+| Test (O-T) | 17 | 16 | **1** |
+| **Total** | **133** | **129** | **4** |
 
-**Updated 2026-10-22 (round 17) — the open list is now COUNTED, not inherited.** Every entry was
-re-derived from its own text and marker verbs. **10 entries remain open: 7 Medium (O-M04, O-M11, O-M20,
-O-M54, O-M57, O-M58, O-M63) and 3 Test (O-T02, O-T05, O-T09).** The High tier has been empty since round 5
-and the Low tier is now empty.
+**Updated 2026-10-22 (round 18) — every remaining entry RE-DERIVED from the tree, not inherited.**
+**4 entries remain open:** O-M04, O-M11, O-M63 (Medium) and O-T09 (Test). The High and Low tiers are empty.
 
-**Closed this round:** O-T13, O-T15, O-T16 (§11BU); O-M67 + O-T17 (§11BV); O-T12, O-T14 (§11BW); and
-**EIGHT entries that were already done and merely lacked a marker word** — O-M26, O-M29, O-L12, O-L14,
-O-T04, O-H25 (moot), plus three whose notes already argued for closure in prose that no checker reads.
-**The previous snapshot said 11 open; the true count is 10, and four of the eleven it named were never
-open at all.** That is the census rot this file warns about, found in its own header.
+**Round 18 closed 6 entries, and FIVE of them were already done before the round started** — O-M20, O-T02,
+O-T05 (fixed in earlier commits, lacking a closing verb), O-M57, O-M58 (files deleted) — plus O-M54, which
+was genuinely open but **described the wrong defect**. Fewer than one in six of the "open" list was a real,
+undescribed problem.
 
-**The census repair is its own finding.** Four entries read as open work in every downstream reading
-because their fix notes never used the counting verb — and one of them (`O-M26`) had ALREADY shipped in
-`a3795dccf`, with the code since moved to another file. Re-verifying a tier before believing its open list
-is not housekeeping: **the open count is a claim about the tree, and it drifts.**
+**The two findings worth carrying forward:**
 
+1. **O-M54's headline claim was false.** It said `DATE(s.created_at)` forces a full scan growing with
+   history. MEASURED: it already `SEARCH`ed `idx_sales_status_created_date`, an EXPRESSION index
+   (`20260814_analytics_index.sql:4`, commit `ed76ebc6`) built for that exact shape. The rewrite found a
+   smaller real win — independence from that one index — and is recorded at that size (§11BX).
+2. **Two of the four survivors are dead in the default build.** O-M11's `RedisCache` is behind the optional
+   `cache-redis` feature, which NOTHING in the workspace enables; O-M63's handler is declared
+   "DEAD / test-only" in its own file. **The open count now overstates the real work by half.**
 **Round 17's headline is a test that was red and nobody had noticed.** Closing O-T15 meant replacing four
 300 ms sleeps; running the FULL suite found a FIFTH site the ledger never listed — the `void_sale` race —
 failing under load while passing 6/6 in isolation. I measured it rather than guessing, and the measurement
@@ -618,6 +619,14 @@ point** — `crates/kasirmu-core/src/db/popularity.rs:415-434` ✔. Fixed: intro
 `crates/kasirmu-core/src/db/offline.rs:561-567` ◦. `instr(payload, …)` over all pending rows,
 per sale, on the checkout path. *Fix:* indexed `sale_id` column and equality probe.
 
+**RE-VERIFIED 2026-10-22 — STILL OPEN, but the cited location is WRONG.** The claim lives at
+`crates/kasirmu-core/src/db/offline/enqueue.rs:502-515` (`has_pending_outbox_row_for_sale`); the quoted
+`offline.rs:551-564` is `delete_offline_item_for_tenant` and has no `instr`. Real caller:
+`platform/startup/src/event_handlers.rs:95-97`. **MEASURED query plan:**
+`SEARCH offline_queue USING INDEX idx_offline_queue_status (status=?)` — an index RANGE over EVERY
+pending row, `instr`-scanning each `payload` in turn. This is worth more than the entry implies: the
+cost is proportional to the whole pending backlog, not to the sale, and every settlement pays it.
+
 **O-M05 · kasirmu-core — tax-rate validation is a per-id round trip** —
 `crates/kasirmu-core/src/db/tax/assignments.rs:26-34` ✔. Fixed: replaced sequential per-id `get_tax_rate` queries with a single batched `IN (...)` validation query in `ensure_active_tax_rate_ids`, and hoisted `prepare_cached` for junction insert loops in `set_product_tax_rates` and `set_category_tax_rates`. Verified in `tax_tests.rs`.
 
@@ -639,6 +648,12 @@ category** — `crates/kasirmu-core/src/db/popularity.rs:517-563` ✔. Fixed: re
 **O-M11 · kasirmu-core — one `Mutex<redis::Connection>` held across a network round trip** —
 `crates/kasirmu-core/src/cache.rs:165`, `:290-294` ◦. All product/inventory cache ops
 serialise behind a single blocking Redis call. *Fix:* pooled/multiplexed client.
+
+**RE-VERIFIED 2026-10-22 — STILL OPEN, but DEAD IN THIS BUILD.** The code claim is accurate
+(`cache.rs:167` `conn: Mutex<redis::Connection>`, guard held across `cmd("GET").query()` at `:294-295`,
+same at `:304-311`), but the entire `redis_cache` module is behind the OPTIONAL `cache-redis` feature and
+**nothing in the workspace enables it** — `crates/kasirmu-core/Cargo.toml:41` defines it and no consumer
+turns it on. The cost is zero today. Deprioritise alongside O-M63.
 
 **O-M12 · kasirmu-core — location resolver: global mutex per lookup, map never evicted** —
 `crates/kasirmu-core/src/location_resolver.rs:48-49`, `:56-58` ✔. Fixed: converted `LOCATION_CACHE` from `Mutex` to `RwLock` to enable non-blocking concurrent reads across threads, and added a capacity ceiling of 1,024 entries (`MAX_CACHED_LOCATIONS`) with TTL eviction on insert. Verified in `location_resolver_tests.rs`.
@@ -668,7 +683,7 @@ user) ✔. Fixed: added `Store::all_role_counts_map` in `crates/kasirmu-core/src
 `crates/kasirmu-bridge/src/analytics.rs:66-74` ✔. Fixed: added `Store::get_user_display_names_batch(&user_ids)` in `crates/kasirmu-core/src/db/staff.rs`, resolving display names only for active staff members present in the aggregated report rather than materializing the entire global users table into memory. Verified in `analytics.rs` and `staff.rs` tests.
 
 **O-M20 · kasirmu-bridge — `blocking_lock()` on the async session-resolution path** —
-`crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ **PROMOTED TO O-H26 IN §9 — this is a guaranteed
+`crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ **✅ CLOSED 2026-10-22 — DONE IN PLACE, and re-verified:** `ctx.rs:433-440` now uses `try_lock()` with a named `BridgeError::Invalid` on contention, and `:412-429` is the rewritten "Why this uses `try_lock`, not `blocking_lock`" block the entry asked for. Zero `blocking_lock` CALL SITES remain in `kasirmu-bridge/src`. **PROMOTED TO O-H26 IN §9 — this is a guaranteed
 panic, not a parked worker.** Recorded here in round 2 as parking a runtime worker; verification
 re-read `audit.rs:257-266` and found the crate documenting the same pattern as a panic on first
 use. See §9 for the corrected entry. *Fix:* `lock().await`, and delete the stale justification
@@ -1599,9 +1614,40 @@ was retired under checklist C29, which took `query_daily_summary`, `query_sales_
 the remaining non-sargable surface is `query_menu_engineering` (`menu_engineering.rs:88-108`) plus
 `margin.rs:76-88`. Scope the fix to those two.
 
-**Re-measured 11-10-26:** `crates/kasirmu-reporting/src/daily_summary.rs` NO LONGER EXISTS (the crate's `src/` is now `{error,lib,margin,menu_engineering}.rs`). The non-sargable-predicate substance DOES still hold, in the surviving files: `menu_engineering.rs` (261 lines) and `margin.rs` (126 lines) both still carry a `DATE(s.created_at)`-style predicate and neither carries a `LIMIT`. Repoint the two query names to those modules when acting on this item; the `daily_summary`/`query_daily_summary` spellings are the retired ones. 
+**Re-measured 11-10-26:** `crates/kasirmu-reporting/src/daily_summary.rs` NO LONGER EXISTS.
+
+**❌ THAT RE-MEASUREMENT WAS PARTLY FALSE. Corrected and RESOLVED 2026-10-22 — §11BX.**
+Two errors in it, both in the direction that made the work look bigger:
+
+1. **`margin.rs` carries NO `DATE(created_at)` predicate at all.** `margin.rs:87-99` is
+   `WHERE sl.sale_id = ?1 ORDER BY sl.line_position` — a single-sale, primary-key-keyed lookup. It is
+   bounded by construction and was never part of this defect. The claim traced back to the crate's own
+   audit header, which files it as R-2 INFO "deliberately NOT scheduled" — the ledger copied a header
+   that was itself wrong.
+2. **"every predicate is non-sargable"** was false for `menu_engineering` too: `s.status = 'completed'`
+   is perfectly sargable. One predicate of two.
+
+**And the central claim — that `DATE(s.created_at)` "cannot use an index" — was ALSO wrong in practice.**
+MEASURED with `EXPLAIN QUERY PLAN` over 200 seeded rows: the OLD predicate planned as
+`SEARCH s USING INDEX idx_sales_status_created_date (status=? AND <expr>>? AND <expr><?)`. It SOUGHT;
+it did not scan. The reason is `crates/kasirmu-core/migrations/20260814_analytics_index.sql:4`:
+`CREATE INDEX idx_sales_status_created_date ON sales(status, date(created_at))` — an EXPRESSION index
+built (commit `ed76ebc6`) for exactly this shape. The "full table scan growing with history" never
+happened on any database carrying that migration.
+
+**Fixed anyway (`e9631cbc5`), for the property that IS real:** the query now uses the half-open range
+`s.created_at >= ?1 AND s.created_at < date(?2, '+1 day')`. Measured difference: with the expression
+index DROPPED, the old form falls back to `SCAN s USING COVERING INDEX idx_sales_created_at` while the
+new form still `SEARCH`es `idx_sales_created_at`. The rewrite removes a DEPENDENCY on one expression
+index; it does not remove a scan that was there. `menu_engineering_date_filter_can_use_an_index` and
+`the_old_date_predicate_depends_on_the_expression_index` pin both halves, and both were FALSIFIED against
+the old predicate before being accepted.
+
+**Still open, unchanged:** `query_menu_engineering` has no `LIMIT` (one row per product × currency over
+the range, so it is bounded by the catalog, not by history — lower risk than the entry implies). The
+other `DATE(created_at, tz)` report queries are untouched and remain R-2 INFO.
 ```sql
-130           AND DATE(s.created_at) BETWEEN ?1 AND ?2
+130           AND s.created_at >= ?1 AND s.created_at < date(?2, '+1 day')
 ```
 
 **O-M55 · kasirmu-reporting — menu engineering performs five sorts per call** —
@@ -1615,7 +1661,7 @@ Fixed: walked `rgb.as_raw()` contiguous byte slices using `chunks_exact(3)`, bou
 scanning to `top..bottom`, and added immediate early return for solid-colour images.
 
 **O-M57 · kasirmu-logging — syslog layer allocates per field and blocks per record** —
-❌ **MOOT 2026-10-21.** The target no longer exists: `crates/kasirmu-logging/src/syslog.rs` was
+❌ **MOOT — CLOSED 2026-10-21, re-verified 2026-10-22.** The target no longer exists: `crates/kasirmu-logging/src/syslog.rs` was
 DELETED by `53dcb73a3` ("refactor(logging): delete the unwired syslog/eventlog sinks (C29/D13)",
 2026-09-29), together with the `libc` dependency. `Cargo.toml:20-22` records the removal and
 notes the crate "is now pure safe Rust". There is no syslog layer left to make non-blocking —
@@ -1626,7 +1672,7 @@ into a reused buffer.
 
 **Re-measured 11-10-26:** `crates/kasirmu-logging/src/syslog.rs` and `eventlog.rs` NO LONGER EXIST — the crate's own README (audited 2026-10-11) records that the syslog/eventlog FFI modules were REMOVED, leaving `{error,lib,visitor}.rs`. The finding is retired with the code it described. (It also makes the ledger's O-M57-era claim that a syslog layer installs on deployments a dated reading — see the same-named item in `.agents/reviews/crate-review-ledger-24-09-26.md`.) 
 **O-M58 · kasirmu-logging — eventlog layer allocates a `Vec<u16>` and blocks per record** —
-❌ **MOOT 2026-10-21.** Same deletion as O-M57: `eventlog.rs` and the `windows-sys` dependency
+❌ **MOOT — CLOSED 2026-10-21, re-verified 2026-10-22.** Same deletion as O-M57: `eventlog.rs` and the `windows-sys` dependency
 gone in `53dcb73a3` (C29/D13). No Event Log sink remains.
 `crates/kasirmu-logging/src/eventlog.rs:108-115` ◦ (3C-08). *Fix:* thread-local scratch buffer,
 worker thread.
@@ -1682,7 +1728,15 @@ matched** — `crates/kasirmu-notification/src/handlers.rs:98-125`, `:179-212`, 
 **O-M63 · modules-inventory — the DB mutex is held across the whole sale-deduction
 transaction** — `modules/inventory/src/handlers.rs:220-241` ✔ (3D-02) · **latent**. Every line,
 every BOM ingredient and the `commit()` run under one guard, so a single `sale.completed`
-serialises all other access to that connection. *Fix:* pool or `spawn_blocking`; scope the guard
+serialises all other access to that connection.
+
+**RE-VERIFIED 2026-10-22 — STILL OPEN but UNDERSTATED, and that cuts the other way.** The guard claim
+is exact (`handlers.rs:226-243`: one `self.db.lock()` spans the loop and the `tx.commit()`), but the SAME
+file says at `:219-223` that the handler is **"DEAD / test-only (see scripts/handler-classification.json):
+this handler is constructed nowhere in production"**. So the true cost is ZERO today — the opposite
+direction from an understatement. It is also a `std::sync::Mutex`, so the real risk if it were ever wired
+is a poisoned/deadlocked guard, not an in-flight `await`. **Deprioritised: do not spend a lane on it until
+that classification changes.** *Fix:* pool or `spawn_blocking`; scope the guard
 to one transaction.
 
 **O-M64 · modules-inventory — the same UPDATE is re-`prepare`d per line and per ingredient** —
@@ -1967,6 +2021,12 @@ landed. Same class as the three O-H23/24/26 findings in round 5 — a plan doc t
 All 43 tests in the file build an empty in-memory DB and run the full chain, including legs that
 only assert a table exists or an id is non-empty. *Fix:* hoist one `LazyLock` migrated connection
 for read-only schema assertions; keep the real `run` only in the tests whose subject is `run`.
+**✅ RESOLVED 2026-10-22 in `63046f6f6a` (found already done during the round-18 sweep).**
+`migrations_tests.rs:26-31` has `static FINAL_SCHEMA: LazyLock<Mutex<Connection>>` applied once and
+`:49-53` `final_schema()` clones it (305 ms → ~3 ms). Two tests still `run()` **correctly**, because their
+subject IS `run`. **The entry's count was also wrong: the file has 52 `#[test]`, not 43.** One residual
+remains, not worth a lane: `:90` `migration_creates_sales_table` still does a full fresh+run to assert one
+name in `sqlite_master`.
 
 **Medium**
 
@@ -2001,6 +2061,10 @@ source, so two readers would race it — a data race, not an optimisation.
 (4A-05). 27 sleeps (500 ms + 200 ms after every `daemon.start()`, three more pairs, 600 ms, 300 +
 100) waiting on a daemon whose tick is 100 ms — a 5× floor. *Fix:* poll `daemon.status()` under a
 1 s `timeout`.
+**✅ RESOLVED 2026-10-22 in `dd2f929f7` (found already done during the round-18 sweep).**
+`daemon_tests.rs:42-57` is now `wait_for_daemon`, polling `status()` every 10 ms against a 1 s ceiling
+with a panic that NAMES the condition and prints the status snapshot — the prescribed fix, done.
+`wait_for_first_cycle` wraps it. The cited `:174-181` is now a 10 ms readiness nudge, not a sleep.
 
 **O-T06 · `rate_limiter_tests.rs` states 4.2 s of sleep** —
 `crates/kasirmu-core/src/rate_limiter_tests.rs` ✔ **PAID 2026-10-22** (4A-06). FIVE sleeps, not the four
@@ -5018,3 +5082,52 @@ about what the tests did there. Both times the wrong version made the code sound
 `set_current_dir` — was invisible from the entry. Re-deriving an entry from the tree before acting on it is
 not overhead; it is the only way the entry can be closed correctly.
 
+
+
+## §11BX — O-M54 corrected and resolved: the scan it described was already fixed by an expression index (2026-10-22)
+
+Fixed in `e9631cbc5`. Recorded here because **what the entry described was not what the code did**, and
+the difference was measured rather than argued.
+
+### What the entry claimed, and what was true
+
+| Claim | Truth |
+|---|---|
+| every predicate is non-sargable | `s.status = 'completed'` is sargable — one of two |
+| `margin.rs` carries a `DATE(created_at)` predicate and no LIMIT | **false**: `margin.rs:87-99` is `WHERE sl.sale_id = ?1`, pk-keyed, bounded by construction |
+| `DATE(s.created_at)` "cannot use an index" → full scan growing with history | **false in practice**: it SEARCHed `idx_sales_status_created_date` |
+
+The third one is the important one. `crates/kasirmu-core/migrations/20260814_analytics_index.sql:4`:
+`CREATE INDEX idx_sales_status_created_date ON sales(status, date(created_at))` — an EXPRESSION index
+built (commit `ed76ebc6`) for precisely the `status = … AND DATE(created_at) BETWEEN …` shape. The old
+predicate planned as `SEARCH s USING INDEX idx_sales_status_created_date (status=? AND <expr>>? AND
+<expr><?)`. **The scan this entry is named for was fixed years of migrations ago, by an index the entry
+never mentions.**
+
+### What the fix actually buys, stated at its real size
+
+The predicate is now the half-open `s.created_at >= ?1 AND s.created_at < date(?2, '+1 day')`. Measured,
+with the expression index DROPPED:
+
+- old form → `SCAN s USING COVERING INDEX idx_sales_created_at` (walks the table)
+- new form → `SEARCH s USING INDEX idx_sales_created_at` (seeks the range)
+
+So the rewrite removes a **dependency on one specific expression index**. That is a real, defensible
+improvement — the query now seeks on a schema that has only plain `idx_sales_created_at` — and it is
+*smaller* than "removes a full table scan growing with history".
+
+### How the tests were made to be worth something
+
+Three attempts, and only the third one counts:
+
+1. A plan test asserting `USING INDEX` — passed on the OLD predicate too, because SQLite picks
+   `idx_sales_created_at` and *scans* it. Wrong discriminator.
+2. Asserting `SEARCH` against SQL **copied into the test** — passed while the PRODUCTION predicate was
+   reverted. The test was measuring its own copy. Fixed by hoisting the SQL into
+   `MENU_ENGINEERING_SQL`, so the plan test reads the same text the product runs.
+3. Asserting `SEARCH` on the shared constant, PLUS the counterfactual: drop the expression index and the
+   old form must lose its seek. **Falsified before acceptance** — reverting the production predicate makes
+   `menu_engineering_date_filter_can_use_an_index` FAIL, restoring it makes it pass.
+
+A plan test against a copy of the SQL is worse than no plan test: it reports green about code nobody runs.
+The hoist is what made the assertion meaningful, and that is the transferable lesson here.
