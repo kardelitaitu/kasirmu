@@ -66,6 +66,7 @@ fn workspace_root() -> PathBuf {
 /// scratch space has nothing further it can usefully do.
 pub fn scratch_root() -> PathBuf {
     let root = workspace_root().join("target").join("test-scratch");
+    // INVARIANT: target directory in workspace is writable by test processes.
     std::fs::create_dir_all(&root).expect("test scratch root under target/ must be creatable");
     root
 }
@@ -79,6 +80,7 @@ pub fn scratch_root() -> PathBuf {
 /// Panics if the directory cannot be created.
 pub fn scratch_dir(prefix: &str) -> PathBuf {
     let dir = scratch_root().join(format!("{prefix}-{}", uuid::Uuid::new_v4()));
+    // INVARIANT: scratch_root exists and is writable with unique UUID suffix.
     std::fs::create_dir_all(&dir).expect("test scratch dir under target/ must be creatable");
     dir
 }
@@ -127,6 +129,7 @@ impl Drop for ScratchDir {
 ///
 /// Panics if the directory cannot be created.
 pub fn tempdir() -> tempfile::TempDir {
+    // INVARIANT: scratch_root exists and is writable for tempdir creation.
     tempfile::tempdir_in(scratch_root()).expect("test scratch tempdir under target/")
 }
 
@@ -136,6 +139,7 @@ pub fn tempdir() -> tempfile::TempDir {
 ///
 /// Panics if the directory cannot be created.
 pub fn tempdir_with_prefix(prefix: &str) -> tempfile::TempDir {
+    // INVARIANT: scratch_root exists and is writable for tempdir creation.
     tempfile::Builder::new()
         .prefix(prefix)
         .tempdir_in(scratch_root())

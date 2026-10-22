@@ -217,6 +217,7 @@ impl PluginDb {
                     // A one-entry map is the only way to obtain an OWNING
                     // `String` key from the buffer; this clone is the intended
                     // once-per-name-per-query source of that ownership.
+                    // INVARIANT: key_buf is populated above with probe.insert(name.clone(), Value::Null) and holds exactly one entry.
                     let (key, _) = key_buf.iter().next().expect("key buffer holds one entry");
                     obj.insert(key.clone(), sqlite_value_to_json(val));
                 }
