@@ -17,7 +17,9 @@ use crate::topology::persistence::save_topology_json_at_key_with_revision;
 use crate::topology::revisions::TopologyRevisionContext;
 use kasirmu_core::migrations;
 use rusqlite::Connection;
-use tempfile::tempdir;
+// `tempfile::TempDir` is still the type these file-backed stress tests need;
+// `kasirmu_test_support::tempdir_with_prefix` supplies it rooted under the
+// writable `target/test-scratch` instead of the OS temp directory.
 
 fn fresh_conn() -> rusqlite::Connection {
     crate::testing::temp_conn()
@@ -922,7 +924,14 @@ fn roundtrip_preserves_exact_field_values() {
 
 #[test]
 fn concurrent_saves_to_same_db() {
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type these
+    // file-backed tests need (same Drop, same auto-delete) but roots it under
+    // `target/test-scratch`; plain `tempdir()` resolves to
+    // `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+    // ordinary user can create but not delete, so `concurrent.db` and its
+    // WAL/SHM siblings could never be cleaned up and a stale leftover failed the
+    // create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-stress-");
     let db_path = dir.path().join("concurrent.db");
 
     // Run migrations once on a throwaway connection.
@@ -984,7 +993,14 @@ fn concurrent_saves_to_same_db() {
 
 #[test]
 fn concurrent_readers_dont_block_each_other() {
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type these
+    // file-backed tests need (same Drop, same auto-delete) but roots it under
+    // `target/test-scratch`; plain `tempdir()` resolves to
+    // `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+    // ordinary user can create but not delete, so `readers.db` and its
+    // WAL/SHM siblings could never be cleaned up and a stale leftover failed the
+    // create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-stress-");
     let db_path = dir.path().join("readers.db");
 
     {
@@ -1036,7 +1052,14 @@ fn concurrent_readers_dont_block_each_other() {
 
 #[test]
 fn concurrent_read_write_cycle_stress() {
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type these
+    // file-backed tests need (same Drop, same auto-delete) but roots it under
+    // `target/test-scratch`; plain `tempdir()` resolves to
+    // `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+    // ordinary user can create but not delete, so `rw_stress.db` and its
+    // WAL/SHM siblings could never be cleaned up and a stale leftover failed the
+    // create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-stress-");
     let db_path = dir.path().join("rw_stress.db");
 
     {
@@ -1099,7 +1122,14 @@ fn concurrent_read_write_cycle_stress() {
 
 #[test]
 fn concurrent_saves_different_keys_dont_interfere() {
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type these
+    // file-backed tests need (same Drop, same auto-delete) but roots it under
+    // `target/test-scratch`; plain `tempdir()` resolves to
+    // `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+    // ordinary user can create but not delete, so `multi_key.db` and its
+    // WAL/SHM siblings could never be cleaned up and a stale leftover failed the
+    // create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-stress-");
     let db_path = dir.path().join("multi_key.db");
 
     {
@@ -1771,7 +1801,14 @@ fn race_node(id: &str) -> serde_json::Value {
 
 #[test]
 fn racing_publishes_to_one_branch_yield_two_ordered_revisions() {
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type these
+    // file-backed tests need (same Drop, same auto-delete) but roots it under
+    // `target/test-scratch`; plain `tempdir()` resolves to
+    // `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+    // ordinary user can create but not delete, so `racing.db` and its
+    // WAL/SHM siblings could never be cleaned up and a stale leftover failed the
+    // create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-stress-");
     let db_path = dir.path().join("racing.db");
     {
         let mut setup = Connection::open(&db_path).unwrap();
@@ -1850,7 +1887,14 @@ fn racing_publishes_to_one_branch_yield_two_ordered_revisions() {
 
 #[test]
 fn racing_publishes_with_the_same_expected_revision_cas_reject_one() {
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type these
+    // file-backed tests need (same Drop, same auto-delete) but roots it under
+    // `target/test-scratch`; plain `tempdir()` resolves to
+    // `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+    // ordinary user can create but not delete, so `racing-cas.db` and its
+    // WAL/SHM siblings could never be cleaned up and a stale leftover failed the
+    // create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-stress-");
     let db_path = dir.path().join("racing-cas.db");
     {
         let mut setup = Connection::open(&db_path).unwrap();

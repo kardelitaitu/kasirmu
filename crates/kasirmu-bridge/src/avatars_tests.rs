@@ -152,7 +152,14 @@ async fn a_write_to_a_user_who_does_not_exist_is_not_found() {
 
 #[tokio::test]
 async fn set_then_read_then_clear_roundtrips_through_the_content_store() {
-    let dir = tempfile::tempdir().expect("temp dir for the media root");
+    // The media root is created and consumed inside this one test body, so a
+    // `ScratchDir` guard is the right shape: Drop removes it when the test
+    // ends. `tempfile::tempdir()` resolves to `C:\WINDOWS\TEMP` on this
+    // project's Windows machines, where an ordinary user can create but not
+    // delete -- so every run left the transcoded image behind. `dir.path()`
+    // is still read throughout the body, which is exactly what the guard
+    // guarantees: it outlives every use below.
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-avatar-media");
     let bridge = avatar_state("cashier-token", "user-cashier", "role-lite");
     let ctx = bridge.ctx();
 

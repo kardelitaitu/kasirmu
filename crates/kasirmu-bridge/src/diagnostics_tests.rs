@@ -38,8 +38,7 @@ fn test_validate_output_path_rejects_traversal() {
 
 #[test]
 fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
-    let temp_dir = std::env::temp_dir().join(format!("crash_test_{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::create_dir_all(&temp_dir);
+    let temp_dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-crash-test");
 
     let report = CrashReport {
         timestamp: "2026-10-07T03:30:00Z".to_string(),
@@ -155,8 +154,13 @@ async fn call_export(
     Result<DiagnosticExportResult, BridgeError>,
     std::path::PathBuf,
 ) {
-    let dir = std::env::temp_dir().join(format!("diag_gate_{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::create_dir_all(&dir);
+    // `std::env::temp_dir()` is `C:\WINDOWS\TEMP` on this project's Windows
+    // machines, where an ordinary user can create but not delete. The bare
+    // `scratch_dir` path is deliberate: the directory is RETURNED to the
+    // caller below, which asserts on the archive and then removes it, so a
+    // `ScratchDir` guard bound here would drop at the end of this function
+    // and delete the directory out from under the test that owns it.
+    let dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-diag-gate");
     let out = dir.join("diagnostics.zip");
     let ctx = bridge.ctx();
     let result = export_diagnostics(
@@ -297,8 +301,7 @@ fn report_with_secrets() -> CrashReport {
 /// function the shells actually register rather than through its helper.
 #[tokio::test]
 async fn record_crash_report_works_without_a_session_and_still_sanitizes() {
-    let dir = std::env::temp_dir().join(format!("crash_async_{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::create_dir_all(&dir);
+    let dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-crash-async");
 
     let res = record_crash_report(Some(&dir), report_with_secrets()).await;
     assert!(
@@ -353,7 +356,11 @@ async fn record_crash_report_echoes_to_stderr_when_no_log_dir_is_available() {
 /// relative; the contract is stderr instead, so nothing appears on disk.
 #[tokio::test]
 async fn record_crash_report_writes_no_file_when_the_dir_is_none() {
-    let marker = std::env::temp_dir().join("crash_telemetry.log");
+    // Probed under `target/test-scratch` rather than
+    // `std::env::temp_dir()` (`C:\WINDOWS\TEMP` on this project's Windows machines,
+    // unreadable-and-unwritable for an ordinary user). The path is never
+    // created; the test only asserts that the `None` branch does not invent it.
+    let marker = kasirmu_test_support::scratch_root().join("crash_telemetry.log");
     let pre_existing = marker.exists();
     let _ = record_crash_report(None, report_with_secrets()).await;
     assert_eq!(

@@ -390,18 +390,13 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
 /// default `TestBridge` manager); a handle is needed here only where a
 /// test must pre-seed a store database before driving the scoped ops.
 fn store_dir() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-tax-tests-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ))
+    // Rooted under `target/test-scratch` rather than
+    // `std::env::temp_dir()`, which on this project's Windows machines is the
+    // MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary user can
+    // create in but not delete from, so a stale entry made the create itself
+    // fail with `os error 5`. `scratch_dir`'s per-call UUID replaces the
+    // pid/nanos/counter triple.
+    kasirmu_test_support::scratch_dir("kasirmu-bridge-tax-tests")
 }
 
 #[tokio::test]

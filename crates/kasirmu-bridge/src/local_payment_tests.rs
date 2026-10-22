@@ -23,21 +23,18 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-static STORE_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Unique store-db directory per test - the mechanical twin of the desktop
-/// `flow_state`'s `tempfile::tempdir().unwrap().keep()`.
+/// Unique store-db directory per test, under `target/test-scratch`.
+///
+/// The mechanical twin of the desktop `flow_state`'s
+/// `tempfile::tempdir().unwrap().keep()`. It used to be
+/// `std::env::temp_dir()`, which on this project's Windows machines resolves to
+/// the MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary user can
+/// create in but not delete from, so a stale entry made the create itself fail
+/// with `os error 5` and read as a product bug. `scratch_dir` gives the
+/// same per-call uniqueness (a UUID suffix replaces the pid/nanos/counter)
+/// under a writable, gitignored root.
 fn unique_store_dir() -> std::path::PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-local-payment-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        STORE_DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ))
+    kasirmu_test_support::scratch_dir("kasirmu-bridge-local-payment")
 }
 
 /// `TestBridge` with a fresh migrated global DB and an isolated store-db

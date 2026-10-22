@@ -2616,7 +2616,12 @@ async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
 /// Write a one-plugin directory whose script is `lua` and whose manifest
 /// declares exactly `permissions`. Mirrors kasirmu-plugin's own fixture.
 fn plugin_dir(name: &str, lua: &str, permissions: &[&str]) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
+    // A `tempfile::TempDir` is the harness's contract here (`plugin_dir`
+    // returns it and the three callers keep it alive across the plugin
+    // manager), so `tempdir_with_prefix` is the drop-in: same type, same
+    // auto-delete, but rooted under the writable `target/test-scratch`
+    // instead of `C:\WINDOWS\TEMP` on this project's Windows machines.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-plugin-");
     let plugin_dir = dir.path().join(name);
     std::fs::create_dir(&plugin_dir).unwrap();
     let perms = permissions

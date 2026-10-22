@@ -2255,21 +2255,14 @@ async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
 // unique temp base dir per case so the profile file is a real file on disk.
 
 /// A unique base directory for one hardware-settings test, and the terminal id it
-/// is keyed by. The directory is left for the OS temp cleaner, matching
-/// `inventory_tests::unique_store_dir` (this crate's fence forbids manifest edits,
-/// so `tempfile` is avoided here on the same reasoning).
+/// is keyed by. Rooted under `target/test-scratch` -- `std::env::temp_dir()`
+/// resolves to the MACHINE-level `C:\WINDOWS\TEMP` on this project's Windows
+/// machines, a directory an ordinary user can create in but not delete from, so a
+/// stale `kasirmu-bridge-hw-*` entry made the create itself fail with
+/// `os error 5`. `scratch_dir`'s per-call UUID replaces the
+/// pid/nanos/counter triple, and `target/` is writable and gitignored.
 fn hw_base_dir() -> std::path::PathBuf {
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-hw-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ))
+    kasirmu_test_support::scratch_dir("kasirmu-bridge-hw")
 }
 
 /// A profile with an unmistakable printer device path, so a value read back can be

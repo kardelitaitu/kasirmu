@@ -1096,13 +1096,21 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
 // ── §J B3: per-location quota rows ───────────────────────────────────
 
 fn b3_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL)
+    // A per-call unique directory under `target/test-scratch`, not
+    // `std::env::temp_dir()`: on this project's Windows machines the
+    // MACHINE-level `TEMP` is `C:\WINDOWS\TEMP`, where an ordinary
+    // user can create but not delete. This used to hand the bare temp root to the
+    // manager, so every `b3-*` store database landed directly in it (and could
+    // never be removed). `scratch_dir` returns a fresh, empty directory the
+    // manager can own outright.
+    let dir = kasirmu_test_support::scratch_dir("kasirmu-bridge-b3");
+    StoreDatabaseManager::new(dir, kasirmu_core::migrations::ALL)
 }
 
-/// A store id unique to this process and test, because `b3_manager` writes into
-/// the real temp directory: a fixed name would let one run's leftover database
-/// satisfy the next run's `store_db_exists` and turn the skip test into a pass
-/// that proves nothing.
+/// A store id unique to this process and test, because `b3_manager` opens a
+/// fresh scratch directory per call: a fixed name would let one run's leftover
+/// database satisfy the next run's `store_db_exists` and turn the skip test
+/// into a pass that proves nothing.
 fn b3_store_id(tag: &str) -> String {
     format!("b3-{}-{}", std::process::id(), tag)
 }

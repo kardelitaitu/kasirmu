@@ -115,18 +115,19 @@ fn temp_store_path(tag: &str) -> std::path::PathBuf {
     // Unique per CALL, not just per process: `tag + pid` gave every
     // `ungated`-tagged test in one binary the same `store.db`, so a second one
     // would have read the first one's backup file (precedent: `unique_store_dir`
-    // in inventory_tests.rs, which carries nanos for the same reason).
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "kasirmu-bridge-{}-{}-{}",
-        tag,
-        std::process::id(),
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).expect("create temp dir");
+    // in inventory_tests.rs, which carries a UUID for the same reason).
+    //
+    // Rooted under `target/test-scratch` rather than `std::env::temp_dir()`,
+    // which on this project's Windows machines resolves to the MACHINE-level
+    // `C:\WINDOWS\TEMP` -- a directory an ordinary user can create in but not
+    // delete from, so a stale fixture made `create_dir_all` fail with
+    // `os error 5` and reported it as a product defect. The bare
+    // `scratch_dir` path is used rather than a `ScratchDir` guard because the
+    // directory must outlive this function: the test keeps writing and reading
+    // `store.db` through `get_backup_status` after this returns, and a guard
+    // dropped here would delete it mid-test. A leftover under the gitignored
+    // `target/` is the cheaper mistake.
+    let dir = kasirmu_test_support::scratch_dir(&format!("kasirmu-bridge-{tag}"));
     dir.join("store.db")
 }
 
@@ -476,9 +477,13 @@ fn import_data_result_serialize() {
 async fn export_without_session_produces_a_package_and_no_session_is_needed() {
     use crate::testing::TestBridge;
     let bridge = TestBridge::new();
-    let dir = tempfile::tempdir().unwrap();
+    // A `ScratchDir` guard: the archive is written and asserted inside this
+    // one test body, so Drop removes the directory when the test ends. It used
+    // to be `tempfile::tempdir()`, which resolves to `C:\WINDOWS\TEMP` on
+    // this project's Windows machines and left the fixture behind (an ordinary
+    // user cannot delete from there).
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-export-twin");
     let out = dir.path().join("orphan.oze");
-
     let result = export_data_without_session(
         &bridge.ctx(),
         ExportDataArgs {
@@ -800,15 +805,13 @@ struct RestoreScratch(std::path::PathBuf);
 
 impl RestoreScratch {
     fn new(label: &str) -> Self {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "kasirmu-bridge-restore-{label}-{}-{nanos}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        // `std::env::temp_dir()` is `C:\WINDOWS\TEMP` on this project's
+        // Windows machines, where an ordinary user can create but not delete:
+        // the pid/nanos suffix made every run leak a directory and a stale one
+        // made the create itself fail with `os error 5`. `target/test-scratch`
+        // is writable and the struct's own `Drop` (below) removes it, so the
+        // guard shape is unchanged -- only the root moves.
+        let dir = kasirmu_test_support::scratch_dir(&format!("kasirmu-bridge-restore-{label}"));
         Self(dir)
     }
 
