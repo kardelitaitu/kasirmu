@@ -1716,8 +1716,7 @@ log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04
 `crates/kasirmu-plugin/src/manager.rs:499-515` ✔ (3B-08). Fixed (`06894624d`): replaced hook list clone with borrowed iteration, and replaced linear scan over sandboxes with O(1) `plugin_index` map lookup.
 
 **O-L18 · kasirmu-cli — `copy_reference_data` inserts row by row with no transaction** —
-`crates/kasirmu-cli/src/seed_demo.rs:218-227` ◦ (3B-10). One implicit transaction and WAL commit
-per row, per table, per store DB. *Fix:* one transaction per table, stream from the cursor.
+`crates/kasirmu-cli/src/seed_demo.rs:218-227` ✔ (3B-10) · **PAID** (`17136eb56`). Wrapped reference data copy in a single unchecked transaction per store database. See §11BO.
 
 **O-L19 · kasirmu-lan — a fresh `String`/`Vec<u8>` per event per peer** —
 `crates/kasirmu-lan/src/noise.rs:206-224` ✔ **PAID 2026-10-22 in `09661e572`** (3B-11).
@@ -1767,9 +1766,8 @@ old code, but a screen that captions it "median margin" as money is now visibly 
 UI uses it only for the chart domain and axis label, where it stays correct.
 
 **O-L21 · truncating `as` casts on computed numerics** —
-`crates/kasirmu-reporting/src/daily_summary.rs:137` ✔ (`hour` i64→u8) — **retired 2026-09-30 with the module (checklist C29), so this half is historical**;
-`crates/kasirmu-media/src/thumbnail.rs:94-95` ◦ (u64→u32, unclamped) (3C-13) — **this half is still live**. *Fix:* `try_from`
-with an explicit clamp.
+`crates/kasirmu-reporting/src/daily_summary.rs:137` ✔ (`hour` i64→u8) — **retired 2026-09-30 with the module (checklist C29)**;
+`crates/kasirmu-media/src/thumbnail.rs:94-95` ✔ (3C-13) · **PAID** (`38c8118e7`). Replaced truncating casts in thumbnail dimension math with saturating multiplication and explicit `try_from` clamping. See §11BP.
 
 **O-L22 · modules-sales — status string via a `serde_json` round trip; INSERT re-prepared per
 line** — `modules/sales/src/repository.rs` (`create_sale_tx`, `update_sale_status`) ✔ **PAID**
@@ -1801,11 +1799,7 @@ bypassing `Namespace` entirely was invisible to it. rusqlite 0.31.0 exposes no c
 and no `Connection::cache_size()`, so the tests assert the refusal property, not a hit count.
 
 **O-L23 · modules-sales — `as i64` casts on the sale write path (lossless; a lint item)** —
-`modules/sales/src/models.rs:173`, `:189` ◦ (3D-08). Corrected in §9: round 3 implied a
-truncation hazard. Both casts are **`usize`→`i64`** — `cart.line_count()` returns `usize`
-(`foundation/src/cart.rs:220`) and `i` comes from `.enumerate()` — so no truncation is possible on
-any supported target. *Fix:* `i64::try_from` for clarity, or leave; this is not a correctness
-risk.
+`modules/sales/src/models.rs:173`, `:189` (now `foundation/src/sales.rs:179`, `:195`) ✔ (3D-08) · **PAID** (`b27eb17be`). Converted `cart.line_count()` and loop index `i` to `i64::try_from(...).ok()?` on the sale creation path. See §11BQ.
 
 ### Cross-cutting reading (round 3)
 
@@ -4663,6 +4657,38 @@ Resolved by:
 2. Unifying organization scoping and instance access verification in `create_session` into a single scoped lock on `state.db`.
 
 Verified with `cargo test -p kasirmu-mobile auth`. All 40 tests pass.
+
+## §11BO — O-L18 resolved: transaction wrapping reference data copy in CLI seeder (2026-10-22)
+
+In `crates/kasirmu-cli/src/seed_demo.rs`, `copy_reference_data` previously inserted rows into the store database
+one row at a time across seven reference tables without an explicit transaction, committing to WAL on every row.
+
+Resolved in commit `17136eb56` by wrapping the multi-table reference data copying loop in an unchecked SQLite
+transaction (`let tx = store_conn.unchecked_transaction()?;` and `tx.commit()?;`), ensuring atomic bulk inserts.
+
+Verified with `cargo test -p kasirmu-cli`.
+
+## §11BP — O-L21 resolved: saturating clamped thumbnail dimension math (2026-10-22)
+
+In `crates/kasirmu-media/src/thumbnail.rs`, `thumbnail_img` previously used potentially truncating `as` casts
+during aspect-ratio bounding box scale calculations.
+
+Resolved in commit `38c8118e7` by:
+1. Using `u64` saturating arithmetic (`saturating_mul`) to guard against intermediate multiplication overflow on huge source images.
+2. Replacing raw `as u32` casts with explicit `u32::try_from(...).unwrap_or(u32::MAX).max(1).min(max_dimensions)` clamping.
+
+Verified with `cargo test -p kasirmu-media`. All 32 tests pass.
+
+## §11BQ — O-L23 resolved: fallible lossless integer conversions on sale line path (2026-10-22)
+
+In `modules/sales/src/models.rs` (now canonical in `foundation/src/sales.rs`), `from_cart_with_user` previously
+cast `cart.line_count()` and loop index `i` via raw `as i64`.
+
+Resolved in commit `b27eb17be` by replacing all raw numeric casts with `i64::try_from(cart.line_count()).ok()?`
+and `i64::try_from(i).ok()? + 1`, failing closed to `None` if integer boundaries are ever violated.
+
+Verified with `cargo test -p foundation`.
+
 
 
 
