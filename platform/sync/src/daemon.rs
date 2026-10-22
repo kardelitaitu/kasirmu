@@ -422,16 +422,12 @@ async fn apply_push_results(
         let conn = db_clone.blocking_lock();
         let store = Store::new(&conn);
         let queue = SyncQueue::new();
+        let mut synced_ids = Vec::new();
+
         for (local, outcome) in pending.iter().zip(results.iter()) {
             match outcome {
                 PushOutcome::Accepted => {
-                    if let Err(e) = store.mark_offline_synced(&local.id) {
-                        tracing::error!(
-                            item_id = %local.id,
-                            error = %e,
-                            "sync daemon: failed to mark item synced"
-                        );
-                    }
+                    synced_ids.push(local.id.clone());
                 }
                 PushOutcome::Rejected { reason }
                     if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
@@ -447,13 +443,7 @@ async fn apply_push_results(
                         item_id = %local.id,
                         "sync push duplicate-id replay: item already on server, marking synced"
                     );
-                    if let Err(e) = store.mark_offline_synced(&local.id) {
-                        tracing::error!(
-                            item_id = %local.id,
-                            error = %e,
-                            "sync daemon: failed to mark duplicate-replay item synced"
-                        );
-                    }
+                    synced_ids.push(local.id.clone());
                 }
                 PushOutcome::Rejected { reason } => {
                     if let Err(e) = store.mark_offline_failed(&local.id, reason) {
@@ -473,6 +463,16 @@ async fn apply_push_results(
                         );
                     }
                 }
+            }
+        }
+
+        if !synced_ids.is_empty() {
+            if let Err(e) = store.mark_offline_synced_batch(&synced_ids) {
+                tracing::error!(
+                    count = synced_ids.len(),
+                    error = %e,
+                    "sync daemon: failed to mark batch synced"
+                );
             }
         }
     })

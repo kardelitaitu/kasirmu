@@ -394,10 +394,11 @@ fn apply_push_outcomes(
     batch: &[kasirmu_core::offline::OfflineQueueItem],
     results: &[transport::PushOutcome],
 ) -> Result<(), SyncError> {
+    let mut synced_ids = Vec::new();
     for (item, outcome) in batch.iter().zip(results.iter()) {
         match outcome {
             transport::PushOutcome::Accepted => {
-                queue.mark_synced(store, &item.id)?;
+                synced_ids.push(item.id.clone());
             }
             transport::PushOutcome::Conflict(server_item) => {
                 // SYNC-02: single shared conflict-application service --
@@ -414,12 +415,16 @@ fn apply_push_outcomes(
                     item_id = %item.id,
                     "sync engine: duplicate-id replay, item already on server, marking synced"
                 );
-                queue.mark_synced(store, &item.id)?;
+                synced_ids.push(item.id.clone());
             }
             transport::PushOutcome::Rejected { reason } => {
                 queue.mark_failed(store, &item.id, reason)?;
             }
         }
+    }
+
+    if !synced_ids.is_empty() {
+        queue.mark_synced_batch(store, &synced_ids)?;
     }
 
     // `zip` stops at the shorter side. Trailing items keeping their previous
