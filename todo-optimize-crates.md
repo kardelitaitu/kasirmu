@@ -1123,7 +1123,7 @@ queued an extra blocking `INSERT` behind the single connection the handlers use,
 spawned a task that cloned the event and only `warn!`s on failure. *Fix:* dedicated connection or a
 bounded channel with one writer; count failures rather than log them.
 
-**⚠️ OPEN, and the crate's test suite currently HANGS at HEAD.** Commit `401ddd3da`
+**⚠️ RESOLVED 2026-10-22 in `3a6a5e829` — see §11BB. It was OPEN and HANGING at HEAD.** Commit `401ddd3da`
 ("perf(local-api): resolve O-M46 with dedicated audit connection and bounded queue") implemented BOTH
 halves — the dedicated connection AND a bounded channel with back-pressure — and its own two tests hang:
 
@@ -4134,3 +4134,56 @@ by the next command, the log is evidence rather than a fix. The entry is closed 
 Nothing here was re-verified by this session beyond reading the commits and their file lists — that is a
 materially weaker claim than the runs recorded in the sections above, and it is stated as such rather
 than dressed up.
+## §11BB — O-M46 resolved: two hangs, one root cause, and a test that asserted a property that cannot exist (2026-10-22)
+
+`401ddd3da` closed O-M46 and left `kasirmu-local-api` HANGING: 26 tests ran, two printed "has been running
+for over 60 seconds", and the process aborted with **no `test result:` line**. `3a6a5e829` fixes it.
+**26 passed, 0 failed in 14.87 s.**
+
+### The real defect: `send().await` on a closed channel never resolves
+
+`drain_parked_then_send` did `tx.send(msg).await` after checking nothing. Tokio parks a sender once the
+queue is empty and the receiver is gone, so that future NEVER completes; the task was spawned onto the
+shared runtime, so runtime shutdown then blocked waiting for it and the whole test binary hung with no
+test named. The fix is `tx.is_closed()` **before** the await — the send arm keeps its error handling
+because a close can still race the check. Both loops (the initial publish and the trailing drain) got it.
+
+This is worth naming as a class: **a `send` on a closed channel is not an error you receive, it is a future
+that never settles.** Code that only handles `send(..).await` returning `Err` is handling a case that
+cannot happen once the receiver is gone.
+
+### The test that could not pass: asserting a blocking property on a synchronous trait
+
+`a_full_channel_blocks_and_still_loses_nothing` was written to prove "`record` on a full channel blocks
+until there is room". That property does not exist. `AuditSink::record` is a SYNCHRONOUS trait method, so
+there is no legitimate way for it to wait: blocking the caller stalls a tokio worker, spawning defers to a
+task nobody awaits, parking in a static leaks. The test marked itself `multi_thread`, pinned the single
+writer inside `Gated::insert`, filled 1024 slots from a runtime thread, then recorded the 1025th — which
+parked a drainer that could never run, because the writer it needed was the one being held.
+
+**Removing that test exposed a SECOND failure, and the two were the same root cause.** With it skipped,
+`audit_writes_do_not_hold_the_handlers_connection` also hung — because it had already panicked on
+`480 != 500` and left a parked task behind. I first read that as "shared-machinery deadlock"; it was one
+bug appearing twice.
+
+### And the 480-vs-500 was a third, unrelated fact
+
+`kasirmu_core::db::audit::AUDIT_RATE_LIMIT` is **1000 per 60 s window, PROCESS-WIDE**, and once the budget
+is spent it returns `Ok(())` **without writing**. A test that records more rows than the budget sees a
+short table and reports it as sink loss. The reset hook (`reset_audit_rate_limit_for_test`) is
+`pub(crate)` in `kasirmu-core` and unreachable from this crate, so the honest fix is to SIZE the test
+under the limit. It now records 900 of a 1024-slot queue, asserts the queue saturates (bounded, so a
+regression fails instead of hanging), then asserts all 900 are rows.
+
+The test was renamed `a_full_channel_delays_events_and_still_loses_nothing`, because the old name asserted
+blocking and the new contract is delay-without-loss. **A test name is a claim**, and this one had been
+claiming a property nobody had checked was achievable.
+
+### What to keep from the surviving design
+
+The parts of `401ddd3da` that are right and were kept: `StoreAuditSink::open` with WAL + `busy_timeout(5s)`
++ `foreign_keys` (a second writer is safe *because* of that pair), the `try_send` fast path with
+`Closed => count_audit_failure`, and the counted-failure counter in place of a bare `warn!`. The
+CLAUDE-file-grade lesson is that the QUEUE was the risky half and the CONNECTION was the safe one.
+
+**Verification:** `cargo test -p kasirmu-local-api --lib` = **26 passed, 0 failed**; `rustfmt --check` clean.
