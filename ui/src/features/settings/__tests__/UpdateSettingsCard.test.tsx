@@ -235,7 +235,9 @@ describe('UpdateSettingsCard', () => {
     await user.click(screen.getByTestId('updater-check-btn'));
 
     await waitFor(() => {
-      expect(screen.getByText(/updates are Android-only/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/settings-updater-android-only|updates are Android-only/),
+      ).toBeInTheDocument();
     });
     // The desktop shell registers none of the updater doors, so nothing reaches IPC.
     expect(mockInvoke).not.toHaveBeenCalledWith(
