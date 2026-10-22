@@ -7351,3 +7351,80 @@ The flake is rare enough that eleven consecutive targeted runs and two full-suit
 or runs the suite on a busier machine, not a red build today.
 
 ### Ledger: 149 defined, 148 closed, 1 open.
+## §11DB — O-M83 CLOSED: the audit limiter is per-database, and the module stopped being 20% flaky (2026-10-23)
+
+Landed in `8dc23c42a` and `5cd65971f`.
+
+### Reproducing it properly first
+
+Round 37 hit this failure once, could not reproduce it in two full runs, and recorded it as
+O-M83 rather than declaring it noise. This round measured it instead of retrying:
+
+```
+cargo test -p kasirmu-core --lib audit:: -- --test-threads=16   (10 runs)
+->  8 green / 91 passed
+->  2 FAILED / 90 passed      <-- a 20% flake rate, not a one-off
+```
+
+`--test-threads=1` was 91/91 every time, and the failures named a DIFFERENT test each run
+(`audit_chain_verification_detects_chain_discontinuity`, `audit_log_long_user_id`,
+`log_audit_in_tx_redacts_sensitive_details`). Moving failures plus a serial pass is the
+signature of shared state.
+
+### The cause
+
+`audit.rs` kept the rate limiter in two process-wide statics:
+
+```rust
+static AUDIT_COUNT: AtomicU64
+static AUDIT_WINDOW_START: AtomicU64
+```
+
+`AUDIT_RATE_LIMIT` is 1000, so ordinary tests never approached it — but
+`audit_rate_limit_drops_writes_when_threshold_exceeded` deliberately calls
+`set_audit_rate_limit_for_test(AUDIT_RATE_LIMIT, now)` to SATURATE the budget. In one libtest
+process that saturation is visible to all 91 tests: every other test writing an audit row
+after it was silently refused (`insert_audit` logs a warning and returns `Ok(())`), so its
+assertion on row counts failed. Which test lost the race depended on scheduling.
+
+### The fix, and why per-database rather than per-test-workaround
+
+The counters moved into the `settings` table, keyed `audit.rate_limit.count` and
+`audit.rate_limit.window_start`, read and written through the same `&Connection` the writer
+already holds. `check_audit_rate_limit` now takes that connection.
+
+Two things made this the right shape rather than adding `#[serial]`:
+
+1. **It matches what the limiter is for.** A budget on writes to ONE audit log. Two stores
+   were never meant to share one allowance, and under the old design every terminal in a
+   process drew from the same counter.
+2. **`check_audit_rate_limit` has exactly one production caller** (`insert_audit`), so the
+   signature change is three lines, not a refactor.
+
+`settings.key` is the PRIMARY KEY (verified in `20260813_init.sql:633`), so the upsert is on
+a real constraint; the `audit.` key namespace already existed
+(`audit.retention_sweep_active`), so nothing collides.
+
+### The measurement that closes it
+
+Same command, same machine, same 10 runs:
+
+| | before | after |
+|---|---|---|
+| `audit::` at `--test-threads=16`, 10 runs | 2 failed | **0 failed** |
+| per-run time | 1.02-1.20 s | 0.78-0.80 s |
+| `cargo test -p kasirmu-core --lib` | 3675 passed | **3675 passed** |
+
+### A detail worth recording, because I got it wrong first
+
+My first version omitted `updated_at` from the upsert. Every other `settings` upsert in
+this file (`audit.rs:653`, `:683`) sets it, so the new rows would have carried a stale
+timestamp while their neighbours did not. Caught by reading the existing precedent rather
+than by a test — no test asserts `updated_at` on a rate-limit row, and none should.
+
+Also caught during the edit: a bulk regex on `set_audit_rate_limit_for_test(` ALSO matched
+inside `reset_audit_rate_limit_for_test(` (substring), producing 14 calls with a duplicated
+`&conn, &conn`. Fixed and counted afterwards; the compile caught what the regex silently
+wrecked.
+
+### Ledger: 149 defined, 149 closed, 0 open.
