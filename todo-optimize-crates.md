@@ -15,14 +15,26 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 67 | 63 | **4** |
-| Low | 23 | 21 | **2** |
-| Test (O-T) | 17 | 13 | **4** |
-| **Total** | **133** | **122** | **11** |
+| Medium | 67 | 60 | **7** |
+| Low | 23 | 23 | **0** |
+| Test (O-T) | 17 | 14 | **3** |
+| **Total** | **133** | **123** | **10** |
 
-**Updated 2026-10-22 (round 17).** O-T13, O-T15 and O-T16 closed (§11BU); O-T17 and O-M67 opened by the
-same round. **The High tier is empty and 11 entries remain**: 4 Test, 2 Low, 4 Medium. The total held at
-11 only because three closures were paid for by two openings.
+**Updated 2026-10-22 (round 17) — the open list is now COUNTED, not inherited.** Every entry was
+re-derived from its own text and marker verbs. **10 entries remain open: 7 Medium (O-M04, O-M11, O-M20,
+O-M54, O-M57, O-M58, O-M63) and 3 Test (O-T02, O-T05, O-T09).** The High tier has been empty since round 5
+and the Low tier is now empty.
+
+**Closed this round:** O-T13, O-T15, O-T16 (§11BU); O-M67 + O-T17 (§11BV); O-T12, O-T14 (§11BW); and
+**EIGHT entries that were already done and merely lacked a marker word** — O-M26, O-M29, O-L12, O-L14,
+O-T04, O-H25 (moot), plus three whose notes already argued for closure in prose that no checker reads.
+**The previous snapshot said 11 open; the true count is 10, and four of the eleven it named were never
+open at all.** That is the census rot this file warns about, found in its own header.
+
+**The census repair is its own finding.** Four entries read as open work in every downstream reading
+because their fix notes never used the counting verb — and one of them (`O-M26`) had ALREADY shipped in
+`a3795dccf`, with the code since moved to another file. Re-verifying a tier before believing its open list
+is not housekeeping: **the open count is a claim about the tree, and it drifts.**
 
 **Round 17's headline is a test that was red and nobody had noticed.** Closing O-T15 meant replacing four
 300 ms sleeps; running the FULL suite found a FIFTH site the ledger never listed — the `void_sale` race —
@@ -821,7 +833,16 @@ existing ones adapted to the new type, none weakened.
 
 **O-M26 · kasirmu-api — memo push issues one INSERT per memo × location × recipient** —
 `crates/kasirmu-api/src/pg.rs:2573-2580`, `:2638` ◦, plus a `tenant_id.to_string()` per row.
-*Fix:* multi-row INSERT / `unnest`.
+*Fix:* multi-row INSERT / `unnest`. **✅ PAID in `a3795dccf`, re-verified at HEAD 2026-10-22.** The code has
+since moved to `crates/kasirmu-api/src/pg/memos.rs` (`pg.rs:49-56` only re-exports it). Round trips went
+from `2N + L + K + 2` to `2N + 2`, and `tenant_id.to_string()` in the push path from `L + K` to **0**.
+
+**This entry's own premise was wrong, and it stood for months.** It describes a
+`memo × location × recipient` loop nest — an `L × K` product. Locations and recipients are SIBLINGS,
+not a product: the real cost was `L + K`, so the fix is worth far less than the title implies, and
+anyone prioritising it by that product would have over-ranked it. The correction is recorded here
+rather than tidied away: **a ledger entry is a claim, and a claim can be wrong in the direction that
+makes the work look bigger.**
 
 **O-M27 · kasirmu-api — settings endpoint: 8 round trips to read, 3 writes with no**
 **transaction** — `crates/kasirmu-api/src/routes/settings.rs` ✔ **PAID 2026-10-22, both halves.**
@@ -916,7 +937,7 @@ Fixed: nested `HashMap<Arc<str>, HashMap<Arc<str>, Instant>>` enabling zero-allo
 with automatic pruning of expired cooldowns across tenants on insert.
 
 **O-M29 · mobile — the "batch" track-serial twin of O-H08** —
-`apps/mobile-tauri/src/commands/products.rs:288-306` ✔. Fixed: `run_get_product_track_serial_batch` and `get_product_track_serial_scoped` now use `Store::get_products_track_serial_batch` and `Store::get_product_track_serial`, executing batched `WHERE sku IN (...)` directly against the products table. Verified with `mobile-tauri` tests.
+`apps/mobile-tauri/src/commands/products.rs:288-306` ✔. Fixed: `run_get_product_track_serial_batch` and `get_product_track_serial_scoped` now use `Store::get_products_track_serial_batch` and `Store::get_product_track_serial`, executing batched `WHERE sku IN (...)` directly against the products table. Verified with `mobile-tauri` tests. **✅ PAID** (re-verified at HEAD 2026-10-22, §11BU-adjacent census repair: the note lacked a marker word, so it read as open work in every downstream reading).
 
 **O-M30 · mobile — `discount_percent as u8` truncates above 255** —
 `crates/kasirmu-bridge/src/pos/preview.rs:176` and `crates/kasirmu-bridge/src/pos/checkout.rs` ✔. Fixed: discount percent clamped with `checkout_discount_percent` across both preview and shortfall checkout doors; verified with `preview_and_shortfall_doors_treat_a_high_discount_percent_identically`.
@@ -1124,6 +1145,8 @@ longer exists — the module's `src/` is now `{handlers,lib,lib_tests}.rs`, and 
 (31 lines) carries no `strftime`/`DATE(` call, no `SUM(total_minor)` and no currency
 aggregation. The three named defects are not present at HEAD in any file: the module was
 reimplemented rather than fixed. Closed as gone, not as repaired.
+**✅ CLOSED 2026-10-22** — the closing verb this note already argued for but did not spell, added during
+the round-17 census sweep so the High tier stops reading as non-empty.
 `modules/reporting/src/repository.rs:31-54` ✔ (3D-05) · **latent**, zero
 non-test callers
 Three defects in one query. `strftime('%Y-%m-%d', created_at) = ?1` wraps the column in a
@@ -1688,13 +1711,15 @@ log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04
 
 **O-L12 · kasirmu-hal — a fresh Java `byte[]` per Bluetooth read** —
 `crates/kasirmu-hal/src/transport/bt_android.rs:291-314` (write `:265`) ◦ (3A-08). *Fix:* one
-`GlobalRef` per stream.
+`GlobalRef` per stream. **✅ PAID** (re-verified at HEAD 2026-10-22: `socket`/`input`/`output` are
+`GlobalRef` fields on the stream struct at `bt_android.rs:262-264`, so one ref spans the stream instead
+of a fresh `byte[]` per read. The entry carried no marker word, so it read as open work.)
 
 **O-L13 · qris-core — a money percentage validated with `parse::<f64>()`** —
 `crates/qris-core/src/validate.rs:58-62` ✔ (3A-09). Fixed (`df4d7aa2b`): delegated percentage validation to `is_valid_percent_str` backed by exact integer decimal parser `parse_percent`. Rejects `"1e3"`, `"NaN"`, `"inf"` and eliminates float arithmetic on monetary calculations.
 
 **O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ✔
-(3A-10). Fixed (`798211bf3`): replaced bit-by-bit calculation with 256-entry lookup table (`CRC16_TABLE`), cutting inner iteration count from 8 to 1 per byte during QRIS generation and validation.
+(3A-10). Fixed (`798211bf3`): replaced bit-by-bit calculation with 256-entry lookup table (`CRC16_TABLE`), cutting inner iteration count from 8 to 1 per byte during QRIS generation and validation. **✅ PAID** (re-verified at HEAD 2026-10-22: `CRC16_TABLE` is live at `crates/qris-core/src/crc.rs:12` and indexed at `:56`; the note lacked a marker word.)
 
 **O-L15 · kasirmu-crypto — `master_key_from_env()` runs per encrypt/decrypt call** —
 `crates/kasirmu-crypto/src/lib.rs:139-152` ✔ (3A-12). Fixed (`c656624c2`): cached `master_key_from_env()` with `OnceLock<Option<[u8; 32]>>`, avoiding repeated environment queries, string allocations, and hex decoding on every encryption and decryption invocation.
@@ -1965,6 +1990,10 @@ true count at `d42a69b09` is **1,394**. An entry that understates its own blast 
 a reader to think of this as a corner case. It is not — it is the single most-used test helper in the
 workspace.
 
+**✅ CLOSED 2026-10-22 — MOOT, not repaired.** The prescribed fix was tried and measured WORSE, so
+nothing remains to do. Re-verified at HEAD during the round-17 census sweep; the entry carried no closing
+verb, so it read as open work in every downstream reading.
+
 The `Mutex` stays. `RwLock` would be worse, not better: `Backup::new` takes a `RefCell` borrow on its
 source, so two readers would race it — a data race, not an optimisation.
 
@@ -2086,6 +2115,10 @@ deleted outright).
 **O-T12 · env-var tests take a process-wide lock *and* `#[serial]`, and tolerate 12 s** —
 `apps/cloud-server/src/db_tests.rs:141-151`, `:333-347` ✔ (4A-12). *Fix:* injectable config;
 tighten the bound to the 5 s `wait_timeout` under test.
+**✅ RESOLVED 2026-10-22 in `264b008cd` — §11BW.** Both of this entry's line references were STALE:
+`:141-151` is the bare-filename CWD test (which had NO lock, the opposite of the complaint) and the 12 s
+lives at `db_tests.rs:449` on an `#[ignore]`d pg test, not at `:333-347`. The real env-var pair was
+`db_tests.rs:241-279`.
 
 **O-T13 · a test that asserts nothing** — `platform/sync/src/pg_daemon_tests.rs:543-551` ✔
 (4A-13). `mark_offline_synced_nonexistent_item` computes a result and `let _ = result;`, with a
@@ -2095,6 +2128,13 @@ clone. *Fix:* assert the contract. **✅ RESOLVED — §11BU.**
 **O-T14 · four Redis legs are `#[ignore]`d from dev CI** —
 `apps/cloud-server/src/redis_backend_tests.rs:96`, `:127`, `:141`, `:61` ✔ (4A-14). TTL/expiry
 behaviour is untested in the default run. *Fix:* a fake backend, or record why dev CI cannot.
+**✅ RESOLVED 2026-10-22 in `264b008cd` — §11BW.** Three legs un-ignored (the `test_backend()` gate
+already handled their skip); the TTL leg polls to a named bound instead of sleeping 2 s. The FIRST
+prescribed option — a fake backend — was rejected on evidence: there is NO repo-side TTL logic on the
+Redis path (`SETEX`/`GET`, `redis_backend.rs:192-205`/`:160-170`), so a fake would assert only that the
+fake expires its own map. **Residual: nothing in this repo sets `OZ_TEST_REDIS_URL`, so expiry is now
+covered ON DEMAND, not in CI.** Putting it in CI needs a `redis:7` service container in `dev-ci.yml` —
+a workflow change, not done here.
 
 **O-T15 · 300 ms sleeps to hold a lock window open** —
 `crates/kasirmu-core/src/db/sales_crud_tests.rs:132-135` ✔ (4A-15), same shape at
@@ -2114,7 +2154,9 @@ closing O-T15, and it is the SAME defect class as the `void_sale` race: the test
 zero rows (the property claimed) and the out-of-transaction fast-path rejection at
 `cash_payouts.rs:43` (which never touches the CAS). It cannot fail if the CAS predicate is deleted.
 *Fix:* see O-M67 — `create_cash_payout` must begin IMMEDIATE so the test can prove A was inside
-the window.
+the window. **✅ RESOLVED 2026-10-22 in `7dfee57cc` — §11BV.** The test now proves A BLOCKED (a busy
+handler) and states in its own doc comment that it exercises the FAST PATH, that the CAS is not reached,
+and that deleting the CAS predicate would leave it green. The ambiguity is gone; the arm is named.
 
 **O-M67 · kasirmu-core — `create_cash_payout` reads its guard OUTSIDE a DEFERRED transaction** —
 `crates/kasirmu-core/src/db/cash_payouts.rs:37-60` ✔. `create_cash_payout` does what `void_sale`
@@ -2130,6 +2172,7 @@ TransactionBehavior::Immediate)`, recorded at `sales_checkout.rs:241` as "IMMEDI
 where the 5000 ms busy_timeout applies". *Fix:* begin IMMEDIATE (a one-line change, same argument
 shape), then rewrite the O-T17 test in the O-T15 shape so a busy handler proves A was inside the
 window. Not done in round 17 — it is a production change and the round was a read-only one.
+**✅ RESOLVED 2026-10-22 in `7dfee57cc` — §11BV.**
 
 **Clean, and worth saying so:** `db/products_tests.rs` (102 tests) and `db/sales_tests.rs`
 (151 tests) use the snapshot helper and contain **zero sleeps**; `sync_api_tests.rs` simulates
@@ -4848,4 +4891,130 @@ rustfmt --edition 2024 --check               -> exit 0 on all six files
 The core suite count is **3654 → 3655**: the `sales_crud_tests` change consolidated one existing
 test (the 8-attempt restage loop stays inside it), and three tests were added in `platform-sync`.
 No assertion was dropped.
+
+
+## §11BV — O-M67 resolved: the cash payout guard is atomic with its insert, and the test says which arm it exercises (2026-10-22)
+
+Landed in `7dfee57cc`.
+
+`create_cash_payout` opened a DEFERRED transaction (`unchecked_transaction`), so it took no lock until the
+INSERT — which is AFTER its out-of-transaction `get_shift` pre-read. The read and the compare-and-set were
+not atomic, and the window was as wide as the gap between the two statements.
+
+**Fix:** `Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?` — the exact shape
+`void_sale` already used (`sales_lifecycle.rs:906`), with the same rationale recorded at
+`sales_checkout.rs:241`: IMMEDIATE contends at BEGIN, where the connection's 5000 ms `busy_timeout`
+applies. Error behaviour is unchanged — `NotFound{entity:"shift"}` for a missing shift,
+`Validation{field:"status"}` from both the fast path and the `rows == 0` CAS branch.
+
+### The interesting part: the fix means the test now exercises a DIFFERENT arm, and the test says so
+
+The lane's report is the reason this section exists. With IMMEDIATE, A takes the write lock at BEGIN —
+**before** its pre-read. So A blocks, B commits, A's BEGIN completes, and A's `get_shift` then reads
+`status = 'closed'`: the **fast-path rejection** fires and the CAS is never reached.
+
+That is the opposite of `void_sale`, and the asymmetry is real: there the pre-check and the CAS are both
+inside the same call with BEGIN between them, so A reads `active` first and then blocks. Here the read sits
+before the BEGIN, so IMMEDIATE moves the block ahead of the read.
+
+**Why this matters more than the green test.** The previous version of this test (and O-T17, which I opened
+for it) could pass without A entering the window at all: both the fast path and the CAS return
+`Validation{field:"status"}`, so the assertion distinguished nothing, and deleting the CAS predicate would
+have left it green. The rewritten test now:
+1. proves A genuinely blocked on B's lock (`A_IS_WAITING`, with a message stating that without it the run
+   proves nothing about the guard);
+2. states in its doc comment — and again beside the assertions — that it exercises the FAST PATH, that the
+   CAS is NOT reached, and that deleting the CAS predicate would leave THIS test green.
+
+**What the CAS now honestly is: defence in depth, not a tested property.** It still refuses a payout whose
+open-shift snapshot went stale between BEGIN and the INSERT, but no test constructs that interleaving — it
+would need a test-only hook in production code, which the lane declined to add. That is the right call, and
+the limitation is written down instead of implied by silence.
+
+### The lesson, stated plainly
+
+A test asserting an error value is not a test of the branch that produced it when two branches produce the
+same value. That is what O-T17 was, and the fix is not a better assertion — it is an assertion that proves
+A's POSITION (it blocked), plus prose that names the arm. Removing the ambiguity is worth more than the
+extra coverage would have been.
+
+
+## §11BW — O-T12 and O-T14 resolved: injectable config, and three tests that were ignoring nothing (2026-10-22)
+
+Landed in `264b008cd`. Both entries were also **wrong about their own subject**, which is the part
+worth recording.
+
+### O-T12 — both line references pointed at the wrong tests
+
+The entry said `db_tests.rs:141-151` and `:333-347` were env-var tests holding a process-wide lock AND
+`#[serial]`. Neither was:
+- `:141-151` is `sqlite_accepts_a_bare_filename_with_no_parent` — it moves the process CWD. It had **no lock
+  at all**, the opposite of the complaint, and that absence was a real cross-test race waiting to happen.
+- The 12 s is at `db_tests.rs:449`, on `pg_integration_pool_get_fails_fast_when_exhausted` — `#[ignore]d`
+  unless `pg-tests`. It is not a poll loop: it asserts a `PoolError::Timeout` arrives after the builder's
+  5 s `wait_timeout`, and 12 s was 2.4× that deadline for no documented reason, so a pool that IGNORED
+  `wait_timeout` could burn 12 s before failing.
+- The actual env-var pair is `db_tests.rs:241-279`.
+
+**Fix:** `CloudServerConfig::from_env` is now a thin wrapper over `from_lookup(impl Fn(&str) -> Option<String>)`
+— the entire old body with `std::env::var` swapped for `lookup(...)` and nothing else changed. The two env
+tests build a config from a local `fake_env` table and call `DbPool::from_config`, so **both** the
+`ENV_LOCK` and the `#[serial]` attributes are gone: the environment is a local value, so there is nothing
+left to serialise. The `#[cfg(test)]` `from_env`/`from_env_with_retries` shims that only existed so tests
+could read a mutated env were deleted (they had already surfaced as `dead_code` warnings).
+
+**The bonus is a real defect found by reading:** the bare-filename test moved the process CWD with no
+synchronisation, so any concurrent test creating a relative-path database could land inside its scratch
+directory and race the restore. It now holds a `CWD_LOCK`, keeps the exact original relative-path
+operation, and cleans up the `bare.db` + WAL shm files it used to leak.
+
+The 12 s → 6 s change is **structural, not measured**: Postgres is unreachable on this machine, so the test
+is `#[ignore]d` here and could not be timed. 6 s = the 5 s `wait_timeout` under test + ~1 s of scheduler
+noise, used as BOTH the outer guard and the elapsed bound, plus a NEW lower-bound assertion
+(`elapsed >= 2.5 s`) so a fast non-timeout failure cannot pass. Anyone with a live PG should replace 6 with
+their measured value + 1 s.
+
+### O-T14 — the prescribed fix would have tested the fake
+
+The entry offered "a fake backend, or record why dev CI cannot". A fake is **not achievable**, and the
+reason is a line of code: `snapshot_set` issues `SETEX` (`redis_backend.rs:192-205`) and `snapshot_get`
+issues a plain `GET` (`:160-170`). **The expiry is enforced entirely inside Redis; this repo never compares
+a timestamp to a TTL on that path.** The only TTL comparison the repo owns is the in-process cache at
+`sync_api.rs:895`/`:908`, already covered by `sync_api_tests.rs` via back-dated entries. A fake backend
+would assert that the fake expires its own map — a test of the fake, more misleading than the `#[ignore]` it
+replaced. So no fake was written, and no fake clock either (a fake clock changes nothing when the expiry
+happens server-side).
+
+What was done instead: three redundant `#[ignore]`s removed (the `test_backend()` env gate already handles
+their skip, so they now EXECUTE and take the skip branch, and run for real the moment `OZ_TEST_REDIS_URL` is
+set); the TTL leg's fixed 2 s sleep replaced by a 50 ms poll against a named 10 s bound, plus one NEW
+assertion (`polls > 0`) closing the zero-TTL hole where the expiry check could pass for the wrong reason.
+
+**And one leg was re-justified because its original reason was false.** `connect_returns_none_when_refused`
+said "slow connection timeout". Measured un-ignored, it was still running at **153 s**. Traced to redis
+0.27.6: `ConnectionManagerConfig` defaults to 6 retries with exponential backoff, and a refused socket is an
+`Err` (not `Ok(None)`), so the whole backoff is exhausted before `connect()` maps the error; this machine's
+TCP connect to `127.0.0.1:1` alone takes ~2 s (SYN retransmit). **It does not converge — it is unbounded, not
+slow.** The `#[ignore]` stays with a corrected reason, and its body is byte-identical: wrapping it in a
+`tokio::time::timeout` would have turned the contract assertion into a vacuous one.
+
+### Verification
+
+```
+cargo check -p kasirmu-cloud --all-targets        -> exit 0, zero warnings
+cargo test  -p kasirmu-cloud --bin kasirmu-cloud  -> 405 passed, 0 failed, 40 ignored (6.20s)
+rustfmt --edition 2024 --check                    -> exit 0 on all four files
+```
+
+**401 → 405 and 43 → 40 ignored is the whole diff, and it is accounted for exactly:** four legs un-ignored
+(three removed attributes plus the TTL leg, all four now reporting `ok`), one still ignored. Nothing was
+deleted. A stray `apps/cloud-server/bare.pre-migration.bak` left by a killed test run was removed.
+
+### The lesson
+
+**An entry is a claim, and this one was wrong twice in the same sentence** — about which lines to look at and
+about what the tests did there. Both times the wrong version made the code sound worse than it was (a
+"process-wide lock AND serial" that was in fact NO lock), and the true defect next door — an unsynchronised
+`set_current_dir` — was invisible from the entry. Re-deriving an entry from the tree before acting on it is
+not overhead; it is the only way the entry can be closed correctly.
 
