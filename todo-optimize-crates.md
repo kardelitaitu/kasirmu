@@ -7040,3 +7040,40 @@ rustfmt --edition 2024 --check (both files)      ->  clean
 ```
 
 ### Ledger: 146 defined, 146 closed, 0 open.
+## §11CW — the 31 leftover store dirs were killed processes, not a leak (2026-10-23)
+
+**A measurement correction, recorded because the previous section's method invited it.**
+
+After the full bridge run, `target/test-scratch/` held 36 directories — 31 of them
+`kasirmu-bridge-store-*` with 4 entries each, which looked exactly like `TestBridge::new()`
+dropping its guard again.
+
+### The test that settled it
+
+Parked the whole directory, started a fresh empty `target/test-scratch/`, and ran the
+28-strong `workspaces::` module — a module that constructs a `TestBridge` per test:
+
+```
+test result: ok. 28 passed; 0 failed
+left: 0
+```
+
+**Twenty-eight bridges, zero leftover directories.** The guard runs. The 31 were residue
+from processes I had force-killed earlier in this session (`Stop-Process` on
+`kasirmu_*` to clear the `LNK1104` / `permission denied` link errors) — a killed process
+skips every `Drop`, so its `ScratchDir` never removes anything.
+
+### Why this is worth a section
+
+Two rounds running, the count of directories under `target/test-scratch/` has been used as
+the evidence for a leak, and once it was right (706 real) and once it was wrong (31, of
+which the true count was 0). The measurement does not distinguish them on its own.
+
+The distinguishing experiment is cheap and should be the default form of the question:
+**park the directory, run ONE bounded module, and count what it leaves.** A run that
+leaves nothing proves the guards work; a directory count on a shared, long-lived tree after
+an arbitrary number of force-killed processes proves very little.
+
+Consequence for future rounds: when the bridge suite is interrupted by a kill, the
+leftovers are expected, and `python scripts/check-scratch-leaks.py` is the static check
+that does not depend on how a process died.
