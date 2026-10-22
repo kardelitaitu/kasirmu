@@ -913,8 +913,9 @@ ANOTHER session was committing to the same tree, and the resulting file was neit
 If you pick this up, verify `git status` shows only your files before concluding a compile failure is yours.
 
 **O-M28 · cloud-server — quota cooldown map never swept, two `String` allocs per probe** —
-`apps/cloud-server/src/quota_detector.rs:103-116` ◦. Grows with tenant churn. *Fix:* prune on
-insert; borrowed keys.
+`apps/cloud-server/src/quota_detector.rs` ✔ **PAID 2026-10-22 in `311173b3c`**.
+Fixed: nested `HashMap<Arc<str>, HashMap<Arc<str>, Instant>>` enabling zero-allocation borrowed `&str` lookups,
+with automatic pruning of expired cooldowns across tenants on insert.
 
 **O-M29 · mobile — the "batch" track-serial twin of O-H08** —
 `apps/mobile-tauri/src/commands/products.rs:288-306` ✔. Fixed: `run_get_product_track_serial_batch` and `get_product_track_serial_scoped` now use `Store::get_products_track_serial_batch` and `Store::get_product_track_serial`, executing batched `WHERE sku IN (...)` directly against the products table. Verified with `mobile-tauri` tests.
@@ -4558,6 +4559,25 @@ In `crates/kasirmu-reporting/src/menu_engineering.rs`:
    spurious debug equality assertion that assumed all even-length volume intervals had equal bounds.
 
 Verified with `cargo test -p kasirmu-reporting`. All 62 tests pass in 0.56s.
+
+## §11BH — O-M28 resolved: zero-alloc alert cooldown lookups and pruning on insert (2026-10-22)
+
+In `apps/cloud-server/src/quota_detector.rs`, `QuotaAlertState` previously stored cooldown timestamps in
+`HashMap<(String, String), Instant>`. Checking whether an alert was suppressed (`is_suppressed`) performed
+two `String` allocations (`tenant_id.to_string()`, `condition.to_string()`) on every single probe.
+Furthermore, entries were inserted without ever being pruned, creating unbounded memory growth with tenant churn.
+
+Resolved with:
+1. Two-level mapping `HashMap<Arc<str>, HashMap<Arc<str>, Instant>>`:
+   Leveraged `Arc<str>`'s standard `Borrow<str>` implementation to perform `guard.get(tenant_id)` and
+   `conditions.get(condition)` with zero heap allocations on every probe.
+2. Expired entry pruning on insert:
+   In `record_alert`, all entries whose timestamp exceeds `ALERT_COOLDOWN` (7 days) are pruned, and empty
+   tenant maps are dropped.
+3. Added unit test `test_alert_cooldown_prunes_expired_tenants_on_insert` asserting that expired churned tenants
+   are swept upon subsequent alerts.
+Verified with `cargo test -p kasirmu-cloud --bin kasirmu-cloud quota_detector`. All 17 tests pass.
+
 
 
 
