@@ -15,13 +15,28 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 63 | **3** |
-| Low | 23 | 18 | **5** |
+| Medium | 66 | 62 | **4** |
+| Low | 23 | 21 | **2** |
 | Test (O-T) | 16 | 10 | **6** |
-| **Total** | **131** | **117** | **14** |
+| **Total** | **131** | **119** | **12** |
 
-**Updated 2026-10-22 (round 11).** O-M46 (fixed, not merely relabelled — §11BB), O-M50 and O-M51 closed in
-this round. **The High tier is empty and 14 entries remain**: 6 Test, 5 Low, 3 Medium.
+**Updated 2026-10-22 (round 12).** O-M52 closed (and O-L11's cross-crate build break repaired). **The High
+tier is empty and 12 entries remain**: 6 Test, 2 Low, 4 Medium.
+
+**The round's lesson is about GATES, and it cost a whole round to learn.** I ran
+`cargo check --workspace --all-targets` for the first time as a deliberate step, and it failed immediately:
+O-L11 had narrowed `VersionVector::iter` to `(&str, &Counter)` and broken
+`apps/cloud-server/src/conflict_resolution.rs` — a DIFFERENT crate, so the commit that caused it
+(`cargo check -p platform-sync`) passed. The workspace had not compiled for a round and nothing noticed.
+**A per-crate check cannot see a cross-crate break.** That gate now runs clean at `WS=0`, zero warnings.
+
+**O-M27 was attempted and reverted, and the attempt found something worth keeping.** The ledger names only
+the Postgres path as non-atomic. The SQLite path has the same defect: `crates/kasirmu-api/src/routes/settings.rs:469` passes a plain
+`Connection`, not a `Transaction`, and three `execute` calls autocommit independently. So a partial settings
+save is possible on BOTH backends — and one observed run returned **HTTP 200 with all three keys written**
+after a write that was meant to fail. The attempt left the crate uncompilable and had begun deleting
+pre-existing tests, so it was reverted; the verified call-site analysis is recorded on the entry for the
+next attempt.
 
 **O-M46 is genuinely resolved now, and how it was resolved is the round's lesson.** The previous commit
 said "resolve" while the crate HUNG: two tests that could never pass, one of them asserting a BLOCKING
@@ -799,9 +814,43 @@ existing ones adapted to the new type, none weakened.
 `crates/kasirmu-api/src/pg.rs:2573-2580`, `:2638` ◦, plus a `tenant_id.to_string()` per row.
 *Fix:* multi-row INSERT / `unnest`.
 
-**O-M27 · kasirmu-api — settings endpoint: 8 round trips to read, 3 writes with no
-transaction** — `crates/kasirmu-api/src/routes/settings.rs:555-561`, `:498-509` ◦. *Fix:*
-`WHERE key = ANY($1)`; wrap writes in one transaction.
+**O-M27 · kasirmu-api — settings endpoint: 8 round trips to read, 3 writes with no**
+**transaction** — `crates/kasirmu-api/src/routes/settings.rs` ⚠️ **STILL OPEN. Attempted 2026-10-22,**
+**reverted; work below is a verified START, not a fix.** *Fix:* `WHERE key = ANY($1)`; wrap writes in one
+transaction.
+
+**What was verified before the attempt, and it is the valuable part: BOTH backends were non-atomic.** The
+ledger names `apply_ops_pg`, but the SQLite path has the same defect and nobody had noticed. At HEAD,
+`crates/kasirmu-api/src/routes/settings.rs:469` is:
+
+```rust
+let db = state.db.lock().await;
+apply_ops_sqlite(&db, tenant, store_op, smtp_op, schedule_op)
+```
+
+`db` is a plain `rusqlite::Connection`, NOT a `Transaction`, and `apply_ops_sqlite` makes three `execute`/
+`set_setting` calls that each AUTOCOMMIT. So a failure on the second or third write leaves the first
+applied on BOTH backends. A merchant saving store name + SMTP + report schedule and hitting an SMTP
+failure gets a partially-saved config reported as a failed save — and, per the observed test run, actually
+gets **HTTP 200 with all three keys written** even when the second write was meant to fail.
+
+**The concrete fix for the SQLite half:** open a `rusqlite` transaction at that call site and pass `&tx`,
+or better, change `apply_ops_sqlite` to take `&Transaction` so the requirement is visible in the signature
+and unmissable to a future caller (`Transaction` derefs to `Connection`, so `set_setting` should accept it).
+For Postgres, take one `Client` from the pool, `BEGIN`/`COMMIT`, `ROLLBACK` on error — which means
+`apply_op_pg` must take a client/transaction reference rather than `&Pool`.
+
+**Two traps found during the attempt, worth carrying forward:**
+1. A test that induces the failure must actually induce it. An observed run showed all three keys present
+   after a "failed" second write, with the handler returning 200 — either the induced failure did not
+   happen, or it did and the rollback did not. Diagnose which BEFORE writing the rollback.
+2. Do not let the diagnostic print the settings payload. One attempt dumped an `smtp_config` row including
+   its `password` field into test output. A fixture secret, but that is the shape that becomes a real leak.
+
+The attempt was reverted because it left the crate uncompilable (`E0425: cannot find value
+`SECRET_KEY_DENY_LIST``) and had begun deleting pre-existing tests. `crates/kasirmu-api` is back to
+**351 passed, 0 failed, 14 ignored** and `cargo check --all-targets` clean. Nothing from the attempt
+survives; a second attempt should start from the call-site signature change above.
 
 **O-M28 · cloud-server — quota cooldown map never swept, two `String` allocs per probe** —
 `apps/cloud-server/src/quota_detector.rs:103-116` ◦. Grows with tenant churn. *Fix:* prune on
@@ -1394,8 +1443,41 @@ deliver` on `os error 10013` binding a FIXED port from a pre-existing test — e
 on re-run.
 
 **O-M52 · kasirmu-plugin — `read_entry` fallback is O(n²) with an allocation per entry** —
-`crates/kasirmu-plugin/src/package.rs:330-339` ◦ (3B-09). *Fix:* keep the filename index built
-during parse.
+`crates/kasirmu-plugin/src/package.rs` ✔ **PAID 2026-10-22** (3B-09).
+
+**The O(n²) was in the CALLER, not in `read_entry`, and finding that changed the fix.** One `read_entry`
+call was always O(1) on an exact hit and O(n) on a miss. The quadratic came from
+`extract_scripts_and_migrations`, which calls `read_entry` once per entry and — crucially — passes the
+FILENAME (the last path component) while `entry_contents` is keyed by the FULL stored path. So every NESTED
+script missed the exact branch and scanned. A filename index built during parse turns the whole extract
+from O(n²) to O(n), and removes two `String` allocations per stored entry per call.
+
+**The miss-reasons were enumerated before the index was trusted, and one was a real regression in the**
+**first cut.** Stored names are already sanitised (backslash → slash; absolute, drive, UNC, `.`/`..` and
+empty components rejected) and zip normalises a leading `./`, so those forms cannot occur in a key. But a
+QUERY containing a backslash (`scripts\a.lua`) must still resolve, and `last_component` alone treats `\`
+as an ordinary character — which silently narrowed what was findable. `read_entry` now normalises the
+query's separators. The equivalence test caught it, which is what it was for.
+
+**One behaviour changed, deliberately, and it was never well-defined to begin with: the duplicate-name**
+**winner.** The old fallback returned whichever entry `HashMap` iteration reached first, and
+`entry_contents` is a `std::HashMap` whose iteration order is seeded per process — so **the answer varied
+between runs of the same test**. The lane's oracle proved it: one run returned `second/dup.lua`, the next
+`first/dup.lua`. Presence and the exact-name-beats-filename rule are unchanged; the winner is now the first
+entry in archive read order, i.e. deterministic. Nothing in the tree depended on the arbitrary answer — the
+sole caller already collided on the flattened output path regardless of which duplicate won. Recording it
+here because "we made an undefined behaviour deterministic" is a behaviour change that deserves to be
+findable.
+
+The equivalence proof is `old_read_entry` in the test file: the pre-change body reimplemented verbatim and
+compared over 22 query forms (exact, nested-by-filename, full path, backslash, trailing separator, `./`
+prefix, empty, `/`, unicode, case variants, absent) — presence and bytes always, winning name wherever the
+old lookup is order-independent. The retained fallback scan covers an archive with no index (no such
+archive exists today; the branch was kept rather than deleted on a guess).
+
+`cargo check -p kasirmu-plugin --all-targets` = exit 0, zero warnings ·
+`cargo test -p kasirmu-plugin --lib` = **239 passed, 0 failed** (232 before; 7 new, no existing test
+touched).
 
 **O-M53 · kasirmu-notification — the message is rebuilt per recipient and the SMTP transport
 per tick** — `crates/kasirmu-notification/src/email_scheduler.rs:118-150` (clones `:135`, `:140`;
