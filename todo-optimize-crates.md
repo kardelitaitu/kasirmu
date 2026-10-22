@@ -895,7 +895,26 @@ the real guard.
 `platform/sync/src/queue.rs:517-533` ◦. *Fix:* `prepare` once above the loop.
 
 **O-L11 · platform/sync — `VersionVector::iter` returns `(&String, &Counter)`** —
-`platform/sync/src/crdt/version_vector.rs:139` ◦. *Fix:* return `(&str, &Counter)`.
+`platform/sync/src/crdt/version_vector.rs` ✔ **PAID 2026-10-22 in `224b6a7b2`, but it broke the**
+**workspace build and nobody noticed for a round.** `iter` now yields `(&str, &Counter)`, which is the
+right signature — and it broke `apps/cloud-server/src/conflict_resolution.rs:405-406`, one crate away:
+`let keys_a: Vec<String> = a.iter().map(|(k, _)| k.clone()).collect();`
+
+The failure mode is worth recording because it reads as correct: **`k.clone()` on a `&str` yields `&str`,**
+not `String`, so the call compiled when `iter` returned `&String` and stopped compiling the moment it
+returned `&str`. The error text even explains it ("this method call is cloning the reference `&str`") —
+but only if someone runs the check.
+
+**`cargo check -p platform-sync` passes.** The break is in a DIFFERENT crate, so a per-crate check cannot
+see it, and the O-L11 commit touched only `platform/sync`. Fixed in `1005a2caf` by collecting `Vec<&str>`,
+which is not a workaround but the better answer: those two vectors are only ever COMPARED, never returned,
+so the `String` collection was allocating twice per element to compare keys already alive for the whole
+call.
+
+**The methodological point:** narrowing a public return type is an API change with fallout outside the
+crate, and the only gate that sees it is `cargo check --workspace --all-targets`. That gate now runs at
+`WS=0` with zero warnings, and it should be run after any change that narrows a type used across crates.
+(`224b6a7b2` also claimed O-L11 without a ledger section — see §11BA.)
 
 ### Cross-cutting reading (round 2)
 
