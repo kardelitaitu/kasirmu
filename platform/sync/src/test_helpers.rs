@@ -29,17 +29,13 @@ use std::path::PathBuf;
 /// Panics if the directory cannot be created: a test that cannot obtain its scratch
 /// space has nothing further it can usefully do.
 pub fn scratch_dir(prefix: &str) -> PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace = manifest
-        .ancestors()
-        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
-        .unwrap_or(manifest);
-    let dir = workspace
-        .join("target")
-        .join("test-scratch")
-        .join(format!("{prefix}-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&dir).expect("test scratch dir under target/ must be creatable");
-    dir
+    // Delegates to the shared helper rather than carrying a fifth copy of the
+    // workspace-root walk-up. The copy that used to live here drifted from the
+    // others (no ScratchDir guard available, its own ancestor search) and was
+    // one of four places the same "find target/ above CARGO_MANIFEST_DIR" logic
+    // was written out by hand. kasirmu_test_support is the one definition;
+    // see its module docs for the Windows TEMP trap these all exist to avoid.
+    kasirmu_test_support::scratch_dir(prefix)
 }
 
 /// Spawn a mock server that returns HTTP 421 + `server_migrated` JSON on

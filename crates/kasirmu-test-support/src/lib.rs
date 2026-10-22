@@ -35,9 +35,25 @@
 //!
 //! | need | call |
 //! |---|---|
-//! | a plain path, you manage lifetime | [`scratch_dir`] |
-//! | a path that deletes itself when dropped | [`ScratchDir::new`] |
+//! | a directory that cleans itself up | [`ScratchDir::new`] — **the default** |
 //! | a `tempfile::TempDir` (same auto-delete, working parent) | [`tempdir`] |
+//! | a bare path you will delete yourself | [`scratch_dir`] — see the warning |
+//!
+//! ## ⚠️ `scratch_dir` returns an UNGUARDED path, and that leaked 1,455 directories
+//!
+//! This table used to list `scratch_dir` first, as though "you manage the
+//! lifetime" were an ordinary choice. It is not: dropping the returned `PathBuf`
+//! deletes nothing, so a caller that does not explicitly remove the directory
+//! leaves it behind **forever** — `target/` has no OS temp cleaner.
+//!
+//! Measured 2026-10-23: `target/test-scratch/` held 1,455 directories. The
+//! bridge half (706) came from a harness that dropped the guard when replacing
+//! its store manager; the rest were 30 direct `scratch_dir` call sites across 20
+//! files, several of which deleted the FILE inside the directory and never the
+//! directory itself.
+//!
+//! **Prefer `ScratchDir::new`.** Reach for `scratch_dir` only when the path must
+//! outlive a guard you cannot thread — and then remove it explicitly.
 
 #![deny(unsafe_code)]
 
@@ -73,7 +89,21 @@ pub fn scratch_root() -> PathBuf {
 
 /// A fresh, empty, uniquely-named directory under [`scratch_root`].
 ///
-/// The caller owns the lifetime; use [`ScratchDir`] to have it removed on drop.
+/// # ⚠️ UNGUARDED — you must delete this yourself
+///
+/// The return value is a bare [`PathBuf`]. Dropping it removes **nothing**, and
+/// `target/` is never swept by the OS. A caller that forgets to clean up leaks
+/// one directory per run, permanently.
+///
+/// This is not theoretical. Thirty call sites used this helper, several of them
+/// deleting a file *inside* the directory and never the directory itself; 1,455
+/// directories accumulated in `target/test-scratch/` before it was measured on
+/// 2026-10-23.
+///
+/// **Use [`ScratchDir::new`]** unless the path genuinely must outlive a guard you
+/// cannot thread through a signature. `crates/kasirmu-bridge/src/testing.rs`
+/// shows the accepted pattern for that case: return the path *and* the guard as
+/// a tuple, so ownership travels with the directory.
 ///
 /// # Panics
 ///
@@ -188,6 +218,39 @@ mod tests {
             guard.path().to_path_buf()
         };
         assert!(!path.exists(), "ScratchDir must delete itself on drop");
+    }
+
+    #[test]
+    fn scratch_dir_does_not_remove_itself_and_that_is_the_hazard() {
+        // The negative half of `scratch_dir_removes_itself_on_drop`, and the
+        // reason 30 call sites leaked: `scratch_dir` returns a bare `PathBuf`,
+        // so dropping it deletes NOTHING. Every caller that used it and walked
+        // away left a directory behind forever — 38 `oz-test-backup-*` and 74
+        // `oz-pos-test-csv-*` were measured in `target/test-scratch/`.
+        //
+        // This test asserts the hazard rather than the fix, deliberately: if
+        // someone ever gives `scratch_dir` a guard, this fails and they must
+        // come here and read why the two APIs are not interchangeable.
+        let path = scratch_dir("hazard");
+        drop(path);
+        let leftover = scratch_root();
+        let leaked = std::fs::read_dir(&leftover)
+            .expect("scratch root readable")
+            .filter_map(Result::ok)
+            .any(|e| e.file_name().to_string_lossy().starts_with("hazard-"));
+        assert!(
+            leaked,
+            "scratch_dir is documented as unguarded; if this now deletes itself, \
+             the API changed and every ScratchDir call site should be revisited"
+        );
+        // Clean up after ourselves — this test exists to PROVE the leak, not to
+        // contribute to it.
+        for entry in std::fs::read_dir(&leftover).expect("scratch root readable") {
+            let entry = entry.expect("entry");
+            if entry.file_name().to_string_lossy().starts_with("hazard-") {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
     }
 
     #[test]

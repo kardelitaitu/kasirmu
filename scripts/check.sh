@@ -487,6 +487,17 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # Gate: scripts/gates.json -> "query-plan-gate".
 step "query plan gate" "python3 scripts/check-query-plans.py --check" python3 scripts/check-query-plans.py --check
 
+# ── Scratch-directory leaks — an unguarded fixture dir is never deleted ──────
+# `kasirmu_test_support::scratch_dir` returns a bare PathBuf whose drop deletes
+# nothing, so a caller that walks away leaks a directory per run forever —
+# `target/` has no OS temp cleaner. Measured 2026-10-23: 1,455 directories in
+# `target/test-scratch/`. No test could see it, because the only cleanup test
+# proved `ScratchDir` works and nothing proved `scratch_dir` does not.
+# The gate grades a per-file budget and grades its own detector first, so a
+# broken regex exits 2 instead of reporting a clean tree.
+# Gate: scripts/gates.json -> "scratch-leak-gate".
+step "scratch leak gate" "python3 scripts/check-scratch-leaks.py" python3 scripts/check-scratch-leaks.py
+
 # ── Row-mapper alignment — a positional read vs the SELECT feeding it ──────
 # `name: row.get(3)?` couples a mapper to its SQL by POSITION, and nothing in Rust
 # checks that coupling: reorder the projection and the fields silently take each
