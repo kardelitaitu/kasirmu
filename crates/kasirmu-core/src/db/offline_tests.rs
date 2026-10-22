@@ -2099,3 +2099,70 @@ fn applied_receipt_records_the_effect_key() {
         "NULL effects must not collide with each other"
     );
 }
+
+/// `20261029` backfills `sale_id` for rows that predate the column, and must never
+/// write a WRONG id while doing it.
+///
+/// `20261023` added the column without populating it, so every pre-migration row kept
+/// `sale_id = NULL` forever and could only ever reach the legacy substring branch.
+/// The naive backfill was measured to write GARBAGE for a payload whose first
+/// `sale_id` is empty and which nests another one. A wrong id is worse than a NULL,
+/// because the fast branch then compares for equality and silently never matches.
+/// This test pins BOTH directions.
+#[test]
+fn the_sale_id_backfill_fills_only_well_formed_ids_and_never_garbage() {
+    let conn = fresh();
+    let cases: [(&str, &str); 6] = [
+        (
+            "well-formed",
+            "{\"sale_id\":\"0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e\",\"total_minor\":100}",
+        ),
+        ("key absent", "{\"total_minor\":100}"),
+        ("truncated value", "{\"sale_id\":\"abc"),
+        ("JSON null", "{\"sale_id\":null}"),
+        (
+            "empty then nested",
+            "{\"sale_id\":\"\",\"inner\":{\"sale_id\":\"NOT-THIS-ONE-AT-ALL-000000000000\"}}",
+        ),
+        (
+            "space after colon",
+            "{\"sale_id\": \"0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e\"}",
+        ),
+    ];
+    for (i, (_, payload)) in cases.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, tenant_id, priority, sale_id) VALUES (?1, 'complete_sale', ?2, 'pending', 'default', 1, NULL)",
+            params![format!("backfill-{i}"), payload],
+        )
+        .unwrap();
+    }
+
+    // The statement from 20261029, re-run here so the assertion is about the shipped SQL.
+    conn.execute(
+        "UPDATE offline_queue SET sale_id = substr(payload, instr(payload, '\"sale_id\":\"') + 11, 36) WHERE sale_id IS NULL AND instr(payload, '\"sale_id\":\"') > 0 AND substr(payload, instr(payload, '\"sale_id\":\"') + 47, 1) = '\"'",
+        [],
+    )
+    .unwrap();
+
+    let read = |i: usize| -> Option<String> {
+        conn.query_row(
+            "SELECT sale_id FROM offline_queue WHERE id = ?1",
+            params![format!("backfill-{i}")],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        read(0),
+        Some("0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e".to_owned()),
+        "the well-formed payload must be backfilled"
+    );
+    for (i, (name, _)) in cases.iter().enumerate().skip(1) {
+        assert_eq!(
+            read(i),
+            None,
+            "{name}: a value that is not a clean quoted 36-char id must stay NULL -- a WRONG id is worse than a NULL, because the fast branch then compares for equality and silently never matches"
+        );
+    }
+}

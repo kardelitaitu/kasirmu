@@ -531,6 +531,15 @@ pub const ALL: &[Migration] = &[
         id: "20261028_offline_queue_legacy_sale_probe.sql",
         sql: include_str!("../migrations/20261028_offline_queue_legacy_sale_probe.sql"),
     },
+    // O-M04 follow-up: backfill `sale_id` for rows that predate the column. 20261023
+    // added it without populating it, so those rows could never reach the indexed
+    // branch. Guarded by a closing-quote check so a naive substr cannot write garbage;
+    // anything left NULL keeps working through the legacy substring branch.
+    // No new index, no table, no trigger — the surface pin is unchanged.
+    Migration {
+        id: "20261029_offline_queue_sale_id_backfill.sql",
+        sql: include_str!("../migrations/20261029_offline_queue_sale_id_backfill.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
