@@ -31,6 +31,54 @@ use rusqlite::Connection;
 
 use crate::PluginError;
 
+// ── Row ceiling for plugin queries (O-M48) ────────────────────────────────
+
+/// Maximum number of rows a single plugin `query` may return.
+///
+/// # Why there is a cap at all
+///
+/// `PluginDb::query` materialises the whole result set into a `Vec<Value>`
+/// and then serialises it to a `String`, so peak memory for one call is
+/// roughly TWICE the encoded result — the value tree plus the JSON text that
+/// is handed back to the plugin. Every other plugin budget in this workspace
+/// is a hard number: the Lua VM the plugins run in is capped at 10 MiB
+/// (`kasirmu_lua::MEMORY_LIMIT`), a plugin script file at 1 MiB
+/// (`loader::MAX_SCRIPT_FILE_SIZE`), and a package entry at 16 MiB
+/// (`package::MAX_ENTRY_UNCOMPRESSED_SIZE`). Unbounded SQL was the one budget
+/// with no number at all, so `SELECT * FROM plugin_x_events` over a busy
+/// merchant's plugin table grew until the process died.
+///
+/// # Why 10 000
+///
+/// Tied to the Lua VM cap above, which is the budget the result competes
+/// against: the JSON string returned here crosses into the plugin as a Lua
+/// string, and a Lua string is allocated by the VM and counted against its
+/// 10 MiB. A row of a realistic plugin table (a handful of INTEGER/TEXT
+/// columns) encodes to a few hundred bytes, so 10 000 rows is a few MiB —
+/// comfortably inside the 10 MiB VM budget, leaving the script's own tables
+/// room, and far beyond any legitimate plugin hook (which runs inside a
+/// checkout, not a report generator). Exceeding it is a query-shape bug in
+/// the plugin, not a capacity limit a real UI would encounter.
+///
+/// # Why it ERRORS instead of truncating
+///
+/// This is a sandbox boundary, so it fails explicitly. Returning a silently
+/// truncated prefix would hand a plugin wrong data it cannot detect — a
+/// discount or tax hook computing over the first 10 000 rows and reporting a
+/// total as if it were complete. The error names the ceiling and tells the
+/// plugin author to add a `LIMIT`, which is a fix they can apply without
+/// host involvement.
+///
+/// # Who sees this number
+///
+/// The value is `pub` so a plugin author (and `db_tests`) can address the
+/// boundary itself rather than a copy of it. `validate_sql` does NOT reject a
+/// plugin `LIMIT` larger than this: the cap is enforced while reading, so a
+/// `LIMIT 999999` cannot reach the engine's result set, and rejecting it in
+/// the validator would duplicate the check in a second place that could
+/// disagree with this one.
+pub const MAX_QUERY_ROWS: usize = 10_000;
+
 /// A validated, namespace-isolated database handle for a single plugin.
 ///
 /// Wraps a shared `rusqlite::Connection` behind `Arc<Mutex<>>` so that
@@ -90,6 +138,22 @@ impl PluginDb {
     ///
     /// Each row is represented as a JSON object `{ "col": value, ... }`.
     /// Returns `"[]"` if the query produces no rows.
+    ///
+    /// At most [`MAX_QUERY_ROWS`] rows are returned. A query that would produce
+    /// more fails with [`PluginError::PermissionDenied`] rather than returning a
+    /// truncated prefix — see that constant for why the cap exists and why it
+    /// errors instead of truncating.
+    ///
+    /// The row ceiling is enforced by COUNTING rows as they are read, never by
+    /// rewriting the plugin's SQL. A rewrite would have to append to a
+    /// statement that may already end in `;`, carry its own `LIMIT`, or end in
+    /// a comment, and would have to stay compatible with `validate_sql`'s
+    /// refusal of quoted identifiers (PLG-11). Counting cannot be defeated by
+    /// any statement shape.
+    ///
+    /// Column names are resolved once per query and shared by every row
+    /// (O-M48), so the per-cell cost of a wide result is the SQLite value read
+    /// plus its JSON conversion — not an extra `String` allocation.
     pub fn query(&self, sql: &str) -> Result<String, PluginError> {
         validate_sql(sql, &self.prefix)?;
         let conn = self
@@ -101,26 +165,63 @@ impl PluginDb {
             .prepare(sql)
             .map_err(|e| PluginError::Internal(format!("query prepare error: {e}")))?;
 
+        // O-M48: the column names are resolved ONCE per query, not once per
+        // cell. The old code collected them up front and then `name.clone()`d
+        // for every cell, so a 1 000 x 10 result paid 10 000 allocations for
+        // at most 10 distinct names.
+        //
+        // The names cannot simply BE the map keys: `OwnedName` borrows from the
+        // map that yields it, so a key cannot borrow from the `Vec` the map is
+        // being built into. Instead each name is turned into an owning
+        // `serde_json::Map` key exactly once, on the first row, into this
+        // buffer; every later row clones from the buffer. That is one
+        // allocation per distinct name per query instead of one per cell.
         let column_names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+        let mut owned_keys: Vec<serde_json::Map<String, serde_json::Value>> = Vec::new();
 
-        let mut rows: Vec<serde_json::Value> = Vec::new();
+        let mut rows: Vec<serde_json::Value> = Vec::with_capacity(MAX_QUERY_ROWS.min(256));
 
-        let row_iter = stmt
-            .query_map([], |row| {
-                let mut obj = serde_json::Map::new();
-                for (i, name) in column_names.iter().enumerate() {
-                    let val: rusqlite::types::Value = row.get_unwrap(i);
-                    let json_val = sqlite_value_to_json(val);
-                    obj.insert(name.clone(), json_val);
+        {
+            let mut row_iter = stmt
+                .query([])
+                .map_err(|e| PluginError::Internal(format!("query error: {e}")))?;
+            let mut seen: usize = 0;
+            while let Some(row) = row_iter
+                .next()
+                .map_err(|e| PluginError::Internal(format!("row read error: {e}")))?
+            {
+                if seen == MAX_QUERY_ROWS {
+                    return Err(PluginError::PermissionDenied(format!(
+                        "query returned more than {MAX_QUERY_ROWS} rows — \
+                         plugin queries are capped at {MAX_QUERY_ROWS} rows; \
+                         add a LIMIT to your query (e.g. ... LIMIT {MAX_QUERY_ROWS}), \
+                         narrow the WHERE clause, or page through the data"
+                    )));
                 }
-                Ok(serde_json::Value::Object(obj))
-            })
-            .map_err(|e| PluginError::Internal(format!("query error: {e}")))?;
+                seen += 1;
 
-        for row_result in row_iter {
-            let row_val =
-                row_result.map_err(|e| PluginError::Internal(format!("row read error: {e}")))?;
-            rows.push(row_val);
+                if owned_keys.is_empty() {
+                    // First row: build every owning key once.
+                    for name in &column_names {
+                        let mut probe = serde_json::Map::new();
+                        probe.insert(name.clone(), serde_json::Value::Null);
+                        owned_keys.push(probe);
+                    }
+                }
+
+                let mut obj = serde_json::Map::new();
+                for (i, key_buf) in owned_keys.iter().enumerate() {
+                    let val: rusqlite::types::Value = row
+                        .get::<_, rusqlite::types::Value>(i)
+                        .map_err(|e| PluginError::Internal(format!("row read error: {e}")))?;
+                    // A one-entry map is the only way to obtain an OWNING
+                    // `String` key from the buffer; this clone is the intended
+                    // once-per-name-per-query source of that ownership.
+                    let (key, _) = key_buf.iter().next().expect("key buffer holds one entry");
+                    obj.insert(key.clone(), sqlite_value_to_json(val));
+                }
+                rows.push(serde_json::Value::Object(obj));
+            }
         }
 
         serde_json::to_string(&rows)
