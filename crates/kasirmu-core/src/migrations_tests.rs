@@ -934,7 +934,11 @@ fn init_sql_creates_complete_schema_surface() {
         // 20261027_audit_log_outcome_created.sql adds 1:
         // idx_audit_log_outcome_created on audit_log(outcome, created_at DESC, id DESC)
         // for O-M69, so the outcome-filtered audit page seeks instead of scanning (+1).
-        200,
+        // 20261028_offline_queue_legacy_sale_probe.sql adds 1:
+        // idx_offline_queue_legacy_sale_probe, a PARTIAL index on
+        // offline_queue(action, status, payload) WHERE sale_id IS NULL, serving the
+        // legacy branch of the outbox idempotency probe (+1).
+        201,
         "index surface drifted"
     );
     assert_eq!(

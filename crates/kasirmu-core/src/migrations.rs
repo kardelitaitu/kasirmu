@@ -521,6 +521,16 @@ pub const ALL: &[Migration] = &[
         id: "20261027_audit_log_outcome_created.sql",
         sql: include_str!("../migrations/20261027_audit_log_outcome_created.sql"),
     },
+    // O-M04 follow-up: the legacy branch of the outbox idempotency probe.
+    // 20261023 added `sale_id` WITHOUT backfilling, so every row written before
+    // it is NULL forever and reachable only through the `sale_id IS NULL` branch,
+    // which scanned because idx_offline_queue_sale_pending is partial on
+    // `sale_id IS NOT NULL`. This partial index serves exactly that set.
+    // One index, no table and no trigger, so the surface pin moves 200 -> 201.
+    Migration {
+        id: "20261028_offline_queue_legacy_sale_probe.sql",
+        sql: include_str!("../migrations/20261028_offline_queue_legacy_sale_probe.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

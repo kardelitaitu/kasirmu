@@ -1778,6 +1778,42 @@ fn has_pending_outbox_row_uses_sale_id_index_and_falls_back_for_legacy_rows() {
             .unwrap()
     );
 
+    // 2b. The legacy branch must SEEK, not scan. `20261023` added `sale_id` WITHOUT
+    //     backfilling, so every pre-migration row is NULL forever and reachable only
+    //     through this branch. Before `20261028` it planned `SCAN offline_queue`,
+    //     which meant the O-M04 win applied to new rows while the historical backlog
+    //     kept its full scan. Measured over 3,000 rows (95% new, 5% legacy) + ANALYZE.
+    //     The seed order matters: this must run against a database large enough for
+    //     the planner to weigh a scan at all.
+    let legacy_plan = {
+        let mut stmt = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT EXISTS(SELECT 1 FROM offline_queue
+                   WHERE sale_id IS NULL AND status = 'pending' AND action = ?1
+                     AND instr(payload, ?2) > 0)",
+            )
+            .unwrap();
+        stmt.query_map(params!["complete_sale", "\"sale_id\":\"legacy\""], |r| {
+            r.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n")
+    };
+    assert!(
+        legacy_plan.contains("idx_offline_queue_legacy_sale_probe"),
+        "the legacy `sale_id IS NULL` branch must seek via idx_offline_queue_legacy_sale_probe; \
+         without it every pre-20261023 row is reachable only by scanning the whole queue. \
+         plan:\n{legacy_plan}"
+    );
+    assert!(
+        !legacy_plan
+            .lines()
+            .any(|l| l.trim() == "SCAN offline_queue"),
+        "the legacy branch must not scan offline_queue; plan:\n{legacy_plan}"
+    );
     // 3. Backward compatibility: legacy row with sale_id NULL is found via fallback
     let legacy_id = "legacy-sale-999";
     conn.execute(

@@ -58,6 +58,15 @@ PROBE_FILE = REPO / "crates" / "kasirmu-core" / "tests" / "integration" / "query
 PROBE_CRATE = "kasirmu-core"
 PROBE_TEST_BIN = "integration"
 PROBE_TEST_FILTER = "query_plan_probe"
+
+# The probe above prepares KNOWN strings, so it is structurally blind to a query
+# whose WHERE clause is assembled at run time. Those are graded by sibling unit
+# tests inside the crate instead (`db/*_dynamic_where_tests.rs`), which can reach
+# the private builders. O-M69 lived on exactly that boundary -- the last defect of
+# this class was invisible to the integration probe -- so the gate runs BOTH tiers.
+# Leaving the unit tier out would mean the newest coverage never runs in CI.
+UNIT_TEST_FILTER = "dynamic_where"
+UNIT_TEST_THREADS = "2"
 FALSIFICATION_TEST = "forcing_a_scan_fails_the_probe"
 
 # The LARGE tables the probe grades, read from the probe file itself so this
@@ -141,6 +150,33 @@ def run_probe(extra_args: list[str], label: str) -> tuple[int, str]:
 
 
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+def run_unit_plan_gate(extra_args: list[str], label: str) -> tuple[int, str]:
+    """Run the run-time-WHERE plan tests and return (exit code, output as ASCII)."""
+    cmd = [
+        "cargo",
+        "test",
+        "-p",
+        PROBE_CRATE,
+        "--lib",
+        UNIT_TEST_FILTER,
+        "--",
+        f"--test-threads={UNIT_TEST_THREADS}",
+        *extra_args,
+        "--nocapture",
+    ]
+    print("check-query-plans: " + label)
+    print("  " + " ".join(cmd))
+    proc = subprocess.run(
+        cmd,
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=build_env(),
+    )
+    return proc.returncode, ascii_only(proc.stdout + proc.stderr)
 
 
 def ascii_only(text: str) -> str:
@@ -323,6 +359,19 @@ def main() -> int:
     # 2. The gate.
     code, output = run_probe([], "plan gate")
     if code == 0:
+        # 2b. The run-time-WHERE tier. The probe above prepares known strings and
+        #     is structurally blind to an assembled WHERE clause; those are graded
+        #     by unit tests inside the crate. Reporting OK without running them
+        #     would leave the newest coverage -- the class O-M69 belonged to --
+        #     executing in nobody's CI.
+        unit_code, unit_output = run_unit_plan_gate([], "run-time WHERE gate")
+        if unit_code != 0:
+            print("")
+            print("FAIL: the run-time-WHERE plan tests did not pass.")
+            print("These grade queries whose WHERE clause is assembled at run time,")
+            print("which the integration probe cannot see. Tail of the output:")
+            print(indent(unit_output.strip().splitlines()[-25:]))
+            return 2
         probes = covered_probes(source)
         print("")
         print(

@@ -3507,6 +3507,9 @@ CREATE INDEX IF NOT EXISTS idx_midtrans_transactions_tenant
 
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 
+CREATE INDEX IF NOT EXISTS idx_offline_queue_legacy_sale_probe
+    ON offline_queue(action, status, payload) WHERE sale_id IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_sale_pending
     ON offline_queue(sale_id, status, action)
     WHERE sale_id IS NOT NULL;
