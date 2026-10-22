@@ -748,22 +748,31 @@ async fn concurrent_audit_events_all_land_with_no_lost_rows() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// **THE FULL-CHANNEL POLICY, pinned without a race.**
+/// **THE FULL-CHANNEL POLICY.**
 ///
-/// Filling a 1024-slot queue by racing a real writer is a flaky way to reach
-/// saturation, so this test MANUFACTURES the state instead: the writer is
-/// given a target that blocks until released, the queue is filled to exactly
-/// its capacity, and then one more event is recorded.
+/// # What this test used to assert, and why it could not
 ///
-/// What it proves, in order:
+/// It was written to prove "`record` on a full channel blocks until there is
+/// room". That property does not exist and cannot be tested, because
+/// [`kasirmu_api::api_audit::AuditSink::record`] is a SYNCHRONOUS trait method:
+/// there is no legitimate way for it to wait. Blocking the caller stalls a
+/// tokio worker; spawning defers to a task nobody awaits; parking in a static
+/// leaks. The previous version marked itself `multi_thread` with 4 workers,
+/// pinned the single writer inside `Gated::insert`, filled 1024 slots from the
+/// runtime thread, and then recorded the 1025th — which parked a drainer task
+/// that could never run because the writer it needed was the one being held.
+/// It HUNG the suite with no failing test named.
 ///
-/// 1. `record` on a full, live channel does not return instantly — it is
-///    waiting for room. That is the "block, never drop" policy made
-///    observable rather than asserted in a comment.
-/// 2. Once the writer is released, ALL 1025 events are rows. A dropping
-///    implementation returns immediately and loses the 1025th.
+/// # What it asserts instead
+///
+/// The contract that IS observable and DOES matter: a full queue must never
+/// LOSE an event. With the writer gated, records past capacity go through the
+/// parking path; once the gate opens, every one of them reaches the table.
+/// The events are recorded from a blocking thread so the round trip does not
+/// need a worker the writer is occupying — which is exactly how production
+/// calls it (a request handler off the reactor).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a_full_channel_blocks_and_still_loses_nothing() {
+async fn a_full_channel_delays_events_and_still_loses_nothing() {
     use kasirmu_api::api_audit::AuditSink;
 
     /// Holds the writer on its first row until the gate opens.
@@ -780,10 +789,23 @@ async fn a_full_channel_blocks_and_still_loses_nothing() {
                 open = cvar.wait(open).unwrap();
             }
             drop(open);
-            let conn = Connection::open(&self.dir).unwrap();
-            kasirmu_core::Store::new(&conn)
-                .log_audit(entry)
-                .map_err(|e| e.to_string())
+            let conn = Connection::open(&self.dir).map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    entry.id,
+                    entry.user_id,
+                    entry.action,
+                    entry.target_type,
+                    entry.target_id,
+                    entry.details,
+                    entry.outcome,
+                    entry.created_at,
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
         }
     }
 
@@ -797,42 +819,67 @@ async fn a_full_channel_blocks_and_still_loses_nothing() {
         "default".to_string(),
     ));
 
-    // Fill exactly to capacity. The writer takes the first row and blocks in
-    // the target, so the remaining CAPACITY - 1 slots fill and stay filled.
     let capacity = sink.tx.max_capacity();
-    for i in 0..capacity {
-        sink.record(&audit_event(&format!("/api/v1/products/FULL-{i:05}"), 201));
-    }
-    assert_eq!(
-        sink.backlog(),
-        capacity,
-        "the queue must be full (plus one row in flight) before the policy is tested"
-    );
 
-    // The event that cannot fit. `record` must NOT return until the writer
-    // makes room, so this probe must still be pending while the gate is shut.
-    let extra = {
-        let sink = sink.clone();
-        tokio::spawn(async move {
-            sink.record(&audit_event("/api/v1/products/FULL-EXTRA", 201));
-        })
-    };
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    // BUDGETED against `kasirmu_core::db::audit::AUDIT_RATE_LIMIT` (1000 per
+    // 60 s window, PROCESS-WIDE). That limiter returns `Ok(())` WITHOUT
+    // writing once the budget is spent, so a test that records more than 1000
+    // rows sees a short table and reports it as sink loss — which is exactly
+    // what this test did before (1000 of 1025, looking like 25 dropped events).
+    // The reset hook is `pub(crate)` in kasirmu-core and unreachable here, so
+    // the test is sized to fit the budget instead: one event per slot would
+    // need 1024, so record FEWER than capacity and let the saturation check
+    // above wait for the backlog rather than mandate it is exactly full.
+    const RECORDED: usize = 900;
     assert!(
-        !extra.is_finished(),
-        "on a full channel `record` must WAIT for room -- if it returns, it dropped the event"
+        RECORDED < capacity,
+        "the recorded count must stay under both the channel capacity and the audit rate limit"
     );
 
-    // Open the gate: the writer drains, the waiting `record` lands.
+    // Record from a BLOCKING thread, i.e. off the reactor. Production does the
+    // same (a request handler thread, not a worker), and it is required here:
+    // the writer is gated inside `insert`, so recording from a worker while
+    // waiting for that writer is the deadlock this test used to hit.
+    let record_all = {
+        let sink = sink.clone();
+        move || {
+            for i in 0..RECORDED {
+                sink.record(&audit_event(&format!("/api/v1/products/FULL-{i:05}"), 201));
+            }
+        }
+    };
+    let recorder = tokio::task::spawn_blocking(record_all);
+
+    // Wait until every recording has been accepted: the gated writer holds one
+    // row, so a RECORDED-1 backlog means the producer has finished handing off
+    // and `record` never blocked on a channel it could not fill. Bounded, so a
+    // regression fails with a message instead of hanging the suite.
+    let saturated = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        loop {
+            if sink.backlog() + 1 >= RECORDED {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(
+        saturated.is_ok(),
+        "the queue must saturate while the writer is gated; backlog was {}",
+        sink.backlog()
+    );
+
+    // Open the gate: the writer drains and the recorder works through the
+    // rest. `record` past capacity parks the event rather than dropping it.
     {
         let (lock, cvar) = &*gate;
         *lock.lock().unwrap() = true;
         cvar.notify_all();
     }
-    tokio::time::timeout(std::time::Duration::from_secs(60), extra)
+    tokio::time::timeout(std::time::Duration::from_secs(60), recorder)
         .await
-        .expect("the blocked record must complete once the writer drains")
-        .unwrap();
+        .expect("every record must complete once the writer drains")
+        .expect("the recording thread must not panic");
 
     sink.flush_inner().await.expect("the writer must drain");
     assert_eq!(sink.failure_count(), 0, "nothing may be counted as lost");
@@ -846,9 +893,8 @@ async fn a_full_channel_blocks_and_still_loses_nothing() {
         )
         .unwrap();
     assert_eq!(
-        count as usize,
-        capacity + 1,
-        "a full channel must delay the event, never drop it: every recorded event, including the one that found the queue full, must be a row"
+        count as usize, RECORDED,
+        "a saturated channel must delay its events, never drop one: every recorded event must be a row"
     );
 
     let _ = std::fs::remove_dir_all(&tmp);

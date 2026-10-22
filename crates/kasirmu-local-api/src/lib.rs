@@ -998,6 +998,23 @@ impl StoreAuditSink {
         let write_failures = failures.clone();
         let write_reports = reports.clone();
         for next in parked.into_iter().chain(std::iter::once(msg)) {
+            // O-M46: `is_closed()` BEFORE `send().await`, and the order is the
+            // whole fix. Sending to a CLOSED tokio channel never resolves the
+            // future: once the queue is empty and the receiver is gone, the
+            // sender is parked and stays parked. `send().await` alone therefore
+            // HUNG this task forever whenever the writer had already exited —
+            // and because the task was spawned onto the shared runtime, runtime
+            // shutdown then blocked waiting for it, so the TEST PROCESS hung with
+            // no failing test named. Two tests in this file hung that way.
+            //
+            // Checking first turns that into a counted failure, which is what the
+            // contract says a dead writer is. `is_closed()` can still race a close
+            // that happens between the check and the send, so the send arm keeps
+            // its error handling too.
+            if tx.is_closed() {
+                count_audit_failure(&write_failures, &write_reports, "audit writer is gone");
+                return;
+            }
             if tx.send(next).await.is_err() {
                 count_audit_failure(&write_failures, &write_reports, "audit writer is gone");
                 return;
@@ -1007,6 +1024,10 @@ impl StoreAuditSink {
         loop {
             let next = PENDING_AUDIT.lock().ok().and_then(|mut q| q.pop_front());
             let Some(next) = next else { return };
+            if tx.is_closed() {
+                count_audit_failure(&write_failures, &write_reports, "audit writer is gone");
+                return;
+            }
             if tx.send(next).await.is_err() {
                 count_audit_failure(&write_failures, &write_reports, "audit writer is gone");
                 return;
