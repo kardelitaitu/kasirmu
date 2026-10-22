@@ -22,6 +22,7 @@ next: none | perf: single index pass per validation
 
 use crate::workspace_type::{KDS, RESTAURANT_POS, STORE_POS, WAREHOUSE};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::CoreError;
@@ -193,7 +194,46 @@ pub fn node_kind_token(node: &Value) -> String {
 /// instead of an expression language in JSON. Rust twin of `kindTokenAdmits`
 /// in `ui/src/features/locations/topologyCard.ts`.
 fn kind_token_admits(endpoint_token: &str, node_kind: &str) -> bool {
-    endpoint_token == node_kind || node_kind.starts_with(&format!("{endpoint_token}:"))
+    endpoint_token == node_kind
+        || node_kind
+            .strip_prefix(endpoint_token)
+            .is_some_and(|rem| rem.starts_with(':'))
+}
+
+type PairingsMap = HashMap<(&'static str, &'static str), Vec<(&'static str, &'static str)>>;
+
+fn indexed_pairings() -> &'static PairingsMap {
+    static MAP: OnceLock<PairingsMap> = OnceLock::new();
+    MAP.get_or_init(|| {
+        let mut map = HashMap::new();
+        if let Some(pairings) = shared_topology_semantics()
+            .get("semanticPairings")
+            .and_then(Value::as_array)
+        {
+            for pairing in pairings {
+                if let (Some(src), Some(tgt)) = (
+                    value_string(pairing, "source"),
+                    value_string(pairing, "target"),
+                ) {
+                    let endpoints = pairing
+                        .get("endpoints")
+                        .and_then(Value::as_array)
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|pair| {
+                                    let from = value_string(pair, "from")?;
+                                    let to = value_string(pair, "to")?;
+                                    Some((from, to))
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    map.insert((src, tgt), endpoints);
+                }
+            }
+        }
+        map
+    })
 }
 
 /// True when the pairing row for `(source, target)` declares an endpoint pair
@@ -206,21 +246,13 @@ fn kind_token_admits(endpoint_token: &str, node_kind: &str) -> bool {
 /// that lost its endpoints degrades to "no wire may be authored" rather than
 /// silently to the looser row-only check. See ADR #45 §1.
 pub fn pairing_admits_kinds(source: &str, target: &str, from_kind: &str, to_kind: &str) -> bool {
-    let Some(pairings) = shared_topology_semantics()
-        .get("semanticPairings")
-        .and_then(Value::as_array)
-    else {
+    let map = indexed_pairings();
+    let Some(endpoints) = map.get(&(source, target)) else {
         return false;
     };
-    let Some(row) = pairings.iter().find(|pairing| {
-        value_string(pairing, "source") == Some(source)
-            && value_string(pairing, "target") == Some(target)
-    }) else {
+    if endpoints.is_empty() {
         return false;
-    };
-    let Some(endpoints) = row.get("endpoints").and_then(Value::as_array) else {
-        return false;
-    };
+    }
     // The graph's Branch Location node is addressed in the contract by the
     // reserved `@branch-root` token; whether the graph has exactly one such
     // node is enforced before the wire loop (`multiple-branch-locations`).
@@ -229,11 +261,9 @@ pub fn pairing_admits_kinds(source: &str, target: &str, from_kind: &str, to_kind
     } else {
         from_kind
     };
-    endpoints.iter().any(|pair| {
-        let from = value_string(pair, "from").unwrap_or_default();
-        let to = value_string(pair, "to").unwrap_or_default();
-        (from == "*" || kind_token_admits(from, source_kind))
-            && (to == "*" || kind_token_admits(to, to_kind))
+    endpoints.iter().any(|(from, to)| {
+        (*from == "*" || kind_token_admits(from, source_kind))
+            && (*to == "*" || kind_token_admits(to, to_kind))
     })
 }
 
