@@ -15,16 +15,17 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 45 | **21** |
-| Low | 23 | 15 | **8** |
-| Test (O-T) | 16 | 9 | **7** |
-| **Total** | **131** | **95** | **36** |
+| Medium | 66 | 55 | **11** |
+| Low | 23 | 16 | **7** |
+| Test (O-T) | 16 | 10 | **6** |
+| **Total** | **131** | **107** | **24** |
 
-**Updated 2026-10-22 (round 7).** O-T06, O-T07 and O-T08 closed this round, on top of round 6's
-O-M64, O-M45, O-M60, O-L20, O-L22 and O-M21. The High tier is still empty and **36 entries remain**:
-8 Low, 7 Test, 21 Medium (11 of those are the `kasirmu-hal`, `kasirmu-plugin`, `kasirmu-cli` and
-cloud/api block, which is the largest coherent group left). Counting rule unchanged — a `## §11*`
-heading or an in-entry marking verb; never a commit message alone.
+**Updated 2026-10-22 (round 8).** O-M22, O-M23 and O-M47 closed, on top of round 7's three Test
+entries and round 6's nine. **The High tier is empty and 24 entries remain**: 6 Test, 7 Low, 11 Medium.
+The Medium remainder is now mostly the device layer — `kasirmu-hal` (O-M40–M42: four USB walks, one
+enumeration per connect, a syscall per byte) — plus `kasirmu-plugin`'s unbounded query (O-M48) and the
+`kasirmu-cli`/`kasirmu-lan` pair. Counting rule unchanged — a `## §11*` heading or an in-entry marking
+verb; never a commit message alone.
 
 **A correction that cost this round: THREE Test entries I opened as work were already paid**
 (O-T01, O-T03 and O-T04's prescribed fix), and one (O-T04) understated its own blast radius by 43%
@@ -663,12 +664,42 @@ under the gitignored `target/`.
 `cargo test -p kasirmu-bridge --lib locations::` = **12 passed, 0 failed**.
 
 **O-M22 · cloud-server — batch outcome reassembly is O(n²) with item clones** —
-`apps/cloud-server/src/sync_api.rs:368-379` (clone at `:333`) ◦. A 1,000-item push does 10⁶
-comparisons. *Fix:* direct indexing — `valid_indexes` is already sorted.
+`apps/cloud-server/src/sync_api.rs` ✔ **PAID 2026-10-22.** `valid_indexes.iter().position(|&v| v == idx)`
+inside the loop over all items made a 1,000-item push do 10⁶ comparisons. It is now a MERGE with one
+forward cursor, O(items + valid).
+
+**The justification is the sort order, and it had to be checked rather than assumed.** `valid_indexes`
+is strictly ascending because it is filled by a single forward pass that pushes `idx` in increasing
+order — so once the cursor has passed an index it can never be needed again, which is what makes one
+cursor sufficient. The comment on the loop records that reasoning rather than just asserting a cursor
+is faster.
+
+Order is the correctness invariant, not a nicety: the client zips `pending` against `results` by index
+(`apply_push_results`), so a reordering marks the WRONG items synced. That was already pinned by
+`sync_api::tests::push_outcomes_preserve_request_order_with_mixed_batch` — `[valid, invalid, valid]` must
+return `[Accepted, Rejected, Accepted]` — and it passes unchanged against the merge, which is the
+evidence that matters. `kasirmu-cloud` = **398 passed, 0 failed**.
 
 **O-M23 · cloud-server — the push payload is re-serialised just to measure its size** —
-`apps/cloud-server/src/sync_api.rs:311` ◦. Doubles serialisation cost and peak memory on the
-hottest write path. *Fix:* use the buffered body length.
+`apps/cloud-server/src/sync_api.rs` ✔ **PAID 2026-10-22.** `serde_json::to_vec(&items).map(|v| v.len())`
+serialised the entire batch a second time, allocating a throwaway buffer the size of the request, purely
+to read `.len()` for one histogram observation on the hottest write path.
+
+**This was not only a cost, it was a measurement defect — and that is what settled the design.** The
+metric is documented in `metrics.rs` as *"Push request body size in bytes"*: the TRANSPORT size.
+`serde_json::to_vec(&items)` is the size of a RE-SERIALISATION, which equals the request body only when
+the client formatted its JSON exactly as serde would — no extra whitespace, same key order, same float
+formatting. A client sending pretty-printed JSON inflated its own request without the old metric ever
+seeing it. The handler now takes `axum::body::Bytes` and observes `body.len()`, which IS the body, so
+the metric measures the quantity it names rather than a proxy that drifts with client formatting.
+
+**Two contract details the change had to preserve, and a test caught the second one.** Taking the raw
+body moves the parse into the handler, so: (a) `#[tracing::instrument]` had to stop skipping a
+parameter named `items` that no longer exists — the span now opens with `body_bytes` and records
+`item_count` once the body is parsed, so no field is silently lost; (b) the rejection status had to stay
+**400**. Deliberately mirroring `axum::Json`'s content-type status (422) is the obvious-looking choice
+and it broke `push_rejects_malformed_json`, which pins 400 — a client-visible contract renegotiated by a
+performance change is exactly the class of regression that ships quietly. That test is why it did not.
 
 **O-M24 · kasirmu-api — image pack: global SQLite mutex once per hash, query per hash,
 2 MB body buffered** — `crates/kasirmu-api/src/routes/images.rs:413-451` ◦. *Fix:* one batched
@@ -976,11 +1007,35 @@ dedicated connection or a bounded channel with one writer; count failures rather
 ```
 
 **O-M47 · kasirmu-plugin — `validate_sql` compiles ~16 regexes per statement** —
-`crates/kasirmu-plugin/src/db.rs:214-224`, `:323-330` ✔ (3B-03). `contains_word` builds a
-`format!` pattern and calls `Regex::new` for 13 blocked keywords plus PRAGMA plus two
-ALTER/TABLE checks on every plugin `exec`/`query`, while the ten table patterns a few lines away
-are correctly cached in `OnceLock`s. *Fix:* cache the keyword regexes, or word-scan on bytes and
-drop the `to_uppercase()`.
+`crates/kasirmu-plugin/src/db.rs` ✔ **PAID 2026-10-22** (3B-03). `contains_word` built a `format!`
+pattern and called `Regex::new` on every invocation, and `validate_sql` invokes it once per
+`BLOCKED_KEYWORDS` entry plus PRAGMA plus the two ALTER/TABLE checks — ~16 compilations per plugin
+`exec`/`query`, while the ten table patterns a few lines away were already `OnceLock`-cached.
+
+**Option A (cache), not option B (byte-scan), and the reason is that this is a security check.** A
+`KeywordRegexes` cache in a `OnceLock` holds one compiled regex per blocked keyword plus PRAGMA, ALTER
+and TABLE. The patterns are byte-for-byte the ones the old code built inline, so the matches — and
+therefore which statements are rejected — cannot change. The faster-looking option B (`drop the regexes,
+word-scan on bytes, drop `to_uppercase()`) rewrites the matching semantics, and `\b` is not trivially a
+byte comparison: `_` is a word character, digits and letters are one run, and the regex is `(?i)` whose
+Unicode case folding is not the same as `to_uppercase()`. For a change whose only upside is going from
+"16 compiles" to "zero compiles" — and where the matching itself was never the cost — rewriting the
+rule buys nothing and risks the one thing the function exists to do.
+
+**An unknown keyword panics rather than compiling fresh or reporting absent.** A fresh compile would
+quietly restore the per-call cost this cache removes; reporting absent is the fail-OPEN direction the
+function's own PLG-B note forbids. So a keyword added to `validate_sql` without being added to
+`build_keyword_regexes` fails loudly in the first test that exercises it.
+
+**Two tests pin what a cache keyed on keyword TEXT could most easily lose.**
+`cached_keyword_regexes_preserve_word_boundary_semantics` asserts both directions: a blocked keyword
+appearing only as a SUBSTRING of a longer identifier stays allowed (`test_pragma_notes`, `test_tableau`,
+`test_attached_items`) — a false positive there rejects legitimate plugin SQL with no workaround — while
+the bare word is still caught in each surrounding form. `keyword_regex_cache_compiles_and_matches_every_
+keyword` is the sibling of `sql_validation_regexes_compile`: a pattern typo or a keyword missed by
+`build_keyword_regexes` fails there instead of at the first plugin call in a live process.
+
+`cargo test -p kasirmu-plugin --lib` = **226 passed, 0 failed** (224 before, plus the two above).
 
 **O-M48 · kasirmu-plugin — plugin `query` is unbounded and clones each column name per cell** —
 `crates/kasirmu-plugin/src/db.rs:93-128` ✔ (3B-04). No row cap; the whole result set is
@@ -3622,3 +3677,72 @@ fails, minus the duplicate argument succeeds.
 `kasirmu-bridge` **1 528 passed, 0 failed, 1 ignored** for the whole crate — the number that matters,
 and the first time this crate has been fully green in this session. Scratch directories: 2,338 → 2,338
 across a 26-test run, where before every run added one per test.
+## §11AX — O-M22, O-M23, O-M47: the hottest write path, and a metric that measured the wrong thing (2026-10-22)
+
+Three Medium entries closed, all on hot paths. One of them turned out to be a correctness fix wearing a
+performance entry's clothes.
+
+**O-M22** replaced an O(n²) reassembly with a merge. The quadratic was
+`valid_indexes.iter().position(|&v| v == idx)` inside a loop over all items — 10⁶ comparisons on a
+1,000-item push. It is legal only because `valid_indexes` is strictly ascending (one forward pass
+pushing `idx` in increasing order), which is the fact the fix rests on and the one the new comment
+records. The ordering itself is a client contract: `apply_push_results` zips `pending` against
+`results` by index, so a reordering marks the wrong items synced. That contract was already pinned by
+`push_outcomes_preserve_request_order_with_mixed_batch`, which passes unchanged — the right kind of
+evidence for a change of this shape.
+
+**O-M23 was filed as a cost and was actually a measurement defect.** The code re-serialised the whole
+batch with `serde_json::to_vec` purely to read `.len()` for one histogram. Expensive, yes — a second
+full serialisation plus a throwaway buffer the size of the request on the hottest write path. But the
+metric is documented as *"Push request body size in bytes"*, and a re-serialisation is that only when
+the client's JSON happens to match serde's exactly: no extra whitespace, same key order. **A client
+pretty-printing its JSON inflated its own request with the old metric never seeing it.** The handler
+now takes the raw body and observes `body.len()`, which is the quantity the metric names instead of a
+proxy for it.
+
+**And that refactor nearly shipped a renegotiated HTTP contract.** Moving the parse into the handler
+meant choosing a rejection status, and mirroring `axum::Json`'s content-type status (422) is the
+obvious-looking choice. It broke `push_rejects_malformed_json`, which pins **400**. A performance change
+that quietly changes what a client sees on a bad request is precisely the regression that ships
+silently, and the only reason this one did not is that somebody had written the status down in a test.
+Companion detail in the same change: `#[tracing::instrument(skip(state, items))]` referenced a
+parameter that no longer existed once the extractor changed — the compiler caught that one, but it is
+the same failure shape: a refactor quietly deleting something a reader relies on.
+
+**O-M47** cached ~16 regexes that were recompiled per statement.
+
+The ledger offered two fixes and the safer one was taken: cache the compiled patterns, do not rewrite
+the matching rule. The faster-sounding option — drop the regexes, word-scan on bytes, drop
+`to_uppercase()` — rewrites the semantics of a SECURITY check, where `\b` is not trivially a byte
+comparison (`_` is a word character; `(?i)` Unicode folding is not `to_uppercase()`), and where the
+win is only "16 compiles" to "zero compiles" for a matching step that was never the cost. A cache
+whose patterns are byte-identical to what the old code built inline **cannot change which statements are
+rejected**, which is the property that matters.
+
+An unknown keyword panics rather than compiling fresh or reporting absent — a fresh compile would
+restore the cost the cache removes, and reporting absent is the fail-open direction on a security
+check.
+
+### The gap that review closed
+
+The lane shipped the cache correctly but with **no test pinning the property a keyword-keyed cache most
+easily loses**: word boundaries. Two tests were added. `cached_keyword_regexes_preserve_word_boundary_
+semantics` asserts both directions — a blocked keyword as a SUBSTRING of a longer identifier stays
+allowed (`test_pragma_notes`, `test_tableau`), while the bare word is still caught in every surrounding
+form. The first direction is a false positive a plugin author cannot work around; the second is the
+security hole the function exists to close. `keyword_regex_cache_compiles_and_matches_every_keyword` is
+the sibling of the existing `sql_validation_regexes_compile`, so a keyword added to `validate_sql` but
+missed by the cache builder fails in CI rather than in a live process.
+
+`cargo test -p kasirmu-plugin --lib` = **226 passed, 0 failed**.
+
+### A note on the environment, again
+
+One `cargo test` run died with `error: attempting to skip non-existent parameter` hidden behind an
+**incremental-compilation ICE** (`encountered incremental compilation error with
+evaluate_obligation(...)`). Re-running with `CARGO_INCREMENTAL=0` surfaced the real, ordinary compiler
+error. When a Rust build reports an "internal compiler error" on this machine, suspect the incremental
+cache before the code — and note that the ICE was masking a genuine error, not inventing one.
+
+**Verification this round:** `kasirmu-cloud` **398 passed, 0 failed** (43 ignored) ·
+`kasirmu-plugin` **226 passed, 0 failed**.
