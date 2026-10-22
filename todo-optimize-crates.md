@@ -933,8 +933,9 @@ Fixed: shared `reqwest::Client` in `OnceLock` singleton with 10s connect / 30s r
 reusing TLS contexts and connection pools across conflict list/resolve calls.
 
 **O-M33 · mobile — image-cache missing-set computed by one sequential stat per file per
-cycle** — `apps/mobile-tauri/src/image_download.rs:231-236` ◦. 10k images = 10k awaited
-syscalls per cycle. *Fix:* `read_dir` once into a `HashSet` and diff.
+cycle** — `apps/mobile-tauri/src/image_download.rs` ✔ **PAID 2026-10-22 in `b651fe4cc`**.
+Fixed: scanned `images/` directory once with `read_dir` into a `HashSet<String>` and diffed in memory,
+eliminating sequential per-file `try_exists` stat syscalls and per-file path allocations.
 
 **O-M34 · platform/sync — one full JSON serialisation of the backlog per item, plus two copies** —
 ✅ **PAID 2026-10-21.** `estimate_item_bytes` replaces the per-item `to_vec`, and the pre-sort
@@ -4577,6 +4578,22 @@ Resolved with:
 3. Added unit test `test_alert_cooldown_prunes_expired_tenants_on_insert` asserting that expired churned tenants
    are swept upon subsequent alerts.
 Verified with `cargo test -p kasirmu-cloud --bin kasirmu-cloud quota_detector`. All 17 tests pass.
+
+## §11BI — O-M33 resolved: single-pass directory scan for image cache missing-set (2026-10-22)
+
+In `apps/mobile-tauri/src/image_download.rs`, Phase 2 of `run_cycle` previously executed:
+`let path = cache_dir.join("images").join(format!("{hash}.webp"));`
+`tokio::fs::try_exists(&path).await`
+for every single catalog image referenced on the device. For catalogs with thousands of images,
+this caused thousands of sequential asynchronous filesystem stat syscalls and path allocations on every sync cycle.
+
+Replaced with a single `tokio::fs::read_dir` over `cache_dir.join("images")`, streaming filenames into
+a `HashSet<String>` of present image hashes in one pass. The missing set is then derived via in-memory
+$O(1)$ set containment checks against `referenced`, eliminating sequential per-file stat syscalls and
+per-file path join allocations.
+
+Verified with `cargo test -p kasirmu-mobile --lib image_download`. All 8 tests pass.
+
 
 
 
