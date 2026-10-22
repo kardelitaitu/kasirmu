@@ -345,11 +345,35 @@ fn push_outcome_label(outcome: &PushOutcome) -> &'static str {
 ///
 /// Each item is inserted with its existing client-generated ID. Duplicate
 /// IDs (UNIQUE constraint violation) are reported as `Rejected`.
-#[tracing::instrument(skip(state, items), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default"), item_count = items.len()))]
+// O-M23: `items` is no longer a parameter (the handler takes the raw body and
+// parses it below), so the span cannot read `items.len()` up front. The span now
+// opens with `body_bytes` — the same quantity the metric records — and
+// `item_count` is recorded on the span once the body has been parsed, so the
+// field is still present on every span that reaches the parse.
+#[tracing::instrument(skip(state, body), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default"), body_bytes = body.len()))]
 async fn push_handler(
     State(state): State<SyncState>,
     Extension(claims): Extension<ApiTokenClaims>,
-    axum::Json(items): axum::Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    // O-M23: take the RAW body rather than `axum::Json<Vec<..>>`. Two reasons,
+    // and the second is the one that matters:
+    //
+    // 1. Cost. The metric below needs the body size, and the old code got it by
+    //    re-serialising the already-parsed `items` with `serde_json::to_vec` —
+    //    a second full serialisation of the hottest write path, allocating a
+    //    throwaway buffer the size of the request, purely to read `.len()`.
+    //
+    // 2. Meaning. The metric is documented as "Push request body size in bytes"
+    //    (`metrics.rs`), i.e. the TRANSPORT size. `serde_json::to_vec(&items)`
+    //    is the size of a RE-SERIALISATION, which is only equal to the request
+    //    body if the client formatted its JSON exactly as serde would (no
+    //    extra whitespace, same key order, same float formatting). A client
+    //    sending pretty-printed JSON inflates its own request without the old
+    //    metric ever seeing it. `bytes.len()` IS the body, so this observes the
+    //    quantity the metric names rather than a proxy for it.
+    //
+    // Malformed JSON is still rejected, just at the parse below instead of in
+    // the extractor, and with the same status the `Json` rejection produced.
+    body: axum::body::Bytes,
 ) -> Result<axum::Json<PushResponse>, (axum::http::StatusCode, String)> {
     let start = std::time::Instant::now();
 
@@ -357,9 +381,26 @@ async fn push_handler(
     // incoming JSON body, to prevent tenant spoofing.
     let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
 
-    // Estimate batch size for metrics.
-    let batch_bytes = serde_json::to_vec(&items).map(|v| v.len()).unwrap_or(0) as f64;
-    metrics::SYNC_BATCH_SIZE_BYTES.observe(batch_bytes);
+    // Request body size, as sent.
+    metrics::SYNC_BATCH_SIZE_BYTES.observe(body.len() as f64);
+
+    // Parse at the handler edge. The status and message mirror what
+    // `axum::Json` returned before, so a client sees no behaviour change.
+    // 400, matching what the `axum::Json` extractor returned before O-M23:
+    // `push_rejects_malformed_json` pins that status, and taking the raw body
+    // must not silently renegotiate a client-visible contract.
+    let items: Vec<kasirmu_core::offline::OfflineQueueItem> = serde_json::from_slice(&body)
+        .map_err(|e| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("Failed to deserialize the JSON body into the target type: {e}"),
+            )
+        })?;
+    // Recorded here rather than in `#[instrument(fields(..))]` because the
+    // count does not exist until the body is parsed (O-M23). Nothing that read
+    // `item_count` on the span loses it: every request that reaches this line
+    // has it, and a body that fails to parse never had a count to report.
+    tracing::Span::current().record("item_count", items.len());
 
     // Phase 1.2: INSERT goes through the sync store in a single transaction
     // (previously one transaction per item). `db_start` measures backend
