@@ -414,18 +414,46 @@ async fn push_handler(
 
     // Reassemble in request order: invalid ids stay Rejected at their
     // original position; batch outcomes land at the valid items' slots.
+    //
+    // O-M22: this is a MERGE, not a scan. `valid_indexes` is strictly ascending
+    // (one forward pass over `items` pushes `idx` in increasing order), so a
+    // single forward cursor suffices: walk `items` and `valid_indexes` together
+    // and the total work is O(items + valid), not the O(items x valid) of
+    // `valid_indexes.iter().position(..)` inside the loop over all items (a
+    // 1,000-item push did 10^6 comparisons).
+    //
+    // Order is the correctness invariant, not a nicety: the client zips `pending`
+    // against `results` by index (`apply_push_results`), so a reordering would
+    // mark the WRONG items synced. The loop emits exactly one outcome per
+    // `items` entry, in request order, so `results.len() == items.len()`.
     let mut results = Vec::with_capacity(items.len());
+    // Cursor into `valid_indexes` / `batch_results`: the position of the next
+    // valid item still waiting for its outcome. It only ever moves forward,
+    // which is what makes the walk linear rather than quadratic.
+    let mut cursor = 0usize;
     for (idx, item) in items.iter().enumerate() {
-        let outcome = match valid_indexes.iter().position(|&v| v == idx) {
-            Some(pos) => batch_results.get(pos).cloned().unwrap_or_else(|| {
-                // Should be unreachable: every valid index has an outcome.
-                PushOutcome::Rejected {
-                    reason: format!("missing batch outcome for {}", item.id),
+        let outcome = if cursor < valid_indexes.len() && valid_indexes[cursor] == idx {
+            // `idx` is the next valid item, so its outcome sits at the same
+            // position: `valid_indexes` and `batch_results` were filled by the
+            // same forward pass. Advance the cursor before reading so the
+            // slot stays correct for the next iteration.
+            let pos = cursor;
+            cursor += 1;
+            match batch_results.get(pos) {
+                Some(outcome) => outcome.clone(),
+                None => {
+                    // Should be unreachable: every valid index has an outcome.
+                    PushOutcome::Rejected {
+                        reason: format!("missing batch outcome for {}", item.id),
+                    }
                 }
-            }),
-            None => PushOutcome::Rejected {
+            }
+        } else {
+            // Not a valid index: the invalid id keeps its Rejected here, at its
+            // original position in the request.
+            PushOutcome::Rejected {
                 reason: format!("invalid id: {}", item.id),
-            },
+            }
         };
         metrics::SYNC_PUSHES_TOTAL
             .with_label_values(&[push_outcome_label(&outcome)])
