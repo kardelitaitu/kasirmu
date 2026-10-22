@@ -237,10 +237,9 @@ pub fn query_menu_engineering(
         .collect::<Result<Vec<_>, _>>()?;
 
     // Merge rows for the same product (same product sold at different prices).
+    // Note: merge_same_product_rows already returns rows sorted by total_revenue_minor descending,
+    // so an immediate re-sort here is redundant (O-M55).
     rows = merge_same_product_rows(rows);
-
-    // Sort by total revenue descending.
-    rows.sort_by_key(|b| std::cmp::Reverse(b.total_revenue_minor));
 
     // Calculate medians. Both stay integer (O-L20): the volume median is a
     // plain i64 because every element is one; the margin median keeps its
@@ -402,33 +401,31 @@ impl MarginMedian {
 /// Median of a slice of integer-valued items, extracted by `extract`.
 ///
 /// An empty slice yields the zero interval.
+/// Uses `select_nth_unstable` in $O(n)$ time rather than a full $O(n \log n)$ sort (O-M55).
 fn median_of<T>(items: &[T], extract: impl Fn(&T) -> i64) -> MarginMedian {
     if items.is_empty() {
         return MarginMedian::zero();
     }
 
     let mut values: Vec<i64> = items.iter().map(extract).collect();
-    values.sort_unstable();
-
     let len = values.len();
+    let mid = len / 2;
+
     if len.is_multiple_of(2) {
-        MarginMedian {
-            lower: values[len / 2 - 1],
-            upper: values[len / 2],
-        }
+        values.select_nth_unstable(mid);
+        let upper = values[mid];
+        let lower = *values[..mid].iter().max().unwrap_or(&upper);
+        MarginMedian { lower, upper }
     } else {
-        MarginMedian::point(values[len / 2])
+        values.select_nth_unstable(mid);
+        MarginMedian::point(values[mid])
     }
-    // `values` is sorted, so `lower <= upper` holds by construction; the
-    // interval's comparison and ceil both rely on it.
 }
 
 /// Median total volume across the rows, in units.
 fn volume_median_of(rows: &[MenuEngineeringRow]) -> i64 {
-    // Volume is a count and always an integer, so its median is too.
-    let median = median_of(rows, |r| r.total_volume);
-    debug_assert_eq!(median.lower, median.upper);
-    median.lower
+    // Volume is a count and always an integer, so its threshold is its ceil_of_mean.
+    median_of(rows, |r| r.total_volume).high_water_mark()
 }
 
 /// Exact median of the rows' total contribution margin, in minor units.
