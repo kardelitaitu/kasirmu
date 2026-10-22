@@ -15,18 +15,22 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 66 | 60 | **6** |
-| Low | 23 | 16 | **7** |
+| Medium | 66 | 61 | **5** |
+| Low | 23 | 17 | **6** |
 | Test (O-T) | 16 | 10 | **6** |
-| **Total** | **131** | **112** | **19** |
+| **Total** | **131** | **114** | **17** |
 
-**Updated 2026-10-22 (round 9).** O-M40, O-M41, O-M42 and O-M48 closed, on top of round 8's O-M22/M23/M47
-and round 7's three Test entries. **The High tier is empty and 19 entries remain**: 6 Test, 7 Low, 6
-Medium. The Medium remainder is now a scatter rather than a block — `kasirmu-api` image packing (O-M24),
-the cloud snapshot cache (O-M25), the per-memo insert fan-out (O-M26), the Android JNI mutex (O-M43), the
-local-api audit sink (O-M46) and the `kasirpkg` per-row probes (O-M49) — so the next pass can take them in
-parallel with no shared files. Counting rule unchanged — a `## §11*` heading or an in-entry marking verb;
-never a commit message alone.
+**Updated 2026-10-22 (round 10).** O-M24, O-M25 and O-M49 closed by this session; O-L01, O-L02, O-L06,
+O-L07, O-L08, O-L09, O-L10, O-L11, O-L18 and O-M26 closed by concurrent sessions in the same round. **The
+High tier is empty and 17 entries remain**: 6 Test, 6 Low, 5 Medium.
+
+**One of them is not really closed: O-M46.** Commit `401ddd3da` says it resolves the entry, and the
+`kasirmu-local-api` suite HANGS at HEAD because of two tests that commit added (§11AZ). The gate counts it
+as closed because the commit subject says so; the tree says otherwise. **A suite that hangs is worse than
+a suite that fails** — a red test names itself, a hang produces a CI timeout with no name — so the next
+pass should fix or revert that commit before anything else.
+
+Counting rule unchanged — a `## §11*` heading or an in-entry marking verb; never a commit message alone.
 
 **A correction that cost this round: THREE Test entries I opened as work were already paid**
 (O-T01, O-T03 and O-T04's prescribed fix), and one (O-T04) understated its own blast radius by 43%
@@ -1113,11 +1117,52 @@ of `initial * 2^n` (100 * 2^57 fits `u64`, 100 * 2^58 does not), but `1u64 << 64
 attempt 65 regardless of the multiply. `MAX_RETRIES` keeps `attempt <= 8`, and both sites also
 `saturating_mul`/`.min(63)` so the panic is unreachable twice over rather than once.
 
-**O-M46 · kasirmu-local-api — the audit sink writes through the handlers' DB mutex, one
-unbounded task per event** — `crates/kasirmu-local-api/src/lib.rs:528-571` ✔ (3B-01). Every
-mutating request queues an extra blocking `INSERT` behind the single connection the handlers use,
-and each `record` spawns a task that clones the event and only `warn!`s on failure. *Fix:*
-dedicated connection or a bounded channel with one writer; count failures rather than log them.
+**O-M46 · kasirmu-local-api — the audit sink writes through the handlers' DB mutex, one**
+**unbounded task per event** — `crates/kasirmu-local-api/src/lib.rs` (3B-01). Every mutating request
+queued an extra blocking `INSERT` behind the single connection the handlers use, and each `record`
+spawned a task that cloned the event and only `warn!`s on failure. *Fix:* dedicated connection or a
+bounded channel with one writer; count failures rather than log them.
+
+**⚠️ OPEN, and the crate's test suite currently HANGS at HEAD.** Commit `401ddd3da`
+("perf(local-api): resolve O-M46 with dedicated audit connection and bounded queue") implemented BOTH
+halves — the dedicated connection AND a bounded channel with back-pressure — and its own two tests hang:
+
+- `tests::a_full_channel_blocks_and_still_loses_nothing`
+- `tests::audit_writes_do_not_hold_the_handlers_connection`
+
+Measured at `4ef5f14a7`: `cargo test -p kasirmu-local-api --lib` runs 26 tests, reports "has been
+running for over 60 seconds" for both, then aborts with `error: test failed` and NO `test result:` line.
+With exactly those two skipped, the same suite is **24 passed, 0 failed in 3.12 s**. So the two tests
+are the whole problem and everything else in the crate is green.
+
+**The root cause, isolated by the lane that wrote it:** when the writer exits the channel is `Closed`,
+and the FULL-path `await_room` spawned `drain_parked_then_send`, which does `tx.send(msg).await` on a
+CLOSED channel. Tokio parks a sender once the queue is empty and the receiver is gone, so that send
+never resolves; the task waits forever and runtime shutdown then blocks waiting for it. The second test
+hangs for the same reason once its own assertion panics and leaves the parked task behind.
+
+**The design conclusion, which is the useful part and cost the most to learn:** `AuditSink::record` is a
+SYNCHRONOUS trait method, so "wait for capacity" has **no legitimate expression**. Blocking the caller
+stalls a tokio worker; spawning defers to a task nobody awaits; parking in a static leaks. The lane
+measured this directly — a gated-writer probe showed `record` had already returned and the queue had
+never even filled, because awaiting is enough to let the writer drain. That is the argument, not a guess.
+
+**What a second attempt should take: the dedicated-connection half ONLY.**
+`StoreAuditSink::open(path, store_id)` with WAL + `busy_timeout(5s)` + `foreign_keys` is what makes a
+second writer safe and is the piece that removes the contention the entry is actually about. Keep the
+counted failure (`AtomicU64`, first failure at ERROR then every 100th) and a `flush` bounded by a
+timeout so tests wait for durability instead of sleeping. Leave the queue out. Also: do NOT log via a
+per-event `tokio::spawn` "for ordering" — `log_audit` reads the previous row's hash, so N concurrent
+writers race the chain; serialise through the sink's own `Mutex<Connection>`.
+
+**A trap for whoever writes the tests:** any "N events -> N rows" assertion must budget for
+`kasirmu_core::db::audit::check_audit_rate_limit`, a PROCESS-WIDE 1000/min sliding budget that returns
+`Ok` WITHOUT writing. A burst above it loses rows by design and looks exactly like sink loss — that
+produced the misleading 480-vs-500 counts during this work. `reset_audit_rate_limit_for_test` is
+`pub(crate)` in `kasirmu-core` and unreachable from this crate.
+
+Fix or revert `401ddd3da` before anything else: **a suite that hangs is worse than a suite that fails**,
+because CI reports a timeout with no test name rather than a red test with one.
 
 ```rust
 533          tokio::spawn(async move {
@@ -4011,3 +4056,81 @@ query.
 
 **Verification this round:** `kasirmu-hal` **428 passed, 0 failed** (361 before; 67 new) ·
 `kasirmu-plugin` **233 passed, 0 failed** (226 before; 7 new).
+## §11AZ — O-M46: a commit that says "resolve" while the suite hangs (2026-10-22)
+
+This section exists because `401ddd3da` claims to close **O-M46** and does not. The entry stays OPEN, and
+the crate's test suite is currently red in the worst way.
+
+**Measured at `4ef5f14a7`:** `cargo test -p kasirmu-local-api --lib` runs 26 tests, prints "has been
+running for over 60 seconds" for `a_full_channel_blocks_and_still_loses_nothing` and
+`audit_writes_do_not_hold_the_handlers_connection`, then aborts with `error: test failed` and **no
+`test result:` line at all**. With exactly those two skipped it is **24 passed, 0 failed in 3.12 s**. The
+two tests are the whole problem; everything else in the crate is green.
+
+**A hanging suite is worse than a failing one.** A red test names itself; a hang produces a CI timeout with
+no test name, and the next person to investigate starts from zero. That asymmetry is why this is
+recorded as a defect rather than a flaky test.
+
+**The mechanism, isolated:** when the writer exits the channel is `Closed`, and the FULL-path `await_room`
+spawned `drain_parked_then_send`, which does `tx.send(msg).await` on a CLOSED channel. Tokio parks a
+sender once the queue is empty and the receiver is gone, so that send never resolves; the task waits
+forever and runtime shutdown then blocks waiting for it. The second test hangs for the same reason once
+its own assertion panics and leaves the parked task behind.
+
+**The design conclusion, which cost the most to learn and is the part worth keeping:** `AuditSink::record`
+is a SYNCHRONOUS trait method, so "wait for capacity" has **no legitimate expression**. Blocking the
+caller stalls a tokio worker; spawning defers to a task nobody awaits; parking in a static leaks. The
+implementer proved this directly — a gated-writer probe showed `record` had already returned and the
+queue had never even filled, because awaiting is enough to let the writer drain.
+
+**What to take on a second attempt: the dedicated-connection half only.**
+`StoreAuditSink::open(path, store_id)` with WAL + `busy_timeout(5s)` + `foreign_keys` is what makes a
+second writer safe, and it is the piece that removes the contention the entry is actually about. Keep
+the counted failure and a timeout-bounded `flush` so tests await durability instead of sleeping. Leave
+the queue out.
+
+Two traps for that attempt: do NOT log via a per-event `tokio::spawn` "for ordering" (`log_audit` reads
+the previous row's hash, so N concurrent writers race the chain — serialise through the sink's own
+`Mutex<Connection>`); and any "N events → N rows" assertion must budget for
+`kasirmu_core::db::audit::check_audit_rate_limit`, a PROCESS-WIDE 1000/min sliding budget that returns
+`Ok` WITHOUT writing — a burst above it loses rows by design and looks exactly like sink loss, which is
+what produced the misleading 480-vs-500 counts during this work.
+
+**A note on the ledger gate.** `check-debt-ledger.py` now flags ten entries closed by commit subject with
+no section, nine of them from concurrent sessions (`O-L01`, `O-L02`, `O-L06`, `O-L07`, `O-L08`, `O-L09`,
+`O-L10`, `O-L11`, `O-M26`). That is the shared-branch cost of parallel work: each session's pathspec
+commit is correct, but the ledger section that makes a closure auditable is written by whoever holds the
+file. Those nine need sections from their own authors; this one gets the section for O-M46 because the
+commit message and the tree disagree, and the disagreement is the finding.
+## §11BA — the Low tier's first pass: O-L01, O-L02, O-L06, O-L07, O-L08, O-L09, O-L10, O-L11, O-L18 and O-M26 (2026-10-22)
+
+Nine entries closed by concurrent sessions in this round, recorded here because their commits named the
+entries without the ledger section that makes a closure auditable. Each is verified below by the commit
+and the files it touched — not by the commit subject alone.
+
+| Entry | Commit | What it touched |
+|---|---|---|
+| O-L01 | `3746ef544` | `products_stock_adjust/ledger.rs` — `prepare_cached` for the per-row shortfall INSERT, hoisted above the loop |
+| O-L02 | `1227b88f7` | `db/downgrade.rs`, `db/stock_counts.rs` — rollback failures LOGGED instead of discarded |
+| O-L06 | `a79a5b31d` | `api/auth.rs` — `Arc<str>` JWT cache keys and incremental eviction, replacing two String allocations per request |
+| O-L07 | `d9bc56f7b` | `api/routes/images.rs` — internal storage and refcount errors reported as 500 rather than swallowed |
+| O-L08, O-L09 | `824974af0` | `mobile-tauri` `features.rs`, `products.rs` — `HashSet` toggle diffs, and real DB guards dropped |
+| O-L10 | `4ef5f14a7` | `platform/sync` `queue/appliers.rs` — refund-line statement prepared once above the loop |
+| O-L11 | `224b6a7b2` | `sync/crdt/version_vector.rs` — `iter` returns `(&str, &Counter)` instead of `(&String, …)` |
+| O-L18 | `17136eb56` | `kasirmu-cli` — `copy_reference_data` wrapped in a transaction instead of row-by-row autocommit |
+| O-M26 | `a3795dccf` | `api/pg/memos.rs` — batched `unnest` inserts for memo locations and recipients, replacing one INSERT per memo x location x recipient |
+
+**The Low tier is the one that went fastest, and the reason is worth naming:** every one of these is a
+`prepare_cached`, a dropped `.ok()`, a type tightening or a hoist — changes whose safety is visible in a
+few lines and whose test is already written. That is the opposite of the Medium entries above it, where
+the prescription itself was wrong and the work was deciding what the change should be.
+
+One caution attached to O-L02 specifically: turning a discarded rollback failure into a log is an
+improvement, but a rollback that FAILS leaves the connection in an unknown transaction state, and
+logging it does not recover from that. If a second pass on that code finds the connection then reused
+by the next command, the log is evidence rather than a fix. The entry is closed for what it asked
+(stop discarding the error); the state question is separate and unrecorded.
+
+Nothing here was re-verified by this session beyond reading the commits and their file lists — that is a
+materially weaker claim than the runs recorded in the sections above, and it is stated as such rather
+than dressed up.
