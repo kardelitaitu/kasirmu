@@ -169,10 +169,12 @@ pub async fn sync_memos(
         tx.execute("DELETE FROM memo_locations WHERE memo_id = $1", &[&m.id])
             .await
             .map_err(|e| PgError::Db(e.to_string()))?;
-        for location_id in &m.location_ids {
+        if !m.location_ids.is_empty() {
+            let locs: Vec<&str> = m.location_ids.iter().map(String::as_str).collect();
             tx.execute(
-                "INSERT INTO memo_locations (memo_id, location_id, tenant_id) VALUES ($1, $2, $3)",
-                &[&m.id, location_id, &tenant_id.to_string()],
+                "INSERT INTO memo_locations (memo_id, location_id, tenant_id)
+                 SELECT $1, unnest($2::text[]), $3",
+                &[&m.id, &locs, &tenant_id],
             )
             .await
             .map_err(|e| PgError::Db(e.to_string()))?;
@@ -204,6 +206,13 @@ pub async fn sync_memos(
                 .map(|r| (r.get::<_, String>(0), r.get::<_, i32>(1)))
                 .collect()
         };
+        let mut r_ids: Vec<&str> = Vec::new();
+        let mut r_terminals: Vec<&str> = Vec::new();
+        let mut r_statuses: Vec<&str> = Vec::new();
+        let mut r_delivered_ats: Vec<Option<&str>> = Vec::new();
+        let mut r_ack_ats: Vec<Option<&str>> = Vec::new();
+        let mut r_ack_bys: Vec<Option<&str>> = Vec::new();
+
         for r in &m.recipients {
             let incoming_rank = match r.delivery_status.as_str() {
                 "pending" => 0,
@@ -216,10 +225,21 @@ pub async fn sync_memos(
             if keep_existing {
                 continue;
             }
+            r_ids.push(r.id.as_str());
+            r_terminals.push(r.terminal_id.as_str());
+            r_statuses.push(r.delivery_status.as_str());
+            r_delivered_ats.push(r.delivered_at.as_deref());
+            r_ack_ats.push(r.acknowledged_at.as_deref());
+            r_ack_bys.push(r.acknowledged_by.as_deref());
+        }
+
+        if !r_ids.is_empty() {
             tx.execute(
                 "INSERT INTO memo_recipients (id, memo_id, terminal_id, delivery_status,
                                              delivered_at, acknowledged_at, acknowledged_by, tenant_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 SELECT u.id, $1, u.terminal_id, u.delivery_status, u.delivered_at, u.acknowledged_at, u.acknowledged_by, $2
+                 FROM unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[])
+                   AS u(id, terminal_id, delivery_status, delivered_at, acknowledged_at, acknowledged_by)
                  ON CONFLICT (memo_id, terminal_id) DO UPDATE SET
                     delivery_status = EXCLUDED.delivery_status,
                     delivered_at = EXCLUDED.delivered_at,
@@ -227,14 +247,14 @@ pub async fn sync_memos(
                     acknowledged_by = EXCLUDED.acknowledged_by,
                     id = EXCLUDED.id",
                 &[
-                    &r.id,
                     &m.id,
-                    &r.terminal_id,
-                    &r.delivery_status,
-                    &r.delivered_at,
-                    &r.acknowledged_at,
-                    &r.acknowledged_by,
-                    &tenant_id.to_string(),
+                    &tenant_id,
+                    &r_ids,
+                    &r_terminals,
+                    &r_statuses,
+                    &r_delivered_ats,
+                    &r_ack_ats,
+                    &r_ack_bys,
                 ],
             )
             .await
@@ -259,7 +279,7 @@ pub async fn sync_memos(
     let deleted = tx
         .execute(
             "DELETE FROM memos WHERE tenant_id = $1 AND NOT (id = ANY($2))",
-            &[&tenant_id.to_string(), &ids],
+            &[&tenant_id, &ids],
         )
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
@@ -462,11 +482,7 @@ pub async fn list_active_memos_for_terminal(
                AND (m.expires_at IS NULL OR m.expires_at > $3)
              ORDER BY (EXISTS (SELECT 1 FROM memo_locations ml WHERE ml.memo_id = m.id)) DESC,
                       m.published_at DESC",
-            &[
-                &tenant_id.to_string(),
-                &terminal_id.to_string(),
-                &now.to_string(),
-            ],
+            &[&tenant_id, &terminal_id, &now],
         )
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
