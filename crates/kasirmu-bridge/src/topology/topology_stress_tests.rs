@@ -1774,11 +1774,25 @@ fn five_thousand_nodes_with_five_thousand_wires_combined_db() {
     assert_eq!(loaded.wires.len(), 5_000);
 
     // Verify ring integrity: each wire connects sequential nodes.
+    //
+    // The expected ids are formatted into ONE reusable buffer rather than a
+    // fresh `format!` per side per wire (O-T09): the assertion is unchanged —
+    // both edges are still compared to the exact zero-padded id, and every one
+    // of the 5,000 wires is still checked — only the 10,000 throwaway
+    // allocations are gone. The fixture is deliberately NOT shrunk: this is a
+    // 5,000-node/5,000-wire stress round trip, and a 500-node version would be
+    // asserting less than the name promises.
+    use std::fmt::Write as _;
+    let mut expected = String::with_capacity(16);
     for i in 0..5_000 {
         let w = &loaded.wires[i];
-        assert_eq!(w.from_node_id, format!("combo-n-{i:04}"));
+        expected.clear();
+        write!(expected, "combo-n-{i:04}").unwrap();
+        assert_eq!(w.from_node_id, expected, "ring out-edge broken at wire {i}");
         let next = (i + 1) % 5_000;
-        assert_eq!(w.to_node_id, format!("combo-n-{next:04}"));
+        expected.clear();
+        write!(expected, "combo-n-{next:04}").unwrap();
+        assert_eq!(w.to_node_id, expected, "ring in-edge broken at wire {i}");
     }
 }
 
