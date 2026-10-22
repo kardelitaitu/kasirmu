@@ -136,12 +136,26 @@ impl Store<'_> {
                 Ok(markers)
             }
             Err(e) => {
-                let _ = self
+                if let Err(rb_err) = self
                     .conn
-                    .execute_batch("ROLLBACK TO over_quota_markers_refresh");
-                let _ = self
+                    .execute_batch("ROLLBACK TO over_quota_markers_refresh")
+                {
+                    tracing::warn!(
+                        primary_error = %e,
+                        rollback_error = %rb_err,
+                        "failed to rollback savepoint over_quota_markers_refresh"
+                    );
+                }
+                if let Err(rel_err) = self
                     .conn
-                    .execute_batch("RELEASE over_quota_markers_refresh");
+                    .execute_batch("RELEASE over_quota_markers_refresh")
+                {
+                    tracing::warn!(
+                        primary_error = %e,
+                        release_error = %rel_err,
+                        "failed to release savepoint over_quota_markers_refresh"
+                    );
+                }
                 Err(e)
             }
         }
