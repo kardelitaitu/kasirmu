@@ -6962,3 +6962,81 @@ compared trees where the helper had DIFFERENT CODE (HEAD's unguarded version vs 
 the 'control' at HEAD was not a control at all. A control must hold the suspect constant.
 
 ### Ledger: 146 defined, 145 closed, 1 open.
+## §11CV — O-M77 closed: the scoped workspace picker got the read-repair its sibling had (2026-10-23)
+
+Landed in `1924c7851`.
+
+### Why it had stayed open
+
+`list_workspaces` (the pre-session picker) re-seeds an empty store DB from the global
+identity DB. `list_workspaces_for_store_scoped` (the terminal-management screen's
+cross-store picker) never did, so a freshly provisioned terminal opened that screen onto
+an empty grid. Round 32 recorded the asymmetry instead of reversing it, and the reason was
+sound at the time: the two functions looked like they had different data-ownership rules,
+and extending a repair changes what a *different* store's database contains as a side
+effect of a *read*.
+
+### What dissolved the objection
+
+Reading the two listers showed they are not different rules at all:
+
+```rust
+pub fn list_workspaces(&self, ...)                  -> list_workspaces_inner(...)
+pub fn list_workspaces_with_entitlement(&self, ...) -> list_workspaces_inner(...) then retain(allows_workspace_type)
+```
+
+Both are the same inner resolution; the scoped one adds a tier `retain`. So a repair
+seeded from `list_workspaces_with_entitlement` writes exactly the rows the scoped caller
+was already entitled to see, and the returned set is still the retained one. The
+"different authority rule" was not different — it was one function using a filtered view
+of the same list.
+
+That is the general form of the mistake this ledger keeps recording: an open item was
+argued from what the two function NAMES suggested, not from what the two functions CALL.
+
+### The change
+
+The 59-line repair body was extracted into `repair_store_db_from_global_rows(conn, rows)`
+and called from both listers. Extraction was not cosmetic: the two paths had already
+drifted once, and a second copy would have made the next drift invisible in the same way.
+
+### The test that flipped, as it asked to be
+
+`list_workspaces_for_store_scoped_has_no_read_repair` pinned the ABSENCE, and its own
+failure message said exactly what to do when the repair arrived:
+
+> If this ever returns the global row, the repair was extended here too — good, and this
+> test should then assert the repair instead.
+
+It is now `..._repairs_from_global_when_the_store_db_is_empty`, asserting three things:
+one row returned, the right instance and type, and — separately — that the row PERSISTED
+into the store DB. That third assertion is the one that matters, because the round-26
+defect was a repair that returned rows without writing them and re-ran on every boot.
+
+### Falsified, because a green test proves nothing on its own
+
+With the scoped repair call disabled and everything else untouched:
+
+```
+test workspaces::workspaces_tests::list_workspaces_for_store_scoped_repairs_from_global_
+     when_the_store_db_is_empty ... FAILED
+assertion `left == right` failed: the repair must persist the row into the store db,
+     not only return it
+  left: 0
+ right: 1
+test result: FAILED. 27 passed; 1 failed
+```
+
+The failure landed on the intended assertion (persistence, not the row count) and the
+other 27 tests were unaffected, so the test is aimed at the repair rather than at the
+fixture. Restored afterwards.
+
+### Verification
+
+```
+cargo test -p kasirmu-bridge --lib workspaces::  ->  28 passed, 0 failed
+cargo check -p kasirmu-bridge --all-targets      ->  clean
+rustfmt --edition 2024 --check (both files)      ->  clean
+```
+
+### Ledger: 146 defined, 146 closed, 0 open.
