@@ -125,7 +125,7 @@ pub enum MenuQuadrant {
 /// ```
 ///
 /// That is deliberately the rule the menu-engineering screen already applies
-/// (`ui/src/features/reports/MenuEngineeringScreen.tsx`, its own
+/// (the MenuEngineeringScreen report view, its own
 /// `classifyQuadrant`), and it is the *only* rule this struct's scalars
 /// support. They are the ceil of the exact median, not the exact median:
 /// for products with margins `{4, 5}` the median is `4.5` but

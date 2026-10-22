@@ -528,7 +528,7 @@ fn a_single_currency_period_still_yields_one_row_per_product() {
 // The menu-engineering screen does NOT consume `classify_quadrant`; it
 // re-derives the quadrant in TypeScript from the two published scalars:
 //
-//   ui/src/features/reports/MenuEngineeringScreen.tsx:70-71
+//   MenuEngineeringScreen:
 //     const volumeHigh = volume >= medianVolume;
 //     const marginHigh = margin >= medianMargin;
 //
@@ -537,7 +537,7 @@ fn a_single_currency_period_still_yields_one_row_per_product() {
 // screen classify the same row differently. These tests spell the UI's rule
 // out and hold the two implementations to the same answer.
 
-/// The screen's rule, transcribed (`MenuEngineeringScreen.tsx:70-71`).
+/// The screen's rule, transcribed (`MenuEngineeringScreen`).
 fn ui_classify(volume: i64, margin: i64, median_volume: i64, median_margin: i64) -> MenuQuadrant {
     let volume_high = volume >= median_volume;
     let margin_high = margin >= median_margin;
