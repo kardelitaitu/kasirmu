@@ -357,7 +357,7 @@ pub fn check_audit_rate_limit(conn: &Connection) -> Result<(), CoreError> {
     let write_u64 = |key: &str, value: u64| {
         let _ = conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2) \
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
             rusqlite::params![key, value.to_string()],
         );
     };
@@ -392,12 +392,12 @@ pub(crate) fn reset_audit_rate_limit_for_test(conn: &Connection) {
 pub(crate) fn set_audit_rate_limit_for_test(conn: &Connection, count: u64, window_start_secs: u64) {
     let _ = conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2) \
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         rusqlite::params![AUDIT_COUNT_KEY, count.to_string()],
     );
     let _ = conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2) \
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         rusqlite::params![AUDIT_WINDOW_KEY, window_start_secs.to_string()],
     );
 }
