@@ -37,6 +37,60 @@ export default ts.config(
             'monthCalendarGrid',
             'isProductActive',
             'RETAIL_COLUMN_ORDER',
+            // O-M72: the rest of the same class. Every entry below is a PURE
+            // function or a CONSTANT exported beside a component so tests can
+            // assert against the production value instead of a second copy --
+            // which is exactly what the file-level comments in those modules
+            // say. Hooks are included because a hook export is as stable across
+            // Fast Refresh as a constant is: the rule's component-only
+            // heuristic cannot tell `useSubscription` from a component.
+            'ALIGN_ACTIONS',
+            'BUCKETS',
+            'COURSE_L10N_KEYS',
+            'DAY_KEYS',
+            'EOD_TAG_KEYS',
+            'IDLE_TAX_STATE',
+            'MEMO_FIXTURES',
+            'RETAIL_SAMPLE_PRODUCTS',
+            'SORT_MODES',
+            'STORAGE_KEY',
+            '__resetIpcFailuresForTests',
+            'addOrUpdatePicked',
+            'addStationToList',
+            'bucketForOffset',
+            'clampQty',
+            'classifyModifier',
+            'closedShiftsOnStoreDay',
+            'courseL10nKey',
+            'createIdleTaxState',
+            'dayOffset',
+            'fmtDuration',
+            'formatClock',
+            'formatDate',
+            'formatPaymentMethodLabel',
+            'grandTotal',
+            'groupByCourse',
+            'groupBySection',
+            'groupByStation',
+            'headerBg',
+            'isSidebarOverlayPresented',
+            'itemDone',
+            'loadColors',
+            'minutesSinceServed',
+            'nextActionKey',
+            'overallDeviceStatus',
+            'readyToServe',
+            'recallCandidates',
+            'resolveCourseFromCategory',
+            'saveColors',
+            'shouldPollLicense',
+            'updateQtyEntry',
+            'useAdminGate',
+            'useImpersonation',
+            'useKdsCardColors',
+            'usePreExpiryReauth',
+            'useSubscription',
+            'warehouseQuotaStatus',
           ],
         },
       ],
@@ -72,6 +126,18 @@ export default ts.config(
     files: ['vite.config.d.ts'],
     rules: {
       '@typescript-eslint/consistent-type-imports': 'off',
+    },
+  },
+  {
+    // A shared TEST harness, not a production module. It exports a handful of
+    // render helpers and *Harness components so one split of the 550-test
+    // NodeTopologyEditor suite does not fork into drifting copies (the module's
+    // own header explains that split). react-refresh exists to keep Fast Refresh
+    // working while you EDIT a running app; nothing here is ever hot-reloaded,
+    // so the rule has nothing to protect.
+    files: ['src/__tests__/topologyEditorTestHarness.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
   {
