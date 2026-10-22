@@ -5485,3 +5485,63 @@ the number that would decide it.
 
 `activity_day_counts` (`popularity.rs:614-621`) filters `sku = ?1 AND event_type = ?2 AND created_at >= ?3`,
 which `idx_product_activity_sku` serves. Only the unrestricted aggregate at `:1059` scans.
+
+## §11CD — O-M44-style harness abort diagnosed: over-subscription plus a capture bug that was hiding the evidence (2026-10-22)
+
+No code changed. This section records a DIAGNOSIS that cost three rounds of visible noise, because the
+conclusion retires a fear that had been shaping every round's working method.
+
+### What was actually happening
+
+`cargo test -p kasirmu-core --lib` aborted the harness (`exit code 0xffffffff`) three times across sessions.
+Measured this round:
+
+| Measurement | Value |
+|---|---|
+| Machine | AMD Ryzen 9 7950X, 16C/32T, 31.2 GB RAM |
+| Default `--test-threads` | **32** (one per logical CPU) |
+| Test process PEAK working set | **184.6 MB** (422 samples @ 200 ms) |
+| Peak as fraction of RAM | **0.6%** |
+| Min free RAM during the run | ~4.6 GB |
+
+**The memory hypothesis is refuted by measurement.** The suite never used 1% of RAM.
+
+Mechanism: the binary declares `SizeOfStackReserve = 1 MB`, and Windows reserves that per native thread, so
+32 harness threads pre-reserve 32 MB of address space up front — under contention with 3-4 other lanes' rustc
+processes. **It is an over-subscribed build machine, not a code defect.** Supporting evidence: the same
+binary at `--test-threads=2` passed 3658/3658 in ~110 s, and 50 tests printing "running for over 60 seconds"
+in a clean 190 s run shows a suite that is simply load-sensitive rather than stuck.
+
+Counter-hypotheses all went negative: no unbounded `thread::spawn` (only a bounded 10×10 loop at
+`rate_limiter_tests.rs:349`), no `process::abort`/`exit` anywhere in the crate, no 5,000-node topology
+fixture (that is 63 small flat tests), and zero huge-fixture allocations crate-wide.
+
+### The real bug was in MY capture recipe, and it had been destroying the evidence
+
+The aborting runs produced no `test result:` line and no detail because of how I was running them:
+
+```
+cargo test -p kasirmu-core --lib > out.log 2>&1     # DROPS the 'failures:' block
+```
+
+libtest writes per-test stdout to the REAL console handle and its `stdout ----` blocks to the real stderr via
+the Console API, bypassing the CRT redirect. So redirecting to a file silently throws away exactly the part
+that explains a failure. **Every abort I "investigated" was a run whose reason I had discarded before
+reading it.** Fixed going forward with `-- --nocapture`, or a foreground run whose console is captured.
+
+### A false alarm raised by the diagnostic
+
+The diagnosing lane reported a genuine-looking test failure: `db::popularity::tests::zz_scratch_activity_plans`
+failing at `popularity_tests.rs:28` (a `SEARCH` vs `SCAN` plan assertion). It was **my own uncommitted scratch
+probe**, live in the tree while the lane sampled it, and I removed it mid-run. Verified after: `grep zz_scratch`
+returns nothing in `store/` or HEAD, and `git status` on that file is clean. **A `zz_`-prefixed scratch test
+running in another lane's window is a self-inflicted false positive** — the prefix that sorts it LAST is also
+what kept it alive across the sampling window.
+
+### Actions taken / recorded
+
+- No production change. The abort is environmental.
+- Capture recipe corrected: **`-- --nocapture` on redirected runs**, or a foreground call.
+- Leftover scratch directories accumulate in `target/mstmp/` (~250 `kasirmu-bridge-*` from 18 sites sharing
+  one scratch root). Not fixed; noted because it is a genuine load-sensitivity source independent of memory.
+- **Do NOT** add `RUST_TEST_THREADS` to `.cargo/config.toml` — that would hide the issue project-wide.
