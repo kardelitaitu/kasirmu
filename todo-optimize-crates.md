@@ -5657,3 +5657,85 @@ probe, and the probe now says so.
 27 queries covered. NOT covered: dynamic `WHERE` builders in `audit.rs`, `sales_summary.rs` past `:276`,
 the `product_activity` aggregates, payments readers, shift joins, and every writer. The probe is a curated
 gate, not a crawl.
+
+## §11CF — O-M69 opened; eleven probe queries hoisted to constants; the plan gate wired into CI (2026-10-22)
+
+Three things landed this round. The most valuable is the one that was NOT shipped.
+
+### O-M69 — found by the probe's own blind spot, and recorded open
+
+The probe covers 27 curated queries. It does NOT cover the dynamic-WHERE builders, and
+`build_audit_where` (`audit.rs:191-247`) is the most consequential of them: the admin audit screen's
+pagination. Measured over 2,000 seeded rows + `ANALYZE`:
+
+    outcome filter     -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
+    no filter          -> SCAN audit_log USING INDEX idx_audit_log_created_at
+    cursor (no filter) -> SEARCH audit_log USING INDEX idx_audit_log_created_at (created_at<?)
+
+**Filtering by `outcome` makes the plan WORSE than not filtering.** `audit_log` carries indexes on
+`action`, `created_at`, `(target_type, target_id)` and `user_id` — none leads with `outcome` — so adding
+the predicate drops the index-only walk for a full scan plus a temp sort. Every audit screen filtered to
+`failure` reads the whole log.
+
+Fix measured, not applied: `CREATE INDEX idx_audit_log_outcome_created ON audit_log(outcome, created_at
+DESC, id DESC)` turns the same query into `SEARCH audit_log USING COVERING INDEX ... (outcome=?)` and
+removes the temp B-tree. Left open deliberately: it is a schema change on the audit table, and this round
+had already committed two migrations. **Recording an open item is the behaviour this ledger kept failing at
+in the other direction** — entries marked closed that were never done.
+
+### Eleven queries hoisted, so the probe can no longer drift from them
+
+The probe's own honest weakness was that 24 of 27 queries were COPIES. Now **14 of 27 are sourced from
+production constants** (was 3). Converted: the five offline-queue listers, the two KDS list bases plus the
+shared ORDER BY fragment, and the four audit readers (`AUDIT_ROW_PROBE_SQL`, `LIST_AUDIT_ENTRIES_SQL`,
+`VERIFY_AUDIT_CHAIN_SQL`, `COUNT_AUDIT_ENTRIES_AFTER_SQL`).
+
+Two things could not become plain constants because the product builds them at run time — `get_kds_queue`
+(base + optional zone fragment + ORDER BY) and `list_kds_orders_for_instance` (base + dynamic WHERE). They
+stay copies, and a NEW test, `assembled_kds_probes_extend_the_production_base`, requires each probe literal
+to START WITH the production base constant and its suffix to equal the product's tail exactly. That is a
+weaker guarantee than a shared constant and is recorded as weaker.
+
+**How 'pure relocation' was checked**, since that is the only property that mattered: a Rust string-literal
+tokenizer diffed every SQL-bearing literal as an EXACT MULTISET between `git show HEAD:<file>` and the
+working tree. `offline.rs` 27/27 byte-identical, `audit.rs` 25/25, `kds_orders.rs` 17 -> 15 with the two
+missing being the duplicated literals that collapsed into the shared bases, and "HEAD SQL text absent from
+WORK: 0". Verified independently by reading the diff: every removed SQL line reappears verbatim inside a
+constant.
+
+### The footgun that verification surfaced, and how it was closed
+
+`rustfmt` RE-INDENTS multi-line string literals, which silently changes the query text. That would break the
+very guarantee the hoisting exists to provide, and it would move SQL without anyone reviewing a query
+change. Measured which files are actually affected: `offline.rs` and `kds_orders.rs` are untouched by it
+(compared before/after, text identical), but `audit.rs`'s `LIST_AUDIT_ENTRIES_SQL` and
+`VERIFY_AUDIT_CHAIN_SQL` are. Both now carry `#[rustfmt::skip]` with a doc comment saying WHY, and the
+comment explains that the attribute is load-bearing rather than cosmetic.
+
+### The gate is in CI
+
+`query-plan-gate` is registered in `scripts/gates.json`, runs from `scripts/check.sh`, and runs in the
+existing `dev-ci.yml#static-gates` job. Deliberately NOT pre-commit (a cargo test on every commit) and NOT
+pre-push (that runner's Tier 0 is stdlib python only, and the repo's own drift checker resolves gate labels
+against `check.sh` — a pre-push-only label has no vocabulary there). Cost: 0 to pre-push, ~20-50 s warm to
+`check.sh`, ~1-2 min to CI.
+
+Proof it fires: PASS exit 0 on a clean HEAD worktree; FAIL exit 1 after dropping the WHERE from
+`list_stock_movements`, naming the query and the table; restored with blob hashes equal to HEAD.
+
+**And a correction to my own instruction.** I told the lane to mutate `list_pending_offline` to prove the
+gate. That does NOT fail — its column list is fully covering, so SQLite answers it from the index as a
+covering-index walk, which the detector deliberately exempts. The lane found a mutation that actually
+works instead of reporting a false pass. **The documented limit is real: a `LIMIT/OFFSET` page through a
+composite index with no WHERE is never flagged**, because the probe grades missing SEEKS, not every
+unbounded walk. That limit is written in the gates.json note rather than papered over by widening the rule.
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets                  -> exit 0, zero warnings
+cargo test  -p kasirmu-core --test integration query_plan_probe -> 4 passed, 0 failed
+cargo test  -p kasirmu-core --lib                          -> 3659 passed, 0 failed (175.02s)
+rustfmt --edition 2024 --check                             -> exit 0 on all five files
+verify-ci-docs-drift / check-gate-runners / verify-gate-completeness -> all exit 0
+```
