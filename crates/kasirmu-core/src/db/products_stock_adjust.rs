@@ -67,6 +67,13 @@ mod ledger;
 #[path = "products_stock_adjust/movements.rs"]
 mod movements;
 
+// Hoisted SQL (see the notes at the head of `movements.rs` and `ledger.rs`):
+// re-exported at this facade so the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) imports them from the module that
+// declares the `Store` methods they belong to. The child modules stay private.
+pub use ledger::STOCK_LEDGER_SUM_SQL;
+pub use movements::{LIST_STOCK_MOVEMENTS_SQL, STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL};
+
 #[cfg(test)]
 #[path = "products_stock_adjust_tests.rs"]
 mod tests;

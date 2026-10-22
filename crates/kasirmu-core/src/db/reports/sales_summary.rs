@@ -42,6 +42,68 @@ const TABLE_TURN_SOURCE: &str = "FROM kds_orders k
                AND k.table_number IS NOT NULL AND k.table_number != ''
                AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2";
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// `sales` grows with every order and `sale_lines` with every line, so a lost
+// index seek in these rollups is paid on every dashboard load for the life of
+// the install. The static text of the three readers below is hoisted to `pub`
+// constants for the same reason as `DAILY_REVENUE_SQL`
+// (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+// `db/reports.rs` re-exports each constant next to the revenue triple, which
+// is the path the probe imports.
+//
+// Purely textual: each method prepares exactly the string it did before, and
+// the continuation indentation inside each literal is the original one - the
+// text is relocated, not re-indented. Each literal is multi-line, so every
+// constant carries `#[rustfmt::skip]`: rustfmt re-indents a multi-line
+// literal's continuation lines, which would silently rewrite the text under
+// test (see the note on `LIST_AUDIT_ENTRIES_SQL` in `db/audit.rs`).
+
+/// `Store::hourly_heatmap`: completed sales per (store-local weekday, hour,
+/// currency) cell.
+///
+/// `#[rustfmt::skip]` is load-bearing: rustfmt would re-indent the literal's
+/// continuation lines and change the text the product prepares.
+#[rustfmt::skip]
+pub const HOURLY_HEATMAP_SQL: &str = "SELECT CAST(strftime('%w', created_at, ?3) AS INTEGER) AS day_of_week,
+                    CAST(strftime('%H', created_at, ?3) AS INTEGER) AS hour,
+                    currency,
+                    SUM(total_minor) AS total_minor,
+                    COUNT(*) AS sale_count
+             FROM sales
+             WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
+             GROUP BY day_of_week, hour, currency
+             ORDER BY day_of_week, hour";
+
+/// `Store::payment_method_breakdown`: tender split per currency.
+///
+/// `#[rustfmt::skip]` for the same reason as [`HOURLY_HEATMAP_SQL`].
+#[rustfmt::skip]
+pub const PAYMENT_METHOD_BREAKDOWN_SQL: &str = "SELECT COALESCE(payment_method, 'other') AS payment_method,
+                    currency,
+                    SUM(total_minor) AS total_minor,
+                    COUNT(*) AS sale_count
+             FROM sales
+             WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
+             GROUP BY payment_method, currency
+             ORDER BY currency, total_minor DESC";
+
+/// `Store::voided_items`: the most-voided product lines in a date range.
+///
+/// `#[rustfmt::skip]` for the same reason as [`HOURLY_HEATMAP_SQL`].
+#[rustfmt::skip]
+pub const VOIDED_ITEMS_SQL: &str = "SELECT COALESCE(p.name, sl.sku) AS name, SUM(sl.qty) AS qty
+             FROM sale_lines sl
+             JOIN sales s ON sl.sale_id = s.id
+             LEFT JOIN products p ON sl.sku = p.sku
+             WHERE s.status = 'voided' AND DATE(s.created_at, ?4) BETWEEN ?1 AND ?2
+             GROUP BY sl.sku
+             ORDER BY qty DESC
+             LIMIT ?3";
+
 /// Hourly sales heatmap entry.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HourlyHeatmapRow {
@@ -177,17 +239,7 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
-            "SELECT CAST(strftime('%w', created_at, ?3) AS INTEGER) AS day_of_week,
-                    CAST(strftime('%H', created_at, ?3) AS INTEGER) AS hour,
-                    currency,
-                    SUM(total_minor) AS total_minor,
-                    COUNT(*) AS sale_count
-             FROM sales
-             WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
-             GROUP BY day_of_week, hour, currency
-             ORDER BY day_of_week, hour",
-        )?;
+        let mut stmt = self.conn.prepare(HOURLY_HEATMAP_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(HourlyHeatmapRow {
                 currency: row.get("currency")?,
@@ -210,16 +262,7 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
-            "SELECT COALESCE(payment_method, 'other') AS payment_method,
-                    currency,
-                    SUM(total_minor) AS total_minor,
-                    COUNT(*) AS sale_count
-             FROM sales
-             WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
-             GROUP BY payment_method, currency
-             ORDER BY currency, total_minor DESC",
-        )?;
+        let mut stmt = self.conn.prepare(PAYMENT_METHOD_BREAKDOWN_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(PaymentMethodRow {
                 currency: row.get("currency")?,
@@ -272,16 +315,7 @@ impl Store<'_> {
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
         let limit = limit.clamp(1, 100);
-        let mut stmt = self.conn.prepare(
-            "SELECT COALESCE(p.name, sl.sku) AS name, SUM(sl.qty) AS qty
-             FROM sale_lines sl
-             JOIN sales s ON sl.sale_id = s.id
-             LEFT JOIN products p ON sl.sku = p.sku
-             WHERE s.status = 'voided' AND DATE(s.created_at, ?4) BETWEEN ?1 AND ?2
-             GROUP BY sl.sku
-             ORDER BY qty DESC
-             LIMIT ?3",
-        )?;
+        let mut stmt = self.conn.prepare(VOIDED_ITEMS_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, limit, tz], |row| {
             Ok(VoidedItemRow {
                 name: row.get("name")?,

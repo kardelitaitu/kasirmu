@@ -179,6 +179,13 @@ pub const LIST_PENDING_OFFLINE_FOR_TENANT_SQL: &str = "SELECT id, action, payloa
 pub const LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?2";
 
+// The two idempotency probes live with their writers in `offline::enqueue`;
+// they are re-exported here so every `offline_queue` reader is imported from
+// one path - the queue listers above and the outbox probes below.
+pub use enqueue::{
+    OFFLINE_ENQUEUE_DEDUP_PROBE_SQL, OFFLINE_OUTBOX_LEGACY_FALLBACK_SQL, OFFLINE_OUTBOX_PROBE_SQL,
+};
+
 impl Store<'_> {
     /// List all pending (unsynced) offline queue items, oldest first.
     pub fn list_pending_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {

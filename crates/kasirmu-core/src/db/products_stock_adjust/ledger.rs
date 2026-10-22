@@ -13,6 +13,25 @@
 
 use super::*;
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// `stock_movements` is the immutable delta ledger behind every stock read, so
+// this sum runs once per ledger read for the life of the install. Its text is
+// hoisted to a `pub` constant for the same reason as `DAILY_REVENUE_SQL`
+// (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+//
+// Purely textual: the method prepares exactly the string it did before.
+
+/// `Store::get_stock_from_ledger`: the per-item ledger sum (ADR #6).
+///
+/// A single-line literal, so no `#[rustfmt::skip]` is needed: rustfmt leaves a
+/// one-line string alone (see the note on `LIST_AUDIT_ENTRIES_SQL` in
+/// `db/audit.rs` for the multi-line case that does need it).
+pub const STOCK_LEDGER_SUM_SQL: &str = "SELECT SUM(delta) FROM stock_movements WHERE item_id = ?1";
+
 impl Store<'_> {
     /// Compute the current stock quantity from the delta ledger (ADR #6).
     ///
@@ -20,11 +39,11 @@ impl Store<'_> {
     /// Falls back to `inventory.qty` if the ledger table has no rows yet
     /// (backward compatibility with pre-migration databases).
     pub fn get_stock_from_ledger(&self, product_id: &str) -> Result<i64, CoreError> {
-        let result = self.conn.query_row(
-            "SELECT SUM(delta) FROM stock_movements WHERE item_id = ?1",
-            params![product_id],
-            |row| row.get::<_, Option<i64>>(0),
-        );
+        let result = self
+            .conn
+            .query_row(STOCK_LEDGER_SUM_SQL, params![product_id], |row| {
+                row.get::<_, Option<i64>>(0)
+            });
 
         match result {
             Ok(Some(sum)) => Ok(sum),

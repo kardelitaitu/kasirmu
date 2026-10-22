@@ -34,15 +34,15 @@ pub(crate) use datetime::{check_date_bound, parse_utc_offset};
 // own copy stays green when the real query is reshaped back into the scanning
 // form. The module itself stays crate-private.
 pub use product_sales::{
-    CategoryBreakdownRow, InventoryTrendRow, InventoryTurnoverRow, LowStockAlert, StockAlertEvent,
-    TopProductRow,
+    CATEGORY_BREAKDOWN_SQL, CategoryBreakdownRow, INVENTORY_TREND_SQL, InventoryTrendRow,
+    InventoryTurnoverRow, LowStockAlert, StockAlertEvent, TOP_PRODUCTS_SQL, TopProductRow,
 };
 pub use revenue::{DAILY_REVENUE_SQL, MONTHLY_REVENUE_SQL, WEEKLY_REVENUE_SQL};
 pub use revenue::{DailyRevenueRow, MonthlyRevenueRow, WeeklyRevenueRow};
 pub use sales_summary::{
     BasketSizeRow, BasketTrendRow, CustomerSplitRow, DiscountCodeRow, DiscountsSummaryRow,
-    HourlyHeatmapRow, HourlyOccupancyRow, PaymentMethodRow, TableTurnoverRow, VoidedItemRow,
-    VoidedSummaryRow,
+    HOURLY_HEATMAP_SQL, HourlyHeatmapRow, HourlyOccupancyRow, PAYMENT_METHOD_BREAKDOWN_SQL,
+    PaymentMethodRow, TableTurnoverRow, VOIDED_ITEMS_SQL, VoidedItemRow, VoidedSummaryRow,
 };
 
 #[cfg(test)]

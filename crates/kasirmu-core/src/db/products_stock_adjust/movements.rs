@@ -12,6 +12,48 @@
 
 use super::*;
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// `stock_movements` is the immutable delta ledger: it grows with every sale and
+// every adjustment and is never pruned except by the archive sweeper, so a
+// lost index seek here is paid for the life of the install on the movement
+// history and on the ledger sum behind every stock read. The static text of
+// the two readers below is hoisted to `pub` constants for the same reason as
+// `DAILY_REVENUE_SQL` (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+//
+// Purely textual: each method prepares exactly the string it did before, and
+// the continuation indentation inside each literal is the original one - the
+// text is relocated, not re-indented. Each literal spans lines, so each
+// constant carries `#[rustfmt::skip]`: rustfmt re-indents a multi-line
+// literal's continuation lines, which would silently rewrite the text under
+// test (see the note on `LIST_AUDIT_ENTRIES_SQL` in `db/audit.rs`).
+
+/// `Store::list_stock_movements`: one product's ledger, newest first, paged.
+///
+/// `#[rustfmt::skip]` is load-bearing: rustfmt would re-indent the literal's
+/// continuation lines and change the text the product prepares.
+#[rustfmt::skip]
+pub const LIST_STOCK_MOVEMENTS_SQL: &str = "SELECT id, item_id, delta, reason, source_terminal_id, source_user_id,
+                    store_id, created_at
+             FROM stock_movements
+             WHERE item_id = ?1
+             ORDER BY created_at DESC
+             LIMIT ?2 OFFSET ?3";
+
+/// `Store::archive_stock_movements`: the item groups the sweeper may archive,
+/// excluding rows an earlier sweep already rolled up.
+///
+/// `#[rustfmt::skip]` for the same reason as [`LIST_STOCK_MOVEMENTS_SQL`].
+#[rustfmt::skip]
+pub const STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL: &str = "SELECT DISTINCT item_id
+             FROM stock_movements
+             WHERE created_at < ?1
+               AND reason != 'archive-rollup'
+             LIMIT ?2";
+
 impl Store<'_> {
     /// List all stock movement rows for a product, ordered by time (ADR #6).
     ///
@@ -22,14 +64,7 @@ impl Store<'_> {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<StockMovement>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, item_id, delta, reason, source_terminal_id, source_user_id,
-                    store_id, created_at
-             FROM stock_movements
-             WHERE item_id = ?1
-             ORDER BY created_at DESC
-             LIMIT ?2 OFFSET ?3",
-        )?;
+        let mut stmt = self.conn.prepare(LIST_STOCK_MOVEMENTS_SQL)?;
         let rows = stmt.query_map(params![product_id, limit, offset], |row| {
             Ok(StockMovement {
                 id: row.get(0)?,
@@ -88,13 +123,7 @@ impl Store<'_> {
         let cutoff_str = cutoff.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         // Find item_ids that have archivable rows (excluding rollup rows).
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT item_id
-             FROM stock_movements
-             WHERE created_at < ?1
-               AND reason != 'archive-rollup'
-             LIMIT ?2",
-        )?;
+        let mut stmt = self.conn.prepare(STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL)?;
         let item_ids: Vec<String> = stmt
             .query_map(
                 params![

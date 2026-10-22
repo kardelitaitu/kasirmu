@@ -28,6 +28,82 @@ use crate::error::CoreError;
 
 use super::check_date_bound;
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// `sale_lines` grows with every completed sale and `sales` with every order,
+// so a lost index seek in these breakdowns is paid on every analytics refresh
+// for the life of the install. The static text of the three readers below is
+// hoisted to `pub` constants for the same reason as `DAILY_REVENUE_SQL`
+// (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+// `db/reports.rs` re-exports each constant next to the revenue triple, which
+// is the path the probe imports.
+//
+// `TOP_PRODUCTS_SQL` is a BASE: `top_products` appends the caller's ranking
+// (`{order_clause}`) and the fixed `sl.sku` tiebreak, and the probe builds the
+// same string from the same base.
+//
+// Purely textual: each method prepares exactly the string it did before, and
+// the continuation indentation inside each literal is the original one - the
+// text is relocated, not re-indented. Each literal is multi-line, so every
+// constant carries `#[rustfmt::skip]`: rustfmt re-indents a multi-line
+// literal's continuation lines, which would silently rewrite the text under
+// test (see the note on `LIST_AUDIT_ENTRIES_SQL` in `db/audit.rs`).
+
+/// Base of `Store::top_products`: the REP-05 identity-resolved product
+/// ranking, before the `{order_clause}` ranking and the `sl.sku` tiebreak.
+///
+/// `#[rustfmt::skip]` is load-bearing: rustfmt would re-indent the literal's
+/// continuation lines and change the text the product prepares.
+#[rustfmt::skip]
+pub const TOP_PRODUCTS_SQL: &str = "SELECT COALESCE(sl.product_id, p.id, sl.sku) AS product_id,
+                    sl.sku AS sku,
+                    COALESCE(sl.product_name, p.name, sl.sku) AS name,
+                    sl.currency AS currency,
+                    SUM(sl.qty) AS total_qty,
+                    SUM(sl.line_minor) AS total_minor,
+                    SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * sl.qty) AS cogs_minor,
+                    (SUM(sl.line_minor) - SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * sl.qty)) AS gross_profit_minor
+             FROM sale_lines sl
+             JOIN sales s ON sl.sale_id = s.id
+             LEFT JOIN products p ON sl.sku = p.sku
+             WHERE s.status = 'completed' AND DATE(s.created_at, ?4) BETWEEN ?1 AND ?2
+             GROUP BY sl.sku, sl.currency,
+                      COALESCE(sl.product_id, p.id, sl.sku),
+                      COALESCE(sl.product_name, p.name, sl.sku)";
+
+/// `Store::category_breakdown`: revenue per category and currency, with the
+/// category resolved from the REP-05 sale-line snapshot first.
+///
+/// `#[rustfmt::skip]` for the same reason as [`TOP_PRODUCTS_SQL`].
+#[rustfmt::skip]
+pub const CATEGORY_BREAKDOWN_SQL: &str = "SELECT COALESCE(sl.category_id, p.category_id) AS category_id,
+                    COALESCE(c.name, 'Uncategorised') AS category_name,
+                    sl.currency AS currency,
+                    SUM(sl.line_minor) AS total_minor,
+                    COUNT(DISTINCT s.id) AS sale_count
+             FROM sale_lines sl
+             JOIN sales s ON sl.sale_id = s.id
+             LEFT JOIN products p ON sl.sku = p.sku
+             LEFT JOIN categories c ON c.id = COALESCE(sl.category_id, p.category_id)
+             WHERE s.status = 'completed' AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
+             GROUP BY COALESCE(sl.category_id, p.category_id), sl.currency
+             ORDER BY sl.currency, total_minor DESC";
+
+/// `Store::inventory_trend`: units sold per store-local day.
+///
+/// `#[rustfmt::skip]` for the same reason as [`TOP_PRODUCTS_SQL`].
+#[rustfmt::skip]
+pub const INVENTORY_TREND_SQL: &str = "SELECT DATE(s.created_at, ?3) AS date,
+                    COALESCE(SUM(sl.qty), 0) AS units_sold
+             FROM sale_lines sl
+             JOIN sales s ON sl.sale_id = s.id
+             WHERE s.status = 'completed' AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
+             GROUP BY DATE(s.created_at, ?3)
+             ORDER BY date ASC";
+
 /// Top product ranking.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TopProductRow {
@@ -165,26 +241,12 @@ impl Store<'_> {
         } else {
             "total_minor DESC"
         };
+        // REP-05: identity comes from the sale-line snapshot first; the
+        // products join is only a fallback for legacy NULL rows. Grouping
+        // by the resolved id/name keeps each sale era of a reused sku on
+        // its own correctly-labelled row instead of relabelling history.
         let mut stmt = self.conn.prepare(&format!(
-            // REP-05: identity comes from the sale-line snapshot first; the
-            // products join is only a fallback for legacy NULL rows. Grouping
-            // by the resolved id/name keeps each sale era of a reused sku on
-            // its own correctly-labelled row instead of relabelling history.
-            "SELECT COALESCE(sl.product_id, p.id, sl.sku) AS product_id,
-                    sl.sku AS sku,
-                    COALESCE(sl.product_name, p.name, sl.sku) AS name,
-                    sl.currency AS currency,
-                    SUM(sl.qty) AS total_qty,
-                    SUM(sl.line_minor) AS total_minor,
-                    SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * sl.qty) AS cogs_minor,
-                    (SUM(sl.line_minor) - SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * sl.qty)) AS gross_profit_minor
-             FROM sale_lines sl
-             JOIN sales s ON sl.sale_id = s.id
-             LEFT JOIN products p ON sl.sku = p.sku
-             WHERE s.status = 'completed' AND DATE(s.created_at, ?4) BETWEEN ?1 AND ?2
-             GROUP BY sl.sku, sl.currency,
-                      COALESCE(sl.product_id, p.id, sl.sku),
-                      COALESCE(sl.product_name, p.name, sl.sku)
+            "{TOP_PRODUCTS_SQL}
              ORDER BY {order_clause}, sl.sku
              LIMIT ?3"
         ))?;
@@ -383,24 +445,11 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
-            // REP-05: the category is resolved from the sale-line snapshot
-            // first, so moving a product between categories after the sale
-            // no longer relabels (or moves) historical revenue. Legacy NULL
-            // rows fall back to the products join.
-            "SELECT COALESCE(sl.category_id, p.category_id) AS category_id,
-                    COALESCE(c.name, 'Uncategorised') AS category_name,
-                    sl.currency AS currency,
-                    SUM(sl.line_minor) AS total_minor,
-                    COUNT(DISTINCT s.id) AS sale_count
-             FROM sale_lines sl
-             JOIN sales s ON sl.sale_id = s.id
-             LEFT JOIN products p ON sl.sku = p.sku
-             LEFT JOIN categories c ON c.id = COALESCE(sl.category_id, p.category_id)
-             WHERE s.status = 'completed' AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
-             GROUP BY COALESCE(sl.category_id, p.category_id), sl.currency
-             ORDER BY sl.currency, total_minor DESC",
-        )?;
+        // REP-05: the category is resolved from the sale-line snapshot
+        // first, so moving a product between categories after the sale
+        // no longer relabels (or moves) historical revenue. Legacy NULL
+        // rows fall back to the products join.
+        let mut stmt = self.conn.prepare(CATEGORY_BREAKDOWN_SQL)?;
         let mut rows: Vec<CategoryBreakdownRow> = stmt
             .query_map(params![start_date, end_date, tz], |row| {
                 Ok(CategoryBreakdownRow {
@@ -477,15 +526,7 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
-            "SELECT DATE(s.created_at, ?3) AS date,
-                    COALESCE(SUM(sl.qty), 0) AS units_sold
-             FROM sale_lines sl
-             JOIN sales s ON sl.sale_id = s.id
-             WHERE s.status = 'completed' AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
-             GROUP BY DATE(s.created_at, ?3)
-             ORDER BY date ASC",
-        )?;
+        let mut stmt = self.conn.prepare(INVENTORY_TREND_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(InventoryTrendRow {
                 date: row.get("date")?,

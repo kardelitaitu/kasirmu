@@ -55,7 +55,7 @@
 //! the build when one of those anchors no longer resolves.
 //!
 //! This is a GATE, not coverage: it names the queries it checks and says
-//! nothing about the rest. See the header of `PROBES`.
+//! nothing about the rest. See the header of `probes()`.
 
 use kasirmu_core::migrations;
 use rusqlite::Connection;
@@ -87,12 +87,20 @@ const LARGE_TABLES: &[&str] = &[
 /// The SQL under test, before it is wrapped in `EXPLAIN QUERY PLAN`.
 ///
 /// Using the production constants is the point: these are the same characters
-/// the product runs. The revenue CTEs, the offline-queue listers, the KDS
-/// ticket-list bases and the audit-log readers are imported through the crate's
-/// own module paths, so an edit to any of them lands in this probe with no edit
-/// here - and a probe cannot drift from a query it does not own. What remains
-/// below is COPIED from the method that builds it and must be kept in sync by
-/// hand; every copy names the `file:line` it duplicates.
+/// the product runs. The revenue CTEs, the product/category/inventory
+/// breakdowns, the operational rollups, the offline-queue listers and outbox
+/// probes, the stock-ledger readers, the KDS ticket-list bases and the
+/// audit-log readers are imported through the crate's own module paths, so an
+/// edit to any of them lands in this probe with no edit here - and a probe
+/// cannot drift from a query it does not own.
+///
+/// What remains below is text the product ASSEMBLES at run time and therefore
+/// cannot be a single constant: the ORDER BY the KDS readers append, the
+/// visibility fragment they join in, and the three finished ticket-list /
+/// queue strings built from them. Each is pinned to the production base by
+/// `assembled_kds_probes_extend_the_production_base`; `top_products` is the
+/// one REPORT that is assembled, and its tail is pinned by
+/// `top_products_probe_extends_the_production_base`.
 mod production_sql {
     // CONSTANT-SOURCED - the probe owns no copy of these; the product
     // prepares the same text.
@@ -106,95 +114,46 @@ mod production_sql {
     pub(super) use kasirmu_core::db::offline::{
         LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL,
         LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL, LIST_PENDING_OFFLINE_FOR_TENANT_SQL,
-        LIST_PENDING_OFFLINE_SQL, OFFLINE_LAST_SYNCED_AT_SQL,
+        LIST_PENDING_OFFLINE_SQL, OFFLINE_ENQUEUE_DEDUP_PROBE_SQL, OFFLINE_LAST_SYNCED_AT_SQL,
+        OFFLINE_OUTBOX_LEGACY_FALLBACK_SQL, OFFLINE_OUTBOX_PROBE_SQL,
+    };
+    pub(super) use kasirmu_core::db::products::{
+        LIST_STOCK_MOVEMENTS_SQL, STOCK_LEDGER_SUM_SQL, STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL,
     };
     pub(super) use kasirmu_core::db::reports::{
-        DAILY_REVENUE_SQL, MONTHLY_REVENUE_SQL, WEEKLY_REVENUE_SQL,
+        CATEGORY_BREAKDOWN_SQL, DAILY_REVENUE_SQL, HOURLY_HEATMAP_SQL, INVENTORY_TREND_SQL,
+        MONTHLY_REVENUE_SQL, PAYMENT_METHOD_BREAKDOWN_SQL, TOP_PRODUCTS_SQL, VOIDED_ITEMS_SQL,
+        WEEKLY_REVENUE_SQL,
     };
 
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/reports/product_sales.rs:173`
-    /// (`Store::top_products`; the `{order_clause}` placeholder is resolved
-    /// to its revenue branch, the default).
-    pub(super) const TOP_PRODUCTS: &str = "SELECT COALESCE(sl.product_id, p.id, sl.sku) AS product_id,
-                sl.sku AS sku,
-                COALESCE(sl.product_name, p.name, sl.sku) AS name,
-                sl.currency AS currency,
-                SUM(sl.qty) AS total_qty,
-                SUM(sl.line_minor) AS total_minor,
-                SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * sl.qty) AS cogs_minor,
-                (SUM(sl.line_minor) - SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * sl.qty)) AS gross_profit_minor
-         FROM sale_lines sl
-         JOIN sales s ON sl.sale_id = s.id
-         LEFT JOIN products p ON sl.sku = p.sku
-         WHERE s.status = 'completed' AND DATE(s.created_at, ?4) BETWEEN ?1 AND ?2
-         GROUP BY sl.sku, sl.currency,
-                  COALESCE(sl.product_id, p.id, sl.sku),
-                  COALESCE(sl.product_name, p.name, sl.sku)
-         ORDER BY total_minor DESC, sl.sku
-         LIMIT ?3";
+    /// The ASSEMBLED text `Store::top_products` prepares for the DEFAULT
+    /// ranking: [`TOP_PRODUCTS_SQL`] + [`TOP_PRODUCTS_REVENUE_TAIL`].
+    ///
+    /// The product builds this with `format!("{TOP_PRODUCTS_SQL}\n ORDER BY
+    /// {order_clause}, sl.sku\n LIMIT ?3")`; `order_by` is resolved to a
+    /// literal clause inside that template and cannot be a `const` (a
+    /// `format!` argument is a token, not a value), so only the base and the
+    /// revenue tail are pinned here. `concat!` is not an option either - it
+    /// accepts literals only, not a base constant - so the two halves are
+    /// joined at run time.
+    ///
+    /// `top_products_probe_extends_the_production_base` proves the base half,
+    /// the separator and the tail character for character; that the probe
+    /// grades the revenue (default) branch; and
+    /// `top_products_ranking_terms_come_from_the_product` holds the two
+    /// ranking literals against the production source.
+    pub(super) fn top_products_with_revenue_order() -> String {
+        format!("{TOP_PRODUCTS_SQL}{TOP_PRODUCTS_REVENUE_TAIL}")
+    }
 
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/reports/product_sales.rs:391`
-    /// (`Store::category_breakdown`).
-    pub(super) const CATEGORY_BREAKDOWN: &str =
-        "SELECT COALESCE(sl.category_id, p.category_id) AS category_id,
-                COALESCE(c.name, 'Uncategorised') AS category_name,
-                sl.currency AS currency,
-                SUM(sl.line_minor) AS total_minor,
-                COUNT(DISTINCT s.id) AS sale_count
-         FROM sale_lines sl
-         JOIN sales s ON sl.sale_id = s.id
-         LEFT JOIN products p ON sl.sku = p.sku
-         LEFT JOIN categories c ON c.id = COALESCE(sl.category_id, p.category_id)
-         WHERE s.status = 'completed' AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
-         GROUP BY COALESCE(sl.category_id, p.category_id), sl.currency
-         ORDER BY sl.currency, total_minor DESC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/reports/product_sales.rs:481`
-    /// (`Store::inventory_trend`).
-    pub(super) const INVENTORY_TREND: &str = "SELECT DATE(s.created_at, ?3) AS date,
-                COALESCE(SUM(sl.qty), 0) AS units_sold
-         FROM sale_lines sl
-         JOIN sales s ON sl.sale_id = s.id
-         WHERE s.status = 'completed' AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
-         GROUP BY DATE(s.created_at, ?3)
-         ORDER BY date ASC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/reports/sales_summary.rs:181`
-    /// (`Store::hourly_heatmap`).
-    pub(super) const HOURLY_HEATMAP: &str =
-        "SELECT CAST(strftime('%w', created_at, ?3) AS INTEGER) AS day_of_week,
-                CAST(strftime('%H', created_at, ?3) AS INTEGER) AS hour,
-                currency,
-                SUM(total_minor) AS total_minor,
-                COUNT(*) AS sale_count
-         FROM sales
-         WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
-         GROUP BY day_of_week, hour, currency
-         ORDER BY day_of_week, hour";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/reports/sales_summary.rs:214`
-    /// (`Store::payment_method_breakdown`).
-    pub(super) const PAYMENT_METHOD_BREAKDOWN: &str =
-        "SELECT COALESCE(payment_method, 'other') AS payment_method,
-                currency,
-                SUM(total_minor) AS total_minor,
-                COUNT(*) AS sale_count
-         FROM sales
-         WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
-         GROUP BY payment_method, currency
-         ORDER BY currency, total_minor DESC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/reports/sales_summary.rs:276`
-    /// (`Store::voided_items`).
-    pub(super) const VOIDED_ITEMS: &str =
-        "SELECT COALESCE(p.name, sl.sku) AS name, SUM(sl.qty) AS qty
-         FROM sale_lines sl
-         JOIN sales s ON sl.sale_id = s.id
-         LEFT JOIN products p ON sl.sku = p.sku
-         WHERE s.status = 'voided' AND DATE(s.created_at, ?4) BETWEEN ?1 AND ?2
-         GROUP BY sl.sku
-         ORDER BY qty DESC
-         LIMIT ?3";
+    /// The literal `format!` tail `Store::top_products` appends for the
+    /// DEFAULT (revenue) ranking, byte for byte: the newline before
+    /// `ORDER BY` is what separates it from `TOP_PRODUCTS_SQL` in the
+    /// product's own template, which is spelled
+    /// `"...sl.sku)"\n             ORDER BY {order_clause}, sl.sku\n             LIMIT ?3"`.
+    pub(super) const TOP_PRODUCTS_REVENUE_TAIL: &str = "
+             ORDER BY total_minor DESC, sl.sku
+             LIMIT ?3";
 
     /// The ASSEMBLED text `Store::list_kds_orders` prepares with `status_filter
     /// = None` - the unfiltered ticket list: [`LIST_KDS_ORDERS_BASE_SQL`] +
@@ -207,22 +166,6 @@ mod production_sql {
                     received_at, started_at, ready_at, served_at,
                     prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders ORDER BY received_at DESC";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline/enqueue.rs:47`
-    /// (`Store::enqueue_offline_dedup`).
-    pub(super) const OFFLINE_ENQUEUE_DEDUP_PROBE: &str = "SELECT EXISTS(SELECT 1 FROM offline_queue
-          WHERE status = 'pending' AND action = ?1 AND payload = ?2)";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline/enqueue.rs:520`
-    /// (`Store::has_pending_outbox_row_for_sale`, indexed fast path).
-    pub(super) const OFFLINE_OUTBOX_PROBE: &str = "SELECT EXISTS(SELECT 1 FROM offline_queue
-          WHERE sale_id = ?1 AND status = 'pending' AND action = ?2)";
-
-    /// COPIED - keep in sync with `crates/kasirmu-core/src/db/offline/enqueue.rs:532`
-    /// (`Store::has_pending_outbox_row_for_sale`, legacy fallback).
-    pub(super) const OFFLINE_OUTBOX_LEGACY_FALLBACK: &str =
-        "SELECT EXISTS(SELECT 1 FROM offline_queue
-          WHERE sale_id IS NULL AND status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0)";
 
     /// The ORDER BY `Store::get_kds_queue` appends to [`KDS_QUEUE_BASE_SQL`]
     /// in production.
@@ -303,32 +246,6 @@ mod production_sql {
                     WHEN 'ready' THEN 3
                 END,
                 received_at ASC";
-
-    /// COPIED - keep in sync with
-    /// `crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:26`
-    /// (`Store::list_stock_movements`).
-    pub(super) const LIST_STOCK_MOVEMENTS: &str =
-        "SELECT id, item_id, delta, reason, source_terminal_id, source_user_id,
-                store_id, created_at
-         FROM stock_movements
-         WHERE item_id = ?1
-         ORDER BY created_at DESC
-         LIMIT ?2 OFFSET ?3";
-
-    /// COPIED - keep in sync with
-    /// `crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:92`
-    /// (`Store::archive_stock_movements`, the archivable-item scan).
-    pub(super) const STOCK_MOVEMENTS_ARCHIVABLE_ITEMS: &str = "SELECT DISTINCT item_id
-         FROM stock_movements
-         WHERE created_at < ?1
-           AND reason != 'archive-rollup'
-         LIMIT ?2";
-
-    /// COPIED - keep in sync with
-    /// `crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs:24`
-    /// (the per-item ledger sum).
-    pub(super) const STOCK_LEDGER_SUM: &str =
-        "SELECT SUM(delta) FROM stock_movements WHERE item_id = ?1";
 }
 
 use production_sql::*;
@@ -342,7 +259,16 @@ struct Probe {
     /// constant-sourced probe, the copied statement for a copied one.
     origin: &'static str,
     /// The SQL, exactly as the product prepares it.
+    ///
+    /// For the one query the product ASSEMBLES (`top_products`), this is the
+    /// shared BASE and `assembled_sql` carries base + tail.
     sql: &'static str,
+    /// The ASSEMBLED text for a query the product builds at run time - the ONE
+    /// `top_products` probe. It is `Some` only there: `concat!` (all a
+    /// `const` initialiser can do with a string) accepts literals and not a
+    /// base constant, so the base and the `format!` tail are joined at run
+    /// time here, from the production constant itself.
+    assembled_sql: Option<String>,
     /// Values for `?1`, `?2`, ... in order, as text (SQLite compares the TEXT
     /// columns these placeholders bind to lexically either way).
     binds: &'static [&'static str],
@@ -357,6 +283,14 @@ struct Probe {
     /// nested loop over an already-computed result, not a table read, so these
     /// names are excluded from grading.
     ctes: &'static [&'static str],
+}
+
+impl Probe {
+    /// The exact text this probe grades: the assembled string for the query
+    /// the product builds at run time, the constant otherwise.
+    fn resolved_sql(&self) -> &str {
+        self.assembled_sql.as_deref().unwrap_or(self.sql)
+    }
 }
 
 /// The curated probe list - 27 production queries, deliberately not 300.
@@ -382,254 +316,286 @@ struct Probe {
 /// copy names the file:line - `copied_query_provenance_is_intact` keeps the
 /// anchor honest.
 ///
-/// Most `sql:` values are a `pub const` from the production module, so the
-/// product and this probe prepare the same characters. The three KDS readers
-/// the product ASSEMBLES keep a literal of their final assembled text, pinned
-/// to the hoisted base constant by
-/// `assembled_kds_probes_extend_the_production_base`.
-const PROBES: &[Probe] = &[
-    Probe {
-        name: "daily_revenue",
-        origin: "crates/kasirmu-core/src/db/reports/revenue.rs:125 (DAILY_REVENUE_SQL, CONSTANT)",
-        sql: DAILY_REVENUE_SQL,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[
-            ("s1", "sales"),
-            ("s2", "sales"),
-            ("sl2", "sale_lines"),
-            ("rf1", "refunds"),
-        ],
-        ctes: &["s", "rg", "r"],
-    },
-    Probe {
-        name: "weekly_revenue",
-        origin: "crates/kasirmu-core/src/db/reports/revenue.rs:184 (WEEKLY_REVENUE_SQL, CONSTANT)",
-        sql: WEEKLY_REVENUE_SQL,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[
-            ("s1", "sales"),
-            ("s2", "sales"),
-            ("sl2", "sale_lines"),
-            ("rf1", "refunds"),
-        ],
-        ctes: &["s", "rg", "r"],
-    },
-    Probe {
-        name: "monthly_revenue",
-        origin: "crates/kasirmu-core/src/db/reports/revenue.rs:244 (MONTHLY_REVENUE_SQL, CONSTANT)",
-        sql: MONTHLY_REVENUE_SQL,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[
-            ("s1", "sales"),
-            ("s2", "sales"),
-            ("sl2", "sale_lines"),
-            ("rf1", "refunds"),
-        ],
-        ctes: &["s", "rg", "r"],
-    },
-    Probe {
-        name: "top_products",
-        origin: "crates/kasirmu-core/src/db/reports/product_sales.rs:173",
-        sql: TOP_PRODUCTS,
-        binds: &["2026-01-01", "2026-12-31", "20", "-0 hours"],
-        aliases: &[("sl", "sale_lines"), ("s", "sales")],
-        ctes: &[],
-    },
-    Probe {
-        name: "category_breakdown",
-        origin: "crates/kasirmu-core/src/db/reports/product_sales.rs:391",
-        sql: CATEGORY_BREAKDOWN,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[("sl", "sale_lines"), ("s", "sales")],
-        ctes: &[],
-    },
-    Probe {
-        name: "inventory_trend",
-        origin: "crates/kasirmu-core/src/db/reports/product_sales.rs:481",
-        sql: INVENTORY_TREND,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[("sl", "sale_lines"), ("s", "sales")],
-        ctes: &[],
-    },
-    Probe {
-        name: "hourly_heatmap",
-        origin: "crates/kasirmu-core/src/db/reports/sales_summary.rs:181",
-        sql: HOURLY_HEATMAP,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "payment_method_breakdown",
-        origin: "crates/kasirmu-core/src/db/reports/sales_summary.rs:214",
-        sql: PAYMENT_METHOD_BREAKDOWN,
-        binds: &["2026-01-01", "2026-12-31", "-0 hours"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "voided_items",
-        origin: "crates/kasirmu-core/src/db/reports/sales_summary.rs:276",
-        sql: VOIDED_ITEMS,
-        binds: &["2026-01-01", "2026-12-31", "20", "-0 hours"],
-        aliases: &[("sl", "sale_lines"), ("s", "sales")],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_pending_offline",
-        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_SQL, CONSTANT)",
-        sql: LIST_PENDING_OFFLINE_SQL,
-        binds: &[],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_pending_offline_for_push_bounded",
-        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL, CONSTANT)",
-        sql: LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL,
-        binds: &["100"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_pending_offline_for_tenant",
-        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_TENANT_SQL, CONSTANT)",
-        sql: LIST_PENDING_OFFLINE_FOR_TENANT_SQL,
-        binds: &["default"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_pending_offline_for_tenant_for_push_bounded",
-        origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL, CONSTANT)",
-        sql: LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL,
-        binds: &["default", "100"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "get_last_synced_at",
-        origin: "crates/kasirmu-core/src/db/offline.rs (OFFLINE_LAST_SYNCED_AT_SQL, CONSTANT)",
-        sql: OFFLINE_LAST_SYNCED_AT_SQL,
-        binds: &[],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "enqueue_offline_dedup (idempotency probe)",
-        origin: "crates/kasirmu-core/src/db/offline/enqueue.rs:47",
-        sql: OFFLINE_ENQUEUE_DEDUP_PROBE,
-        binds: &["complete_sale", "{\"sale_id\":\"seed-sale-7\"}"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "has_pending_outbox_row_for_sale (indexed fast path)",
-        origin: "crates/kasirmu-core/src/db/offline/enqueue.rs:520",
-        sql: OFFLINE_OUTBOX_PROBE,
-        binds: &["seed-sale-7", "complete_sale"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "has_pending_outbox_row_for_sale (legacy fallback)",
-        origin: "crates/kasirmu-core/src/db/offline/enqueue.rs:532",
-        sql: OFFLINE_OUTBOX_LEGACY_FALLBACK,
-        binds: &["complete_sale", "\"sale_id\":\"seed-sale-7\""],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_kds_orders",
-        origin: "crates/kasirmu-core/src/db/kds_orders.rs (LIST_KDS_ORDERS_BASE_SQL, CONSTANT; no status filter)",
-        sql: LIST_KDS_ORDERS,
-        binds: &[],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_kds_orders_for_instance",
-        origin: "crates/kasirmu-core/src/db/kds_orders.rs:127",
-        sql: LIST_KDS_ORDERS_FOR_INSTANCE,
-        binds: &["instance-1", "pending"],
-        aliases: &[],
-        ctes: &[],
-    },
-    // HONEST LIMIT, measured (not inferred). `get_kds_queue` is SEARCHed
-    // through idx_kds_orders_status_received only while the live set is a
-    // SMALL fraction of kds_orders - which is the real operating condition,
-    // because served and cancelled tickets accumulate forever while the board
-    // holds one service period. With the active set above roughly 20-30% of
-    // the table SQLite correctly prefers a full scan, and this probe will then
-    // report it: that is a true statement about the query, that its plan
-    // depends on retention keeping the live set small. Measured on the same
-    // query: empty table -> SEARCH (idx_kds_orders_status_received); 240 of
-    // 400 rows live -> SCAN kds_orders; 20 of 400 live -> SEARCH.
-    Probe {
-        name: "get_kds_queue",
-        origin: "crates/kasirmu-core/src/db/kds_orders.rs (KDS_QUEUE_BASE_SQL, CONSTANT; no zone filter)",
-        sql: GET_KDS_QUEUE,
-        binds: &[],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "has_audit_row_for",
-        origin: "crates/kasirmu-core/src/db/audit.rs (AUDIT_ROW_PROBE_SQL, CONSTANT)",
-        sql: AUDIT_ROW_PROBE_SQL,
-        binds: &["sale.void", "seed-sale-3"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_audit_entries",
-        origin: "crates/kasirmu-core/src/db/audit.rs (LIST_AUDIT_ENTRIES_SQL, CONSTANT)",
-        sql: LIST_AUDIT_ENTRIES_SQL,
-        binds: &["50", "0"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "count_audit_entries_after",
-        origin: "crates/kasirmu-core/src/db/audit.rs (COUNT_AUDIT_ENTRIES_AFTER_SQL, CONSTANT)",
-        sql: COUNT_AUDIT_ENTRIES_AFTER_SQL,
-        binds: &["2026-06-01T00:00:00.000Z"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "verify_audit_chain",
-        origin: "crates/kasirmu-core/src/db/audit.rs (VERIFY_AUDIT_CHAIN_SQL, CONSTANT)",
-        sql: VERIFY_AUDIT_CHAIN_SQL,
-        binds: &[],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "list_stock_movements",
-        origin: "crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:26",
-        sql: LIST_STOCK_MOVEMENTS,
-        binds: &["seed-product-3", "100", "0"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "archive_stock_movements (archivable items)",
-        origin: "crates/kasirmu-core/src/db/products_stock_adjust/movements.rs:92",
-        sql: STOCK_MOVEMENTS_ARCHIVABLE_ITEMS,
-        binds: &["2026-07-01T00:00:00.000Z", "50"],
-        aliases: &[],
-        ctes: &[],
-    },
-    Probe {
-        name: "stock ledger sum",
-        origin: "crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs:24",
-        sql: STOCK_LEDGER_SUM,
-        binds: &["seed-product-3"],
-        aliases: &[],
-        ctes: &[],
-    },
-];
+/// Every `sql:` value is a `pub const` from the production module, so the
+/// product and this probe prepare the same characters - with ONE exception:
+/// the three KDS readers the product ASSEMBLES carry a literal of their final
+/// text, pinned to the hoisted base constant by
+/// `assembled_kds_probes_extend_the_production_base`. `top_products` builds
+/// its text from the production base plus a pinned tail, see
+/// `assembled_sql`.
+fn probes() -> Vec<Probe> {
+    vec![
+        Probe {
+            name: "daily_revenue",
+            origin: "crates/kasirmu-core/src/db/reports/revenue.rs:125 (DAILY_REVENUE_SQL, CONSTANT)",
+            sql: DAILY_REVENUE_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[
+                ("s1", "sales"),
+                ("s2", "sales"),
+                ("sl2", "sale_lines"),
+                ("rf1", "refunds"),
+            ],
+            ctes: &["s", "rg", "r"],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "weekly_revenue",
+            origin: "crates/kasirmu-core/src/db/reports/revenue.rs:184 (WEEKLY_REVENUE_SQL, CONSTANT)",
+            sql: WEEKLY_REVENUE_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[
+                ("s1", "sales"),
+                ("s2", "sales"),
+                ("sl2", "sale_lines"),
+                ("rf1", "refunds"),
+            ],
+            ctes: &["s", "rg", "r"],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "monthly_revenue",
+            origin: "crates/kasirmu-core/src/db/reports/revenue.rs:244 (MONTHLY_REVENUE_SQL, CONSTANT)",
+            sql: MONTHLY_REVENUE_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[
+                ("s1", "sales"),
+                ("s2", "sales"),
+                ("sl2", "sale_lines"),
+                ("rf1", "refunds"),
+            ],
+            ctes: &["s", "rg", "r"],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "top_products",
+            origin: "crates/kasirmu-core/src/db/reports/product_sales.rs (TOP_PRODUCTS_SQL, CONSTANT; \
+                 revenue ranking appended by the product and by this probe)",
+            sql: TOP_PRODUCTS_SQL,
+            binds: &["2026-01-01", "2026-12-31", "20", "-0 hours"],
+            aliases: &[("sl", "sale_lines"), ("s", "sales")],
+            ctes: &[],
+            assembled_sql: Some(top_products_with_revenue_order()),
+        },
+        Probe {
+            name: "category_breakdown",
+            origin: "crates/kasirmu-core/src/db/reports/product_sales.rs (CATEGORY_BREAKDOWN_SQL, CONSTANT)",
+            sql: CATEGORY_BREAKDOWN_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[("sl", "sale_lines"), ("s", "sales")],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "inventory_trend",
+            origin: "crates/kasirmu-core/src/db/reports/product_sales.rs (INVENTORY_TREND_SQL, CONSTANT)",
+            sql: INVENTORY_TREND_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[("sl", "sale_lines"), ("s", "sales")],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "hourly_heatmap",
+            origin: "crates/kasirmu-core/src/db/reports/sales_summary.rs (HOURLY_HEATMAP_SQL, CONSTANT)",
+            sql: HOURLY_HEATMAP_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "payment_method_breakdown",
+            origin: "crates/kasirmu-core/src/db/reports/sales_summary.rs (PAYMENT_METHOD_BREAKDOWN_SQL, CONSTANT)",
+            sql: PAYMENT_METHOD_BREAKDOWN_SQL,
+            binds: &["2026-01-01", "2026-12-31", "-0 hours"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "voided_items",
+            origin: "crates/kasirmu-core/src/db/reports/sales_summary.rs (VOIDED_ITEMS_SQL, CONSTANT)",
+            sql: VOIDED_ITEMS_SQL,
+            binds: &["2026-01-01", "2026-12-31", "20", "-0 hours"],
+            aliases: &[("sl", "sale_lines"), ("s", "sales")],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_pending_offline",
+            origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_SQL, CONSTANT)",
+            sql: LIST_PENDING_OFFLINE_SQL,
+            binds: &[],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_pending_offline_for_push_bounded",
+            origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL, CONSTANT)",
+            sql: LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL,
+            binds: &["100"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_pending_offline_for_tenant",
+            origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_TENANT_SQL, CONSTANT)",
+            sql: LIST_PENDING_OFFLINE_FOR_TENANT_SQL,
+            binds: &["default"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_pending_offline_for_tenant_for_push_bounded",
+            origin: "crates/kasirmu-core/src/db/offline.rs (LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL, CONSTANT)",
+            sql: LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL,
+            binds: &["default", "100"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "get_last_synced_at",
+            origin: "crates/kasirmu-core/src/db/offline.rs (OFFLINE_LAST_SYNCED_AT_SQL, CONSTANT)",
+            sql: OFFLINE_LAST_SYNCED_AT_SQL,
+            binds: &[],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "enqueue_offline_dedup (idempotency probe)",
+            origin: "crates/kasirmu-core/src/db/offline/enqueue.rs (OFFLINE_ENQUEUE_DEDUP_PROBE_SQL, CONSTANT)",
+            sql: OFFLINE_ENQUEUE_DEDUP_PROBE_SQL,
+            binds: &["complete_sale", "{\"sale_id\":\"seed-sale-7\"}"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "has_pending_outbox_row_for_sale (indexed fast path)",
+            origin: "crates/kasirmu-core/src/db/offline/enqueue.rs (OFFLINE_OUTBOX_PROBE_SQL, CONSTANT)",
+            sql: OFFLINE_OUTBOX_PROBE_SQL,
+            binds: &["seed-sale-7", "complete_sale"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "has_pending_outbox_row_for_sale (legacy fallback)",
+            origin: "crates/kasirmu-core/src/db/offline/enqueue.rs (OFFLINE_OUTBOX_LEGACY_FALLBACK_SQL, CONSTANT)",
+            sql: OFFLINE_OUTBOX_LEGACY_FALLBACK_SQL,
+            binds: &["complete_sale", "\"sale_id\":\"seed-sale-7\""],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_kds_orders",
+            origin: "crates/kasirmu-core/src/db/kds_orders.rs (LIST_KDS_ORDERS_BASE_SQL, CONSTANT; no status filter)",
+            sql: LIST_KDS_ORDERS,
+            binds: &[],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_kds_orders_for_instance",
+            origin: "crates/kasirmu-core/src/db/kds_orders.rs:127",
+            sql: LIST_KDS_ORDERS_FOR_INSTANCE,
+            binds: &["instance-1", "pending"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        // HONEST LIMIT, measured (not inferred). `get_kds_queue` is SEARCHed
+        // through idx_kds_orders_status_received only while the live set is a
+        // SMALL fraction of kds_orders - which is the real operating condition,
+        // because served and cancelled tickets accumulate forever while the board
+        // holds one service period. With the active set above roughly 20-30% of
+        // the table SQLite correctly prefers a full scan, and this probe will then
+        // report it: that is a true statement about the query, that its plan
+        // depends on retention keeping the live set small. Measured on the same
+        // query: empty table -> SEARCH (idx_kds_orders_status_received); 240 of
+        // 400 rows live -> SCAN kds_orders; 20 of 400 live -> SEARCH.
+        Probe {
+            name: "get_kds_queue",
+            origin: "crates/kasirmu-core/src/db/kds_orders.rs (KDS_QUEUE_BASE_SQL, CONSTANT; no zone filter)",
+            sql: GET_KDS_QUEUE,
+            binds: &[],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "has_audit_row_for",
+            origin: "crates/kasirmu-core/src/db/audit.rs (AUDIT_ROW_PROBE_SQL, CONSTANT)",
+            sql: AUDIT_ROW_PROBE_SQL,
+            binds: &["sale.void", "seed-sale-3"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_audit_entries",
+            origin: "crates/kasirmu-core/src/db/audit.rs (LIST_AUDIT_ENTRIES_SQL, CONSTANT)",
+            sql: LIST_AUDIT_ENTRIES_SQL,
+            binds: &["50", "0"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "count_audit_entries_after",
+            origin: "crates/kasirmu-core/src/db/audit.rs (COUNT_AUDIT_ENTRIES_AFTER_SQL, CONSTANT)",
+            sql: COUNT_AUDIT_ENTRIES_AFTER_SQL,
+            binds: &["2026-06-01T00:00:00.000Z"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "verify_audit_chain",
+            origin: "crates/kasirmu-core/src/db/audit.rs (VERIFY_AUDIT_CHAIN_SQL, CONSTANT)",
+            sql: VERIFY_AUDIT_CHAIN_SQL,
+            binds: &[],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "list_stock_movements",
+            origin: "crates/kasirmu-core/src/db/products_stock_adjust/movements.rs (LIST_STOCK_MOVEMENTS_SQL, CONSTANT)",
+            sql: LIST_STOCK_MOVEMENTS_SQL,
+            binds: &["seed-product-3", "100", "0"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "archive_stock_movements (archivable items)",
+            origin: "crates/kasirmu-core/src/db/products_stock_adjust/movements.rs (STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL, CONSTANT)",
+            sql: STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL,
+            binds: &["2026-07-01T00:00:00.000Z", "50"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+        Probe {
+            name: "stock ledger sum",
+            origin: "crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs (STOCK_LEDGER_SUM_SQL, CONSTANT)",
+            sql: STOCK_LEDGER_SUM_SQL,
+            binds: &["seed-product-3"],
+            aliases: &[],
+            ctes: &[],
+            assembled_sql: None,
+        },
+    ]
+}
 
 /// The status a seeded KDS ticket carries: mostly history, a few live.
 ///
@@ -1058,8 +1024,9 @@ fn production_queries_do_not_scan_large_tables() {
     }
 
     let mut offenders: Vec<String> = Vec::new();
-    for probe in PROBES {
-        let steps = plan_for(&conn, probe.sql, probe.binds);
+    let probes = probes();
+    for probe in &probes {
+        let steps = plan_for(&conn, probe.resolved_sql(), probe.binds);
         let scanned = scanned_large_tables(&steps, probe.aliases, probe.ctes);
         if !scanned.is_empty() {
             offenders.push(format!(
@@ -1076,7 +1043,7 @@ fn production_queries_do_not_scan_large_tables() {
         offenders.is_empty(),
         "{count} of {total} probed queries SCAN a large table; every row of transaction growth makes them slower:\n\n{body}",
         count = offenders.len(),
-        total = PROBES.len(),
+        total = probes.len(),
         body = offenders.join("\n"),
     );
 }
@@ -1098,14 +1065,15 @@ fn production_queries_do_not_scan_large_tables() {
 fn forcing_a_scan_fails_the_probe() {
     let conn = seeded_connection();
 
-    let probe = PROBES
+    let probes = probes();
+    let probe = probes
         .iter()
         .find(|p| p.name == "daily_revenue")
-        .expect("the daily_revenue probe is part of PROBES");
+        .expect("the daily_revenue probe is part of probes()");
 
     // Baseline: the UNMUTATED query must be clean, otherwise the proof below
     // would be showing a pre-existing defect rather than the mutation.
-    let baseline = plan_for(&conn, probe.sql, probe.binds);
+    let baseline = plan_for(&conn, probe.resolved_sql(), probe.binds);
     assert!(
         scanned_large_tables(&baseline, probe.aliases, probe.ctes).is_empty(),
         "the daily_revenue probe already scans before mutation, so the falsification below would prove nothing; plan:\n{plan}",
@@ -1115,9 +1083,9 @@ fn forcing_a_scan_fails_the_probe() {
     // Strip the predicates at both levels that matter: the sales CTE's window
     // (top level) and the refunds CTE's window (inside `rg AS (...)`). Both are
     // needed - the refunds scan is the defect this class of check found.
-    let mut mutated = String::with_capacity(probe.sql.len());
+    let mut mutated = String::with_capacity(probe.resolved_sql().len());
     let mut removed = 0usize;
-    for line in probe.sql.lines() {
+    for line in probe.resolved_sql().lines() {
         if line.trim_start().starts_with("WHERE ") {
             removed += 1;
             continue;
@@ -1156,7 +1124,7 @@ fn copied_query_provenance_is_intact() {
     // WORKSPACE root: the crate manifest directory is `<root>/crates/kasirmu-core`.
     const WORKSPACE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../");
     let mut broken: Vec<String> = Vec::new();
-    for probe in PROBES {
+    for probe in probes() {
         if probe.origin.contains("CONSTANT") {
             continue;
         }
@@ -1199,6 +1167,11 @@ fn copied_query_provenance_is_intact() {
 
 /// The two KDS probes whose SQL the product ASSEMBLES still start from the
 /// production base constant, character for character.
+////// `top_products_probe_extends_the_production_base` and
+/// `top_products_ranking_terms_come_from_the_product` below do the same for
+/// the ONE report query the product assembles: `Store::top_products` builds
+/// `{TOP_PRODUCTS_SQL} ORDER BY {order_clause}, sl.sku LIMIT ?3` with a
+/// `format!`, so only the base can be shared and the tail is pinned there.
 ///
 /// `get_kds_queue` and `list_kds_orders_for_instance` cannot be a single
 /// constant: the product appends an optional zone/status filter, joins the
@@ -1258,4 +1231,63 @@ fn assembled_kds_probes_extend_the_production_base() {
         "the list_kds_orders_for_instance probe's WHERE/ORDER BY drifted from the production \
          assembly",
     );
+}
+
+/// The `top_products` probe is the production base plus the product's own
+/// `format!` tail, character for character.
+///
+/// `Store::top_products` is ASSEMBLED: it appends ` ORDER BY {order_clause},
+/// sl.sku` and ` LIMIT ?3` to `TOP_PRODUCTS_SQL`. Only the base can be a
+/// shared constant, and the tail is pinned here - pinned to the REVENUE
+/// branch, which is the product's default for every `order_by` other than
+/// "profit". A probe built on the profit branch would keep this test green
+/// while grading text the default caller never runs.
+#[test]
+fn top_products_probe_extends_the_production_base() {
+    let assembled = top_products_with_revenue_order();
+    let tail = assembled
+        .as_str()
+        .strip_prefix(TOP_PRODUCTS_SQL)
+        .unwrap_or_else(|| {
+            panic!(
+                "the top_products probe no longer starts with TOP_PRODUCTS_SQL; the production \
+                 base and this probe have drifted apart ({} bytes against the base)",
+                TOP_PRODUCTS_SQL.len(),
+            )
+        });
+    assert_eq!(
+        tail, "\n             ORDER BY total_minor DESC, sl.sku\n             LIMIT ?3",
+        "the top_products probe's ranking tail drifted from the production format! tail",
+    );
+    assert!(
+        top_products_with_revenue_order().contains(" ORDER BY total_minor DESC, sl.sku"),
+        "the top_products probe must grade the DEFAULT (revenue) ranking; the product resolves \
+         order_by to total_minor DESC for every value except \"profit\"",
+    );
+}
+
+/// The two ranking literals the `top_products` probe relies on still exist in
+/// `Store::top_products` as `ORDER BY` terms.
+///
+/// The clause itself is a literal inside the product's `format!` and cannot be
+/// a `const` (a `format!` argument is a token, not a value), so it is the one
+/// fragment of this query that could drift silently: a rename of the aggregate
+/// aliases would leave the probe grading `total_minor DESC` while the product
+/// orders by something else. This reads the product's source and requires both
+/// terms. It is weaker than a shared constant - it says the terms exist, not
+/// that the clause is spelled identically - which is why the tail above is also
+/// asserted character for character.
+#[test]
+fn top_products_ranking_terms_come_from_the_product() {
+    const WORKSPACE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../");
+    const PRODUCT_SALES: &str = "crates/kasirmu-core/src/db/reports/product_sales.rs";
+    let source = std::fs::read_to_string(format!("{WORKSPACE_ROOT}{PRODUCT_SALES}"))
+        .unwrap_or_else(|e| panic!("reading {PRODUCT_SALES} failed: {e}"));
+    for term in ["total_minor DESC", "gross_profit_minor DESC"] {
+        assert!(
+            source.contains(term),
+            "Store::top_products no longer orders by {term}; the top_products probe's ranking \
+             tail is stale ({PRODUCT_SALES})",
+        );
+    }
 }
