@@ -15,12 +15,15 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 69 | 69 | **0** |
+| Medium | 70 | 70 | **0** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **135** | **135** | **0** |
+| **Total** | **136** | **136** | **0** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-22 (round 24). 136 defined, 136 closed, 0 open.** O-M70 opened and closed in the same
+round: the legacy outbox probe's residual cost, measured twice wrongly before being measured right.
 
 **Updated 2026-10-22 (round 22). 135 defined, 135 closed, 0 open.** O-M69 resolved (`8a1e68b12`) — and the
 interesting part is not the index, it is that **the falsification corrected my own diagnosis**: my first
@@ -1085,6 +1088,39 @@ disappears — for BOTH values of `outcome`, and for both the first page and the
 after, both shapes, both outcome values. Falsified: unregistering the migration makes
 `audit_page_filtered_by_outcome_seeks_instead_of_scanning` fail on the FIRST page with
 `SCAN audit_log USING INDEX idx_audit_log_created_at`; re-registering makes it pass.
+
+**O-M70 · kasirmu-core — the legacy outbox probe reads each candidate's table row** —
+`crates/kasirmu-core/src/db/offline/enqueue.rs:529-537` ◦. The `sale_id IS NULL` branch
+(the only route to any row written before `20261023`) probes with
+`WHERE sale_id IS NULL AND status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0`.
+
+**CORRECTED TWICE while fixing; recording both, because the first two readings were wrong:**
+- First I measured `SCAN offline_queue` — but that was over an EMPTY/small table where no index served.
+- Then, with a realistically seeded table, the falsification showed the branch already plans
+  `SEARCH offline_queue USING INDEX idx_offline_queue_status_action (status=? AND action=?)`.
+  So it has NEVER been a full table scan on a database carrying `20261023`.
+
+The residual cost is narrower than either earlier reading: `idx_offline_queue_status_action` is
+`(status, action)` — **not covering** — so every candidate row is fetched from the TABLE just to run
+`instr(payload, ?)`. The number of table fetches is the number of pending rows sharing that
+`(status, action)` pair, not the whole backlog.
+
+*Fix (measured):* `CREATE INDEX idx_offline_queue_legacy_sale_probe ON offline_queue(action, status,
+payload) WHERE sale_id IS NULL` turns the plan into
+`SEARCH offline_queue USING INDEX idx_offline_queue_legacy_sale_probe (action=? AND status=?)`,
+evaluating `instr` from the INDEX entry with no table fetch. It is PARTIAL on `sale_id IS NULL`, so it
+costs nothing for the rows the fast path already serves. Applied in
+`20261028_offline_queue_legacy_sale_probe.sql`.
+
+**✅ RESOLVED 2026-10-22.** Falsified: unregistering that migration makes
+`has_pending_outbox_row_uses_sale_id_index_and_falls_back_for_legacy_rows` fail, naming
+`idx_offline_queue_legacy_sale_probe` and quoting the fallback plan.
+
+**The lesson is about measurement order.** I called this a table scan because I planned it against a
+table with no data shaping the choice, then called the table-scan reading a finding. The falsification —
+which I only ran because the fix needed proving — showed the pre-fix plan already SEEKED. **A plan measured
+on an unseeded table is not evidence about production**, which is the same rule that made the earlier
+gift-card and audit "scans" turn out to be fixture artefacts.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
