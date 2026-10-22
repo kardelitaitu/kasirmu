@@ -160,3 +160,9 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - `6ebc95b97` — test(restaurant): add comprehensive unit, logic and component test suites for menu editor
 - `dc7d2ac25` — fix(ui): resolve token compliance, tooltip, dither, and extraction in menu editor
 - `ef294d167` — fix(ui): disambiguate sync-plan-row and sync-queue-summary data-testids in SyncStatusScreen
+
+### Verification pass (2026-10-22)
+- Re-verified acceptance baseline: `cargo check -p kasirmu-app -p kasirmu-mobile` compiles cleanly (0 warnings, 0 errors).
+- Re-verified dry run test: `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passes in 1.85s.
+- Localized in-app updater Android-only error states in `162863abc`.
+- UI typecheck clean (`tsc --noEmit`, exit 0); UI lint clean (0 errors).
