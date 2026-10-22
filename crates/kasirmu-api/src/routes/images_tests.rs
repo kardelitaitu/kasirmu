@@ -298,6 +298,44 @@ async fn put_image_malformed_body_with_wrong_hash_returns_400_not_409() {
 }
 
 #[tokio::test]
+async fn put_image_db_refcount_failure_returns_500_not_400() {
+    let (state, dir) = temp_image_dir();
+    // Drop image_refs table to simulate an internal database failure
+    {
+        let db = state.db.lock().await;
+        db.execute_batch("DROP TABLE image_refs;").unwrap();
+    }
+    let app = router(state.clone());
+    let token = test_token(&state, "tenant-a");
+    let body = make_webp_body();
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/images")
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/octet-stream")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // O-L07: Must be 500 Internal Server Error, NOT 400 Bad Request
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let json = body_json(resp).await;
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap()
+            .contains("refcount write failed"),
+        "error message must describe the internal failure: {json:?}"
+    );
+    cleanup(&dir);
+}
+
+#[tokio::test]
 async fn get_image_returns_404_for_unknown_hash() {
     let (state, dir) = temp_image_dir();
     let app = router(state.clone());

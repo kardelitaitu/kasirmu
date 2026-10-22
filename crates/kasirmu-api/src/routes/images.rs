@@ -131,6 +131,7 @@ enum ImageOutcome {
     Stored(String),
     Duplicate(String),
     Rejected,
+    StorageError(String),
 }
 
 /// Validate + store one image body, maintaining the refcount.
@@ -150,16 +151,17 @@ async fn process_image(state: &AppState, claims: &ApiTokenClaims, bytes: &[u8]) 
     // Atomic write; `duplicate` = the file already existed.
     let duplicate = match store_image_atomic(&state.image_dir, &hash16, bytes).await {
         Ok(d) => d,
-        Err(_) => return ImageOutcome::Rejected,
+        Err(e) => {
+            tracing::error!(hash = %hash16, error = %e, "image atomic file storage failed");
+            return ImageOutcome::StorageError(format!("image storage failed: {e}"));
+        }
     };
     let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
     let db = state.db.lock().await;
     let store = Store::new(&db);
-    if store
-        .ref_image(tenant_id, &hash16, bytes.len() as i64)
-        .is_err()
-    {
-        return ImageOutcome::Rejected;
+    if let Err(e) = store.ref_image(tenant_id, &hash16, bytes.len() as i64) {
+        tracing::error!(tenant_id, hash = %hash16, error = %e, "image refcount write failed");
+        return ImageOutcome::StorageError(format!("image refcount write failed: {e}"));
     }
     drop(db);
     if duplicate {
@@ -265,6 +267,11 @@ pub async fn put_image(
             Json(serde_json::json!({"error": "image rejected: must be a WebP ≤ 32 KB"})),
         )
             .into_response(),
+        ImageOutcome::StorageError(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": err})),
+        )
+            .into_response(),
     }
 }
 
@@ -311,10 +318,12 @@ pub async fn put_image_batch(
                 hash: Some(h),
                 status: "duplicate",
             }),
-            ImageOutcome::Rejected => results.push(BatchImageResult {
-                hash: None,
-                status: "rejected",
-            }),
+            ImageOutcome::Rejected | ImageOutcome::StorageError(_) => {
+                results.push(BatchImageResult {
+                    hash: None,
+                    status: "rejected",
+                })
+            }
         }
     }
     (StatusCode::CREATED, Json(BatchPutResponse { results })).into_response()
