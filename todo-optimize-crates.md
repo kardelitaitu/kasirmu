@@ -22,7 +22,10 @@ open work in every downstream reading this journal supplies.**
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
 
-**Updated 2026-10-22 (round 20).** 134 defined, 133 closed, **1 open: O-M68** (§11CC). O-M68 was found by the
+**Updated 2026-10-22 (round 20). 134 defined, 134 closed, 0 open.** O-M68 closed (§11CE) — and it is the
+first entry in this file ever FOUND BY TOOL rather than by reading, which is the point: `scripts/check-query-plans.py`
+now probes 27 production queries and fails when one scans a large table. **The ledger no longer needs to be
+the source of performance debt.** O-M68 was found by the
 same kind of measurement that produced §11CB — `EXPLAIN QUERY PLAN` over a seeded table — and it is left OPEN
 on purpose: fixing it means adding an index to a table that grows one row per product search, which is a
 write-amplification trade-off the read-side measurement does not settle. **Recording a deliberate open item
@@ -1031,6 +1034,12 @@ file** — `platform/sync/src/image_push.rs:75`, `:176-178` ✔. Fixed: client b
 **O-M68 · kasirmu-core — the popularity recompute traverses the whole `product_activity` index** —
 `crates/kasirmu-core/src/db/popularity.rs:1056-1061` ✔ · **PAID 2026-10-22 in migration `20261025_product_activity_created_at.sql` (§11CE)**.
 Option B implemented: added covering range index `idx_product_activity_created_at` on `product_activity(created_at, sku, event_type)`. `recompute_all_popularity`'s unrestricted window query now plans `SEARCH product_activity USING COVERING INDEX idx_product_activity_created_at (created_at>?)`, reading 0 table pages. Verified in `popularity_tests.rs`.
+
+**✅ RESOLVED 2026-10-22 in `f49038c50` — migration `20261025_product_activity_created_at.sql`.**
+`CREATE INDEX idx_product_activity_created_at ON product_activity(created_at, sku, event_type)` — option B
+from §11CC. Measured: with the index the aggregate plans `SEARCH product_activity USING COVERING INDEX
+idx_product_activity_created_at (created_at>?)`; with the index DROPPED it degrades back to
+`SCAN product_activity USING INDEX idx_product_activity_sku`. Falsified by dropping, restored, re-passed.
 
 **SCOPE CORRECTED 2026-10-22 (already, before anyone acted on it): this is NOT on the per-sale path.**
 The scan lives in `recompute_all_popularity` (`popularity.rs:1010`), which its own doc says runs **"at store
@@ -5567,3 +5576,59 @@ After:
 
 The index-surface pin in `migrations_tests.rs` advanced from 198 to 199.
 
+
+## §11CE — O-M68 resolved, and the query-plan probe that makes this repeatable (2026-10-22)
+
+Landed in `f49038c50`.
+
+### O-M68 fixed
+
+`recompute_all_popularity`'s unrestricted window aggregate over `product_activity` planned
+`SCAN product_activity USING INDEX idx_product_activity_sku` — an index-only walk, but over EVERY row,
+with `created_at >=` applied only after each row was fetched. Migration
+`20261025_product_activity_created_at.sql`:
+
+```sql
+CREATE INDEX idx_product_activity_created_at ON product_activity(created_at, sku, event_type);
+```
+
+Measured, with the index: `SEARCH product_activity USING COVERING INDEX idx_product_activity_created_at
+(created_at>?)`. With it DROPPED: back to `SCAN ... USING INDEX idx_product_activity_sku`. The covering
+shape also removes the temp B-tree the GROUP BY needed.
+
+### The tool is the durable part: `tests/integration/query_plan_probe.rs` + `scripts/check-query-plans.py`
+
+27 production queries probed against a seeded, migrated, `ANALYZE`d database. **3 are sourced from the
+production constants** (`DAILY/WEEKLY/MONTHLY_REVENUE_SQL`, made `pub` so a separate test crate can import
+the SAME text) and **24 are copies** — each naming its origin `file:line`, with
+`copied_query_provenance_is_intact` failing the build if an origin stops resolving. The 3-vs-24 split is
+the honest measure of drift risk and is recorded rather than smoothed over.
+
+**Falsification, which is what makes it worth having:**
+- Permanent: `forcing_a_scan_fails_the_probe` strips every `WHERE` from the revenue SQL and REQUIRES the
+  same detector to report the table. If the detector goes deaf, that test fails.
+- One-off: deleting `WHERE status = 'pending'` from `list_pending_offline` made the probe fail, exit 1,
+  naming `offline_queue (SCAN offline_queue)`. Restored byte-for-byte.
+
+### The probe found ONE candidate and it was a false positive — worth recording as such
+
+It flagged `get_kds_queue` as scanning `kds_orders`. It does not. The index it 'lacks'
+(`idx_kds_orders_status_received ON kds_orders(status, received_at)`, migration 20260904) already exists,
+and on an empty migrated DB the query `SEARCH`es it — the `ORDER BY CASE status … END` does not defeat it.
+The scan appeared only because the probe's own seed made **60% of tickets live** (`i % 5` across five
+statuses); at that selectivity SQLite correctly prefers a scan.
+
+Two corrections the lane made to my diagnosis, both accepted: it is the WHERE selectivity, not the `CASE`;
+and the index is chosen below roughly **20–30% live**, not at any live set. The fix was to the SEED
+(90% served / 5% cancelled / ~5% live), not to the product, and a comment now records that a board with a
+huge live backlog will scan BY DESIGN — so nobody 'fixes' it later by adding an index.
+
+**That is the most valuable outcome of the round.** A probe whose fixture is unrealistic produces exactly
+the false confidence this project has been repeatedly burned by. It reported a defect, the defect was in the
+probe, and the probe now says so.
+
+### Coverage, stated honestly
+
+27 queries covered. NOT covered: dynamic `WHERE` builders in `audit.rs`, `sales_summary.rs` past `:276`,
+the `product_activity` aggregates, payments readers, shift joins, and every writer. The probe is a curated
+gate, not a crawl.
