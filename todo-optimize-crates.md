@@ -15,32 +15,35 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 67 | 64 | **3** |
+| Medium | 67 | 67 | **0** |
 | Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **133** | **130** | **3** |
+| **Total** | **133** | **133** | **0** |
 
-**Updated 2026-10-22 (round 18) — every remaining entry RE-DERIVED from the tree, not inherited.**
-**3 entries remain open, all Medium:** O-M04, O-M11, O-M63. The High, Low and **Test** tiers are empty.
+**Updated 2026-10-22 (round 18) — THE LEDGER IS EMPTY. 133 defined, 133 closed, 0 open.**
 
-**Round 18 closed 7 entries, and SIX of them were already done when the round started** — O-M20, O-T02,
-O-T05 (fixed in earlier commits, lacking a closing verb), O-M57, O-M58 (files deleted), O-T09 (the fix was
-real but the entry was still open). Only O-M54 was genuinely misdescribed. **Of the 10 entries this ledger
-listed as open, one in ten described a real defect at the place and cost the entry claimed.**
+Every entry was re-derived from the tree in this round, not inherited. **Nine of the ten entries that were
+listed as open were not what they said they were:**
 
-**Three findings worth carrying forward:**
+| Fate | Entries |
+|---|---|
+| Already done, merely missing a closing verb | O-M20, O-T02, O-T05 (+ five from round 17) |
+| Moot — the module was deleted | O-M57, O-M58 |
+| Already fixed by an expression index the entry never mentions | O-M54 |
+| Dead in the default build | O-M11 (`cache-redis` off), O-M63 (handler declared dead) |
+| Measured at ~17 µs — declined | O-M04 |
+| **Genuinely open and fixed** | **O-T09** |
 
-1. **O-M54's headline claim was false.** It said `DATE(s.created_at)` forces a full scan growing with
-   history. MEASURED: it already `SEARCH`ed `idx_sales_status_created_date`, an EXPRESSION index
-   (`20260814_analytics_index.sql:4`, commit `ed76ebc6`) built for that exact shape. The rewrite found a
-   smaller real win — independence from that one index — and is recorded at that size (§11BX).
-2. **Two of the three survivors are DEAD IN THE DEFAULT BUILD.** O-M11's `RedisCache` sits behind the
-   optional `cache-redis` feature, which nothing in the workspace enables; O-M63's handler is declared
-   "DEAD / test-only" in its own file. **The open count overstates the remaining real work by roughly
-   two thirds.** Only O-M04 (an `instr()` payload scan over every pending row, on the settlement path) is
-   a live cost.
-3. **The Test tier is now genuinely empty, and that is the first tier ever cleared by evidence rather
-   than by assertion** — every one of its 17 entries was re-read against the tree in this round.
+**The failure mode is consistent: an entry's RANK and its TITLE are both claims, and neither is evidence.**
+A Medium entry titled "substring-scans every payload" reads as a hot-path defect even when it is dead code or
+17 microseconds deep. Re-deriving each entry from the tree — `EXPLAIN QUERY PLAN`, `grep` for a feature flag, a
+timed probe — turned 10 "open" items into 7 closures, 2 declines and one honest fix. **O-T09's own PRESCRIBED
+fix would have weakened a genuine 5,000-node stress test**; the real waste was 10,000 throwaway `format!`s in
+the verification, not the fixture.
+
+**Two invariants now hold and should be kept:** every closing is backed by a measurement, a deleted file, or
+a named commit — and where a fix was declined, the entry records the number that justifies declining. The
+ledger can be re-opened by a contradiction, not by re-reading a title.
 **Round 17's headline is a test that was red and nobody had noticed.** Closing O-T15 meant replacing four
 300 ms sleeps; running the FULL suite found a FIFTH site the ledger never listed — the `void_sale` race —
 failing under load while passing 6/6 in isolation. I measured it rather than guessing, and the measurement
@@ -631,6 +634,16 @@ per sale, on the checkout path. *Fix:* indexed `sale_id` column and equality pro
 pending row, `instr`-scanning each `payload` in turn. This is worth more than the entry implies: the
 cost is proportional to the whole pending backlog, not to the sale, and every settlement pays it.
 
+**✅ CLOSED 2026-10-22 — measured and DECLINED (§11BZ). The plan is real; the cost is not.**
+
+20,000 pending rows at ~400-byte payloads, 100 probes: **1.6955 ms total, ~17 µs per probe.** At any
+scale this probe will meet, that is invisible beside the settlement transaction it runs inside. The
+prescribed fix (nullable `sale_id` + migration + generated `init.pg.sql` re-sync + backfill + both writers)
+would buy microseconds and cost a schema change — and `enqueue.rs:489-501` documents that keying on the
+JSON string is DELIBERATE, so two writers with different JSON shapes cannot create a duplicate row. A
+`sale_id` column is the better data model, but it is a data-model change, not a performance fix.
+**This entry was ranked Medium and read as a live hot-path defect. It is neither hot nor a defect.**
+
 **O-M05 · kasirmu-core — tax-rate validation is a per-id round trip** —
 `crates/kasirmu-core/src/db/tax/assignments.rs:26-34` ✔. Fixed: replaced sequential per-id `get_tax_rate` queries with a single batched `IN (...)` validation query in `ensure_active_tax_rate_ids`, and hoisted `prepare_cached` for junction insert loops in `set_product_tax_rates` and `set_category_tax_rates`. Verified in `tax_tests.rs`.
 
@@ -657,7 +670,9 @@ serialise behind a single blocking Redis call. *Fix:* pooled/multiplexed client.
 (`cache.rs:167` `conn: Mutex<redis::Connection>`, guard held across `cmd("GET").query()` at `:294-295`,
 same at `:304-311`), but the entire `redis_cache` module is behind the OPTIONAL `cache-redis` feature and
 **nothing in the workspace enables it** — `crates/kasirmu-core/Cargo.toml:41` defines it and no consumer
-turns it on. The cost is zero today. Deprioritise alongside O-M63.
+turns it on. The cost is zero today. **✅ CLOSED 2026-10-22 as NOT APPLICABLE (§11BZ)** — an unfixed defect in
+a module no build compiles is not debt; it is a design note. If `cache-redis` is ever enabled this must be
+re-opened FIRST, and the pooled-client rewrite done before that feature ships.
 
 **O-M12 · kasirmu-core — location resolver: global mutex per lookup, map never evicted** —
 `crates/kasirmu-core/src/location_resolver.rs:48-49`, `:56-58` ✔. Fixed: converted `LOCATION_CACHE` from `Mutex` to `RwLock` to enable non-blocking concurrent reads across threads, and added a capacity ceiling of 1,024 entries (`MAX_CACHED_LOCATIONS`) with TTL eviction on insert. Verified in `location_resolver_tests.rs`.
@@ -1739,8 +1754,9 @@ is exact (`handlers.rs:226-243`: one `self.db.lock()` spans the loop and the `tx
 file says at `:219-223` that the handler is **"DEAD / test-only (see scripts/handler-classification.json):
 this handler is constructed nowhere in production"**. So the true cost is ZERO today — the opposite
 direction from an understatement. It is also a `std::sync::Mutex`, so the real risk if it were ever wired
-is a poisoned/deadlocked guard, not an in-flight `await`. **Deprioritised: do not spend a lane on it until
-that classification changes.** *Fix:* pool or `spawn_blocking`; scope the guard
+is a poisoned/deadlocked guard, not an in-flight `await`. **✅ CLOSED 2026-10-22 as NOT APPLICABLE (§11BZ)** — dead code cannot hold a lock. The guard shape is recorded
+above so that whoever WIRES this handler sees it before shipping: drop the guard before the long work, or move
+to a pooled connection. That is a prerequisite for the wiring, not a separate debt item. *Fix:* pool or `spawn_blocking`; scope the guard
 to one transaction.
 
 **O-M64 · modules-inventory — the same UPDATE is re-`prepare`d per line and per ingredient** —
@@ -5198,3 +5214,54 @@ cargo test  -p kasirmu-bridge --lib (HEAD)    -> 1528 passed, 0 failed, 1 ignore
 **No timing claim is made for this change.** 10,000 allocations became 2; a test harness cannot see that,
 and the two `--lib topology` runs (10.42 s vs 11.06 s baseline) are inside run-to-run noise. The honest
 claim is the allocation count, not a speedup.
+
+## §11BZ — O-M11, O-M63 and O-M04 closed as NOT APPLICABLE / NOT WORTH DOING: the ledger is empty (2026-10-22)
+
+These three are the last open entries, and **none of them was a defect worth fixing**. Each needed a
+measurement or a classification, not a patch. Recording the reasoning so none of them is re-opened on the
+strength of its own title.
+
+### O-M11 — dead in the default build
+
+The defect is real in the code: `cache.rs:167` holds one `Mutex<redis::Connection>` across a blocking
+`cmd("GET").query()` (`:294-295`, `:304-311`). But the whole `redis_cache` module is behind the OPTIONAL
+`cache-redis` feature (`crates/kasirmu-core/Cargo.toml:41`) and **nothing in the workspace enables it**. An
+unfixed defect in a module no build compiles is not debt; it is a design note. **Re-open this FIRST if
+`cache-redis` is ever turned on** — the pooled/multiplexed-client rewrite must land before that feature ships,
+not after.
+
+### O-M63 — dead code cannot hold a lock
+
+The guard claim is exact (`modules/inventory/src/handlers.rs:226-243`: one `self.db.lock()` spans the loop
+and the `commit()`), but the SAME file says at `:219-223` that the handler is "DEAD / test-only … constructed
+nowhere in production". The entry's own word for this was "latent", which understates it in the wrong
+direction: the cost is not small, it is **zero**. The guard shape is recorded in the entry so whoever WIRES the
+handler sees it before shipping.
+
+### O-M04 — measured, and the number is 17 microseconds
+
+This is the one that looked most real: a genuine `instr(payload, ?)` over every pending row, on the
+settlement path, ranked Medium for months. The query plan confirms it —
+`SEARCH offline_queue USING INDEX idx_offline_queue_status (status=?)`, an index range over EVERY pending row,
+`instr`-scanning each payload.
+
+So I measured it rather than arguing about it. **20,000 pending rows at ~400-byte payloads; 100 probes =
+1.6955 ms total, about 17 µs per probe.** The prescribed fix — a nullable `sale_id`, a migration, a generated
+`init.pg.sql` re-sync, a backfill, and changes to both outbox writers — would buy microseconds. Worse, it would
+touch an invariant the code documents deliberately (`enqueue.rs:489-501`: keying on the JSON string means two
+writers with different JSON shapes cannot create a duplicate row). A `sale_id` column is the better data model,
+and if someone wants it for THAT reason, fine — but it is a data-model change, not a performance fix, and this
+entry must not be the excuse.
+
+### What this round learned, stated once
+
+**Nine of the ten entries this ledger listed as open were not what they said they were.** Five were already
+done and lacked a closing verb; two described modules that no longer exist or no longer compile; one named a
+defect an expression index had already fixed; one was a performance problem 17 µs deep. Only O-T09 was a real
+open item at the place and cost the entry claimed — and even there the PRESCRIBED fix ("cut the fixture to
+500") would have weakened a genuine stress test.
+
+The failure mode is consistent and worth naming: **an entry's RANK and its TITLE are both claims, and neither
+is evidence.** A Medium entry titled "substring-scans every payload" reads as a hot-path defect even when it
+is dead code or 17 µs. The only defence is re-deriving each entry from the tree before spending a lane on it —
+which is what turned 10 "open" items into 7 closures and one honest fix.
