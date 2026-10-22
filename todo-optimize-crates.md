@@ -6719,3 +6719,79 @@ being folded into a gate fix.
    and rename it; it names the absence, so it cannot survive the fix unedited.
 
 **Ledger: 143 defined, 142 closed, 1 open.**
+
+## §11CS — O-M78 resolved: 706 leaked scratch directories, from a guard six modules dropped (2026-10-23)
+
+Landed in `fc64e499b`.
+
+### The measurement that started it
+
+`target/test-scratch/` held **1,455** directories. Grouped by prefix:
+
+| prefix | count |
+|---|---|
+| `kasirmu-bridge-*` | **706** |
+| `kasirmu-test-*` | 117 |
+| `oz-pos-*` | 74 |
+| `oz-test-*` | 38 |
+| `kasirmu-mobile-*` | 14 |
+
+`crates/kasirmu-bridge/src/testing.rs` documents this exact failure and claims it is
+fixed: "1,911 `kasirmu-bridge-store-*` leftovers were measured here after a handful of runs.
+The guard deletes it on drop." The guard is real — `ScratchDir` has a `Drop` that calls
+`remove_dir_all`. **So the count came from somewhere the guard never ran.**
+
+### The cause: a setter that cannot know where the files are
+
+`TestBridge::new()` builds its manager and stores the guard in a `_store_scratch` FIELD
+(correctly — the module doc explains why a local would delete the directory the manager is
+still using). But `with_db_manager(manager)` **replaces the manager and leaves
+`_store_scratch` pointing at the old directory**. A test module that builds its own manager
+over `kasirmu_test_support::scratch_dir(...)` gets a bare `PathBuf` — `scratch_dir` has no
+guard, only `ScratchDir::new` does — and nothing ever deletes it.
+
+Six modules had each copied their own `unique_store_dir() -> PathBuf`, so six modules leaked
+a directory per test: `inventory_tests`, `local_payment_tests`, `regional_tests`,
+`tables_tests`, plus the two `memo_tests` call sites. Their doc comments all explain the
+`C:\WINDOWS\TEMP` trap correctly — **the move to `target/` fixed the failure and silently
+introduced the leak**, because `target/` is not cleaned by an OS temp cleaner and the bare
+path they switched to has no `Drop`.
+
+### The fix
+
+`TestBridge::with_db_manager_scratch(manager, scratch)` — replaces the manager AND takes
+ownership of its directory guard, so the directory lives exactly as long as the manager that
+uses it. Every copy was rewritten to return `(PathBuf, ScratchDir)` instead of `PathBuf`.
+
+### Falsified, not assumed
+
+```
+cargo test -p kasirmu-bridge --lib -- tables:: inventory:: regional:: local_payment::
+  before=706   test result: ok. 49 passed   after=706
+```
+
+**Zero net new directories.** Before this change the same run added one per test. The count
+itself is the gate: a fix that passed every test while still leaking would look identical in
+the test output and different here.
+
+### A mistake I made and caught
+
+My first bulk edit rewrote `flow_bridge(conn, store_manager())` to
+`flow_bridge(conn, store_manager().0, store_manager().1)` — which calls the constructor
+TWICE, creating two guards and two directories, and deleting one of them. The count went UP
+in principle while the code compiled. Reverted the string replace and bound the tuple once per
+call site (`let (manager, scratch) = store_manager();`). A mechanical rewrite of a call whose
+function has a side effect is not mechanical.
+
+### Verification
+
+```
+cargo check -p kasirmu-bridge --all-targets  -> exit 0
+cargo test  -p kasirmu-bridge --lib (5 modules) -> 75 passed, 0 failed
+leak gate: 706 before == 706 after               -> 0 new
+rustfmt --edition 2021 --check                   -> clean on my hunks;
+                                                    testing.rs/regional/memo drift predates this
+                                                    commit (1 diff each in the HEAD blob too)
+```
+
+**Ledger: 144 defined, 143 closed, 1 open.**
