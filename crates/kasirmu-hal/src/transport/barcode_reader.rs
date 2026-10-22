@@ -71,7 +71,13 @@ impl BarcodeReader {
     }
 
     /// Bytes held for the next poll (current code plus retained remainder).
-    #[cfg(test)]
+    ///
+    /// NOT `#[cfg(test)]`. This was gated as test-only and called from the read
+    /// loop at two sites, which made `cargo check -p kasirmu-hal` fail while
+    /// `cargo test -p kasirmu-hal` passed: the test build sets `cfg(test)`, so
+    /// the definition existed there and the error only appeared in the
+    /// non-test build. That is the worst shape of build breakage — green in the
+    /// command people run while iterating, red in the one CI runs.
     pub(crate) fn buffered_bytes(&self) -> usize {
         self.current.len() + self.pending.len()
     }
