@@ -70,3 +70,18 @@ fn rejects_zero_max_dimensions() {
     let result = generate_thumbnail(&src, ImageDimensions::new(0, 0));
     assert!(matches!(result, Err(MediaError::InvalidDimensions(_))));
 }
+
+#[test]
+fn thumbnail_extreme_aspect_ratio_does_not_overflow_or_truncate() {
+    // 1x5000 source image
+    let img = RgbImage::from_pixel(1, 5000, image::Rgb([10, 20, 30]));
+    let mut buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
+        .unwrap();
+
+    let (_out, dims) = generate_thumbnail(&buf, ImageDimensions::new(64, 64)).unwrap();
+    assert!(dims.width >= 1);
+    assert!(dims.height >= 1);
+    assert!(dims.width <= 64);
+    assert!(dims.height <= 64);
+}

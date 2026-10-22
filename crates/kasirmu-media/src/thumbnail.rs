@@ -88,11 +88,19 @@ pub fn thumbnail_img(
     }
 
     // Compute the largest dimensions that fit the box while preserving
-    // aspect ratio. Use u64 math to avoid overflow on huge sources.
-    let scale =
-        (max_dimensions.width as u64).min(max_dimensions.height as u64 * w as u64 / h as u64);
-    let new_w = scale.max(1) as u32;
-    let new_h = (new_w as u64 * h as u64 / w as u64).max(1) as u32;
+    // aspect ratio. Use u64 math with saturating multiplication to avoid
+    // overflow on huge sources, and explicit try_from clamping (O-L21).
+    let scale = (max_dimensions.width as u64)
+        .min((max_dimensions.height as u64).saturating_mul(w as u64) / (h as u64));
+    let new_w = u32::try_from(scale)
+        .unwrap_or(u32::MAX)
+        .max(1)
+        .min(max_dimensions.width);
+    let new_h_u64 = (new_w as u64).saturating_mul(h as u64) / (w as u64);
+    let new_h = u32::try_from(new_h_u64)
+        .unwrap_or(u32::MAX)
+        .max(1)
+        .min(max_dimensions.height);
 
     // Triangle (bilinear) is the recommended high-quality downscale
     // filter; CatmullRom is sharper but slower. Triangle is the standard
