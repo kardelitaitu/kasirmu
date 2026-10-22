@@ -917,7 +917,7 @@ async fn publish_resolves_the_store_terminals_when_the_store_db_is_not_open_yet(
 
     // The store manager of the SAME install: a directory that already exists
     // (as `app_data_dir()` does) but holds no store database yet.
-    let store_dir = crate::testing::unique_store_dir();
+    let (store_dir, _scratch) = crate::testing::unique_store_dir();
     std::fs::create_dir_all(&store_dir).unwrap();
     let manager = StoreDatabaseManager::new(store_dir, migrations::ALL);
     let store_db = manager.store_db_path("store-a");
@@ -986,7 +986,7 @@ async fn publishing_from_a_store_whose_db_is_absent_still_reaches_global_termina
     seed_user(&conn, "user-manager", "role-manager");
     seed_terminal(&conn, "term-global-1", "DESKTOP-AUTHOR");
 
-    let store_dir = crate::testing::unique_store_dir();
+    let (store_dir, _scratch) = crate::testing::unique_store_dir();
     let manager = StoreDatabaseManager::new(store_dir, migrations::ALL);
     let tb = TestBridge::new().with_conn(conn).with_db_manager(manager);
     tb.sessions().write().unwrap().insert(

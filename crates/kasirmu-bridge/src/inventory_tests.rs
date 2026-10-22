@@ -56,22 +56,18 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
 /// Instance counter disambiguating store-db directories within one process.
 static STORE_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// Unique per-test directory for the isolated store-db manager. The manager
-/// creates the directory lazily on first `open_store`; leftovers are left
-/// for the OS temp cleaner, exactly like the harness's own store roots (the
-/// desktop file used `tempfile::tempdir()`, which is not a dev-dependency of
-/// this crate).
+/// Unique per-test directory for the isolated store-db manager.
+///
+/// Rooted under `target/test-scratch` via `kasirmu_test_support`, exactly like
+/// the shared harness root (`testing.rs::unique_store_dir`). It used to be
+/// `std::env::temp_dir()`, which on this project's Windows machines resolves
+/// to `C:\WINDOWS\TEMP` — a directory an ordinary user can create in but not
+/// delete from, so one stale `kasirmu-bridge-inventory-*` entry made
+/// `create_dir_all` fail with `os error 5` and failed every test that opens a
+/// store through it.
 fn unique_store_dir() -> std::path::PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-inventory-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
-    ))
+    STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+    kasirmu_test_support::scratch_dir("kasirmu-bridge-inventory")
 }
 
 /// Isolated store-db manager over a fresh directory — the direct twin of the

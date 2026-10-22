@@ -27,7 +27,6 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use kasirmu_core::cache::Cache;
@@ -49,9 +48,6 @@ use crate::ctx::{BridgeCtx, EventSink};
 /// `AppState::for_test` uses (production reads `session.ttl_seconds`).
 pub const TEST_SESSION_TTL_SECONDS: i64 = 86400;
 
-/// Instance counter disambiguating store directories within one test process.
-static NEXT_BRIDGE_ID: AtomicU64 = AtomicU64::new(0);
-
 /// Unique directory for `store-<id>.sqlite` files, under `target/test-scratch`.
 ///
 /// One directory per `TestBridge` keeps parallel test instances from
@@ -63,16 +59,20 @@ static NEXT_BRIDGE_ID: AtomicU64 = AtomicU64::new(0);
 /// `C:\WINDOWS\TEMP`, where an ordinary user can create but not delete: once
 /// one stale `kasirmu-bridge-test-*` directory existed, `create_dir_all` failed
 /// with `Access is denied. (os error 5)` and the panic surfaced from
-/// `provisioned_store_manager`, i.e. from `TestBridge::new()` — every harness
+/// `provisioned_store_manager`, i.e. from `TestBridge::new()` -- every harness
 /// test in this crate, reading as a product bug. `kasirmu_test_support` roots
 /// the same per-call-unique directory under the gitignored `target/`, which is
 /// writable and cleanable; its `scratch_root_is_never_windows_temp` pins the
 /// property so a future edit cannot reintroduce the trap.
-pub(crate) fn unique_store_dir() -> PathBuf {
-    // Keep the counter: callers that never touch the filesystem still bump it,
-    // and dropping the static would leave the imports above unused.
-    NEXT_BRIDGE_ID.fetch_add(1, Ordering::Relaxed);
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-store")
+///
+/// The directory is returned with its `ScratchDir` guard rather than as a bare
+/// path, because a bare path leaves the directory behind. Nothing cleans
+/// `target/` the way an OS temp cleaner would, so every run of the suite added
+/// another permanent directory: 1,911 `kasirmu-bridge-store-*` leftovers were
+/// measured here after a handful of runs. The guard deletes it on drop.
+pub(crate) fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-store");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Open a fresh, fully migrated connection for a test.
@@ -474,6 +474,12 @@ pub struct TestBridge {
     /// concurrently, so an uncontended unit lock is enough to satisfy the
     /// borrow `BridgeCtx` expects.
     topology_apply_lock: Mutex<()>,
+    /// Owns the store-manager directory; removed when this bridge drops.
+    ///
+    /// Held purely for its `Drop`. It must be a FIELD rather than a local in
+    /// `new()`: a local is dropped at the end of `new()`, which would delete
+    /// the directory the manager is still using.
+    _store_scratch: kasirmu_test_support::ScratchDir,
 }
 
 impl TestBridge {
@@ -488,9 +494,10 @@ impl TestBridge {
     /// Panics if the migrated database cannot be created (see `temp_conn`).
     #[must_use]
     pub fn new() -> Self {
+        let (db_manager, store_scratch) = Self::provisioned_store_manager();
         Self {
             db: Arc::new(Mutex::new(temp_conn())),
-            db_manager: Self::provisioned_store_manager(),
+            db_manager,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             session_ttl_seconds: TEST_SESSION_TTL_SECONDS,
             // "redis://127.0.0.1/" is unreachable in tests: create_cache
@@ -505,6 +512,7 @@ impl TestBridge {
             emitter: None,
             scanner_cancel: Arc::new(Mutex::new(None)),
             topology_apply_lock: Mutex::new(()),
+            _store_scratch: store_scratch,
         }
     }
 
@@ -530,9 +538,17 @@ impl TestBridge {
     ///
     /// The store is opened once here so the seed lands before a test's first
     /// `open_store`; `StoreDatabaseManager` keeps it for the handle's lifetime.
+    ///
+    /// Returns the manager together with the ScratchDir guard that owns its
+    /// directory, so the caller can keep the guard alive and have the directory
+    /// removed when the TestBridge drops. Without that guard the directory is
+    /// left behind for every TestBridge::new() -- measured at 1,911 leftovers in
+    /// target/test-scratch/ after a handful of suite runs, because nothing
+    /// cleans target/ the way an OS temp cleaner would.
     #[must_use]
-    fn provisioned_store_manager() -> StoreDatabaseManager {
-        let manager = StoreDatabaseManager::new(unique_store_dir(), migrations::ALL);
+    fn provisioned_store_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
+        let (dir, scratch) = unique_store_dir();
+        let manager = StoreDatabaseManager::new(dir, migrations::ALL);
         {
             let store_conn = manager
                 .open_store("default")
@@ -542,7 +558,7 @@ impl TestBridge {
                 .expect("store db lock for baseline seeding");
             migrations::seed_provisioned_baseline(&guard);
         }
-        manager
+        (manager, scratch)
     }
 
     /// The provisioned version of a caller-built manager, for tests that construct
