@@ -702,13 +702,89 @@ parameter named `items` that no longer exists — the span now opens with `body_
 and it broke `push_rejects_malformed_json`, which pins 400 — a client-visible contract renegotiated by a
 performance change is exactly the class of regression that ships quietly. That test is why it did not.
 
-**O-M24 · kasirmu-api — image pack: global SQLite mutex once per hash, query per hash,
-2 MB body buffered** — `crates/kasirmu-api/src/routes/images.rs:413-451` ◦. *Fix:* one batched
-query under one lock; stream the response.
+**O-M24 · kasirmu-api — image pack: global SQLite mutex once per hash, query per hash,**
+**2 MB body buffered** — `crates/kasirmu-api/src/routes/images.rs` ✔ **BATCHING PAID 2026-10-22;**
+**STREAMING DELIBERATELY DECLINED, with the allocation argument below.**
 
-**O-M25 · cloud-server — snapshot cache: one global mutex, full-clone hits, O(tenants)
-sweep** — `apps/cloud-server/src/sync_api.rs:600-613`, `:691-702` ◦. Taken on every request.
-*Fix:* shard (as `rate_limit.rs` does); serve `Bytes`/`Arc<[u8]>`.
+Measured with temporary instrumentation on the real code paths (then fully reverted, `git grep` clean):
+a PACK_MAX_FILES=64 pack went from **64 lock acquisitions and 64 queries to 1 and 1**. The batched
+lookup is a new `Store::image_refs_present(tenant_id, &[&str]) -> Vec<bool>` in
+`crates/kasirmu-core/src/db/image_refs.rs` rather than SQL in `images.rs`, because it reuses
+`missing_hashes`'s existing `IMAGE_REFS_IN_CHUNK`/`SQLITE_MAX_VARIABLES` chunking (an over-long list
+degrades to more chunks, never an unscoped sweep), reads every chunk inside ONE transaction so they see
+one snapshot, and returns per-hash booleans in CALLER order so frame order needs no side map.
+
+**Why streaming was not taken — the reasoning is the useful part.** The 404/400/fail-closed contract is
+only decidable AFTER the spine lookup, which happens before anything is read, so a first-poll-decides
+stream forces either a 500 on a whole-pack spine error (a behavioural regression) or emit-zero-frames-
+then-error (a silently truncated pack the puller caches as complete). Worse, the reader must know a file
+is ABSENT before emitting its frames, so a yielded-but-unreadable file cannot be skipped — it becomes a
+truncated frame inside a 200. And pre-sizing is not the escape it looks like: today's resident
+`Vec` + `Bytes` is ~2x the 2 MB cap, while `fill_stream` with zero reserves lets the `Vec` double to
+4 MB and `Bytes::from` takes the buffer WITHOUT shrinking. **Streaming would have doubled the worst
+case.** Removing the 2x for real needs a body that copies into a pre-sized `BytesMut` — new utility
+work, not something `Body::from_stream` gives.
+
+**A behaviour change, stated rather than buried:** fail-closed direction is preserved but the blast
+radius widened. Before, one hash whose individual query errored was skipped and the other 63 still
+served; now one failed batched read skips all 64. A DB that cannot answer one chunked lookup cannot
+answer the other 63, so the scope is honest — but it is a change and it is named in a comment and in the
+`tracing::warn`.
+
+**Two mutations SURVIVED and that is recorded rather than papered over:** dropping `refcount > 0` from
+the batched SQL still passes the API tests (no API path creates a refcount-0 row — `gc_images` deletes
+them and gc has no route), and a last-chunk-only accumulator passed because the chunking fixture puts its
+present hashes in the SECOND chunk. The widened byte cap DOES turn the ceiling test red, so that one is
+real. **No test counts locks or queries:** `AppState.db` is a plain tokio `Mutex` with no counter, so the
+64→1 numbers are a measurement, not an assertion — and the round's own lesson is that a measurement
+recorded in prose decays while an assertion does not.
+
+The pack endpoint had **no test at all** before this; four were added (batched-vs-per-hash answer across
+real frames, empty-body, 400, and both ceilings) plus three for `image_refs_present`. The ledger row at
+`:1476` describes the pre-fix `Vec` growth and is left as the verification of record it was, now
+grading historical code.
+
+`cargo test -p kasirmu-api --lib images` = **21 passed** ·
+`cargo test -p kasirmu-core --lib image_ref` = **19 passed**.
+
+**O-M25 · cloud-server — snapshot cache: one global mutex, full-clone hits, O(tenants)**
+**sweep** — `apps/cloud-server/src/sync_api.rs` ✔ **PAID 2026-10-22, both halves.**
+
+Before: `Arc<tokio::sync::Mutex<HashMap<String, Arc<RwLock<Option<SnapshotData>>>>>>` with
+`SnapshotData.bytes: Vec<u8>`. A HIT took the global async mutex just to fetch the entry handle and then
+**cloned the whole products+tax_rates+users payload** (free + memcpy on every request); a MISS took that
+SAME lock a second time for a `retain` over EVERY tenant, with no fail-fast. The `AsyncMutex` also queued
+waiters FIFO, so the sweep sat behind every in-flight holder and every new request sat behind the sweep.
+
+After: 16 shards selected by `Hash(tenant_id) % 16`, `bytes::Bytes` instead of `Vec<u8>`, and
+`std::sync::Mutex` because the guard is never held across an `.await` (which also removes the async
+queueing the single lock caused). A HIT now locks one shard for one map lookup and clones a `Bytes`
+handle — a refcount bump, zero payload allocation.
+
+**The sharding was only safe because the sweep could be written as skip-on-busy.** It walks shards one at
+a time with `try_lock` and SKIPS a busy one, so two shard locks are never held at once (no lock-ordering
+hazard to argue away), a hot tenant is never parked behind the sweep, and the sweep can never be blocked
+by a tenant that holds its own shard. Writing the sweep as wait-on-busy is what would have reintroduced
+the starvation the entry was warning about.
+
+**Cross-tenant isolation: no leak.** The shard key is the tenant id ALONE — never a pair, never the
+request — so a tenant lives in exactly one shard and a hit only ever reads its own key. Pinned by a
+32-tenant test with pigeonhole-guaranteed shard collisions.
+
+**And a bug in that very test, which the same test then caught.** The first version matched
+`"SKU-SHARD-1"` as a SUBSTRING of `"SKU-SHARD-10"`, which made it falsely fail one tenant and falsely
+PASS another — a prefix-based leak assertion gives a false pass on exactly the leak it exists to catch.
+It now compares `products[0]["sku"]` as an exact JSON value and asserts `len() == 1`. Worth checking for
+this shape in any isolation test: **a containment check on a formatted identifier is a leak test that
+cannot see the leak its own naming creates.**
+
+Preserved: served bytes (pinned byte-for-byte AND by ETag), the cache key, the 900 s TTL and its `< TTL`
+read check, version revalidation, single-flight, the Redis path, and both `SYNC_PULL_DURATION_MS`
+observations. There is no hit/miss metric to preserve — only the duration observation, which survives on
+both paths. The Redis hit path also stopped forcing a `to_vec()` copy into the body for free.
+
+`cargo test -p kasirmu-cloud --bin kasirmu-cloud` = **402 passed, 0 failed** (43 ignored); 4 tests added,
+existing ones adapted to the new type, none weakened.
 
 **O-M26 · kasirmu-api — memo push issues one INSERT per memo × location × recipient** —
 `crates/kasirmu-api/src/pg.rs:2573-2580`, `:2638` ◦, plus a `tenant_id.to_string()` per row.
@@ -1129,10 +1205,42 @@ two output-identity tests. The cap is inclusive, so the `LIMIT` the error recomm
 it. `cargo test -p kasirmu-plugin --lib` = **233 passed, 0 failed**.
 
 **O-M49 · kasirmu-cli — `kasirpkg` import probes existence per row, per table** —
-`crates/kasirmu-cli/src/commands/kasirpkg.rs:346-372` ✔ (3B-05, also `:316-343`, `:398-457` ◦).
-Two statements per row where one `INSERT … ON CONFLICT DO UPDATE` would do, plus a deep
-`serde_json::Value` clone and a fresh RFC-3339 `String` per row. *Fix:* prepared upserts,
-`into_iter()`, hoist `now`.
+`crates/kasirmu-cli/src/commands/kasirpkg.rs` ✔ **PAID 2026-10-22** (3B-05). All four arms had the same
+shape — `SELECT` probe then a write, 2 recompiled statements per row. Categories, products, customers and
+users are now ONE prepared `INSERT … ON CONFLICT … DO UPDATE` per row; a full all-types row went from
+**8 statements to 4**. The `Value` deep clone is gone (`for val in payload.X` moves instead of cloning),
+and one `Utc::now()` is hoisted for the whole import.
+
+**The conflict targets were verified empirically, and the DDL text lies.** A literal `ON CONFLICT(sku)`
+looks right from the migration source and FAILS at prepare time: migration
+`20260831_per_tenant_unique_rebuild.sql` rebuilt `products` and `users` without their inline `UNIQUE`,
+replacing both with `(tenant_id, …)` composite indexes. The lane established the real constraints with a
+throwaway `PRAGMA index_list`/`index_info` probe against `migrations::fresh_db()` rather than trusting the
+SQL it was reading — which is the difference between a change that works and one that takes five tests
+down with it.
+
+**Re-import UPDATES; it does not skip**, and that was established from the control flow (the INSERT arm
+ran only when the probe said absent) then PROVEN by falsification: swapping products to `DO NOTHING` fails
+`kasirpkg_reimport_updates_a_stale_local_row` at exactly the products assertion. Each old UPDATE arm's
+column list was carried verbatim, including the pre-existing asymmetry where the UPDATE never touched
+`pin_hash`/`is_active` — so a re-import has never deactivated a live user, and adding those columns to
+`DO UPDATE` breaks `kasirpkg_reimport_preserves_what_the_old_update_arm_never_touched`.
+
+**Two deliberate non-changes, both correct:** the **sales** probe SURVIVES because the write path is
+`Store::create_sale_in_tx`, which owns the 22-column INSERT *and* the line-items loop behind a money
+validator — an `ON CONFLICT` there would duplicate private core SQL or silently drop lines, and the
+semantics are SKIP rather than update. Only the per-row recompile was removed. **sales, customers and
+users** keep two column lists for the INSERT and UPDATE paths for the same reason the old code did.
+
+**A gap the lane found in its own work:** the first version of the idempotence tests did NOT catch
+`updated_at` being dropped from a `DO UPDATE` list, because the assertion was too narrow. Widened to
+assert every updated column, then re-falsified to confirm it now fails.
+
+**No statement-count test exists, and that is stated rather than faked:** rusqlite exposes no
+per-statement counter without a `sqlite3_trace_v2` hook the crate does not enable, so the 8→4 numbers are
+a measurement, not an assertion.
+
+`cargo test -p kasirmu-cli --lib` = **152 passed, 0 failed**; 5 tests added.
 
 **O-M50 · kasirmu-cli — export deep-clones the payload and `.ok()`s a failure into an empty
 array** — `crates/kasirmu-cli/src/commands/kasirpkg.rs:120-128` ◦ (3B-06). A serialisation
