@@ -44,15 +44,25 @@ fn seed_staff(conn: &rusqlite::Connection) {
 /// directory an ordinary user can create in but not delete from, so a stale
 /// entry made the create itself fail with `os error 5`. `scratch_dir`'s
 /// per-call UUID replaces the pid/nanos/counter triple.
-fn unique_store_dir() -> std::path::PathBuf {
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-tables")
+fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-tables");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Isolated store-db manager over a fresh directory — the direct twin of the
 /// desktop `scoped_state` harness's
 /// `StoreDatabaseManager::new(temp_dir, migrations::ALL)`.
-fn store_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(unique_store_dir(), kasirmu_core::migrations::ALL)
+///
+/// Returns the `ScratchDir` guard alongside: `scratch_dir()` hands back a bare
+/// `PathBuf` that nothing deletes, and this module was one of six that leaked a
+/// directory per test because of it (706 measured). The guard must ride on the
+/// bridge — see `TestBridge::with_db_manager_scratch`.
+fn store_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
+    let (dir, scratch) = unique_store_dir();
+    (
+        StoreDatabaseManager::new(dir, kasirmu_core::migrations::ALL),
+        scratch,
+    )
 }
 
 /// `TestBridge` with a fresh migrated global DB, an isolated store-db dir
@@ -65,9 +75,10 @@ fn scoped_bridge(
     role_id: &str,
     store_id: &str,
 ) -> TestBridge {
+    let (manager, scratch) = store_manager();
     let bridge = TestBridge::new()
         .with_conn(conn)
-        .with_db_manager(store_manager());
+        .with_db_manager_scratch(manager, scratch);
     bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(

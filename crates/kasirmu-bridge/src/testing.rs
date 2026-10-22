@@ -600,6 +600,32 @@ impl TestBridge {
         self
     }
 
+    /// Replace the per-store manager AND take ownership of its directory guard.
+    ///
+    /// `with_db_manager` replaces the manager but leaves `_store_scratch`
+    /// pointing at the directory `TestBridge::new()` allocated — it is a bare
+    /// setter and cannot know where the caller's manager stores its files. A
+    /// test module that builds its own manager over
+    /// `kasirmu_test_support::scratch_dir(...)` therefore gets a `PathBuf` with
+    /// no `Drop`, and nothing ever deletes the directory.
+    ///
+    /// That is not hypothetical: six modules had each copied a local
+    /// `unique_store_dir() -> PathBuf` (inventory, local_payment, regional,
+    /// tables and the two memos call sites), and 706 `kasirmu-bridge-*`
+    /// directories were measured in `target/test-scratch/` after a handful of
+    /// runs. Use this constructor instead: the guard rides on the bridge, so the
+    /// directory lives exactly as long as the manager that uses it.
+    #[must_use]
+    pub fn with_db_manager_scratch(
+        mut self,
+        db_manager: StoreDatabaseManager,
+        scratch: kasirmu_test_support::ScratchDir,
+    ) -> Self {
+        self.db_manager = db_manager;
+        self._store_scratch = scratch;
+        self
+    }
+
     /// Borrow the per-store manager (scoped tests seed store DBs through it).
     #[must_use]
     pub fn db_manager(&self) -> &StoreDatabaseManager {

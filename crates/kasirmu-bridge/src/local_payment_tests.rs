@@ -33,20 +33,20 @@ fn seed_owner(conn: &rusqlite::Connection) {
 /// with `os error 5` and read as a product bug. `scratch_dir` gives the
 /// same per-call uniqueness (a UUID suffix replaces the pid/nanos/counter)
 /// under a writable, gitignored root.
-fn unique_store_dir() -> std::path::PathBuf {
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-local-payment")
+fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-local-payment");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// `TestBridge` with a fresh migrated global DB and an isolated store-db
 /// manager over a unique directory - the bridge twin of the desktop
 /// `flow_state` + `mock_app` pair.
 fn flow_bridge(conn: rusqlite::Connection) -> TestBridge {
-    TestBridge::new()
-        .with_conn(conn)
-        .with_db_manager(TestBridge::seed_store_manager(StoreDatabaseManager::new(
-            unique_store_dir(),
-            migrations::ALL,
-        )))
+    let (dir, scratch) = unique_store_dir();
+    TestBridge::new().with_conn(conn).with_db_manager_scratch(
+        TestBridge::seed_store_manager(StoreDatabaseManager::new(dir, migrations::ALL)),
+        scratch,
+    )
 }
 
 fn owner_session(tb: &TestBridge, token: &str) {

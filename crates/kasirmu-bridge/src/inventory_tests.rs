@@ -65,9 +65,10 @@ static STORE_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 /// delete from, so one stale `kasirmu-bridge-inventory-*` entry made
 /// `create_dir_all` fail with `os error 5` and failed every test that opens a
 /// store through it.
-fn unique_store_dir() -> std::path::PathBuf {
+fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
     STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-inventory")
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-inventory");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Isolated store-db manager over a fresh directory — the direct twin of the
@@ -75,8 +76,12 @@ fn unique_store_dir() -> std::path::PathBuf {
 /// `StoreDatabaseManager::new(temp_dir, migrations::ALL)`. Seeding tests
 /// open and mutate their store DB through this handle *before* it is handed
 /// to the bridge, because `TestBridge` keeps the manager private.
-fn store_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(unique_store_dir(), kasirmu_core::migrations::ALL)
+fn store_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
+    let (dir, scratch) = unique_store_dir();
+    (
+        StoreDatabaseManager::new(dir, kasirmu_core::migrations::ALL),
+        scratch,
+    )
 }
 
 /// `TestBridge` with a fresh migrated global DB, an isolated store-db dir
@@ -89,9 +94,10 @@ fn scoped_bridge(
     role_id: &str,
     store_id: &str,
 ) -> TestBridge {
+    let (manager, scratch) = store_manager();
     let bridge = TestBridge::new()
         .with_conn(conn)
-        .with_db_manager(store_manager());
+        .with_db_manager_scratch(manager, scratch);
     bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
@@ -222,7 +228,7 @@ async fn sales_process_gated_inventory_commands_authorise_via_global_db() {
 async fn location_read_is_scoped_to_session_store() {
     let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
-    let manager = store_manager();
+    let (manager, scratch) = store_manager();
 
     // Seed a location ONLY into store A's database. The guard is scoped
     // to a block so it drops before the async commands below.
@@ -233,7 +239,9 @@ async fn location_read_is_scoped_to_session_store() {
             .create_inventory_location("Store A Only", "warehouse", "")
             .unwrap();
     }
-    let bridge = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    let bridge = TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager_scratch(manager, scratch);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         bridge.sessions().write().unwrap().insert(
             token.into(),
@@ -386,7 +394,7 @@ async fn cashier_cannot_update_location() {
 async fn owner_can_start_and_end_inventory_shift() {
     let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
-    let manager = store_manager();
+    let (manager, scratch) = store_manager();
     // Seed user, role, and terminal in the store DB.
     // inventory_shifts has FKs to users(id) and terminals(id).
     {
@@ -411,7 +419,9 @@ async fn owner_can_start_and_end_inventory_shift() {
         )
         .unwrap();
     }
-    let bridge = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    let bridge = TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager_scratch(manager, scratch);
     bridge.sessions().write().unwrap().insert(
         "owner-token".into(),
         SessionContext::new(

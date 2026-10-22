@@ -97,8 +97,9 @@ fn seed_owner(conn: &rusqlite::Connection) {
 /// directory an ordinary user can create in but not delete from, so a stale
 /// entry made the create itself fail with `os error 5`. `scratch_dir`'s
 /// per-call UUID replaces the pid/nanos/counter triple.
-fn unique_store_dir() -> std::path::PathBuf {
-    kasirmu_test_support::scratch_dir("kasirmu-bridge-regional")
+fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-regional");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Isolated store-db manager over a fresh directory — the direct twin of the
@@ -112,22 +113,32 @@ fn unique_store_dir() -> std::path::PathBuf {
 /// legal entity; `provision_device` creates them now, so a store DB that a test
 /// addresses as "default" must be provisioned the same way. Without this the
 /// store db is migrated but empty, and every scoped command answers NotFound.
-fn store_manager() -> StoreDatabaseManager {
-    let manager = StoreDatabaseManager::new(unique_store_dir(), migrations::ALL);
+fn store_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
+    let (dir, scratch) = unique_store_dir();
+    let manager = StoreDatabaseManager::new(dir, migrations::ALL);
     {
         let store_conn = manager.open_store("default").unwrap();
         let store_conn = store_conn.lock().unwrap();
         kasirmu_core::migrations::seed_provisioned_baseline(&store_conn);
     }
-    manager
+    (manager, scratch)
 }
 
 /// `TestBridge` with a fresh migrated global DB and an isolated store-db dir
 /// (the bridge twin of the desktop `flow_state` harness, which built
 /// `AppState::for_test_with_conn` and replaced `db_manager` with a fresh
 /// manager over an empty directory).
-fn flow_bridge(conn: rusqlite::Connection, manager: StoreDatabaseManager) -> TestBridge {
-    TestBridge::new().with_conn(conn).with_db_manager(manager)
+///
+/// The directory guard rides on the bridge, so the store dir is deleted when
+/// the bridge drops — `with_db_manager` alone leaves it behind forever.
+fn flow_bridge(
+    conn: rusqlite::Connection,
+    manager: StoreDatabaseManager,
+    scratch: kasirmu_test_support::ScratchDir,
+) -> TestBridge {
+    TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager_scratch(manager, scratch)
 }
 
 fn owner_session(bridge: &TestBridge, token: &str) {
@@ -155,7 +166,8 @@ fn owner_session(bridge: &TestBridge, token: &str) {
 async fn get_regional_config_scoped_resolves_the_seeded_default_location() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let config = get_scoped(&bridge.ctx(), "owner-tok", "default")
@@ -183,7 +195,7 @@ async fn get_regional_config_scoped_resolves_the_seeded_default_location() {
 async fn get_regional_config_scoped_inherits_timezone_from_the_legal_entity() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let manager = store_manager();
+    let (manager, scratch) = store_manager();
     {
         let store_conn = manager.open_store("default").unwrap();
         let store_conn = store_conn.lock().unwrap();
@@ -201,7 +213,7 @@ async fn get_regional_config_scoped_inherits_timezone_from_the_legal_entity() {
             )
             .unwrap();
     }
-    let bridge = flow_bridge(conn, manager);
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let config = get_scoped(&bridge.ctx(), "owner-tok", "default")
@@ -223,7 +235,8 @@ async fn get_regional_config_scoped_inherits_timezone_from_the_legal_entity() {
 async fn get_regional_config_scoped_unknown_location_is_typed_not_found() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let result = get_scoped(&bridge.ctx(), "owner-tok", "no-such-location").await;
@@ -252,7 +265,8 @@ async fn get_regional_config_scoped_denies_staff_without_settings_read() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     bridge.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
@@ -280,7 +294,8 @@ async fn get_regional_config_scoped_denies_staff_without_settings_read() {
 async fn set_regional_config_scoped_persists_and_returns_the_effective_config() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let config = set_scoped(
@@ -322,7 +337,7 @@ async fn set_regional_config_scoped_persists_and_returns_the_effective_config() 
 async fn set_regional_config_scoped_blanks_clear_to_inherit() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let manager = store_manager();
+    let (manager, scratch) = store_manager();
     {
         let store_conn = manager.open_store("default").unwrap();
         let store_conn = store_conn.lock().unwrap();
@@ -333,7 +348,7 @@ async fn set_regional_config_scoped_blanks_clear_to_inherit() {
             )
             .unwrap();
     }
-    let bridge = flow_bridge(conn, manager);
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let config = set_scoped(
@@ -363,7 +378,8 @@ async fn set_regional_config_scoped_blanks_clear_to_inherit() {
 async fn set_regional_config_scoped_rejects_a_non_contract_timezone_as_validation() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let result = set_scoped(
@@ -412,7 +428,8 @@ async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     bridge.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
@@ -452,7 +469,8 @@ async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
 async fn get_active_market_profile_returns_profile_for_default_location() {
     let conn = temp_conn();
     seed_owner(&conn);
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     owner_session(&bridge, "owner-tok");
 
     let profile = get_active_market_profile(&bridge.ctx(), "owner-tok", "default")
@@ -482,7 +500,8 @@ async fn get_active_market_profile_denies_without_settings_read() {
          VALUES ('user-lite2', 'lite2', 'hash', 'Lite2 User', 'role-lite2', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let bridge = flow_bridge(conn, store_manager());
+    let (manager, scratch) = store_manager();
+    let bridge = flow_bridge(conn, manager, scratch);
     bridge.sessions().write().unwrap().insert(
         "lite2-tok".into(),
         SessionContext::new(
