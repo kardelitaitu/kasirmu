@@ -972,8 +972,10 @@ stuck connection poisons every later call and nothing records why. *Fix:* log th
 error alongside the original.
 
 **O-L03 · kasirmu-core — `Store` fields are `pub`, exposing the raw connection** —
-`crates/kasirmu-core/src/db/mod.rs:206-214` ◦. Callers can bypass the repository layer and the
-documented transaction contract. *Fix:* privatise behind `conn()`.
+`crates/kasirmu-core/src/db/mod.rs:206-214` ✔ **PAID 2026-10-22**.
+Callers can bypass the repository layer and the documented transaction contract.
+Fixed: privatised `conn`, `cache`, and `terminal_id` behind `conn(&self) -> &'a Connection`,
+`cache(&self)`, and `terminal_id(&self)` accessors across all crates.
 
 **O-L04 · kasirmu-core — CSV export builds the whole file in memory** —
 `crates/kasirmu-core/src/export/mod.rs:270-272`, `:321+` ✔ **PAID 2026-10-22 in `cc392c433`**.
@@ -1723,7 +1725,9 @@ at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
 per row, per table, per store DB. *Fix:* one transaction per table, stream from the cursor.
 
 **O-L19 · kasirmu-lan — a fresh `String`/`Vec<u8>` per event per peer** —
-`crates/kasirmu-lan/src/noise.rs:206-224` ◦ (3B-11). *Fix:* reusable per-connection buffer.
+`crates/kasirmu-lan/src/noise.rs:206-224` ✔ **PAID 2026-10-22 in `09661e572`** (3B-11).
+Fixed: reusable write buffer on `PeerTx::Noise`, zero-copy newline writes on `PeerTx::Plain`,
+and eliminating intermediate heap allocations in `read_line`.
 
 **O-L20 · kasirmu-reporting — money crosses into `f64` at the median boundary** —
 `crates/kasirmu-reporting/src/menu_engineering.rs` ✔ **PAID 2026-10-22** (3C-12). `median_margin`
@@ -4498,4 +4502,23 @@ Two Low-tier optimizations in `kasirmu-core` resolved and verified:
    Replaced linear scanning of static pairing combinations in `pairing_admits_kinds` with an indexed lookup
    backed by `std::sync::OnceLock<HashMap<(&'static str, &'static str), Vec<(&'static str, &'static str)>>>`.
    All 63 topology tests pass.
+
+## §11BD — O-L03 and O-L19 resolved: Store fields privatised behind accessors and zero-alloc LAN framing (2026-10-22)
+
+Two Low-tier optimizations resolved and verified across the workspace:
+
+1. **O-L03 · `kasirmu-core` Store fields privatised behind accessors**:
+   Privatised `conn`, `cache`, and `terminal_id` on `Store<'a>` behind `pub fn conn(&self) -> &'a Connection`,
+   `pub fn cache(&self) -> Option<&Arc<dyn Cache>>`, and `pub fn terminal_id(&self) -> Option<&str>`.
+   Prevents external consumers from bypassing the repository layer or mutating internal state.
+   Updated all external call-sites across `apps/cloud-server`, `crates/kasirmu-bridge`, `crates/kasirmu-notification`,
+   and `crates/kasirmu-api` from `.conn` to `.conn()`.
+   Verified with `cargo check --workspace --all-targets` clean across all targets and tests pass.
+
+2. **O-L19 · `kasirmu-lan` zero-alloc buffer framing (`09661e572`)**:
+   In `crates/kasirmu-lan/src/noise.rs`, replaced per-message allocations on `PeerTx::Noise` with a reusable
+   `Vec<u8>` write buffer; eliminated `format!("{line}\n")` string allocations on `PeerTx::Plain` by writing bytes directly;
+   and avoided intermediate vector cloning in `read_line`.
+   All 89 tests pass.
+
 
