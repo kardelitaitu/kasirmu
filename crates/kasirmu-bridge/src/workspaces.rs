@@ -99,6 +99,21 @@ pub struct BootResolution {
 // ticket and resolve the REAL user + role from the global identity DB —
 // caller-supplied `role_id` / `user_id` are never trusted.
 
+/// Does `table` exist in this SQLite database?
+///
+/// The global and store schemas diverge after
+/// `20260906_rename_store_to_location.sql`, so the picker repair has to ask
+/// rather than assume which names it is writing to.
+fn table_exists(conn: &rusqlite::Connection, table: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        rusqlite::params![table],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n > 0)
+    .unwrap_or(false)
+}
+
 /// List workspace instances for the pre-session workspace picker.
 ///
 /// The caller presents the picker ticket minted by `staff_login`; the REAL
@@ -174,14 +189,62 @@ pub async fn list_workspaces(
         drop(global_db);
 
         if !global_rows.is_empty() {
-            if let Ok(db) = conn.lock() {
-                for r in &global_rows {
-                    let _ = db.execute(
-                        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, description, status)
-                         VALUES (?1, ?2, ?3, ?4, ?5, 'active')",
-                        rusqlite::params![r.instance_id, r.type_key, r.store_id, r.name, r.description],
-                    );
+            // Two schemas meet here. `20260906_rename_store_to_location.sql` renamed
+            // `store_profiles` to `locations` and `workspace_instances.store_id` to
+            // `location_id` in the STORE database, while the GLOBAL database this
+            // repair reads still calls them `store_profiles` / `store_id`. Writing the
+            // global names into the store DB fails with
+            // "no such table: store_profiles" — and the old `let _ =` discarded that
+            // error, so the picker looked repaired while the store DB stayed empty
+            // and the repair re-ran on every boot. Resolve the names, and report
+            // every failure instead of swallowing it.
+            match conn.lock() {
+                Ok(db) => {
+                    let (profile_table, instance_col) = if table_exists(&db, "locations") {
+                        ("locations", "location_id")
+                    } else {
+                        ("store_profiles", "store_id")
+                    };
+                    for r in &global_rows {
+                        if let Err(e) = db.execute(
+                            &format!(
+                                "INSERT OR IGNORE INTO {profile_table} (id, name) VALUES (?1, ?1)"
+                            ),
+                            rusqlite::params![r.store_id],
+                        ) {
+                            tracing::warn!(
+                                store_id = %r.store_id,
+                                table = profile_table,
+                                error = %e,
+                                "workspace picker repair could not seed the parent row; the instances below will be rejected"
+                            );
+                        }
+                    }
+                    for r in &global_rows {
+                        if let Err(e) = db.execute(
+                            &format!(
+                                "INSERT OR IGNORE INTO workspace_instances (id, type_key, {instance_col}, name, description, status) VALUES (?1, ?2, ?3, ?4, ?5, 'active')"
+                            ),
+                            rusqlite::params![
+                                r.instance_id,
+                                r.type_key,
+                                r.store_id,
+                                r.name,
+                                r.description
+                            ],
+                        ) {
+                            tracing::warn!(
+                                workspace = %r.instance_id,
+                                store_id = %r.store_id,
+                                error = %e,
+                                "workspace picker repair did not persist; the picker still shows the global rows, but the store DB stays empty and this re-runs on the next boot"
+                            );
+                        }
+                    }
                 }
+                Err(_) => tracing::warn!(
+                    "workspace picker repair skipped: the store DB lock is poisoned; the picker still shows the global rows, but nothing was written"
+                ),
             }
             rows = global_rows;
         }
