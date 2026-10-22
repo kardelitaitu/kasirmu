@@ -452,3 +452,8 @@ multi-store-prefix-error-save = Could not save the ticket prefix.
 # must explain itself instead of mounting an editor that cannot load or save.
 topology-tablet-unavailable-title = Topology authoring needs the desktop
 topology-tablet-unavailable-body = Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.
+
+# Centralized Web Topology Authoring (ADR-66 / Phase 4 & Phase 6)
+topology-web-managed-notice = Managed via Web Dashboard (Read-Only)
+topology-tablet-web-managed-title = Centralized Topology Authoring
+topology-tablet-web-managed-body = Store layout is managed remotely via the Web Dashboard. This tablet runs on the latest synchronized revision.

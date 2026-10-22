@@ -176,6 +176,7 @@ let capturedEditorProps: {
   compareOverlay?: unknown;
   compareFocus?: boolean;
   canSave?: boolean;
+  webAuthoringManaged?: boolean;
   /** The tier the header badge renders from — asserted by the badge tests. */
   currentTier?: string;
 } = {};
@@ -1825,5 +1826,49 @@ describe('TopologyScreen', () => {
       release({ id: 'store-3', name: 'Third Floor', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' });
       await Promise.resolve();
     });
+  });
+
+  // ── Centralized Web Topology Authoring (ADR-66 D2/D3 & Phase 6) ────
+
+  it('passes webAuthoringManaged=true for multi-store Pro tier with web authoring active', async () => {
+    mockUseSubscriptionCaps.mockReturnValue(
+      makeSubscriptionCaps({
+        tier: 'pro',
+        maxLocations: 5,
+        features: { web_topology_authoring: true },
+      }),
+    );
+    render(<TopologyScreen />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(capturedEditorProps.webAuthoringManaged).toBe(true);
+    mockUseSubscriptionCaps.mockReturnValue(null);
+  });
+
+  it('passes webAuthoringManaged=false for single-store Free/Plus tier', async () => {
+    mockUseSubscriptionCaps.mockReturnValueOnce(
+      makeSubscriptionCaps({
+        tier: 'plus',
+        maxLocations: 1,
+        features: { web_topology_authoring: true },
+      }),
+    );
+    render(<TopologyScreen />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(capturedEditorProps.webAuthoringManaged).toBe(false);
+  });
+
+  it('renders centralized topology notice on tablet when web authoring is managed', () => {
+    mockIsTablet.value = true;
+    mockUseSubscriptionCaps.mockReturnValueOnce(
+      makeSubscriptionCaps({
+        tier: 'pro',
+        maxLocations: 5,
+        features: { web_topology_authoring: true },
+      }),
+    );
+    render(<TopologyScreen />);
+    expect(screen.getByTestId('topology-tablet-web-managed')).toBeInTheDocument();
   });
 });

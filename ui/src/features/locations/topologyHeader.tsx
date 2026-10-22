@@ -25,6 +25,8 @@ export interface TopologyHeaderProps {
   saving: boolean;
   /** Runs the full Apply gate: validate → diff preview → PIN confirm. */
   onApply: () => void;
+  /** When true, authoring is managed centrally from web dashboard (ADR-66 D3). */
+  webAuthoringManaged?: boolean;
 }
 
 export function TopologyHeader({
@@ -35,6 +37,7 @@ export function TopologyHeader({
   currentTier,
   saving,
   onApply,
+  webAuthoringManaged = false,
 }: TopologyHeaderProps) {
   return (
     <div className="node-topology-header">
@@ -45,30 +48,38 @@ export function TopologyHeader({
         <h2 className="sr-only">Visual Store & Workspace Topology Builder</h2>
       </Localized>
       {branchToolbar}
-      {!canSave && (
+      {webAuthoringManaged ? (
+        <div className="topology-web-managed-badge" role="status" data-testid="topology-web-managed-badge">
+          <Localized id="topology-web-managed-notice">
+            <span>Managed via Web Dashboard (Read-Only)</span>
+          </Localized>
+        </div>
+      ) : !canSave ? (
         <div className="topology-readonly-note" role="status">
           <Localized id="topology-readonly-note">
             <span>View-only — saving topology changes requires the topology:write permission.</span>
           </Localized>
         </div>
-      )}
+      ) : null}
       <span className={`topology-tier-badge tier-${currentTier}`}>
         <Localized id="topology-tier-suffix" vars={{ tier: currentTier.toUpperCase() }}>
           <span>{currentTier.toUpperCase()} TIER</span>
         </Localized>
       </span>
 
-      <div className="node-topology-header-actions">
-        <Button
-          variant="primary"
-          disabled={!canSave || saving || !onSaveAvailable}
-          title={canSave && onSaveAvailable ? undefined : l10n.getString('topology-apply-permission-tooltip')}
-          onClick={onApply}
-          icon={<CheckIcon size={16} />}
-        >
-          <Localized id="topology-apply-changes">Apply Topology</Localized>
-        </Button>
-      </div>
+      {!webAuthoringManaged && (
+        <div className="node-topology-header-actions">
+          <Button
+            variant="primary"
+            disabled={!canSave || saving || !onSaveAvailable}
+            title={canSave && onSaveAvailable ? undefined : l10n.getString('topology-apply-permission-tooltip')}
+            onClick={onApply}
+            icon={<CheckIcon size={16} />}
+          >
+            <Localized id="topology-apply-changes">Apply Topology</Localized>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

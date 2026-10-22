@@ -52,6 +52,7 @@ import { UsersClient } from './users';
 import { SalesClient } from './sales';
 import { SyncClient } from './sync';
 import { WebhooksClient } from './webhooks';
+import { TopologyClient } from './topology';
 
 export class KasirMuClient {
   private readonly http: HttpClient;
@@ -74,6 +75,8 @@ export class KasirMuClient {
   readonly sync: SyncClient;
   /** Payment provider webhook receivers. */
   readonly webhooks: WebhooksClient;
+  /** Centralized web topology authoring and replication endpoints (ADR-66). */
+  readonly topology: TopologyClient;
 
   constructor(config: ClientConfig) {
     this.http = new HttpClient(config);
@@ -86,6 +89,7 @@ export class KasirMuClient {
     this.sales = new SalesClient(this.http);
     this.sync = new SyncClient(this.http);
     this.webhooks = new WebhooksClient(this.http);
+    this.topology = new TopologyClient(this.http);
   }
 
   /** Attach a Bearer token for all authenticated requests. */

@@ -777,3 +777,145 @@ describe('URL encoding', () => {
     expect(capturedUrl).toContain('COFFEE%20ESPRESSO%20%231');
   });
 });
+
+// ── Topology (ADR-66 Web Authoring & Replication) ─────────────────
+
+describe('TopologyClient', () => {
+  it('plan() posts desired state and returns diff summary', async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.post(`${BASE_URL}/api/v1/topology/plan`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          valid: true,
+          branchId: 'branch-main',
+          baseRevision: 2,
+          summary: {
+            created: 1,
+            updated: 0,
+            archived: 0,
+            typeChanged: 0,
+          },
+          contractSchemaVersion: 2,
+        });
+      }),
+    );
+
+    const client = createClient();
+    const result = await client.topology.plan({
+      branch_id: 'branch-main',
+      nodes: [{ id: 'pos-1', type: 'workspace' }],
+      wires: [],
+      base_revision: 2,
+    });
+
+    expect(capturedBody).toEqual({
+      branch_id: 'branch-main',
+      nodes: [{ id: 'pos-1', type: 'workspace' }],
+      wires: [],
+      base_revision: 2,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.branchId).toBe('branch-main');
+    expect(result.baseRevision).toBe(2);
+    expect(result.summary.created).toBe(1);
+    expect(result.contractSchemaVersion).toBe(2);
+  });
+
+  it('publish() sends signed revision payload and step-up PIN', async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.post(`${BASE_URL}/api/v1/topology/publish`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          id: 'rev-uuid-1234',
+          branchId: 'branch-main',
+          revision: 3,
+          baseRevision: 2,
+          publishedAt: '2026-10-23T00:00:00Z',
+          publishedBy: 'admin-1',
+          keyId: 'key-2026-v1',
+          signature: 'sig-abc-123',
+          changeNote: 'Add bar POS',
+          summary: {
+            created: 1,
+            updated: 0,
+            archived: 0,
+            typeChanged: 0,
+          },
+        });
+      }),
+    );
+
+    const client = createClient();
+    const result = await client.topology.publish({
+      branch_id: 'branch-main',
+      base_revision: 2,
+      change_note: 'Add bar POS',
+      step_up_pin: '123456',
+      nodes: [{ id: 'pos-1', type: 'workspace' }],
+      wires: [],
+    });
+
+    expect(capturedBody).toMatchObject({
+      branch_id: 'branch-main',
+      base_revision: 2,
+      change_note: 'Add bar POS',
+      step_up_pin: '123456',
+    });
+    expect(result.revision).toBe(3);
+    expect(result.keyId).toBe('key-2026-v1');
+    expect(result.signature).toBe('sig-abc-123');
+    expect(result.summary.created).toBe(1);
+  });
+
+  it('pull() requests revisions with watermark and limit parameters', async () => {
+    let capturedUrl = '';
+
+    server.use(
+      http.get(`${BASE_URL}/api/v1/topology/revisions/pull`, ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          branchId: 'branch-main',
+          tenantId: 'tenant-acme',
+          revisions: [
+            {
+              id: 'rev-1',
+              branchId: 'branch-main',
+              revision: 1,
+              baseRevision: null,
+              changeNote: 'Initial topology',
+              workspaceCreations: 1,
+              workspaceUpdates: 0,
+              workspaceArchives: 0,
+              nodeCount: 2,
+              wireCount: 1,
+              contractSchemaVersion: 2,
+              pinned: false,
+              publishedAt: '2026-10-23T00:00:00Z',
+              publishedBy: 'user-1',
+              tenantId: 'tenant-acme',
+              orgId: 'org-default',
+              actor: 'user-1',
+              keyId: 'key-2026-v1',
+              signature: 'sig-1',
+            },
+          ],
+        });
+      }),
+    );
+
+    const client = createClient();
+    const result = await client.topology.pull('branch-main', 0, 25);
+
+    expect(capturedUrl).toContain('branch_id=branch-main');
+    expect(capturedUrl).toContain('since_revision=0');
+    expect(capturedUrl).toContain('limit=25');
+    expect(result.branchId).toBe('branch-main');
+    expect(result.revisions).toHaveLength(1);
+    expect(result.revisions[0]?.revision).toBe(1);
+    expect(result.revisions[0]?.keyId).toBe('key-2026-v1');
+  });
+});

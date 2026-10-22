@@ -291,10 +291,10 @@ The largest phase. Nothing here exists today (§3.1).
 
 ### Phase 4 — Web editor
 
-- [ ] Build on the `settings/topology` seam, not a new route.
-- [ ] Reuse the canvas decomposition under `ui/src/features/locations/` (`NodeTopologyEditor.tsx`
-      plus ~20 extracted modules — ADR #22's own audit stamp records the decomposition).
-- [ ] Plan preview before publish; publish requires step-up auth (§4.2).
+- [x] Build on the `settings/topology` seam, not a new route (`TopologyScreen.tsx` unified entry point).
+- [x] Reuse the canvas decomposition under `ui/src/features/locations/` (`NodeTopologyEditor.tsx`,
+      `TopologyHeader`, and typed API client `TopologyClient` in `ui/src/api/client/topology.ts`).
+- [x] Plan preview before publish; publish requires step-up auth (§4.2, `TopologyClient.plan` and `TopologyClient.publish` with `step_up_pin`).
 
 ### Phase 5 — Rollout
 
@@ -308,12 +308,12 @@ The largest phase. Nothing here exists today (§3.1).
 
 Not a decision point any more — Phase 0 decided it. This phase carries it out:
 
-- [ ] Per-tenant flag: web authoring on ⇒ the local editor renders the graph **read-only**, with the
-      authoring controls hidden rather than present-and-dead.
-- [ ] Single-store tenants are untouched — no flag, no web surface, local authoring unchanged (D2/D3).
-- [ ] The `settings/topology` placeholder on the tablet becomes the read-only view for multi-store
-      tenants instead of a dead end — that placeholder is the symptom that opened this plan (§0).
-- [ ] Deliberately deferred to a later version: locally-originated revisions on a side branch with an
+- [x] Per-tenant flag: web authoring on ⇒ the local editor renders the graph **read-only**, with the
+      authoring controls hidden rather than present-and-dead (`webAuthoringManaged` in `NodeTopologyEditor` and `TopologyHeader`).
+- [x] Single-store tenants are untouched — no flag, no web surface, local authoring unchanged (D2/D3, verified in `TopologyScreen.test.tsx`).
+- [x] The `settings/topology` placeholder on the tablet becomes the read-only view for multi-store
+      tenants instead of a dead end (`TopologyTabletWebManagedNotice` in `TopologyScreen.tsx`).
+- [x] Deliberately deferred to a later version: locally-originated revisions on a side branch with an
       explicit rebase. Correct design, wrong time — it is a second replication direction, and D3
       removes the need for it in v1.
 

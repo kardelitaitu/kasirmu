@@ -76,6 +76,25 @@ function TopologyTabletNotice() {
     </section>
   );
 }
+
+/**
+ * ADR-66 D3 / Phase 6: on tablet for multi-store web-managed tenants,
+ * inform that topology is managed centrally via Web Dashboard.
+ */
+function TopologyTabletWebManagedNotice() {
+  return (
+    <section className="topology-tablet-unavailable" data-testid="topology-tablet-web-managed">
+      <h2 className="topology-tablet-unavailable__title">
+        <Localized id="topology-tablet-web-managed-title">Centralized Topology Authoring</Localized>
+      </h2>
+      <p className="topology-tablet-unavailable__body">
+        <Localized id="topology-tablet-web-managed-body">
+          Store layout is managed remotely via the Web Dashboard. This tablet runs on the latest synchronized revision.
+        </Localized>
+      </p>
+    </section>
+  );
+}
 import {
   buildTopologyOverlay,
   compareBranchTopologies,
@@ -139,8 +158,15 @@ function parseTopologyHash(): { branchId: string | null; create: boolean } {
  */
 export default function TopologyScreen({ initialBranchId, openCreateOnMount }: TopologyScreenProps = {}) {
   const { locked } = useAdminGate();
+  const { caps } = useSubscription();
+  const licenseTier = caps?.tier?.toLowerCase() ?? 'free';
+  const isMultiStoreEligible = ['pro', 'premium', 'enterprise'].includes(licenseTier);
+  const isWebManaged = isMultiStoreEligible && (caps?.features?.['web_topology_authoring'] ?? false);
+
   if (locked) return <AdminLockedFeature />;
-  if (isTabletShell()) return <TopologyTabletNotice />;
+  if (isTabletShell()) {
+    return isWebManaged ? <TopologyTabletWebManagedNotice /> : <TopologyTabletNotice />;
+  }
 
   const hashHints = parseTopologyHash();
   const effectiveBranchId = initialBranchId ?? hashHints.branchId ?? undefined;
@@ -586,6 +612,8 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   // instead of duplicating it. `null` before first load stays conservatively
   // FREE rather than advertising a tier nothing has confirmed.
   const licenseTier = caps?.tier?.toLowerCase() ?? 'free';
+  const isMultiStoreEligible = ['pro', 'premium', 'enterprise'].includes(licenseTier);
+  const isWebManaged = isMultiStoreEligible && (caps?.features?.['web_topology_authoring'] ?? false);
   const locale = useContext(LocaleContext)?.locale ?? 'en';
   const atLocationLimit =
     caps !== null && caps.maxLocations !== null && caps.locationCount >= caps.maxLocations;
@@ -821,6 +849,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
         onSave={handleTopologySave}
         restoreSeed={restoreDraft}
         canSave={canSaveTopology && !storesUnavailable && !instancesUnavailable && !topologyUnavailable}
+        webAuthoringManaged={isWebManaged}
         onDirtyChange={handleEditorDirtyChange}
         onLoadError={handleTopologyLoadError}
         onLoadSuccess={handleTopologyLoadSuccess}

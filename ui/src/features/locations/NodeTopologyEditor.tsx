@@ -199,6 +199,12 @@ export interface NodeTopologyEditorProps {
    */
   canSave?: boolean;
   /**
+   * When true, centralized web authoring is active for this tenant/branch (ADR-66 D3).
+   * The editor renders in read-only mode with authoring controls hidden and a
+   * "Managed via Web Dashboard" badge.
+   */
+  webAuthoringManaged?: boolean;
+  /**
    * ADR #46 §5 restore-to-draft: a revision's diagram the PARENT (the
    * revision browser's host screen) has decided to load onto the canvas as
    * an unsaved draft. The editor owns no restore UI, state, or command —
@@ -242,6 +248,7 @@ export default function NodeTopologyEditor({
   compareOverlay,
   compareFocus = false,
   canSave = true,
+  webAuthoringManaged = false,
   restoreSeed,
 }: NodeTopologyEditorProps) {
   const { sessionToken, resolvedStoreId: sessionStoreId } = useWorkspace();
@@ -2134,52 +2141,55 @@ export default function NodeTopologyEditor({
       <TopologyHeader
         l10n={l10n}
         branchToolbar={branchToolbar}
-        canSave={canSave}
-        onSaveAvailable={!!onSave}
+        canSave={canSave && !webAuthoringManaged}
+        onSaveAvailable={!!onSave && !webAuthoringManaged}
         currentTier={currentTier}
         saving={saving}
         onApply={() => void handleApplyClick()}
+        webAuthoringManaged={webAuthoringManaged}
       />
 
       <div className="node-topology-main">
-        <TopologyToolRack
-          l10n={l10n}
-          rackPanel={rackPanel}
-          onTogglePanel={toggleRackPanel}
-          onClosePanel={() => setRackPanel(null)}
-          hasSelection={selectedNodeIds.size > 0 || !!selectedWireId || history.length > 0 || redo.length > 0}
-          canDelete={selectedNodeIds.size > 0 || !!selectedWireId}
-          canUndo={history.length > 0}
-          canRedo={redo.length > 0}
-          onDeleteSelected={handleDeleteRequest}
-          onUndo={popUndo}
-          onRedo={popRedo}
-          allowLegacyApply={allowLegacyApply}
-          onAddNode={handleAddNode}
-          warehouseTierAllowed={warehouseTierAllowed}
-          onAutoLayout={autoLayout}
-          wireRouting={wireRouting}
-          onToggleWireRouting={() => setWireRouting((r) => (r === 'elbow' ? 'curved' : 'elbow'))}
-          anyBentWires={anyBentWires}
-          snapEnabled={snapEnabled}
-          onToggleSnap={() => setSnapEnabled((s) => !s)}
-          panToolActive={panToolActive}
-          onTogglePanTool={() => setPanToolActive((v) => !v)}
-          wireLabelsVisible={wireLabelsVisible}
-          onToggleWireLabels={() => setWireLabelsVisible((v) => !v)}
-          onExport={handleExport}
-          onImport={handleImport}
-          templateSaveOpen={templateSaveOpen}
-          onToggleTemplateSave={() => setTemplateSaveOpen((v) => !v)}
-          templateName={templateName}
-          onTemplateNameChange={setTemplateName}
-          onSaveTemplate={handleSaveTemplate}
-          onOpenTemplates={openTemplates}
-          templatesOpen={templatesOpen}
-          savedTemplates={savedTemplates}
-          onLoadTemplate={handleLoadTemplate}
-          onDeleteTemplate={handleDeleteTemplate}
-        />
+        {!webAuthoringManaged && (
+          <TopologyToolRack
+            l10n={l10n}
+            rackPanel={rackPanel}
+            onTogglePanel={toggleRackPanel}
+            onClosePanel={() => setRackPanel(null)}
+            hasSelection={selectedNodeIds.size > 0 || !!selectedWireId || history.length > 0 || redo.length > 0}
+            canDelete={selectedNodeIds.size > 0 || !!selectedWireId}
+            canUndo={history.length > 0}
+            canRedo={redo.length > 0}
+            onDeleteSelected={handleDeleteRequest}
+            onUndo={popUndo}
+            onRedo={popRedo}
+            allowLegacyApply={allowLegacyApply}
+            onAddNode={handleAddNode}
+            warehouseTierAllowed={warehouseTierAllowed}
+            onAutoLayout={autoLayout}
+            wireRouting={wireRouting}
+            onToggleWireRouting={() => setWireRouting((r) => (r === 'elbow' ? 'curved' : 'elbow'))}
+            anyBentWires={anyBentWires}
+            snapEnabled={snapEnabled}
+            onToggleSnap={() => setSnapEnabled((s) => !s)}
+            panToolActive={panToolActive}
+            onTogglePanTool={() => setPanToolActive((v) => !v)}
+            wireLabelsVisible={wireLabelsVisible}
+            onToggleWireLabels={() => setWireLabelsVisible((v) => !v)}
+            onExport={handleExport}
+            onImport={handleImport}
+            templateSaveOpen={templateSaveOpen}
+            onToggleTemplateSave={() => setTemplateSaveOpen((v) => !v)}
+            templateName={templateName}
+            onTemplateNameChange={setTemplateName}
+            onSaveTemplate={handleSaveTemplate}
+            onOpenTemplates={openTemplates}
+            templatesOpen={templatesOpen}
+            savedTemplates={savedTemplates}
+            onLoadTemplate={handleLoadTemplate}
+            onDeleteTemplate={handleDeleteTemplate}
+          />
+        )}
 
         <div
           ref={canvasRef}

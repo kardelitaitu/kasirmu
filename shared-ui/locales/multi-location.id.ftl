@@ -452,3 +452,8 @@ multi-store-prefix-error-save = Gagal menyimpan awalan tiket.
 # must explain itself instead of mounting an editor that cannot load or save.
 topology-tablet-unavailable-title = Penyuntingan topologi butuh desktop
 topology-tablet-unavailable-body = Menyusun tata letak toko dijalankan di aplikasi desktop. Tablet ini tetap bisa membuka Locations (baca-saja) dan semua layar kasir.
+
+# Centralized Web Topology Authoring (ADR-66 / Phase 4 & Phase 6)
+topology-web-managed-notice = Dikelola via Dashboard Web (Baca-Saja)
+topology-tablet-web-managed-title = Penyuntingan Topologi Terpusat
+topology-tablet-web-managed-body = Tata letak toko dikelola dari jarak jauh via Dashboard Web. Tablet ini berjalan dengan revisi terbaru yang disinkronkan.
