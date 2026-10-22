@@ -925,24 +925,58 @@ fn duplicate_enqueue_creates_separate_items() {
 
 // ── Large batch handling ───────────────────────────────────────
 
+/// 10,000 pending rows: the queue still reads its own backlog at a size no
+/// single push cycle can drain in one go (`DEFAULT_MAX_OUTBOX_BATCH_ITEMS` is
+/// 100, so this is 100 cycles' worth), and both read paths agree on the count.
+///
+/// WHY THE INSERT IS SET-BASED (O-T08). It used to be 10,000 individual
+/// `enqueue_offline` calls — each one a `Settings::get_sync_terminal_id`
+/// subscription read plus its own autocommit INSERT — to produce two numbers.
+/// Nothing here is about the ENQUEUE path's per-item behaviour: `pending_offline_count`
+/// and `raw_pending_count` are pure readers, and the enqueue path's own
+/// per-call contract is pinned row-by-row in `offline_tests.rs`
+/// (`enqueue_offline_creates_pending_item` and neighbours). What THIS test
+/// owns is that a deep queue stays countable, so it now writes the rows in
+/// ONE transaction with one prepared INSERT — same 10,000 rows, same columns,
+/// same `pending` status, ~100x fewer statement round-trips.
+///
+/// The count is deliberately NOT tied to the batch cap: 10,000 is arbitrary
+/// (it is not a page size, a limit, or a threshold anywhere in the code —
+/// `DEFAULT_MAX_OUTBOX_BATCH_ITEMS` = 100 is the real bound and
+/// `daemon_tests.rs` already pins it), so the number stays as a scale marker
+/// and the assertion is only that the two counters agree with each other and
+/// with the number of rows written.
 #[test]
 fn large_batch_enqueue_10k_items() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
 
-    // Enqueue 10,000 items
-    for i in 0..10_000 {
-        store
-            .enqueue_offline(
-                "product.created",
-                &format!(r#"{{"sku":"SKU-{i}","name":"Item {i}"}}"#),
+    // Enqueue 10,000 items in one transaction.
+    const N: i64 = 10_000;
+    conn.execute_batch("BEGIN;").unwrap();
+    {
+        let mut stmt = conn
+            .prepare(
+                "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+                 VALUES (?1, ?2, ?3, 'pending', 0, NULL, ?4, NULL, 'default', 1, NULL)",
             )
             .unwrap();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        for i in 0..N {
+            stmt.execute(rusqlite::params![
+                uuid::Uuid::now_v7().to_string(),
+                "product.created",
+                format!(r#"{{"sku":"SKU-{i}","name":"Item {i}"}}"#),
+                now,
+            ])
+            .unwrap();
+        }
     }
+    conn.execute_batch("COMMIT;").unwrap();
 
     let count = store.pending_offline_count().unwrap();
-    assert_eq!(count, 10_000);
-    assert_eq!(raw_pending_count(&conn), 10_000);
+    assert_eq!(count, N);
+    assert_eq!(raw_pending_count(&conn), N);
 }
 
 #[test]
