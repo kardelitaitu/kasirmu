@@ -927,9 +927,9 @@ insert; borrowed keys.
 interleaves with the sync daemon and every POS command. *Fix:* one guard, no awaits inside.
 
 **O-M32 · shells — conflict commands build a fresh `reqwest::Client`, no timeout** —
-`apps/mobile-tauri/src/commands/sync.rs:588`, `:637`; `apps/desktop-tauri/src/commands/sync.rs:434`,
-`:482` ◦. No keep-alive reuse and no timeout. *Fix:* shared client in `AppState` (as
-`image_download.rs:180` already does).
+`apps/mobile-tauri/src/commands/sync.rs`, `apps/desktop-tauri/src/commands/sync.rs` ✔ **PAID 2026-10-22 in `010ad308f`**.
+Fixed: shared `reqwest::Client` in `OnceLock` singleton with 10s connect / 30s request timeouts,
+reusing TLS contexts and connection pools across conflict list/resolve calls.
 
 **O-M33 · mobile — image-cache missing-set computed by one sequential stat per file per
 cycle** — `apps/mobile-tauri/src/image_download.rs:231-236` ◦. 10k images = 10k awaited
@@ -4533,6 +4533,19 @@ Hoisted `discover_all()` above the printer iteration loop into a lazily-checked 
 2. If one or more printers use `Connection::Usb`, the bus is enumerated exactly once into an iterator,
    and each configured USB printer takes the next available device.
 Verified with unit test `multiple_usb_printers_hoist_discovery_and_skip_when_absent`. All 26 bootstrap tests pass.
+
+## §11BF — O-M32 resolved: shared OnceLock HTTP client for conflict commands (2026-10-22)
+
+In `apps/desktop-tauri/src/commands/sync.rs` and `apps/mobile-tauri/src/commands/sync.rs`, `bounded_conflict_client()`
+previously built a fresh `reqwest::Client` on every invocation (`list_sync_conflicts`, `resolve_sync_conflict`),
+causing complete rebuilds of the TLS backend, connection pools, and DNS resolver on every call.
+
+Wrapped the bounded client builder in a `static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();`
+and return `CLIENT.get_or_init(...).clone()`.
+The client maintains 10s connect / 30s request timeouts, while reusing connection pools and TLS sessions across commands.
+Verified with unit tests `commands::sync::test_pins::sync_conflict_commands_use_a_bounded_client` on desktop and
+`commands::sync::tests::sync_conflict_commands_use_a_bounded_client` on mobile. All tests pass.
+
 
 
 
