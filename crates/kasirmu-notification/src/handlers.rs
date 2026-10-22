@@ -35,13 +35,87 @@ next: none | perf: N/A
 //! );
 //! ```
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::events::{SaleCompleted, StockAdjusted};
+use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
-use crate::{NotificationClient, TemplateParameter};
+use crate::{NotificationClient, NotificationError, NotificationStatus, TemplateParameter};
+
+/// Maximum concurrent notification tasks across all event handlers (O-M61).
+pub const MAX_CONCURRENT_NOTIFICATIONS: usize = 16;
+/// Maximum number of retries when rate-limited.
+pub const MAX_RATE_LIMIT_RETRIES: usize = 3;
+/// Maximum delay in seconds for rate-limit backoff.
+pub const MAX_RETRY_DELAY_SECS: u64 = 60;
+
+fn notification_semaphore() -> &'static Semaphore {
+    static SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
+    SEMAPHORE.get_or_init(|| Semaphore::new(MAX_CONCURRENT_NOTIFICATIONS))
+}
+
+pub(crate) fn spawn_notification<F>(future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    tokio::spawn(async move {
+        let _permit = match notification_semaphore().acquire().await {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        future.await;
+    });
+}
+
+pub(crate) async fn send_template_with_retry(
+    client: &Arc<dyn NotificationClient>,
+    to: &str,
+    template_name: &str,
+    params: &[TemplateParameter],
+    language: Option<&str>,
+    description: &str,
+) -> Result<NotificationStatus, NotificationError> {
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        match client
+            .send_template(to, template_name, params, language)
+            .await
+        {
+            Ok(status) => return Ok(status),
+            Err(NotificationError::RateLimited {
+                retry_after_seconds,
+                message,
+            }) => {
+                if attempts <= MAX_RATE_LIMIT_RETRIES {
+                    let delay = retry_after_seconds.min(MAX_RETRY_DELAY_SECS);
+                    warn!(
+                        description,
+                        retry_after_seconds,
+                        delay,
+                        attempt = attempts,
+                        "Rate limited by notification provider; backing off before retry: {message}"
+                    );
+                    if delay > 0 {
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    }
+                } else {
+                    error!(
+                        description,
+                        attempts, "Exceeded max retries after rate limiting: {message}"
+                    );
+                    return Err(NotificationError::RateLimited {
+                        retry_after_seconds,
+                        message,
+                    });
+                }
+            }
+            Err(other) => return Err(other),
+        }
+    }
+}
 
 /// Handler that sends an order confirmation via WhatsApp when a sale completes.
 ///
@@ -99,16 +173,22 @@ impl EventHandler<SaleCompleted> for OrderConfirmationHandler {
         let sale_id = event.sale_id.clone();
         let line_count = event.line_items.len();
 
-        tokio::spawn(async move {
+        spawn_notification(async move {
             let params = vec![
                 TemplateParameter::text(format!("#{sale_id}")),
                 TemplateParameter::text(format!("{line_count} item(s)")),
                 TemplateParameter::currency(&currency, total),
             ];
 
-            match client
-                .send_template(&to, "order_confirmed", &params, Some("id"))
-                .await
+            match send_template_with_retry(
+                &client,
+                &to,
+                "order_confirmed",
+                &params,
+                Some("id"),
+                "order_confirmation",
+            )
+            .await
             {
                 Ok(status) => {
                     info!(
@@ -184,7 +264,7 @@ impl EventHandler<StockAdjusted> for StockLowAlertHandler {
         let reason = event.reason.clone();
         let threshold = self.threshold;
 
-        tokio::spawn(async move {
+        spawn_notification(async move {
             let urgency = if new_qty == 0 {
                 "OUT OF STOCK"
             } else {
@@ -197,9 +277,15 @@ impl EventHandler<StockAdjusted> for StockLowAlertHandler {
                 TemplateParameter::text(urgency.to_string()),
             ];
 
-            match client
-                .send_template(&to, "low_stock_alert", &params, Some("id"))
-                .await
+            match send_template_with_retry(
+                &client,
+                &to,
+                "low_stock_alert",
+                &params,
+                Some("id"),
+                "low_stock_alert",
+            )
+            .await
             {
                 Ok(status) => {
                     info!(
@@ -258,15 +344,21 @@ impl EventHandler<SaleCompleted> for PaymentReceiptHandler {
         let total = event.total_minor;
         let currency = event.currency.clone();
 
-        tokio::spawn(async move {
+        spawn_notification(async move {
             let params = vec![
                 TemplateParameter::text(format!("#{sale_id}")),
                 TemplateParameter::currency(&currency, total),
             ];
 
-            match client
-                .send_template(&to, "payment_receipt", &params, Some("id"))
-                .await
+            match send_template_with_retry(
+                &client,
+                &to,
+                "payment_receipt",
+                &params,
+                Some("id"),
+                "payment_receipt",
+            )
+            .await
             {
                 Ok(status) => {
                     info!(

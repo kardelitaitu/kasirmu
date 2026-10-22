@@ -236,3 +236,96 @@ async fn handler_logs_error_when_client_fails() {
     wait_for_messages(&mock, 0).await;
     assert_eq!(mock.sent_count(), 0);
 }
+
+#[derive(Debug)]
+struct FlakyRateLimitClient {
+    attempts: std::sync::atomic::AtomicUsize,
+    succeed_on_attempt: usize,
+}
+
+#[async_trait::async_trait]
+impl NotificationClient for FlakyRateLimitClient {
+    async fn send_template(
+        &self,
+        _to: &str,
+        _template_name: &str,
+        _parameters: &[TemplateParameter],
+        _language: Option<&str>,
+    ) -> crate::NotificationResult<NotificationStatus> {
+        let attempt = self
+            .attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if attempt >= self.succeed_on_attempt {
+            Ok(NotificationStatus {
+                message_id: Some("success".into()),
+                accepted: true,
+                status: "sent".into(),
+            })
+        } else {
+            Err(NotificationError::RateLimited {
+                retry_after_seconds: 0,
+                message: "too many requests".into(),
+            })
+        }
+    }
+
+    async fn send_text(
+        &self,
+        _to: &str,
+        _body: &str,
+    ) -> crate::NotificationResult<NotificationStatus> {
+        unimplemented!()
+    }
+
+    fn verify_webhook_signature(
+        &self,
+        _payload: &[u8],
+        _sig: &str,
+    ) -> crate::NotificationResult<bool> {
+        Ok(true)
+    }
+}
+
+#[tokio::test]
+async fn send_template_retries_on_rate_limit_and_succeeds() {
+    let client = Arc::new(FlakyRateLimitClient {
+        attempts: std::sync::atomic::AtomicUsize::new(0),
+        succeed_on_attempt: 3,
+    });
+
+    let res = send_template_with_retry(
+        &(client.clone() as Arc<dyn NotificationClient>),
+        "+62812345",
+        "order_confirmed",
+        &[],
+        None,
+        "test_retry",
+    )
+    .await;
+
+    assert!(res.is_ok());
+    assert_eq!(client.attempts.load(std::sync::atomic::Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn send_template_gives_up_after_max_retries() {
+    let client = Arc::new(FlakyRateLimitClient {
+        attempts: std::sync::atomic::AtomicUsize::new(0),
+        succeed_on_attempt: 10,
+    });
+
+    let res = send_template_with_retry(
+        &(client.clone() as Arc<dyn NotificationClient>),
+        "+62812345",
+        "order_confirmed",
+        &[],
+        None,
+        "test_retry_failure",
+    )
+    .await;
+
+    assert!(matches!(res, Err(NotificationError::RateLimited { .. })));
+    // 1 initial + 3 retries = 4 attempts total
+    assert_eq!(client.attempts.load(std::sync::atomic::Ordering::SeqCst), 4);
+}
