@@ -26,10 +26,18 @@ pub(crate) mod revenue;
 mod sales_summary;
 
 pub(crate) use datetime::{check_date_bound, parse_utc_offset};
+// Re-exported for the integration plan probe
+// (`crates/kasirmu-core/tests/integration/query_plan_probe.rs`), which needs
+// the SAME text the product prepares. The constants are `pub` inside the
+// `pub(crate)` `revenue` module for exactly this reason: an integration test
+// is a separate crate and can only see `pub` items, and a probe holding its
+// own copy stays green when the real query is reshaped back into the scanning
+// form. The module itself stays crate-private.
 pub use product_sales::{
     CategoryBreakdownRow, InventoryTrendRow, InventoryTurnoverRow, LowStockAlert, StockAlertEvent,
     TopProductRow,
 };
+pub use revenue::{DAILY_REVENUE_SQL, MONTHLY_REVENUE_SQL, WEEKLY_REVENUE_SQL};
 pub use revenue::{DailyRevenueRow, MonthlyRevenueRow, WeeklyRevenueRow};
 pub use sales_summary::{
     BasketSizeRow, BasketTrendRow, CustomerSplitRow, DiscountCodeRow, DiscountsSummaryRow,

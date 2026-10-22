@@ -107,9 +107,12 @@ pub struct MonthlyRevenueRow {
 /// Returns one row per (store-local day, currency): gross revenue, sale count,
 /// COGS net of refunded goods, refunds and net revenue.
 ///
-/// Hoisted to a module constant so the plan test
+/// Hoisted to a module constant so the plan tests
 /// (`revenue_refund_cte_uses_refunds_currency_created_date_index` in
-/// `migrations_tests.rs`) reads the SAME text the product runs. A plan test
+/// `migrations_tests.rs` and the query-plan probe in
+/// `tests/integration/query_plan_probe.rs`) read the SAME text the product
+/// runs. `pub` rather than `pub(crate)` because the probe is a separate test
+/// crate; the enclosing `revenue` module stays crate-private. A plan test
 /// against a copy of the SQL is worthless — it stays green when the production
 /// query is reshaped back into the form that scans.
 ///
@@ -122,7 +125,7 @@ pub struct MonthlyRevenueRow {
 /// clearly cheaper, at 365 days the two estimates were within a few percent
 /// (scan 20.0 vs index 19.1) and SQLite still prefers the scan. A manager's
 /// usual window is a week; a full-year pull is not the case this optimises.
-pub(crate) const DAILY_REVENUE_SQL: &str = "WITH s AS (
+pub const DAILY_REVENUE_SQL: &str = "WITH s AS (
                  SELECT DATE(s1.created_at, ?3) AS d, s1.currency AS c,
                         SUM(s1.total_minor) AS t, COUNT(*) AS n,
                         (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
@@ -181,7 +184,7 @@ pub(crate) const DAILY_REVENUE_SQL: &str = "WITH s AS (
 /// Hoisted so the plan test reads the same text the product runs — see
 /// [`DAILY_REVENUE_SQL`] for why the refunds side is nested and for the honest
 /// limits of what that nesting buys.
-pub(crate) const WEEKLY_REVENUE_SQL: &str = "WITH s AS (
+pub const WEEKLY_REVENUE_SQL: &str = "WITH s AS (
                  SELECT DATE(s1.created_at, ?3, '-6 days', 'weekday 1') AS d, s1.currency AS c,
                         SUM(s1.total_minor) AS t, COUNT(*) AS n,
                         (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
@@ -241,7 +244,7 @@ pub(crate) const WEEKLY_REVENUE_SQL: &str = "WITH s AS (
 /// Hoisted so the plan test reads the same text the product runs — see
 /// [`DAILY_REVENUE_SQL`] for why the refunds side is nested and for the honest
 /// limits of what that nesting buys.
-pub(crate) const MONTHLY_REVENUE_SQL: &str = "WITH s AS (
+pub const MONTHLY_REVENUE_SQL: &str = "WITH s AS (
                  SELECT strftime('%Y-%m', s1.created_at, ?3) AS d, s1.currency AS c,
                         SUM(s1.total_minor) AS t, COUNT(*) AS n,
                         (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
