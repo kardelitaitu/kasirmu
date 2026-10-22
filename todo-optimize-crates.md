@@ -3560,12 +3560,45 @@ The lane chasing the same abort established the honest position: **no green full
 observed in this environment, and I am not claiming one.** What it did establish is that the failures
 are environmental, not product defects — 41 of them failed on `os error 5`, the machine-`TEMP` trap.
 
-The remaining exposure is enumerated, and it is the obvious next task for this tier:
-`data_tests.rs:123,807,479` · `diagnostics_tests.rs:41,158,300,356` ·
-`local_payment_tests.rs:35` · `regional_tests.rs:107` · `settings_tests.rs:2267` ·
-`subscription_tests.rs:1099` · `sync_tests.rs:642` · `tables_tests.rs:54` · `tax_tests.rs:399` ·
-`avatars_tests.rs:155` · `branding_tests.rs:215,231,232,250,270,286` · `pos_tests.rs:2619` ·
-`topology/topology_command_tests.rs:17` · `topology/topology_stress_tests.rs:20`.
+**That exposure is now closed, and the suite is GREEN.** All 17 sites were migrated under
+`target/test-scratch`, in 14 files, and **`cargo test -p kasirmu-bridge --lib` reports 1 528 passed,
+0 failed, 1 ignored** — from 74 failing and an abort at the start of this round.
+
+**The lane corrected my own list, in the direction that mattered.** The two `topology` "call sites" I
+named were `use tempfile::tempdir;` IMPORTS, not calls: the real call site in
+`topology_command_tests.rs` is `:154`, and `topology_stress_tests.rs` has SIX (`:925`, `:987`, `:1039`,
+`:1102`, `:1774`, `:1853`), not one. A line number harvested from a grep for the identifier is not a
+call site, and five real sites were missing from my list because of it.
+
+**The per-site choice is the substance, and it is not uniform on purpose.** `ScratchDir::new` where the
+fixture lives and dies inside one test body (avatars, branding ×6, the export twin); a bare
+`scratch_dir` wherever the directory OUTLIVES its creator; `tempdir_with_prefix` only where the code
+under test genuinely requires a `tempfile::TempDir` (the pos plugin fixture, and the file-backed
+topology SQLite tests whose WAL/SHM siblings need the `TempDir` `Drop` while spawned threads still hold
+the path).
+
+The case that justifies the caution is `diagnostics_tests::call_export`, which RETURNS `(result, dir)`
+to a caller that asserts on the zip inside it. A `ScratchDir` bound inside `call_export` would drop at
+its closing brace and delete the directory before the assertion ran — the fix would have looked right
+and failed one frame later. Left deliberately bare.
+
+### And one failure that was NOT environmental, found by finishing the suite
+
+With the `%TEMP%` sweep in place, 1 527 passed and exactly ONE failed:
+`sync::sync_tests::sync_run_scoped_drains_large_backlog_in_bounded_batches`, expecting 105 synced and
+getting **0**. It failed in isolation too, so it was not a cascade.
+
+**The cause was a fixture that filled one queue and read another.** `token_granting` registers its
+session against the literal store id `"store-pin"` (`testing.rs:719`), and `sync_run_scoped` drains
+through `resolve_session(token).store_id`. The test enqueued its 105 items into `"store-batch-drain"` —
+a store the session never names — so `pending_items` came back empty on the first iteration, the loop
+broke, and `synced` was 0. The neighbouring test that passes uses `"store-pin"`, which is the contrast
+that makes it obvious once you look at both.
+
+Worth naming what this cost: the test is `fb7927582`'s (O-H07) and had been reporting 0-versus-105
+**while proving nothing about batching**, because it never pushed a single item. A failing test is a
+claim that something is wrong; the first question is whether the claim is about the product or about
+the fixture, and here the batching code was fine the whole time.
 
 ### The build recipe, once, because it cost several rounds
 
@@ -3586,4 +3619,6 @@ fails, minus the duplicate argument succeeds.
 
 **Verification this round:** `kasirmu-core` rate_limiter **34 passed** (2.00 s → 0.01 s) ·
 `kasirmu-core` kds **178 passed** · `platform-sync` pg_daemon **55 passed** (1.07 s → 0.55 s) ·
-`kasirmu-bridge` locations **12 passed**, memo **26 passed**. Scratch directories: 2,338 → 2,338.
+`kasirmu-bridge` **1 528 passed, 0 failed, 1 ignored** for the whole crate — the number that matters,
+and the first time this crate has been fully green in this session. Scratch directories: 2,338 → 2,338
+across a 26-test run, where before every run added one per test.
