@@ -10,21 +10,12 @@
 //! invariant from dfbc41b2, pinned from the write side.
 
 use super::*;
+use kasirmu_test_support::tempdir;
 
 use crate::commands::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
 
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
-
-/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
-///
-/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
-/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
-/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
-/// same auto-delete `TempDir`, only in a parent that actually works.
-fn temp_scratch() -> tempfile::TempDir {
-    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
-}
 
 /// A complete ADR #35 D6 profile — creation requires the mandatory fields.
 fn profile() -> ProfileArgs {
@@ -69,7 +60,7 @@ fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
 /// An app whose `owner-token` session resolves to the owner.
 fn owner_app(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
     let conn = seeded_conn(tier_key);
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

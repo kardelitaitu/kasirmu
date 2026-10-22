@@ -1,16 +1,7 @@
 use super::*;
 use foundation::Currency;
 use kasirmu_core::{Money, SaleLine};
-
-/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
-///
-/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
-/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
-/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
-/// same auto-delete `TempDir`, only in a parent that actually works.
-fn temp_scratch() -> tempfile::TempDir {
-    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
-}
+use kasirmu_test_support::tempdir;
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -350,7 +341,7 @@ fn history_state() -> (AppState, tempfile::TempDir) {
             ('user-full', 'full', 'hash-not-a-real-pin', 'Full', 'role-full', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');"#
     )
     .unwrap();
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     let conn = state.db_manager.open_store("store-a").unwrap();

@@ -40,32 +40,24 @@ use std::sync::RwLock;
 /// `Access is denied (os error 5)` while the code under test was fine. Measured
 /// 2026-10-21.
 ///
-/// `target/` is already gitignored (`.gitignore:2`), so nothing created here can
-/// be committed, and the per-call UUID keeps parallel tests apart. The workspace
-/// root is found by walking up from `CARGO_MANIFEST_DIR` rather than from the
-/// process CWD, because tests run from the crate directory while `target/` lives
-/// at the workspace root.
+/// The root is `kasirmu_test_support::scratch_root()` — the workspace's ONE copy
+/// of that walk-up (`target/` is gitignored at `.gitignore:2`, so nothing created
+/// here can be committed), and the per-call UUID keeps parallel tests apart.
 #[cfg(test)]
 fn test_scratch_store_dir() -> PathBuf {
-    test_scratch_root().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7()))
+    kasirmu_test_support::scratch_root()
+        .join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7()))
 }
 
 /// The shared `target/test-scratch` root, created if absent.
 ///
-/// `pub(crate)` because the crate's test modules create their own fixtures too
-/// (42 `temp_scratch()` sites across 21 files all inherited the same
-/// `C:\WINDOWS\TEMP` problem). Exposing ONE root is what stops a fourth copy of
-/// this eleven-line function appearing.
+/// `pub(crate)` because the crate's test modules create fixtures that need a
+/// plain path rather than a guard too. The lookup itself is
+/// `kasirmu_test_support::scratch_root()` — one copy workspace-wide — so this
+/// stays a delegate and owns no path arithmetic of its own.
 #[cfg(test)]
 pub(crate) fn test_scratch_root() -> PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace = manifest
-        .ancestors()
-        .find(|p| p.join("Cargo.lock").is_file() && p.join("target").is_dir())
-        .unwrap_or(manifest);
-    let root = workspace.join("target").join("test-scratch");
-    std::fs::create_dir_all(&root).expect("test scratch root under target/ must be creatable");
-    root
+    kasirmu_test_support::scratch_root()
 }
 
 use kasirmu_security::mask::mask_token;

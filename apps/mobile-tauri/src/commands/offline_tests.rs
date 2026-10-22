@@ -1,17 +1,8 @@
 use super::*;
 use kasirmu_core::OfflineQueueStatus;
 use kasirmu_core::migrations;
+use kasirmu_test_support::tempdir;
 use rusqlite::Connection;
-
-/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
-///
-/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
-/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
-/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
-/// same auto-delete `TempDir`, only in a parent that actually works.
-fn temp_scratch() -> tempfile::TempDir {
-    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
-}
 
 fn fresh_conn() -> Connection {
     migrations::fresh_db()
@@ -388,7 +379,7 @@ async fn retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item() 
             .id
     };
 
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -559,7 +550,7 @@ async fn retry_offline_sync_scoped_records_a_push_failure_without_marking_synced
             .id
     };
 
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -684,7 +675,7 @@ async fn offline_queue_status_summary_scoped_reads_the_session_store() {
     use tauri::Manager as _;
     let conn = kasirmu_core::migrations::fresh_db();
     kasirmu_core::migrations::seed_provisioned_baseline(&conn);
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(

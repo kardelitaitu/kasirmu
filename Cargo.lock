@@ -3661,6 +3661,7 @@ dependencies = [
  "kasirmu-plugin",
  "kasirmu-reporting",
  "kasirmu-security",
+ "kasirmu-test-support",
  "modules-crm",
  "modules-currency",
  "modules-inventory",

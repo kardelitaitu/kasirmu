@@ -1,16 +1,7 @@
 use super::*;
 use kasirmu_core::migrations;
+use kasirmu_test_support::tempdir;
 use rusqlite::Connection;
-
-/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
-///
-/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
-/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
-/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
-/// same auto-delete `TempDir`, only in a parent that actually works.
-fn temp_scratch() -> tempfile::TempDir {
-    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
-}
 
 fn fresh_conn() -> Connection {
     migrations::fresh_db()
@@ -584,7 +575,7 @@ fn run_set_device_binding_binds_the_global_row_the_boot_path_resolves() {
 /// terminal as a silent success.
 #[test]
 fn store_registered_terminal_is_not_found_for_an_unknown_id() {
-    let temp = temp_scratch();
+    let temp = tempdir();
     let state = AppState::for_test_with_db_manager(platform_core::StoreDatabaseManager::new(
         temp.path().to_path_buf(),
         migrations::ALL,
@@ -667,7 +658,7 @@ fn terminals_app(
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
-    let temp = temp_scratch();
+    let temp = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);

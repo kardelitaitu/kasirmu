@@ -1,14 +1,5 @@
 use super::*;
-
-/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
-///
-/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
-/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
-/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
-/// same auto-delete `TempDir`, only in a parent that actually works.
-fn temp_scratch() -> tempfile::TempDir {
-    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
-}
+use kasirmu_test_support::tempdir;
 
 #[test]
 fn sync_settings_serialize() {
@@ -550,7 +541,7 @@ async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
             .id
     };
 
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -673,7 +664,7 @@ async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
             .id
     };
 
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -815,7 +806,7 @@ async fn sync_pull_applies_the_snapshot_to_the_store_not_the_global_db() {
             .id
     };
 
-    let temp_dir = temp_scratch();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(

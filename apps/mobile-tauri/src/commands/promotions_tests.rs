@@ -1,14 +1,5 @@
 use super::*;
-
-/// A `TempDir` under the gitignored `target/` tree, not `C:\WINDOWS\TEMP`.
-///
-/// `tempfile::tempdir()` resolves `TEMP`, whose MACHINE-level value on this
-/// project's Windows machines is `C:\WINDOWS\TEMP` — creatable but not deletable
-/// for an ordinary user (see `state::test_scratch_root`). `tempdir_in` keeps the
-/// same auto-delete `TempDir`, only in a parent that actually works.
-fn temp_scratch() -> tempfile::TempDir {
-    tempfile::tempdir_in(crate::state::test_scratch_root()).expect("scratch tempdir")
-}
+use kasirmu_test_support::tempdir;
 
 #[test]
 fn create_promotion_args_deserialize_minimal() {
@@ -104,7 +95,7 @@ fn promotions_app(
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
-    let temp = temp_scratch();
+    let temp = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -269,7 +260,7 @@ async fn scoped_promotion_write_gates_before_it_opens_the_store() {
     seed_identity(&conn);
     // A regular FILE where the store-manager's directory would go: `open_store`
     // cannot create or use it, so every store id fails to open.
-    let temp = temp_scratch();
+    let temp = tempdir();
     let blocked = temp.path().join("not-a-directory");
     std::fs::write(&blocked, b"a file, not a store dir").unwrap();
     let mut state = AppState::for_test_with_conn(conn);
